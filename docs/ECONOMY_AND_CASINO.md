@@ -668,7 +668,7 @@ xp          = 100 + streakBonus
   在 announceChannelId 推播
 ```
 
-**目標 RTP**：≈ 82–86%（含通膨控制；實測請看 `scripts/verifySlotRtp.js`）
+**目標 RTP**：≈ 82–86%（含通膨控制）
 
 ---
 
@@ -713,7 +713,6 @@ xp          = 100 + streakBonus
 
 - 「大 / 小」遇到圍骰一律算輸
 - 同一局可同時押多注，分別結算
-- 目標 RTP：見 `scripts/verifySicboRtp.js`
 
 ---
 
@@ -1034,20 +1033,7 @@ mul  = floor(fair × (1 − 0.05) × 100) / 100
 
 ---
 
-## 附錄 A：驗證腳本
-
-| 腳本 | 用途 |
-| --- | --- |
-| `scripts/verifySlotRtp.js` | 拉霸 RTP 模擬 |
-| `scripts/verifySicboRtp.js` | 骰寶 RTP 模擬 |
-| `scripts/verifyBlackjackRtp.js` | 21 點 RTP 模擬 |
-| `scripts/verifyLotteryPayout.js` | 樂透派彩單元驗證 |
-| `scripts/verifyWheeling.js` | 包牌組合產生驗證 |
-| `scripts/fixJackpotPoolSeed.js` | 修復拉霸彩池 seed |
-
----
-
-## 附錄 B：檔案索引
+## 附錄 A：檔案索引
 
 | 檔案 | 內容 |
 | --- | --- |
