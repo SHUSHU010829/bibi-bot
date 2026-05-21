@@ -474,7 +474,7 @@ xp          = 100 + streakBonus
 
 ### 10.4 等級身份組
 
-`levelRoles[]`（預設空），管理員可用 `/levelroles set` 動態新增；`apply` 子指令會批次同步全伺服器。
+`levelRoles[]`（預設空），管理員可用 `/level-admin roles set` 動態新增；`/level-admin roles apply` 會批次同步全伺服器。
 
 ---
 
@@ -537,8 +537,8 @@ xp          = 100 + streakBonus
 
 ### 12.2 稱號
 
-- `/稱號 設定`：可選任一已解鎖徽章名為稱號，或選目前等級 tier（還原預設）
-- `/徽章展示`：自選等級卡下方顯示 5 枚徽章與順序
+- `/level title 設定`：可選任一已解鎖徽章名為稱號，或選目前等級 tier（還原預設）
+- `/level displaybadges 設定 / 重置`：自選等級卡下方顯示 5 枚徽章與順序
 - `/背包 設定稱號 text`：30 天自訂稱號（需先買 `title_custom` 道具）
 
 ---

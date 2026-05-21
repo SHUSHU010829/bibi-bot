@@ -69,20 +69,24 @@ src/
 ├── messageConfig.json      # 訊息文案
 ├── handlers/eventHandler.js
 ├── commands/               # Slash Commands（按功能分子目錄）
-│   ├── ask/                # 詢問星座運勢、占卜
-│   ├── casino/             # /二十一點、/hilo、/拉霸、/賽馬、/樂透買、/賭場排行、/我的賭場紀錄…
-│   ├── currency/           # 加密貨幣、匯率
-│   ├── draw/               # 抽籤、抽一個（樂透模擬）
-│   ├── economy/            # /錢包、/轉帳、/存款、/骰寶、/give-coins
-│   ├── food/               # 食物/飲料 CRUD、/吃什麼
+│   ├── ask/                # /我想問
+│   ├── casino/             # /二十一點、/hilo、/拉霸、/賽馬、/火箭、/射龍門、/尋寶、/輪盤、/德州撲克、/樂透買、/賭場排行、/我的賭場紀錄…
+│   ├── currency/           # /加密貨幣、/即時匯率
+│   ├── draw/               # /二選一、/抽籤
+│   ├── economy/            # /錢包、/轉帳、/存款、/骰寶、/領錢、/逼幣任務、/乞討、/give-coins、/circulation
+│   ├── event/              # /活動（成員自辦獎金活動）
+│   ├── food/               # /吃什麼、/food、/food-admin
 │   ├── general/            # /help
-│   ├── level/              # /每日簽到、/等級卡、/徽章圖鑑、/稱號…
-│   ├── post/               # 整人小工具（瓦斯燈）
+│   ├── level/              # /每日簽到、/補簽卡、/level、/level-admin、開發者測試指令
+│   ├── post/               # /生成情勒文、/新增情勒文
+│   ├── quiz/               # /預測、/問答
+│   ├── recommendation/     # /推薦、/recommendation-admin
 │   ├── roles/              # /setup-roles
-│   ├── shop/               # /商店、/背包（credits 商店、buff、卡面）
+│   ├── shop/               # /商店、/背包
 │   ├── stats/              # /stats、/leaderboard
-│   ├── ticket/             # /setup-ticket、/proposal、/close-ticket、/setup-suggestion
-│   └── weather/            # /weather
+│   ├── stock/              # /買股、/賣股、/持股、/股歷、/配息紀錄、/stock-event
+│   ├── ticket/             # /ticket（setup / close / proposal / suggestion-setup / vote）
+│   └── weather/            # /天氣、/全台天氣
 ├── events/
 │   ├── ready/              # bot 啟動時要做的事（載入 DB、註冊指令、起 cron…）
 │   ├── interactionCreate/  # 按鈕、Select Menu 互動
@@ -200,7 +204,7 @@ bot 自動建立同分類下的新頻道（預設名稱「記得改名喔！」�
 ```
 使用者點 Ticket 面板「創建票務」
    ↓ 自動建立 ticket-{username} 私人頻道
-管理員在票務頻道輸入 /proposal start
+管理員在票務頻道輸入 /ticket proposal start
    ↓ bot 在投票頻道發布投票訊息
 成員按按鈕投票（可改票、有互斥邏輯）
    ↓ node-cron 每 5 分鐘檢查過期投票
@@ -208,13 +212,16 @@ bot 自動建立同分類下的新頻道（預設名稱「記得改名喔！」�
    未通過：5 分鐘後自動關閉 Ticket
 ```
 
-**指令**：
+**指令**（全部收斂在 `/ticket` 之下）：
 
 | 指令 | 權限 | 說明 |
 | --- | --- | --- |
-| `/setup-ticket` | 管理員 | 在當前頻道部署 Ticket 面板 |
-| `/proposal start game:<名稱> type:<create\|archive>` | `ManageChannels` | 在 Ticket 頻道發起投票 |
-| `/close-ticket` | Ticket 開啟者 / 管理員 | 立即關閉 Ticket |
+| `/ticket setup` | 管理員 | 在當前頻道部署 Ticket 面板（可自訂標題 / 描述 / 按鈕 / 類別 / 支援身份組） |
+| `/ticket close` | Ticket 開啟者 / 管理員 | 立即關閉當前 Ticket |
+| `/ticket suggestion-setup` | 管理員 | 部署建議系統面板 |
+| `/ticket proposal start game:<名稱> type:<create\|archive>` | `ManageChannels` | 在 Ticket 頻道發起遊戲頻道投票 |
+| `/ticket proposal end / cancel message_url:<連結>` | 管理員 | 提早結束 / 取消投票 |
+| `/ticket vote create template:<模板> title:<標題>` | 管理員 | 從模板（遊戲頻道、活動、規則變更、一般提案）發起投票 |
 
 **新增頻道 (create) 投票機制**：
 
@@ -261,7 +268,7 @@ bot 自動建立同分類下的新頻道（預設名稱「記得改名喔！」�
 
 ### 4. 建議 / 投票面板
 
-**指令**：`/setup-suggestion`
+**指令**：`/ticket suggestion-setup`
 
 提供讓成員提案、其他人投票（贊成 / 反對）的輕量級面板，資料存於 `src/data/suggestion-panels.json`，並由 `suggestionScheduler.js` 進行定期維護。
 
@@ -326,10 +333,9 @@ embed.js → 發送 Embed
 
 ---
 
-### 7. 每日早安卡 / 今日報告
+### 7. 每日早安卡
 
 - **早安卡**：`events/ready/sendMorningMessage.js` 依 `morningMessage.cronSchedule`（預設每天早上 8 點）發送，使用 `satori` 動態繪製含日期、星期、節氣、農民曆、詩詞、運勢的 PNG 卡片。
-- **`/today-report`**：成員可隨時手動取得今日資訊（日期、運勢、節日）。
 - **資料來源**：本地 `src/data/calender.json`（透過 `npm run update-calendar` 從 TaiwanCalendar 更新）、`utils/getLunarInfo.js`（農民曆）、`utils/getPoem.js`（詩詞）。
 
 ---
@@ -340,14 +346,14 @@ embed.js → 發送 Embed
 
 | 指令 | 用途 |
 | --- | --- |
-| `/increase-food` | 新增餐廳 / 食物 |
-| `/batch-add-food` | 批次匯入 |
-| `/delete-food` | 刪除 |
-| `/food-list` | 查看目前清單 |
-| `/food-ranking` | 依抽中次數排名 |
-| `/draw-lot` | 抽今天吃什麼 |
-| `/drink-lot` | 抽今天喝什麼 |
-| `/beverage-stores`、`/import-beverage-menu` | 飲料店與菜單管理 |
+| `/吃什麼 [類別] [飲料店]` | 隨機抽食物 / 飲料（不選類別則所有品項一起抽） |
+| `/food list [類別]` | 查看食物清單 |
+| `/food ranking [類別] [數量]` | 依抽中次數排行（預設前 10） |
+| `/food stores` | 查看所有飲料店清單 |
+| `/food-admin add` 🔒 | 新增單一食物（管理員） |
+| `/food-admin batch` 🔒 | 一次新增多個食物（用逗號分隔） |
+| `/food-admin import` 🔒 | 匯入整個飲料店菜單 |
+| `/food-admin delete` 🔒 | 刪除食物項目 |
 
 資料存於 MongoDB；指令內含 Autocomplete（`utils/autocompleteFoodName.js`、`autocompleteBeverageStore.js`）。
 
@@ -355,9 +361,10 @@ embed.js → 發送 Embed
 
 ### 9. 加密貨幣 / 匯率 / 天氣
 
-- `/cryptocurrency`：透過 [cryptocompare](https://min-api.cryptocompare.com/documentation) 查即時幣價。
-- `/exchange-rate`：查台幣對外幣匯率。
-- `/weather city:<城市>`、`/weather all`：查台灣縣市天氣。
+- `/加密貨幣 貨幣代碼:<BTC|ETH|...>`：透過 [cryptocompare](https://min-api.cryptocompare.com/documentation) 查即時美金幣價。
+- `/即時匯率 [欲兌貨幣]`：查貨幣兌新台幣匯率（資料來源 RTER.info），不填則顯示美元對台幣。
+- `/天氣 縣市名稱:<城市>`：查單一縣市今日天氣。
+- `/全台天氣`：查全台天氣總覽。
 
 ---
 
@@ -365,12 +372,19 @@ embed.js → 發送 Embed
 
 | 指令 | 說明 |
 | --- | --- |
-| `/choose-one` | 在多個選項中隨機抽一個 |
-| `/straws` | 抽籤（吉凶） |
-| `/ask` | 占卜 / 星座運勢 |
-| `/stats`、`/leaderboard` | 訊息與語音時長統計（由 `messageStats.js`、`voiceStats.js` 累積） |
-| `/gaslight`、`/increase-gaslight` | 整人小工具 |
-| `/help` | 查看指令說明（自動掃 `commands/**`，可帶 `指令:<名稱>` 直接跳） |
+| `/二選一` ~ 五選一 | 提供 2-5 個選項由機器人隨機選 |
+| `/抽籤 [諮詢方向]` | 傳統籤詩風格抽籤（吉凶） |
+| `/我想問 問題:<是非題>` | 問機器人是非題，回 Yes / No / Maybe |
+| `/stats user / channel` | 訊息與語音時長統計（由 `messageStats.js`、`voiceStats.js` 累積） |
+| `/leaderboard type [period]` | 各類排行榜 |
+| `/推薦 查詢 [關鍵字] [類別] [地區]` | 瀏覽 / 搜尋伺服器推薦（餐廳、酒吧、飲料、娛樂） |
+| `/推薦 編輯 訊息連結` | 修改推薦的分類欄位 |
+| `/recommendation-admin delete / reanalyze` 🔒 | 管理員：刪除推薦、重跑 AI 分析 |
+| `/活動 名稱 獎金 名次數 [描述]` | 自掏腰包當獎金的成員自辦活動 🎉 |
+| `/預測 題目 獎金 選項a 選項b ...` | 發布有獎預測，事後由主辦人公布答案 🔮 |
+| `/問答 題目 獎金 正確答案 選項a 選項b ...` | 發布有獎問答（平分 / 搶答模式）🎯 |
+| `/生成情勒文`、`/新增情勒文` | 整人小工具：抽 / 新增情勒文 |
+| `/help [指令]` | 查看指令說明（自動掃 `commands/**`，可帶指令名直接跳） |
 
 ---
 
@@ -408,13 +422,13 @@ embed.js → 發送 Embed
 
 - 每連續簽到滿 `streakFreezeUnlockEvery`（預設 30）天 +1 張，庫存上限 `maxStreakFreezeStock`（預設 3）。
 - 漏簽 1 天會自動消耗 1 張、連勝不歸零；漏 2 天以上仍會歸零。
-- 用 `/補簽卡` 隨時查庫存與下一張的距離。
+- 用 `/補簽卡` 隨時查庫存與規則。
 
 #### 徽章與稱號
 
 - `src/features/leveling/badgeDefinitions.js` 定義了等級 / 連勝 / 訊息 / 語音 / 社交 / 特殊 6 大類徽章；連勝類包含 `streak_3 / 7 / 30 / 100`。
 - `grantXp` 每次發 XP 後呼叫 `badgeChecker` 重新評估，新解鎖的徽章會在升等公告與簽到回覆中標示。
-- `/稱號 設定` 可從已解鎖徽章或目前等級 tier 中挑一個顯示在等級卡（選擇 tier 等同於還原為預設）。
+- `/level title 設定` 可從已解鎖徽章或目前等級 tier 中挑一個顯示在等級卡（選擇 tier 等同於還原為預設）。
 
 #### Twitch 訂閱加成
 
@@ -424,15 +438,17 @@ embed.js → 發送 Embed
 
 | 指令 | 用途 |
 | --- | --- |
-| `/每日簽到` | 領今日 XP，產生簽到卡與月曆 |
-| `/補簽卡` | 查補簽卡庫存、下次解鎖距離 |
-| `/等級卡 [用戶] [私密]` | 看自己或他人的等級卡（XP、進度條、稱號） |
-| `/等級排行榜` | 伺服器 Top 排行 |
-| `/徽章圖鑑` | 全徽章解鎖進度 |
-| `/稱號 設定` | 切換等級卡稱號（可選徽章或目前等級 tier） |
-| `/徽章展示 設定 / 重置` | 自選等級卡下方展示的 5 個徽章與順序 |
-| `/等級卡主題` | 切換等級卡顏色主題 |
-| `/levelroles set / remove / list / apply` 🔒 | 管理員：設定等級對應身份組、批次同步 |
+| `/每日簽到 [押倍]` | 領今日 XP，產生簽到卡與月曆；押倍會把當日金幣翻倍但隔天斷簽直接歸零（不能用補簽卡） |
+| `/補簽卡` | 查補簽卡庫存與規則 |
+| `/level profile [用戶] [私密]` | 看自己或他人的等級卡（XP、進度條、稱號） |
+| `/level rank` | 伺服器等級排行榜 |
+| `/level badges` | 全徽章解鎖進度 |
+| `/level title 設定` | 切換等級卡稱號（可選徽章或目前等級 tier） |
+| `/level displaybadges 設定 / 重置` | 自選等級卡下方展示的 5 個徽章與順序 |
+| `/level cardtheme` | 切換等級卡顏色主題 |
+| `/level-admin give-xp role amount` 🔒 | 對整個身份組統一加 XP |
+| `/level-admin roles set / remove / list / apply` 🔒 | 設定等級對應身份組、批次同步 |
+| `/leveltest …` / `/dailytest …` 🔧 | 開發者測試工具（XP 給予、升等卡預覽、簽到卡預覽 / 重置） |
 
 #### MongoDB 資料結構
 
@@ -478,11 +494,15 @@ embed.js → 發送 Embed
 | 指令 | 用途 |
 | --- | --- |
 | `/錢包` | 查當前 credits、生命總值、來源分布、生效中 buff |
-| `/轉帳 對象 金額 [備註]` | 把金幣轉給其他玩家（會收手續費，每日有上限） |
+| `/轉帳 對象 金額 [備註]` | 把金幣轉給其他玩家（手續費：>1000 加 5%，否則 2%，每日有上限） |
 | `/存款 開戶 金額 天數` | 開定期存款，到期領回本金 + 利息 |
 | `/存款 查詢` | 查所有未到期 / 已到期的存單 |
 | `/存款 提款 存單` | 領回到期存款（未到期會被扣違約金） |
+| `/逼幣任務` | 查看每日／週常任務進度 📜 |
+| `/領錢` | 補領未入帳的任務獎勵（任務完成時通常會自動入帳）🪙 |
+| `/乞討` | 破產時領取救濟金，符合資格直接發放 🪙 |
 | `/give-coins user amount [reason]` 🔒 | 管理員：發放或扣除 credits（會記在交易紀錄） |
+| `/circulation` 🔒 | 管理員：查所有伺服器的金幣流通總量 |
 
 #### 12.2 賭場遊戲
 
@@ -490,13 +510,20 @@ embed.js → 發送 Embed
 
 | 指令 | 玩法 | 主要設定 |
 | --- | --- | --- |
-| `/拉霸 spin bet` | 五輪滾筒老虎機，含 jackpot 累積彩池（每筆下注 3% 注入彩池），中 jackpot 時 announce 到 `slot.jackpotPool.announceChannelId` | `casino.slot` |
-| `/骰寶 bet kind 金額` | 三顆骰子，可同時押 3 注。支援 大 / 小 / 單骰 / 對子 / 圍骰（特定 ×180、任意 ×30）/ 總點數（4 或 17 ×60、5 或 16 ×30…） | `casino.sicbo` |
-| `/二十一點 下注 [副數]` | 跟莊家比 21 點。莊家 ≥17 必停（含 soft 17）、Blackjack 賠 3:2、玩家過五關（5 張未爆）2:1、莊家過五關則莊家勝、可 Hit / Stand / Double。可選 1 / 4 / 6 / 8 副牌 | `casino.blackjack` |
-| `/hilo 下注` | 猜下一張比底牌 HI / LO / SAME，倍率依剩餘牌堆即時計算（含 5% 房費）；連對倍率累積，至少贏 1 把後可隨時收手；達 `maxRounds` 強制結算 | `casino.hilo` |
-| `/賽馬` | 在 `casino.horseRacing.announceChannelId` 播報頻道開盤一場 10 分鐘售票期賽馬（多人共局）：點按鈕跳 modal 押注、可同時押多匹，到時自動開賽逐幀文字動畫，0 人下注自動取消。賠率 ×3.0（30%）／×4.0（22%）／×5.5（17%）／×7.0（13%）／×9.0（10%）／×11.0（8%）約 10% 房費。開盤者可按「🚀 提早開賽」或「❌ 取消」 | `casino.horseRacing` |
+| `/拉霸 下注 [梭哈]` | 五輪滾筒老虎機，含 jackpot 累積彩池（每筆下注 3% 注入彩池），中 jackpot 時 announce 到 `slot.jackpotPool.announceChannelId` | `casino.slot` |
+| `/骰寶 kind 金額` | 三顆骰子，可同時押 3 注。支援 大 / 小 / 單骰 / 對子 / 圍骰（特定 ×180、任意 ×30）/ 總點數（4 或 17 ×60、5 或 16 ×30…） | `casino.sicbo` |
+| `/二十一點 下注 [梭哈]` | 跟莊家比 21 點。莊家 ≥17 必停（含 soft 17）、Blackjack 賠 3:2、玩家過五關（5 張未爆）2:1、莊家過五關則莊家勝、可 Hit / Stand / Double | `casino.blackjack` |
+| `/hilo 下注 [梭哈]` | 猜下一張比底牌 HI / LO / SAME，倍率依剩餘牌堆即時計算（含 5% 房費）；連對倍率累積，至少贏 1 把後可隨時收手；達 `maxRounds` 強制結算 | `casino.hilo` |
+| `/賽馬` | 開一場 10 分鐘售票期賽馬（多人共局）：點按鈕跳 modal 押注、可同時押多匹，到時自動開賽逐幀文字動畫，0 人下注自動取消。賠率 ×3.0（30%）／×4.0（22%）／×5.5（17%）／×7.0（13%）／×9.0（10%）／×11.0（8%）約 10% 房費 | `casino.horseRacing` |
+| `/火箭 下注 [自動收手]` | 🚀 倍率不斷往上衝，按收手鎖定派彩；慢一步就爆炸 | `casino.crash` |
+| `/射龍門` | 🐉 入場費 50。看完柱牌再決定要不要補注射第三張 | `casino.dragonGate` |
+| `/尋寶 下注 [梭哈]` | 💎 從格子裡挑 5 格找寶藏，全中 100 倍 | `casino.keno` |
+| `/輪盤 金額 [梭哈]` | 🎰 押紅黑、奇偶、大小、打、列 | `casino.roulette` |
+| `/德州撲克 開桌 [max_players] [blind]` | 自動建立 thread，桌面在 thread 內進行 | `casino.poker` |
 | `/賭場排行 type [period]` | 賭場淨輸贏排行榜，預設本週周榜，可選今天 / 本週 / 本月 | — |
-| `/我的賭場紀錄` | 自己的下注、派彩、RTP、各遊戲分項統計 | — |
+| `/我的賭場紀錄 [period]` | 自己的下注、派彩、RTP、各遊戲分項統計 | — |
+| `/casino-stats game period` 🔒 | 管理員：全伺服器賭場 RTP 統計 | — |
+| `/slottest spin / preview` 🔧 | 開發者：拉霸抽獎 JSON / 圖卡預覽工具 | — |
 
 > **共同行為**：每位玩家同 `guildId` 同時只能進行一局 `/二十一點` 或 `/hilo`，避免按鈕局多開互踩。中途離場（按鈕局 5 分鐘無互動）由每分鐘的 cleanup cron 自動處理：21 點直接退本金；HI-LO 沒贏過退本金、有贏過自動 cash out。`/賽馬` channel-scoped，同頻道一次只能有一場進行中；售票期到了由 `horseRaceScheduler` cron 撈出來自動開賽，0 人下注直接取消，比賽中段卡超過 `raceTtlSeconds` 視為中斷全額退款。
 
@@ -520,7 +547,20 @@ embed.js → 發送 Embed
 - 支援多種玩法（預設 `6_49`、`3_20`），各自有獨立票價、系統種子金、wheeling 限制
 - 跨過 `poolMilestones` 門檻時可選擇推播到 `poolMilestoneChannelId`
 
-#### 12.4 商店與背包
+#### 12.4 股市
+
+虛擬股市，與賭場分開計算。有事件系統可在隨機時機觸發漲跌。
+
+| 指令 | 用途 |
+| --- | --- |
+| `/買股 股票代號 數量` | 以市價買入指定股數 |
+| `/賣股 股票代號 數量` | 以市價賣出，數量可填 `all` 全部賣出 |
+| `/持股` | 查看當前持股、損益、總市值 |
+| `/股歷 股票代號 [期間]` | 查單檔股票走勢圖（預設 1 週） |
+| `/配息紀錄 [期間]` | 查自己過去領到的股息明細（預設 1 個月） |
+| `/stock-event fire / fire-by-id / add / remove / list` 🔒 | 管理員：手動觸發事件、管理事件書 |
+
+#### 12.5 商店與背包
 
 | 指令 | 用途 |
 | --- | --- |
@@ -536,7 +576,7 @@ embed.js → 發送 Embed
 - `wallet_theme`：永久解鎖錢包卡面（廟宇籤詩、故障藝術、蒸汽波、北歐極簡、皮革撲克、全息投影、街頭塗鴉…）
 - `custom_title`：30 天自訂稱號，會顯示在錢包與升等公告
 
-#### 12.5 MongoDB collections 速覽
+#### 12.6 MongoDB collections 速覽
 
 | Collection | 內容 |
 | --- | --- |
@@ -559,13 +599,21 @@ embed.js → 發送 Embed
 ## 維運腳本
 
 ```bash
-npm run update-calendar    # 從 TaiwanCalendar 抓最新行事曆
-npm run verify-calendar    # 驗證行事曆 JSON 完整性
-npm run convert-calendar   # 行事曆格式轉換
+# 行事曆
+npm run update-calendar           # 從 TaiwanCalendar 抓最新行事曆
+npm run verify-calendar           # 驗證行事曆 JSON 完整性
+npm run convert-calendar          # 行事曆格式轉換
 
-node src/tool/deploy-commands.js   # 註冊 / 更新 Slash Command
-node src/tool/get-commands.js      # 列出已註冊指令
-node src/tool/delete-commands.js   # 清空所有指令（謹慎使用）
+# 資料修補
+npm run clear-crash-stats         # 清空 /火箭 的賭場統計
+npm run backfill-recommendations  # 回填推薦系統的歷史資料
+npm run backfill-map-meta         # 回填地圖 / 地點 metadata
+node scripts/migrateFoodData.js   # 一次性食物資料遷移（舊資料 → 新分類結構）
+
+# Slash Command 部署
+node src/tool/deploy-commands.js  # 註冊 / 更新 Slash Command
+node src/tool/get-commands.js     # 列出已註冊指令
+node src/tool/delete-commands.js  # 清空所有指令（謹慎使用）
 ```
 
 ---

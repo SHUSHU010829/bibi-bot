@@ -31,7 +31,7 @@
 
 **使用範例：**
 ```
-/vote create template:遊戲頻道新增 title:Monster Hunter Wilds
+/ticket vote create template:遊戲頻道新增 title:Monster Hunter Wilds
 ```
 
 ---
@@ -50,7 +50,7 @@
 
 **使用範例：**
 ```
-/vote create template:遊戲頻道封存 title:Among Us
+/ticket vote create template:遊戲頻道封存 title:Among Us
 ```
 
 ---
@@ -71,7 +71,7 @@
 
 **使用範例：**
 ```
-/vote create template:活動提案 title:農曆新年線上聚會 description:時間：2月1日晚上8點，活動內容：遊戲、抽獎 duration:48
+/ticket vote create template:活動提案 title:農曆新年線上聚會 description:時間：2月1日晚上8點，活動內容：遊戲、抽獎 duration:48
 ```
 
 ---
@@ -91,7 +91,7 @@
 
 **使用範例：**
 ```
-/vote create template:規則修改 title:允許在聊天頻道分享 Meme description:現行規則禁止在一般聊天分享 Meme，提議開放此限制
+/ticket vote create template:規則修改 title:允許在聊天頻道分享 Meme description:現行規則禁止在一般聊天分享 Meme，提議開放此限制
 ```
 
 ---
@@ -109,7 +109,7 @@
 
 **使用範例：**
 ```
-/vote create template:一般提案 title:增設深夜安靜時段 description:晚上11點後語音頻道降低音量提醒
+/ticket vote create template:一般提案 title:增設深夜安靜時段 description:晚上11點後語音頻道降低音量提醒
 ```
 
 ## 🎮 指令使用方式
@@ -117,7 +117,7 @@
 ### 基本指令格式
 
 ```
-/vote create template:[模板名稱] title:[標題] description:[說明] duration:[時長] channel:[頻道]
+/ticket vote create template:[模板名稱] title:[標題] description:[說明] duration:[時長] channel:[頻道]
 ```
 
 ### 必填參數
@@ -151,7 +151,7 @@
 管理員可以在任何頻道直接發起投票：
 
 ```
-/vote create template:活動提案 title:週末Among Us大賽 description:週六晚上8點，前三名有獎品！ duration:48
+/ticket vote create template:活動提案 title:週末Among Us大賽 description:週六晚上8點，前三名有獎品！ duration:48
 ```
 
 系統會自動在投票頻道發布，結果公開顯示。
@@ -165,7 +165,7 @@
 1. **使用者**：在 Ticket 中寫「我想新增 Elden Ring 頻道」
 2. **管理員**：在同一個 Ticket 中輸入
    ```
-   /vote create template:遊戲頻道新增 title:Elden Ring
+   /ticket vote create template:遊戲頻道新增 title:Elden Ring
    ```
 3. **系統**：
    - 在投票頻道發布投票
@@ -180,7 +180,7 @@
 對於重要提案，可以延長投票時間：
 
 ```
-/vote create template:規則修改 title:禁止政治討論 description:是否要在規則中明文禁止政治話題 duration:72
+/ticket vote create template:規則修改 title:禁止政治討論 description:是否要在規則中明文禁止政治話題 duration:72
 ```
 
 投票將持續 72 小時（3 天）。
@@ -192,7 +192,7 @@
 如果想在特定頻道發布投票：
 
 ```
-/vote create template:一般提案 title:更換伺服器圖示 channel:#公告頻道
+/ticket vote create template:一般提案 title:更換伺服器圖示 channel:#公告頻道
 ```
 
 ---
@@ -344,7 +344,7 @@ A: 可以，使用 `duration` 參數設定 1-168 小時的任意時長。
 
 ### Q: 如何在非 Ticket 頻道使用？
 
-A: 直接在任何頻道使用 `/vote create` 指令即可。
+A: 直接在任何頻道使用 `/ticket vote create` 指令即可。
 
 ### Q: 可以改變投票嗎？
 
@@ -356,11 +356,11 @@ A: 目前投票是匿名統計的，只顯示總數。如需查看詳細名單�
 
 ---
 
-## 🆚 與舊版 `/proposal` 的差異
+## 🆚 與 `/ticket proposal` 的差異
 
-| 功能 | 舊版 `/proposal` | 新版 `/vote` |
-|------|------------------|--------------|
-| **模板數量** | 2 種（新增/封存） | 5 種模板 |
+| 功能 | `/ticket proposal` | `/ticket vote` |
+|------|--------------------|----------------|
+| **模板數量** | 2 種（新增 / 封存） | 5 種模板 |
 | **使用限制** | 僅 Ticket 中 | 任何頻道 |
 | **自訂時長** | ❌ 固定 24h | ✅ 1-168h |
 | **自訂頻道** | ❌ 固定頻道 | ✅ 可指定 |
@@ -401,14 +401,16 @@ A: 目前投票是匿名統計的，只顯示總數。如需查看詳細名單�
 ```
 src/
 ├── commands/ticket/
-│   ├── vote.js              # 主投票指令（新）
-│   └── proposal.js          # 舊版指令（保留相容）
+│   └── ticket.js            # /ticket 主指令（含 setup / close / proposal / suggestion-setup / vote）
+├── features/ticket/handlers/
+│   ├── vote.js              # /ticket vote 處理邏輯
+│   └── proposal.js          # /ticket proposal 處理邏輯
 ├── events/
 │   ├── ready/
-│   │   └── voteScheduler.js # 自動結算系統（已更新）
+│   │   └── voteScheduler.js # 自動結算 cron
 │   └── interactionCreate/
-│       └── interactionCreate.js # 按鈕處理（已更新）
-└── config.json              # 模板配置（已更新）
+│       └── interactionCreate.js # 按鈕互動處理
+└── config.json              # 模板配置
 ```
 
 ---
