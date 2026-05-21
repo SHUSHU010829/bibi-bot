@@ -102,7 +102,7 @@ src/
 ├── utils/                  # 共用函式（卡片產生、農民曆、autocomplete…）
 ├── data/                   # 持久化 JSON（身份組、建議、票務面板）
 ├── constants/              # 食物分類等靜態常數
-├── scripts/                # 行事曆轉換、驗證
+├── scripts/                # 一次性資料遷移腳本
 └── tool/                   # 部署 / 刪除 Slash Command 用的維運腳本
 ```
 
@@ -330,7 +330,7 @@ embed.js → 發送 Embed
 
 - **早安卡**：`events/ready/sendMorningMessage.js` 依 `morningMessage.cronSchedule`（預設每天早上 8 點）發送，使用 `satori` 動態繪製含日期、星期、節氣、農民曆、詩詞、運勢的 PNG 卡片。
 - **`/today-report`**：成員可隨時手動取得今日資訊（日期、運勢、節日）。
-- **資料來源**：本地 `src/data/calender.json`（透過 `scripts/updateCalendar.js` 從 TaiwanCalendar 更新）、`utils/getLunarInfo.js`（農民曆）、`utils/getPoem.js`（詩詞）。
+- **資料來源**：本地 `src/data/calender.json`（透過 `npm run update-calendar` 從 TaiwanCalendar 更新）、`utils/getLunarInfo.js`（農民曆）、`utils/getPoem.js`（詩詞）。
 
 ---
 
