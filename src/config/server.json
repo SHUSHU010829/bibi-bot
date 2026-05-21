@@ -31,7 +31,8 @@
 
   "hostedEvents": {
     "publishChannelId": "1506339475867832330",
-    "maxRankCount": 5
+    "maxRankCount": 5,
+    "refundFeeRate": 0.3
   },
 
   "ticket": {

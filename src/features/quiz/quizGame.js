@@ -7,6 +7,7 @@ const {
 } = require("discord.js");
 
 const grantCoins = require("../economy/grantCoins");
+const { computeRefundFee } = require("../economy/refundFee");
 const { hostedEvents: hostedEventsConfig } = require("../../config");
 
 const QUIZ_CHANNEL_ID = hostedEventsConfig?.publishChannelId || "1174352640210124877";
@@ -156,7 +157,10 @@ function buildSettledEmbed(quizDoc) {
     totalPaid = 0,
   } = quizDoc;
 
-  const refunded = prizePool - totalPaid;
+  const unpaid = prizePool - totalPaid;
+  const refundFee = quizDoc.refundFee || 0;
+  const refundNet =
+    quizDoc.refundNet !== undefined ? quizDoc.refundNet : Math.max(unpaid - refundFee, 0);
   const correctOpt = options.find((o) => o.key === correctKey);
 
   const tally = {};
@@ -211,28 +215,50 @@ function buildSettledEmbed(quizDoc) {
     .setFooter({ text: `${kindLabel(quizDoc)} ID：${quizDoc.quizId}` })
     .setTimestamp(quizDoc.settledAt || new Date());
 
-  if (refunded > 0) {
+  if (unpaid > 0) {
     embed.addFields({
       name: "退回主辦人",
-      value: `${refunded.toLocaleString()} credits`,
+      value: `${refundNet.toLocaleString()} credits`,
       inline: false,
     });
+    if (refundFee > 0) {
+      embed.addFields({
+        name: "系統抽成（防洗錢）",
+        value: `${refundFee.toLocaleString()} credits`,
+        inline: false,
+      });
+    }
   }
   return embed;
 }
 
 function buildCancelledEmbed(quizDoc) {
+  const refundFee = quizDoc.refundFee || 0;
+  const refundNet =
+    quizDoc.refundNet !== undefined
+      ? quizDoc.refundNet
+      : Math.max(quizDoc.prizePool - refundFee, 0);
+
+  const fields = [
+    { name: "主辦人", value: `<@${quizDoc.hostId}>`, inline: true },
+    {
+      name: "獎金已退還",
+      value: `${refundNet.toLocaleString()} credits`,
+      inline: true,
+    },
+  ];
+  if (refundFee > 0) {
+    fields.push({
+      name: "系統抽成（防洗錢）",
+      value: `${refundFee.toLocaleString()} credits`,
+      inline: true,
+    });
+  }
+
   return new EmbedBuilder()
     .setColor(COLOR_CANCELLED)
     .setTitle(`🚫 ${quizDoc.question}（已取消）`)
-    .addFields(
-      { name: "主辦人", value: `<@${quizDoc.hostId}>`, inline: true },
-      {
-        name: "獎金已退還",
-        value: `${quizDoc.prizePool.toLocaleString()} credits`,
-        inline: true,
-      }
-    )
+    .addFields(...fields)
     .setFooter({ text: `${kindLabel(quizDoc)} ID：${quizDoc.quizId}` })
     .setTimestamp(quizDoc.cancelledAt || new Date());
 }
@@ -676,7 +702,8 @@ async function settleQuiz(client, quizDoc, reason = "manual") {
         : Math.floor(quizDoc.prizePool / winnerCount)
       : 0;
   const totalPaid = perWinnerPrize * winnerCount;
-  const refund = quizDoc.prizePool - totalPaid;
+  const unpaid = quizDoc.prizePool - totalPaid;
+  const { fee: refundFee, net: refundNet, rate: refundFeeRate } = computeRefundFee(unpaid);
   const winners = winnerIds.map((uid) => ({ userId: uid, prize: perWinnerPrize }));
 
   const setFields = {
@@ -687,6 +714,9 @@ async function settleQuiz(client, quizDoc, reason = "manual") {
     perWinnerPrize,
     totalPaid,
     settleReason: reason,
+    refundFee,
+    refundNet,
+    refundFeeRate,
   };
   if (fromStatus === "ACTIVE") {
     setFields.lockedAt = settledAt;
@@ -717,16 +747,19 @@ async function settleQuiz(client, quizDoc, reason = "manual") {
     });
   }
 
-  if (refund > 0) {
+  if (refundNet > 0) {
     await grantCoins(client, {
       userId: quizDoc.hostId,
       guildId: quizDoc.guildId,
-      amount: refund,
+      amount: refundNet,
       source: "event_refund",
       meta: {
         quizId: quizDoc.quizId,
         reason: winnerCount === 0 ? "no_winner" : "leftover",
         kind: getKind(doc),
+        gross: unpaid,
+        fee: refundFee,
+        feeRate: refundFeeRate,
       },
     }).catch((e) => {
       console.log(`[ERROR] ${getKind(doc)} refund failed: ${e}`.red);
@@ -739,10 +772,14 @@ async function settleQuiz(client, quizDoc, reason = "manual") {
     const label = kindLabel(doc);
     let summary;
     if (winnerCount === 0) {
+      const feeNote =
+        refundFee > 0
+          ? `系統抽成 ${refundFee.toLocaleString()} credits，退還主辦人 <@${doc.hostId}> ${refundNet.toLocaleString()} credits。`
+          : `獎金 ${refundNet.toLocaleString()} credits 已退還主辦人 <@${doc.hostId}>。`;
       summary =
         `🏁 ${label}「${doc.question}」結束\n` +
         `正確答案：**${doc.correctKey}**\n` +
-        `沒有人答對，獎金 ${doc.prizePool.toLocaleString()} credits 已退還主辦人 <@${doc.hostId}>。`;
+        `沒有人答對，${feeNote}`;
       await msg.reply({ content: summary }).catch(() => {});
     } else if (isSolo(doc)) {
       const mentions = winnerIds.map((id) => `<@${id}>`).join(" ");
@@ -757,10 +794,17 @@ async function settleQuiz(client, quizDoc, reason = "manual") {
         .catch(() => {});
     } else {
       const mentions = winnerIds.map((id) => `<@${id}>`).join(" ");
+      let leftoverNote = "";
+      if (unpaid > 0) {
+        leftoverNote =
+          refundFee > 0
+            ? `\n（餘數 ${unpaid.toLocaleString()}，系統抽成 ${refundFee.toLocaleString()}，退回主辦人 ${refundNet.toLocaleString()}）`
+            : `\n（餘數 ${refundNet.toLocaleString()} 已退回主辦人）`;
+      }
       summary =
         `🎉 ${label}「${doc.question}」結束！正確答案：**${doc.correctKey}**\n` +
         `${winnerCount} 人答對，每人獲得 **${perWinnerPrize.toLocaleString()}** credits\n${mentions}` +
-        (refund > 0 ? `\n（餘數 ${refund.toLocaleString()} 已退回主辦人）` : "");
+        leftoverNote;
       await msg
         .reply({
           content: summary,
@@ -798,6 +842,8 @@ async function setCorrectAnswerAndSettle(client, quizDoc, correctKey, reason = "
 }
 
 async function cancelQuiz(client, quizDoc, actor) {
+  const { fee, net, rate } = computeRefundFee(quizDoc.prizePool);
+
   const updated = await client.quizGamesCollection.findOneAndUpdate(
     { _id: quizDoc._id, status: { $in: ["ACTIVE", "LOCKED"] } },
     {
@@ -806,6 +852,9 @@ async function cancelQuiz(client, quizDoc, actor) {
         cancelledAt: new Date(),
         updatedAt: new Date(),
         cancelledBy: actor.id,
+        refundFee: fee,
+        refundNet: net,
+        refundFeeRate: rate,
       },
     },
     { returnDocument: "after" }
@@ -815,22 +864,35 @@ async function cancelQuiz(client, quizDoc, actor) {
     throw new Error("已結束，無法取消。");
   }
 
-  await grantCoins(client, {
-    userId: quizDoc.hostId,
-    guildId: quizDoc.guildId,
-    amount: quizDoc.prizePool,
-    source: "event_refund",
-    meta: { quizId: quizDoc.quizId, reason: "host_cancelled", kind: getKind(doc) },
-  }).catch((e) => {
-    console.log(`[ERROR] ${getKind(doc)} cancel refund failed: ${e}`.red);
-  });
+  if (net > 0) {
+    await grantCoins(client, {
+      userId: quizDoc.hostId,
+      guildId: quizDoc.guildId,
+      amount: net,
+      source: "event_refund",
+      meta: {
+        quizId: quizDoc.quizId,
+        reason: "host_cancelled",
+        kind: getKind(doc),
+        gross: quizDoc.prizePool,
+        fee,
+        feeRate: rate,
+      },
+    }).catch((e) => {
+      console.log(`[ERROR] ${getKind(doc)} cancel refund failed: ${e}`.red);
+    });
+  }
 
   const msg = await refreshQuizMessage(client, doc);
   if (msg) {
     const label = kindLabel(doc);
+    const feeNote =
+      fee > 0
+        ? `（系統抽成 ${fee.toLocaleString()} credits，實際退還 ${net.toLocaleString()}）`
+        : "";
     await msg
       .reply({
-        content: `🚫 ${label}「${doc.question}」已由主辦人取消，獎金已退還。`,
+        content: `🚫 ${label}「${doc.question}」已由主辦人取消，獎金已退還。${feeNote}`,
       })
       .catch(() => {});
   }

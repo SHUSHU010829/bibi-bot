@@ -11,6 +11,7 @@ const {
 } = require("discord.js");
 
 const grantCoins = require("../economy/grantCoins");
+const { computeRefundFee } = require("../economy/refundFee");
 const { hostedEvents: hostedEventsConfig } = require("../../config");
 
 const EVENT_CHANNEL_ID = hostedEventsConfig?.publishChannelId || "1174352640210124877";
@@ -71,13 +72,32 @@ function buildActiveEmbed(eventDoc) {
 
 function buildSettledEmbed(eventDoc) {
   const { name, description, hostId, prizePool, winners = [], totalPaid = 0 } = eventDoc;
-  const refunded = prizePool - totalPaid;
+  const unpaid = prizePool - totalPaid;
   const medals = ["🥇", "🥈", "🥉", "🏅", "🏅"];
 
   const winnerLines = winners
     .sort((a, b) => a.rank - b.rank)
     .map((w) => `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 <@${w.userId}> — ${w.prize.toLocaleString()} credits`)
     .join("\n");
+
+  const refundFee = eventDoc.refundFee || 0;
+  const refundNet = eventDoc.refundNet !== undefined ? eventDoc.refundNet : Math.max(unpaid - refundFee, 0);
+
+  const extraFields = [];
+  if (unpaid > 0) {
+    extraFields.push({
+      name: "未發出退回主辦人",
+      value: `${refundNet.toLocaleString()} credits`,
+      inline: false,
+    });
+    if (refundFee > 0) {
+      extraFields.push({
+        name: "系統抽成（防洗錢）",
+        value: `${refundFee.toLocaleString()} credits`,
+        inline: false,
+      });
+    }
+  }
 
   return new EmbedBuilder()
     .setColor(EMBED_COLOR_SETTLED)
@@ -87,23 +107,34 @@ function buildSettledEmbed(eventDoc) {
       { name: "主辦人", value: `<@${hostId}>`, inline: true },
       { name: "原始獎金池", value: `${prizePool.toLocaleString()} credits`, inline: true },
       { name: "得獎名單", value: winnerLines || "（無）", inline: false },
-      ...(refunded > 0
-        ? [{ name: "未發出退回主辦人", value: `${refunded.toLocaleString()} credits`, inline: false }]
-        : [])
+      ...extraFields
     )
     .setFooter({ text: `活動 ID：${eventDoc.eventId}` })
     .setTimestamp(eventDoc.settledAt || new Date());
 }
 
 function buildCancelledEmbed(eventDoc) {
+  const refundFee = eventDoc.refundFee || 0;
+  const refundNet =
+    eventDoc.refundNet !== undefined ? eventDoc.refundNet : Math.max(eventDoc.prizePool - refundFee, 0);
+
+  const fields = [
+    { name: "主辦人", value: `<@${eventDoc.hostId}>`, inline: true },
+    { name: "獎金已退還", value: `${refundNet.toLocaleString()} credits`, inline: true },
+  ];
+  if (refundFee > 0) {
+    fields.push({
+      name: "系統抽成（防洗錢）",
+      value: `${refundFee.toLocaleString()} credits`,
+      inline: true,
+    });
+  }
+
   return new EmbedBuilder()
     .setColor(EMBED_COLOR_CANCELLED)
     .setTitle(`🚫 ${eventDoc.name}（已取消）`)
     .setDescription(eventDoc.description || "（沒有描述）")
-    .addFields(
-      { name: "主辦人", value: `<@${eventDoc.hostId}>`, inline: true },
-      { name: "獎金已退還", value: `${eventDoc.prizePool.toLocaleString()} credits`, inline: true }
-    )
+    .addFields(...fields)
     .setFooter({ text: `活動 ID：${eventDoc.eventId}` })
     .setTimestamp(eventDoc.cancelledAt || new Date());
 }
@@ -382,6 +413,8 @@ async function setRecruitmentClosed(client, eventDoc, closed) {
 }
 
 async function cancelEvent(client, eventDoc, actor, channel) {
+  const { fee, net, rate } = computeRefundFee(eventDoc.prizePool);
+
   const updated = await client.hostedEventsCollection.findOneAndUpdate(
     { _id: eventDoc._id, status: "RECRUITING" },
     {
@@ -390,6 +423,9 @@ async function cancelEvent(client, eventDoc, actor, channel) {
         cancelledAt: new Date(),
         updatedAt: new Date(),
         cancelledBy: actor.id,
+        refundFee: fee,
+        refundNet: net,
+        refundFeeRate: rate,
       },
     },
     { returnDocument: "after" }
@@ -399,23 +435,35 @@ async function cancelEvent(client, eventDoc, actor, channel) {
     throw new Error("活動已不在報名階段，無法取消。");
   }
 
-  await grantCoins(client, {
-    userId: eventDoc.hostId,
-    guildId: eventDoc.guildId,
-    amount: eventDoc.prizePool,
-    source: "event_refund",
-    meta: { eventId: eventDoc.eventId, reason: "host_cancelled" },
-  }).catch((e) => {
-    console.log(`[ERROR] event refund failed for ${eventDoc.eventId}: ${e}`.red);
-  });
+  if (net > 0) {
+    await grantCoins(client, {
+      userId: eventDoc.hostId,
+      guildId: eventDoc.guildId,
+      amount: net,
+      source: "event_refund",
+      meta: {
+        eventId: eventDoc.eventId,
+        reason: "host_cancelled",
+        gross: eventDoc.prizePool,
+        fee,
+        feeRate: rate,
+      },
+    }).catch((e) => {
+      console.log(`[ERROR] event refund failed for ${eventDoc.eventId}: ${e}`.red);
+    });
+  }
 
   const msg = await refreshEventMessage(client, doc);
 
   if (msg && doc.participants.length > 0) {
     const mentions = doc.participants.map((id) => `<@${id}>`).join(" ");
+    const feeNote =
+      fee > 0
+        ? `（系統抽成 ${fee.toLocaleString()} credits，實際退還 ${net.toLocaleString()}）`
+        : "";
     await msg
       .reply({
-        content: `🚫 活動「${doc.name}」已由主辦人取消，獎金已退還。\n${mentions}`,
+        content: `🚫 活動「${doc.name}」已由主辦人取消，獎金已退還。${feeNote}\n${mentions}`,
         allowedMentions: { users: doc.participants },
       })
       .catch(() => {});
@@ -450,6 +498,9 @@ async function settleEvent(client, eventDoc, picks, prizes) {
     prize: prizes[idx],
   }));
 
+  const unpaid = eventDoc.prizePool - total;
+  const { fee, net, rate } = computeRefundFee(unpaid);
+
   const updated = await client.hostedEventsCollection.findOneAndUpdate(
     { _id: eventDoc._id, status: "RECRUITING" },
     {
@@ -459,6 +510,9 @@ async function settleEvent(client, eventDoc, picks, prizes) {
         updatedAt: new Date(),
         winners,
         totalPaid: total,
+        refundFee: fee,
+        refundNet: net,
+        refundFeeRate: rate,
       },
     },
     { returnDocument: "after" }
@@ -480,14 +534,19 @@ async function settleEvent(client, eventDoc, picks, prizes) {
     });
   }
 
-  const refund = eventDoc.prizePool - total;
-  if (refund > 0) {
+  if (net > 0) {
     await grantCoins(client, {
       userId: eventDoc.hostId,
       guildId: eventDoc.guildId,
-      amount: refund,
+      amount: net,
       source: "event_refund",
-      meta: { eventId: eventDoc.eventId, reason: "leftover" },
+      meta: {
+        eventId: eventDoc.eventId,
+        reason: "leftover",
+        gross: unpaid,
+        fee,
+        feeRate: rate,
+      },
     }).catch((e) => {
       console.log(`[ERROR] event leftover refund failed: ${e}`.red);
     });
@@ -501,8 +560,16 @@ async function settleEvent(client, eventDoc, picks, prizes) {
       (w) =>
         `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 <@${w.userId}> — ${w.prize.toLocaleString()} credits`
     );
-    const tail =
-      refund > 0 ? `\n（剩餘 ${refund.toLocaleString()} 已退回主辦人）` : "";
+    let tail = "";
+    if (unpaid > 0) {
+      tail = `\n（剩餘 ${unpaid.toLocaleString()} 未發出`;
+      if (fee > 0) {
+        tail += `，系統抽成 ${fee.toLocaleString()}，退回主辦人 ${net.toLocaleString()}`;
+      } else {
+        tail += `，已退回主辦人 ${net.toLocaleString()}`;
+      }
+      tail += "）";
+    }
     const winnerIds = winners.map((w) => w.userId);
     await msg
       .reply({

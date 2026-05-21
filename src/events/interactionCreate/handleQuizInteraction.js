@@ -164,12 +164,24 @@ async function handleRevealButton(client, interaction) {
     const settled = await settleQuiz(client, doc, "manual");
     const winners = settled.winners?.length || 0;
     if (winners === 0) {
-      await interaction.editReply(
-        `🏁 結算完成。沒有人答對，獎金 ${settled.prizePool.toLocaleString()} 已退還給你。`
-      );
+      const fee = settled.refundFee || 0;
+      const net = settled.refundNet ?? settled.prizePool;
+      const feeNote =
+        fee > 0
+          ? `系統抽成 ${fee.toLocaleString()}，退還 ${net.toLocaleString()} credits 給你。`
+          : `獎金 ${net.toLocaleString()} 已退還給你。`;
+      await interaction.editReply(`🏁 結算完成。沒有人答對，${feeNote}`);
     } else {
+      const fee = settled.refundFee || 0;
+      const net = settled.refundNet || 0;
+      const leftoverNote =
+        fee > 0
+          ? `\n（餘數系統抽成 ${fee.toLocaleString()}，退回給你 ${net.toLocaleString()}）`
+          : net > 0
+          ? `\n（餘數 ${net.toLocaleString()} 已退回給你）`
+          : "";
       await interaction.editReply(
-        `🏁 結算完成！${winners} 人答對，每人 ${settled.perWinnerPrize.toLocaleString()} credits。`
+        `🏁 結算完成！${winners} 人答對，每人 ${settled.perWinnerPrize.toLocaleString()} credits。${leftoverNote}`
       );
     }
   } catch (err) {
@@ -208,12 +220,26 @@ async function handleSetAnswerButton(client, interaction) {
     const settled = await setCorrectAnswerAndSettle(client, doc, key, "manual");
     const winners = settled.winners?.length || 0;
     if (winners === 0) {
+      const fee = settled.refundFee || 0;
+      const net = settled.refundNet ?? settled.prizePool;
+      const feeNote =
+        fee > 0
+          ? `系統抽成 ${fee.toLocaleString()}，退還 ${net.toLocaleString()} credits 給你。`
+          : `獎金 ${net.toLocaleString()} 已退還給你。`;
       await interaction.editReply(
-        `🏁 已公布答案 **${key}** 並結算。沒有人答對，獎金 ${settled.prizePool.toLocaleString()} 已退還給你。`
+        `🏁 已公布答案 **${key}** 並結算。沒有人答對，${feeNote}`
       );
     } else {
+      const fee = settled.refundFee || 0;
+      const net = settled.refundNet || 0;
+      const leftoverNote =
+        fee > 0
+          ? `\n（餘數系統抽成 ${fee.toLocaleString()}，退回給你 ${net.toLocaleString()}）`
+          : net > 0
+          ? `\n（餘數 ${net.toLocaleString()} 已退回給你）`
+          : "";
       await interaction.editReply(
-        `🏁 已公布答案 **${key}** 並結算！${winners} 人答對，每人 ${settled.perWinnerPrize.toLocaleString()} credits。`
+        `🏁 已公布答案 **${key}** 並結算！${winners} 人答對，每人 ${settled.perWinnerPrize.toLocaleString()} credits。${leftoverNote}`
       );
     }
   } catch (err) {
@@ -237,8 +263,14 @@ async function handleCancelButton(client, interaction) {
 
   try {
     const cancelled = await cancelQuiz(client, doc, interaction.user);
+    const fee = cancelled.refundFee || 0;
+    const net = cancelled.refundNet ?? cancelled.prizePool;
+    const feeLine =
+      fee > 0
+        ? `（系統抽成 ${fee.toLocaleString()} credits，實退 ${net.toLocaleString()}）`
+        : "";
     await interaction.editReply(
-      `🚫 ${labelOf(cancelled)}已取消，獎金 ${cancelled.prizePool.toLocaleString()} credits 已退還。`
+      `🚫 ${labelOf(cancelled)}已取消，獎金 ${net.toLocaleString()} credits 已退還。${feeLine}`
     );
   } catch (err) {
     console.log(`[ERROR] quiz cancel: ${err}\n${err.stack || ""}`.red);

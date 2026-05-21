@@ -174,10 +174,16 @@ async function handleCancelButton(client, interaction) {
   }
 
   try {
-    await cancelEvent(client, doc, interaction.user);
+    const cancelled = await cancelEvent(client, doc, interaction.user);
     clearPicks(doc.eventId, doc.hostId);
+    const fee = cancelled.refundFee || 0;
+    const net = cancelled.refundNet ?? cancelled.prizePool;
+    const feeLine =
+      fee > 0
+        ? `（系統抽成 ${fee.toLocaleString()} credits，實退 ${net.toLocaleString()}）`
+        : "";
     await interaction.editReply({
-      content: `🚫 活動「${doc.name}」已取消，獎金 ${doc.prizePool.toLocaleString()} credits 已退還。`,
+      content: `🚫 活動「${cancelled.name}」已取消，獎金 ${net.toLocaleString()} credits 已退還。${feeLine}`,
       components: [],
     });
   } catch (err) {
@@ -367,10 +373,19 @@ async function handleAmountsModal(client, interaction) {
     const settled = await settleEvent(client, doc, picks, prizes);
     clearPicks(eventId, doc.hostId);
     const total = prizes.reduce((a, b) => a + b, 0);
-    const refund = doc.prizePool - total;
+    const unpaid = doc.prizePool - total;
+    const fee = settled.refundFee || 0;
+    const net = settled.refundNet ?? unpaid;
+    let tail = "。";
+    if (unpaid > 0) {
+      tail =
+        fee > 0
+          ? `，剩餘 ${unpaid.toLocaleString()}（系統抽成 ${fee.toLocaleString()}，退回給你 ${net.toLocaleString()}）。`
+          : `，剩餘 ${net.toLocaleString()} 退回給你。`;
+    }
     await interaction.editReply(
       `🎉 結算完成！已發出 **${total.toLocaleString()}** credits` +
-        (refund > 0 ? `，剩餘 ${refund.toLocaleString()} 退回給你。` : "。") +
+        tail +
         `\n活動訊息：<#${settled.channelId}>`
     );
   } catch (err) {
