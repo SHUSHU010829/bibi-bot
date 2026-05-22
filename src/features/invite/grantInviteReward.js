@@ -1,7 +1,12 @@
 require("colors");
 const grantCoins = require("../economy/grantCoins");
 const { inviteSystem } = require("../../config");
-const { computeReward, countActiveInvites } = require("./rewardFormula");
+const {
+  computeReward,
+  countActiveInvites,
+  countTodayRewardedInvites,
+  getDailyCap,
+} = require("./rewardFormula");
 
 module.exports = async (client, { guild, inviter, invitee, inviteCode }) => {
   if (!inviteSystem?.enabled) return null;
@@ -25,8 +30,18 @@ module.exports = async (client, { guild, inviter, invitee, inviteCode }) => {
   }
 
   const activeCount = await countActiveInvites(client, guildId, inviterId);
-  const amount = computeReward(activeCount);
-  if (amount <= 0) return null;
+  const baseAmount = computeReward(activeCount);
+
+  const dailyCap = getDailyCap();
+  let cappedByDaily = false;
+  if (dailyCap > 0) {
+    const todayCount = await countTodayRewardedInvites(client, guildId, inviterId);
+    if (todayCount >= dailyCap) {
+      cappedByDaily = true;
+    }
+  }
+
+  const amount = cappedByDaily ? 0 : baseAmount;
 
   let inviterMember = null;
   try {
@@ -35,19 +50,22 @@ module.exports = async (client, { guild, inviter, invitee, inviteCode }) => {
     // ignore
   }
 
-  const granted = await grantCoins(client, {
-    userId: inviterId,
-    guildId,
-    amount,
-    source: "invite_reward",
-    member: inviterMember,
-    username: inviterMember?.user?.username || inviter.username,
-    avatarHash: inviterMember?.user?.avatar || inviter.avatar,
-    meta: { inviteeId, inviteCode },
-  }).catch((e) => {
-    console.log(`[INVITE] grantCoins failed: ${e.message}`.red);
-    return null;
-  });
+  let granted = null;
+  if (amount > 0) {
+    granted = await grantCoins(client, {
+      userId: inviterId,
+      guildId,
+      amount,
+      source: "invite_reward",
+      member: inviterMember,
+      username: inviterMember?.user?.username || inviter.username,
+      avatarHash: inviterMember?.user?.avatar || inviter.avatar,
+      meta: { inviteeId, inviteCode },
+    }).catch((e) => {
+      console.log(`[INVITE] grantCoins failed: ${e.message}`.red);
+      return null;
+    });
+  }
 
   await client.inviteRecordsCollection
     .insertOne({
@@ -60,15 +78,42 @@ module.exports = async (client, { guild, inviter, invitee, inviteCode }) => {
       status: "active",
       rewardGranted: granted?.granted || 0,
       activeCountBefore: activeCount,
+      cappedByDaily,
       clawedBackAt: null,
     })
     .catch((e) => {
       console.log(`[INVITE] insert record failed: ${e.message}`.red);
     });
 
-  console.log(
-    `[INVITE] ${inviter.username || inviterId} 邀請 ${invitee.username || inviteeId} 加入（第 ${activeCount + 1} 人）+${granted?.granted || amount}`.green
-  );
+  if (cappedByDaily) {
+    console.log(
+      `[INVITE] ${inviter.username || inviterId} 邀請 ${invitee.username || inviteeId}（第 ${activeCount + 1} 人）今日已達上限 ${dailyCap}，不發獎`.yellow
+    );
+  } else {
+    console.log(
+      `[INVITE] ${inviter.username || inviterId} 邀請 ${invitee.username || inviteeId} 加入（第 ${activeCount + 1} 人）+${granted?.granted || amount}`.green
+    );
+  }
+
+  const welcomeAmount = Math.max(0, Math.floor(inviteSystem.inviteeWelcomeBonus || 0));
+  if (welcomeAmount > 0) {
+    const inviteeMember = guild.members?.cache?.get(inviteeId) || null;
+    await grantCoins(client, {
+      userId: inviteeId,
+      guildId,
+      amount: welcomeAmount,
+      source: "invite_welcome",
+      member: inviteeMember,
+      username: inviteeMember?.user?.username || invitee.username,
+      avatarHash: inviteeMember?.user?.avatar || invitee.avatar,
+      meta: { inviterId, inviteCode },
+    }).catch((e) => {
+      console.log(`[INVITE] invitee welcome grantCoins failed: ${e.message}`.yellow);
+    });
+    console.log(
+      `[INVITE] 被邀請者 ${invitee.username || inviteeId} 獲得歡迎金 +${welcomeAmount}`.cyan
+    );
+  }
 
   return granted;
 };

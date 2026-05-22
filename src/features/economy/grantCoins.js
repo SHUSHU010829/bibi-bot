@@ -12,7 +12,7 @@ const MSG_VOICE_SOURCES = ["message", "voice"];
 const CASINO_SOURCES = ["bet", "payout"];
 const SINK_SOURCES = ["shop_buy", "auction_bid", "wealth_tax", "transfer_out", "deposit_lock", "stock_buy", "stock_fee", "event_host_lock", "invite_clawback"];
 const PEER_SOURCES = ["transfer_in", "transfer_out", "deposit_lock", "deposit_release", "event_prize", "event_refund"];
-const FLAT_REWARD_SOURCES = ["welfare", "quest_daily", "quest_weekly", "quest_event", "stock_sell", "stock_dividend", "invite_reward"];
+const FLAT_REWARD_SOURCES = ["welfare", "quest_daily", "quest_weekly", "quest_event", "stock_sell", "stock_dividend", "invite_reward", "invite_welcome"];
 
 module.exports = async (client, opts) => {
   if (!coinSystem?.enabled) return null;

@@ -7,7 +7,11 @@ const {
 } = require("discord.js");
 
 const { inviteSystem } = require("../../config");
-const { computeReward } = require("../../features/invite/rewardFormula");
+const {
+  computeReward,
+  countTodayRewardedInvites,
+  getDailyCap,
+} = require("../../features/invite/rewardFormula");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -61,6 +65,12 @@ module.exports = {
       const cap = Math.max(0, Math.floor(inviteSystem.rewardMax || 0));
       const atCap = cap > 0 && nextReward >= cap;
 
+      const dailyCap = getDailyCap();
+      const todayUsed = dailyCap > 0
+        ? await countTodayRewardedInvites(client, guildId, userId)
+        : 0;
+      const todayRemaining = dailyCap > 0 ? Math.max(0, dailyCap - todayUsed) : null;
+
       const embed = new EmbedBuilder()
         .setTitle("✉️ 你的邀請統計")
         .setColor(0x5865f2)
@@ -85,14 +95,29 @@ module.exports = {
           },
           {
             name: "🎯 下一筆邀請可獲得",
-            value: `${nextReward.toLocaleString()} 金幣${atCap ? "（已達上限）" : ""}`,
+            value:
+              todayRemaining === 0
+                ? "今日已達邀請次數上限，明日再開放"
+                : `${nextReward.toLocaleString()} 金幣${atCap ? "（已達單筆上限）" : ""}`,
             inline: false,
-          }
+          },
+          ...(dailyCap > 0
+            ? [
+                {
+                  name: "🗓️ 今日剩餘有獎次數",
+                  value: `${todayRemaining} / ${dailyCap} 次`,
+                  inline: false,
+                },
+              ]
+            : [])
         )
         .setFooter({
           text:
             `基礎 ${inviteSystem.rewardAmount} + 每多 1 人 +${inviteSystem.rewardStep || 0}` +
             (cap > 0 ? `（上限 ${cap}）` : "") +
+            (inviteSystem.inviteeWelcomeBonus > 0
+              ? `・新成員歡迎金 ${inviteSystem.inviteeWelcomeBonus}`
+              : "") +
             `・${inviteSystem.clawbackDays} 天內退坑扣回`,
         });
 

@@ -4,6 +4,9 @@
     "rewardAmount": 3000,
     "rewardStep": 1000,
     "rewardMax": 10000,
+    "dailyMaxInvites": 3,
+    "dailyResetTimezone": "Asia/Taipei",
+    "inviteeWelcomeBonus": 500,
     "clawbackDays": 14,
     "minInviteeAccountAgeDays": 7,
     "ignoreBots": true

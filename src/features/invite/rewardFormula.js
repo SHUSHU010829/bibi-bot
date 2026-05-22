@@ -1,4 +1,24 @@
+const { DateTime } = require("luxon");
 const { inviteSystem } = require("../../config");
+
+const getTodayStart = () => {
+  const tz = inviteSystem?.dailyResetTimezone || "Asia/Taipei";
+  return DateTime.now().setZone(tz).startOf("day").toJSDate();
+};
+
+const countTodayRewardedInvites = async (client, guildId, inviterId) => {
+  if (!client.inviteRecordsCollection) return 0;
+  return client.inviteRecordsCollection
+    .countDocuments({
+      guildId,
+      inviterId,
+      joinedAt: { $gte: getTodayStart() },
+      rewardGranted: { $gt: 0 },
+    })
+    .catch(() => 0);
+};
+
+const getDailyCap = () => Math.max(0, Math.floor(inviteSystem?.dailyMaxInvites || 0));
 
 const computeReward = (activeCount) => {
   const base = Math.max(0, Math.floor(inviteSystem?.rewardAmount || 0));
@@ -16,4 +36,9 @@ const countActiveInvites = async (client, guildId, inviterId) => {
     .catch(() => 0);
 };
 
-module.exports = { computeReward, countActiveInvites };
+module.exports = {
+  computeReward,
+  countActiveInvites,
+  countTodayRewardedInvites,
+  getDailyCap,
+};
