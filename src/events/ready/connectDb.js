@@ -122,6 +122,10 @@ module.exports = async (client) => {
     // 推薦頻道紀錄（餐廳/酒吧/飲料/娛樂）
     const recommendationsCollection = database.collection("Recommendations");
 
+    // 邀請追蹤 collections
+    const inviteCacheCollection = database.collection("InviteCache");
+    const inviteRecordsCollection = database.collection("InviteRecords");
+
     // 股市系統 collections
     const stockMarketCollection = database.collection("StockMarket");
     const stockPricesCollection = database.collection("StockPrices");
@@ -180,6 +184,8 @@ module.exports = async (client) => {
     client.stockEventsCollection = stockEventsCollection;
     client.stockEventDefsCollection = stockEventDefsCollection;
     client.recommendationsCollection = recommendationsCollection;
+    client.inviteCacheCollection = inviteCacheCollection;
+    client.inviteRecordsCollection = inviteRecordsCollection;
     await economySnapshotsCollection
       .createIndex({ guildId: 1, date: 1 }, { unique: true })
       .catch((e) =>
@@ -615,6 +621,20 @@ module.exports = async (client) => {
       await hostedEventsCollection.createIndex(
         { hostId: 1, guildId: 1, status: 1 },
         { name: "hosted_event_host_status" }
+      );
+
+      // 邀請追蹤索引
+      await inviteCacheCollection.createIndex(
+        { guildId: 1, code: 1 },
+        { unique: true, name: "uniq_invite_cache_guild_code" }
+      );
+      await inviteRecordsCollection.createIndex(
+        { guildId: 1, inviteeId: 1 },
+        { unique: true, name: "uniq_invite_records_guild_invitee" }
+      );
+      await inviteRecordsCollection.createIndex(
+        { guildId: 1, inviterId: 1, status: 1 },
+        { name: "invite_records_guild_inviter_status" }
       );
 
       // 有獎問答索引

@@ -1,0 +1,9 @@
+{
+  "inviteSystem": {
+    "enabled": true,
+    "rewardAmount": 3000,
+    "clawbackDays": 7,
+    "minInviteeAccountAgeDays": 7,
+    "ignoreBots": true
+  }
+}
