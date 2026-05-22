@@ -141,8 +141,8 @@ function level(data) {
         <div style="display:flex;margin-top:6px;font-family:'NotoSansTC';font-weight:900;font-size:36px;color:${COLORS.cyan};letter-spacing:12px;padding-left:12px;">全 息 等 級</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;">
-        <div style="display:flex;font-family:'SpaceMono';font-size:11px;letter-spacing:4px;color:${COLORS.dim};">LEVEL</div>
-        ${holoText({ text: String(data.level || 0), size: 78, family: "SpaceMono", weight: 700, letter: -2 })}
+        <div style="display:flex;font-family:'SpaceMono';font-size:14px;letter-spacing:4px;color:${COLORS.dim};">LEVEL</div>
+        ${holoText({ text: String(data.level || 0), size: 96, family: "SpaceMono", weight: 700, letter: -2, width: "220px" })}
       </div>
     </div>
 
