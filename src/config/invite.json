@@ -4,7 +4,7 @@
     "rewardAmount": 3000,
     "rewardStep": 1000,
     "rewardMax": 10000,
-    "clawbackDays": 7,
+    "clawbackDays": 14,
     "minInviteeAccountAgeDays": 7,
     "ignoreBots": true
   }
