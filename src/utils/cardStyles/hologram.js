@@ -134,6 +134,24 @@ function level(data) {
     )
     .join("");
 
+  const badgesArr = (data.badges || []).slice(0, 5);
+  const badgePadding = Math.max(0, 5 - badgesArr.length);
+  const badgeHtml = badgesArr
+    .map(
+      (b) => `
+        <div style="display:flex;width:60px;height:60px;background:${COLORS.bgMid};border:1px solid ${COLORS.cyan};box-sizing:border-box;justify-content:center;align-items:center;font-family:'NotoSansTC';font-weight:500;font-size:30px;line-height:1;color:${COLORS.white};">${htmlEscape(b.emoji || "🏅")}</div>
+      `,
+    )
+    .join("");
+  const badgePlaceholderHtml = Array(badgePadding)
+    .fill(0)
+    .map(
+      () => `
+        <div style="display:flex;width:60px;height:60px;background:transparent;border:1px dashed ${COLORS.dim};box-sizing:border-box;opacity:0.5;"></div>
+      `,
+    )
+    .join("");
+
   const inner = `
     <div style="display:flex;width:100%;justify-content:space-between;align-items:flex-start;">
       <div style="display:flex;flex-direction:column;">
@@ -172,6 +190,13 @@ function level(data) {
 
     <div style="display:flex;width:100%;margin-top:14px;gap:10px;">
       ${statsHtml}
+    </div>
+
+    <div style="display:flex;width:100%;margin-top:auto;align-items:center;justify-content:space-between;">
+      <div style="display:flex;font-family:'SpaceMono';font-size:12px;letter-spacing:5px;color:${COLORS.cyan};">BADGES // ${badgesArr.length}/5</div>
+      <div style="display:flex;gap:8px;">
+        ${badgeHtml}${badgePlaceholderHtml}
+      </div>
     </div>
   `;
   return frame(inner);
