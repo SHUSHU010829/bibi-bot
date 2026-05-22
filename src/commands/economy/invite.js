@@ -7,6 +7,7 @@ const {
 } = require("discord.js");
 
 const { inviteSystem } = require("../../config");
+const { computeReward } = require("../../features/invite/rewardFormula");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -56,6 +57,9 @@ module.exports = {
       }
 
       const netCoins = totalReward - totalClawback;
+      const nextReward = computeReward(active);
+      const cap = Math.max(0, Math.floor(inviteSystem.rewardMax || 0));
+      const atCap = cap > 0 && nextReward >= cap;
 
       const embed = new EmbedBuilder()
         .setTitle("✉️ 你的邀請統計")
@@ -78,10 +82,18 @@ module.exports = {
             name: "📊 淨收益",
             value: `${netCoins.toLocaleString()} 金幣`,
             inline: true,
+          },
+          {
+            name: "🎯 下一筆邀請可獲得",
+            value: `${nextReward.toLocaleString()} 金幣${atCap ? "（已達上限）" : ""}`,
+            inline: false,
           }
         )
         .setFooter({
-          text: `每邀請 1 人 +${inviteSystem.rewardAmount} 金幣・${inviteSystem.clawbackDays} 天內退坑扣回`,
+          text:
+            `基礎 ${inviteSystem.rewardAmount} + 每多 1 人 +${inviteSystem.rewardStep || 0}` +
+            (cap > 0 ? `（上限 ${cap}）` : "") +
+            `・${inviteSystem.clawbackDays} 天內退坑扣回`,
         });
 
       await interaction.editReply({ embeds: [embed] });

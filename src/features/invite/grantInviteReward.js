@@ -1,6 +1,7 @@
 require("colors");
 const grantCoins = require("../economy/grantCoins");
 const { inviteSystem } = require("../../config");
+const { computeReward, countActiveInvites } = require("./rewardFormula");
 
 module.exports = async (client, { guild, inviter, invitee, inviteCode }) => {
   if (!inviteSystem?.enabled) return null;
@@ -23,7 +24,8 @@ module.exports = async (client, { guild, inviter, invitee, inviteCode }) => {
     return null;
   }
 
-  const amount = Math.max(0, Math.floor(inviteSystem.rewardAmount || 0));
+  const activeCount = await countActiveInvites(client, guildId, inviterId);
+  const amount = computeReward(activeCount);
   if (amount <= 0) return null;
 
   let inviterMember = null;
@@ -57,6 +59,7 @@ module.exports = async (client, { guild, inviter, invitee, inviteCode }) => {
       leftAt: null,
       status: "active",
       rewardGranted: granted?.granted || 0,
+      activeCountBefore: activeCount,
       clawedBackAt: null,
     })
     .catch((e) => {
@@ -64,7 +67,7 @@ module.exports = async (client, { guild, inviter, invitee, inviteCode }) => {
     });
 
   console.log(
-    `[INVITE] ${inviter.username || inviterId} 邀請 ${invitee.username || inviteeId} 加入，+${granted?.granted || amount}`.green
+    `[INVITE] ${inviter.username || inviterId} 邀請 ${invitee.username || inviteeId} 加入（第 ${activeCount + 1} 人）+${granted?.granted || amount}`.green
   );
 
   return granted;
