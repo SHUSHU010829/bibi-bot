@@ -182,7 +182,14 @@
       "tier2": "1181162291568332892",
       "tier3": "1181162291568332893"
     },
-    "perSessionXpCap": 1000
+    "perSessionXpCap": 1000,
+    "minMessageThreshold": 5,
+    "coinPayout": {
+      "enabled": true,
+      "perMessage": { "min": 3, "max": 7 },
+      "perSessionCap": 1000,
+      "rankingBonuses": [2000, 1000, 1000, 1000, 500, 500, 500, 500, 500, 500]
+    }
   },
 
   "xpEvents": []
