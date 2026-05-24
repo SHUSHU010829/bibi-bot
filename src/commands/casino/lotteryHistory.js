@@ -27,20 +27,13 @@ const SOURCE_LABEL = {
 };
 
 const TIMEOUT_MS = 3 * 60 * 1000;
+const PAGE_SIZE = 15;
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("樂透歷史")
     .setDescription("查看自己全部的樂透紀錄 📚")
     .setContexts(InteractionContextType.Guild)
-    .addIntegerOption((o) =>
-      o
-        .setName("每頁筆數")
-        .setDescription("每頁顯示筆數(預設 15)")
-        .setRequired(false)
-        .setMinValue(1)
-        .setMaxValue(20)
-    )
     .toJSON(),
 
   run: async (client, interaction) => {
@@ -51,7 +44,7 @@ module.exports = {
         return interaction.editReply("🔧 樂透系統尚未啟動。");
       }
 
-      const pageSize = interaction.options.getInteger("每頁筆數") || 15;
+      const pageSize = PAGE_SIZE;
       const filter = {
         userId: interaction.user.id,
         guildId: interaction.guildId,
