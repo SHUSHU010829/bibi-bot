@@ -7,6 +7,12 @@
   "memberCountChannelId": "1232546673448849500",
   "roleMessageChannelId": "1286145970693869568",
 
+  "commandChannels": {
+    "general": ["1192888968748994700"],
+    "casino": ["1500783461831671858", "1504806019610574878"],
+    "stock": ["1505808023933816893"]
+  },
+
   "memberCountFormat": "😧│很舒禮人數：{count}",
 
   "morningMessage": {

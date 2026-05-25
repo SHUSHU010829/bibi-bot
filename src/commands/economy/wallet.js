@@ -11,6 +11,7 @@ const generateWalletCard = require("../../utils/generateWalletCard");
 const { getTheme } = require("../../features/shop/catalog");
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("錢包")
     .setDescription("查看你的金幣錢包 💰")

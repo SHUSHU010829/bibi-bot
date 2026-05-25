@@ -12,6 +12,7 @@ const { questSystem } = require("../../config");
 const questService = require("../../features/quests/questService");
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("領錢")
     .setDescription("補領未入帳的任務獎勵（任務完成時通常會自動入帳）🪙")

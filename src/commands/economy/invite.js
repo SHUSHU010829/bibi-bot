@@ -14,6 +14,7 @@ const {
 } = require("../../features/invite/rewardFormula");
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("邀請")
     .setDescription("查看你的伺服器邀請統計 ✉️")

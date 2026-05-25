@@ -5,10 +5,11 @@ const {
   PermissionFlagsBits,
   MessageFlags,
 } = require("discord.js");
-const { developersId, serverId } = require("../../config");
+const { developersId, serverId, commandChannels } = require("../../config");
 const mConfig = require("../../messageConfig.json");
 const getLocalCommands = require("../../utils/getLocalCommands");
 const { consume } = require("../../utils/rateLimiter");
+const { allowedChannelsFor } = require("../../utils/commandChannelGuard");
 
 // 賭場類指令冷卻較短，避免打斷遊戲節奏
 const CASINO_COMMANDS = new Set([
@@ -48,6 +49,19 @@ module.exports = async (client, interaction) => {
       (cmd) => cmd.data.name === interaction.commandName
     );
     if (!commandObject) return;
+
+    // 頻道分流：只在主伺服器生效。私人(ephemeral)與管理員/開發者指令豁免。
+    // 用錯頻道就回覆一則 ephemeral 提醒，引導到對應頻道。
+    if (interaction.guildId === serverId) {
+      const allowed = allowedChannelsFor(commandObject, commandChannels);
+      if (allowed && !allowed.includes(interaction.channelId)) {
+        const mentions = allowed.map((id) => `<#${id}>`).join("、");
+        await safeReply(interaction, {
+          content: `🚫 \`/${commandObject.data.name}\` 不能在這裡使用喔！請到 ${mentions} 使用這個指令。`,
+        });
+        return;
+      }
+    }
 
     // 速率限制：開發者與管理員豁免
     const isDev = developersId.includes(interaction.member?.id);

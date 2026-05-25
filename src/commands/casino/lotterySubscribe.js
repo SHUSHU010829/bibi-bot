@@ -23,6 +23,7 @@ function getTypeConfig(t) {
 }
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("樂透訂閱")
     .setDescription("訂閱未來 N 期自動買同組號碼 🔁")

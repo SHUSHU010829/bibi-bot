@@ -9,6 +9,7 @@ const { shop } = require("../../config");
 const { buildInventoryView } = require("../../features/shop/inventoryView");
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("背包")
     .setDescription("查看你購買的道具與生效中的 buff 🎒")

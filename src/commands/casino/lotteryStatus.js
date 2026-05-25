@@ -10,6 +10,7 @@ const {
 const { getLotteryConfig, listLotteryTypes } = require("../../features/casino/lottery/numbers");
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("樂透資訊")
     .setDescription("查看當期樂透資訊 ℹ️")

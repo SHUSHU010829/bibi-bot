@@ -41,6 +41,7 @@ const renderQuestLine = (q) => {
 };
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("逼幣任務")
     .setDescription("查看每日／週常任務進度 📜")

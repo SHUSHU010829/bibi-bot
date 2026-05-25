@@ -42,6 +42,7 @@ const TIMEOUT_MS = 3 * 60 * 1000;
 const PAGE_SIZE = 15;
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("樂透歷史")
     .setDescription("查看自己全部的樂透紀錄 📚")

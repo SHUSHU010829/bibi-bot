@@ -153,6 +153,7 @@ const data = new SlashCommandBuilder()
   );
 
 module.exports = {
+  ephemeral: true,
   data: data.toJSON(),
 
   run: async (client, interaction) => {
