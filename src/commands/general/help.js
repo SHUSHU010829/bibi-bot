@@ -124,7 +124,7 @@ function isAdminOnly(cmd) {
 
 function groupForCommand(cmd) {
   if (cmd.devOnly || isAdminOnly(cmd)) return "admin";
-  return FOLDER_TO_GROUP[cmd.category] || FALLBACK_GROUP;
+  return FOLDER_TO_GROUP[cmd.folder] || FALLBACK_GROUP;
 }
 
 function loadCommandIndex() {
