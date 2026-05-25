@@ -15,6 +15,7 @@ const {
   NEEDS_VALUE,
 } = require("../../features/casino/sicbo/paytable");
 const generateSicboCard = require("../../utils/generateSicboCard");
+const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
 
 const BET_CHOICES = [
   { name: "大 (11-17)", value: "big" },
@@ -254,9 +255,25 @@ module.exports = {
           ? `\n🚨 **你破產了！** 餘額歸零，去發言、聊天賺金幣再來吧！`
           : "";
 
+      // 紀錄上一注（押法/金額/數值），供「再來一局」用相同押注重跑
+      const replayOptions = { 梭哈: false };
+      bets.forEach((b, i) => {
+        const suffix = i === 0 ? "" : String(i + 1);
+        replayOptions[`押法${suffix}`] = b.type;
+        replayOptions[`金額${suffix}`] = b.amount;
+        replayOptions[`數值${suffix}`] = b.value;
+      });
+      await saveLastBet(client, {
+        userId,
+        guildId,
+        game: "sicbo",
+        payload: { options: replayOptions },
+      });
+
       await interaction.editReply({
         content: `${headline}\n${lines.join("\n")}${netLine}　・餘額：**${balanceAfter.toLocaleString()}**${bankruptLine}`,
         files: [attachment],
+        components: [buildReplayRow("sicbo", userId)],
       });
     } catch (error) {
       console.log(`[ERROR] /骰寶:\n${error}\n${error.stack}`.red);

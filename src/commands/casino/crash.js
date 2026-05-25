@@ -16,6 +16,7 @@ const {
 } = require("../../features/casino/crash/engine");
 const { buildPlayingPayload } = require("../../features/casino/crash/renderer");
 const tickManager = require("../../features/casino/crash/tick");
+const { saveLastBet } = require("../../features/casino/replay");
 
 const WEEKDAY_LABEL = ["", "週一", "週二", "週三", "週四", "週五", "週六", "週日"];
 
@@ -225,6 +226,16 @@ module.exports = {
       };
 
       await client.crashGamesCollection.insertOne(doc);
+
+      // 紀錄上一注（下注為字串選項，自動收手可為 null），供「再來一局」
+      await saveLastBet(client, {
+        userId,
+        guildId,
+        game: "crash",
+        payload: {
+          options: { 下注: String(bet), 自動收手: autocashoutInput },
+        },
+      });
 
       // 第一次回應：playing payload
       const payload = buildPlayingPayload(

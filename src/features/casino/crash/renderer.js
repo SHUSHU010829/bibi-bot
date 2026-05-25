@@ -13,6 +13,7 @@ const {
 
 const generateCrashCard = require("../../../utils/generateCrashCard");
 const { multiplierAt } = require("./engine");
+const { buildReplayRow } = require("../replay");
 
 function buildCashOutButton(state) {
   return new ActionRowBuilder().addComponents(
@@ -81,6 +82,9 @@ function buildPlayingPayload(state, ctx = {}) {
 }
 
 async function buildSettledPayload(state, { username, balance } = {}) {
+  const components = state.userId
+    ? [buildReplayRow("crash", state.userId)]
+    : [];
   let content = "";
   let files = [];
   try {
@@ -101,7 +105,7 @@ async function buildSettledPayload(state, { username, balance } = {}) {
     );
     content = renderSettledText(state, { username, balance });
   }
-  return { content, components: [], files, attachments: [] };
+  return { content, components, files, attachments: [] };
 }
 
 module.exports = {

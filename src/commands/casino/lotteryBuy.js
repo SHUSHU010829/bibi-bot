@@ -22,6 +22,7 @@ const {
 const {
   checkAndAnnouncePoolMilestones,
 } = require("../../features/casino/lottery/poolAnnouncer");
+const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
 
 function getLotteryFeatureConfig() {
   return casino?.lottery || {};
@@ -218,13 +219,28 @@ module.exports = {
         .join("\n");
       const moreLine = ticketDocs.length > 10 ? `\n…再 ${ticketDocs.length - 10} 張` : "";
 
-      await interaction.editReply(
-        `${cfg.emoji} **${cfg.label}** 第 ${draw.drawNumber} 期 已買 **${ticketDocs.length}** 張\n` +
+      await saveLastBet(client, {
+        userId,
+        guildId,
+        game: "lottery",
+        payload: {
+          options: {
+            玩法: lotteryType,
+            張數: ticketCountInput,
+            號碼: numbersInput,
+          },
+        },
+      });
+
+      await interaction.editReply({
+        content:
+          `${cfg.emoji} **${cfg.label}** 第 ${draw.drawNumber} 期 已買 **${ticketDocs.length}** 張\n` +
           `${previewLines}${moreLine}\n\n` +
           `花費:**${totalCost.toLocaleString()}** ・ 餘額:**${balanceAfter.toLocaleString()}**\n` +
           `當前彩池:**${(drawDoc?.pool || draw.pool + totalCost).toLocaleString()}** credits\n` +
-          `開獎時間:<t:${drawAtUnix}:R>`
-      );
+          `開獎時間:<t:${drawAtUnix}:R>`,
+        components: [buildReplayRow("lottery", userId, "🔁 再買一單")],
+      });
     } catch (err) {
       console.log(`[ERROR] /樂透買:\n${err}\n${err.stack}`.red);
       await interaction

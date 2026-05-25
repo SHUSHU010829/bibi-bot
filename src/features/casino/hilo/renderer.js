@@ -9,6 +9,7 @@ const {
 } = require("discord.js");
 
 const { calcOdds, valueOf } = require("./engine");
+const { buildReplayRow } = require("../replay");
 const generateHiloCard = require("../../../utils/generateHiloCard");
 
 const SUIT_EMOJI = { S: "♠", H: "♥", D: "♦", C: "♣" };
@@ -138,7 +139,11 @@ function renderText(state, { username, balance } = {}) {
 
 async function renderMessage(state, { username, balance } = {}) {
   const components =
-    state.status === "playing" ? [buildButtons(state)] : [];
+    state.status === "playing"
+      ? [buildButtons(state)]
+      : state.status === "settled" && state.userId
+        ? [buildReplayRow("hilo", state.userId)]
+        : [];
 
   let content = "";
   let files = [];

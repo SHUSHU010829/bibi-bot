@@ -10,6 +10,7 @@ const {
 
 const { evaluateHand } = require("./hand");
 const { FIVE_CARD_THRESHOLD } = require("./engine");
+const { buildReplayRow } = require("../replay");
 const generateBlackjackCard = require("../../../utils/generateBlackjackCard");
 
 const SUIT_EMOJI = { S: "♠", H: "♥", D: "♦", C: "♣" };
@@ -208,7 +209,11 @@ function buildSettleHeadlineLine(state) {
 
 async function renderMessage(state, { username, balance } = {}) {
   const components =
-    state.status === "playing" ? [buildButtons(state, balance ?? 0)] : [];
+    state.status === "playing"
+      ? [buildButtons(state, balance ?? 0)]
+      : state.status === "settled" && state.userId
+        ? [buildReplayRow("blackjack", state.userId)]
+        : [];
 
   let content = "";
   let files = [];

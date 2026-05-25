@@ -9,6 +9,7 @@ const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
 const { startGame } = require("../../features/casino/dragonGate/engine");
 const { renderMessage } = require("../../features/casino/dragonGate/renderer");
+const { saveLastBet } = require("../../features/casino/replay");
 
 function getDragonGateConfig() {
   return casino?.dragonGate || {};
@@ -117,6 +118,14 @@ module.exports = {
       };
 
       await client.dragonGateGamesCollection.insertOne(doc);
+
+      // 射龍門無下注選項（入場費固定），重玩等於再開一局
+      await saveLastBet(client, {
+        userId,
+        guildId,
+        game: "dragonGate",
+        payload: { options: {} },
+      });
 
       const payload = await renderMessage(
         { ...doc, gameId },

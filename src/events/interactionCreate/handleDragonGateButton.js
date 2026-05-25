@@ -173,7 +173,7 @@ async function handleFold(client, interaction, gameId) {
   const balanceAfter = after?.totalCoins || 0;
 
   const payload = await renderMessage(
-    { ...next, gameId },
+    { ...next, gameId, userId: state.userId },
     { username: state.username, balance: balanceAfter }
   );
   await interaction.editReply({ ...payload, attachments: [] });
@@ -298,7 +298,7 @@ async function submitBet(client, interaction, gameId) {
   }
 
   const payload = await renderMessage(
-    { ...next, gameId },
+    { ...next, gameId, userId: state.userId },
     { username: state.username, balance: balanceAfter }
   );
   await interaction.editReply({ ...payload, attachments: [] });

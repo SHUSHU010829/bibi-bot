@@ -142,7 +142,7 @@ module.exports = async (client, interaction) => {
     }
 
     const payload = await renderMessage(
-      { ...next, gameId },
+      { ...next, gameId, userId },
       { username, balance: balanceAfter }
     );
     await interaction.editReply({

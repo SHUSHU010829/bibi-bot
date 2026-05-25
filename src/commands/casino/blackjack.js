@@ -9,6 +9,7 @@ const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
 const { startGame } = require("../../features/casino/blackjack/engine");
 const { renderMessage } = require("../../features/casino/blackjack/renderer");
+const { saveLastBet } = require("../../features/casino/replay");
 
 function getBjConfig() {
   return casino?.blackjack || {};
@@ -165,6 +166,13 @@ module.exports = {
       }
 
       await client.blackjackGamesCollection.insertOne(doc);
+
+      await saveLastBet(client, {
+        userId,
+        guildId,
+        game: "blackjack",
+        payload: { options: { 下注: bet, 梭哈: false } },
+      });
 
       const payload = await renderMessage(doc, {
         username,

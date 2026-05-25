@@ -8,6 +8,7 @@ const {
 } = require("discord.js");
 
 const { classifyDeck, valueOf } = require("./engine");
+const { buildReplayRow } = require("../replay");
 const generateDragonGateCard = require("../../../utils/generateDragonGateCard");
 
 const SUIT_EMOJI = { S: "♠", H: "♥", D: "♦", C: "♣" };
@@ -102,7 +103,11 @@ function buildSettleHeadlineLine(state) {
 
 async function renderMessage(state, { username, balance } = {}) {
   const buttons = buildButtons(state);
-  const components = buttons ? [buttons] : [];
+  const components = buttons
+    ? [buttons]
+    : state.status === "settled" && state.userId
+      ? [buildReplayRow("dragonGate", state.userId)]
+      : [];
 
   let content = "";
   let files = [];

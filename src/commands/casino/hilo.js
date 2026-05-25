@@ -9,6 +9,7 @@ const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
 const { startGame } = require("../../features/casino/hilo/engine");
 const { renderMessage } = require("../../features/casino/hilo/renderer");
+const { saveLastBet } = require("../../features/casino/replay");
 
 function getHiloConfig() {
   return casino?.hilo || {};
@@ -143,6 +144,13 @@ module.exports = {
       };
 
       await client.hiloGamesCollection.insertOne(doc);
+
+      await saveLastBet(client, {
+        userId,
+        guildId,
+        game: "hilo",
+        payload: { options: { 下注: bet, 梭哈: false } },
+      });
 
       const payload = await renderMessage(doc, {
         username,
