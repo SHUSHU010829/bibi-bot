@@ -15,6 +15,7 @@ const { DateTime } = require("luxon");
 const MAX_LIST = 12;
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("我的稅務紀錄")
     .setDescription("🧾 查看你被徵收的財富稅紀錄：扣繳金額、稅前稅後餘額、有效稅率")

@@ -28,6 +28,7 @@ const GAME_LABELS = {
 };
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("我的賭場紀錄")
     .setDescription("📊 查看你個人的賭場統計：下注、派彩、RTP、各遊戲分項")

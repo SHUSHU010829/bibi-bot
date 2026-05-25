@@ -13,6 +13,7 @@ const welfareService = require("../../features/welfare/welfareService");
 const { checkAccountAge } = require("../../features/economy/eligibility");
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("乞討")
     .setDescription("破產時領取救濟金，符合資格直接發放，否則顯示狀態 🪙")

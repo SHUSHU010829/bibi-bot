@@ -8,6 +8,7 @@ const {
 const { levelSystem } = require("../../config");
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("補簽卡")
     .setDescription("查看你的補簽卡庫存與規則 🛡️")

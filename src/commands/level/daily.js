@@ -20,6 +20,7 @@ const questService = require("../../features/quests/questService");
 const notifyQuestClaim = require("../../features/quests/notifyQuestClaim");
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("每日簽到")
     .setDescription("每日簽到領 XP 🗓️")

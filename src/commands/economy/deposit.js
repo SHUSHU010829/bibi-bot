@@ -30,6 +30,7 @@ function buildTermChoices() {
 const TERM_CHOICES = buildTermChoices();
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("存款")
     .setDescription("把金幣鎖進定期存款，到期領回本金 + 利息 🏦")

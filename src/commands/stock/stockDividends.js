@@ -13,6 +13,7 @@ const PERIOD_MS = {
 };
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("配息紀錄")
     .setDescription("查詢自己過去領到的股息明細")

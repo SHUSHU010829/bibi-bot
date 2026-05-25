@@ -13,6 +13,7 @@ const {
 const { getLotteryConfig } = require("../../features/casino/lottery/numbers");
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("樂透訂閱列表")
     .setDescription("查看與管理自己的樂透訂閱 📋")

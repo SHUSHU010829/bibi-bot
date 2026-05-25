@@ -23,23 +23,73 @@ const COMMAND_COLOR = 0xfaa61a;
 const TIMEOUT_MS = 3 * 60 * 1000;
 const COMMANDS_ROOT = path.join(__dirname, "..");
 
-const CATEGORY_META = {
-  food: { label: "食物飲料", emoji: "🍽️", order: 1, blurb: "吃/喝什麼、食物清單、排行榜、飲料菜單管理" },
-  draw: { label: "抽選工具", emoji: "🎲", order: 2, blurb: "抽籤、二選一" },
-  weather: { label: "天氣", emoji: "🌤️", order: 3, blurb: "全台與個別縣市天氣查詢" },
-  currency: { label: "匯率", emoji: "💱", order: 4, blurb: "即時匯率與加密貨幣報價" },
-  economy: { label: "經濟系統", emoji: "💰", order: 9, blurb: "錢包、轉帳、定期存款、骰寶" },
-  casino: { label: "賭場", emoji: "🎰", order: 9.5, blurb: "拉霸、二十一點、HI-LO、樂透 等賭博遊戲，盈虧自負" },
-  shop: { label: "商店", emoji: "🛍️", order: 9.7, blurb: "credits 商店：道具、稱號、限時 buff、背包管理" },
-  stock: { label: "股市", emoji: "📈", order: 9.8, blurb: "逼逼股市：報價、買賣、持股、走勢圖（虛擬合成價，手續費 1%）" },
-  level: { label: "等級系統", emoji: "🏅", order: 5, blurb: "等級卡、徽章、稱號、排行榜（簽到/補簽卡 仍是獨立指令）" },
-  stats: { label: "統計", emoji: "📊", order: 6, blurb: "訊息/語音統計與排行榜" },
-  roles: { label: "身份組", emoji: "🎮", order: 7, blurb: "遊戲身份組選單管理" },
-  ticket: { label: "票務投票", emoji: "🎫", order: 8, blurb: "建議面板、票務、遊戲頻道提案投票" },
-  general: { label: "一般", emoji: "📰", order: 10, blurb: "本手冊" },
-  post: { label: "情勒文", emoji: "📝", order: 11, blurb: "情勒文產生與新增" },
-  ask: { label: "問答", emoji: "💬", order: 12, blurb: "跟逼逼機器人聊天" },
+// 想顯示「隱私權聲明 / 服務條款」連結時，把網址填進來即可（null = 不顯示）
+const PRIVACY_URL = null;
+const TERMS_URL = null;
+
+// 少數幾個「大分類」。每個分類聚合多個原始指令資料夾（folders）。
+// 管理員 / 開發者指令會自動歸到 admin 分類，不受 folders 影響。
+const GROUPS = {
+  utility: {
+    label: "實用工具",
+    emoji: "🛠️",
+    order: 1,
+    blurb: "天氣、匯率、美食、抽籤、推薦、問是非、情勒文",
+    folders: ["weather", "currency", "food", "draw", "ask", "recommendation", "post", "general"],
+  },
+  economy: {
+    label: "經濟系統",
+    emoji: "💰",
+    order: 2,
+    blurb: "錢包、轉帳、定期存款、每日任務、商店、背包",
+    folders: ["economy", "shop"],
+  },
+  casino: {
+    label: "賭場",
+    emoji: "🎰",
+    order: 3,
+    blurb: "拉霸、21點、HI-LO、樂透、賽馬等賭博遊戲，盈虧自負",
+    folders: ["casino"],
+  },
+  stock: {
+    label: "股市",
+    emoji: "📈",
+    order: 4,
+    blurb: "報價、買賣、持股、配息、歷史走勢（手續費 1%）",
+    folders: ["stock"],
+  },
+  level: {
+    label: "等級與統計",
+    emoji: "🏅",
+    order: 5,
+    blurb: "等級卡、徽章、簽到、排行榜、訊息/語音統計",
+    folders: ["level", "stats"],
+  },
+  community: {
+    label: "社群互動",
+    emoji: "🎉",
+    order: 6,
+    blurb: "活動、預測問答、遊戲身份組、票務投票",
+    folders: ["event", "quiz", "roles", "ticket"],
+  },
+  admin: {
+    label: "管理 / 開發者",
+    emoji: "🔧",
+    order: 7,
+    blurb: "僅限管理員與開發者使用的工具",
+    folders: [],
+  },
 };
+
+const FALLBACK_GROUP = "utility";
+
+const FOLDER_TO_GROUP = (() => {
+  const map = {};
+  for (const [key, meta] of Object.entries(GROUPS)) {
+    for (const folder of meta.folders) map[folder] = key;
+  }
+  return map;
+})();
 
 const OPTION_TYPE_LABEL = {
   [ApplicationCommandOptionType.Subcommand]: "子指令",
@@ -57,37 +107,59 @@ const OPTION_TYPE_LABEL = {
 
 let cachedIndex = null;
 
+function isAdminOnly(cmd) {
+  const adminBit = PermissionFlagsBits.Administrator;
+  if (cmd.defaultMemberPermissions != null) {
+    try {
+      const bits = BigInt(cmd.defaultMemberPermissions);
+      if ((bits & adminBit) === adminBit) return true;
+    } catch {
+      /* noop */
+    }
+  }
+  return cmd.userPermissions.some(
+    (p) => p === "Administrator" || p === adminBit,
+  );
+}
+
+function groupForCommand(cmd) {
+  if (cmd.devOnly || isAdminOnly(cmd)) return "admin";
+  return FOLDER_TO_GROUP[cmd.category] || FALLBACK_GROUP;
+}
+
 function loadCommandIndex() {
   if (cachedIndex) return cachedIndex;
 
-  const categories = fs
+  const folders = fs
     .readdirSync(COMMANDS_ROOT, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => d.name);
 
   const commands = [];
-  for (const category of categories) {
-    const dirPath = path.join(COMMANDS_ROOT, category);
+  for (const folder of folders) {
+    const dirPath = path.join(COMMANDS_ROOT, folder);
     const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(".js"));
     for (const file of files) {
       try {
         const mod = require(path.join(dirPath, file));
         if (!mod || !mod.data || !mod.data.name) continue;
         if (mod.deleted) continue;
-        if (mod.devOnly) continue;
         if (mod.data.name === "help") continue;
 
-        commands.push({
+        const cmd = {
           name: mod.data.name,
           description: mod.data.description || "（無描述）",
           options: Array.isArray(mod.data.options) ? mod.data.options : [],
           defaultMemberPermissions: mod.data.default_member_permissions,
           userPermissions: mod.userPermissions || [],
-          category,
-        });
+          devOnly: !!mod.devOnly,
+          folder,
+        };
+        cmd.category = groupForCommand(cmd);
+        commands.push(cmd);
       } catch (err) {
         console.log(
-          `[WARN] /help 無法載入 ${category}/${file}: ${err.message}`.yellow,
+          `[WARN] /help 無法載入 ${folder}/${file}: ${err.message}`.yellow,
         );
       }
     }
@@ -105,27 +177,11 @@ function loadCommandIndex() {
   return cachedIndex;
 }
 
-function isAdminOnly(cmd) {
-  const adminBit = PermissionFlagsBits.Administrator;
-  if (cmd.defaultMemberPermissions != null) {
-    try {
-      const bits = BigInt(cmd.defaultMemberPermissions);
-      if ((bits & adminBit) === adminBit) return true;
-    } catch {
-      /* noop */
-    }
-  }
-  return cmd.userPermissions.some(
-    (p) => p === "Administrator" || p === adminBit,
-  );
-}
-
 function sortedCategories() {
   const { byCategory } = loadCommandIndex();
-  return [...byCategory.entries()].sort(
-    ([a], [b]) =>
-      (CATEGORY_META[a]?.order ?? 99) - (CATEGORY_META[b]?.order ?? 99),
-  );
+  return [...byCategory.entries()]
+    .filter(([, cmds]) => cmds.length > 0)
+    .sort(([a], [b]) => (GROUPS[a]?.order ?? 99) - (GROUPS[b]?.order ?? 99));
 }
 
 function formatOptionLine(option, indent = "") {
@@ -188,7 +244,7 @@ function chunkCommandTexts(texts, limit = 3500) {
 function buildCategorySelect(currentCategory, disabled = false) {
   const categories = sortedCategories();
   const options = categories.slice(0, 25).map(([key, cmds]) => {
-    const meta = CATEGORY_META[key] || { label: key, emoji: "📁", blurb: "" };
+    const meta = GROUPS[key] || { label: key, emoji: "📁", blurb: "" };
     return {
       label: `${meta.label} (${cmds.length})`,
       description: meta.blurb ? meta.blurb.slice(0, 100) : undefined,
@@ -199,7 +255,7 @@ function buildCategorySelect(currentCategory, disabled = false) {
   });
   return new StringSelectMenuBuilder()
     .setCustomId("help_category")
-    .setPlaceholder("📖 選擇一個類別...")
+    .setPlaceholder("📖 指令教學 — 選擇一個分類...")
     .setDisabled(disabled)
     .addOptions(options);
 }
@@ -227,18 +283,30 @@ function appendControls(container, { currentCategory, disabled }) {
     );
 }
 
+function buildFooterText(extra) {
+  const lines = ["-# 🔒 標記 = 僅限管理員 / 開發者使用"];
+  const links = [];
+  if (PRIVACY_URL) links.push(`[隱私權聲明](${PRIVACY_URL})`);
+  if (TERMS_URL) links.push(`[服務條款](${TERMS_URL})`);
+  if (links.length) lines.push(`-# 使用本服務即表示你同意 ${links.join(" 及 ")}`);
+  if (extra) lines.push(`-# ${extra}`);
+  return lines.join("\n");
+}
+
 function buildHomeContainer({ controlsDisabled = false } = {}) {
   const categories = sortedCategories();
   const total = categories.reduce((n, [, arr]) => n + arr.length, 0);
 
   const container = new ContainerBuilder()
     .setAccentColor(HOME_COLOR)
+    // 介紹區塊：機器人自我介紹
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# 📚 逼逼機器人使用手冊\n` +
-          `嗨！我是逼逼機器人 🤖\n` +
-          `共 **${total}** 個指令、**${categories.length}** 大類。\n\n` +
-          `👇 從下方選單挑類別瀏覽\n` +
+        `# 📖 逼逼機器人 指令教學\n` +
+          `嗨嗨 d(˙∀˙)b 我是 **逼逼機器人** 🤖\n` +
+          `我的目標是讓你的伺服器更好玩、更好管理！\n\n` +
+          `📂 共 **${total}** 個指令、分成 **${categories.length}** 大類\n` +
+          `👇 從下方選單挑一個分類來看\n` +
           `🔎 或用 \`/help 指令:<名稱>\` 直接查單一指令`,
       ),
     )
@@ -247,7 +315,7 @@ function buildHomeContainer({ controlsDisabled = false } = {}) {
     );
 
   const categoryLines = categories.map(([key, cmds]) => {
-    const meta = CATEGORY_META[key] || { label: key, emoji: "📁", blurb: "" };
+    const meta = GROUPS[key] || { label: key, emoji: "📁", blurb: "" };
     return `${meta.emoji} **${meta.label}** ・ ${cmds.length} 個指令\n-# ${meta.blurb || ""}`;
   });
 
@@ -259,9 +327,9 @@ function buildHomeContainer({ controlsDisabled = false } = {}) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        controlsDisabled
-          ? "-# 🔒 標記 = 僅管理員可用 ・ 互動已逾時，請重新執行 /help"
-          : "-# 🔒 標記 = 僅管理員可用",
+        buildFooterText(
+          controlsDisabled ? "互動已逾時，請重新執行 /help" : null,
+        ),
       ),
     );
 
@@ -276,7 +344,7 @@ function buildHomeContainer({ controlsDisabled = false } = {}) {
 function buildCategoryContainer(categoryKey, { controlsDisabled = false } = {}) {
   const { byCategory } = loadCommandIndex();
   const cmds = byCategory.get(categoryKey) || [];
-  const meta = CATEGORY_META[categoryKey] || {
+  const meta = GROUPS[categoryKey] || {
     label: categoryKey,
     emoji: "📁",
     blurb: "",
@@ -316,7 +384,7 @@ function buildCategoryContainer(categoryKey, { controlsDisabled = false } = {}) 
       new TextDisplayBuilder().setContent(
         controlsDisabled
           ? `-# ${cmds.length} 個指令 ・ 互動已逾時，請重新執行 /help`
-          : `-# ${cmds.length} 個指令・選單可切換其他類別`,
+          : `-# ${cmds.length} 個指令・選單可切換其他分類`,
       ),
     );
 
@@ -329,7 +397,7 @@ function buildCategoryContainer(categoryKey, { controlsDisabled = false } = {}) 
 }
 
 function buildCommandContainer(cmd) {
-  const meta = CATEGORY_META[cmd.category] || {
+  const meta = GROUPS[cmd.category] || {
     label: cmd.category,
     emoji: "📁",
   };
@@ -344,7 +412,7 @@ function buildCommandContainer(cmd) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 類別：${meta.emoji} ${meta.label}`,
+        `-# 分類：${meta.emoji} ${meta.label}`,
       ),
     );
 
@@ -380,7 +448,7 @@ function buildCommandContainer(cmd) {
 
   if (isAdminOnly(cmd)) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# 🔒 僅限管理員使用"),
+      new TextDisplayBuilder().setContent("-# 🔒 僅限管理員 / 開發者使用"),
     );
   }
 
@@ -464,6 +532,7 @@ function suggestCommands(query, limit = 5) {
 const REPLY_FLAGS = MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral;
 
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("help")
     .setDescription("📚 查看逼逼機器人使用手冊")
@@ -519,7 +588,7 @@ module.exports = {
           const suggestions = suggestCommands(targetName);
           const hint = suggestions
             .map((c) => {
-              const meta = CATEGORY_META[c.category];
+              const meta = GROUPS[c.category];
               const emoji = meta?.emoji ? `${meta.emoji} ` : "";
               return `${emoji}\`/${c.name}\``;
             })
