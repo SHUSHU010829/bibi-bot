@@ -324,6 +324,7 @@ payout  = max(0, principal − penalty)
 | `cronSchedule` | `0 4 * * 1`（每週一 04:00） |
 | `timezone` | `Asia/Taipei` |
 | `minDeduction` | 1 |
+| `dmEnabled` | true（設為 false 可關閉私訊通知） |
 
 **累進級距（邊際稅率，越富越狠，不留情）**
 
@@ -368,6 +369,7 @@ tax = min(tax, totalCoins)              // 不能扣到負
 實作位於 `events/ready/wealthTaxScheduler.js`：
 - 連續錯誤 3 次自動關閉
 - 結算後在 `reportChannelId` 推 embed：級距表、總被扣戶數、總稅收、Top 5（含每人有效稅率）
+- 結算後逐一私訊（DM）被課稅的用戶，內容含扣繳金額、稅前/稅後餘額、有效稅率與分級扣繳明細（可用 `dmEnabled: false` 關閉）
 - 每筆扣稅以 `source: wealth_tax` 寫入 transactions，meta 含 `brackets`、`before`、`effectiveRate`、`slices`
 
 ---
