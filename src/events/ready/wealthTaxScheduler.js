@@ -103,6 +103,7 @@ async function sweepOnce(client, cfg) {
   let affectedUsers = 0;
   let totalTaxed = 0;
   let topAffected = [];
+  const affectedDetails = [];
 
   while (await cursor.hasNext()) {
     const u = await cursor.next();
@@ -133,13 +134,16 @@ async function sweepOnce(client, cfg) {
       });
       affectedUsers += 1;
       totalTaxed += tax;
-      topAffected.push({
+      const detail = {
         userId: u.userId,
         username: u.username,
         before: u.totalCoins,
         tax,
         effectiveRate,
-      });
+        slices,
+      };
+      topAffected.push(detail);
+      affectedDetails.push(detail);
     } catch (e) {
       console.log(`[WTAX] grantCoins failed user=${u.userId}: ${e}`.red);
     }
@@ -148,7 +152,59 @@ async function sweepOnce(client, cfg) {
   topAffected.sort((a, b) => b.tax - a.tax);
   topAffected = topAffected.slice(0, 5);
 
-  return { affectedUsers, totalTaxed, topAffected, brackets };
+  return { affectedUsers, totalTaxed, topAffected, brackets, affectedDetails };
+}
+
+// 逐一私訊被課稅的用戶，告知扣繳金額與分級明細。
+async function sendTaxDMs(client, cfg, affectedDetails) {
+  if (cfg.dmEnabled === false) return;
+  if (!Array.isArray(affectedDetails) || affectedDetails.length === 0) return;
+
+  let sent = 0;
+  let failed = 0;
+  for (const d of affectedDetails) {
+    const user = await client.users.fetch(d.userId).catch(() => null);
+    if (!user) {
+      failed += 1;
+      continue;
+    }
+
+    const sliceLines = (d.slices || [])
+      .filter((s) => s.tax > 0)
+      .map((s) => {
+        const range = s.to
+          ? `${s.from.toLocaleString()} ~ ${s.to.toLocaleString()}`
+          : `${s.from.toLocaleString()} 以上`;
+        return `・${range}（${(s.rate * 100).toFixed(0)}%）：扣 **${Math.floor(s.tax).toLocaleString()}**`;
+      });
+
+    const embed = new EmbedBuilder()
+      .setTitle("💸 每週財富稅扣繳通知")
+      .setColor(0xed4245)
+      .setDescription(
+        [
+          `你在本週的累進財富稅結算中被徵收了 **${d.tax.toLocaleString()}** 🪙。`,
+          "",
+          `・稅前餘額：**${d.before.toLocaleString()}**`,
+          `・稅後餘額：**${(d.before - d.tax).toLocaleString()}**`,
+          `・有效稅率：**${(d.effectiveRate * 100).toFixed(2)}%**`,
+        ].join("\n"),
+      )
+      .setTimestamp(new Date());
+
+    if (sliceLines.length > 0) {
+      embed.addFields({ name: "分級扣繳明細", value: sliceLines.join("\n") });
+    }
+
+    const ok = await user
+      .send({ embeds: [embed] })
+      .then(() => true)
+      .catch(() => false);
+    if (ok) sent += 1;
+    else failed += 1;
+  }
+
+  console.log(`[WTAX] DM 通知完成：成功 ${sent}，失敗 ${failed}`.cyan);
 }
 
 async function postReport(client, cfg, summary) {
@@ -232,6 +288,7 @@ async function runSweep(client) {
     `[WTAX] 完成：${summary.affectedUsers} 人，回收 ${summary.totalTaxed} 金幣`.cyan,
   );
   await postReport(client, cfg, summary);
+  await sendTaxDMs(client, cfg, summary.affectedDetails);
 }
 
 module.exports = async (client) => {

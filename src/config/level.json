@@ -138,7 +138,8 @@
       "cronSchedule": "0 4 * * 1",
       "timezone": "Asia/Taipei",
       "reportChannelId": "",
-      "minDeduction": 1
+      "minDeduction": 1,
+      "dmEnabled": true
     },
     "transfer": {
       "enabled": true,
