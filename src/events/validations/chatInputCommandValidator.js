@@ -20,6 +20,7 @@ const CASINO_COMMANDS = new Set([
   "slot",
   "slottest",
   "poker",
+  "骰寶",
 ]);
 
 // Discord 互動 token 只有 3 秒效期；超過就會回 10062 Unknown interaction。
