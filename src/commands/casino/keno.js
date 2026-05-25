@@ -9,6 +9,7 @@ const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
 const { newGame } = require("../../features/casino/keno/engine");
 const { renderMessage } = require("../../features/casino/keno/renderer");
+const { saveLastBet } = require("../../features/casino/replay");
 
 function getKenoConfig() {
   return casino?.keno || {};
@@ -145,6 +146,13 @@ module.exports = {
       };
 
       await client.kenoGamesCollection.insertOne(doc);
+
+      await saveLastBet(client, {
+        userId,
+        guildId,
+        game: "keno",
+        payload: { options: { 下注: bet, 梭哈: false } },
+      });
 
       const payload = renderMessage(doc, {
         username,

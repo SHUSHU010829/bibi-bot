@@ -8,6 +8,7 @@ const { BET_TYPES } = require('../../features/casino/roulette/numbers');
 const generateRouletteGif = require('../../utils/generateRouletteGif');
 const { spinWheel, settle, totalWagered } = require('../../features/casino/roulette/engine');
 const { buildBettingRows, buildStatusContent } = require('../../commands/casino/roulette');
+const { saveLastBet, buildReplayRow } = require('../../features/casino/replay');
 const logger = require('../../utils/logger');
 const { trackError, trackSuccess } = require('../../utils/errorTracker');
 const { consume } = require('../../utils/rateLimiter');
@@ -196,10 +197,25 @@ module.exports = async (client, interaction) => {
         trackError("roulette-gif", gifErr);
       }
 
+      // 紀錄這局的押注分布，供「再來一局」用相同籌碼重開一張下注面板
+      await saveLastBet(client, {
+        userId: game.userId,
+        guildId: game.guildId,
+        game: "roulette",
+        payload: {
+          totalBudget: game.totalBudget,
+          bets: game.bets.map((b) => ({
+            type: b.type,
+            amount: b.amount,
+            numbers: b.numbers,
+          })),
+        },
+      });
+
       await interaction.editReply({
         content: textContent,
         files: gifAttachment ? [gifAttachment] : [],
-        components: [],
+        components: [buildReplayRow("roulette", game.userId)],
       });
       return;
     }

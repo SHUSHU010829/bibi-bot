@@ -78,6 +78,9 @@ module.exports = async (client) => {
     // 賽馬牌桌狀態（多人，channel-scoped 售票 → 開賽 → 結算）
     const horseRaceGamesCollection = database.collection("HorseRaceGames");
 
+    // 賭場「再來一局」：每位玩家每款遊戲的上一注參數
+    const casinoLastBetsCollection = database.collection("CasinoLastBets");
+
     // 商店系統 collections
     const userInventoryCollection = database.collection("UserInventory");
     const shopTransactionsCollection = database.collection("ShopTransactions");
@@ -160,6 +163,7 @@ module.exports = async (client) => {
     client.rouletteGamesCollection = rouletteGamesCollection;
     client.pokerGamesCollection = pokerGamesCollection;
     client.horseRaceGamesCollection = horseRaceGamesCollection;
+    client.casinoLastBetsCollection = casinoLastBetsCollection;
     client.twitchScoreFlushesCollection = twitchScoreFlushesCollection;
     client.twitchLiveStateCollection = twitchLiveStateCollection;
     client.userInventoryCollection = userInventoryCollection;
@@ -432,6 +436,16 @@ module.exports = async (client) => {
       await horseRaceGamesCollection.createIndex(
         { updatedAt: 1 },
         { expireAfterSeconds: 30 * 24 * 60 * 60, name: "hr_ttl_30d" }
+      );
+
+      // 賭場「再來一局」：每人每款遊戲一筆，舊紀錄 30 天後清掉
+      await casinoLastBetsCollection.createIndex(
+        { userId: 1, guildId: 1, game: 1 },
+        { unique: true, name: "uniq_lastbet_user_guild_game" }
+      );
+      await casinoLastBetsCollection.createIndex(
+        { updatedAt: 1 },
+        { expireAfterSeconds: 30 * 24 * 60 * 60, name: "lastbet_ttl_30d" }
       );
 
       // 商店：背包索引（同人同 guild 同 itemId 可有多筆，因為到期時間/裝備狀態不同）

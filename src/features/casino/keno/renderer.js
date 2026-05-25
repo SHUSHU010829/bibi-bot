@@ -9,6 +9,7 @@ const {
 } = require("discord.js");
 
 const { DEFAULT_PAYTABLE } = require("./engine");
+const { buildReplayRow } = require("../replay");
 
 const TILES_PER_ROW = 5;
 
@@ -150,7 +151,12 @@ function buildEmbed(state, { username, balance }) {
 }
 
 function renderMessage(state, { username, balance } = {}) {
-  const components = [...buildBoardRows(state), buildControlRow(state)];
+  // 開獎後棋盤已占 4 列，控制鈕全停用 → 換成「再來一局」一列（避免超過 5 列上限）
+  const lastRow =
+    state.status === "settled" && state.userId
+      ? buildReplayRow("keno", state.userId)
+      : buildControlRow(state);
+  const components = [...buildBoardRows(state), lastRow];
   const embed = buildEmbed(state, { username, balance });
   return { embeds: [embed], components };
 }

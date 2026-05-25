@@ -18,6 +18,7 @@ const {
   checkAndAnnouncePoolMilestones: checkSlotPoolMilestones,
 } = require("../../features/casino/slot/poolAnnouncer");
 const generateSlotGif = require("../../utils/generateSlotGif");
+const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
 
 function getSlotConfig() {
   return casino?.slot || {};
@@ -215,9 +216,17 @@ module.exports = {
           ? `\n🚨 **你破產了！** 餘額歸零，去發言、聊天賺金幣再來吧！`
           : "";
 
+      await saveLastBet(client, {
+        userId,
+        guildId,
+        game: "slot",
+        payload: { options: { 下注: bet, 梭哈: false } },
+      });
+
       await interaction.editReply({
         content: `${headline}${jackpotLine}\n・下注：**${bet.toLocaleString()}**　・餘額：**${balanceAfter.toLocaleString()}**${poolLine}${bankruptLine}`,
         files: [attachment],
+        components: [buildReplayRow("slot", userId)],
       });
 
       // 爆池公告
