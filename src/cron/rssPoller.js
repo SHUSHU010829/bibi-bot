@@ -216,7 +216,6 @@ const pollFeed = async (client, feed) => {
   }
 
   if (!items.length) {
-    console.log(`[INFO] RSS(${feed.id}): 無項目`.gray);
     return;
   }
 
@@ -240,7 +239,6 @@ const pollFeed = async (client, feed) => {
   );
 
   if (newItems.length === 0) {
-    console.log(`[INFO] RSS(${feed.id}): 沒有新貼文`.gray);
     return;
   }
 

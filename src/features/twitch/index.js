@@ -37,7 +37,6 @@ const runTwitchLiveJob = async ({ client, channelId, config, dryRun = false }) =
 
   const streamers = Array.isArray(config.streamers) ? config.streamers : [];
   if (streamers.length === 0) {
-    console.log(`[INFO] Twitch 通知：未設定任何 streamer`.gray);
     return stats;
   }
   stats.checked = streamers.length;

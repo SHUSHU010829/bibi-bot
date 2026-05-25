@@ -63,7 +63,6 @@ const runFreeGamesJob = async ({
   }
 
   if (items.length === 0) {
-    console.log(`[INFO] 喜加一(${platform})：目前沒有限免`.gray);
     return stats;
   }
 
