@@ -371,6 +371,7 @@ tax = min(tax, totalCoins)              // 不能扣到負
 - 結算後在 `reportChannelId` 推 embed：級距表、總被扣戶數、總稅收、Top 5（含每人有效稅率）
 - 結算後逐一私訊（DM）被課稅的用戶，內容含扣繳金額、稅前/稅後餘額、有效稅率與分級扣繳明細（可用 `dmEnabled: false` 關閉）
 - 每筆扣稅以 `source: wealth_tax` 寫入 transactions，meta 含 `brackets`、`before`、`effectiveRate`、`slices`
+- 用戶可用 `/我的稅務紀錄 [period]` 查詢歷史被課稅紀錄（累計金額、次數、平均有效稅率與逐筆明細），資料來源即上述 transactions
 
 ---
 
