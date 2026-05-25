@@ -34,8 +34,8 @@ const GROUPS = {
     label: "實用工具",
     emoji: "🛠️",
     order: 1,
-    blurb: "天氣、匯率、美食、抽籤、推薦、問是非",
-    folders: ["weather", "currency", "food", "draw", "ask", "recommendation", "general"],
+    blurb: "天氣、匯率、美食、抽籤、推薦、問是非、情勒文",
+    folders: ["weather", "currency", "food", "draw", "ask", "recommendation", "post", "general"],
   },
   economy: {
     label: "經濟系統",
@@ -69,8 +69,8 @@ const GROUPS = {
     label: "社群互動",
     emoji: "🎉",
     order: 6,
-    blurb: "活動、預測問答、情勒文、遊戲身份組、票務投票",
-    folders: ["event", "quiz", "post", "roles", "ticket"],
+    blurb: "活動、預測問答、遊戲身份組、票務投票",
+    folders: ["event", "quiz", "roles", "ticket"],
   },
   admin: {
     label: "管理 / 開發者",

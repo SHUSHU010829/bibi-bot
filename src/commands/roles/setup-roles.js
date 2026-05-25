@@ -95,10 +95,12 @@ module.exports = {
     .addSubcommand((subcommand) =>
       subcommand.setName("list").setDescription("列出所有已設定的遊戲角色"),
     )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild)
     .toJSON(),
 
-  userPermissions: [], // 移除全局管理員限制，改為在各子命令內檢查
+  // 預設僅管理員可見/可用；各子命令仍保留內部檢查，作為伺服器覆寫權限時的防線
+  userPermissions: [],
   botPermissions: [PermissionFlagsBits.ManageRoles],
 
   run: async (client, interaction) => {
