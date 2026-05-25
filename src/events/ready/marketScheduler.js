@@ -50,7 +50,6 @@ async function rotateSentimentOnce(client) {
       { guildId, enabled: { $ne: false } },
       { $set: { marketSentiment: next, sentimentUpdatedAt: new Date() } }
     );
-    console.log(`[STOCK] sentiment rotated guild=${guildId} ${prev} → ${next}`.cyan);
     if (cfg.announce !== false) {
       await announceSentimentChange(client, prev, next).catch((e) =>
         console.log(`[STOCK] sentiment announce failed guild=${guildId}: ${e?.message || e}`.yellow)
@@ -83,7 +82,6 @@ async function listGuildIdsWithMarket(client) {
 
 async function tickOnce(client) {
   if (!isMarketOpen()) {
-    console.log(`[STOCK] market closed, skip tick`.gray);
     return;
   }
   const guildIds = await listGuildIdsWithMarket(client);
@@ -114,7 +112,6 @@ async function tickOnce(client) {
       console.log(`[STOCK] broadcast failed guild=${guildId}: ${e?.message || e}`.yellow)
     );
   }
-  console.log(`[STOCK] tick done for ${guildIds.length} guild(s)`.cyan);
 }
 
 async function postMarketBroadcast(client, guildId) {
