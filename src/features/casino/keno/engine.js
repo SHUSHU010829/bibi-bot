@@ -1,6 +1,6 @@
 // 尋寶（簡易版 Keno）核心邏輯。
 // 地圖 20 格（4×5），玩家挑 5 格，系統開出 5 格寶藏。
-// 命中數 → 賠率（含本金）。本機算過 hypergeometric，house edge ≈ 1%。
+// 命中數 → 賠率（含本金）。
 const crypto = require("crypto");
 
 const BOARD_SIZE = 20;
@@ -8,7 +8,7 @@ const PICK_COUNT = 5;
 const TREASURE_COUNT = 5;
 
 // 賠率表（multiplier 含本金）：index = 命中數
-const DEFAULT_PAYTABLE = [0, 0, 2, 5, 12, 100];
+const DEFAULT_PAYTABLE = [0, 0, 2, 4, 20, 400];
 
 function sampleWithoutReplacement(pool, n) {
   const arr = pool.slice();

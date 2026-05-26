@@ -43,7 +43,7 @@
       "minBet": 10,
       "maxBet": 50000,
       "gameTtlSeconds": 300,
-      "paytable": [0, 0, 2, 5, 12, 100]
+      "paytable": [0, 0, 2, 4, 20, 400]
     },
     "crash": {
       "enabled": true,
