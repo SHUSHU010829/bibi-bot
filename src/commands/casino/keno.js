@@ -18,7 +18,7 @@ function getKenoConfig() {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("尋寶")
-    .setDescription("挑 5 格找寶藏！全中 100 倍 💎")
+    .setDescription("挑 5 格找寶藏！全中 400 倍 💎")
     .setContexts(InteractionContextType.Guild)
     .addIntegerOption((opt) =>
       opt
