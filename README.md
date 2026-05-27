@@ -648,6 +648,45 @@ embed.js → 發送 Embed
 - **拍賣金流**：出價 `auction_bid`（sink）託管，被超越自動 `auction_refund`，成交賣家收 `auction_payout`（已扣 5% 手續費）。
 - **cron**：`duelExpiryScheduler`（每分鐘掃逾時決鬥退款）、`auctionExpiryScheduler`（每 5 分鐘結算到期拍賣）。新增 source 已納入經濟日報 inflow / outflow。
 
+**稱號・成就・週排行（Phase 6）**：長線成就感與炫耀資本——挖礦 / 合成達標自動解鎖稱號，每週挖礦冠軍封「礦坑之王」。設定在 `mining.titles`。
+
+| 指令 | 用途 |
+| --- | --- |
+| `/稱號 清單` | 查看所有稱號與解鎖進度（⭐ 展示中 / ✅ 已解鎖 / 🔒 未解鎖）🏅 |
+| `/稱號 設定 稱號` | 切換目前展示的稱號（同步 Discord 身分組）|
+| `/成就` | 查看四項成就的進度條 🏆 |
+| `/礦工檔案 [玩家]` | 完整礦工檔案：展示稱號、生涯統計、歷史採集量、週冠次數 📜 |
+| `/挖礦排行` | 本週挖礦數量排行榜（週一 00:01 重置並頒發礦坑之王）👑 |
+
+| 稱號 | 解鎖條件 |
+| --- | --- |
+| ⛏️ 新手礦工 | 加入挖礦即有 |
+| 🪵 煤炭採集者 | 累積挖礦 50 次且持有 ≥ 500 🪙 |
+| 🔨 鐵鍛師 | 累積合成 10 件且歷史鐵礦 ≥ 100 顆 |
+| 💎 寶石獵人 | 歷史黃金 ≥ 20 顆且歷史鑽石 ≥ 1 顆 |
+| 👑 礦坑之王 | 當週挖礦數量第一（每週更替）|
+| ✨ 傳說礦工 | 累積挖礦 1000 次、歷史鑽石 ≥ 5 顆且週冠 ≥ 3 次 |
+
+- 稱號解鎖會在 `/挖礦`、`/合成` 後自動檢查並公告；身分組同步需在 `mining.titles.defs.*.roleId` 填入對應 role ID（留空則只記錄、不發身分組）。生涯統計與歷史採集量記在 `MiningProfiles`（`lifetime_ore`、`unlocked_titles`、`active_title`、`weekly_champion_count`）。
+- **cron**：`miningWeeklyRank`（每週一 00:01 結算上週榜首、頒礦坑之王 + 卸前任、公告、累加週冠次數，可能連帶解鎖傳說礦工）。
+
+**Twitch 訂閱者權益（Phase 7）**：訂閱者在挖礦生態享實質加成，依最高持有 tier 生效，設定在 `src/config/twitch_perks.json`（tier→角色沿用 `twitchSync.tierRoleIds`，與訂閱倍率同一組角色）。
+
+| 權益 | Tier 1 | Tier 2 | Tier 3 |
+| --- | --- | --- | --- |
+| 挖礦 luck 加成 | +5% | +10% | +15% |
+| 挖礦 CD 縮短 | −15 分 | −30 分 | −45 分 |
+| 打工 CD 縮短 | −30 分 | −30 分 | −30 分 |
+| 地下城體力上限 | 10 | 12 | 12 |
+| 定存單上限 | 5 | 7 | 7 |
+| 拍賣手續費 | 5% | 5% | 2% |
+| 樂透每期張數上限 | 10 | 10 | 15 |
+| 每月免費自訂稱號 | ✗ | ✗ | ✓ |
+
+- 挖礦 luck 與其他來源（鎬子 / 藥水 / 抖內）相加後仍受 `luckCap = 25%` 全域上限。拍賣手續費依「賣家」tier，於結算時判定。
+- **cron**：`twitchMonthlyTitle`（每月 1 日發 Tier3 免費自訂稱號 30 天 + DM，當月冪等）。
+- **尚未接（保留待做）**：訂閱限定卡面 `exclusiveThemeId` 與永久限定名字顏色 `exclusiveColorRoleId`——前者需在錢包卡渲染器實作 `theme_subscriber_t2/t3` 畫法、後者需先建顏色身分組並填入 ID。
+
 > 🪙 **金幣顯示 emoji**：金額 / 餘額 / 獎勵的顯示集中在 `src/constants/coin.js`（`COIN_EMOJI` 動態金幣、`MONEY_EMOJI` 錢袋），用於訊息內容、Embed 描述 / 標題 / 欄位值；Embed footer、按鈕 setEmoji、斜線指令說明、canvas 圖片不適用，仍用一般 emoji。
 
 #### 12.7 指令頻道限制（commandChannelGuard）
