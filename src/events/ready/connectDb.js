@@ -141,6 +141,9 @@ module.exports = async (client) => {
     const miningProfilesCollection = database.collection("MiningProfiles");
     const mineLogsCollection = database.collection("MineLogs");
 
+    // 打工系統 collection（記每位玩家的打工冷卻）
+    const workProfilesCollection = database.collection("WorkProfiles");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -196,6 +199,7 @@ module.exports = async (client) => {
     client.inviteRecordsCollection = inviteRecordsCollection;
     client.miningProfilesCollection = miningProfilesCollection;
     client.mineLogsCollection = mineLogsCollection;
+    client.workProfilesCollection = workProfilesCollection;
     await economySnapshotsCollection
       .createIndex({ guildId: 1, date: 1 }, { unique: true })
       .catch((e) =>
@@ -688,6 +692,12 @@ module.exports = async (client) => {
       await mineLogsCollection.createIndex(
         { ts: 1 },
         { expireAfterSeconds: 90 * 24 * 60 * 60, name: "mine_logs_ttl_90d" }
+      );
+
+      // 打工系統索引
+      await workProfilesCollection.createIndex(
+        { userId: 1, guildId: 1 },
+        { unique: true, name: "uniq_work_user_guild" }
       );
     } catch (indexError) {
       console.log(

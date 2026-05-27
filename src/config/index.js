@@ -16,6 +16,7 @@ const stockEvents = require("./stockEvents.json");
 const recommendation = require("./recommendation.json");
 const invite = require("./invite.json");
 const mining = require("./mining.json");
+const work = require("./work.json");
 
 module.exports = {
   ...server,
@@ -34,4 +35,5 @@ module.exports = {
   ...recommendation,
   ...invite,
   ...mining,
+  ...work,
 };
