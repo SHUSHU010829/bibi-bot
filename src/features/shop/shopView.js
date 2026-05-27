@@ -1,9 +1,14 @@
 const {
-  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   StringSelectMenuBuilder,
+  ContainerBuilder,
+  SectionBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
+  MessageFlags,
 } = require("discord.js");
 const { getCatalog, getCategories } = require("./catalog");
 const { MONEY_EMOJI } = require("../../constants/coin");
@@ -39,7 +44,8 @@ function getItemsByCategory(catIndex) {
   return { cat, items: getCatalog().filter((i) => i.category === cat) };
 }
 
-// 組出商店面板（公開、可翻頁、每件商品一顆購買鈕）。catIndex / page 皆會被夾在合法範圍內。
+// 組出商店面板（Components V2：公開、可翻頁、每件商品一個區塊 + 購買鈕配件）。
+// catIndex / page 皆會被夾在合法範圍內。
 function buildShopView(catIndex = 0, page = 0) {
   const cats = getCategories();
   if (!Number.isInteger(catIndex) || catIndex < 0 || catIndex >= cats.length) {
@@ -55,26 +61,14 @@ function buildShopView(catIndex = 0, page = 0) {
   const pageItems = items.slice(start, start + PAGE_SIZE);
   const catEmoji = CATEGORY_EMOJI[cat] || "🛒";
 
-  const embed = new EmbedBuilder()
-    .setColor(0xffd166)
-    .setTitle(`🛒 商店 — ${catEmoji} ${cat || ""}`)
-    .setFooter({ text: `第 ${page + 1} / ${totalPages} 頁 ・ 點下方按鈕直接購買` });
+  const container = new ContainerBuilder().setAccentColor(0xffd166);
 
-  if (pageItems.length === 0) {
-    embed.setDescription("這個分類目前沒有商品。");
-  } else {
-    embed.setDescription(
-      pageItems
-        .map((it) => {
-          const meta = itemMeta(it);
-          const head = `**${it.name}** — **${it.price.toLocaleString()}** ${MONEY_EMOJI}${meta ? `（${meta}）` : ""}`;
-          return `${head}\n${it.description}`;
-        })
-        .join("\n\n")
-    );
-  }
-
-  const components = [];
+  // 標題
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## 🛒 商店 — ${catEmoji} ${cat || ""}\n-# 點商品右側的「購買」按鈕，會先跳出確認再扣款`
+    )
+  );
 
   // 分類下拉選單（取代分頁標籤）
   const catSelect = new StringSelectMenuBuilder()
@@ -87,22 +81,50 @@ function buildShopView(catIndex = 0, page = 0) {
         default: idx === catIndex,
       }))
     );
-  components.push(new ActionRowBuilder().addComponents(catSelect));
+  container.addActionRowComponents(new ActionRowBuilder().addComponents(catSelect));
 
-  // 每件商品一顆購買鈕
-  if (pageItems.length > 0) {
-    const buyRow = new ActionRowBuilder();
-    for (const it of pageItems) {
-      buyRow.addComponents(
-        new ButtonBuilder()
-          .setCustomId(`shop_buy_${it.id}`)
-          .setLabel(it.name.slice(0, 25))
-          .setEmoji("🛒")
-          .setStyle(ButtonStyle.Success)
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+  );
+
+  // 每件商品一個區塊：左側文字 + 右側購買鈕
+  if (pageItems.length === 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("這個分類目前沒有商品。")
+    );
+  } else {
+    pageItems.forEach((it, idx) => {
+      const meta = itemMeta(it);
+      const head = `**${it.name}** — **${it.price.toLocaleString()}** ${MONEY_EMOJI}${meta ? `（${meta}）` : ""}`;
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`${head}\n${it.description}`)
+          )
+          .setButtonAccessory(
+            new ButtonBuilder()
+              .setCustomId(`shop_buy_${it.id}`)
+              .setLabel("購買")
+              .setEmoji("🛒")
+              .setStyle(ButtonStyle.Success)
+          )
       );
-    }
-    components.push(buyRow);
+      if (idx < pageItems.length - 1) {
+        container.addSeparatorComponents(
+          new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+        );
+      }
+    });
   }
+
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+  );
+
+  // 頁碼資訊
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`-# 第 ${page + 1} / ${totalPages} 頁`)
+  );
 
   // 分頁列（action 寫進 customId 確保唯一，目標頁由處理器計算後交給本函式夾範圍）
   const nav = (action, emoji, disabled, style = ButtonStyle.Secondary) =>
@@ -112,7 +134,7 @@ function buildShopView(catIndex = 0, page = 0) {
       .setStyle(style)
       .setDisabled(disabled);
 
-  components.push(
+  container.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       nav("first", "⏮️", page === 0),
       nav("prev", "◀️", page === 0),
@@ -122,7 +144,7 @@ function buildShopView(catIndex = 0, page = 0) {
     )
   );
 
-  return { embeds: [embed], components };
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 module.exports = { buildShopView, getItemsByCategory, PAGE_SIZE };

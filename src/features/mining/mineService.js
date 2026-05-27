@@ -1,4 +1,5 @@
 require("colors");
+const { DateTime } = require("luxon");
 const { mining } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
 const dropTable = require("./dropTable");
@@ -112,10 +113,20 @@ async function useCdTicket(client, { userId, guildId }) {
     return { ok: false, reason: "not_in_cooldown" };
   }
 
+  // 每日使用上限（依 Asia/Taipei 跨日重置）
+  const today = DateTime.now().setZone("Asia/Taipei").toISODate();
+  const dailyLimit = mining?.cdTicketDailyUseLimit || 0;
+  const usedToday =
+    profile.cd_ticket_used_date === today ? profile.cd_ticket_used_count || 0 : 0;
+  if (dailyLimit > 0 && usedToday >= dailyLimit) {
+    return { ok: false, reason: "daily_limit", limit: dailyLimit };
+  }
+
   const reductionMs = mining?.cdTicketReductionMs || 0;
   const newCooldownAt = Math.max(now, profile.mine_cooldown_at - reductionMs);
   const clearedToReady = newCooldownAt <= now;
 
+  // 原子更新：扣券 + 縮短冷卻 + 累計當日使用數（跨日自動歸零後再 +1）
   const res = await client.miningProfilesCollection.updateOne(
     {
       userId,
@@ -123,10 +134,23 @@ async function useCdTicket(client, { userId, guildId }) {
       cd_ticket_count: { $gte: 1 },
       mine_cooldown_at: { $gt: now },
     },
-    {
-      $inc: { cd_ticket_count: -1 },
-      $set: { mine_cooldown_at: newCooldownAt, updatedAt: new Date() },
-    }
+    [
+      {
+        $set: {
+          cd_ticket_count: { $add: ["$cd_ticket_count", -1] },
+          mine_cooldown_at: newCooldownAt,
+          cd_ticket_used_date: today,
+          cd_ticket_used_count: {
+            $cond: [
+              { $eq: ["$cd_ticket_used_date", today] },
+              { $add: [{ $ifNull: ["$cd_ticket_used_count", 0] }, 1] },
+              1,
+            ],
+          },
+          updatedAt: "$$NOW",
+        },
+      },
+    ]
   );
 
   // 並發情況下沒改到任何文件：可能券剛被用掉或冷卻已結束，請重試
@@ -139,6 +163,8 @@ async function useCdTicket(client, { userId, guildId }) {
     clearedToReady,
     newCooldownAt,
     ticketsLeft: (profile.cd_ticket_count || 0) - 1,
+    usedToday: usedToday + 1,
+    dailyLimit,
   };
 }
 

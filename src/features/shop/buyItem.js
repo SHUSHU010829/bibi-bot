@@ -1,13 +1,29 @@
 require("colors");
+const { DateTime } = require("luxon");
 const grantCoins = require("../economy/grantCoins");
-const { getItem } = require("./catalog");
+const { getItem, isStackable, stackMax } = require("./catalog");
 const { addBuff } = require("./activeBuff");
 const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
 
 const MINING_ITEM_TYPES = ["mining_luck_potion", "mining_cd_ticket", "mining_backpack"];
 
+// 統計今天（Asia/Taipei）已購買的某商品數量（用於每日購買上限）。
+async function getTodayBoughtQty(client, { userId, guildId, itemId }) {
+  if (!client.shopTransactionsCollection) return 0;
+  const startOfToday = DateTime.now().setZone("Asia/Taipei").startOf("day").toJSDate();
+  const agg = await client.shopTransactionsCollection
+    .aggregate([
+      { $match: { userId, guildId, itemId, createdAt: { $gte: startOfToday } } },
+      { $group: { _id: null, total: { $sum: { $ifNull: ["$quantity", 1] } } } },
+    ])
+    .toArray()
+    .catch(() => []);
+  return agg[0]?.total || 0;
+}
+
 // 處理一筆購買：扣款 → 寫入 inventory → 對特殊 type 立即生效（buff/casino_token）
-async function buyItem(client, { userId, guildId, username, member, itemId }) {
+// quantity 只對可堆疊商品（挖礦道具／賭場代幣）生效，其餘一律當作 1。
+async function buyItem(client, { userId, guildId, username, member, itemId, quantity = 1 }) {
   const item = getItem(itemId);
   if (!item) return { ok: false, error: "找不到商品" };
 
@@ -19,15 +35,38 @@ async function buyItem(client, { userId, guildId, username, member, itemId }) {
     return { ok: false, error: "挖礦系統尚未就緒" };
   }
 
-  // CD 縮短券持有上限：超過上限就拒絕購買（在扣款前檢查）
+  // 數量：非可堆疊商品強制 1，可堆疊商品夾在 [1, 上限] 內
+  let qty = Math.floor(Number(quantity) || 1);
+  if (!isStackable(item)) {
+    qty = 1;
+  } else {
+    const max = stackMax(item);
+    if (qty < 1) qty = 1;
+    if (qty > max) qty = max;
+  }
+
+  const totalPrice = item.price * qty;
+
+  // CD 縮短券：背包持有上限（在扣款前檢查）
   if (item.type === "mining_cd_ticket" && item.payload?.maxStack > 0) {
     const prof = await getMiningProfile(client, userId, guildId);
     const owned = prof?.cd_ticket_count || 0;
-    const add = item.payload?.qty || 0;
+    const add = (item.payload?.qty || 0) * qty;
     if (owned + add > item.payload.maxStack) {
       return {
         ok: false,
-        error: `CD 縮短券最多持有 ${item.payload.maxStack} 張，你目前已有 ${owned} 張，無法再購買。`,
+        error: `CD 縮短券背包最多持有 ${item.payload.maxStack} 張，你目前已有 ${owned} 張，這次最多再買 ${Math.max(0, item.payload.maxStack - owned)} 張。`,
+      };
+    }
+  }
+
+  // CD 縮短券：每日購買上限（依 Asia/Taipei 跨日重置）
+  if (item.type === "mining_cd_ticket" && item.payload?.dailyLimit > 0) {
+    const boughtToday = await getTodayBoughtQty(client, { userId, guildId, itemId });
+    if (boughtToday + qty > item.payload.dailyLimit) {
+      return {
+        ok: false,
+        error: `CD 縮短券每日最多購買 ${item.payload.dailyLimit} 張，你今天已買 ${boughtToday} 張，今天最多再買 ${Math.max(0, item.payload.dailyLimit - boughtToday)} 張。`,
       };
     }
   }
@@ -36,10 +75,10 @@ async function buyItem(client, { userId, guildId, username, member, itemId }) {
     .findOne({ userId, guildId }, { projection: { totalCoins: 1 } })
     .catch(() => null);
   const totalCoins = balance?.totalCoins || 0;
-  if (totalCoins < item.price) {
+  if (totalCoins < totalPrice) {
     return {
       ok: false,
-      error: `金幣不足！需要 ${item.price.toLocaleString()}，你只有 ${totalCoins.toLocaleString()}`,
+      error: `金幣不足！需要 ${totalPrice.toLocaleString()}，你只有 ${totalCoins.toLocaleString()}`,
     };
   }
 
@@ -81,10 +120,10 @@ async function buyItem(client, { userId, guildId, username, member, itemId }) {
     userId,
     guildId,
     username,
-    amount: -item.price,
+    amount: -totalPrice,
     source: "shop_buy",
     member,
-    meta: { itemId, name: item.name },
+    meta: { itemId, name: item.name, quantity: qty },
   });
   if (!grant) {
     return { ok: false, error: "扣款失敗" };
@@ -110,11 +149,11 @@ async function buyItem(client, { userId, guildId, username, member, itemId }) {
   } else if (item.type === "casino_token") {
     // 賭場道具：累計到背包數量
     const tokenName = item.payload?.token;
-    const qty = item.payload?.qty || 1;
+    const tokenQty = (item.payload?.qty || 1) * qty;
     inventoryDoc = await client.userInventoryCollection.findOneAndUpdate(
       { userId, guildId, itemId, type: "casino_token", token: tokenName },
       {
-        $inc: { qty },
+        $inc: { qty: tokenQty },
         $set: { updatedAt: now },
         $setOnInsert: {
           userId,
@@ -138,11 +177,11 @@ async function buyItem(client, { userId, guildId, username, member, itemId }) {
           ? "cd_ticket_count"
           : "backpack_bonus_slots";
     const incAmount =
-      item.type === "mining_luck_potion"
+      (item.type === "mining_luck_potion"
         ? item.payload?.uses || 0
         : item.type === "mining_cd_ticket"
           ? item.payload?.qty || 0
-          : item.payload?.slots || 0;
+          : item.payload?.slots || 0) * qty;
     await client.miningProfilesCollection.updateOne(
       { userId, guildId },
       { $inc: { [incField]: incAmount }, $set: { updatedAt: now } },
@@ -172,7 +211,9 @@ async function buyItem(client, { userId, guildId, username, member, itemId }) {
         itemId,
         name: item.name,
         type: item.type,
-        price: item.price,
+        quantity: qty,
+        unitPrice: item.price,
+        price: totalPrice,
         balanceAfter: grant.doc?.totalCoins || 0,
         createdAt: now,
       })
@@ -180,12 +221,14 @@ async function buyItem(client, { userId, guildId, username, member, itemId }) {
   }
 
   console.log(
-    `[SHOP] ${username || userId} bought ${item.name} (${itemId}) for ${item.price}`.cyan,
+    `[SHOP] ${username || userId} bought ${item.name} (${itemId}) x${qty} for ${totalPrice}`.cyan,
   );
 
   return {
     ok: true,
     item,
+    quantity: qty,
+    totalPrice,
     balanceAfter: grant.doc?.totalCoins || 0,
     expiresAt,
     inventoryDoc,
