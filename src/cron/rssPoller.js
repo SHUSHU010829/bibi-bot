@@ -7,6 +7,7 @@ const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
 const { RSS_FEEDS } = require("../config/rssFeeds");
 const { fetchFeedItems } = require("../services/rssFeedService");
 const { getDataFile } = require("../utils/dataPaths");
+const { NEWSPAPER_EMOJI } = require("../constants/emoji");
 
 const STATE_FILE = "rss_state.json";
 const MAX_DESCRIPTION_LENGTH = 280;
@@ -162,7 +163,9 @@ const buildEmbedsAndFiles = async ({ item, feed }) => {
   const main = new EmbedBuilder().setColor(0x5865f2);
   if (item.author) main.setAuthor({ name: item.author });
   if (item.link) main.setTitle(item.link).setURL(item.link);
-  if (description) main.setDescription(description);
+  main.setDescription(
+    description ? `${NEWSPAPER_EMOJI} ${description}` : NEWSPAPER_EMOJI
+  );
   if (item.pubDate) {
     const ts = new Date(item.pubDate);
     if (!Number.isNaN(ts.getTime())) main.setTimestamp(ts);

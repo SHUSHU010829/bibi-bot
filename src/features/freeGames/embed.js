@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require("discord.js");
 const { DateTime } = require("luxon");
+const { NEWSPAPER_EMOJI } = require("../../constants/emoji");
 
 const COLOR_FREE = 0x06a77d; // 限時領取 (claimable, 永久持有)
 const COLOR_ALWAYS = 0x3b82f6; // 永久免費 (always free)
@@ -79,7 +80,7 @@ const buildFreeGameEmbed = ({ item, steamData = null }) => {
     .setTitle(displayName.slice(0, 256))
     .setURL(claimUrl)
     .setColor(color)
-    .setDescription(summaryParts.join("  ·  "))
+    .setDescription(`${NEWSPAPER_EMOJI} ${summaryParts.join("  ·  ")}`)
     .setTimestamp(new Date())
     .setFooter({ text: "來源:GamerPower" });
 

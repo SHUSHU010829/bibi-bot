@@ -2,6 +2,7 @@ const { EmbedBuilder } = require("discord.js");
 const { DateTime } = require("luxon");
 
 const { buildStoreUrl } = require("./steam");
+const { NEWSPAPER_EMOJI } = require("../../constants/emoji");
 
 const COLOR_DEAL = 0xff6b35;
 const COLOR_LOWEST = 0xe63946;
@@ -50,9 +51,11 @@ const buildDealEmbed = ({ xhh, steam }) => {
     .setTimestamp(new Date())
     .setFooter({ text: "來源:小黑盒 + Steam" });
 
-  if (summaryParts.length > 0) {
-    embed.setDescription(summaryParts.join("  ·  "));
-  }
+  embed.setDescription(
+    summaryParts.length > 0
+      ? `${NEWSPAPER_EMOJI} ${summaryParts.join("  ·  ")}`
+      : NEWSPAPER_EMOJI
+  );
 
   if (steam.header_image) embed.setImage(steam.header_image);
 
