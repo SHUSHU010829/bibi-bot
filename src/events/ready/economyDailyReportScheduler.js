@@ -31,9 +31,10 @@ const REAL_INFLOW = [
   "stock_dividend",
   "mining_sell",
   "work",
+  "dungeon",
 ];
-const REPAY_INFLOW = ["deposit_release", "payout", "stock_sell"];
-const OUTFLOW = ["bet", "deposit_lock", "transfer_out", "shop_buy", "wealth_tax", "stock_buy", "stock_fee"];
+const REPAY_INFLOW = ["deposit_release", "payout", "stock_sell", "auction_payout", "auction_refund", "duel_payout", "duel_refund"];
+const OUTFLOW = ["bet", "deposit_lock", "transfer_out", "shop_buy", "wealth_tax", "stock_buy", "stock_fee", "auction_bid", "duel_stake"];
 
 const CASINO_GAME_LABEL = {
   blackjack: "BJ",

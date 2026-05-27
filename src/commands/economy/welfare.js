@@ -11,6 +11,7 @@ const {
 const { welfareSystem } = require("../../config");
 const welfareService = require("../../features/welfare/welfareService");
 const { checkAccountAge } = require("../../features/economy/eligibility");
+const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 
 module.exports = {
   ephemeral: true,
@@ -77,13 +78,13 @@ function replyClaimSuccess(interaction, result) {
     .setAccentColor(0xc9302c)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `## 🪙 救濟金到手\n**+${result.amount.toLocaleString()}** 💰 ・ 連續 **${result.streak}** 天`
+        `## ${COIN_EMOJI} 救濟金到手\n**+${result.amount.toLocaleString()}** ${MONEY_EMOJI} ・ 連續 **${result.streak}** 天`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `目前餘額：**${(result.newBalance ?? 0).toLocaleString()}** 🪙\n下次可領：<t:${result.resetEpoch}:R>（<t:${result.resetEpoch}:t>）`
+        `目前餘額：**${(result.newBalance ?? 0).toLocaleString()}** ${COIN_EMOJI}\n下次可領：<t:${result.resetEpoch}:R>（<t:${result.resetEpoch}:t>）`
       )
     )
     .addTextDisplayComponents(
@@ -105,11 +106,11 @@ async function showStatus(client, interaction, userId, guildId) {
 
   const assetLine =
     status.depositTotal > 0
-      ? `錢包：**${status.balance.toLocaleString()}** 🪙 ・ 存款本金：**${status.depositTotal.toLocaleString()}** 🪙 ・ 總資產：**${status.totalAssets.toLocaleString()}** 🪙（門檻 ≤ ${status.threshold}）`
-      : `目前餘額：**${status.balance.toLocaleString()}** 🪙（門檻 ≤ ${status.threshold}）`;
+      ? `錢包：**${status.balance.toLocaleString()}** ${COIN_EMOJI} ・ 存款本金：**${status.depositTotal.toLocaleString()}** ${COIN_EMOJI} ・ 總資產：**${status.totalAssets.toLocaleString()}** ${COIN_EMOJI}（門檻 ≤ ${status.threshold}）`
+      : `目前餘額：**${status.balance.toLocaleString()}** ${COIN_EMOJI}（門檻 ≤ ${status.threshold}）`;
 
   const lines = [
-    `## 🪙 救濟金狀態`,
+    `## ${COIN_EMOJI} 救濟金狀態`,
     assetLine,
     `連續天數：**${status.streak}** 天 ・ 歷史最高：${status.longestStreak} 天 ・ 累計領取：${status.totalClaims} 次`,
   ];
@@ -126,14 +127,14 @@ async function showStatus(client, interaction, userId, guildId) {
   } else if (!status.eligibleByBalance) {
     if (status.depositTotal > 0) {
       lines.push(
-        `\n💰 總資產（含存款）超過救濟線，先 \`/領回\` 存款或 \`/錢包\` 看看再說。`
+        `\n${MONEY_EMOJI} 總資產（含存款）超過救濟線，先 \`/領回\` 存款或 \`/錢包\` 看看再說。`
       );
     } else {
-      lines.push(`\n💰 目前金幣超過救濟線，先去玩玩看吧。`);
+      lines.push(`\n${MONEY_EMOJI} 目前金幣超過救濟線，先去玩玩看吧。`);
     }
   } else {
     lines.push(
-      `\n✅ **可領取** ${status.nextAmount.toLocaleString()} 🪙（連續第 ${status.nextStreak} 天）`
+      `\n✅ **可領取** ${status.nextAmount.toLocaleString()} ${COIN_EMOJI}（連續第 ${status.nextStreak} 天）`
     );
   }
 

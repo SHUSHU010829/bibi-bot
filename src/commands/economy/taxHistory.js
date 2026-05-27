@@ -10,6 +10,7 @@ const {
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 const { DateTime } = require("luxon");
 
 const MAX_LIST = 12;
@@ -121,7 +122,7 @@ module.exports = {
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            "-# 財富稅每週一結算，餘額越高邊際稅率越高。想少繳稅就別囤太多金幣 💰",
+            `-# 財富稅每週一結算，餘額越高邊際稅率越高。想少繳稅就別囤太多金幣 ${MONEY_EMOJI}`,
           ),
         );
 

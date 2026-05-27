@@ -6,6 +6,7 @@ const {
   EmbedBuilder,
   InteractionContextType,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 // 計算「全機器人」金幣流通量。
 // totalCirculation 定義同 economySnapshotScheduler.js：錢包 + 啟用中存款本金。
@@ -124,7 +125,7 @@ module.exports = {
       const fmt = (n) => Number(n || 0).toLocaleString();
 
       const embed = new EmbedBuilder()
-        .setTitle("💰 全機器人金幣流通量")
+        .setTitle(`${MONEY_EMOJI} 全機器人金幣流通量`)
         .setColor(0xf1c40f)
         .setDescription(
           `**總流通量：${fmt(totalCirculation)}**\n` +

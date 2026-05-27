@@ -3,6 +3,7 @@ const {
   ActionRowBuilder,
   StringSelectMenuBuilder,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 const TYPE_LABEL = {
   role_color: "🎨 顏色身份組",
@@ -93,7 +94,7 @@ async function buildInventoryView(client, { userId, guildId, username }) {
     const buffText = activeBuffs
       .map(
         (b) =>
-          `・${b.type === "xp_boost" ? "📈 XP" : "💰 金幣"} ×${b.multiplier}（${fmtExpiry(b.expiresAt)}）`,
+          `・${b.type === "xp_boost" ? "📈 XP" : `${MONEY_EMOJI} 金幣`} ×${b.multiplier}（${fmtExpiry(b.expiresAt)}）`,
       )
       .join("\n");
     embed.addFields({ name: "✨ 生效中的 buff", value: buffText });

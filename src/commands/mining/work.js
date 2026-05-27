@@ -7,6 +7,7 @@ const {
 
 const { work } = require("../../config");
 const workService = require("../../features/work/workService");
+const { COIN_EMOJI } = require("../../constants/coin");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -48,11 +49,11 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setColor(0x3498db)
         .setTitle("💼 打工完成")
-        .setDescription(`你${result.job}，獲得了 **+${result.amount.toLocaleString()}** 🪙`)
+        .setDescription(`你${result.job}，獲得了 **+${result.amount.toLocaleString()}** ${COIN_EMOJI}`)
         .addFields(
           {
             name: "目前餘額",
-            value: `${result.balance.toLocaleString()} 🪙`,
+            value: `${result.balance.toLocaleString()} ${COIN_EMOJI}`,
             inline: true,
           },
           {

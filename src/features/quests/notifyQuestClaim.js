@@ -1,9 +1,10 @@
 require("colors");
 const { MessageFlags } = require("discord.js");
+const { COIN_EMOJI } = require("../../constants/coin");
 
 const formatClaim = (claimed) => {
   const tag = claimed.period === "weekly" ? "📅 週常" : "🌞 每日";
-  return `🪙 任務完成！${tag} ・ **${claimed.name}** ・ 自動入帳 **+${claimed.reward.toLocaleString()}** 🪙`;
+  return `${COIN_EMOJI} 任務完成！${tag} ・ **${claimed.name}** ・ 自動入帳 **+${claimed.reward.toLocaleString()}** ${COIN_EMOJI}`;
 };
 
 module.exports = async (client, ctx, claimed) => {

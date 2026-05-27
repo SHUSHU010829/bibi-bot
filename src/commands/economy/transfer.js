@@ -4,6 +4,7 @@ const {
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 const { DateTime } = require("luxon");
 
 const { coinSystem } = require("../../config");
@@ -139,7 +140,7 @@ module.exports = {
 
       if (balance < totalDeduct) {
         return interaction.editReply(
-          `💰 餘額不足！本次需要 **${totalDeduct.toLocaleString()}**（金額 ${amount.toLocaleString()} + 手續費 ${fee.toLocaleString()}），目前 ${balance.toLocaleString()}。`
+          `${MONEY_EMOJI} 餘額不足！本次需要 **${totalDeduct.toLocaleString()}**（金額 ${amount.toLocaleString()} + 手續費 ${fee.toLocaleString()}），目前 ${balance.toLocaleString()}。`
         );
       }
 

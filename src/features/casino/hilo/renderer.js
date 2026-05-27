@@ -7,6 +7,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../../constants/coin");
 
 const { calcOdds, valueOf } = require("./engine");
 const { buildReplayRow } = require("../replay");
@@ -78,7 +79,7 @@ function buildButtons(state) {
 function settleHeadline(state) {
   switch (state.result) {
     case "cashout":
-      return `💰 **收手成功！** 拿走 ${state.payout.toLocaleString()} credits（×${state.accMultiplier.toFixed(2)}）`;
+      return `${MONEY_EMOJI} **收手成功！** 拿走 ${state.payout.toLocaleString()} credits（×${state.accMultiplier.toFixed(2)}）`;
     case "lose":
       return `💸 **猜錯了！** －${state.bet.toLocaleString()} credits，下次加油！`;
     case "win":

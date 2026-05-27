@@ -10,6 +10,7 @@ const {
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 const { DateTime } = require("luxon");
 
 const GAME_LABELS = {
@@ -114,7 +115,7 @@ module.exports = {
       const overall =
         `**${username}** 的賭場紀錄 ・ ${describePeriod(period)}\n\n` +
         `💸 總下注：**${totalWagered.toLocaleString()}** credits（共 ${totalBetCount.toLocaleString()} 注）\n` +
-        `💰 總派彩：**${totalPayout.toLocaleString()}** credits\n` +
+        `${MONEY_EMOJI} 總派彩：**${totalPayout.toLocaleString()}** credits\n` +
         `${netProfit >= 0 ? "📈" : "📉"} 淨輸贏：**${netProfit >= 0 ? "+" : ""}${netProfit.toLocaleString()}**\n` +
         `🎯 RTP（回收率）：**${overallRtp.toFixed(1)}%**${overallRtp < 100 ? "（賠錢中）" : "（賺錢中）"}`;
 

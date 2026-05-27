@@ -6,6 +6,7 @@
 require("colors");
 const crypto = require("crypto");
 const { ChannelType } = require("discord.js");
+const { MONEY_EMOJI } = require("../../../constants/coin");
 
 const { coinSystem, casino } = require("../../../config");
 const grantCoins = require("../../economy/grantCoins");
@@ -407,7 +408,7 @@ async function createTable(client, interaction, { maxPlayers, blind }) {
   const balance = userDoc?.totalCoins || 0;
   if (balance < buyIn) {
     return {
-      error: `💰 餘額不足！進桌需要 **${buyIn.toLocaleString()}** credits（盲 ${blind} × ${cfg.buyInMultiplier || 50} 倍）。目前 ${balance.toLocaleString()}。`,
+      error: `${MONEY_EMOJI} 餘額不足！進桌需要 **${buyIn.toLocaleString()}** credits（盲 ${blind} × ${cfg.buyInMultiplier || 50} 倍）。目前 ${balance.toLocaleString()}。`,
     };
   }
 
@@ -539,7 +540,7 @@ async function joinTable(client, interaction) {
   const balance = userDoc?.totalCoins || 0;
   if (balance < buyIn) {
     return {
-      error: `💰 餘額不足！進桌需 **${buyIn.toLocaleString()}** credits，目前 ${balance.toLocaleString()}。`,
+      error: `${MONEY_EMOJI} 餘額不足！進桌需 **${buyIn.toLocaleString()}** credits，目前 ${balance.toLocaleString()}。`,
     };
   }
 

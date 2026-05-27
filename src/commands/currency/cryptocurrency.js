@@ -7,6 +7,7 @@ const {
 } = require("discord.js");
 
 const getCryptocurrency = require("../../utils/getCryptocurrency");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 // 常見幣種，提供 autocomplete 建議
 const POPULAR_COINS = [
@@ -85,7 +86,7 @@ module.exports = {
             : price.toString();
 
         const embed = new EmbedBuilder()
-          .setTitle(`💰 ${coin} 即時報價`)
+          .setTitle(`${MONEY_EMOJI} ${coin} 即時報價`)
           .setColor(0xf7931a)
           .addFields({ name: "價格 (USD)", value: `\`$${formattedPrice}\`` })
           .setTimestamp()

@@ -5,6 +5,7 @@ const {
   TextInputStyle,
   ActionRowBuilder,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
@@ -226,7 +227,7 @@ async function submitBet(client, interaction, gameId) {
   const balance = before?.totalCoins || 0;
   if (balance < lock) {
     return interaction.followUp({
-      content: `💰 餘額不足以鎖倉 ${lock.toLocaleString()}（下注 2×），目前 ${balance.toLocaleString()}。請改下小一點或按「不補」棄權。`,
+      content: `${MONEY_EMOJI} 餘額不足以鎖倉 ${lock.toLocaleString()}（下注 2×），目前 ${balance.toLocaleString()}。請改下小一點或按「不補」棄權。`,
       flags: MessageFlags.Ephemeral,
     });
   }

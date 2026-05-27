@@ -11,6 +11,7 @@ const {
   backpackCapacity,
   backpackUsed,
 } = require("../../features/mining/miningProfile");
+const { COIN_EMOJI } = require("../../constants/coin");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -42,7 +43,7 @@ module.exports = {
         totalValue += value;
         oreLines.push(
           `${def.emoji || "⛏️"} **${def.name}** ×${qty}` +
-            (qty > 0 ? ` ・ ${value.toLocaleString()} 🪙` : "")
+            (qty > 0 ? ` ・ ${value.toLocaleString()} ${COIN_EMOJI}` : "")
         );
       }
 
@@ -70,7 +71,7 @@ module.exports = {
           },
           {
             name: "全部賣出可得",
-            value: `${totalValue.toLocaleString()} 🪙`,
+            value: `${totalValue.toLocaleString()} ${COIN_EMOJI}`,
             inline: true,
           },
           {

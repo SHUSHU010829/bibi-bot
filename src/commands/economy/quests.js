@@ -10,13 +10,14 @@ const {
 
 const { questSystem } = require("../../config");
 const questService = require("../../features/quests/questService");
+const { COIN_EMOJI } = require("../../constants/coin");
 
 const PROGRESS_BAR_LEN = 10;
 const STATE_EMOJI = {
   pending: "⬜",
   in_progress: "🟡",
   ready: "✅",
-  claimed: "🪙",
+  claimed: COIN_EMOJI,
 };
 const STATE_LABEL = {
   pending: "未開始",
@@ -36,7 +37,7 @@ const renderQuestLine = (q) => {
   return [
     `${STATE_EMOJI[q.state]} **${q.name}** ・ ${STATE_LABEL[q.state]}`,
     `-# ${q.description}`,
-    `\`${bar}\` ${q.progress}/${q.target} ・ 獎勵 **${q.reward}** 🪙`,
+    `\`${bar}\` ${q.progress}/${q.target} ・ 獎勵 **${q.reward}** ${COIN_EMOJI}`,
   ].join("\n");
 };
 

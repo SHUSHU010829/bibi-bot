@@ -6,6 +6,7 @@ const { DateTime } = require("luxon");
 
 const { coinSystem } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const { COIN_EMOJI } = require("../../constants/coin");
 
 async function fetchCasinoWeekly(client, guildId) {
   if (!client?.coinTransactionsCollection) return null;
@@ -183,7 +184,7 @@ async function sendTaxDMs(client, cfg, affectedDetails) {
       .setColor(0xed4245)
       .setDescription(
         [
-          `你在本週的累進財富稅結算中被徵收了 **${d.tax.toLocaleString()}** 🪙。`,
+          `你在本週的累進財富稅結算中被徵收了 **${d.tax.toLocaleString()}** ${COIN_EMOJI}。`,
           "",
           `・稅前餘額：**${d.before.toLocaleString()}**`,
           `・稅後餘額：**${(d.before - d.tax).toLocaleString()}**`,

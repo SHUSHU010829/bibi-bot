@@ -7,6 +7,7 @@ const {
 
 const { mining } = require("../../config");
 const mineService = require("../../features/mining/mineService");
+const { COIN_EMOJI } = require("../../constants/coin");
 
 function oreLabel(oreKey) {
   const def = mining?.ores?.[oreKey] || {};
@@ -79,7 +80,7 @@ module.exports = {
         )
         .setDescription(
           `你挖到了 **${oreLabel(result.ore)} ×${result.qty}**！\n` +
-            `預估賣價：**${value.toLocaleString()}** 🪙`
+            `預估賣價：**${value.toLocaleString()}** ${COIN_EMOJI}`
         )
         .addFields(
           {

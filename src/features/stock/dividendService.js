@@ -2,6 +2,7 @@ require("colors");
 const { EmbedBuilder } = require("discord.js");
 const { stockSystem } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 function getDividendConfig() {
   return stockSystem?.dividend || {};
@@ -180,7 +181,7 @@ async function sendDmNotifications(client, summaries) {
         });
 
       const embed = new EmbedBuilder()
-        .setTitle("💰 你本週的股息入帳")
+        .setTitle(`${MONEY_EMOJI} 你本週的股息入帳`)
         .setColor(0x2ecc71)
         .setDescription(lines.join("\n\n"))
         .addFields({

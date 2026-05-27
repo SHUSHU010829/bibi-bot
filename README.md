@@ -582,15 +582,12 @@ embed.js → 發送 Embed
 
 #### 12.5 商店與背包
 
-> 📍 **可用頻道**：市民服務處 │ 🏢（`general` 桶）。
+> 📍 **可用頻道**：市民服務處 │ 🏢（`general` 桶）。`/商店` 為公開互動面板（已取消 ephemeral），購買結果仍以私人訊息回覆。
 
 | 指令 | 用途 |
 | --- | --- |
-| `/商店 瀏覽 [category]` | 列出商品（顏色身份組 / 加成藥水 / 卡面風格 / 自訂稱號…） |
-| `/商店 購買 item` | 購買商品；身份組類會自動建立並指派 `🎨 xxx` 角色 |
-| `/背包` | 查看擁有道具與生效中 buff（含到期時間） |
-| `/背包 裝備 inventory_id` | 裝備卡面風格 / 顏色身份組 |
-| `/背包 設定稱號 text` | 設定 24 字內自訂稱號（需先持有「自訂稱號」道具，30 天有效） |
+| `/商店` | 開啟公開商店面板：分類下拉切換、每件商品一顆購買鈕、分頁瀏覽（⏮️◀️🔄▶️⏭️）。點購買鈕即下單，結果以私人訊息回覆（含「立即裝備 / 設定稱號」後續鈕），不洗頻道 |
+| `/背包` | 查看擁有道具與生效中 buff（含到期時間）；用選單直接裝備卡面 / 顏色身份組、設定 24 字內自訂稱號（需先持有「自訂稱號」道具，30 天有效） |
 
 **商品類型**（`src/config/shop.json`）：
 - `role_color`：30 天顏色身份組（`#E74C3C` 紅色尊爵、`#FFD700` 極光金…）；需要 bot 有 ManageRoles 權限，會 cache 已建立的 role 在 `ShopRoleCache` 避免重複
@@ -602,7 +599,7 @@ embed.js → 發送 Embed
 
 **目的**：在賭場 / 股市之外，提供一條「時間驅動」的穩定產出路線——靠 `/挖礦`、`/打工` 累積礦石與金幣，再用 `/合成` 把礦石做成更好的鎬子，形成「挖 → 賣 / 合成 → 挖更快」的循環。設定分別在 `src/config/mining.json`、`work.json`、`craft.json`。
 
-> 📍 **可用頻道**：庶民勞動局 │ 💼（`mining` 桶）。挖礦 / 礦袋 / 賣礦 / 打工 / 合成 / 裝備全部收斂在這個頻道。
+> 📍 **可用頻道**：財富牢改城 │ 💼（`mining` 桶）。挖礦 / 礦袋 / 賣礦 / 打工 / 合成 / 裝備 / 地下城 / 決鬥 / 贈送 / 拍賣全部收斂在這個頻道。
 
 | 指令 | 用途 |
 | --- | --- |
@@ -637,6 +634,22 @@ embed.js → 發送 Embed
 - **打工**：每次 80–120 🪙，每日次數用當日 `CoinTransactions(source=work)` 筆數判定，不需額外計數欄位。
 - **金流串接**：`/賣礦` 走 `grantCoins` 的 `source: "mining_sell"`、`/打工` 走 `source: "work"`，皆納入經濟日報的 inflow 統計。
 
+**地下城・決鬥・社交・拍賣（Phase 4–5）**：礦石與裝備的下游玩法——拿鎬子去打地下城、跟人決鬥賭金幣，或把礦石送人 / 上架拍賣。設定在 `src/config/dungeon.json`、`auction.json`。
+
+| 指令 | 用途 |
+| --- | --- |
+| `/地下城` | 消耗 1 點體力進地下城戰鬥（體力上限 10、每小時回 1）；勝率由鎬子攻擊力決定，勝利掉落礦石碎片 / 金幣 / 傳說素材碎片，背包滿時礦石折金幣 ⚔️ |
+| `/決鬥 @對象 賭注` | 1v1 金幣決鬥，雙方託管賭注、依攻擊力判勝負、勝者通吃；對方按鈕接受 / 拒絕，逾時自動退款 🤺 |
+| `/贈送 @對象 礦石 數量` | 把礦石送給其他玩家（每日 3 次、免手續費、不能送自己、檢查對方背包容量）🎁 |
+| `/拍賣 清單 / 掛牌 / 出價` | 拍賣行：掛牌 24h、成交抽 5% 手續費、最低起標 = 收購價 80%、每人最多掛 5 件；被超越自動退款，到期無人出價退回礦石 🏷️ |
+
+- **體力**：`/地下城` 每場耗 1 點、0 點不能進；惰性回復（每小時 +1，上限 10）。攻擊力 = 基礎 30 + 鎬子加成（木 0 / 鐵 15 / 黃金 25 / 鑽石 35），勝率 = `clamp(攻擊力 / 怪物HP, 0.2, 0.9)`。
+- **決鬥金流**：賭注用 `duel_stake`（sink）託管，勝者派彩 `duel_payout`、退款 `duel_refund`，雙方總額守恆。
+- **拍賣金流**：出價 `auction_bid`（sink）託管，被超越自動 `auction_refund`，成交賣家收 `auction_payout`（已扣 5% 手續費）。
+- **cron**：`duelExpiryScheduler`（每分鐘掃逾時決鬥退款）、`auctionExpiryScheduler`（每 5 分鐘結算到期拍賣）。新增 source 已納入經濟日報 inflow / outflow。
+
+> 🪙 **金幣顯示 emoji**：金額 / 餘額 / 獎勵的顯示集中在 `src/constants/coin.js`（`COIN_EMOJI` 動態金幣、`MONEY_EMOJI` 錢袋），用於訊息內容、Embed 描述 / 標題 / 欄位值；Embed footer、按鈕 setEmoji、斜線指令說明、canvas 圖片不適用，仍用一般 emoji。
+
 #### 12.7 指令頻道限制（commandChannelGuard）
 
 `utils/commandChannelGuard.js` 會依「指令所在資料夾」把指令分流到指定頻道桶，桶對應的頻道清單設定在 `src/config/server.json` 的 `commandChannels`。在錯誤頻道呼叫會被擋下並提示正確頻道。
@@ -645,7 +658,7 @@ embed.js → 發送 Embed
 | --- | --- | --- |
 | `casino` | `commands/casino`（賭場遊戲**與樂透**） | 拉斯維加斯 │ 🃏（`1500783461831671858`）、濱海灣金沙 │ 🃏（`1504806019610574878`） |
 | `stock` | `commands/stock` | 逼逼金證卷 │ 🪙（`1505808023933816893`） |
-| `mining` | `commands/mining`（挖礦 / 打工 / 合成） | 庶民勞動局 │ 💼（`1509074828206936126`） |
+| `mining` | `commands/mining`（挖礦 / 打工 / 合成 / 地下城 / 決鬥 / 贈送 / 拍賣） | 財富牢改城 │ 💼（`1509074828206936126`） |
 | `general` | 其餘所有資料夾 | 市民服務處 │ 🏢（`1192888968748994700`） |
 
 **豁免（任何頻道都能用）**：標 🔒 的管理員指令、標 🔧 的開發者（`devOnly`）指令、以及只回私人訊息（`ephemeral`）的指令都不受頻道限制。若某個桶在 `commandChannels` 沒設定頻道（清單為空），該桶也視為不限制。
@@ -672,8 +685,10 @@ embed.js → 發送 Embed
 | `LotteryDraws` / `LotteryTickets` / `LotterySubscriptions` / `LotteryWheels` | 樂透開獎期、票券、訂閱、包牌組 |
 | `UserInventory` / `ShopTransactions` / `ShopRoleCache` | 商店背包、購買紀錄、顏色身份組快取 |
 | `CoinTransfers` / `CoinDeposits` | 每日轉出額度、定期存款單 |
-| `MiningProfiles` / `MineLogs` | 每位玩家挖礦狀態（背包、鎬子、冷卻）、挖礦紀錄（90 天 TTL，供排行 / 鑽石計數） |
+| `MiningProfiles` / `MineLogs` | 每位玩家挖礦狀態（背包、鎬子、冷卻、體力、地下城 / 贈送計數）、挖礦紀錄（90 天 TTL，供排行 / 鑽石計數） |
 | `WorkProfiles` | 每位玩家的打工冷卻狀態 |
+| `DuelGames` | 地下城決鬥對局（pending / completed / declined / expired，7 天 TTL；逾時退款 cron） |
+| `AuctionListings` | 拍賣行掛牌（active / sold / expired，7 天 TTL；結算 cron 撥款交貨 / 退回礦石） |
 
 ---
 

@@ -4,6 +4,7 @@ const {
   SlashCommandBuilder,
   InteractionContextType,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
@@ -92,12 +93,12 @@ module.exports = {
       const bet = allIn ? balance : betInput;
       if (allIn && balance < minBet) {
         return interaction.editReply(
-          `💰 餘額不足以梭哈！目前 **${balance.toLocaleString()}** credits，至少需 ${minBet.toLocaleString()}。`
+          `${MONEY_EMOJI} 餘額不足以梭哈！目前 **${balance.toLocaleString()}** credits，至少需 ${minBet.toLocaleString()}。`
         );
       }
       if (balance < bet) {
         return interaction.editReply(
-          `💰 餘額不足！目前 **${balance.toLocaleString()}** credits，無法下注 ${bet.toLocaleString()}。`
+          `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}** credits，無法下注 ${bet.toLocaleString()}。`
         );
       }
 
