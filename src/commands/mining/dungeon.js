@@ -3,15 +3,44 @@ const {
   SlashCommandBuilder,
   EmbedBuilder,
   InteractionContextType,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } = require("discord.js");
 
 const { mining } = require("../../config");
 const dungeonService = require("../../features/mining/dungeonService");
 const { COIN_EMOJI } = require("../../constants/coin");
 
+// 「繼續探索」按鈕 customId 格式：dungeon_continue_<ownerId>
+// ownerId 為純數字 snowflake，放最後一個底線後，方便切分。
+// 重複探索流程由 events/interactionCreate/handleDungeonContinue.js 處理。
+const CONTINUE_PREFIX = "dungeon_continue_";
+
+// Discord 按鈕文字上限 80 字
+const MAX_LABEL_LEN = 80;
+
 function oreLabel(oreKey) {
   const def = mining?.ores?.[oreKey] || {};
   return `${def.emoji || "⛏️"} ${def.name || oreKey}`;
+}
+
+// 帶上玩家名稱，讓大量訊息中能快速分辨是誰的按鈕。
+function buildContinueRow(ownerId, name) {
+  let label = name ? `🔄 繼續探索・${name}` : "🔄 繼續探索";
+  if (label.length > MAX_LABEL_LEN) label = label.slice(0, MAX_LABEL_LEN);
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${CONTINUE_PREFIX}${ownerId}`)
+      .setLabel(label)
+      .setStyle(ButtonStyle.Primary)
+  );
+}
+
+function parseContinueId(customId) {
+  if (!customId || !customId.startsWith(CONTINUE_PREFIX)) return null;
+  const ownerId = customId.slice(CONTINUE_PREFIX.length);
+  return ownerId ? { ownerId } : null;
 }
 
 module.exports = {
@@ -49,6 +78,9 @@ module.exports = {
       const m = result.monster;
       const winPct = Math.round(result.winRate * 100);
       const staminaLine = `🔋 體力：${result.stamina}/${result.staminaMax}`;
+      const name =
+        interaction.member?.displayName || interaction.user.username;
+      const continueRow = buildContinueRow(interaction.user.id, name);
 
       if (!result.won) {
         const embed = new EmbedBuilder()
@@ -67,7 +99,10 @@ module.exports = {
             }
           )
           .setFooter({ text: "合成更好的鎬子能提升攻擊力，提高勝率！" });
-        return interaction.editReply({ embeds: [embed] });
+        return interaction.editReply({
+          embeds: [embed],
+          components: [continueRow],
+        });
       }
 
       // 勝利戰利品描述
@@ -112,10 +147,17 @@ module.exports = {
         });
       }
 
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({
+        embeds: [embed],
+        components: [continueRow],
+      });
     } catch (error) {
       console.log(`[ERROR] /地下城:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 地下城探索失敗，請呼叫舒舒！").catch(() => {});
     }
   },
+
+  CONTINUE_PREFIX,
+  buildContinueRow,
+  parseContinueId,
 };
