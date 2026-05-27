@@ -32,21 +32,28 @@ function formatRemaining(sec) {
   return r ? `${m} 分 ${r} 秒` : `${m} 分`;
 }
 
-// 沒設 openingWindow → 全天開放。設了就只在 weekday + [startHour, endHour) 開。
-// endHour 可填 24 表示「到當天結束」。
+// 沒設 openingWindow → 全天開放。設了就只在 weekdays（或單一 weekday）+ [startHour, endHour) 開。
+// weekdays 可填多天（例：週末 [6, 7]）；省略 startHour/endHour 表示該日全天。endHour 可填 24 表示「到當天結束」。
 function checkOpeningWindow(window, now = DateTime.now()) {
   if (!window) return { open: true };
   const tz = window.timezone || "Asia/Taipei";
   const localNow = now.setZone(tz);
-  const wd = window.weekday;
+  const allowedDays = Array.isArray(window.weekdays)
+    ? window.weekdays
+    : window.weekday != null
+      ? [window.weekday]
+      : null;
   const sh = window.startHour;
   const eh = window.endHour;
-  const inDay = wd == null || localNow.weekday === wd;
+  const inDay = allowedDays == null || allowedDays.includes(localNow.weekday);
   const hour = localNow.hour + localNow.minute / 60;
   const inHour =
     (sh == null || hour >= sh) && (eh == null || hour < eh);
   if (inDay && inHour) return { open: true };
-  const dayLabel = wd != null ? WEEKDAY_LABEL[wd] || `weekday=${wd}` : "每天";
+  const dayLabel =
+    allowedDays != null
+      ? allowedDays.map((d) => WEEKDAY_LABEL[d] || `weekday=${d}`).join("、")
+      : "每天";
   const hourLabel =
     sh != null && eh != null
       ? `${String(sh).padStart(2, "0")}:00–${String(eh).padStart(2, "0")}:00`
