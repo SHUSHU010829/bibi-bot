@@ -2,7 +2,6 @@ require("colors");
 const {
   SlashCommandBuilder,
   EmbedBuilder,
-  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -24,9 +23,8 @@ function pickaxeLabel(key) {
 }
 
 module.exports = {
-  ephemeral: true,
   data: new SlashCommandBuilder()
-    .setName("craft")
+    .setName("合成")
     .setDescription("用礦石合成更好的鎬子 🔨")
     .setContexts(InteractionContextType.Guild)
     .addStringOption((o) =>
@@ -44,7 +42,7 @@ module.exports = {
     ),
 
   run: async (client, interaction) => {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply();
 
     try {
       const recipeId = interaction.options.getString("裝備");
@@ -104,11 +102,11 @@ module.exports = {
             inline: true,
           }
         )
-        .setFooter({ text: "用 /equipment 查看裝備，/mine 開挖！" });
+        .setFooter({ text: "用 /裝備 查看裝備，/挖礦 開挖！" });
 
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
-      console.log(`[ERROR] /craft:\n${error}\n${error.stack}`.red);
+      console.log(`[ERROR] /合成:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 合成失敗，請呼叫舒舒！").catch(() => {});
     }
   },

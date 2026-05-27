@@ -2,7 +2,6 @@ require("colors");
 const {
   SlashCommandBuilder,
   EmbedBuilder,
-  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -20,14 +19,13 @@ function oreLabel(mat) {
 }
 
 module.exports = {
-  ephemeral: true,
   data: new SlashCommandBuilder()
-    .setName("equipment")
+    .setName("裝備")
     .setDescription("查看目前裝備與可合成的鎬子 🔧")
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply();
 
     try {
       if (!mining?.enabled || !client.miningProfilesCollection) {
@@ -83,11 +81,11 @@ module.exports = {
         });
       }
 
-      embed.setFooter({ text: "用 /craft [裝備] 合成；材料來自 /mine 挖到的礦石" });
+      embed.setFooter({ text: "用 /合成 打造鎬子；材料來自 /挖礦 挖到的礦石" });
 
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
-      console.log(`[ERROR] /equipment:\n${error}\n${error.stack}`.red);
+      console.log(`[ERROR] /裝備:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 查看裝備失敗，請呼叫舒舒！").catch(() => {});
     }
   },

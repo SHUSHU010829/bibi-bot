@@ -2,7 +2,6 @@ require("colors");
 const {
   SlashCommandBuilder,
   EmbedBuilder,
-  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -20,9 +19,8 @@ function pickaxeLabel(key) {
 }
 
 module.exports = {
-  ephemeral: true,
   data: new SlashCommandBuilder()
-    .setName("mine")
+    .setName("挖礦")
     .setDescription("挖礦！每隔一段時間可挖一次，挖到的礦石可賣錢或合成裝備 ⛏️")
     .setContexts(InteractionContextType.Guild)
     .addBooleanOption((o) =>
@@ -33,7 +31,7 @@ module.exports = {
     ),
 
   run: async (client, interaction) => {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply();
 
     try {
       const useTicket = interaction.options.getBoolean("加速") || false;
@@ -57,7 +55,7 @@ module.exports = {
         }
         if (result.reason === "backpack_full") {
           return interaction.editReply(
-            `🎒 背包滿了（${result.used}/${result.cap}）！先用 \`/sell\` 賣掉一些礦石再來挖。`
+            `🎒 背包滿了（${result.used}/${result.cap}）！先用 \`/賣礦\` 賣掉一些礦石再來挖。`
           );
         }
         return interaction.editReply("🔧 挖礦失敗，請稍後再試。");
@@ -120,7 +118,7 @@ module.exports = {
 
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
-      console.log(`[ERROR] /mine:\n${error}\n${error.stack}`.red);
+      console.log(`[ERROR] /挖礦:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 挖礦失敗，請呼叫舒舒！").catch(() => {});
     }
   },
@@ -156,6 +154,6 @@ async function dmPickaxeBroke(interaction, pickaxeBefore) {
   const def = mining?.pickaxes?.[pickaxeBefore] || {};
   await interaction.user.send(
     `⛏️ 你的 **${def.emoji || ""} ${def.name || pickaxeBefore}** 耐久已耗盡，自動退回 **木鎬**。\n` +
-      `想繼續享受加成，到 \`/craft\` 再合成一把吧！`
+      `想繼續享受加成，到 \`/合成\` 再合成一把吧！`
   );
 }

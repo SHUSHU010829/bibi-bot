@@ -2,7 +2,6 @@ require("colors");
 const {
   SlashCommandBuilder,
   EmbedBuilder,
-  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -10,14 +9,13 @@ const { work } = require("../../config");
 const workService = require("../../features/work/workService");
 
 module.exports = {
-  ephemeral: true,
   data: new SlashCommandBuilder()
-    .setName("work")
+    .setName("打工")
     .setDescription("打工賺取穩定收入 💼（有冷卻時間，每日次數有上限）")
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply();
 
     try {
       const result = await workService.doWork(client, {
@@ -68,11 +66,11 @@ module.exports = {
             inline: true,
           }
         )
-        .setFooter({ text: "想要更高報酬？試試 /mine 挖礦吧！" });
+        .setFooter({ text: "想要更高報酬？試試 /挖礦 吧！" });
 
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
-      console.log(`[ERROR] /work:\n${error}\n${error.stack}`.red);
+      console.log(`[ERROR] /打工:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 打工失敗，請呼叫舒舒！").catch(() => {});
     }
   },

@@ -2,7 +2,6 @@ require("colors");
 const {
   SlashCommandBuilder,
   EmbedBuilder,
-  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -14,14 +13,13 @@ const {
 } = require("../../features/mining/miningProfile");
 
 module.exports = {
-  ephemeral: true,
   data: new SlashCommandBuilder()
-    .setName("backpack")
+    .setName("礦袋")
     .setDescription("查看你的礦石背包與挖礦狀態 🎒")
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply();
 
     try {
       if (!mining?.enabled || !client.miningProfilesCollection) {
@@ -89,11 +87,11 @@ module.exports = {
             inline: false,
           }
         )
-        .setFooter({ text: "用 /sell 賣礦換金幣，或 /craft 合成更好的鎬子" });
+        .setFooter({ text: "用 /賣礦 換金幣，或 /合成 打造更好的鎬子" });
 
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
-      console.log(`[ERROR] /backpack:\n${error}\n${error.stack}`.red);
+      console.log(`[ERROR] /礦袋:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 查看背包失敗，請呼叫舒舒！").catch(() => {});
     }
   },

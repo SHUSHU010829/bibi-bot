@@ -2,7 +2,6 @@ require("colors");
 const {
   SlashCommandBuilder,
   EmbedBuilder,
-  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -19,9 +18,8 @@ function oreChoices() {
 }
 
 module.exports = {
-  ephemeral: true,
   data: new SlashCommandBuilder()
-    .setName("sell")
+    .setName("賣礦")
     .setDescription("把背包裡的礦石賣給系統換金幣 🪙（不指定則賣全部）")
     .setContexts(InteractionContextType.Guild)
     .addStringOption((o) =>
@@ -40,7 +38,7 @@ module.exports = {
     ),
 
   run: async (client, interaction) => {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply();
 
     try {
       if (!mining?.enabled || !client.miningProfilesCollection) {
@@ -81,7 +79,7 @@ module.exports = {
       }
 
       if (toSell.length === 0) {
-        return interaction.editReply("🎒 你的背包是空的，先去 `/mine` 挖礦吧！");
+        return interaction.editReply("🎒 你的背包是空的，先去 `/挖礦` 吧！");
       }
 
       const total = toSell.reduce((s, x) => s + x.value, 0);
@@ -124,7 +122,7 @@ module.exports = {
 
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
-      console.log(`[ERROR] /sell:\n${error}\n${error.stack}`.red);
+      console.log(`[ERROR] /賣礦:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 賣礦失敗，請呼叫舒舒！").catch(() => {});
     }
   },
