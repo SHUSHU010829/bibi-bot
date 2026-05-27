@@ -6,7 +6,7 @@
 >
 > 各階段皆為獨立可上線的完整功能，可依進度逐步推出。
 >
-> **Phase 6（成長 + 稱號）與 Phase 7（Twitch 訂閱者權益）已開發完成。** Phase 7 的挖礦 luck/CD、打工 CD、Tier3 每月免費稱號已接好；表中其餘跨系統權益（地下城體力上限、定存單上限、拍賣手續費、樂透張數、限定卡面/顏色）目前只進設定檔 `twitch_perks.json`，尚未接到各自子系統，列為後續工作。**剩餘待開發：Phase 8（抖內發放端）。**
+> **Phase 6（成長 + 稱號）與 Phase 7（Twitch 訂閱者權益）已開發完成。** Phase 7 已接好：挖礦 luck/CD、打工 CD、Tier3 每月免費稱號、地下城體力上限、定存單上限、拍賣手續費、樂透每期張數上限。**僅剩兩項跨系統權益保留待做**（已進設定檔 `twitch_perks.json`，尚未接子系統）：**訂閱限定卡面**（需在卡面渲染器實作 `theme_subscriber_t2/t3` 畫法並發到訂閱者背包）與**永久限定名字顏色**（需先建好顏色身分組、填 `exclusiveColorRoleId`，並用「給過不收回」邏輯授予 Tier3）。**剩餘待開發：Phase 8（抖內發放端）。**
 >
 > 最後更新：2026-05-27（Phase 6、7 開發完成）
 
@@ -471,11 +471,15 @@ website 對共用 MongoDB 只持有**唯讀**帳號；所有寫入一律經由 b
 | Phase | 內容 | 預估 | 前置 | 狀態 |
 |---|---|---|---|---|
 | 6 | 成長 + 稱號 | 3–4 天 | 1（已完成） | ✅ 已完成 |
-| 7 | Twitch 訂閱擴充 | 2–3 天 | 1（已完成） | ✅ 已完成（核心；部分跨系統權益待接） |
+| 7 | Twitch 訂閱擴充 | 2–3 天 | 1（已完成） | ✅ 已完成（卡面 / 顏色身分組保留） |
 | 8 | 抖內發放端 | 2–3 天 | 1（已完成）+ website 端 | ⏳ 待開發 |
 
 > Phase 8 的付款 / 前端在 bibi-website，需另計入該 repo 工時與商家帳號申請（3–7 工作天）。
 >
-> **Phase 7 後續（設定檔已就緒，待接子系統）**：地下城體力上限（`dungeonService.staminaMax` 改吃 member tier）、定存單上限（`coinSystem.deposit.maxActivePerUser`）、拍賣手續費（`auction.feeRate` 改吃 tier）、樂透每期張數上限、訂閱限定卡面 / 永久顏色身分組。
+> **Phase 7 已接子系統**：地下城體力上限（`dungeonService.staminaMax(member)`）、定存單上限（`deposit.js` `openDeposit`）、拍賣手續費（`auctionService.settleListing` 依賣家 tier）、樂透每期張數上限（`lotterySubscribe.js`）。
+>
+> **Phase 7 保留待做（需額外資產，非單純接線）**：
+> 1. **訂閱限定卡面** `exclusiveThemeId`（T2 `theme_subscriber_t2`、T3 `theme_subscriber_t3`）— 需在 `shop.json themes` 新增主題定義、在錢包卡渲染器（`src/features/level/handlers/profile.js`、`src/commands/economy/wallet.js` 的 render 路徑）實作對應畫法，並自動把主題發到訂閱者背包供裝備、退訂後處理。
+> 2. **永久限定名字顏色** `exclusiveColorRoleId`（T3）— 需先在伺服器建立顏色身分組、把 ID 填入 `twitch_perks.json`，並以「偵測到 T3 即授予、之後不隨退訂移除」的邏輯發放（不可放進會隨訂閱增刪的同步流程）。
 
 _Last updated: 2026-05-27（抖內付款流程改由 bibi-website 執行，bot 僅保留發放端 API）_

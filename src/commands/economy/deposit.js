@@ -9,6 +9,7 @@ const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { coinSystem } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const twitchPerks = require("../../features/mining/twitchPerks");
 
 function getDepositCfg() {
   return coinSystem?.deposit || {};
@@ -127,7 +128,8 @@ async function openDeposit(client, interaction, { userId, guildId, username }) {
     return interaction.editReply("❌ 無此存款期間。");
   }
 
-  const maxActive = cfg.maxActivePerUser ?? 5;
+  const slotBonus = twitchPerks.resolvePerks(interaction.member)?.depositSlotBonus || 0;
+  const maxActive = (cfg.maxActivePerUser ?? 5) + slotBonus;
   const activeCount = await client.coinDepositsCollection.countDocuments({
     userId,
     guildId,

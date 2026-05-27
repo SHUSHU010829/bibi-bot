@@ -14,6 +14,7 @@ const {
   validateNumbers,
   pickRandomNumbers,
 } = require("../../features/casino/lottery/numbers");
+const twitchPerks = require("../../features/mining/twitchPerks");
 
 function getSubConfig() {
   return casino?.lottery?.subscription || {};
@@ -91,7 +92,9 @@ module.exports = {
       const numbersInput = interaction.options.getString("號碼");
 
       const maxDraws = subCfg.maxDrawsPerSubscription || 12;
-      const maxTickets = subCfg.maxTicketsPerDraw || 10;
+      const ticketBonus =
+        twitchPerks.resolvePerks(interaction.member)?.lotteryTicketBonus || 0;
+      const maxTickets = (subCfg.maxTicketsPerDraw || 10) + ticketBonus;
       if (totalDraws > maxDraws) {
         return interaction.editReply(`❌ 期數最多 ${maxDraws}`);
       }
