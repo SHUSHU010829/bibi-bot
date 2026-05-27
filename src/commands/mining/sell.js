@@ -110,7 +110,7 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setColor(0x2ecc71)
-        .setTitle("🪙 賣礦成功")
+        .setTitle(`${COIN_EMOJI} 賣礦成功`)
         .setDescription(lines.join("\n"))
         .addFields(
           { name: "總收入", value: `+${total.toLocaleString()} ${COIN_EMOJI}`, inline: true },

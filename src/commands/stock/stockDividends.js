@@ -6,6 +6,7 @@ const {
 } = require("discord.js");
 
 const { stockSystem } = require("../../config");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 const PERIOD_MS = {
   "1m": 30 * 24 * 60 * 60 * 1000,
@@ -98,7 +99,7 @@ module.exports = {
 
       const periodLabel = period === "3m" ? "近 90 天" : "近 30 天";
       const embed = new EmbedBuilder()
-        .setTitle(`💰 ${interaction.member?.displayName || interaction.user.username} 的配息紀錄`)
+        .setTitle(`${MONEY_EMOJI} ${interaction.member?.displayName || interaction.user.username} 的配息紀錄`)
         .setColor(0x2ecc71)
         .setDescription(summaryLines.join("\n"))
         .addFields(

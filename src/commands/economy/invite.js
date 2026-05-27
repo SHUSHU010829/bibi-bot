@@ -6,6 +6,7 @@ const {
   InteractionContextType,
 } = require("discord.js");
 
+const { MONEY_EMOJI } = require("../../constants/coin");
 const { inviteSystem } = require("../../config");
 const {
   computeReward,
@@ -80,7 +81,7 @@ module.exports = {
           { name: "💨 已退坑", value: `${left} 人`, inline: true },
           { name: "↩️ 已扣回", value: `${clawedBack} 人`, inline: true },
           {
-            name: "💰 累積獲得",
+            name: `${MONEY_EMOJI} 累積獲得`,
             value: `${totalReward.toLocaleString()} 金幣`,
             inline: true,
           },
