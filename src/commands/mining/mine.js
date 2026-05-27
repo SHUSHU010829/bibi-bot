@@ -24,25 +24,17 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("挖礦")
     .setDescription("挖礦！每隔一段時間可挖一次，挖到的礦石可賣錢或合成裝備 ⛏️")
-    .setContexts(InteractionContextType.Guild)
-    .addBooleanOption((o) =>
-      o
-        .setName("加速")
-        .setDescription("使用一張 CD 縮短券，縮短本次挖礦後的冷卻時間")
-        .setRequired(false)
-    ),
+    .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {
     await interaction.deferReply();
 
     try {
-      const useTicket = interaction.options.getBoolean("加速") || false;
       const result = await mineService.mine(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
         member: interaction.member,
         username: interaction.user.username,
-        useTicket,
       });
 
       if (!result.ok) {
@@ -98,7 +90,6 @@ module.exports = {
 
       const buffNotes = [];
       if (result.buff.consume.usePotion) buffNotes.push("🍀 幸運藥水 +luck");
-      if (result.buff.consume.useTicket) buffNotes.push("🎫 已用 CD 縮短券");
       if (buffNotes.length) {
         embed.addFields({ name: "本次加成", value: buffNotes.join(" ・ ") });
       }

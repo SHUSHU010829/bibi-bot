@@ -5,7 +5,7 @@ const dropTable = require("./dropTable");
 const buffResolver = require("./buffResolver");
 
 // 執行一次挖礦。回傳結果物件交由指令層呈現（含彩虹石公告與耐久 DM 所需資料）。
-async function mine(client, { userId, guildId, member, username, useTicket = false }) {
+async function mine(client, { userId, guildId, member, username }) {
   if (!mining?.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
@@ -27,7 +27,7 @@ async function mine(client, { userId, guildId, member, username, useTicket = fal
     return { ok: false, reason: "backpack_full", used, cap };
   }
 
-  const buff = buffResolver.resolve(profile, member, { useTicket });
+  const buff = buffResolver.resolve(profile, member);
   const ore = dropTable.roll(buff.luckBonus);
   let qty = dropTable.randQty(ore, buff.qtyBonus);
 
@@ -43,7 +43,6 @@ async function mine(client, { userId, guildId, member, username, useTicket = fal
     mine_count_total: 1,
   };
   if (buff.consume.usePotion) inc.luck_potion_uses = -1;
-  if (buff.consume.useTicket) inc.cd_ticket_count = -1;
 
   const set = { mine_cooldown_at: newCooldownAt, updatedAt: new Date() };
 
@@ -95,4 +94,52 @@ async function mine(client, { userId, guildId, member, username, useTicket = fal
   };
 }
 
-module.exports = { mine };
+// 冷卻中主動使用一張 CD 縮短券：直接縮短目前的挖礦冷卻。
+// 縮短量為 mining.cdTicketReductionMs（預設 30 分），不足則直接歸零（立即可挖）。
+// 用條件式 updateOne 保證原子性，避免並發點按重複扣券。
+async function useCdTicket(client, { userId, guildId }) {
+  if (!mining?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const now = Date.now();
+
+  if ((profile.cd_ticket_count || 0) <= 0) {
+    return { ok: false, reason: "no_ticket" };
+  }
+  if ((profile.mine_cooldown_at || 0) <= now) {
+    return { ok: false, reason: "not_in_cooldown" };
+  }
+
+  const reductionMs = mining?.cdTicketReductionMs || 0;
+  const newCooldownAt = Math.max(now, profile.mine_cooldown_at - reductionMs);
+  const clearedToReady = newCooldownAt <= now;
+
+  const res = await client.miningProfilesCollection.updateOne(
+    {
+      userId,
+      guildId,
+      cd_ticket_count: { $gte: 1 },
+      mine_cooldown_at: { $gt: now },
+    },
+    {
+      $inc: { cd_ticket_count: -1 },
+      $set: { mine_cooldown_at: newCooldownAt, updatedAt: new Date() },
+    }
+  );
+
+  // 並發情況下沒改到任何文件：可能券剛被用掉或冷卻已結束，請重試
+  if (res.modifiedCount === 0) {
+    return { ok: false, reason: "retry" };
+  }
+
+  return {
+    ok: true,
+    clearedToReady,
+    newCooldownAt,
+    ticketsLeft: (profile.cd_ticket_count || 0) - 1,
+  };
+}
+
+module.exports = { mine, useCdTicket };
