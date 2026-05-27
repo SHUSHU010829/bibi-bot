@@ -455,26 +455,45 @@ Tier 3 每月免費稱號 Cron：`src/events/ready/twitchMonthlyTitle.js`（每�
 
 ### 職責邊界
 
-bibi-bot **只**做：收到 website 的發放呼叫 → 依方案加身分組、`grantCoins`、發消耗品、DM 收據、頻道公告、寫 `donation_records`（冪等）。
-bibi-bot **不**做：OAuth、建立 session、產 `MerchantTradeNo`、接金流 webhook、驗章解密。
+bibi-bot **只**做：建立 / 完成 session、收到發放呼叫 → 依方案加身分組、`grantCoins`、發消耗品、DM 收據、頻道公告、寫 `donation_records`（冪等）。**所有 DB 寫入都在 bot**。
+bibi-bot **不**做：OAuth、接金流 webhook、驗章解密（這些在 website；website 對 DB 只有唯讀權）。
 
-### 8.1 內部 API：`POST /api/donation/grant`
+> **安全模型（安全強化版）**：website 對共用 MongoDB 只持有**唯讀**帳號，**所有寫入一律經由 bot 的兩支 API**；webhook 所需的金流 HashKey / HashIV 仍在 website。
 
-於 `src/httpServer/index.js` 註冊，handler 仿 `flushChatScore.js`：
+### 8.1 內部 API（兩支，皆於 `src/httpServer/index.js` 註冊，Bearer 驗證仿 `flushChatScore.js`）
+
+**(1) `POST /api/donation/session` — 建立 pending session（付款前由 website 呼叫）**
+
+```js
+// src/httpServer/donationSession.js
+module.exports = (client) => async (req, res) => {
+  // 1. Bearer 驗證：=== process.env.DONATION_GRANT_SECRET，否則 401
+  // 2. body：{ userId, guildId, amountNtd, platform }
+  // 3. sessionId = uuid(); merchantTradeNo = 'DON' + sessionId.replace(/-/g,'').slice(0,17)
+  // 4. donation_sessions.insertOne({ session_id, merchant_trade_no, user_id, guild_id,
+  //      amount_ntd, platform, status:'pending', created_at: Date.now() })
+  // 5. return res.json({ ok:true, sessionId, merchantTradeNo })
+}
+```
+
+**(2) `POST /api/donation/grant` — 發放（webhook 驗證成功後由 website 呼叫）**
 
 ```js
 // src/httpServer/donationGrant.js
 module.exports = (client) => async (req, res) => {
-  // 1. Bearer 驗證：req.authorization === process.env.DONATION_GRANT_SECRET，否則 401
-  // 2. 解析 body：{ userId, guildId, amountNtd, tierId, platform, tradeNo, merchantTradeNo }
-  // 3. 冪等：client.donationRecordsCollection.findOne({ trade_no: tradeNo })
-  //    若存在 → return res.json({ ok:true, alreadyGranted:true, perks:exists.perks })
-  // 4. const perks = await grantDonationPerks(client, { userId, guildId, amountNtd, tierId, platform })
-  // 5. 同一筆動作寫兩處（金錢相關寫入由 bot 單一權威來源負責，避免與 website 競寫）：
+  // 1. Bearer 驗證，否則 401
+  // 2. body：{ merchantTradeNo, tradeNo, amountNtd, platform }
+  //    （userId / guildId 由 bot 從 session 還原，不由 webhook 帶入 → 防偽造身分）
+  // 3. 冪等：donation_records.findOne({ trade_no: tradeNo })
+  //    若存在 → return { ok:true, matched:true, alreadyGranted:true, perks }
+  // 4. 找 session：donation_sessions.findOne({ merchant_trade_no, status:'pending' })
+  //    找不到 → bot 自行寫 unmatched_donations → return { ok:true, matched:false }
+  // 5. perks = await grantDonationPerks(client, { userId: session.user_id,
+  //      guildId: session.guild_id, amountNtd, platform })
+  // 6. 同一筆動作（MongoDB transaction）：
   //    a. donation_records.insertOne（trade_no unique）
   //    b. donation_sessions.updateOne({ merchant_trade_no }, { $set:{ status:'completed' } })
-  //    （MongoDB 可用 session/transaction 包起來，確保兩寫一致）
-  // 6. return res.json({ ok:true, alreadyGranted:false, perks })
+  // 7. return { ok:true, matched:true, alreadyGranted:false, perks }
   // 失敗：400 參數錯、503 client 未 ready / db 未掛
 }
 ```
@@ -514,7 +533,7 @@ module.exports = (client) => async (req, res) => {
 { user_id, guild_id, amount_ntd, tier_id, platform, trade_no /* unique index，防重複發放 */, granted_at, perks /* 快照 */ }
 ```
 
-> `donation_sessions` 由 **website 建立**（pending），其 `status` 在發放完成時由 **bot 的 grant API 翻成 `completed`**（與 `donation_records` 同一筆動作寫入，見 8.1）。`unmatched_donations` 由 website 寫入。三者皆在同一個共用 MongoDB；完整 schema 見 [API 介接契約](#api-介接契約)。
+> **三個 collection 都由 bot 寫入**（安全強化版）：`donation_sessions` 由 `session` API 建立 pending、`grant` API 翻 `completed`；`donation_records` 由 `grant` API 寫；`unmatched_donations` 由 `grant` API 在找不到 session 時寫。website 對這些只有**唯讀**權（輪詢狀態 / 顯示紀錄）。完整 schema 見 [API 介接契約](#api-介接契約)。
 
 ### 8.5 Discord 指令
 
@@ -522,7 +541,7 @@ module.exports = (client) => async (req, res) => {
 |---|---|
 | `/贊助` | 回傳 `donate` 網址（bibi-website），引導前往 |
 | `/贊助紀錄` | 讀 `donation_records` 顯示個人歷史與目前 buff |
-| `/donation-admin grant @玩家 金額 平台` 🔒 | 管理員手動補發（對應 website 寫入的 `unmatched_donations`） |
+| `/donation-admin grant @玩家 金額 平台` 🔒 | 管理員手動補發（對應 grant API 找不到 session 時寫入的 `unmatched_donations`） |
 
 > 移除原短碼式 `/綁定贊助`，改由 website 的 Discord OAuth2 流程取代。
 
@@ -549,43 +568,59 @@ DONOR_TOP_ROLE_ID=
 
 > **本章節與 `bibi-website/docs/DONATION_SYSTEM_PLAN.md` 的「API 介接契約」逐字一致。任一邊修改都要同步。**
 
-### 跨服務呼叫：website → bot
+### 安全模型
 
-**`POST {BOT_API_BASE_URL}/api/donation/grant`**
+website 對共用 MongoDB 只持有**唯讀**帳號；所有寫入一律經由 bot 的兩支 API。webhook 所需的金流 HashKey / HashIV 仍在 website（驗章 / 解密 / 表單簽章用）。兩支 API 皆用 `Authorization: Bearer <DONATION_GRANT_SECRET>`。
 
-- Header：`Authorization: Bearer <DONATION_GRANT_SECRET>`、`Content-Type: application/json`
+### 跨服務呼叫 1：建立 session（website → bot）
+
+**`POST {BOT_API_BASE_URL}/api/donation/session`**
+
 - Request body：
 
 ```json
-{
-  "userId": "Discord 使用者 ID",
-  "guildId": "主 guild ID",
-  "amountNtd": 500,
-  "tierId": "large",
-  "platform": "ecpay",
-  "tradeNo": "平台交易編號（冪等鍵）",
-  "merchantTradeNo": "DON+sessionId 前段"
-}
+{ "userId": "Discord 使用者 ID", "guildId": "主 guild ID", "amountNtd": 500, "platform": "ecpay" }
 ```
 
 - Response 200：
 
 ```json
-{ "ok": true, "alreadyGranted": false,
+{ "ok": true, "sessionId": "uuid", "merchantTradeNo": "DON..." }
+```
+
+- 行為：bot 產生 `sessionId` 與 `merchantTradeNo`（`DON` + sessionId 去 `-` 前 17 碼），寫 `donation_sessions`（pending，TTL 30 分），回傳給 website 組金流表單。
+
+### 跨服務呼叫 2：發放（website → bot）
+
+**`POST {BOT_API_BASE_URL}/api/donation/grant`**
+
+- Request body（`userId` / `guildId` 由 bot 從 session 還原，不由 webhook 帶入 → 防偽造身分）：
+
+```json
+{ "merchantTradeNo": "DON...", "tradeNo": "平台交易編號（冪等鍵）", "amountNtd": 500, "platform": "ecpay" }
+```
+
+- Response 200：
+
+```json
+{ "ok": true, "matched": true, "alreadyGranted": false,
   "perks": { "coins": 6000, "roleId": "...", "items": {"cd_ticket":0}, "luck": 0.08, "theme": "theme_donor", "title": "custom_30d" } }
 ```
 
-- 行為：bot 以 `tradeNo` 查 `donation_records` 做**冪等**——已存在則回 `alreadyGranted:true` 且不重複發放；否則發放後**在同一筆動作**寫 `donation_records` 並把 `donation_sessions`（以 `merchantTradeNo` 對應）`status` 翻為 `completed`。
-- 錯誤碼：`401` Bearer 不符、`400` 參數錯誤、`503` bot 未就緒或 DB 未掛載（website 收到非 2xx 應重試或寫 `unmatched_donations`）。
+- 行為：
+  - 以 `tradeNo` 查 `donation_records` 做**冪等**——已存在則回 `alreadyGranted:true` 不重複發放。
+  - 以 `merchantTradeNo` 找 pending `donation_sessions` 取 `userId` / `guildId`；**找不到 → bot 自行寫 `unmatched_donations`，回 `{ ok:true, matched:false }`**（website 不需也不能寫 DB）。
+  - 找到 → 依 `amountNtd` 對 `donation_tiers.json` 判定方案發放，**在同一筆動作**寫 `donation_records` 並把 `donation_sessions.status` 翻為 `completed`。
+- 錯誤碼：`401` Bearer 不符、`400` 參數錯誤、`503` bot 未就緒或 DB 未掛載（website 收到非 2xx 應記錄並重試）。
 
 ### 共用 MongoDB collection 擁有權
 
 | collection | 寫入方 | 讀取方 | 備註 |
 |---|---|---|---|
-| `donation_sessions` | website（建立 pending）／ bot grant API（翻 completed） | website / bot 對帳 cron | `{ session_id, merchant_trade_no(unique), user_id, guild_id, amount_ntd, platform, status('pending'\|'completed'\|'expired'), created_at }`，pending TTL 30 分 |
-| `donation_records` | bot（grant API） | bot / website | `{ user_id, guild_id, amount_ntd, tier_id, platform, trade_no(unique), granted_at, perks }`，永久 |
-| `unmatched_donations` | website webhook | bot 管理指令 | `{ platform, data, ts, resolved }` |
-| `UserCoins` / `CoinTransactions` | bot | bot / website（讀） | 既有經濟資料 |
+| `donation_sessions` | bot（session API 建立 pending、grant API 翻 completed） | bot / website（唯讀輪詢） | `{ session_id, merchant_trade_no(unique), user_id, guild_id, amount_ntd, platform, status('pending'\|'completed'\|'expired'), created_at }`，pending TTL 30 分 |
+| `donation_records` | bot（grant API） | bot / website（唯讀） | `{ user_id, guild_id, amount_ntd, tier_id, platform, trade_no(unique), granted_at, perks }`，永久 |
+| `unmatched_donations` | bot（grant API 找不到 session 時） | bot 管理指令 | `{ platform, data, ts, resolved }` |
+| `UserCoins` / `CoinTransactions` | bot | bot / website（唯讀） | 既有經濟資料 |
 
 ### 抖內 buff 與 Twitch 訂閱疊加規則
 
@@ -649,6 +684,7 @@ DONOR_TOP_ROLE_ID=
 | `src/features/work/workCommand.js` | `/work` | 2 |
 | `src/features/auction/auctionService.js` | 拍賣行 | 5 |
 | `src/features/donation/grantDonationPerks.js` | 抖內回饋發放 | 8 |
+| `src/httpServer/donationSession.js` | `/api/donation/session` 建立 pending session | 8 |
 | `src/httpServer/donationGrant.js` | `/api/donation/grant`（仿 flushChatScore） | 8 |
 | `src/events/ready/miningWeeklyRank.js` | 週排行榜 cron | 6 |
 | `src/events/ready/twitchMonthlyTitle.js` | Tier3 每月免費稱號 cron | 7 |
