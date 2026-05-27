@@ -1,6 +1,6 @@
 // CD 縮短券「🎫 使用」按鈕處理器。
 //
-// 按鈕 customId = mining_use_cd_ticket_<ownerId>（見 commands/mining/backpack.js）。
+// 按鈕 customId = mining_use_cd_ticket_<ownerId>（見 features/shop/backpackView.js）。
 // 確認是本人後，消耗一張券直接縮短目前的挖礦冷卻，並就地刷新 /背包 訊息。
 
 const { MessageFlags } = require("discord.js");
@@ -8,7 +8,10 @@ const { MessageFlags } = require("discord.js");
 const { consume } = require("../../utils/rateLimiter");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
-const backpackCmd = require("../../commands/mining/backpack");
+const {
+  buildBackpackView,
+  parseUseTicketId,
+} = require("../../features/shop/backpackView");
 const mineService = require("../../features/mining/mineService");
 
 async function replyEphemeral(interaction, content) {
@@ -26,7 +29,7 @@ async function replyEphemeral(interaction, content) {
 module.exports = async (client, interaction) => {
   try {
     if (!interaction.isButton()) return;
-    const parsed = backpackCmd.parseUseTicketId(interaction.customId);
+    const parsed = parseUseTicketId(interaction.customId);
     if (!parsed) return;
     const { ownerId } = parsed;
 
@@ -65,12 +68,12 @@ module.exports = async (client, interaction) => {
     }
 
     // 不論成敗都用最新狀態刷新背包卡片（修正可能已過期的冷卻顯示）
-    const payload = await backpackCmd.buildBackpackPayload(client, {
+    const view = await buildBackpackView(client, {
       userId: interaction.user.id,
       guildId: interaction.guildId,
       username: interaction.user.username,
     });
-    await interaction.editReply(payload);
+    await interaction.editReply(view);
 
     if (!result.ok) {
       const messages = {
