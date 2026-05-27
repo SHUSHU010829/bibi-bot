@@ -29,6 +29,8 @@ const REAL_INFLOW = [
   "wheeling",
   "manual",
   "stock_dividend",
+  "mining_sell",
+  "work",
 ];
 const REPAY_INFLOW = ["deposit_release", "payout", "stock_sell"];
 const OUTFLOW = ["bet", "deposit_lock", "transfer_out", "shop_buy", "wealth_tax", "stock_buy", "stock_fee"];

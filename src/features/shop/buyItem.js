@@ -2,6 +2,9 @@ require("colors");
 const grantCoins = require("../economy/grantCoins");
 const { getItem } = require("./catalog");
 const { addBuff } = require("./activeBuff");
+const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
+
+const MINING_ITEM_TYPES = ["mining_luck_potion", "mining_cd_ticket", "mining_backpack"];
 
 // 處理一筆購買：扣款 → 寫入 inventory → 對特殊 type 立即生效（buff/casino_token）
 async function buyItem(client, { userId, guildId, username, member, itemId }) {
@@ -10,6 +13,10 @@ async function buyItem(client, { userId, guildId, username, member, itemId }) {
 
   if (!client.userCoinsCollection || !client.userInventoryCollection) {
     return { ok: false, error: "商店系統尚未就緒" };
+  }
+
+  if (MINING_ITEM_TYPES.includes(item.type) && !client.miningProfilesCollection) {
+    return { ok: false, error: "挖礦系統尚未就緒" };
   }
 
   const balance = await client.userCoinsCollection
@@ -107,6 +114,25 @@ async function buyItem(client, { userId, guildId, username, member, itemId }) {
         },
       },
       { upsert: true, returnDocument: "after" },
+    );
+  } else if (MINING_ITEM_TYPES.includes(item.type)) {
+    // 挖礦道具：寫入 MiningProfiles，不進 UserInventory
+    await getMiningProfile(client, userId, guildId);
+    const incField =
+      item.type === "mining_luck_potion"
+        ? "luck_potion_uses"
+        : item.type === "mining_cd_ticket"
+          ? "cd_ticket_count"
+          : "backpack_bonus_slots";
+    const incAmount =
+      item.type === "mining_luck_potion"
+        ? item.payload?.uses || 0
+        : item.type === "mining_cd_ticket"
+          ? item.payload?.qty || 0
+          : item.payload?.slots || 0;
+    await client.miningProfilesCollection.updateOne(
+      { userId, guildId },
+      { $inc: { [incField]: incAmount }, $set: { updatedAt: now } },
     );
   } else {
     // role_color / wallet_theme / custom_title：個別建一筆

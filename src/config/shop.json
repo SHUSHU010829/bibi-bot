@@ -69,7 +69,11 @@
       { "id": "title_custom", "category": "自訂稱號", "type": "custom_title", "name": "自訂稱號（30 天）", "description": "在錢包卡與升等公告顯示自訂稱號 30 天", "price": 10000, "durationDays": 30, "payload": {} },
 
       { "id": "boost_xp_double_1d", "category": "加成藥水", "type": "xp_boost", "name": "XP 雙倍藥水（1 日）", "description": "24 小時內主動互動獲得的 XP ×2（高額消耗）（發言／語音／表情／簽到／Twitch 聊天）；伺服器加成一次性獎勵與管理員發放不適用", "price": 12000, "payload": { "multiplier": 2.0, "durationMinutes": 1440 } },
-      { "id": "boost_coin_double_1h", "category": "加成藥水", "type": "coin_boost", "name": "金幣雙倍藥水（1 小時）", "description": "1 小時內主動互動獲得的金幣 ×2（發言／語音／表情／簽到／升等／里程碑／訂閱／加成／Twitch 聊天／轉盤）；賭場、商店、轉帳與固定任務福利不適用", "price": 2500, "payload": { "multiplier": 2.0, "durationMinutes": 60 } }
+      { "id": "boost_coin_double_1h", "category": "加成藥水", "type": "coin_boost", "name": "金幣雙倍藥水（1 小時）", "description": "1 小時內主動互動獲得的金幣 ×2（發言／語音／表情／簽到／升等／里程碑／訂閱／加成／Twitch 聊天／轉盤）；賭場、商店、轉帳與固定任務福利不適用", "price": 2500, "payload": { "multiplier": 2.0, "durationMinutes": 60 } },
+
+      { "id": "mining_luck_potion", "category": "挖礦道具", "type": "mining_luck_potion", "name": "幸運藥水", "description": "挖礦 luck +8%，持續 3 次挖礦（自動生效）", "price": 300, "payload": { "uses": 3 } },
+      { "id": "mining_cd_ticket", "category": "挖礦道具", "type": "mining_cd_ticket", "name": "CD 縮短券", "description": "挖礦時用 /挖礦 加速:true 使用，本次冷卻 -30 分鐘", "price": 150, "payload": { "qty": 1 } },
+      { "id": "mining_backpack_expand", "category": "挖礦道具", "type": "mining_backpack", "name": "背包擴充", "description": "永久增加礦石背包容量 +5 格", "price": 2000, "payload": { "slots": 5 } }
     ]
   }
 }

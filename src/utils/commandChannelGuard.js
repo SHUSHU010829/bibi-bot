@@ -10,6 +10,7 @@ const COMMANDS_ROOT = path.join(__dirname, "..", "commands");
 const FOLDER_BUCKET = {
   casino: "casino",
   stock: "stock",
+  mining: "mining",
 };
 const DEFAULT_BUCKET = "general";
 

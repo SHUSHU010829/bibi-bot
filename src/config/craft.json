@@ -1,0 +1,27 @@
+{
+  "craft": {
+    "recipes": [
+      {
+        "id": "pickaxe_iron",
+        "name": "鐵鎬",
+        "emoji": "<:pickaxe_iron:1509061628698693713>",
+        "materials": { "iron": 15 },
+        "result": { "type": "pickaxe", "id": "iron" }
+      },
+      {
+        "id": "pickaxe_gold",
+        "name": "黃金鎬",
+        "emoji": "<:pickaxe_gold:1509066702489649296>",
+        "materials": { "gold": 5, "iron": 20 },
+        "result": { "type": "pickaxe", "id": "gold" }
+      },
+      {
+        "id": "pickaxe_diamond",
+        "name": "鑽石鎬",
+        "emoji": "<:pickaxe_diamond:1509061660160295062>",
+        "materials": { "diamond": 5, "gold": 10 },
+        "result": { "type": "pickaxe", "id": "diamond" }
+      }
+    ]
+  }
+}
