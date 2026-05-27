@@ -3,7 +3,7 @@ const { mining, craft } = require("../../config");
 const { getOrCreate } = require("./miningProfile");
 
 // 鎬子階級（用於判定升級 / 同級 / 降級）
-const PICKAXE_TIER = { wood: 0, iron: 1, crystal: 2 };
+const PICKAXE_TIER = { wood: 0, iron: 1, gold: 2, diamond: 3 };
 
 function getRecipe(recipeId) {
   return (craft?.recipes || []).find((r) => r.id === recipeId) || null;

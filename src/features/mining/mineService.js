@@ -69,11 +69,11 @@ async function mine(client, { userId, guildId, member, username, useTicket = fal
     ?.insertOne({ user_id: userId, guild_id: guildId, ore, qty, ts: new Date() })
     .catch((e) => console.log(`[ERROR] insert mine log: ${e}`.red));
 
-  // 彩虹石：計全服累積次數（含本次）供公告「第 N 位」
-  let rainbowGlobalCount = null;
-  if (ore === "rainbow") {
-    rainbowGlobalCount = await client.mineLogsCollection
-      ?.countDocuments({ guild_id: guildId, ore: "rainbow" })
+  // 鑽石（傳說）：計全服累積次數（含本次）供公告「第 N 位」
+  let diamondGlobalCount = null;
+  if (ore === "diamond") {
+    diamondGlobalCount = await client.mineLogsCollection
+      ?.countDocuments({ guild_id: guildId, ore: "diamond" })
       .catch(() => null);
   }
 
@@ -86,7 +86,7 @@ async function mine(client, { userId, guildId, member, username, useTicket = fal
     pickaxeBefore: profile.pickaxe,
     durabilityBroke,
     durabilityAfter,
-    rainbowGlobalCount,
+    diamondGlobalCount,
     mineCountTotal: (profile.mine_count_total || 0) + 1,
   };
 }

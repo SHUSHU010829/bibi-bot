@@ -12,7 +12,7 @@ function defaultProfile(userId, guildId) {
     backpack_bonus_slots: 0,
     mine_count_total: 0,
     craft_count_total: 0,
-    backpack: { stone: 0, coal: 0, iron: 0, crystal: 0, rainbow: 0 },
+    backpack: { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0 },
     createdAt: new Date(),
   };
 }
@@ -20,7 +20,7 @@ function defaultProfile(userId, guildId) {
 // 補齊舊文件可能缺少的欄位（例如先前只由商店購買 upsert 出來的 doc）。
 function normalize(doc) {
   if (!doc) return doc;
-  doc.backpack = { stone: 0, coal: 0, iron: 0, crystal: 0, rainbow: 0, ...(doc.backpack || {}) };
+  doc.backpack = { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0, ...(doc.backpack || {}) };
   doc.mine_cooldown_at ??= 0;
   doc.pickaxe ??= "wood";
   if (doc.pickaxe_durability === undefined) doc.pickaxe_durability = null;

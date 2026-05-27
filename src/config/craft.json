@@ -9,11 +9,18 @@
         "result": { "type": "pickaxe", "id": "iron" }
       },
       {
-        "id": "pickaxe_crystal",
+        "id": "pickaxe_gold",
+        "name": "黃金鎬",
+        "emoji": "<:ore_gold:1509064763550994432>",
+        "materials": { "gold": 5, "iron": 20 },
+        "result": { "type": "pickaxe", "id": "gold" }
+      },
+      {
+        "id": "pickaxe_diamond",
         "name": "鑽石鎬",
         "emoji": "<:pickaxe_diamond:1509061660160295062>",
-        "materials": { "crystal": 5, "iron": 20 },
-        "result": { "type": "pickaxe", "id": "crystal" }
+        "materials": { "diamond": 5, "gold": 10 },
+        "result": { "type": "pickaxe", "id": "diamond" }
       }
     ]
   }

@@ -67,15 +67,15 @@ module.exports = {
       const value = (oreDef?.price || 0) * result.qty;
       const readyEpoch = Math.floor(result.newCooldownAt / 1000);
 
-      // 彩虹石：特殊呈現 + 公告
-      if (result.ore === "rainbow") {
-        await sendRainbowAnnouncement(client, interaction, result);
+      // 鑽石（傳說）：特殊呈現 + 公告
+      if (result.ore === "diamond") {
+        await sendLegendaryAnnouncement(client, interaction, result);
       }
 
       const embed = new EmbedBuilder()
-        .setColor(result.ore === "rainbow" ? 0xff6ec7 : 0xf1c40f)
+        .setColor(result.ore === "diamond" ? 0xff6ec7 : 0xf1c40f)
         .setTitle(
-          result.ore === "rainbow"
+          result.ore === "diamond"
             ? `✨ 傳說！你挖到了${oreDef?.name || "傳說礦"}！`
             : "⛏️ 挖礦成功"
         )
@@ -126,13 +126,13 @@ module.exports = {
   },
 };
 
-async function sendRainbowAnnouncement(client, interaction, result) {
-  const nth = result.rainbowGlobalCount
-    ? `全服第 **${result.rainbowGlobalCount}** 位`
+async function sendLegendaryAnnouncement(client, interaction, result) {
+  const nth = result.diamondGlobalCount
+    ? `全服第 **${result.diamondGlobalCount}** 位`
     : "";
   const content =
-    `✨🌈 **${interaction.user}** 挖到了傳說中的 **${oreLabel("rainbow")}**！` +
-    (nth ? `（${nth}挖到彩虹石）` : "");
+    `✨💎 **${interaction.user}** 挖到了傳說中的 **${oreLabel("diamond")}**！` +
+    (nth ? `（${nth}挖到鑽石）` : "");
 
   const channelId = mining?.announceChannelId;
   try {
