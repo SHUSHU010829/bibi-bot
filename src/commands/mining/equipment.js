@@ -70,9 +70,11 @@ module.exports = {
           ([mat, need]) => (backpack[mat] || 0) >= need
         );
         const targetPdef = mining.pickaxes[recipe.result?.id] || {};
+        // 欄位名稱不渲染自訂 emoji，emoji 放進欄位內容
         embed.addFields({
-          name: `${recipe.emoji || ""} ${recipe.name}${craftable ? "（可合成）" : ""}`,
+          name: `${recipe.name}${craftable ? "（可合成）" : ""}`,
           value:
+            `${pickaxeLabel(recipe.result?.id)}\n` +
             matParts.join("\n") +
             `\n屬性：luck +${Math.round((targetPdef.luckBonus || 0) * 100)}% ・ ` +
             `CD -${Math.round((targetPdef.cdReductionMs || 0) / 60000)} 分 ・ ` +

@@ -74,7 +74,11 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setColor(result.ore === "rainbow" ? 0xff6ec7 : 0xf1c40f)
-        .setTitle(result.ore === "rainbow" ? "✨ 傳說！你挖到了彩虹石！" : "⛏️ 挖礦成功")
+        .setTitle(
+          result.ore === "rainbow"
+            ? `✨ 傳說！你挖到了${oreDef?.name || "傳說礦"}！`
+            : "⛏️ 挖礦成功"
+        )
         .setDescription(
           `你挖到了 **${oreLabel(result.ore)} ×${result.qty}**！\n` +
             `預估賣價：**${value.toLocaleString()}** 🪙`
@@ -100,8 +104,10 @@ module.exports = {
       }
 
       if (result.durabilityBroke) {
+        // footer 不會渲染自訂 emoji，這裡只放名稱
+        const brokeDef = mining?.pickaxes?.[result.pickaxeBefore] || {};
         embed.setFooter({
-          text: `你的 ${pickaxeLabel(result.pickaxeBefore)} 耐久耗盡，已退回木鎬。`,
+          text: `你的 ${brokeDef.name || result.pickaxeBefore} 耐久耗盡，已退回木鎬。`,
         });
         await dmPickaxeBroke(interaction, result.pickaxeBefore).catch(() => {});
       } else if (result.durabilityAfter !== null) {

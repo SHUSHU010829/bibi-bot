@@ -4,14 +4,14 @@
       {
         "id": "pickaxe_iron",
         "name": "鐵鎬",
-        "emoji": "🔨",
+        "emoji": "<:pickaxe_iron:1509061628698693713>",
         "materials": { "iron": 15 },
         "result": { "type": "pickaxe", "id": "iron" }
       },
       {
         "id": "pickaxe_crystal",
-        "name": "水晶鎬",
-        "emoji": "💎",
+        "name": "鑽石鎬",
+        "emoji": "<:pickaxe_diamond:1509061660160295062>",
         "materials": { "crystal": 5, "iron": 20 },
         "result": { "type": "pickaxe", "id": "crystal" }
       }
