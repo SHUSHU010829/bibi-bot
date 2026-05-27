@@ -20,19 +20,6 @@
     "luckPotionBonus": 0.08,
     "cdTicketReductionMs": 1800000,
     "announceChannelId": "",
-    "titles": {
-      "roleSyncEnabled": true,
-      "announceChannelId": "",
-      "order": ["novice_miner", "coal_collector", "iron_smith", "gem_hunter", "mine_king", "legend_miner"],
-      "defs": {
-        "novice_miner": { "name": "新手礦工", "emoji": "⛏️", "type": "default", "desc": "加入挖礦即擁有", "roleId": "" },
-        "coal_collector": { "name": "煤炭採集者", "emoji": "🪵", "type": "achievement", "desc": "累積挖礦 50 次且持有 ≥ 500 幣", "roleId": "" },
-        "iron_smith": { "name": "鐵鍛師", "emoji": "🔨", "type": "achievement", "desc": "累積合成 10 件且歷史鐵礦 ≥ 100 顆", "roleId": "" },
-        "gem_hunter": { "name": "寶石獵人", "emoji": "💎", "type": "achievement", "desc": "歷史黃金 ≥ 20 顆且歷史鑽石 ≥ 1 顆", "roleId": "" },
-        "mine_king": { "name": "礦坑之王", "emoji": "👑", "type": "weekly", "desc": "當週挖礦數量第一（每週更替）", "roleId": "" },
-        "legend_miner": { "name": "傳說礦工", "emoji": "✨", "type": "achievement", "desc": "累積挖礦 1000 次、歷史鑽石 ≥ 5 顆且週冠 ≥ 3 次", "roleId": "" }
-      }
-    },
     "weeklyRank": {
       "cronSchedule": "1 0 * * 1",
       "timezone": "Asia/Taipei"

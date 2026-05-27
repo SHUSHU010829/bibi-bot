@@ -11,7 +11,7 @@ const {
   backpackCapacity,
   backpackUsed,
 } = require("../../features/mining/miningProfile");
-const titleManager = require("../../features/mining/titleManager");
+const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 function pickaxeLabel(key) {
@@ -54,14 +54,21 @@ module.exports = {
         coins = doc?.totalCoins || 0;
       }
 
+      const levelDoc = await gameTitleService.getDoc(
+        client,
+        target.id,
+        interaction.guildId
+      );
+      const activeTitle = levelDoc?.title || "（依等級顯示）";
+      const unlockedCount = (levelDoc?.gameTitles || []).length;
+      const totalTitles = gameTitleService.order().length;
+
       const durabilityText =
         profile.pickaxe === "wood" || profile.pickaxe_durability == null
           ? "永久"
           : `${profile.pickaxe_durability} 次`;
       const cap = backpackCapacity(profile, mining);
       const used = backpackUsed(profile);
-      const unlocked = profile.unlocked_titles || [];
-      const totalTitles = Object.keys(mining?.titles?.defs || {}).length;
 
       const embed = new EmbedBuilder()
         .setColor(0xe67e22)
@@ -70,12 +77,12 @@ module.exports = {
         .addFields(
           {
             name: "展示稱號",
-            value: titleManager.titleLabel(profile.active_title || "novice_miner"),
+            value: activeTitle,
             inline: true,
           },
           {
             name: "已解鎖稱號",
-            value: `${unlocked.length}/${totalTitles}`,
+            value: `${unlockedCount}/${totalTitles}`,
             inline: true,
           },
           {

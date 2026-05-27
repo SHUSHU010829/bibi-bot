@@ -7,7 +7,7 @@ const {
 
 const { mining, craft } = require("../../config");
 const craftService = require("../../features/mining/craftService");
-const achievementChecker = require("../../features/mining/achievementChecker");
+const gameTitleService = require("../../features/gameTitles/gameTitleService");
 
 function recipeChoices() {
   return (craft?.recipes || []).map((r) => ({ name: r.name, value: r.id }));
@@ -107,12 +107,16 @@ module.exports = {
 
       await interaction.editReply({ embeds: [embed] });
 
-      achievementChecker
-        .checkAndGrant(client, {
-          userId: interaction.user.id,
-          guildId: interaction.guildId,
-          member: interaction.member,
-        })
+      gameTitleService
+        .check(
+          client,
+          {
+            userId: interaction.user.id,
+            guildId: interaction.guildId,
+            member: interaction.member,
+          },
+          ["mining"]
+        )
         .catch(() => {});
     } catch (error) {
       console.log(`[ERROR] /合成:\n${error}\n${error.stack}`.red);

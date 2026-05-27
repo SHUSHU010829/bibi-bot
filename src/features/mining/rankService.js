@@ -1,7 +1,7 @@
 const { DateTime } = require("luxon");
 const { mining } = require("../../config");
 
-const TZ = mining?.titles?.timezone || mining?.weeklyRank?.timezone || "Asia/Taipei";
+const TZ = mining?.weeklyRank?.timezone || "Asia/Taipei";
 
 // 本週 / 上週的起訖（luxon 的 week 以週一為首）。回傳 JS Date。
 function currentWeekWindow() {

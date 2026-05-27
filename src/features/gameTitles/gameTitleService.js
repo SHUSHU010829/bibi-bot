@@ -1,0 +1,391 @@
+require("colors");
+const { EmbedBuilder } = require("discord.js");
+const { gameTitles, mining, commandChannels } = require("../../config");
+
+// 遊戲區共用稱號系統。
+// - 解鎖清單存 UserLevels.gameTitles（與 badges 平行）。
+// - 展示中的稱號沿用 UserLevels.title（錢包卡 / 升等公告本來就讀這個欄位）。
+// - 成就條件全部可由既有資料推導，於各遊戲動作後呼叫 check() 重算。
+// - 週冠（mine_king）為 weekly 型，由 miningWeeklyRank cron 直接 grant / revoke，不進 check。
+
+function cfg() {
+  return gameTitles || {};
+}
+function defs() {
+  return cfg().defs || {};
+}
+function def(id) {
+  return defs()[id] || null;
+}
+function order() {
+  const o = cfg().order;
+  return Array.isArray(o) && o.length ? o : Object.keys(defs());
+}
+function label(id) {
+  const d = def(id);
+  if (!d) return id;
+  return `${d.emoji || ""} ${d.name || id}`.trim();
+}
+function categoryLabel(cat) {
+  return cfg().categoryLabels?.[cat] || cat;
+}
+function idsByCategory(cat) {
+  return order().filter((id) => def(id)?.category === cat);
+}
+
+async function getDoc(client, userId, guildId) {
+  if (!client.userLevelsCollection) return null;
+  return client.userLevelsCollection.findOne({ userId, guildId }).catch(() => null);
+}
+
+async function getUnlocked(client, userId, guildId) {
+  const doc = await getDoc(client, userId, guildId);
+  return new Set(doc?.gameTitles || []);
+}
+
+// 解鎖一個稱號（idempotent）。回傳 { newlyAdded }。
+async function grant(client, { userId, guildId, member, titleId, announce = true }) {
+  if (!def(titleId) || !client.userLevelsCollection) return { newlyAdded: false };
+  const res = await client.userLevelsCollection.updateOne(
+    { userId, guildId },
+    { $addToSet: { gameTitles: titleId }, $set: { updatedAt: new Date() } },
+    { upsert: true }
+  );
+  const newlyAdded = (res.modifiedCount || 0) > 0 || (res.upsertedCount || 0) > 0;
+  if (newlyAdded && announce) {
+    await announceUnlock(client, { member, userId, titleId }).catch(() => {});
+  }
+  return { newlyAdded };
+}
+
+// 設為展示中的稱號（寫進 UserLevels.title，與徽章 / 自訂稱號共用同一個展示槽）。
+async function setActive(client, { userId, guildId, titleId }) {
+  if (!client.userLevelsCollection) return { ok: false, reason: "disabled" };
+  if (titleId === "__clear__") {
+    await client.userLevelsCollection.updateOne(
+      { userId, guildId },
+      { $set: { title: null, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    return { ok: true, cleared: true };
+  }
+  if (!def(titleId)) return { ok: false, reason: "no_title" };
+  const unlocked = await getUnlocked(client, userId, guildId);
+  if (!unlocked.has(titleId)) return { ok: false, reason: "locked" };
+  await client.userLevelsCollection.updateOne(
+    { userId, guildId },
+    { $set: { title: label(titleId), updatedAt: new Date() } },
+    { upsert: true }
+  );
+  return { ok: true };
+}
+
+// 收回一個稱號（週冠更替用）。若正在展示則一併清掉展示。
+async function revoke(client, { userId, guildId, titleId }) {
+  if (!def(titleId) || !client.userLevelsCollection) return;
+  const doc = await getDoc(client, userId, guildId);
+  const set = { updatedAt: new Date() };
+  if (doc?.title === label(titleId)) set.title = null;
+  await client.userLevelsCollection.updateOne(
+    { userId, guildId },
+    { $pull: { gameTitles: titleId }, $set: set }
+  );
+}
+
+// ── 成就統計擷取（單次 check 內以 cache 共用，未解鎖才查）─────────────
+function makeCache(client, userId, guildId) {
+  const c = {};
+  return {
+    async mining() {
+      if (!c.mining)
+        c.mining =
+          (await client.miningProfilesCollection?.findOne({ userId, guildId }).catch(() => null)) ||
+          {};
+      return c.mining;
+    },
+    async coins() {
+      if (c.coins === undefined) {
+        const d = await client.userCoinsCollection?.findOne({ userId, guildId }).catch(() => null);
+        c.coins = d || {};
+      }
+      return c.coins;
+    },
+    count(coll, query) {
+      return client[coll]?.countDocuments(query).catch(() => 0) ?? Promise.resolve(0);
+    },
+    async exists(coll, query) {
+      const d = await client[coll]?.findOne(query).catch(() => null);
+      return !!d;
+    },
+  };
+}
+
+// titleId → 判定是否達標。req 門檻取自 titles.json。
+const RESOLVERS = {
+  coal_collector: async (cache, ctx, req) => {
+    const m = await cache.mining();
+    const coins = (await cache.coins()).totalCoins || 0;
+    return (m.mine_count_total || 0) >= req.mineCount && coins >= req.coins;
+  },
+  iron_smith: async (cache, ctx, req) => {
+    const m = await cache.mining();
+    return (m.craft_count_total || 0) >= req.craftCount && (m.lifetime_ore?.iron || 0) >= req.iron;
+  },
+  gem_hunter: async (cache, ctx, req) => {
+    const m = await cache.mining();
+    return (m.lifetime_ore?.gold || 0) >= req.gold && (m.lifetime_ore?.diamond || 0) >= req.diamond;
+  },
+  legend_miner: async (cache, ctx, req) => {
+    const m = await cache.mining();
+    return (
+      (m.mine_count_total || 0) >= req.mineCount &&
+      (m.lifetime_ore?.diamond || 0) >= req.diamond &&
+      (m.weekly_champion_count || 0) >= req.weeklyChamp
+    );
+  },
+  casino_regular: async (cache, ctx, req) =>
+    (await cache.count("coinTransactionsCollection", {
+      userId: ctx.userId,
+      guildId: ctx.guildId,
+      source: "bet",
+    })) >= req.betCount,
+  casino_bigwin: async (cache, ctx, req) =>
+    cache.exists("coinTransactionsCollection", {
+      userId: ctx.userId,
+      guildId: ctx.guildId,
+      source: "payout",
+      amount: { $gte: req.payout },
+    }),
+  casino_jackpot: async (cache, ctx) =>
+    cache.exists("coinTransactionsCollection", {
+      userId: ctx.userId,
+      guildId: ctx.guildId,
+      source: "payout",
+      "meta.matchType": "jackpot",
+    }),
+  stock_retail: async (cache, ctx, req) =>
+    (await cache.count("stockTransactionsCollection", {
+      userId: ctx.userId,
+      guildId: ctx.guildId,
+    })) >= req.txCount,
+  stock_god: async (cache, ctx, req) => {
+    const d = await cache.coins();
+    const income = (d.coinsFrom_stock_sell || 0) + (d.coinsFrom_stock_dividend || 0);
+    return income >= req.income;
+  },
+  lottery_fan: async (cache, ctx, req) =>
+    (await cache.count("lotteryTicketsCollection", {
+      userId: ctx.userId,
+      guildId: ctx.guildId,
+    })) >= req.ticketCount,
+  lottery_jackpot: async (cache, ctx) =>
+    cache.exists("lotteryTicketsCollection", {
+      userId: ctx.userId,
+      guildId: ctx.guildId,
+      matched: { $gte: 6 },
+    }),
+  auction_merchant: async (cache, ctx, req) =>
+    (await cache.count("auctionListingsCollection", {
+      seller_id: ctx.userId,
+      guild_id: ctx.guildId,
+      status: "sold",
+    })) >= req.soldCount,
+};
+
+// 檢查並解鎖達標稱號。categories 限制範圍（預設全部）。weekly 型不在此處理。
+async function check(client, { userId, guildId, member }, categories = null) {
+  if (!client.userLevelsCollection) return [];
+  try {
+    const unlocked = await getUnlocked(client, userId, guildId);
+    const pending = order().filter((id) => {
+      const d = def(id);
+      if (!d || d.weekly || !RESOLVERS[id]) return false;
+      if (unlocked.has(id)) return false;
+      if (categories && !categories.includes(d.category)) return false;
+      return true;
+    });
+    if (!pending.length) return [];
+
+    const cache = makeCache(client, userId, guildId);
+    const ctx = { userId, guildId };
+    const newly = [];
+    for (const id of pending) {
+      const ok = await RESOLVERS[id](cache, ctx, def(id).req || {}).catch(() => false);
+      if (ok) {
+        await grant(client, { userId, guildId, member, titleId: id, announce: true }).catch(() => {});
+        newly.push(id);
+      }
+    }
+    return newly;
+  } catch (e) {
+    console.log(`[GAMETITLE] check failed: ${e.message}`.yellow);
+    return [];
+  }
+}
+
+// 進度（給 /成就 用）：回傳每個稱號的 parts（current / target）與是否布林型。
+async function progress(client, { userId, guildId }) {
+  const cache = makeCache(client, userId, guildId);
+  const ctx = { userId, guildId };
+  const out = [];
+  for (const id of order()) {
+    const d = def(id);
+    if (!d) continue;
+    if (d.weekly) {
+      out.push({ id, weekly: true, parts: [] });
+      continue;
+    }
+    const req = d.req || {};
+    const parts = [];
+    const push = (lbl, cur, target) => parts.push({ label: lbl, cur, target });
+    switch (id) {
+      case "coal_collector": {
+        const m = await cache.mining();
+        push("累積挖礦", m.mine_count_total || 0, req.mineCount);
+        push("持有金幣", (await cache.coins()).totalCoins || 0, req.coins);
+        break;
+      }
+      case "iron_smith": {
+        const m = await cache.mining();
+        push("累積合成", m.craft_count_total || 0, req.craftCount);
+        push("歷史鐵礦", m.lifetime_ore?.iron || 0, req.iron);
+        break;
+      }
+      case "gem_hunter": {
+        const m = await cache.mining();
+        push("歷史黃金", m.lifetime_ore?.gold || 0, req.gold);
+        push("歷史鑽石", m.lifetime_ore?.diamond || 0, req.diamond);
+        break;
+      }
+      case "legend_miner": {
+        const m = await cache.mining();
+        push("累積挖礦", m.mine_count_total || 0, req.mineCount);
+        push("歷史鑽石", m.lifetime_ore?.diamond || 0, req.diamond);
+        push("週冠次數", m.weekly_champion_count || 0, req.weeklyChamp);
+        break;
+      }
+      case "casino_regular":
+        push(
+          "累積下注",
+          await cache.count("coinTransactionsCollection", { userId, guildId, source: "bet" }),
+          req.betCount
+        );
+        break;
+      case "casino_bigwin":
+        push(
+          "最高單局派彩 ≥ 門檻",
+          (await cache.exists("coinTransactionsCollection", {
+            userId,
+            guildId,
+            source: "payout",
+            amount: { $gte: req.payout },
+          }))
+            ? 1
+            : 0,
+          1
+        );
+        break;
+      case "casino_jackpot":
+        push(
+          "開出 Jackpot",
+          (await cache.exists("coinTransactionsCollection", {
+            userId,
+            guildId,
+            source: "payout",
+            "meta.matchType": "jackpot",
+          }))
+            ? 1
+            : 0,
+          1
+        );
+        break;
+      case "stock_retail":
+        push(
+          "交易筆數",
+          await cache.count("stockTransactionsCollection", { userId, guildId }),
+          req.txCount
+        );
+        break;
+      case "stock_god": {
+        const d2 = await cache.coins();
+        push("賣股+股利收入", (d2.coinsFrom_stock_sell || 0) + (d2.coinsFrom_stock_dividend || 0), req.income);
+        break;
+      }
+      case "lottery_fan":
+        push(
+          "購買張數",
+          await cache.count("lotteryTicketsCollection", { userId, guildId }),
+          req.ticketCount
+        );
+        break;
+      case "lottery_jackpot":
+        push(
+          "中過頭獎",
+          (await cache.exists("lotteryTicketsCollection", { userId, guildId, matched: { $gte: 6 } }))
+            ? 1
+            : 0,
+          1
+        );
+        break;
+      case "auction_merchant":
+        push(
+          "成交件數",
+          await cache.count("auctionListingsCollection", {
+            seller_id: userId,
+            guild_id: guildId,
+            status: "sold",
+          }),
+          req.soldCount
+        );
+        break;
+    }
+    out.push({ id, weekly: false, parts });
+  }
+  return out;
+}
+
+function announceChannelId() {
+  return (
+    cfg().announceChannelId ||
+    mining?.announceChannelId ||
+    commandChannels?.mining?.[0] ||
+    ""
+  );
+}
+
+async function announceUnlock(client, { member, userId, titleId }) {
+  const d = def(titleId);
+  if (!d) return;
+  const channelId = announceChannelId();
+  if (!channelId) return;
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel?.isTextBased?.()) return;
+  const mention = member?.user ? `${member.user}` : `<@${userId}>`;
+  const embed = new EmbedBuilder()
+    .setColor(0xf1c40f)
+    .setTitle("🏅 解鎖新稱號！")
+    .setDescription(
+      `${mention} 解鎖了【${categoryLabel(d.category)}】稱號 **${label(titleId)}**！\n` +
+        "用 `/稱號 設定` 把它掛上錢包卡展示吧。"
+    )
+    .setFooter({ text: d.desc || "" });
+  await channel.send({ embeds: [embed] }).catch(() => {});
+}
+
+module.exports = {
+  defs,
+  def,
+  order,
+  label,
+  categoryLabel,
+  idsByCategory,
+  getDoc,
+  getUnlocked,
+  grant,
+  setActive,
+  revoke,
+  check,
+  progress,
+  announceUnlock,
+  announceChannelId,
+};

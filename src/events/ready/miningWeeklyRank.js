@@ -5,8 +5,7 @@ const { EmbedBuilder } = require("discord.js");
 
 const { mining } = require("../../config");
 const rankService = require("../../features/mining/rankService");
-const titleManager = require("../../features/mining/titleManager");
-const achievementChecker = require("../../features/mining/achievementChecker");
+const gameTitleService = require("../../features/gameTitles/gameTitleService");
 
 const KING_TITLE = "mine_king";
 const MEDALS = ["🥇", "🥈", "🥉"];
@@ -15,7 +14,6 @@ let task = null;
 let consecutiveErrors = 0;
 const MAX_CONSECUTIVE_ERRORS = 3;
 
-// 取出上週有挖礦紀錄的所有 guild。
 async function guildsWithLogs(client, window) {
   if (!client.mineLogsCollection) return [];
   return client.mineLogsCollection
@@ -23,32 +21,24 @@ async function guildsWithLogs(client, window) {
     .catch(() => []);
 }
 
-async function fetchMember(client, guildId, userId) {
-  const guild =
-    client.guilds.cache.get(guildId) ||
-    (await client.guilds.fetch(guildId).catch(() => null));
-  if (!guild) return null;
-  return guild.members.fetch(userId).catch(() => null);
-}
-
-// 卸下上一任礦坑之王（贏家除外）。
+// 卸下上一任礦坑之王（贏家除外）。解鎖清單存在 UserLevels.gameTitles。
 async function dethronePrevious(client, guildId, winnerId) {
-  if (!client.miningProfilesCollection) return;
-  const prev = await client.miningProfilesCollection
-    .find({ guildId, unlocked_titles: KING_TITLE })
+  if (!client.userLevelsCollection) return;
+  const prev = await client.userLevelsCollection
+    .find({ guildId, gameTitles: KING_TITLE })
+    .project({ userId: 1 })
     .toArray()
     .catch(() => []);
   for (const p of prev) {
     if (p.userId === winnerId) continue;
-    const member = await fetchMember(client, guildId, p.userId);
-    await titleManager
-      .revokeTitle(client, { userId: p.userId, guildId, member, titleId: KING_TITLE })
+    await gameTitleService
+      .revoke(client, { userId: p.userId, guildId, titleId: KING_TITLE })
       .catch(() => {});
   }
 }
 
-async function announceKing(client, guildId, winnerId, ranking, championCount) {
-  const channelId = titleManager.announceChannelId();
+async function announceKing(client, winnerId, ranking, championCount) {
+  const channelId = gameTitleService.announceChannelId();
   if (!channelId) return;
   const channel = await client.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased?.()) return;
@@ -62,7 +52,7 @@ async function announceKing(client, guildId, winnerId, ranking, championCount) {
     .setColor(0xffd700)
     .setTitle("👑 上週礦坑之王出爐！")
     .setDescription(
-      `恭喜 <@${winnerId}> 拿下上週挖礦榜冠軍，獲得稱號 **${titleManager.titleLabel(KING_TITLE)}**！\n` +
+      `恭喜 <@${winnerId}> 拿下上週挖礦榜冠軍，獲得稱號 **${gameTitleService.label(KING_TITLE)}**！\n` +
         `這是他第 **${championCount}** 次稱王 👑`
     )
     .addFields({ name: "上週前三名", value: top || "—" })
@@ -78,15 +68,14 @@ async function processGuild(client, guildId) {
   if (!ranking.length) return;
 
   const winnerId = ranking[0].userId;
-  const winnerMember = await fetchMember(client, guildId, winnerId);
 
-  // 先頒給新王（idempotent），再卸下舊王
-  await titleManager
-    .grantTitle(client, { userId: winnerId, guildId, member: winnerMember, titleId: KING_TITLE })
+  // 先頒給新王（idempotent，自行做專屬公告所以關掉預設公告），再卸下舊王
+  await gameTitleService
+    .grant(client, { userId: winnerId, guildId, titleId: KING_TITLE, announce: false })
     .catch(() => {});
 
   const updated = await client.miningProfilesCollection
-    .findOneAndUpdate(
+    ?.findOneAndUpdate(
       { userId: winnerId, guildId },
       { $inc: { weekly_champion_count: 1 }, $set: { updatedAt: new Date() } },
       { upsert: true, returnDocument: "after" }
@@ -95,11 +84,11 @@ async function processGuild(client, guildId) {
   const championCount = (updated?.value || updated)?.weekly_champion_count || 1;
 
   await dethronePrevious(client, guildId, winnerId);
-  await announceKing(client, guildId, winnerId, ranking, championCount);
+  await announceKing(client, winnerId, ranking, championCount);
 
   // 週冠次數變動可能解鎖傳說礦工
-  await achievementChecker
-    .checkAndGrant(client, { userId: winnerId, guildId, member: winnerMember })
+  await gameTitleService
+    .check(client, { userId: winnerId, guildId }, ["mining"])
     .catch(() => {});
 
   console.log(`[MINING] 週冠結算 guild=${guildId} winner=${winnerId}（第 ${championCount} 次）`.cyan);

@@ -6,7 +6,7 @@
 >
 > 各階段皆為獨立可上線的完整功能，可依進度逐步推出。
 >
-> **Phase 6（成長 + 稱號）與 Phase 7（Twitch 訂閱者權益）已開發完成。** Phase 7 已接好：挖礦 luck/CD、打工 CD、Tier3 每月免費稱號、地下城體力上限、定存單上限、拍賣手續費、樂透每期張數上限。**僅剩兩項跨系統權益保留待做**（已進設定檔 `twitch_perks.json`，尚未接子系統）：**訂閱限定卡面**（需在卡面渲染器實作 `theme_subscriber_t2/t3` 畫法並發到訂閱者背包）與**永久限定名字顏色**（需先建好顏色身分組、填 `exclusiveColorRoleId`，並用「給過不收回」邏輯授予 Tier3）。**剩餘待開發：Phase 8（抖內發放端）。**
+> **Phase 6（成長 + 稱號）與 Phase 7（Twitch 訂閱者權益）已開發完成。** 稱號系統後續再擴大為**整個遊戲區共用**（挖礦・賭場・股市・樂透・拍賣皆可解鎖稱號），與等級卡稱號共用展示槽（存 `UserLevels.gameTitles` / `UserLevels.title`），定義改在 `src/config/titles.json`，核心邏輯 `src/features/gameTitles/gameTitleService.js`。 Phase 7 已接好：挖礦 luck/CD、打工 CD、Tier3 每月免費稱號、地下城體力上限、定存單上限、拍賣手續費、樂透每期張數上限。**僅剩兩項跨系統權益保留待做**（已進設定檔 `twitch_perks.json`，尚未接子系統）：**訂閱限定卡面**（需在卡面渲染器實作 `theme_subscriber_t2/t3` 畫法並發到訂閱者背包）與**永久限定名字顏色**（需先建好顏色身分組、填 `exclusiveColorRoleId`，並用「給過不收回」邏輯授予 Tier3）。**剩餘待開發：Phase 8（抖內發放端）。**
 >
 > 最後更新：2026-05-27（Phase 6、7 開發完成）
 
