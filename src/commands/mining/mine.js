@@ -61,7 +61,7 @@ module.exports = {
 
       // 鑽石（傳說）：特殊呈現 + 公告
       if (result.ore === "diamond") {
-        await sendLegendaryAnnouncement(client, interaction, result);
+        await sendLegendaryAnnouncement(client, interaction);
       }
 
       const embed = new EmbedBuilder()
@@ -130,13 +130,8 @@ module.exports = {
   },
 };
 
-async function sendLegendaryAnnouncement(client, interaction, result) {
-  const nth = result.diamondGlobalCount
-    ? `全服第 **${result.diamondGlobalCount}** 位`
-    : "";
-  const content =
-    `✨💎 **${interaction.user}** 挖到了傳說中的 **${oreLabel("diamond")}**！` +
-    (nth ? `（${nth}挖到鑽石）` : "");
+async function sendLegendaryAnnouncement(client, interaction) {
+  const content = `✨💎 **${interaction.user}** 挖到了傳說中的 **${oreLabel("diamond")}**！`;
 
   const channelId = mining?.announceChannelId;
   try {
