@@ -215,7 +215,7 @@ module.exports = async (client, interaction) => {
       await interaction.editReply({
         content: textContent,
         files: gifAttachment ? [gifAttachment] : [],
-        components: [buildReplayRow("roulette", game.userId)],
+        components: [buildReplayRow("roulette", game.userId, { name: game.username })],
       });
       return;
     }

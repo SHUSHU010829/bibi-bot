@@ -212,7 +212,7 @@ async function renderMessage(state, { username, balance } = {}) {
     state.status === "playing"
       ? [buildButtons(state, balance ?? 0)]
       : state.status === "settled" && state.userId
-        ? [buildReplayRow("blackjack", state.userId)]
+        ? [buildReplayRow("blackjack", state.userId, { name: username })]
         : [];
 
   let content = "";

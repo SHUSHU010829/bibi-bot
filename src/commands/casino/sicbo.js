@@ -273,7 +273,7 @@ module.exports = {
       await interaction.editReply({
         content: `${headline}\n${lines.join("\n")}${netLine}　・餘額：**${balanceAfter.toLocaleString()}**${bankruptLine}`,
         files: [attachment],
-        components: [buildReplayRow("sicbo", userId)],
+        components: [buildReplayRow("sicbo", userId, { name: username })],
       });
     } catch (error) {
       console.log(`[ERROR] /骰寶:\n${error}\n${error.stack}`.red);

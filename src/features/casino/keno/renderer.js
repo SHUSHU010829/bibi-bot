@@ -154,7 +154,7 @@ function renderMessage(state, { username, balance } = {}) {
   // 開獎後棋盤已占 4 列，控制鈕全停用 → 換成「再來一局」一列（避免超過 5 列上限）
   const lastRow =
     state.status === "settled" && state.userId
-      ? buildReplayRow("keno", state.userId)
+      ? buildReplayRow("keno", state.userId, { name: username })
       : buildControlRow(state);
   const components = [...buildBoardRows(state), lastRow];
   const embed = buildEmbed(state, { username, balance });

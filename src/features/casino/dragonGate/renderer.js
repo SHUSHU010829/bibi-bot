@@ -106,7 +106,7 @@ async function renderMessage(state, { username, balance } = {}) {
   const components = buttons
     ? [buttons]
     : state.status === "settled" && state.userId
-      ? [buildReplayRow("dragonGate", state.userId)]
+      ? [buildReplayRow("dragonGate", state.userId, { name: username })]
       : [];
 
   let content = "";
