@@ -1,0 +1,20 @@
+{
+  "craft": {
+    "recipes": [
+      {
+        "id": "pickaxe_iron",
+        "name": "鐵鎬",
+        "emoji": "🔨",
+        "materials": { "iron": 15 },
+        "result": { "type": "pickaxe", "id": "iron" }
+      },
+      {
+        "id": "pickaxe_crystal",
+        "name": "水晶鎬",
+        "emoji": "💎",
+        "materials": { "crystal": 5, "iron": 20 },
+        "result": { "type": "pickaxe", "id": "crystal" }
+      }
+    ]
+  }
+}
