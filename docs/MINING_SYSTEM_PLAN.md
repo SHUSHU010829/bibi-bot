@@ -1,12 +1,12 @@
 # 逼逼機器人 — 挖礦生態系統開發規劃書（bibi-bot）
 
-> 本文件規劃 bibi-bot 端的「挖礦生態系統」「打工 / 補助」「裝備合成」「地下城」「拍賣行」「稱號」「Twitch 訂閱者權益」，以及**抖內（贊助）的「發放端」**。
+> 本文件原規劃 bibi-bot 端完整「挖礦生態系統」。**Phase 0–5（核心挖礦、打工、裝備合成、地下城、決鬥、贈送、拍賣）已開發完成並上線**，相關段落已移除（指令與機制見 `README.md` §12.5–12.6）。本文件僅保留尚未開發的「稱號 / 成長」「Twitch 訂閱者權益」與**抖內（贊助）的「發放端」**。
 >
 > **重要架構決策**：抖內的付款流程（Discord OAuth、建立 session、導向綠界 / 歐付寶、接收與驗證 webhook）整段搬到 **bibi-website** 執行；bibi-bot 只負責「Discord 端效果」——加身分組、發金幣、發消耗品、DM、公告，並透過一支內部 API 被 website 呼叫。詳見 [Phase 8](#phase-8--抖內發放端bibi-bot) 與 [API 介接契約](#api-介接契約)。
 >
 > 各階段皆為獨立可上線的完整功能，可依進度逐步推出。
 >
-> 最後更新：2026-05-27
+> 最後更新：2026-05-27（移除已完成的 Phase 0–5）
 
 ---
 
@@ -15,20 +15,16 @@
 1. [設計原則](#1-設計原則)
 2. [與現有程式碼的對齊](#2-與現有程式碼的對齊)
 3. [金幣數值總表](#3-金幣數值總表)
-4. [Phase 0 — 前置準備](#phase-0--前置準備)
-5. [Phase 1 — 核心挖礦系統（MVP）](#phase-1--核心挖礦系統mvp)
-6. [Phase 2 — 打工 + 補助指令調整](#phase-2--打工--補助指令調整)
-7. [Phase 3 — 裝備合成系統](#phase-3--裝備合成系統)
-8. [Phase 4 — 地下城 + 戰鬥](#phase-4--地下城--戰鬥)
-9. [Phase 5 — 社交 + 拍賣行](#phase-5--社交--拍賣行)
-10. [Phase 6 — 成長 + 稱號系統](#phase-6--成長--稱號系統)
-11. [Phase 7 — Twitch 訂閱者權益擴充](#phase-7--twitch-訂閱者權益擴充)
-12. [Phase 8 — 抖內發放端（bibi-bot）](#phase-8--抖內發放端bibi-bot)
-13. [API 介接契約](#api-介接契約)
-14. [每日收入藍圖](#每日收入藍圖全系統上線後)
-15. [風控與通膨防護](#風控與通膨防護)
-16. [檔案索引](#檔案索引)
-17. [開發時程總覽](#開發時程總覽)
+4. [Phase 6 — 成長 + 稱號系統](#phase-6--成長--稱號系統)
+5. [Phase 7 — Twitch 訂閱者權益擴充](#phase-7--twitch-訂閱者權益擴充)
+6. [Phase 8 — 抖內發放端（bibi-bot）](#phase-8--抖內發放端bibi-bot)
+7. [API 介接契約](#api-介接契約)
+8. [每日收入藍圖](#每日收入藍圖全系統上線後)
+9. [風控與通膨防護](#風控與通膨防護)
+10. [檔案索引](#檔案索引)
+11. [開發時程總覽](#開發時程總覽)
+
+> ✅ **Phase 0–5 已開發完成並上線**（核心挖礦、打工、裝備合成、地下城、決鬥、贈送、拍賣），相關段落已從本文件移除；指令與機制說明見 `README.md` §12.5–12.6。本文件僅保留尚未開發的 Phase 6–8。
 
 ---
 
@@ -150,224 +146,6 @@
 
 ---
 
-## Phase 0 — 前置準備
-
-> **目標**：Schema 與共用工具到位。**預估**：1–2 天。
-
-### 資料庫異動
-
-延伸 `UserCoins`（或新建 `MiningProfiles`，建議延伸既有 user 文件以共用 `userId+guildId` 索引）：
-
-```js
-{
-  mine_cooldown_at:    Number,  // timestamp ms，預設 0
-  pickaxe:             String,  // 'wood' | 'iron' | 'crystal'，預設 'wood'
-  pickaxe_durability:  Number,  // 預設 50（木鎬不消耗）
-  luck_potion_uses:    Number,  // 預設 0
-  mine_count_total:    Number,  // 預設 0
-  backpack: { stone:Number, coal:Number, iron:Number, crystal:Number, rainbow:Number }
-}
-```
-
-新增 collection（於 `connectDb.js` 建立並掛 `client.<name>Collection`）：
-
-```js
-// mine_logs — 挖礦記錄（成就 / 排行榜用），TTL 90 天（與 CoinTransactions 對齊）
-{ user_id, guild_id, ore, qty, ts }
-// titles — 稱號持有記錄（Phase 6 用，先建好）
-{ user_id, guild_id, title_id, granted_at, expires_at /* null=永久 */ }
-```
-
-### 共用工具
-
-- `src/features/mining/weightedRandom.js` — 加權隨機
-- `src/features/mining/dropTable.js` — 礦石掉落表與 luck 調整
-- `src/features/mining/buffResolver.js` — 整合鎬子 / 藥水 / 連簽 / Twitch tier 的 buff 計算
-
-### 設定檔 `src/config/mining.json`
-
-```json
-{
-  "cooldownMs": 7200000,
-  "luckCap": 0.25,
-  "ores": {
-    "stone":   { "weight": 55, "price": 8,   "minQty": 1, "maxQty": 3 },
-    "coal":    { "weight": 25, "price": 20,  "minQty": 1, "maxQty": 2 },
-    "iron":    { "weight": 12, "price": 60,  "minQty": 1, "maxQty": 1 },
-    "crystal": { "weight": 6,  "price": 200, "minQty": 1, "maxQty": 1 },
-    "rainbow": { "weight": 2,  "price": 800, "minQty": 1, "maxQty": 1 }
-  },
-  "pickaxes": {
-    "wood":    { "cdReductionMs": 0,       "luckBonus": 0,    "qtyBonus": 0, "durability": null },
-    "iron":    { "cdReductionMs": 1800000, "luckBonus": 0.05, "qtyBonus": 0, "durability": 50  },
-    "crystal": { "cdReductionMs": 3600000, "luckBonus": 0.12, "qtyBonus": 1, "durability": 50  }
-  }
-}
-```
-
----
-
-## Phase 1 — 核心挖礦系統（MVP）
-
-> **目標**：最小可玩版本。**預估**：2–3 天。**新增收入**：勤勞玩家每天 +240–400 幣。
-
-### 指令
-
-| 指令 | 說明 |
-|---|---|
-| `/mine` | 主挖礦指令，含 CD 檢查、掉落、結果 Embed |
-| `/backpack` | 查看背包礦石庫存 |
-| `/sell [礦石] [數量]` | 賣給系統換幣，不填則賣全部 |
-
-### 核心邏輯（`src/features/mining/mineCommand.js`）
-
-```
-1. CD 檢查 → 未到時間回傳剩餘分鐘
-2. buffResolver → 算 luckBonus、qtyBonus、actualCD（含 Twitch tier）
-3. dropTable.roll(luckBonus) → 決定礦石種類
-4. randQty(ore, qtyBonus) → 決定數量
-5. DB 更新：backpack[ore]+=qty、mine_cooldown_at=now+actualCD、mine_count_total+=1、mine_logs.insert
-6. setImmediate → 非同步觸發成就檢查（Phase 6）
-7. 回傳結果 Embed（彩虹石另發特殊 Embed + 頻道公告「全服第 N 位挖到彩虹石」）
-```
-
-### `/sell` 邏輯
-
-```
-price = Σ(ore_price × qty)
-await grantCoins(client, { userId, guildId, amount: price, source: 'mining_sell', member })
-扣背包 → 回傳賣出明細與餘額
-```
-
-### 消費出口（同步上線）
-
-- 挖礦商店道具加入既有 `/商店`：幸運藥水 300 幣、CD 縮短券 150 幣。
-
----
-
-## Phase 2 — 打工 + 補助指令調整
-
-> **目標**：穩定收入管道 + 救濟金改名。**預估**：1 天。**新增收入**：打工每天最多 +720 幣。
-
-### 打工（`/work`）
-
-```
-1. CD 檢查（4h，work_cooldown_at）
-2. 隨機 job 文字（src/config/work_jobs.json）
-3. 隨機金額 80–120
-4. await grantCoins(client, { ..., amount, source: 'work', member })
-5. 更新 work_cooldown_at
-6. 回傳 Embed
-```
-
-`src/config/work_jobs.json` 範例：
-
-```json
-["幫人搬家，搬了三層樓的傢俱","在便利商店站了一班收銀台","幫鄰居遛了兩隻柴犬","在夜市擺了三小時臭豆腐攤","接了個前端外包，改了五個按鈕顏色"]
-```
-
-DB 新增 `work_cooldown_at: Number`（預設 0）。
-
-### 補助指令（原救濟金）
-
-- 指令名 `/救濟金` → `/補助`，邏輯 / 數值 / 門檻**完全不變**，只改名與 Embed 文字。舊指令加 deprecated 提示，保留 30 天後移除。
-
----
-
-## Phase 3 — 裝備合成系統
-
-> **目標**：礦石第二條出路，形成「囤積 vs 賣出」策略。**預估**：2–3 天。
-
-### 指令
-
-| 指令 | 說明 |
-|---|---|
-| `/craft [裝備]` | 合成裝備，自動消耗背包材料 |
-| `/equipment` | 查看持有裝備與耐久 |
-
-### 配方 `src/config/craft_recipes.json`
-
-```json
-[
-  { "id":"pickaxe_iron","name":"鐵鎬","emoji":"🔨","materials":{"iron":15},"result":{"type":"pickaxe","id":"iron"} },
-  { "id":"pickaxe_crystal","name":"水晶鎬","emoji":"💎","materials":{"crystal":5,"iron":20},"result":{"type":"pickaxe","id":"crystal"} }
-]
-```
-
-### 邏輯與耐久
-
-```
-1. 確認材料足夠 → 扣礦石 → 更新 pickaxe + pickaxe_durability
-2. 已持有同級未用完 → 提示確認
-3. craft_count_total += 1（成就用）
-每次成功挖礦 pickaxe_durability -= 1；歸 0 → 退回 'wood' 並 DM 提示。
-```
-
-DB 新增 `craft_count_total: Number`（預設 0）。
-
----
-
-## Phase 4 — 地下城 + 戰鬥
-
-> **目標**：裝備有處可用，高風險 / 報酬玩法。**預估**：4–6 天（最複雜）。
-
-### 指令
-
-| 指令 | 說明 |
-|---|---|
-| `/dungeon` | 進地下城，消耗體力戰鬥 |
-| `/duel @玩家 [賭注]` | 1v1 決鬥 |
-
-### 體力與戰鬥
-
-- 體力上限 10，每小時回 1；進地下城耗 1，0 不可進。
-- 簡化判定：`勝率 = clamp(playerAtk / monsterHp, 0.2, 0.9)`，`monsterHp` 隨機 50–200。
-- 裝備 ATK 加成：木鎬 +0 / 鐵鎬 +15 / 水晶鎬 +35。
-- 勝利掉落（比挖礦期望值高 30%）：
-
-| 掉落物 | 機率 | 說明 |
-|---|---|---|
-| 稀有礦石碎片 | 40% | 可合成鐵礦 ×3 |
-| 直接金幣 | 35% | 150–300 幣（`grantCoins` source `dungeon`） |
-| 傳說素材碎片 | 15% | 未來裝備用（預留） |
-| 什麼都沒有 | 10% | — |
-
-> 直接金幣若要列入收入監控，可新增 `dungeon` source 並比照 `FLAT_REWARD_SOURCES`。
-
-DB 新增 `stamina`、`stamina_updated_at`、`dungeon_count`。
-
----
-
-## Phase 5 — 社交 + 拍賣行
-
-> **目標**：貨幣在玩家間流動，稀有石二級市場。**預估**：3–4 天。
-
-### 指令
-
-| 指令 | 說明 |
-|---|---|
-| `/give @玩家 [礦石] [數量]` | 贈送礦石 |
-| `/auction list` | 查看拍賣中物品 |
-| `/auction sell [礦石] [數量] [起標價]` | 掛牌 |
-| `/auction bid [拍賣ID] [出價]` | 出價 |
-
-### 規則
-
-- 掛牌 24h；到期無人出價自動退回（不收費）。
-- 成交系統抽 **5% 手續費**（通膨回收）。每人同時最多掛 5 件。
-- 最低起標 = 收購價 × 0.8。
-- `/give` 無手續費、每日每人最多 3 次、不能送自己。
-- 金幣流動走既有 peer transfer source（`transfer_in` / `transfer_out`）；拍賣出價走 `auction_bid`（已在 `SINK_SOURCES`）。
-
-### DB 新增 `auction_listings`
-
-```js
-{ listing_id, seller_id, guild_id, ore, qty, start_price, current_bid, bidder_id, expires_at, status }
-// status: 'active' | 'sold' | 'expired'，TTL 7 天（結束後保留供查詢）
-```
-
----
-
 ## Phase 6 — 成長 + 稱號系統
 
 > **目標**：長期目標感與炫耀資本。**預估**：3–4 天。
@@ -407,7 +185,7 @@ if (user.craft_count_total >= 10 && user.iron_total >= 100) toGrant.push('iron_s
 
 ## Phase 7 — Twitch 訂閱者權益擴充
 
-> **目標**：訂閱者在遊戲中有實質差異。**前置**：Phase 1。**預估**：2–3 天。
+> **目標**：訂閱者在遊戲中有實質差異。**前置**：Phase 1（已完成）。**預估**：2–3 天。
 
 ### 既有訂閱倍率（不動，沿用 `level.json` 角色 ID）
 
@@ -451,7 +229,7 @@ Tier 3 每月免費稱號 Cron：`src/events/ready/twitchMonthlyTitle.js`（每�
 ## Phase 8 — 抖內發放端（bibi-bot）
 
 > **目標**：只做「Discord 端效果」。付款 / OAuth / session / webhook 全在 **bibi-website**（見該 repo 的 `docs/DONATION_SYSTEM_PLAN.md`）。
-> **前置**：Phase 1。**預估**：2–3 天（不含 website）。
+> **前置**：Phase 1（已完成）。**預估**：2–3 天（不含 website）。
 
 ### 職責邊界
 
@@ -666,47 +444,35 @@ website 對共用 MongoDB 只持有**唯讀**帳號；所有寫入一律經由 b
 
 ## 檔案索引
 
+> 僅列尚未開發的 Phase 6–8 檔案；已完成的挖礦 / 打工 / 合成 / 地下城 / 拍賣等檔案見 `README.md` §12.6 與 `src/features/mining`、`src/features/auction`。
+
 | 檔案 | 內容 | Phase |
 |---|---|---|
-| `src/config/mining.json` | 挖礦設定 | 0 |
-| `src/config/work_jobs.json` | 打工文字 | 2 |
-| `src/config/craft_recipes.json` | 合成配方 | 3 |
-| `src/config/twitch_perks.json` | Twitch 分 Tier 權益 | 7 |
-| `src/config/donation_tiers.json` | 抖內方案與回饋 | 8 |
-| `src/features/mining/weightedRandom.js` | 加權隨機 | 0 |
-| `src/features/mining/dropTable.js` | 掉落表與 luck | 0 |
-| `src/features/mining/buffResolver.js` | buff 整合（含 Twitch） | 0 → 7 |
-| `src/features/mining/mineCommand.js` | `/mine` | 1 |
-| `src/features/mining/sellCommand.js` | `/sell` | 1 |
-| `src/features/mining/craftCommand.js` | `/craft` | 3 |
 | `src/features/mining/achievementChecker.js` | 成就檢查 | 6 |
 | `src/features/mining/titleManager.js` | 稱號 + 身分組同步 | 6 |
-| `src/features/work/workCommand.js` | `/work` | 2 |
-| `src/features/auction/auctionService.js` | 拍賣行 | 5 |
+| `src/events/ready/miningWeeklyRank.js` | 週排行榜 cron | 6 |
+| `src/config/twitch_perks.json` | Twitch 分 Tier 權益 | 7 |
+| `src/features/mining/buffResolver.js` | 擴充 Twitch tier 挖礦 luck / CD 加成（既有檔案） | 7 |
+| `src/events/ready/twitchMonthlyTitle.js` | Tier3 每月免費稱號 cron | 7 |
+| `src/config/donation_tiers.json` | 抖內方案與回饋 | 8 |
 | `src/features/donation/grantDonationPerks.js` | 抖內回饋發放 | 8 |
 | `src/httpServer/donationSession.js` | `/api/donation/session` 建立 pending session | 8 |
 | `src/httpServer/donationGrant.js` | `/api/donation/grant`（仿 flushChatScore） | 8 |
-| `src/events/ready/miningWeeklyRank.js` | 週排行榜 cron | 6 |
-| `src/events/ready/twitchMonthlyTitle.js` | Tier3 每月免費稱號 cron | 7 |
 | `src/events/ready/donationReconcile.js` | 抖內對帳 cron | 8 |
 
 ---
 
 ## 開發時程總覽
 
+> ✅ Phase 0–5 已開發完成並上線（不再列入待辦）。以下為剩餘工作。
+
 | Phase | 內容 | 預估 | 前置 |
 |---|---|---|---|
-| 0 | 前置 / Schema | 1–2 天 | — |
-| 1 | 核心挖礦 MVP | 2–3 天 | 0 |
-| 2 | 打工 + 補助改名 | 1 天 | 0 |
-| 3 | 裝備合成 | 2–3 天 | 1 |
-| 4 | 地下城 + 戰鬥 | 4–6 天 | 3 |
-| 5 | 社交 + 拍賣行 | 3–4 天 | 1 |
-| 6 | 成長 + 稱號 | 3–4 天 | 1 |
-| 7 | Twitch 訂閱擴充 | 2–3 天 | 1 |
-| 8 | 抖內發放端 | 2–3 天 | 1 + website 端 |
-| **合計** | | **20–29 天** | |
+| 6 | 成長 + 稱號 | 3–4 天 | 1（已完成） |
+| 7 | Twitch 訂閱擴充 | 2–3 天 | 1（已完成） |
+| 8 | 抖內發放端 | 2–3 天 | 1（已完成）+ website 端 |
+| **剩餘合計** | | **7–10 天** | |
 
-> Phase 2、7 可與其他並行。Phase 8 的付款 / 前端在 bibi-website，需另計入該 repo 工時與商家帳號申請（3–7 工作天）。
+> Phase 7 可與其他並行。Phase 8 的付款 / 前端在 bibi-website，需另計入該 repo 工時與商家帳號申請（3–7 工作天）。
 
 _Last updated: 2026-05-27（抖內付款流程改由 bibi-website 執行，bot 僅保留發放端 API）_
