@@ -10,6 +10,7 @@ const {
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 const { DateTime } = require("luxon");
 
 const { levelSystem, coinSystem, questSystem } = require("../../config");
@@ -257,7 +258,7 @@ module.exports = {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `## 🗓️ 簽到成功！\n獲得 **+${xp} XP**${
-              coinResult?.granted ? ` ・ **+${coinResult.granted} 💰**` : ""
+              coinResult?.granted ? ` ・ **+${coinResult.granted} ${MONEY_EMOJI}**` : ""
             }${
               multiplier > 1 ? ` ・ 連勝加成 x${multiplier}` : ""
             } ・ 連續 **${streak}** 天`

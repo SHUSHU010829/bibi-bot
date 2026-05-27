@@ -5,6 +5,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../../constants/coin");
 
 const { HORSES } = require("./engine");
 
@@ -77,7 +78,7 @@ function renderBettingPhase(state) {
   }
 
   lines.push("─────────────────────");
-  lines.push(`💰 目前總彩池：**${totalPool.toLocaleString()}** credits`);
+  lines.push(`${MONEY_EMOJI} 目前總彩池：**${totalPool.toLocaleString()}** credits`);
   if ((state.bets || []).length === 0) {
     lines.push("-# 尚無人下注 ・ 沒人買票就會自動取消，不會跑賽");
   } else {
@@ -95,7 +96,7 @@ function renderRunningPhase(state) {
   const totalPool = (state.bets || []).reduce((s, b) => s + b.amount, 0);
   const lines = [
     `🐎 **賽馬大賽 ・ 比賽進行中**`,
-    `💰 總彩池：**${totalPool.toLocaleString()}** credits ・ ${(state.bets || []).length} 筆下注`,
+    `${MONEY_EMOJI} 總彩池：**${totalPool.toLocaleString()}** credits ・ ${(state.bets || []).length} 筆下注`,
     "-# 🏇 看誰先衝過終點線…",
   ];
   return { content: lines.join("\n"), components: [] };

@@ -7,7 +7,7 @@ const {
 
 const { mining, auction } = require("../../config");
 const auctionService = require("../../features/auction/auctionService");
-const { COIN_EMOJI } = require("../../constants/coin");
+const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 
 function oreChoices() {
   return Object.entries(mining?.ores || {}).map(([key, def]) => ({
@@ -189,7 +189,7 @@ async function handleBid(client, interaction) {
     }
     if (result.reason === "insufficient") {
       return interaction.editReply(
-        `💰 餘額不足！你目前 **${result.balance.toLocaleString()}** ${COIN_EMOJI}。`
+        `${MONEY_EMOJI} 餘額不足！你目前 **${result.balance.toLocaleString()}** ${COIN_EMOJI}。`
       );
     }
     if (result.reason === "race") {

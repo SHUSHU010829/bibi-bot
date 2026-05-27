@@ -1,5 +1,6 @@
 require("colors");
 const { stockSystem } = require("../../config");
+const { MONEY_EMOJI } = require("../../constants/coin");
 const grantCoins = require("../economy/grantCoins");
 const portfolioService = require("./portfolioService");
 
@@ -52,7 +53,7 @@ async function buyMarket(client, opts) {
     return {
       ok: false,
       reason: "insufficient_balance",
-      message: `💰 餘額不足！需要 **${totalOut.toLocaleString()}** credits（含手續費 ${fee.toLocaleString()}），目前 ${balance.toLocaleString()}。`,
+      message: `${MONEY_EMOJI} 餘額不足！需要 **${totalOut.toLocaleString()}** credits（含手續費 ${fee.toLocaleString()}），目前 ${balance.toLocaleString()}。`,
     };
   }
 

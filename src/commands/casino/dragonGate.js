@@ -4,6 +4,7 @@ const {
   SlashCommandBuilder,
   InteractionContextType,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
@@ -71,7 +72,7 @@ module.exports = {
       const balance = before?.totalCoins || 0;
       if (balance < ante) {
         return interaction.editReply(
-          `💰 餘額不足！射龍門入場費 **${ante.toLocaleString()}** credits，目前 **${balance.toLocaleString()}**。`
+          `${MONEY_EMOJI} 餘額不足！射龍門入場費 **${ante.toLocaleString()}** credits，目前 **${balance.toLocaleString()}**。`
         );
       }
 

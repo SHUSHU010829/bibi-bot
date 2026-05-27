@@ -1,6 +1,7 @@
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
 const { MessageFlags } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 const {
   hit,
   stand,
@@ -107,7 +108,7 @@ module.exports = async (client, interaction) => {
       const balance = before?.totalCoins || 0;
       if (balance < state.bet) {
         return interaction.followUp({
-          content: `💰 餘額 ${balance.toLocaleString()} 不足以 Double（需要 ${state.bet.toLocaleString()}）。`,
+          content: `${MONEY_EMOJI} 餘額 ${balance.toLocaleString()} 不足以 Double（需要 ${state.bet.toLocaleString()}）。`,
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -141,7 +142,7 @@ module.exports = async (client, interaction) => {
       const balance = before?.totalCoins || 0;
       if (balance < state.bet) {
         return interaction.followUp({
-          content: `💰 餘額 ${balance.toLocaleString()} 不足以分牌（需要 ${state.bet.toLocaleString()}）。`,
+          content: `${MONEY_EMOJI} 餘額 ${balance.toLocaleString()} 不足以分牌（需要 ${state.bet.toLocaleString()}）。`,
           flags: MessageFlags.Ephemeral,
         });
       }

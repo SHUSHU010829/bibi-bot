@@ -5,6 +5,7 @@ const {
   AttachmentBuilder,
   InteractionContextType,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
 const { rollThree } = require("../../features/casino/sicbo/dice");
@@ -148,7 +149,7 @@ module.exports = {
 
       if (balance < totalBet) {
         return interaction.editReply(
-          `💰 餘額不足！目前 **${balance.toLocaleString()}** credits，無法下注 ${totalBet.toLocaleString()}（${bets.length} 注合計）。`
+          `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}** credits，無法下注 ${totalBet.toLocaleString()}（${bets.length} 注合計）。`
         );
       }
 

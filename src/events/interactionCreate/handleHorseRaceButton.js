@@ -11,6 +11,7 @@ const {
   TextInputStyle,
   MessageFlags,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
@@ -216,7 +217,7 @@ async function submitBet(client, interaction, horseIdStr, gameId) {
   const balance = before?.totalCoins || 0;
   if (balance < amount) {
     return interaction.editReply(
-      `💰 餘額不足！目前 **${balance.toLocaleString()}** credits，無法下注 ${amount.toLocaleString()}。`,
+      `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}** credits，無法下注 ${amount.toLocaleString()}。`,
     );
   }
 

@@ -10,7 +10,7 @@ const {
 
 const { dungeon } = require("../../config");
 const duelService = require("../../features/mining/duelService");
-const { COIN_EMOJI } = require("../../constants/coin");
+const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -69,7 +69,7 @@ module.exports = {
         }
         if (result.reason === "insufficient") {
           return interaction.editReply(
-            `💰 餘額不足！你目前 **${(result.balance ?? 0).toLocaleString()}** ${COIN_EMOJI}，無法押 ${bet.toLocaleString()}。`
+            `${MONEY_EMOJI} 餘額不足！你目前 **${(result.balance ?? 0).toLocaleString()}** ${COIN_EMOJI}，無法押 ${bet.toLocaleString()}。`
           );
         }
         return interaction.editReply("🔧 發起決鬥失敗，請稍後再試。");

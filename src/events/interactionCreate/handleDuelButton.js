@@ -4,7 +4,7 @@
 
 const { EmbedBuilder, MessageFlags } = require("discord.js");
 const duelService = require("../../features/mining/duelService");
-const { COIN_EMOJI } = require("../../constants/coin");
+const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
@@ -83,7 +83,7 @@ module.exports = async (client, interaction) => {
       }
       if (res.reason === "insufficient") {
         return interaction.followUp({
-          content: `💰 你的餘額不足，無法接受這場決鬥（需要 ${(
+          content: `${MONEY_EMOJI} 你的餘額不足，無法接受這場決鬥（需要 ${(
             res.balance ?? 0
           ).toLocaleString()} 以上）。`,
           flags: MessageFlags.Ephemeral,

@@ -7,6 +7,7 @@
 //          玩家只要再按一次「開轉」即可。
 
 const { MessageFlags } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 const crypto = require("crypto");
 
 const { consume } = require("../../utils/rateLimiter");
@@ -182,7 +183,7 @@ async function replayRoulette(client, interaction, payload) {
   const balance = userDoc?.totalCoins || 0;
   if (balance < totalBudget) {
     return interaction.editReply(
-      `💰 餘額不足！目前 **${balance.toLocaleString()}** credits，需要 **${totalBudget.toLocaleString()}**。`
+      `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}** credits，需要 **${totalBudget.toLocaleString()}**。`
     );
   }
 

@@ -2,6 +2,7 @@ const {
   AttachmentBuilder,
   MessageFlags,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 const grantCoins = require('../../features/economy/grantCoins');
 const { BET_TYPES } = require('../../features/casino/roulette/numbers');
@@ -90,7 +91,7 @@ module.exports = async (client, interaction) => {
       const amount = Math.floor(remaining / 3);
 
       if (amount <= 0) {
-        return interaction.followUp({ content: '💰 籌碼不足。', flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: `${MONEY_EMOJI} 籌碼不足。`, flags: MessageFlags.Ephemeral });
       }
 
       const newBet = { type: betType, amount, numbers: def.numbers };

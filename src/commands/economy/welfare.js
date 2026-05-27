@@ -11,7 +11,7 @@ const {
 const { welfareSystem } = require("../../config");
 const welfareService = require("../../features/welfare/welfareService");
 const { checkAccountAge } = require("../../features/economy/eligibility");
-const { COIN_EMOJI } = require("../../constants/coin");
+const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 
 module.exports = {
   ephemeral: true,
@@ -78,7 +78,7 @@ function replyClaimSuccess(interaction, result) {
     .setAccentColor(0xc9302c)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `## ${COIN_EMOJI} 救濟金到手\n**+${result.amount.toLocaleString()}** 💰 ・ 連續 **${result.streak}** 天`
+        `## ${COIN_EMOJI} 救濟金到手\n**+${result.amount.toLocaleString()}** ${MONEY_EMOJI} ・ 連續 **${result.streak}** 天`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder())
@@ -127,10 +127,10 @@ async function showStatus(client, interaction, userId, guildId) {
   } else if (!status.eligibleByBalance) {
     if (status.depositTotal > 0) {
       lines.push(
-        `\n💰 總資產（含存款）超過救濟線，先 \`/領回\` 存款或 \`/錢包\` 看看再說。`
+        `\n${MONEY_EMOJI} 總資產（含存款）超過救濟線，先 \`/領回\` 存款或 \`/錢包\` 看看再說。`
       );
     } else {
-      lines.push(`\n💰 目前金幣超過救濟線，先去玩玩看吧。`);
+      lines.push(`\n${MONEY_EMOJI} 目前金幣超過救濟線，先去玩玩看吧。`);
     }
   } else {
     lines.push(

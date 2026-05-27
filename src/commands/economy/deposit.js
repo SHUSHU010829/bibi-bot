@@ -5,6 +5,7 @@ const {
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { coinSystem } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
@@ -142,7 +143,7 @@ async function openDeposit(client, interaction, { userId, guildId, username }) {
   const balance = before?.totalCoins || 0;
   if (balance < amount) {
     return interaction.editReply(
-      `💰 餘額不足！目前 **${balance.toLocaleString()}**，無法存入 ${amount.toLocaleString()}。`
+      `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}**，無法存入 ${amount.toLocaleString()}。`
     );
   }
 

@@ -11,6 +11,7 @@ const {
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 const { DateTime } = require("luxon");
 
 const GAME_LABELS = {
@@ -139,7 +140,7 @@ module.exports = {
         `**📈 ${describePeriod(period)} ・ ${titleScope}**\n` +
         `🎮 Bets placed: **${totalBetCount.toLocaleString()}**\n` +
         `💸 Total wagered: **${totalWagered.toLocaleString()}** credits\n` +
-        `💰 Total payout: **${totalPayout.toLocaleString()}** credits\n` +
+        `${MONEY_EMOJI} Total payout: **${totalPayout.toLocaleString()}** credits\n` +
         `${netProfit >= 0 ? "📈" : "📉"} Player net: **${netProfit >= 0 ? "+" : ""}${netProfit.toLocaleString()}**\n` +
         `🎯 RTP: **${overallRtp.toFixed(1)}%**${overallRtp < 100 ? "（House wins）" : "（Players ahead）"}`;
 

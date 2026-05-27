@@ -9,6 +9,7 @@ const {
 const { coinSystem } = require("../../config");
 const generateWalletCard = require("../../utils/generateWalletCard");
 const { getTheme } = require("../../features/shop/catalog");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 module.exports = {
   ephemeral: true,
@@ -67,7 +68,7 @@ module.exports = {
       });
 
       await interaction.editReply({
-        content: `💰 **目前金幣：${(doc.totalCoins || 0).toLocaleString()}**`,
+        content: `${MONEY_EMOJI} **目前金幣：${(doc.totalCoins || 0).toLocaleString()}**`,
         files: [attachment],
       });
     } catch (error) {

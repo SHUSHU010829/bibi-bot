@@ -4,6 +4,7 @@ const {
   SlashCommandBuilder,
   InteractionContextType,
 } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 const { DateTime } = require("luxon");
 
 const { coinSystem, casino } = require("../../config");
@@ -180,7 +181,7 @@ module.exports = {
       }
       if (balance < bet) {
         return interaction.editReply(
-          `💰 餘額不足！目前 **${balance.toLocaleString()}** credits，無法下注 ${bet.toLocaleString()}。`,
+          `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}** credits，無法下注 ${bet.toLocaleString()}。`,
         );
       }
 
