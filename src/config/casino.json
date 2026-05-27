@@ -53,9 +53,7 @@
       "cooldownSeconds": 300,
       "openingWindow": {
         "timezone": "Asia/Taipei",
-        "weekday": 6,
-        "startHour": 21,
-        "endHour": 24
+        "weekdays": [6, 7]
       }
     },
     "dragonGate": {
