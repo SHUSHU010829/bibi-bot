@@ -239,7 +239,7 @@ module.exports = {
           `花費:**${totalCost.toLocaleString()}** ・ 餘額:**${balanceAfter.toLocaleString()}**\n` +
           `當前彩池:**${(drawDoc?.pool || draw.pool + totalCost).toLocaleString()}** credits\n` +
           `開獎時間:<t:${drawAtUnix}:R>`,
-        components: [buildReplayRow("lottery", userId, "🔁 再買一單")],
+        components: [buildReplayRow("lottery", userId, { label: "🔁 再買一單", name: username })],
       });
     } catch (err) {
       console.log(`[ERROR] /樂透買:\n${err}\n${err.stack}`.red);

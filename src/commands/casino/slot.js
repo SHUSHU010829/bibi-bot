@@ -226,7 +226,7 @@ module.exports = {
       await interaction.editReply({
         content: `${headline}${jackpotLine}\n・下注：**${bet.toLocaleString()}**　・餘額：**${balanceAfter.toLocaleString()}**${poolLine}${bankruptLine}`,
         files: [attachment],
-        components: [buildReplayRow("slot", userId)],
+        components: [buildReplayRow("slot", userId, { name: username })],
       });
 
       // 爆池公告

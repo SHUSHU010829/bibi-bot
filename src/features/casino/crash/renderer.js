@@ -83,7 +83,7 @@ function buildPlayingPayload(state, ctx = {}) {
 
 async function buildSettledPayload(state, { username, balance } = {}) {
   const components = state.userId
-    ? [buildReplayRow("crash", state.userId)]
+    ? [buildReplayRow("crash", state.userId, { name: username })]
     : [];
   let content = "";
   let files = [];
