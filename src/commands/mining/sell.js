@@ -8,6 +8,7 @@ const {
 const { mining } = require("../../config");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const grantCoins = require("../../features/economy/grantCoins");
+const { COIN_EMOJI } = require("../../constants/coin");
 
 // 礦石選項（純文字，避免自訂 emoji 在下拉顯示成原始字串）
 function oreChoices() {
@@ -104,7 +105,7 @@ module.exports = {
 
       const lines = toSell.map((x) => {
         const def = mining.ores[x.ore];
-        return `${def.emoji || "⛏️"} ${def.name} ×${x.qty} → ${x.value.toLocaleString()} 🪙`;
+        return `${def.emoji || "⛏️"} ${def.name} ×${x.qty} → ${x.value.toLocaleString()} ${COIN_EMOJI}`;
       });
 
       const embed = new EmbedBuilder()
@@ -112,10 +113,10 @@ module.exports = {
         .setTitle("🪙 賣礦成功")
         .setDescription(lines.join("\n"))
         .addFields(
-          { name: "總收入", value: `+${total.toLocaleString()} 🪙`, inline: true },
+          { name: "總收入", value: `+${total.toLocaleString()} ${COIN_EMOJI}`, inline: true },
           {
             name: "目前餘額",
-            value: `${(grant?.doc?.totalCoins ?? 0).toLocaleString()} 🪙`,
+            value: `${(grant?.doc?.totalCoins ?? 0).toLocaleString()} ${COIN_EMOJI}`,
             inline: true,
           }
         );

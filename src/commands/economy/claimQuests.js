@@ -10,6 +10,7 @@ const {
 
 const { questSystem } = require("../../config");
 const questService = require("../../features/quests/questService");
+const { COIN_EMOJI } = require("../../constants/coin");
 
 module.exports = {
   ephemeral: true,
@@ -45,14 +46,14 @@ module.exports = {
 
       const lines = result.claimed.map((q) => {
         const tag = q.period === "weekly" ? "📅 週常" : "🌞 每日";
-        return `${tag} ・ **${q.name}** ・ +**${q.reward.toLocaleString()}** 🪙`;
+        return `${tag} ・ **${q.name}** ・ +**${q.reward.toLocaleString()}** ${COIN_EMOJI}`;
       });
 
       const container = new ContainerBuilder()
         .setAccentColor(0x4caf50)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `## 🪙 任務獎勵到手\n共補領 **${result.claimed.length}** 筆任務 ・ **+${result.total.toLocaleString()}** 🪙`
+            `## ${COIN_EMOJI} 任務獎勵到手\n共補領 **${result.claimed.length}** 筆任務 ・ **+${result.total.toLocaleString()}** ${COIN_EMOJI}`
           )
         )
         .addSeparatorComponents(new SeparatorBuilder())

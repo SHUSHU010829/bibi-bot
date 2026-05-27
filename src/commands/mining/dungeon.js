@@ -7,6 +7,7 @@ const {
 
 const { mining } = require("../../config");
 const dungeonService = require("../../features/mining/dungeonService");
+const { COIN_EMOJI } = require("../../constants/coin");
 
 function oreLabel(oreKey) {
   const def = mining?.ores?.[oreKey] || {};
@@ -75,12 +76,12 @@ module.exports = {
         if (result.oreOverflowToCoins) {
           rewardLine =
             `🎒 背包已滿！戰利品 ${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty} ` +
-            `折算成 **+${result.coinsGained.toLocaleString()}** 🪙`;
+            `折算成 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}`;
         } else {
           rewardLine = `掉落 **${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty}**！`;
         }
       } else if (result.loot.id === "coins") {
-        rewardLine = `掉落 **+${result.coinsGained.toLocaleString()}** 🪙！`;
+        rewardLine = `掉落 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}！`;
       } else if (result.loot.id === "legendary_fragment") {
         rewardLine = `掉落 **✨ 傳說素材碎片 ×${result.legendaryGained}**！（未來合成用，好好收著）`;
       } else {
@@ -106,7 +107,7 @@ module.exports = {
       if (result.balance != null) {
         embed.addFields({
           name: "目前餘額",
-          value: `${result.balance.toLocaleString()} 🪙`,
+          value: `${result.balance.toLocaleString()} ${COIN_EMOJI}`,
           inline: true,
         });
       }

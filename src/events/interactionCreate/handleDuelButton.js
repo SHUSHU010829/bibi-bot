@@ -4,6 +4,7 @@
 
 const { EmbedBuilder, MessageFlags } = require("discord.js");
 const duelService = require("../../features/mining/duelService");
+const { COIN_EMOJI } = require("../../constants/coin");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
@@ -105,7 +106,7 @@ module.exports = async (client, interaction) => {
       .setColor(0xf1c40f)
       .setTitle("⚔️ 決鬥結果")
       .setDescription(
-        `**勝者 🏆 <@${res.winnerId}>** 贏走了 **${res.pot.toLocaleString()}** 🪙！\n\n` +
+        `**勝者 🏆 <@${res.winnerId}>** 贏走了 **${res.pot.toLocaleString()}** ${COIN_EMOJI}！\n\n` +
           `挑戰者 <@${res.duel.challenger_id}>（攻擊 ${res.atkChallenger}・勝率 ${winPct}%）\n` +
           `對手 <@${res.duel.opponent_id}>（攻擊 ${res.atkOpponent}・勝率 ${100 - winPct}%）`
       )

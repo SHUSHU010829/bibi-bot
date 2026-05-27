@@ -10,6 +10,7 @@ const {
 
 const { dungeon } = require("../../config");
 const duelService = require("../../features/mining/duelService");
+const { COIN_EMOJI } = require("../../constants/coin");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -68,7 +69,7 @@ module.exports = {
         }
         if (result.reason === "insufficient") {
           return interaction.editReply(
-            `💰 餘額不足！你目前 **${(result.balance ?? 0).toLocaleString()}** 🪙，無法押 ${bet.toLocaleString()}。`
+            `💰 餘額不足！你目前 **${(result.balance ?? 0).toLocaleString()}** ${COIN_EMOJI}，無法押 ${bet.toLocaleString()}。`
           );
         }
         return interaction.editReply("🔧 發起決鬥失敗，請稍後再試。");
@@ -80,7 +81,7 @@ module.exports = {
         .setTitle("⚔️ 決鬥邀請")
         .setDescription(
           `${interaction.user} 向 ${target} 發起決鬥！\n` +
-            `賭注：**${bet.toLocaleString()}** 🪙（雙方各押，勝者通吃 **${(bet * 2).toLocaleString()}**）\n\n` +
+            `賭注：**${bet.toLocaleString()}** ${COIN_EMOJI}（雙方各押，勝者通吃 **${(bet * 2).toLocaleString()}**）\n\n` +
             `${target}，你接受嗎？<t:${expiresEpoch}:R> 前未回應將自動取消。`
         )
         .setFooter({ text: "勝率由雙方鎬子攻擊力決定，裝備越好越有優勢！" });

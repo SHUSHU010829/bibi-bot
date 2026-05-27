@@ -7,6 +7,7 @@ const {
 
 const { mining, auction } = require("../../config");
 const auctionService = require("../../features/auction/auctionService");
+const { COIN_EMOJI } = require("../../constants/coin");
 
 function oreChoices() {
   return Object.entries(mining?.ores || {}).map(([key, def]) => ({
@@ -95,8 +96,8 @@ async function handleList(client, interaction) {
   for (const l of listings) {
     const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
     const bidLine = l.current_bid
-      ? `目前最高：**${l.current_bid.toLocaleString()}** 🪙（${l.bidder_name || "匿名"}）`
-      : `起標：**${l.start_price.toLocaleString()}** 🪙（尚無人出價）`;
+      ? `目前最高：**${l.current_bid.toLocaleString()}** ${COIN_EMOJI}（${l.bidder_name || "匿名"}）`
+      : `起標：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}（尚無人出價）`;
     embed.addFields({
       name: `#${l.listing_id} ・ ${oreLabel(l.ore)} ×${l.qty}`,
       value: `${bidLine}\n賣家：${l.seller_name || "?"} ・ 截止 <t:${expiresEpoch}:R>`,
@@ -125,7 +126,7 @@ async function handleSell(client, interaction) {
     if (result.reason === "no_ore") return interaction.editReply("❌ 找不到這種礦石。");
     if (result.reason === "low_start") {
       return interaction.editReply(
-        `❌ ${result.oreDef.name} 的起標價至少要 **${result.minStart.toLocaleString()}** 🪙（系統收購價的 80%）。`
+        `❌ ${result.oreDef.name} 的起標價至少要 **${result.minStart.toLocaleString()}** ${COIN_EMOJI}（系統收購價的 80%）。`
       );
     }
     if (result.reason === "too_many") {
@@ -148,7 +149,7 @@ async function handleSell(client, interaction) {
     .setTitle("🏷️ 掛牌成功")
     .setDescription(
       `**#${l.listing_id}** ・ ${oreLabel(l.ore)} ×${l.qty}\n` +
-        `起標價：**${l.start_price.toLocaleString()}** 🪙\n` +
+        `起標價：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}\n` +
         `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）`
     )
     .setFooter({
@@ -183,12 +184,12 @@ async function handleBid(client, interaction) {
     }
     if (result.reason === "too_low") {
       return interaction.editReply(
-        `❌ 出價太低，至少要 **${result.required.toLocaleString()}** 🪙。`
+        `❌ 出價太低，至少要 **${result.required.toLocaleString()}** ${COIN_EMOJI}。`
       );
     }
     if (result.reason === "insufficient") {
       return interaction.editReply(
-        `💰 餘額不足！你目前 **${result.balance.toLocaleString()}** 🪙。`
+        `💰 餘額不足！你目前 **${result.balance.toLocaleString()}** ${COIN_EMOJI}。`
       );
     }
     if (result.reason === "race") {
@@ -203,7 +204,7 @@ async function handleBid(client, interaction) {
     .setColor(0x3498db)
     .setTitle("✅ 出價成功")
     .setDescription(
-      `你對 **#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty} 出價 **${l.current_bid.toLocaleString()}** 🪙，目前最高！\n` +
+      `你對 **#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty} 出價 **${l.current_bid.toLocaleString()}** ${COIN_EMOJI}，目前最高！\n` +
         `截止 <t:${expiresEpoch}:R>，若被超越會自動退款。`
     );
 
