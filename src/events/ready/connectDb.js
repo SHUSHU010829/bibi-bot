@@ -137,6 +137,10 @@ module.exports = async (client) => {
     const stockEventsCollection = database.collection("StockEvents");
     const stockEventDefsCollection = database.collection("StockEventDefs");
 
+    // 挖礦系統 collections
+    const miningProfilesCollection = database.collection("MiningProfiles");
+    const mineLogsCollection = database.collection("MineLogs");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -190,6 +194,8 @@ module.exports = async (client) => {
     client.recommendationsCollection = recommendationsCollection;
     client.inviteCacheCollection = inviteCacheCollection;
     client.inviteRecordsCollection = inviteRecordsCollection;
+    client.miningProfilesCollection = miningProfilesCollection;
+    client.mineLogsCollection = mineLogsCollection;
     await economySnapshotsCollection
       .createIndex({ guildId: 1, date: 1 }, { unique: true })
       .catch((e) =>
@@ -663,6 +669,25 @@ module.exports = async (client) => {
       await quizGamesCollection.createIndex(
         { messageId: 1 },
         { sparse: true, name: "quiz_messageId" }
+      );
+
+      // 挖礦系統索引
+      await miningProfilesCollection.createIndex(
+        { userId: 1, guildId: 1 },
+        { unique: true, name: "uniq_mining_user_guild" }
+      );
+      // 挖礦記錄：排行榜 / 成就 / 彩虹石計數用，TTL 90 天
+      await mineLogsCollection.createIndex(
+        { guild_id: 1, ts: -1 },
+        { name: "mine_logs_guild_time" }
+      );
+      await mineLogsCollection.createIndex(
+        { guild_id: 1, ore: 1, ts: -1 },
+        { name: "mine_logs_guild_ore_time" }
+      );
+      await mineLogsCollection.createIndex(
+        { ts: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "mine_logs_ttl_90d" }
       );
     } catch (indexError) {
       console.log(
