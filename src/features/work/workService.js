@@ -2,6 +2,7 @@ require("colors");
 const { DateTime } = require("luxon");
 const { work } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
+const twitchPerks = require("../mining/twitchPerks");
 
 const TZ = "Asia/Taipei";
 
@@ -56,7 +57,12 @@ async function doWork(client, { userId, guildId, member, username }) {
   });
   if (!grant) return { ok: false, reason: "grant_failed" };
 
-  const cooldownMs = work.cooldownMs ?? 14400000;
+  let cooldownMs = work.cooldownMs ?? 14400000;
+  // Twitch 訂閱者權益：縮短打工 CD
+  const perks = twitchPerks.resolvePerks(member);
+  if (perks?.workCdReductionMs) {
+    cooldownMs = Math.max(60 * 1000, cooldownMs - perks.workCdReductionMs);
+  }
   const newCooldownAt = now + cooldownMs;
   await client.workProfilesCollection.updateOne(
     { userId, guildId },

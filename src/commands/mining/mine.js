@@ -7,6 +7,7 @@ const {
 
 const { mining } = require("../../config");
 const mineService = require("../../features/mining/mineService");
+const achievementChecker = require("../../features/mining/achievementChecker");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 function oreLabel(oreKey) {
@@ -118,6 +119,15 @@ module.exports = {
       }
 
       await interaction.editReply({ embeds: [embed] });
+
+      // 解鎖檢查不阻塞回覆；getOrCreate 會讀到本次挖礦後的最新數據
+      achievementChecker
+        .checkAndGrant(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+        })
+        .catch(() => {});
     } catch (error) {
       console.log(`[ERROR] /挖礦:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 挖礦失敗，請呼叫舒舒！").catch(() => {});

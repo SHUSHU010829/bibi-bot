@@ -7,6 +7,7 @@ const {
 
 const { mining, craft } = require("../../config");
 const craftService = require("../../features/mining/craftService");
+const achievementChecker = require("../../features/mining/achievementChecker");
 
 function recipeChoices() {
   return (craft?.recipes || []).map((r) => ({ name: r.name, value: r.id }));
@@ -105,6 +106,14 @@ module.exports = {
         .setFooter({ text: "用 /裝備 查看裝備，/挖礦 開挖！" });
 
       await interaction.editReply({ embeds: [embed] });
+
+      achievementChecker
+        .checkAndGrant(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+        })
+        .catch(() => {});
     } catch (error) {
       console.log(`[ERROR] /合成:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 合成失敗，請呼叫舒舒！").catch(() => {});

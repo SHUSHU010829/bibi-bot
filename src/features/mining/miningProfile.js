@@ -13,6 +13,10 @@ function defaultProfile(userId, guildId) {
     mine_count_total: 0,
     craft_count_total: 0,
     backpack: { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0 },
+    lifetime_ore: { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0 },
+    unlocked_titles: ["novice_miner"],
+    active_title: "novice_miner",
+    weekly_champion_count: 0,
     stamina: null,
     stamina_updated_at: 0,
     dungeon_count: 0,
@@ -27,6 +31,7 @@ function defaultProfile(userId, guildId) {
 function normalize(doc) {
   if (!doc) return doc;
   doc.backpack = { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0, ...(doc.backpack || {}) };
+  doc.lifetime_ore = { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0, ...(doc.lifetime_ore || {}) };
   doc.mine_cooldown_at ??= 0;
   doc.pickaxe ??= "wood";
   if (doc.pickaxe_durability === undefined) doc.pickaxe_durability = null;
@@ -35,6 +40,13 @@ function normalize(doc) {
   doc.backpack_bonus_slots ??= 0;
   doc.mine_count_total ??= 0;
   doc.craft_count_total ??= 0;
+  if (!Array.isArray(doc.unlocked_titles) || doc.unlocked_titles.length === 0) {
+    doc.unlocked_titles = ["novice_miner"];
+  } else if (!doc.unlocked_titles.includes("novice_miner")) {
+    doc.unlocked_titles = ["novice_miner", ...doc.unlocked_titles];
+  }
+  doc.active_title ??= "novice_miner";
+  doc.weekly_champion_count ??= 0;
   if (doc.stamina === undefined) doc.stamina = null;
   doc.stamina_updated_at ??= 0;
   doc.dungeon_count ??= 0;

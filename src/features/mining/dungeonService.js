@@ -116,6 +116,7 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
     const space = Math.max(0, cap - used);
     if (space >= qty) {
       inc[`backpack.${oreKey}`] = qty;
+      inc[`lifetime_ore.${oreKey}`] = qty;
       oreGained = { ore: oreKey, qty };
     } else {
       // 背包滿了就折算成等值金幣，避免戰利品憑空消失
