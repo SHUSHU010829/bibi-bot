@@ -168,7 +168,10 @@ async function handleEquipFromInventorySelect(client, interaction, inventoryId) 
     const view = await buildBackpackView(client, {
       userId: interaction.user.id,
       guildId: interaction.guildId,
-      username: interaction.user.username,
+      displayName:
+        interaction.member?.displayName ||
+        interaction.user.displayName ||
+        interaction.user.username,
     });
     await interaction.editReply(view);
   } catch (err) {

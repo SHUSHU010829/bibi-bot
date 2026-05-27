@@ -89,11 +89,11 @@ function buildSelectMenu(type, items) {
 
 // 統一背包：挖礦（礦石／挖礦道具）＋ 商店（購買道具／生效 buff／裝備選單）合在同一張卡片。
 // 回傳 { components, flags }，以 IsComponentsV2 + Ephemeral 私訊送出。
-async function buildBackpackView(client, { userId, guildId, username }) {
+async function buildBackpackView(client, { userId, guildId, displayName }) {
   const container = new ContainerBuilder().setAccentColor(0x9b59b6);
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`## 🎒 ${username} 的背包`)
+    new TextDisplayBuilder().setContent(`## 🎒 ${displayName} 的背包`)
   );
 
   // 錢包餘額 + 生效中 buff（同一份文件，一次查回）
@@ -118,15 +118,16 @@ async function buildBackpackView(client, { userId, guildId, username }) {
     const cap = backpackCapacity(profile, mining);
     const used = backpackUsed(profile);
 
+    // 礦石：只列出有庫存的，數量為 0 的隱藏
     const oreLines = [];
     let totalValue = 0;
     for (const [key, def] of Object.entries(mining.ores)) {
       const qty = profile.backpack?.[key] || 0;
+      if (qty <= 0) continue;
       const value = qty * (def.price || 0);
       totalValue += value;
       oreLines.push(
-        `${def.emoji || "⛏️"} **${def.name}** ×${qty}` +
-          (qty > 0 ? ` ・ ${value.toLocaleString()} ${COIN_EMOJI}` : "")
+        `${def.emoji || "⛏️"} **${def.name}** ×${qty} ・ ${value.toLocaleString()} ${COIN_EMOJI}`
       );
     }
 
@@ -139,7 +140,7 @@ async function buildBackpackView(client, { userId, guildId, username }) {
     const now = Date.now();
     const inCooldown = (profile.mine_cooldown_at || 0) > now;
     const cdText = inCooldown
-      ? `<t:${Math.floor(profile.mine_cooldown_at / 1000)}:R>`
+      ? `<t:${Math.floor(profile.mine_cooldown_at / 1000)}:R> 可挖`
       : "✅ 現在可挖礦";
 
     const luckUses = profile.luck_potion_uses || 0;
@@ -147,32 +148,40 @@ async function buildBackpackView(client, { userId, guildId, username }) {
     const fragments = profile.legendary_fragments || 0;
     const reductionMin = Math.round((mining?.cdTicketReductionMs || 0) / 60000);
 
+    // ── 礦石 ──
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`### ⛏️ 礦石\n${oreLines.join("\n")}`)
-    );
-    container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `📦 **背包容量**：${used} / ${cap}\n` +
-          `💰 **全部賣出可得**：${totalValue.toLocaleString()} ${COIN_EMOJI}\n` +
-          `⛏️ **目前鎬子**：${pdef.emoji || "⛏️"} ${pdef.name}（${durabilityText}）\n` +
-          `⏳ **挖礦狀態**：${cdText}`
+        oreLines.length > 0
+          ? `### ⛏️ 礦石\n${oreLines.join("\n")}\n-# 💰 全部賣出可得 ${totalValue.toLocaleString()} ${COIN_EMOJI}`
+          : "### ⛏️ 礦石\n-# 背包裡還沒有礦石，快去 /挖礦 吧！"
       )
     );
 
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("### 🎁 挖礦道具")
-    );
+    // ── 挖礦狀態 ──
+    container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `🍀 **幸運藥水** ×${luckUses}\n-# 挖礦時自動生效，提升 luck`
+        `### 🪓 挖礦狀態\n` +
+          `⛏️ 目前鎬子：${pdef.emoji || "⛏️"} ${pdef.name}（${durabilityText}）\n` +
+          `📦 背包容量：${used} / ${cap}\n` +
+          `⏳ 挖礦冷卻：${cdText}`
+      )
+    );
+
+    // ── 挖礦道具 ──
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### 🎁 挖礦道具\n` +
+          `🍀 **幸運藥水** ×${luckUses}\n-# 挖礦自動生效，提升幸運`
       )
     );
     container.addSectionComponents(
       new SectionBuilder()
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `🎫 **CD 縮短券** ×${ticketCount}\n-# 冷卻中使用，立即 -${reductionMin} 分（不足直接歸零）`
+            `🎫 **CD 縮短券** ×${ticketCount}\n-# 冷卻中使用，立即 -${reductionMin} 分`
           )
         )
         .setButtonAccessory(
@@ -185,7 +194,7 @@ async function buildBackpackView(client, { userId, guildId, username }) {
     );
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `✨ **傳說素材碎片** ×${fragments}\n-# 未來合成傳說裝備用，好好收著`
+        `✨ **傳說素材碎片** ×${fragments}\n-# 合成傳說裝備材料`
       )
     );
   }
@@ -226,9 +235,11 @@ async function buildBackpackView(client, { userId, guildId, username }) {
       grouped.get(it.type).push(it);
     }
 
+    container.addSeparatorComponents(new SeparatorBuilder());
+
     if (items.length === 0) {
       container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("### 🛍️ 商店道具\n（背包是空的）")
+        new TextDisplayBuilder().setContent("### 🛍️ 商店道具\n-# 還沒有任何道具，到 /商店 逛逛吧！")
       );
     } else {
       const sections = [];
@@ -238,7 +249,7 @@ async function buildBackpackView(client, { userId, guildId, username }) {
             const equipped = it.equipped ? " ✅" : "";
             const qty = it.qty ? ` ×${it.qty}` : "";
             const exp = it.expiresAt ? ` — 到期：${fmtExpiry(it.expiresAt)}` : "";
-            return `**${it.name}**${qty}${equipped}${exp}`;
+            return `・${it.name}${qty}${equipped}${exp}`;
           })
           .join("\n");
         sections.push(`**${TYPE_LABEL[type] || type}**\n${text}`);
