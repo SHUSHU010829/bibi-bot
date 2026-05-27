@@ -11,7 +11,7 @@
       {
         "id": "pickaxe_gold",
         "name": "黃金鎬",
-        "emoji": "<:ore_gold:1509064763550994432>",
+        "emoji": "<:pickaxe_gold:1509066702489649296>",
         "materials": { "gold": 5, "iron": 20 },
         "result": { "type": "pickaxe", "id": "gold" }
       },

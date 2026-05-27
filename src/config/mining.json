@@ -14,7 +14,7 @@
     "pickaxes": {
       "wood": { "name": "木鎬", "emoji": "<:pickaxe_wood:1509061543055331338>", "cdReductionMs": 0, "luckBonus": 0, "qtyBonus": 0, "durability": null },
       "iron": { "name": "鐵鎬", "emoji": "<:pickaxe_iron:1509061628698693713>", "cdReductionMs": 1800000, "luckBonus": 0.05, "qtyBonus": 0, "durability": 50 },
-      "gold": { "name": "黃金鎬", "emoji": "<:ore_gold:1509064763550994432>", "cdReductionMs": 2700000, "luckBonus": 0.08, "qtyBonus": 0, "durability": 50 },
+      "gold": { "name": "黃金鎬", "emoji": "<:pickaxe_gold:1509066702489649296>", "cdReductionMs": 2700000, "luckBonus": 0.08, "qtyBonus": 0, "durability": 50 },
       "diamond": { "name": "鑽石鎬", "emoji": "<:pickaxe_diamond:1509061660160295062>", "cdReductionMs": 3600000, "luckBonus": 0.12, "qtyBonus": 1, "durability": 50 }
     },
     "luckPotionBonus": 0.08,
