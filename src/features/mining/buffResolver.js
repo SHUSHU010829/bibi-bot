@@ -1,6 +1,7 @@
 const { mining } = require("../../config");
+const twitchPerks = require("./twitchPerks");
 
-// 整合鎬子 / 幸運藥水 / CD 縮短券（Twitch tier 加成預留，Phase 7 再接）。
+// 整合鎬子 / 幸運藥水 / CD 縮短券 / Twitch 訂閱者權益。
 // 回傳 { luckBonus, qtyBonus, actualCdMs, consume: { usePotion, useTicket } }。
 function resolve(profile, member, opts = {}) {
   const pickaxes = mining?.pickaxes || {};
@@ -18,7 +19,12 @@ function resolve(profile, member, opts = {}) {
   const useTicket = opts.useTicket === true && (profile?.cd_ticket_count || 0) > 0;
   if (useTicket) cdMs -= mining?.cdTicketReductionMs || 0;
 
-  // TODO(Phase 7): Twitch tier 挖礦 luck / CD 加成（沿用 coinMultiplier 角色 ID）
+  // Twitch 訂閱者權益：依 tier 加挖礦 luck、縮短 CD（沿用訂閱角色 ID）
+  const perks = twitchPerks.resolvePerks(member);
+  if (perks) {
+    luckBonus += perks.miningLuckBonus || 0;
+    cdMs -= perks.miningCdReductionMs || 0;
+  }
 
   // luck 全域上限
   const cap = mining?.luckCap ?? 0.25;

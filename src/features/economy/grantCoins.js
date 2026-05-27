@@ -13,6 +13,16 @@ const CASINO_SOURCES = ["bet", "payout"];
 const SINK_SOURCES = ["shop_buy", "auction_bid", "wealth_tax", "transfer_out", "deposit_lock", "stock_buy", "stock_fee", "event_host_lock", "invite_clawback", "duel_stake"];
 const PEER_SOURCES = ["transfer_in", "transfer_out", "deposit_lock", "deposit_release", "event_prize", "event_refund", "auction_payout", "auction_refund", "duel_payout", "duel_refund"];
 const FLAT_REWARD_SOURCES = ["welfare", "quest_daily", "quest_weekly", "quest_event", "stock_sell", "stock_dividend", "invite_reward", "invite_welcome", "mining_sell", "work", "dungeon"];
+// source → 遊戲區稱號分類（金流出入口觸發解鎖檢查）
+const GAME_TITLE_SOURCE_MAP = {
+  bet: ["casino", "lottery"],
+  payout: ["casino", "lottery"],
+  stock_buy: ["stock"],
+  stock_sell: ["stock"],
+  stock_dividend: ["stock"],
+  mining_sell: ["mining"],
+  auction_payout: ["auction"],
+};
 
 module.exports = async (client, opts) => {
   if (!coinSystem?.enabled) return null;
@@ -188,6 +198,22 @@ module.exports = async (client, opts) => {
       }
     } catch (e) {
       // questService 還沒載入或還沒實作就靜默
+    }
+  }
+
+  // 遊戲區稱號：金流是各遊戲的共同出入口，依 source 對應分類後非阻塞檢查解鎖
+  const titleCategories = GAME_TITLE_SOURCE_MAP[opts.source];
+  if (titleCategories) {
+    try {
+      require("../gameTitles/gameTitleService")
+        .check(
+          client,
+          { userId: opts.userId, guildId: opts.guildId, member: opts.member },
+          titleCategories
+        )
+        .catch(() => {});
+    } catch (_) {
+      // gameTitleService 尚未載入就靜默
     }
   }
 

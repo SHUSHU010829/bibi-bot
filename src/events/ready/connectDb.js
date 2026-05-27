@@ -749,6 +749,36 @@ module.exports = async (client) => {
       );
     }
 
+    // 一次性遷移：把舊版存在 MiningProfiles 的稱號解鎖清單搬到 UserLevels.gameTitles
+    // （稱號系統已改為遊戲區共用，存於 UserLevels）。idempotent，沒資料就不動。
+    try {
+      const legacy = await miningProfilesCollection
+        .find({ unlocked_titles: { $exists: true, $ne: [] } })
+        .project({ userId: 1, guildId: 1, unlocked_titles: 1 })
+        .toArray();
+      let migrated = 0;
+      for (const p of legacy) {
+        const titles = (p.unlocked_titles || []).filter((t) => t && t !== "novice_miner");
+        if (!titles.length) continue;
+        await userLevelsCollection.updateOne(
+          { userId: p.userId, guildId: p.guildId },
+          { $addToSet: { gameTitles: { $each: titles } }, $set: { updatedAt: new Date() } },
+          { upsert: true }
+        );
+        migrated += 1;
+      }
+      if (migrated > 0) {
+        console.log(`[DATA] 遊戲稱號遷移：搬移 ${migrated} 位玩家的稱號到 UserLevels`.cyan);
+      }
+      // 清掉 MiningProfiles 上已搬走的稱號欄位（保留 weekly_champion_count / lifetime_ore）
+      await miningProfilesCollection.updateMany(
+        { $or: [{ unlocked_titles: { $exists: true } }, { active_title: { $exists: true } }] },
+        { $unset: { unlocked_titles: "", active_title: "" } }
+      );
+    } catch (migrateError) {
+      console.log(`[WARNING] 遊戲稱號遷移失敗：${migrateError.message}`.yellow);
+    }
+
     // 確認有多少飲料店資料
     const beverageStoreCount = await collection.distinct("beverageStore", {
       category: "beverage",

@@ -3,6 +3,7 @@ const { mining, dungeon } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
 const { weightedRandom } = require("./weightedRandom");
 const grantCoins = require("../economy/grantCoins");
+const twitchPerks = require("./twitchPerks");
 
 function rollLoot() {
   const table = dungeon?.loot || [];
@@ -12,8 +13,10 @@ function rollLoot() {
   return table.find((l) => l.id === id) || { id: "nothing" };
 }
 
-function staminaMax() {
-  return dungeon?.staminaMax ?? 10;
+function staminaMax(member) {
+  const base = dungeon?.staminaMax ?? 10;
+  const bonus = twitchPerks.resolvePerks(member)?.staminaBonus || 0;
+  return base + bonus;
 }
 
 // 惰性回復：依離線時間補體力。回傳 { stamina, updatedAt, nextRegenAt }。
@@ -67,7 +70,7 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
   if (!dungeon?.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
-  const max = staminaMax();
+  const max = staminaMax(member);
   const profile = await getOrCreate(client, userId, guildId);
   const st = resolveStamina(profile, max);
 
@@ -116,6 +119,7 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
     const space = Math.max(0, cap - used);
     if (space >= qty) {
       inc[`backpack.${oreKey}`] = qty;
+      inc[`lifetime_ore.${oreKey}`] = qty;
       oreGained = { ore: oreKey, qty };
     } else {
       // 背包滿了就折算成等值金幣，避免戰利品憑空消失

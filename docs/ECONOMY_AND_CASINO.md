@@ -845,9 +845,14 @@ xp          = 100 + streakBonus
 
 ### 15.2 稱號
 
-- `/level title 設定`：可選任一已解鎖徽章名為稱號，或選目前等級 tier（還原預設）
+稱號顯示在錢包卡 / 升等公告（存 `UserLevels.title`），來源共用同一個展示槽——下列任一管道設定，最後設定的生效：
+
+- `/level title 設定`：可選任一已解鎖徽章、**已解鎖的遊戲稱號**（挖礦 / 賭場 / 股市 / 樂透 / 拍賣），或目前等級 tier（還原預設）
+- `/稱號 設定`：切換展示的遊戲稱號（含「清除→顯示等級稱號」）；`/稱號 清單`、`/成就` 查看解鎖進度
 - `/level displaybadges 設定 / 重置`：自選等級卡下方顯示 5 枚徽章與順序
 - `/背包 設定稱號 text`：30 天自訂稱號（需先買 `title_custom` 道具）
+
+> 遊戲稱號是橫跨整個遊戲區的成就系統，定義在 `src/config/titles.json`、核心 `src/features/gameTitles/gameTitleService.js`；解鎖清單存 `UserLevels.gameTitles`（與 `badges` 平行），達標由各遊戲金流（`grantCoins` 依 source 分類）自動檢查。完整清單見 `README.md` §12.6。
 
 ---
 

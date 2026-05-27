@@ -3,6 +3,23 @@ const crypto = require("crypto");
 const { mining, auction } = require("../../config");
 const { getOrCreate } = require("../mining/miningProfile");
 const grantCoins = require("../economy/grantCoins");
+const twitchPerks = require("../mining/twitchPerks");
+
+// 結算時依賣家的 Twitch tier 決定手續費率（Tier3 享優惠費率）。
+// cron 內只有 seller_id，需補抓 member；抓不到就退回設定的預設費率。
+async function resolveSellerFeeRate(client, listing, defaultRate) {
+  try {
+    const guild =
+      client.guilds.cache.get(listing.guild_id) ||
+      (await client.guilds.fetch(listing.guild_id).catch(() => null));
+    if (!guild) return defaultRate;
+    const member = await guild.members.fetch(listing.seller_id).catch(() => null);
+    const perks = twitchPerks.resolvePerks(member);
+    return typeof perks?.auctionFeeRate === "number" ? perks.auctionFeeRate : defaultRate;
+  } catch {
+    return defaultRate;
+  }
+}
 
 function cfg() {
   return auction || {};
@@ -209,7 +226,7 @@ async function settleListing(client, listing) {
   if (!(locked?.value || locked)) return null;
 
   if (listing.bidder_id && listing.current_bid) {
-    const feeRate = c.feeRate ?? 0.05;
+    const feeRate = await resolveSellerFeeRate(client, listing, c.feeRate ?? 0.05);
     const fee = Math.floor(listing.current_bid * feeRate);
     const proceeds = listing.current_bid - fee;
 

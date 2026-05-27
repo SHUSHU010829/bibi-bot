@@ -19,6 +19,10 @@
     },
     "luckPotionBonus": 0.08,
     "cdTicketReductionMs": 1800000,
-    "announceChannelId": ""
+    "announceChannelId": "",
+    "weeklyRank": {
+      "cronSchedule": "1 0 * * 1",
+      "timezone": "Asia/Taipei"
+    }
   }
 }

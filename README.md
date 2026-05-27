@@ -455,7 +455,7 @@ embed.js → 發送 Embed
 | `/level profile [用戶] [私密]` | 看自己或他人的等級卡（XP、進度條、稱號） |
 | `/level rank` | 伺服器等級排行榜 |
 | `/level badges` | 全徽章解鎖進度 |
-| `/level title 設定` | 切換等級卡稱號（可選徽章或目前等級 tier） |
+| `/level title 設定` | 切換等級卡稱號（可選徽章、已解鎖遊戲稱號，或目前等級 tier） |
 | `/level displaybadges 設定 / 重置` | 自選等級卡下方展示的 5 個徽章與順序 |
 | `/level cardtheme` | 切換等級卡顏色主題 |
 | `/level-admin give-xp role amount` 🔒 | 對整個身份組統一加 XP |
@@ -647,6 +647,48 @@ embed.js → 發送 Embed
 - **決鬥金流**：賭注用 `duel_stake`（sink）託管，勝者派彩 `duel_payout`、退款 `duel_refund`，雙方總額守恆。
 - **拍賣金流**：出價 `auction_bid`（sink）託管，被超越自動 `auction_refund`，成交賣家收 `auction_payout`（已扣 5% 手續費）。
 - **cron**：`duelExpiryScheduler`（每分鐘掃逾時決鬥退款）、`auctionExpiryScheduler`（每 5 分鐘結算到期拍賣）。新增 source 已納入經濟日報 inflow / outflow。
+
+**遊戲區共用稱號 / 成就（Phase 6）**：橫跨整個遊戲區（挖礦・賭場・股市・樂透・拍賣）的一套稱號系統——各遊戲達標自動解鎖稱號，**與等級卡稱號共用同一個展示槽**（寫進 `UserLevels.title`，錢包卡 / 升等公告直接顯示）。定義在 `src/config/titles.json`（門檻在各 `defs.*.req`，可隨時調）。
+
+| 指令 | 用途 |
+| --- | --- |
+| `/稱號 清單` | 查看所有稱號與解鎖進度，依分類分組（⭐ 展示中 / ✅ 已解鎖 / 🔒 未解鎖）🏅 |
+| `/稱號 設定 稱號` | 切換錢包卡上展示的稱號（含「清除→顯示等級稱號」選項）|
+| `/成就` | 查看各遊戲成就進度條 🏆 |
+| `/礦工檔案 [玩家]` | 礦工生涯統計、歷史採集量、週冠次數、目前展示稱號 📜 |
+| `/挖礦排行` | 本週挖礦數量排行榜（週一 00:01 重置並頒發礦坑之王）👑 |
+
+> 已解鎖的遊戲稱號也會出現在 `/level title 設定` 的清單裡，跟徽章 / 等級 tier 在同一個下拉擇一展示（最後設定的生效）。
+
+| 分類 | 稱號 | 解鎖條件 |
+| --- | --- | --- |
+| 挖礦 | 🪵 煤炭採集者 / 🔨 鐵鍛師 / 💎 寶石獵人 / ✨ 傳說礦工 | 挖礦 50 次+持有 500 / 合成 10 件+歷史鐵礦 100 / 歷史黃金 20+鑽石 1 / 挖礦 1000 次+鑽石 5+週冠 3 |
+| 挖礦 | 👑 礦坑之王 | 當週挖礦數量第一（每週更替）|
+| 賭場 | 🎰 賭場常客 / 💰 一夜致富 / 🃏 Jackpot 得主 | 下注 100 局 / 單局派彩 ≥ 10,000 / 開出一次拉霸 Jackpot |
+| 股市 | 📈 股海散戶 / 💹 股神 | 完成 10 筆交易 / 賣股+股利收入 ≥ 50,000 |
+| 樂透 | 🎟️ 樂透愛好者 / 🏆 頭獎得主 | 累積買 50 張 / 中過一次頭獎 |
+| 拍賣 | 🏷️ 拍賣商人 | 成交 20 件 |
+
+- **儲存**：解鎖清單存 `UserLevels.gameTitles`（與 `badges` 平行）、展示稱號沿用 `UserLevels.title`。挖礦的生涯統計（`lifetime_ore`、`mine_count_total`、`craft_count_total`、`weekly_champion_count`）仍在 `MiningProfiles`。
+- **解鎖檢查**：成就條件全部可由既有資料推導，由 `gameTitleService.check()` 觸發——金流出入口 `grantCoins` 依 `source` 對應分類（bet/payout→賭場+樂透、stock_*→股市、auction_payout→拍賣、mining_sell→挖礦）非阻塞檢查，挖礦另在 `/挖礦`、`/合成` 後檢查。解鎖會在挖礦頻道公告。
+- **cron**：`miningWeeklyRank`（每週一 00:01 結算上週挖礦榜首、頒礦坑之王 + 卸前任、累加週冠次數，可能連帶解鎖傳說礦工）。
+
+**Twitch 訂閱者權益（Phase 7）**：訂閱者在挖礦生態享實質加成，依最高持有 tier 生效，設定在 `src/config/twitch_perks.json`（tier→角色沿用 `twitchSync.tierRoleIds`，與訂閱倍率同一組角色）。
+
+| 權益 | Tier 1 | Tier 2 | Tier 3 |
+| --- | --- | --- | --- |
+| 挖礦 luck 加成 | +5% | +10% | +15% |
+| 挖礦 CD 縮短 | −15 分 | −30 分 | −45 分 |
+| 打工 CD 縮短 | −30 分 | −30 分 | −30 分 |
+| 地下城體力上限 | 10 | 12 | 12 |
+| 定存單上限 | 5 | 7 | 7 |
+| 拍賣手續費 | 5% | 5% | 2% |
+| 樂透每期張數上限 | 10 | 10 | 15 |
+| 每月免費自訂稱號 | ✗ | ✗ | ✓ |
+
+- 挖礦 luck 與其他來源（鎬子 / 藥水 / 抖內）相加後仍受 `luckCap = 25%` 全域上限。拍賣手續費依「賣家」tier，於結算時判定。
+- **cron**：`twitchMonthlyTitle`（每月 1 日發 Tier3 免費自訂稱號 30 天 + DM，當月冪等）。
+- **尚未接（保留待做）**：訂閱限定卡面 `exclusiveThemeId` 與永久限定名字顏色 `exclusiveColorRoleId`——前者需在錢包卡渲染器實作 `theme_subscriber_t2/t3` 畫法、後者需先建顏色身分組並填入 ID。
 
 > 🪙 **金幣顯示 emoji**：金額 / 餘額 / 獎勵的顯示集中在 `src/constants/coin.js`（`COIN_EMOJI` 動態金幣、`MONEY_EMOJI` 錢袋），用於訊息內容、Embed 描述 / 標題 / 欄位值；Embed footer、按鈕 setEmoji、斜線指令說明、canvas 圖片不適用，仍用一般 emoji。
 

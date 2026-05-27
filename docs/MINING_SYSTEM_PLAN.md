@@ -1,12 +1,16 @@
 # 逼逼機器人 — 挖礦生態系統開發規劃書（bibi-bot）
 
-> 本文件原規劃 bibi-bot 端完整「挖礦生態系統」。**Phase 0–5（核心挖礦、打工、裝備合成、地下城、決鬥、贈送、拍賣）已開發完成並上線**，相關段落已移除（指令與機制見 `README.md` §12.5–12.6）。本文件僅保留尚未開發的「稱號 / 成長」「Twitch 訂閱者權益」與**抖內（贊助）的「發放端」**。
+> 本文件原規劃 bibi-bot 端完整「挖礦生態系統」。**Phase 0–7 已開發完成並上線**（核心挖礦、打工、裝備合成、地下城、決鬥、贈送、拍賣、成長 / 稱號、Twitch 訂閱者權益），相關段落已移除（指令與機制見 `README.md` §12.5–12.6、`docs/ECONOMY_AND_CASINO.md` §15.2）。本文件僅保留**尚未完成**的項目：Phase 8（抖內發放端）與 Phase 7 兩項待接的跨系統權益。
 >
 > **重要架構決策**：抖內的付款流程（Discord OAuth、建立 session、導向綠界 / 歐付寶、接收與驗證 webhook）整段搬到 **bibi-website** 執行；bibi-bot 只負責「Discord 端效果」——加身分組、發金幣、發消耗品、DM、公告，並透過一支內部 API 被 website 呼叫。詳見 [Phase 8](#phase-8--抖內發放端bibi-bot) 與 [API 介接契約](#api-介接契約)。
 >
 > 各階段皆為獨立可上線的完整功能，可依進度逐步推出。
 >
-> 最後更新：2026-05-27（移除已完成的 Phase 0–5）
+> **僅剩以下未完成：**
+> 1. **Phase 8 — 抖內發放端**（見下）。
+> 2. **Phase 7 兩項跨系統權益**（設定檔 `twitch_perks.json` 已就緒，尚未接子系統）：**訂閱限定卡面**（`exclusiveThemeId`，需在錢包卡渲染器實作 `theme_subscriber_t2/t3` 畫法並發到訂閱者背包）與**永久限定名字顏色**（`exclusiveColorRoleId`，需先建顏色身分組、填 ID，並用「給過不收回」邏輯授予 Tier3）。
+>
+> 最後更新：2026-05-27（移除已完成的 Phase 6、7，僅留待辦）
 
 ---
 
@@ -15,16 +19,15 @@
 1. [設計原則](#1-設計原則)
 2. [與現有程式碼的對齊](#2-與現有程式碼的對齊)
 3. [金幣數值總表](#3-金幣數值總表)
-4. [Phase 6 — 成長 + 稱號系統](#phase-6--成長--稱號系統)
-5. [Phase 7 — Twitch 訂閱者權益擴充](#phase-7--twitch-訂閱者權益擴充)
-6. [Phase 8 — 抖內發放端（bibi-bot）](#phase-8--抖內發放端bibi-bot)
-7. [API 介接契約](#api-介接契約)
-8. [每日收入藍圖](#每日收入藍圖全系統上線後)
-9. [風控與通膨防護](#風控與通膨防護)
-10. [檔案索引](#檔案索引)
-11. [開發時程總覽](#開發時程總覽)
+4. [Phase 7 — 剩餘 Twitch 訂閱者權益](#phase-7--剩餘-twitch-訂閱者權益)
+5. [Phase 8 — 抖內發放端（bibi-bot）](#phase-8--抖內發放端bibi-bot)
+6. [API 介接契約](#api-介接契約)
+7. [每日收入藍圖](#每日收入藍圖全系統上線後)
+8. [風控與通膨防護](#風控與通膨防護)
+9. [檔案索引](#檔案索引)
+10. [開發時程總覽](#開發時程總覽)
 
-> ✅ **Phase 0–5 已開發完成並上線**（核心挖礦、打工、裝備合成、地下城、決鬥、贈送、拍賣），相關段落已從本文件移除；指令與機制說明見 `README.md` §12.5–12.6。本文件僅保留尚未開發的 Phase 6–8。
+> ✅ **Phase 0–7 已開發完成並上線**（核心挖礦、打工、裝備合成、地下城、決鬥、贈送、拍賣、成長 / 稱號、Twitch 訂閱者權益），相關段落已從本文件移除；指令與機制見 `README.md` §12.5–12.6、`docs/ECONOMY_AND_CASINO.md` §15.2。本文件僅保留尚未完成的 Phase 8 與 Phase 7 兩項待接權益。
 
 ---
 
@@ -133,96 +136,22 @@
 | 4–7 天 | 700 幣 | 同上 |
 | ≥ 8 天 | 800 幣 | 同上 |
 
-### 3.6 稱號系統速覽
-
-| 稱號 | 類型 | 解鎖條件 | 保留方式 |
-|---|---|---|---|
-| ⛏️ 新手礦工 | 預設 | 加入即有 | 永久 |
-| 🪵 煤炭採集者 | 生產成就 | 累積挖礦 50 次 + 持有 500 幣 | 永久 |
-| 🔨 鐵鍛師 | 合成成就 | 累積合成 10 件 + 歷史鐵礦 100 顆 | 永久 |
-| 💎 寶石獵人 | 稀有成就 | 累積水晶 20 顆 + 彩虹石 ≥ 1 顆 | 永久 |
-| 👑 礦坑之王 | 週排行榜 | 當週挖礦 #1（唯一） | 每週更替 |
-| ✨ 傳說礦工 | 終極成就 | 累積挖礦 1000 次 + 彩虹石 ≥ 5 顆 + 週冠 ≥ 3 次 | 永久 |
-
 ---
 
-## Phase 6 — 成長 + 稱號系統
+## Phase 7 — 剩餘 Twitch 訂閱者權益
 
-> **目標**：長期目標感與炫耀資本。**預估**：3–4 天。
+> Phase 7 的大部分權益已上線（挖礦 luck/CD、打工 CD、Tier3 每月免費稱號、地下城體力上限、定存單上限、拍賣手續費、樂透每期張數上限，皆讀 `twitch_perks.json` 透過 `src/features/mining/twitchPerks.js` 套用）。**以下兩項尚未接子系統**——設定欄位已在 `twitch_perks.json`，但需要額外資產與渲染器改動，非單純接線。
 
-### 指令
+### 7.1 訂閱限定卡面（`exclusiveThemeId`，T2 `theme_subscriber_t2` / T3 `theme_subscriber_t3`）
 
-| 指令 | 說明 |
-|---|---|
-| `/titles` | 已解鎖稱號 |
-| `/title set [稱號]` | 切換展示稱號（同步 Discord 身分組） |
-| `/achievements` | 成就進度 |
-| `/profile [@玩家]` | 完整 Profile |
-| `/leaderboard mining` | 當週挖礦排行榜 |
+- 在 `src/config/shop.json` 的 `themes` 新增兩個主題定義。
+- 在錢包卡渲染器（`src/features/level/handlers/profile.js`、`src/commands/economy/wallet.js` 的 render 路徑）實作對應畫法。
+- 自動把主題發到訂閱者背包供裝備（`UserInventory` `wallet_theme`），退訂後處理。
 
-### 成就檢查（`src/features/mining/achievementChecker.js`，非同步）
+### 7.2 永久限定名字顏色（`exclusiveColorRoleId`，T3）
 
-```js
-if (user.mine_count_total >= 50 && totalCoins >= 500) toGrant.push('coal_collector')
-if (user.craft_count_total >= 10 && user.iron_total >= 100) toGrant.push('iron_smith')
-// ... 解鎖即 grantTitle + announceTitle
-```
-
-### 身分組同步（`src/features/mining/titleManager.js`）
-
-```js
-// 解鎖：member.roles.add(TITLE_ROLE_MAP[titleId])
-// 切換展示：先 remove 全部 title 角色，再 add 新選的
-```
-
-### 週排行榜 Cron（`src/events/ready/miningWeeklyRank.js`，每週一 00:01）
-
-```
-統計上週 mine_logs 依 qty 加總 → #1 給「礦坑之王」+ 身分組 → 移除上任王 → 公告 → 清理舊 logs（保留 90 天）
-```
-
----
-
-## Phase 7 — Twitch 訂閱者權益擴充
-
-> **目標**：訂閱者在遊戲中有實質差異。**前置**：Phase 1（已完成）。**預估**：2–3 天。
-
-### 既有訂閱倍率（不動，沿用 `level.json` 角色 ID）
-
-| Tier | XP | 金幣（聊天/語音/簽到） |
-|---|---|---|
-| Tier 1 | ×1.5 | ×1.1 |
-| Tier 2 | ×2.0 | ×1.3 |
-| Tier 3 | ×3.0 | ×1.5 |
-
-### 新增權益（延伸 `buffResolver.js`）
-
-| 項目 | Tier 1 | Tier 2 | Tier 3 |
-|---|---|---|---|
-| 挖礦 luck 加成 | +5% | +10% | +15% |
-| 挖礦 CD 縮短 | −15m | −30m | −45m |
-| 打工 CD 縮短 | −30m | −30m | −30m |
-| 地下城體力上限 | 10 | +2（12） | +2（12） |
-| 定存單上限 | 5 | +2（7） | +2（7） |
-| 拍賣手續費 | 5% | 5% | → 2% |
-| 樂透每期張數上限 | 10 | 10 | +5（15） |
-| 自訂稱號免費 | ✗ | ✗ | ✓ 每月 1 次 |
-| 訂閱限定卡面 | ✗ | ✓ | ✓ |
-| 限定名字顏色（永久） | ✗ | ✗ | ✓ |
-
-> luck 疊加後仍受 `luckCap = 25%` 全域限制。
-
-### 設定檔 `src/config/twitch_perks.json`
-
-```json
-{
-  "tier1": { "miningLuckBonus":0.05,"miningCdReductionMs":900000,"workCdReductionMs":1800000 },
-  "tier2": { "miningLuckBonus":0.10,"miningCdReductionMs":1800000,"workCdReductionMs":1800000,"staminaBonus":2,"depositSlotBonus":2,"exclusiveThemeId":"theme_subscriber_t2" },
-  "tier3": { "miningLuckBonus":0.15,"miningCdReductionMs":2700000,"workCdReductionMs":1800000,"staminaBonus":2,"depositSlotBonus":2,"auctionFeeRate":0.02,"lotteryTicketBonus":5,"monthlyFreeTitleEnabled":true,"exclusiveThemeId":"theme_subscriber_t3","exclusiveColorRoleId":"TIER3_COLOR_ROLE_ID" }
-}
-```
-
-Tier 3 每月免費稱號 Cron：`src/events/ready/twitchMonthlyTitle.js`（每月 1 日，找 Tier3 成員 → 寫 `UserInventory` title_custom expires_at=30 天 → DM）。
+- 先在伺服器建立顏色身分組，把 ID 填入 `twitch_perks.json`。
+- 偵測到 T3 即授予該角色，且**退訂後不收回**（不可放進會隨訂閱增刪的同步流程，避免被自動拔除）。
 
 ---
 
@@ -444,16 +373,12 @@ website 對共用 MongoDB 只持有**唯讀**帳號；所有寫入一律經由 b
 
 ## 檔案索引
 
-> 僅列尚未開發的 Phase 6–8 檔案；已完成的挖礦 / 打工 / 合成 / 地下城 / 拍賣等檔案見 `README.md` §12.6 與 `src/features/mining`、`src/features/auction`。
+> 僅列尚未完成的檔案。已完成的挖礦 / 打工 / 合成 / 地下城 / 拍賣 / 稱號 / Twitch 權益等檔案見 `README.md` §12.6、`docs/ECONOMY_AND_CASINO.md` §15.2 與 `src/features/mining`、`src/features/gameTitles`、`src/features/auction`。
 
 | 檔案 | 內容 | Phase |
 |---|---|---|
-| `src/features/mining/achievementChecker.js` | 成就檢查 | 6 |
-| `src/features/mining/titleManager.js` | 稱號 + 身分組同步 | 6 |
-| `src/events/ready/miningWeeklyRank.js` | 週排行榜 cron | 6 |
-| `src/config/twitch_perks.json` | Twitch 分 Tier 權益 | 7 |
-| `src/features/mining/buffResolver.js` | 擴充 Twitch tier 挖礦 luck / CD 加成（既有檔案） | 7 |
-| `src/events/ready/twitchMonthlyTitle.js` | Tier3 每月免費稱號 cron | 7 |
+| `src/config/shop.json`（themes）+ 錢包卡渲染器 | 訂閱限定卡面 `theme_subscriber_t2/t3`（待接，改既有檔案） | 7 |
+| `src/config/twitch_perks.json`（`exclusiveColorRoleId`）+ 授予邏輯 | 永久限定名字顏色（待接，需先建顏色身分組） | 7 |
 | `src/config/donation_tiers.json` | 抖內方案與回饋 | 8 |
 | `src/features/donation/grantDonationPerks.js` | 抖內回饋發放 | 8 |
 | `src/httpServer/donationSession.js` | `/api/donation/session` 建立 pending session | 8 |
@@ -464,15 +389,14 @@ website 對共用 MongoDB 只持有**唯讀**帳號；所有寫入一律經由 b
 
 ## 開發時程總覽
 
-> ✅ Phase 0–5 已開發完成並上線（不再列入待辦）。以下為剩餘工作。
+> ✅ Phase 0–7 已開發完成並上線（不再列入待辦）。以下為剩餘工作。
 
-| Phase | 內容 | 預估 | 前置 |
-|---|---|---|---|
-| 6 | 成長 + 稱號 | 3–4 天 | 1（已完成） |
-| 7 | Twitch 訂閱擴充 | 2–3 天 | 1（已完成） |
-| 8 | 抖內發放端 | 2–3 天 | 1（已完成）+ website 端 |
-| **剩餘合計** | | **7–10 天** | |
+| Phase | 內容 | 預估 | 前置 | 狀態 |
+|---|---|---|---|---|
+| 7（剩餘） | 訂閱限定卡面 + 永久限定名字顏色 | 1–2 天 | 需先備卡面設計 / 顏色身分組 | ⏳ 待接子系統 |
+| 8 | 抖內發放端 | 2–3 天 | website 端 | ⏳ 待開發 |
 
-> Phase 7 可與其他並行。Phase 8 的付款 / 前端在 bibi-website，需另計入該 repo 工時與商家帳號申請（3–7 工作天）。
+> Phase 8 的付款 / 前端在 bibi-website，需另計入該 repo 工時與商家帳號申請（3–7 工作天）。
+> Phase 7 剩餘兩項的具體做法見上方 [Phase 7 — 剩餘 Twitch 訂閱者權益](#phase-7--剩餘-twitch-訂閱者權益)。
 
-_Last updated: 2026-05-27（抖內付款流程改由 bibi-website 執行，bot 僅保留發放端 API）_
+_Last updated: 2026-05-27（移除已完成的 Phase 6、7，僅留 Phase 8 與 Phase 7 兩項待接權益）_

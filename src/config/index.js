@@ -20,6 +20,8 @@ const work = require("./work.json");
 const craft = require("./craft.json");
 const dungeon = require("./dungeon.json");
 const auction = require("./auction.json");
+const twitchPerks = require("./twitch_perks.json");
+const titles = require("./titles.json");
 
 module.exports = {
   ...server,
@@ -42,4 +44,6 @@ module.exports = {
   ...craft,
   ...dungeon,
   ...auction,
+  ...twitchPerks,
+  ...titles,
 };

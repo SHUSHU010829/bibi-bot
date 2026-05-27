@@ -37,7 +37,11 @@ async function mine(client, { userId, guildId, member, username, useTicket = fal
 
   const newCooldownAt = now + buff.actualCdMs;
 
-  const inc = { [`backpack.${ore}`]: qty, mine_count_total: 1 };
+  const inc = {
+    [`backpack.${ore}`]: qty,
+    [`lifetime_ore.${ore}`]: qty,
+    mine_count_total: 1,
+  };
   if (buff.consume.usePotion) inc.luck_potion_uses = -1;
   if (buff.consume.useTicket) inc.cd_ticket_count = -1;
 
