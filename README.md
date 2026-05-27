@@ -455,7 +455,7 @@ embed.js → 發送 Embed
 | `/level profile [用戶] [私密]` | 看自己或他人的等級卡（XP、進度條、稱號） |
 | `/level rank` | 伺服器等級排行榜 |
 | `/level badges` | 全徽章解鎖進度 |
-| `/level title 設定` | 切換等級卡稱號（可選徽章或目前等級 tier） |
+| `/level title 設定` | 切換等級卡稱號（可選徽章、已解鎖遊戲稱號，或目前等級 tier） |
 | `/level displaybadges 設定 / 重置` | 自選等級卡下方展示的 5 個徽章與順序 |
 | `/level cardtheme` | 切換等級卡顏色主題 |
 | `/level-admin give-xp role amount` 🔒 | 對整個身份組統一加 XP |

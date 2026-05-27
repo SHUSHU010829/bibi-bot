@@ -151,6 +151,8 @@
 ## Phase 6 — 成長 + 稱號系統
 
 > **目標**：長期目標感與炫耀資本。**預估**：3–4 天。
+>
+> ⚠️ **實作已上線，且與本段原規劃不同**（本段保留作為歷史脈絡）。最終做法：稱號**不限挖礦**，擴大為**整個遊戲區共用**（挖礦 / 賭場 / 股市 / 樂透 / 拍賣），且**不發 Discord 身分組**、改與等級卡稱號共用展示槽（存 `UserLevels.gameTitles` / `UserLevels.title`）。指令採中文名 `/稱號`（清單・設定）、`/成就`、`/礦工檔案`、`/挖礦排行`，並可在 `/level title 設定` 一併選用。定義在 `src/config/titles.json`，核心 `src/features/gameTitles/gameTitleService.js`，週冠 cron `src/events/ready/miningWeeklyRank.js`。完整成就清單與機制見 `README.md` §12.6 與 `docs/ECONOMY_AND_CASINO.md` §15.2。
 
 ### 指令
 
@@ -450,9 +452,9 @@ website 對共用 MongoDB 只持有**唯讀**帳號；所有寫入一律經由 b
 
 | 檔案 | 內容 | Phase |
 |---|---|---|
-| `src/features/mining/achievementChecker.js` | 成就檢查 | 6 |
-| `src/features/mining/titleManager.js` | 稱號 + 身分組同步 | 6 |
-| `src/events/ready/miningWeeklyRank.js` | 週排行榜 cron | 6 |
+| `src/config/titles.json` | 遊戲區共用稱號定義（分類 + 解鎖門檻）✅ 已實作 | 6 |
+| `src/features/gameTitles/gameTitleService.js` | 稱號解鎖檢查 / 設定展示 / 公告（取代原 achievementChecker + titleManager）✅ 已實作 | 6 |
+| `src/events/ready/miningWeeklyRank.js` | 週排行榜 cron（頒礦坑之王）✅ 已實作 | 6 |
 | `src/config/twitch_perks.json` | Twitch 分 Tier 權益 | 7 |
 | `src/features/mining/buffResolver.js` | 擴充 Twitch tier 挖礦 luck / CD 加成（既有檔案） | 7 |
 | `src/events/ready/twitchMonthlyTitle.js` | Tier3 每月免費稱號 cron | 7 |
