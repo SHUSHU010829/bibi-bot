@@ -144,6 +144,12 @@ module.exports = async (client) => {
     // 打工系統 collection（記每位玩家的打工冷卻）
     const workProfilesCollection = database.collection("WorkProfiles");
 
+    // 地下城決鬥對局狀態
+    const duelGamesCollection = database.collection("DuelGames");
+
+    // 拍賣行掛牌
+    const auctionListingsCollection = database.collection("AuctionListings");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -200,6 +206,8 @@ module.exports = async (client) => {
     client.miningProfilesCollection = miningProfilesCollection;
     client.mineLogsCollection = mineLogsCollection;
     client.workProfilesCollection = workProfilesCollection;
+    client.duelGamesCollection = duelGamesCollection;
+    client.auctionListingsCollection = auctionListingsCollection;
     await economySnapshotsCollection
       .createIndex({ guildId: 1, date: 1 }, { unique: true })
       .catch((e) =>
@@ -698,6 +706,42 @@ module.exports = async (client) => {
       await workProfilesCollection.createIndex(
         { userId: 1, guildId: 1 },
         { unique: true, name: "uniq_work_user_guild" }
+      );
+
+      // 決鬥對局索引：同 guild 同 duelId 唯一；逾時掃描靠 (status, expires_at)
+      await duelGamesCollection.createIndex(
+        { duel_id: 1 },
+        { unique: true, name: "uniq_duel_id" }
+      );
+      await duelGamesCollection.createIndex(
+        { guild_id: 1, challenger_id: 1, status: 1 },
+        { name: "duel_guild_challenger_status" }
+      );
+      await duelGamesCollection.createIndex(
+        { status: 1, expires_at: 1 },
+        { name: "duel_status_expiry" }
+      );
+      await duelGamesCollection.createIndex(
+        { updated_at: 1 },
+        { expireAfterSeconds: 7 * 24 * 60 * 60, name: "duel_ttl_7d" }
+      );
+
+      // 拍賣行索引：(guild, listing_id) 唯一；結算掃描靠 (status, expires_at)
+      await auctionListingsCollection.createIndex(
+        { guild_id: 1, listing_id: 1 },
+        { unique: true, name: "uniq_auction_guild_listing" }
+      );
+      await auctionListingsCollection.createIndex(
+        { guild_id: 1, status: 1, expires_at: 1 },
+        { name: "auction_guild_status_expiry" }
+      );
+      await auctionListingsCollection.createIndex(
+        { guild_id: 1, seller_id: 1, status: 1 },
+        { name: "auction_guild_seller_status" }
+      );
+      await auctionListingsCollection.createIndex(
+        { settled_at: 1 },
+        { expireAfterSeconds: 7 * 24 * 60 * 60, name: "auction_ttl_7d", sparse: true }
       );
     } catch (indexError) {
       console.log(

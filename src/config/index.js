@@ -18,6 +18,8 @@ const invite = require("./invite.json");
 const mining = require("./mining.json");
 const work = require("./work.json");
 const craft = require("./craft.json");
+const dungeon = require("./dungeon.json");
+const auction = require("./auction.json");
 
 module.exports = {
   ...server,
@@ -38,4 +40,6 @@ module.exports = {
   ...mining,
   ...work,
   ...craft,
+  ...dungeon,
+  ...auction,
 };

@@ -10,9 +10,9 @@ const { getActiveBuffMultiplier } = require("../shop/activeBuff");
 
 const MSG_VOICE_SOURCES = ["message", "voice"];
 const CASINO_SOURCES = ["bet", "payout"];
-const SINK_SOURCES = ["shop_buy", "auction_bid", "wealth_tax", "transfer_out", "deposit_lock", "stock_buy", "stock_fee", "event_host_lock", "invite_clawback"];
-const PEER_SOURCES = ["transfer_in", "transfer_out", "deposit_lock", "deposit_release", "event_prize", "event_refund"];
-const FLAT_REWARD_SOURCES = ["welfare", "quest_daily", "quest_weekly", "quest_event", "stock_sell", "stock_dividend", "invite_reward", "invite_welcome", "mining_sell", "work"];
+const SINK_SOURCES = ["shop_buy", "auction_bid", "wealth_tax", "transfer_out", "deposit_lock", "stock_buy", "stock_fee", "event_host_lock", "invite_clawback", "duel_stake"];
+const PEER_SOURCES = ["transfer_in", "transfer_out", "deposit_lock", "deposit_release", "event_prize", "event_refund", "auction_payout", "auction_refund", "duel_payout", "duel_refund"];
+const FLAT_REWARD_SOURCES = ["welfare", "quest_daily", "quest_weekly", "quest_event", "stock_sell", "stock_dividend", "invite_reward", "invite_welcome", "mining_sell", "work", "dungeon"];
 
 module.exports = async (client, opts) => {
   if (!coinSystem?.enabled) return null;

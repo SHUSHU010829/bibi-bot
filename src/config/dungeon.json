@@ -1,0 +1,34 @@
+{
+  "dungeon": {
+    "enabled": true,
+    "staminaMax": 10,
+    "staminaRegenMs": 3600000,
+    "baseAtk": 30,
+    "pickaxeAtk": { "wood": 0, "iron": 15, "gold": 25, "diamond": 35 },
+    "monsterHpMin": 50,
+    "monsterHpMax": 200,
+    "winRateMin": 0.2,
+    "winRateMax": 0.9,
+    "monsters": [
+      { "name": "洞窟蝙蝠", "emoji": "🦇" },
+      { "name": "石化史萊姆", "emoji": "🪨" },
+      { "name": "地穴蜘蛛", "emoji": "🕷️" },
+      { "name": "礦坑哥布林", "emoji": "👺" },
+      { "name": "熔岩巨人", "emoji": "🗿" },
+      { "name": "深淵骷髏", "emoji": "💀" },
+      { "name": "暗影狼", "emoji": "🐺" }
+    ],
+    "loot": [
+      { "id": "ore_fragment", "weight": 40, "ore": "iron", "qty": 3 },
+      { "id": "coins", "weight": 35, "minCoins": 150, "maxCoins": 300 },
+      { "id": "legendary_fragment", "weight": 15, "qty": 1 },
+      { "id": "nothing", "weight": 10 }
+    ],
+    "duel": {
+      "enabled": true,
+      "minBet": 10,
+      "maxBet": 5000,
+      "acceptWindowMs": 120000
+    }
+  }
+}

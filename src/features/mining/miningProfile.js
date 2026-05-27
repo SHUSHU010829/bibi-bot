@@ -13,6 +13,12 @@ function defaultProfile(userId, guildId) {
     mine_count_total: 0,
     craft_count_total: 0,
     backpack: { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0 },
+    stamina: null,
+    stamina_updated_at: 0,
+    dungeon_count: 0,
+    legendary_fragments: 0,
+    gift_date: null,
+    gift_count: 0,
     createdAt: new Date(),
   };
 }
@@ -29,6 +35,12 @@ function normalize(doc) {
   doc.backpack_bonus_slots ??= 0;
   doc.mine_count_total ??= 0;
   doc.craft_count_total ??= 0;
+  if (doc.stamina === undefined) doc.stamina = null;
+  doc.stamina_updated_at ??= 0;
+  doc.dungeon_count ??= 0;
+  doc.legendary_fragments ??= 0;
+  if (doc.gift_date === undefined) doc.gift_date = null;
+  doc.gift_count ??= 0;
   return doc;
 }
 
