@@ -15,6 +15,13 @@ const buyItem = require("../../features/shop/buyItem");
 const { getItem } = require("../../features/shop/catalog");
 const { buildBackpackView } = require("../../features/shop/backpackView");
 const { buildShopView } = require("../../features/shop/shopView");
+const {
+  buildBuyConfirmView,
+  clampQty,
+  QTY_SELECT_PREFIX,
+  CONFIRM_PREFIX,
+  CANCEL_ID,
+} = require("../../features/shop/buyConfirmView");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { consume } = require("../../utils/rateLimiter");
 
@@ -74,14 +81,35 @@ async function handleNav(client, interaction) {
   await interaction.update(buildShopView(catIndex, target));
 }
 
-// 購買：customId = shop_buy_<itemId>（itemId 可能含底線，直接取前綴之後）
+// 購買鈕：customId = shop_buy_<itemId>。不直接扣款，先跳出（僅自己可見的）確認面板防誤觸。
 async function handleBuyButton(client, interaction, itemId) {
   const item = getItem(itemId);
   if (!item) {
     return interaction.reply({ content: "❌ 找不到該商品", flags: MessageFlags.Ephemeral });
   }
+  const view = buildBuyConfirmView(item, 1);
+  await interaction.reply({ ...view, flags: MessageFlags.Ephemeral });
+}
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+// 數量選單：customId = shop_qty_<itemId>，value = 數量。更新確認面板的小計。
+async function handleQtySelect(client, interaction, itemId) {
+  const item = getItem(itemId);
+  if (!item) {
+    return interaction.update({ content: "❌ 找不到該商品", components: [] });
+  }
+  const qty = clampQty(item, parseInt(interaction.values?.[0], 10) || 1);
+  await interaction.update(buildBuyConfirmView(item, qty));
+}
+
+// 確認購買：customId = shop_confirm_<qty>_<itemId>。真正扣款發生在這裡。
+async function handleConfirmButton(client, interaction, qty, itemId) {
+  const item = getItem(itemId);
+  if (!item) {
+    return interaction.update({ content: "❌ 找不到該商品", components: [] });
+  }
+
+  // 真正的購買：先把確認面板鎖住（移除按鈕）再扣款，避免重複送出
+  await interaction.update({ content: "⏳ 購買處理中…", components: [] });
 
   const result = await buyItem(client, {
     userId: interaction.user.id,
@@ -89,13 +117,15 @@ async function handleBuyButton(client, interaction, itemId) {
     username: interaction.user.username,
     member: interaction.member,
     itemId,
+    quantity: qty,
   });
 
-  if (!result.ok) return interaction.editReply(`❌ ${result.error}`);
+  if (!result.ok) return interaction.editReply({ content: `❌ ${result.error}`, components: [] });
 
+  const boughtQty = result.quantity || 1;
   const lines = [
-    `✅ 已購買 **${item.name}**`,
-    `・花費：${item.price.toLocaleString()} ${MONEY_EMOJI}`,
+    `✅ 已購買 **${item.name}**${boughtQty > 1 ? ` ×${boughtQty}` : ""}`,
+    `・花費：${(result.totalPrice || item.price).toLocaleString()} ${MONEY_EMOJI}`,
     `・剩餘餘額：${(result.balanceAfter || 0).toLocaleString()} ${MONEY_EMOJI}`,
   ];
   if (result.expiresAt) {
@@ -132,6 +162,11 @@ async function handleBuyButton(client, interaction, itemId) {
   }
 
   await interaction.editReply({ content: lines.join("\n"), components });
+}
+
+// 取消購買：把確認面板收掉。
+async function handleCancelButton(client, interaction) {
+  await interaction.update({ content: "🛒 已取消購買。", components: [] });
 }
 
 async function handleEquipButton(client, interaction, inventoryId) {
@@ -227,6 +262,9 @@ module.exports = async (client, interaction) => {
       cid === CAT_SELECT_ID ||
       cid.startsWith(NAV_PREFIX) ||
       cid.startsWith(BUY_PREFIX) ||
+      cid.startsWith(QTY_SELECT_PREFIX) ||
+      cid.startsWith(CONFIRM_PREFIX) ||
+      cid === CANCEL_ID ||
       cid.startsWith(EQUIP_BTN_PREFIX) ||
       cid.startsWith(TITLE_OPEN_PREFIX) ||
       cid.startsWith(EQUIP_SELECT_PREFIX) ||
@@ -234,7 +272,7 @@ module.exports = async (client, interaction) => {
       cid.startsWith(TITLE_MODAL_PREFIX);
     if (!isShopInteraction) return;
 
-    // 防連點：只對面板瀏覽 / 購買限流（購買後的裝備、設定稱號等下游動作不限流）
+    // 防連點：面板瀏覽 / 開啟購買確認限流（購買後的裝備、設定稱號等下游動作不限流）
     const isBrowseOrBuy =
       cid === CAT_SELECT_ID || cid.startsWith(NAV_PREFIX) || cid.startsWith(BUY_PREFIX);
     if (isBrowseOrBuy) {
@@ -252,15 +290,46 @@ module.exports = async (client, interaction) => {
       }
     }
 
-    // 商店瀏覽：切換分類 / 分頁 / 購買
+    // 防重複扣款：確認購買做較嚴格的限流
+    if (interaction.isButton() && cid.startsWith(CONFIRM_PREFIX)) {
+      const rl = consume(interaction.user.id, "shop:buy", { windowMs: 2500, max: 1 });
+      if (!rl.allowed) {
+        try {
+          await interaction.reply({
+            content: `⏳ 別急，${Math.ceil(rl.retryAfterMs / 1000)} 秒後再試。`,
+            flags: MessageFlags.Ephemeral,
+          });
+        } catch (_) {
+          /* noop */
+        }
+        return;
+      }
+    }
+
+    // 商店瀏覽：切換分類 / 分頁
     if (interaction.isStringSelectMenu() && cid === CAT_SELECT_ID) {
       return handleCategorySelect(client, interaction);
     }
     if (interaction.isButton() && cid.startsWith(NAV_PREFIX)) {
       return handleNav(client, interaction);
     }
+
+    // 購買流程：開確認面板 → 調整數量 → 確認 / 取消
     if (interaction.isButton() && cid.startsWith(BUY_PREFIX)) {
       return handleBuyButton(client, interaction, cid.slice(BUY_PREFIX.length));
+    }
+    if (interaction.isStringSelectMenu() && cid.startsWith(QTY_SELECT_PREFIX)) {
+      return handleQtySelect(client, interaction, cid.slice(QTY_SELECT_PREFIX.length));
+    }
+    if (interaction.isButton() && cid.startsWith(CONFIRM_PREFIX)) {
+      const rest = cid.slice(CONFIRM_PREFIX.length); // <qty>_<itemId>
+      const us = rest.indexOf("_");
+      const qty = parseInt(rest.slice(0, us), 10) || 1;
+      const itemId = rest.slice(us + 1);
+      return handleConfirmButton(client, interaction, qty, itemId);
+    }
+    if (interaction.isButton() && cid === CANCEL_ID) {
+      return handleCancelButton(client, interaction);
     }
 
     if (

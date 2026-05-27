@@ -82,6 +82,7 @@ module.exports = async (client, interaction) => {
       const messages = {
         no_ticket: "🎫 你沒有 CD 縮短券，可到 /商店 購買。",
         not_in_cooldown: "✅ 你現在就能挖礦，不需要使用 CD 縮短券。",
+        daily_limit: `🎫 CD 縮短券每日最多使用 ${result.limit} 張，今天已用完，明天再來吧！`,
         retry: "⏳ 操作衝突了，請再點一次。",
       };
       await replyEphemeral(interaction, messages[result.reason] || "🔧 使用失敗，請稍後再試。");

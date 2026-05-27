@@ -9,6 +9,8 @@ function defaultProfile(userId, guildId) {
     pickaxe_durability: null,
     luck_potion_uses: 0,
     cd_ticket_count: 0,
+    cd_ticket_used_date: null,
+    cd_ticket_used_count: 0,
     backpack_bonus_slots: 0,
     mine_count_total: 0,
     craft_count_total: 0,
@@ -35,6 +37,8 @@ function normalize(doc) {
   if (doc.pickaxe_durability === undefined) doc.pickaxe_durability = null;
   doc.luck_potion_uses ??= 0;
   doc.cd_ticket_count ??= 0;
+  if (doc.cd_ticket_used_date === undefined) doc.cd_ticket_used_date = null;
+  doc.cd_ticket_used_count ??= 0;
   doc.backpack_bonus_slots ??= 0;
   doc.mine_count_total ??= 0;
   doc.craft_count_total ??= 0;
