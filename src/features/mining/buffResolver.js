@@ -1,9 +1,10 @@
 const { mining } = require("../../config");
 const twitchPerks = require("./twitchPerks");
 
-// 整合鎬子 / 幸運藥水 / CD 縮短券 / Twitch 訂閱者權益。
-// 回傳 { luckBonus, qtyBonus, actualCdMs, consume: { usePotion, useTicket } }。
-function resolve(profile, member, opts = {}) {
+// 整合鎬子 / 幸運藥水 / Twitch 訂閱者權益。
+// CD 縮短券改為冷卻中於 /背包 主動使用（見 mineService.useCdTicket），不在挖礦時自動消耗。
+// 回傳 { luckBonus, qtyBonus, actualCdMs, consume: { usePotion } }。
+function resolve(profile, member) {
   const pickaxes = mining?.pickaxes || {};
   const pdef = pickaxes[profile?.pickaxe] || pickaxes.wood || {};
 
@@ -14,10 +15,6 @@ function resolve(profile, member, opts = {}) {
   // 幸運藥水：持有次數 > 0 時自動生效並消耗一次
   const usePotion = (profile?.luck_potion_uses || 0) > 0;
   if (usePotion) luckBonus += mining?.luckPotionBonus || 0;
-
-  // CD 縮短券：由指令選項決定是否使用（避免每次自動燒券）
-  const useTicket = opts.useTicket === true && (profile?.cd_ticket_count || 0) > 0;
-  if (useTicket) cdMs -= mining?.cdTicketReductionMs || 0;
 
   // Twitch 訂閱者權益：依 tier 加挖礦 luck、縮短 CD（沿用訂閱角色 ID）
   const perks = twitchPerks.resolvePerks(member);
@@ -33,7 +30,7 @@ function resolve(profile, member, opts = {}) {
   // CD 下限保護（避免負數 / 零）
   const actualCdMs = Math.max(cdMs, 60 * 1000);
 
-  return { luckBonus, qtyBonus, actualCdMs, consume: { usePotion, useTicket } };
+  return { luckBonus, qtyBonus, actualCdMs, consume: { usePotion } };
 }
 
 module.exports = { resolve };

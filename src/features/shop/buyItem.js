@@ -19,6 +19,19 @@ async function buyItem(client, { userId, guildId, username, member, itemId }) {
     return { ok: false, error: "挖礦系統尚未就緒" };
   }
 
+  // CD 縮短券持有上限：超過上限就拒絕購買（在扣款前檢查）
+  if (item.type === "mining_cd_ticket" && item.payload?.maxStack > 0) {
+    const prof = await getMiningProfile(client, userId, guildId);
+    const owned = prof?.cd_ticket_count || 0;
+    const add = item.payload?.qty || 0;
+    if (owned + add > item.payload.maxStack) {
+      return {
+        ok: false,
+        error: `CD 縮短券最多持有 ${item.payload.maxStack} 張，你目前已有 ${owned} 張，無法再購買。`,
+      };
+    }
+  }
+
   const balance = await client.userCoinsCollection
     .findOne({ userId, guildId }, { projection: { totalCoins: 1 } })
     .catch(() => null);

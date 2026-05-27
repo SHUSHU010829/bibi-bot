@@ -13,7 +13,7 @@ const { ObjectId } = require("mongodb");
 const equipItem = require("../../features/shop/equipItem");
 const buyItem = require("../../features/shop/buyItem");
 const { getItem } = require("../../features/shop/catalog");
-const { buildInventoryView } = require("../../features/shop/inventoryView");
+const { buildBackpackView } = require("../../features/shop/backpackView");
 const { buildShopView } = require("../../features/shop/shopView");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { consume } = require("../../utils/rateLimiter");
@@ -165,14 +165,14 @@ async function handleEquipFromInventorySelect(client, interaction, inventoryId) 
   }
 
   try {
-    const view = await buildInventoryView(client, {
+    const view = await buildBackpackView(client, {
       userId: interaction.user.id,
       guildId: interaction.guildId,
       username: interaction.user.username,
     });
     await interaction.editReply(view);
   } catch (err) {
-    console.log(`[ERROR] refresh inventory view: ${err}`.red);
+    console.log(`[ERROR] refresh backpack view: ${err}`.red);
   }
 
   await interaction
