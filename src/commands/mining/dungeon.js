@@ -80,7 +80,10 @@ module.exports = {
 
       const m = result.monster;
       const winPct = Math.round(result.winRate * 100);
-      const staminaLine = `🔋 體力：${result.stamina}/${result.staminaMax}`;
+      const subTag = result.staminaBonus > 0
+        ? `（含 Twitch 訂閱加乘 +${result.staminaBonus}）`
+        : "";
+      const staminaLine = `🔋 體力：${result.stamina}/${result.staminaMax}${subTag}`;
       const name =
         interaction.member?.displayName || interaction.user.username;
       const continueRow = buildContinueRow(interaction.user.id, name);

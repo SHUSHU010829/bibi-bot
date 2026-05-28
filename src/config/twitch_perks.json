@@ -18,7 +18,7 @@
         "miningLuckBonus": 0.1,
         "miningCdReductionMs": 1800000,
         "workCdReductionMs": 1800000,
-        "staminaBonus": 2,
+        "staminaBonus": 1,
         "depositSlotBonus": 2,
         "exclusiveThemeId": "theme_subscriber_t2"
       },
