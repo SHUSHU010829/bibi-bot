@@ -1,4 +1,4 @@
-// /檔案 分頁切換按鈕：點擊後 interaction.update() 換頁，沿用原訊息的 ephemeral 狀態。
+// /檔案 分頁切換按鈕：只允許原呼叫者點擊，更新訊息切到該分頁。
 require("colors");
 const { MessageFlags } = require("discord.js");
 
@@ -18,7 +18,17 @@ module.exports = async (client, interaction) => {
   const parsed = parseCustomId(cid);
   if (!parsed) return;
 
-  const { tabKey, targetUid, ephemeral } = parsed;
+  const { tabKey, ownerUid } = parsed;
+
+  // 不是本人按的就提示一下，不換頁
+  if (interaction.user.id !== ownerUid) {
+    return interaction
+      .reply({
+        content: "🔒 這不是你的個人檔案。你可以自己用 `/檔案` 看自己的喔～",
+        flags: MessageFlags.Ephemeral,
+      })
+      .catch(() => {});
+  }
 
   try {
     await interaction.deferUpdate();
@@ -28,25 +38,12 @@ module.exports = async (client, interaction) => {
   }
 
   try {
-    const target = await client.users.fetch(targetUid).catch(() => null);
-    if (!target) {
-      await interaction
-        .editReply({ content: "❌ 找不到該使用者", components: [], files: [] })
-        .catch(() => {});
-      return;
-    }
-
-    const member = await interaction.guild.members
-      .fetch(targetUid)
-      .catch(() => null);
-
+    const member = interaction.member;
     const payload = await renderTab(client, {
       tabKey,
-      target,
-      viewer: interaction.user,
+      target: interaction.user,
       member,
       guildId: interaction.guildId,
-      ephemeral,
     });
 
     await interaction.editReply(payload);
@@ -66,7 +63,6 @@ module.exports = async (client, interaction) => {
         content: "🔧 切換分頁失敗，請重試或重新呼叫 `/檔案`",
         components: [],
         files: [],
-        flags: ephemeral ? MessageFlags.Ephemeral : 0,
       })
       .catch(() => {});
   }
