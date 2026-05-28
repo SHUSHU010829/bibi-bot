@@ -1,8 +1,8 @@
-// /檔案 持股分頁的「賣 <symbol>」按鈕。
+// /股市 持股 的「賣 <symbol>」按鈕。
 //
 // customId 格式:`pf_stksell_<symbol>_<ownerUid>`(見 features/profile/views/stockHoldings.js)。
 // 流程:本人按下 → 彈 Modal 輸入股數(可填 all)→ 用 tradeService.sellMarket 直接成交。
-// 結果以 ephemeral 訊息回覆,不動原本的 /檔案 訊息(切回持股分頁就能看到最新數字)。
+// 結果以 ephemeral 訊息回覆,不動原本的持股訊息(重新 /股市 持股 就能看到最新數字)。
 
 require("colors");
 const {
@@ -45,7 +45,7 @@ module.exports = async (client, interaction) => {
   if (interaction.user.id !== ownerUid) {
     return interaction
       .reply({
-        content: "🔒 這是別人檔案的賣出按鈕,請用 `/檔案` 看自己的持股。",
+        content: "🔒 這是別人的賣出按鈕,請用 `/股市 持股` 看自己的持股。",
         flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});
@@ -161,7 +161,7 @@ module.exports = async (client, interaction) => {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**剩餘持股**\n${result.remainingShares} 股 ・ 餘額 ${result.balanceAfter.toLocaleString()}\n-# 切回「📈 持股」分頁可看到最新數字`
+          `**剩餘持股**\n${result.remainingShares} 股 ・ 餘額 ${result.balanceAfter.toLocaleString()}\n-# 重新 \`/股市 持股\` 可看到最新數字`
         )
       );
 

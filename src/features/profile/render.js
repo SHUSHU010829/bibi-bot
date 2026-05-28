@@ -16,7 +16,6 @@ const { buildLevelCardView } = require("./views/levelCard");
 const { buildMinerProfileView } = require("./views/minerProfile");
 const { buildWalletView } = require("./views/wallet");
 const { buildCasinoStatsView } = require("./views/casinoStats");
-const { buildStockHoldingsView } = require("./views/stockHoldings");
 const { buildAchievementsView } = require("./views/achievements");
 
 const BUILDERS = {
@@ -24,7 +23,6 @@ const BUILDERS = {
   miner: buildMinerProfileView,
   wallet: buildWalletView,
   casino: buildCasinoStatsView,
-  stock: buildStockHoldingsView,
   achievements: buildAchievementsView,
 };
 
@@ -42,7 +40,7 @@ function parseCustomId(customId) {
   return { tabKey, ownerUid };
 }
 
-// 6 個分頁，每列最多 5 顆按鈕，所以拆兩列（5 + 1）。
+// 每列最多 5 顆按鈕,目前 5 個分頁剛好一列。
 function buildNavRows({ activeTab, ownerUid }) {
   const rows = [];
   for (let i = 0; i < TABS.length; i += 5) {
