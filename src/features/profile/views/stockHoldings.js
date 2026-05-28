@@ -21,7 +21,7 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
     guildId
   );
   if (positions.length === 0) {
-    return { content: "📭 目前沒有任何持股。可用 `/買股` 開始投資。" };
+    return { content: "📭 目前沒有任何持股。可用 `/股市 買` 開始投資。" };
   }
 
   const symbols = positions.map((p) => p.symbol);

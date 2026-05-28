@@ -118,7 +118,7 @@ async function showStatus(client, interaction, userId, guildId) {
   if (status.hasStocks) {
     const symList = status.stockSymbols.slice(0, 5).map((s) => `\`${s}\``).join("、");
     lines.push(
-      `\n📈 持有 **${status.stockShares.toLocaleString()}** 股股票（${symList}${status.stockSymbols.length > 5 ? "…" : ""}），不算破產，先 \`/賣股\` 清倉再來乞討。`
+      `\n📈 持有 **${status.stockShares.toLocaleString()}** 股股票（${symList}${status.stockSymbols.length > 5 ? "…" : ""}），不算破產，先 \`/股市 賣\` 清倉再來乞討。`
     );
   } else if (status.claimedToday) {
     lines.push(
