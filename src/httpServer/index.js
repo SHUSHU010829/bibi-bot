@@ -1,5 +1,7 @@
 const express = require("express");
 const createFlushChatScoreHandler = require("./flushChatScore");
+const createDonationSessionHandler = require("./donationSession");
+const createDonationGrantHandler = require("./donationGrant");
 const logger = require("../utils/logger");
 const { snapshot } = require("../utils/errorTracker");
 
@@ -43,6 +45,10 @@ module.exports = function startHttpServer(client) {
   });
 
   app.post("/api/twitch-chat-score", createFlushChatScoreHandler(client));
+
+  // 抖內系統（bibi-website 呼叫）
+  app.post("/api/donation/session", createDonationSessionHandler(client));
+  app.post("/api/donation/grant", createDonationGrantHandler(client));
 
   app.use((err, _req, res, _next) => {
     logger.error({ source: "http", err: err.message, stack: err.stack }, "HTTP unhandled error");
