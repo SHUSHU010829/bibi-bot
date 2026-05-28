@@ -793,6 +793,68 @@ module.exports = async (client) => {
       console.log(`[WARNING] 遊戲稱號遷移失敗：${migrateError.message}`.yellow);
     }
 
+    // 一次性遷移：把 UserLevels.cardAccent 對應的等級卡顏色補進 UserInventory，
+    // 並標記為 equipped。/level cardtheme 已下線改由商店購買，此遷移確保舊用戶
+    // 不會因為下線而失去手動設定過的顏色。idempotent。
+    try {
+      const accentDocs = await userLevelsCollection
+        .find({ cardAccent: { $exists: true, $nin: [null, "", "default"] } })
+        .project({ userId: 1, guildId: 1, cardAccent: 1 })
+        .toArray();
+      const accentNameMap = {
+        pink: "粉紅",
+        blue: "海藍",
+        gold: "金箔",
+        mint: "薄荷",
+        mono: "墨黑",
+      };
+      let accentMigrated = 0;
+      for (const u of accentDocs) {
+        const key = u.cardAccent;
+        if (!accentNameMap[key]) continue;
+        const itemId = `accent_${key}`;
+        const exists = await userInventoryCollection.findOne({
+          userId: u.userId,
+          guildId: u.guildId,
+          itemId,
+          type: "card_accent",
+        });
+        if (exists) {
+          if (!exists.equipped) {
+            await userInventoryCollection.updateOne(
+              { _id: exists._id },
+              { $set: { equipped: true, updatedAt: new Date() } }
+            );
+          }
+          continue;
+        }
+        const now = new Date();
+        await userInventoryCollection.insertOne({
+          userId: u.userId,
+          guildId: u.guildId,
+          itemId,
+          name: accentNameMap[key],
+          type: "card_accent",
+          payload: { themeKey: key },
+          equipped: true,
+          expiresAt: null,
+          acquiredAt: now,
+          updatedAt: now,
+        });
+        accentMigrated += 1;
+      }
+      if (accentMigrated > 0) {
+        console.log(
+          `[DATA] 等級卡顏色遷移：補發 ${accentMigrated} 位玩家的顏色到背包`
+            .cyan
+        );
+      }
+    } catch (migrateError) {
+      console.log(
+        `[WARNING] 等級卡顏色遷移失敗：${migrateError.message}`.yellow
+      );
+    }
+
     // 確認有多少飲料店資料
     const beverageStoreCount = await collection.distinct("beverageStore", {
       category: "beverage",

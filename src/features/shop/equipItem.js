@@ -81,6 +81,21 @@ async function equipItem(client, { userId, guildId, member, guild, inventoryId, 
     }
   }
 
+  if (item.type === "card_accent") {
+    if (client.userLevelsCollection) {
+      await client.userLevelsCollection.updateOne(
+        { userId, guildId },
+        {
+          $set: {
+            cardAccent: item.payload?.themeKey || "default",
+            updatedAt: new Date(),
+          },
+        },
+        { upsert: true },
+      );
+    }
+  }
+
   await client.userInventoryCollection.updateOne(
     { _id },
     {
