@@ -1,6 +1,7 @@
 const logger = require("../utils/logger");
 const { trackError, trackSuccess } = require("../utils/errorTracker");
 const { tierForAmount } = require("../features/donation/code");
+const grantDonationPerks = require("../features/donation/grantDonationPerks");
 const { donation } = require("../config");
 
 /**
@@ -184,8 +185,44 @@ module.exports = function createDonationGrantHandler(client) {
       // 不影響本次發放結果，繼續
     }
 
-    // TODO(step 4): 真實發放 perks → 金幣 / 身分組 / 道具 / luck buff / 限定外觀
-    // TODO(step 4): DM + 公告
+    // 真實發放 perks（每項獨立 try/catch、失敗 log 不阻塞其他項目）
+    const record = {
+      tradeNo,
+      sessionId: session.sessionId,
+      userId: session.userId,
+      guildId: session.guildId,
+      amountNtd: Math.floor(amountNtd),
+      platform,
+      patronName,
+      patronNote,
+    };
+
+    let updates = {};
+    try {
+      updates = await grantDonationPerks(client, { record, tier });
+    } catch (err) {
+      logger.error(
+        { source: "donation-grant", tradeNo, err: err.message, stack: err.stack },
+        "grantDonationPerks threw (outer)",
+      );
+      trackError("donation-grant", err, { phase: "grant-perks-outer", tradeNo });
+    }
+
+    // 把哪些項目發放成功寫回 record
+    if (Object.keys(updates).length > 0) {
+      try {
+        await records.updateOne(
+          { tradeNo },
+          { $set: { ...updates, updatedAt: new Date() } },
+        );
+      } catch (err) {
+        logger.warn(
+          { source: "donation-grant", tradeNo, err: err.message },
+          "record flag update failed (non-fatal)",
+        );
+      }
+    }
+
     logger.info(
       {
         source: "donation-grant",
@@ -194,8 +231,9 @@ module.exports = function createDonationGrantHandler(client) {
         userId: session.userId,
         amountNtd,
         tier: tier?.id || null,
+        grants: updates,
       },
-      "donation matched (perks not yet granted; step 4 pending)",
+      "donation granted",
     );
     trackSuccess("donation-grant");
 
@@ -204,6 +242,7 @@ module.exports = function createDonationGrantHandler(client) {
       matched: true,
       alreadyGranted: false,
       perks,
+      grants: updates,
     });
   };
 };
