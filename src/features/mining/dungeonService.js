@@ -13,10 +13,13 @@ function rollLoot() {
   return table.find((l) => l.id === id) || { id: "nothing" };
 }
 
+function staminaBonus(member) {
+  return twitchPerks.resolvePerks(member)?.staminaBonus || 0;
+}
+
 function staminaMax(member) {
   const base = dungeon?.staminaMax ?? 10;
-  const bonus = twitchPerks.resolvePerks(member)?.staminaBonus || 0;
-  return base + bonus;
+  return base + staminaBonus(member);
 }
 
 // 惰性回復：依離線時間補體力。回傳 { stamina, updatedAt, nextRegenAt }。
@@ -71,11 +74,12 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
   const max = staminaMax(member);
+  const bonus = staminaBonus(member);
   const profile = await getOrCreate(client, userId, guildId);
   const st = resolveStamina(profile, max);
 
   if (st.stamina <= 0) {
-    return { ok: false, reason: "no_stamina", nextRegenAt: st.nextRegenAt, max };
+    return { ok: false, reason: "no_stamina", nextRegenAt: st.nextRegenAt, max, staminaBonus: bonus };
   }
 
   // 消耗 1 點體力；若原本是滿的，從現在開始起算回復計時。
@@ -170,6 +174,7 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
     balance,
     stamina: newStamina,
     staminaMax: max,
+    staminaBonus: bonus,
     staminaNextRegenAt: resolveStamina(
       { stamina: newStamina, stamina_updated_at: newUpdatedAt },
       max
@@ -178,4 +183,4 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
   };
 }
 
-module.exports = { enterDungeon, resolveStamina, staminaMax, playerAtk };
+module.exports = { enterDungeon, resolveStamina, staminaMax, staminaBonus, playerAtk };
