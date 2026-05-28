@@ -3,7 +3,7 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
-  ActionRowBuilder,
+  SectionBuilder,
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
@@ -12,14 +12,9 @@ const { stockSystem } = require("../../../config");
 const portfolioService = require("../../stock/portfolioService");
 
 const SELL_BUTTON_PREFIX = "pf_stksell_";
-const CHART_BUTTON_PREFIX = "pf_stkchart_";
 
 function buildSellCustomId(symbol, ownerUid) {
   return `${SELL_BUTTON_PREFIX}${symbol}_${ownerUid}`;
-}
-
-function buildChartCustomId(symbol, ownerUid) {
-  return `${CHART_BUTTON_PREFIX}${symbol}_${ownerUid}`;
 }
 
 async function buildStockHoldingsView(client, { target, member, guildId }) {
@@ -46,9 +41,10 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
 
   let totalCost = 0;
   let totalValue = 0;
-  const lines = [];
   let best = null;
   let worst = null;
+  // 每一筆持股的文字內容 + 是否仍可賣(shares > 0)。
+  const positionViews = [];
 
   for (const p of positions) {
     const m = marketBySymbol.get(p.symbol);
@@ -61,11 +57,14 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
     totalCost += cost;
     totalValue += value;
     const sign = pnl >= 0 ? "+" : "";
-    lines.push(
-      `\`${p.symbol}\` ${m.name}\n` +
+    positionViews.push({
+      symbol: p.symbol,
+      shares: p.shares,
+      text:
+        `\`${p.symbol}\` ${m.name}\n` +
         `　持股 **${p.shares}** ｜ 均價 ${p.avgCost.toFixed(2)} ｜ 現價 ${price.toFixed(1)}\n` +
-        `　損益 **${sign}${Math.round(pnl).toLocaleString()}**（${sign}${pnlPct.toFixed(2)}%）`
-    );
+        `　損益 **${sign}${Math.round(pnl).toLocaleString()}**（${sign}${pnlPct.toFixed(2)}%）`,
+    });
     if (!best || pnl > best.pnl) best = { symbol: p.symbol, name: m.name, pnl };
     if (!worst || pnl < worst.pnl)
       worst = { symbol: p.symbol, name: m.name, pnl };
@@ -101,54 +100,42 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`## 💼 ${displayName} 的持股`)
     )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(lines.join("\n\n").slice(0, 4000))
-    )
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  // 每筆持股做成一個 Section,文字在左、🔴 賣出 按鈕在右(Components V2 的 accessory)。
+  // 沒持股的(shares = 0)只顯示文字,不掛按鈕。
+  for (const pv of positionViews) {
+    if (pv.shares > 0) {
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(pv.text)
+          )
+          .setButtonAccessory(
+            new ButtonBuilder()
+              .setCustomId(buildSellCustomId(pv.symbol, target.id))
+              .setLabel(`賣 ${pv.symbol}`)
+              .setEmoji("🔴")
+              .setStyle(ButtonStyle.Danger)
+          )
+      );
+    } else {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(pv.text)
+      );
+    }
+  }
+
+  container
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(summaryLines.join("\n"))
     );
 
-  // /檔案 永遠是看自己,所以可以直接掛賣出 / 走勢按鈕;handler 仍會再驗一次擁有者。
-  // 一列最多 5 顆按鈕。為了讓「賣 / 走勢」對應到同一支股票,兩排按鈕排同樣順序。
-  const sellRows = [];
-  const chartRows = [];
-  const tradable = positions.filter((p) => p.shares > 0).slice(0, 10);
-  for (let i = 0; i < tradable.length; i += 5) {
-    const slice = tradable.slice(i, i + 5);
-    sellRows.push(
-      new ActionRowBuilder().addComponents(
-        slice.map((p) =>
-          new ButtonBuilder()
-            .setCustomId(buildSellCustomId(p.symbol, target.id))
-            .setLabel(`賣 ${p.symbol}`)
-            .setEmoji("🔴")
-            .setStyle(ButtonStyle.Danger)
-        )
-      )
-    );
-    chartRows.push(
-      new ActionRowBuilder().addComponents(
-        slice.map((p) =>
-          new ButtonBuilder()
-            .setCustomId(buildChartCustomId(p.symbol, target.id))
-            .setLabel(`${p.symbol} 走勢`)
-            .setEmoji("📜")
-            .setStyle(ButtonStyle.Secondary)
-        )
-      )
-    );
-  }
-
   return {
     useV2: true,
-    components: [container, ...sellRows, ...chartRows],
+    components: [container],
   };
 }
 
-module.exports = {
-  buildStockHoldingsView,
-  SELL_BUTTON_PREFIX,
-  CHART_BUTTON_PREFIX,
-};
+module.exports = { buildStockHoldingsView, SELL_BUTTON_PREFIX };
