@@ -2,6 +2,10 @@ require("colors");
 const { EmbedBuilder } = require("discord.js");
 
 const gameTitleService = require("../../gameTitles/gameTitleService");
+const {
+  BADGES,
+  BADGE_CATEGORIES,
+} = require("../../leveling/badgeDefinitions");
 
 function progressBar(cur, target) {
   const ratio = Math.max(0, Math.min(1, target ? cur / target : 1));
@@ -9,24 +13,82 @@ function progressBar(cur, target) {
   return "█".repeat(filled) + "░".repeat(10 - filled);
 }
 
+// 同時呈現「等級徽章」與「遊戲稱號」兩類成就：
+// - 等級徽章來自 features/leveling/badgeDefinitions
+// - 遊戲稱號來自 features/gameTitles/gameTitleService
 async function buildAchievementsView(client, { target, guildId }) {
   if (!client.userLevelsCollection) {
-    return { content: "🔧 稱號系統尚未啟動！" };
+    return { content: "🔧 等級／成就系統尚未啟動！" };
   }
 
   const userId = target.id;
-  const unlocked = await gameTitleService.getUnlocked(client, userId, guildId);
-  const rows = await gameTitleService.progress(client, { userId, guildId });
+
+  const [levelDoc, gtUnlocked, gtProgress] = await Promise.all([
+    client.userLevelsCollection.findOne({ userId, guildId }),
+    gameTitleService.getUnlocked(client, userId, guildId),
+    gameTitleService.progress(client, { userId, guildId }),
+  ]);
+
+  const ownedBadges = new Set(levelDoc?.badges || []);
+  const badgeUnlocked = ownedBadges.size;
+  const badgeTotal = BADGES.length;
+  const gtTotalCount = gameTitleService.order().length;
+  const gtUnlockedCount = gtUnlocked.size;
+
+  const totalUnlocked = badgeUnlocked + gtUnlockedCount;
+  const totalTotal = badgeTotal + gtTotalCount;
 
   const embed = new EmbedBuilder()
     .setColor(0x9b59b6)
     .setTitle(`🏆 ${target.username} 的成就`)
+    .setDescription(
+      `已解鎖 **${totalUnlocked} / ${totalTotal}**\n` +
+        `-# 🏅 等級徽章 ${badgeUnlocked}/${badgeTotal} ・ 🎮 遊戲稱號 ${gtUnlockedCount}/${gtTotalCount}`
+    )
     .setFooter({
-      text: "👑 礦坑之王為每週挖礦榜第一，用 /挖礦排行 查看本週戰況",
+      text: "👑 礦坑之王為每週挖礦榜第一 ・ 用 /稱號 設定 把成就掛上等級卡",
     });
 
+  // ── 等級徽章區 ──
+  for (const [catKey, catLabel] of Object.entries(BADGE_CATEGORIES)) {
+    const catBadges = BADGES.filter((b) => b.category === catKey);
+    if (catBadges.length === 0) continue;
+
+    const lines = catBadges.map((b) => {
+      const has = ownedBadges.has(b.id);
+      if (has) return `✅ ${b.emoji} **${b.name}** — ${b.description}`;
+
+      let progressStr = "";
+      let nameDecoration = b.name;
+      if (typeof b.progress === "function") {
+        try {
+          const { current, target: tg } = b.progress(levelDoc || {}) || {};
+          if (typeof current === "number" && typeof tg === "number" && tg > 0) {
+            const pct = Math.min(100, Math.floor((current / tg) * 100));
+            const close = pct >= 80;
+            progressStr = `  (${current.toLocaleString()}/${tg.toLocaleString()} · ${pct}%)`;
+            if (close) {
+              progressStr = ` ⚡${progressStr}`;
+              nameDecoration = `**${b.name}**`;
+            }
+          }
+        } catch {
+          /* 進度算錯不影響列表 */
+        }
+      }
+      return `🔒 ${nameDecoration} — ${b.description}${progressStr}`;
+    });
+
+    embed.addFields({
+      name: catLabel,
+      value: lines.join("\n"),
+      inline: false,
+    });
+  }
+
+  // ── 遊戲稱號區 ──
   const byCat = {};
-  for (const row of rows) {
+  for (const row of gtProgress) {
     const d = gameTitleService.def(row.id);
     if (!d) continue;
     (byCat[d.category] ||= []).push(row);
@@ -35,8 +97,8 @@ async function buildAchievementsView(client, { target, guildId }) {
   for (const [cat, list] of Object.entries(byCat)) {
     const lines = list.map((row) => {
       const d = gameTitleService.def(row.id);
-      const done = unlocked.has(row.id);
-      const head = `${done ? "✅" : "⬜"} ${d.emoji || ""} ${d.name || row.id}`.trim();
+      const done = gtUnlocked.has(row.id);
+      const head = `${done ? "✅" : "🔒"} ${d.emoji || ""} ${d.name || row.id}`.trim();
       if (row.weekly) return `${head} — 每週爭奪`;
       if (done) return head;
       const parts = row.parts

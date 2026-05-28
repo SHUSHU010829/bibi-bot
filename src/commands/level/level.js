@@ -5,24 +5,19 @@ const {
 } = require("discord.js");
 
 const rankHandler = require("../../features/level/handlers/rank");
-const badgesHandler = require("../../features/level/handlers/badges");
 const cardThemeHandler = require("../../features/level/handlers/cardTheme");
 
-// 注意：/level profile、/level title、/level displaybadges 已遷移至
-//   /檔案、/稱號 設定、/稱號 展示徽章 / 重置展示。
-//   /level rank、/level badges、/level cardtheme 後續會分別併入
-//   /排行榜、/成就、商店，這裡先保留。
+// 注意：/level profile、/level title、/level displaybadges、/level badges 已遷移至
+//   /檔案、/稱號、/檔案 分頁:成就。
+//   /level rank、/level cardtheme 後續會分別併入 /排行榜、商店，這裡先保留。
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("level")
-    .setDescription("等級系統：排行榜、徽章圖鑑、卡面主題 🏅")
+    .setDescription("等級系統：排行榜、卡面主題 🏅")
     .setContexts(InteractionContextType.Guild)
     .addSubcommand((sub) =>
       sub.setName("rank").setDescription("查看伺服器等級排行榜 🏆")
-    )
-    .addSubcommand((sub) =>
-      sub.setName("badges").setDescription("查看你的徽章圖鑑 🏅")
     )
     .addSubcommand((sub) =>
       sub
@@ -52,8 +47,6 @@ module.exports = {
     switch (sub) {
       case "rank":
         return rankHandler.run(client, interaction);
-      case "badges":
-        return badgesHandler.run(client, interaction);
       case "cardtheme":
         return cardThemeHandler.run(client, interaction);
     }
