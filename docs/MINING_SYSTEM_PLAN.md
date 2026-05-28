@@ -145,7 +145,7 @@
 ### 7.1 訂閱限定卡面（`exclusiveThemeId`，T2 `theme_subscriber_t2` / T3 `theme_subscriber_t3`）
 
 - 在 `src/config/shop.json` 的 `themes` 新增兩個主題定義。
-- 在錢包卡渲染器（`src/features/level/handlers/profile.js`、`src/commands/economy/wallet.js` 的 render 路徑）實作對應畫法。
+- 在錢包卡渲染器（`src/features/profile/views/levelCard.js`、`src/features/profile/views/wallet.js` 的 render 路徑）實作對應畫法。
 - 自動把主題發到訂閱者背包供裝備（`UserInventory` `wallet_theme`），退訂後處理。
 
 ### 7.2 永久限定名字顏色（`exclusiveColorRoleId`，T3）
