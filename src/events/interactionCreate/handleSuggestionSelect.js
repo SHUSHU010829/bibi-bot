@@ -13,18 +13,20 @@ const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 
 module.exports = async (client, interaction) => {
-  // 只處理 StringSelectMenu 互動
-  if (!interaction.isStringSelectMenu()) {
-    return;
+  // 步驟 1：選擇類別後，先請使用者選擇公開或私密
+  if (interaction.isStringSelectMenu() && interaction.customId === "suggestion_select") {
+    return presentVisibilityChoice(client, interaction);
   }
 
-  // 只處理建議選單
-  if (interaction.customId !== "suggestion_select") {
-    return;
+  // 步驟 2：選好公開／私密後，建立討論頻道
+  if (interaction.isButton() && interaction.customId.startsWith("suggestion_open:")) {
+    return createSuggestionChannel(client, interaction);
   }
+};
 
+// 步驟 1：顯示「私密 / 公開」選擇按鈕
+async function presentVisibilityChoice(client, interaction) {
   try {
-    // 確保在伺服器中執行
     if (!interaction.guild) {
       logger.warn({ source: "suggestion-select" }, "interaction.guild 不存在,可能在 DM 中");
       return await interaction.reply({
@@ -33,7 +35,6 @@ module.exports = async (client, interaction) => {
       });
     }
 
-    // 確保 interaction.values 存在
     if (
       !interaction.values ||
       !Array.isArray(interaction.values) ||
@@ -59,16 +60,83 @@ module.exports = async (client, interaction) => {
       });
     }
 
-    // 先 defer，避免 loadPanels + 頻道建立讓 3 秒 token 過期觸發 10062
+    const privateButton = new ButtonBuilder()
+      .setCustomId(`suggestion_open:${selectedType}:private`)
+      .setLabel("私密討論（預設）")
+      .setEmoji("🔒")
+      .setStyle(ButtonStyle.Primary);
+
+    const publicButton = new ButtonBuilder()
+      .setCustomId(`suggestion_open:${selectedType}:public`)
+      .setLabel("公開討論")
+      .setEmoji("🌐")
+      .setStyle(ButtonStyle.Secondary);
+
+    const row = new ActionRowBuilder().addComponents(privateButton, publicButton);
+
+    await interaction.reply({
+      content:
+        `你選擇了 ${suggestionType.emoji} **${suggestionType.label}**\n\n` +
+        "請選擇此討論的顯示方式：\n" +
+        "🔒 **私密討論**：只有你與管理團隊看得到，內容不公開。\n" +
+        "🌐 **公開討論**：所有人都看得到並可一起討論，且**不會顯示你的名字**（匿名）。",
+      components: [row],
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    logger.error(
+      { source: "suggestion-select", userId: interaction.user?.id, err: error.message, stack: error.stack },
+      "顯示公開／私密選擇時出錯"
+    );
+    trackError("suggestion-select", error, { userId: interaction.user?.id });
+    if (!interaction.replied && !interaction.deferred) {
+      try {
+        await interaction.reply({
+          content: "❌ 處理建議時發生錯誤！請聯絡管理員。",
+          flags: MessageFlags.Ephemeral,
+        });
+      } catch (replyError) {
+        logger.error({ source: "suggestion-select", err: replyError.message }, "回覆錯誤訊息失敗");
+        trackError("suggestion-select", replyError);
+      }
+    }
+  }
+}
+
+// 步驟 2：依公開／私密建立討論頻道
+async function createSuggestionChannel(client, interaction) {
+  try {
+    if (!interaction.guild) {
+      return await interaction.reply({
+        content: "❌ 此功能只能在伺服器中使用。",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    // customId 格式：suggestion_open:{typeKey}:{private|public}
+    const [, selectedType, visibility] = interaction.customId.split(":");
+    const isPublic = visibility === "public";
+    const suggestionType = config.suggestion.types[selectedType];
+
+    if (!suggestionType) {
+      logger.error({ source: "suggestion-open", selectedType }, "無效的建議類型");
+      trackError("suggestion-open", new Error(`invalid type: ${selectedType}`));
+      return await interaction.reply({
+        content: "❌ 無效的建議類型！",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    // 先 deferUpdate，沿用原本的臨時訊息並移除按鈕，避免重複點擊建立多個頻道
     try {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await interaction.deferUpdate();
     } catch (deferErr) {
       if (deferErr?.code === 10062) {
         logger.warn(
-          { source: "suggestion-select", customId: interaction.customId },
+          { source: "suggestion-open", customId: interaction.customId },
           "互動已逾期,無法 defer"
         );
-        trackError("suggestion-select", deferErr, { reason: "expired" });
+        trackError("suggestion-open", deferErr, { reason: "expired" });
         return;
       }
       throw deferErr;
@@ -78,7 +146,6 @@ module.exports = async (client, interaction) => {
     const panels = await loadPanels(client);
     const panelConfig = panels.panels[interaction.channel.id];
 
-    // 使用頻道特定配置或預設配置
     const suggestionConfig = panelConfig
       ? {
           categoryId: panelConfig.categoryId,
@@ -89,21 +156,26 @@ module.exports = async (client, interaction) => {
           supportRoleId: config.suggestion.supportRoleId,
         };
 
-    // 檢查用戶是否已經有開啟的建議頻道
-    const existingSuggestion = interaction.guild.channels.cache.find(
-      (channel) =>
-        channel.topic === `建議創建者：${interaction.user.name}` &&
-        channel.type === ChannelType.GuildText,
-    );
+    // 私密討論：限制每位使用者同時只能有一個開啟中的私密討論
+    // 公開討論為匿名，不記錄創建者，因此不套用此限制
+    if (!isPublic) {
+      const existingSuggestion = interaction.guild.channels.cache.find(
+        (channel) =>
+          channel.topic === `建議創建者：${interaction.user.id}` &&
+          channel.type === ChannelType.GuildText,
+      );
 
-    if (existingSuggestion) {
-      return interaction.editReply({
-        content: `❌ 您已經有一個開啟的建議頻道了！\n請前往 ${existingSuggestion} 或先關閉現有的建議。`,
-      });
+      if (existingSuggestion) {
+        return interaction.editReply({
+          content: `❌ 您已經有一個開啟的私密討論了！\n請前往 ${existingSuggestion} 或先關閉現有的討論。`,
+          components: [],
+        });
+      }
     }
 
     await interaction.editReply({
-      content: "⏳ 正在創建建議頻道...",
+      content: "⏳ 正在創建討論頻道...",
+      components: [],
     });
 
     // 驗證並獲取父類別
@@ -119,40 +191,67 @@ module.exports = async (client, interaction) => {
         parentCategory = suggestionConfig.categoryId;
       } else {
         logger.warn(
-          { source: "suggestion-select", categoryId: suggestionConfig.categoryId },
+          { source: "suggestion-open", categoryId: suggestionConfig.categoryId },
           "建議類別 ID 無效或不存在,改用無類別創建"
         );
       }
     }
 
-    // 創建建議頻道
+    // 公開討論：頻道名稱不含使用者名字（匿名），所有人皆可查看與發言
+    // 私密討論：頻道名稱含使用者名字，僅創建者與管理團隊可見
+    const channelName = isPublic
+      ? `${suggestionType.channelPrefix}-公開-${interaction.id.slice(-4)}`
+      : `${suggestionType.channelPrefix}-${interaction.user.username.toLowerCase()}`;
+
+    const permissionOverwrites = isPublic
+      ? [
+          {
+            id: interaction.guild.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ReadMessageHistory,
+            ],
+          },
+          {
+            id: client.user.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ManageChannels,
+            ],
+          },
+        ]
+      : [
+          {
+            id: interaction.guild.id,
+            deny: [PermissionFlagsBits.ViewChannel],
+          },
+          {
+            id: interaction.user.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ReadMessageHistory,
+            ],
+          },
+          {
+            id: client.user.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ManageChannels,
+            ],
+          },
+        ];
+
+    // 公開討論為匿名，topic 不記錄創建者；私密討論記錄創建者 ID 供查重
     const suggestionChannel = await interaction.guild.channels.create({
-      name: `${suggestionType.channelPrefix}-${interaction.user.username.toLowerCase()}`,
+      name: channelName,
       type: ChannelType.GuildText,
       parent: parentCategory,
-      topic: `建議創建者：${interaction.user.name}`,
-      permissionOverwrites: [
-        {
-          id: interaction.guild.id,
-          deny: [PermissionFlagsBits.ViewChannel],
-        },
-        {
-          id: interaction.user.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ReadMessageHistory,
-          ],
-        },
-        {
-          id: client.user.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ManageChannels,
-          ],
-        },
-      ],
+      topic: isPublic ? "公開討論（匿名）" : `建議創建者：${interaction.user.id}`,
+      permissionOverwrites,
     });
 
     // 如果有支援團隊身份組，添加權限
@@ -174,20 +273,20 @@ module.exports = async (client, interaction) => {
         );
       } else {
         logger.warn(
-          { source: "suggestion-select", supportRoleId: suggestionConfig.supportRoleId },
+          { source: "suggestion-open", supportRoleId: suggestionConfig.supportRoleId },
           "支援團隊身份組 ID 無效或不存在"
         );
       }
     }
 
-    // 發送歡迎訊息和關閉按鈕
+    // 公開討論不顯示創建者名字（匿名），私密討論則 @ 並標示創建者
     const welcomeEmbed = new EmbedBuilder()
       .setColor("#FFD700")
-      .setTitle(`${suggestionType.emoji} ${suggestionType.label}`)
+      .setTitle(`${suggestionType.emoji} ${suggestionType.label}${isPublic ? "（公開討論）" : ""}`)
       .setDescription(
         suggestionType.welcomeMessage.replace(
           "{user}",
-          interaction.user.toString(),
+          isPublic ? "大家" : interaction.user.toString(),
         ),
       )
       .setTimestamp();
@@ -201,22 +300,23 @@ module.exports = async (client, interaction) => {
     const row = new ActionRowBuilder().addComponents(closeButton);
 
     await suggestionChannel.send({
-      content: `${interaction.user}`,
+      content: isPublic ? undefined : `${interaction.user}`,
       embeds: [welcomeEmbed],
       components: [row],
     });
 
     await interaction.editReply({
-      content: `✅ 建議頻道已創建！\n請前往 ${suggestionChannel}`,
-      flags: MessageFlags.Ephemeral,
+      content: isPublic
+        ? `✅ 公開討論頻道已創建（匿名，不會顯示你的名字）！\n請前往 ${suggestionChannel}`
+        : `✅ 私密討論頻道已創建！\n請前往 ${suggestionChannel}`,
     });
-    trackSuccess("suggestion-select");
+    trackSuccess("suggestion-open");
   } catch (error) {
     logger.error(
-      { source: "suggestion-select", userId: interaction.user?.id, err: error.message, stack: error.stack },
-      "處理建議選單互動時出錯"
+      { source: "suggestion-open", userId: interaction.user?.id, err: error.message, stack: error.stack },
+      "創建建議頻道時出錯"
     );
-    trackError("suggestion-select", error, { userId: interaction.user?.id });
+    trackError("suggestion-open", error, { userId: interaction.user?.id });
 
     if (!interaction.replied && !interaction.deferred) {
       try {
@@ -225,18 +325,18 @@ module.exports = async (client, interaction) => {
           flags: MessageFlags.Ephemeral,
         });
       } catch (replyError) {
-        logger.error({ source: "suggestion-select", err: replyError.message }, "回覆錯誤訊息失敗");
-        trackError("suggestion-select", replyError);
+        logger.error({ source: "suggestion-open", err: replyError.message }, "回覆錯誤訊息失敗");
+        trackError("suggestion-open", replyError);
       }
     } else {
       try {
         await interaction.editReply({
-          content: "❌ 創建建議頻道時發生錯誤！請聯絡管理員。",
-          flags: MessageFlags.Ephemeral,
+          content: "❌ 創建討論頻道時發生錯誤！請聯絡管理員。",
+          components: [],
         });
       } catch (editError) {
-        logger.error({ source: "suggestion-select", err: editError.message }, "編輯回覆失敗");
-        trackError("suggestion-select", editError);
+        logger.error({ source: "suggestion-open", err: editError.message }, "編輯回覆失敗");
+        trackError("suggestion-open", editError);
       }
     }
   }
