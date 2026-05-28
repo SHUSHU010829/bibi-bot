@@ -35,6 +35,9 @@ const {
   isMarketOpen,
 } = require("../../features/stock/tradeService");
 const { buildChartContainer } = require("../../features/stock/chartView");
+const {
+  buildStockHoldingsView,
+} = require("../../features/profile/views/stockHoldings");
 
 const DIVIDEND_PERIOD_MS = {
   "1m": 30 * 24 * 60 * 60 * 1000,
@@ -138,6 +141,11 @@ module.exports = {
         .setName("報價")
         .setDescription("打開互動報價面板,用按鈕直接買賣 📊")
     )
+    .addSubcommand((s) =>
+      s
+        .setName("持股")
+        .setDescription("查看自己的持股、損益與一鍵賣出 💼")
+    )
     .toJSON(),
 
   run: async (client, interaction) => {
@@ -147,6 +155,7 @@ module.exports = {
     if (sub === "走勢") return runHistory(client, interaction);
     if (sub === "配息") return runDividends(client, interaction);
     if (sub === "報價") return runQuotePanel(client, interaction);
+    if (sub === "持股") return runHoldings(client, interaction);
   },
 };
 
@@ -486,6 +495,35 @@ async function runDividends(client, interaction) {
   } catch (err) {
     console.log(`[STOCK] /股市 配息 失敗:${err?.stack || err}`.red);
     await interaction.editReply("❌ 查詢失敗,請稍後再試。").catch(() => {});
+  }
+}
+
+// ──────────────────────────── /股市 持股 ────────────────────────────
+async function runHoldings(client, interaction) {
+  await interaction.deferReply();
+  try {
+    if (!stockSystem?.enabled) return interaction.editReply("🔧 股市系統未啟用。");
+    if (!client.userPortfolioCollection || !client.stockMarketCollection) {
+      return interaction.editReply("🔧 股市系統尚未就緒。");
+    }
+
+    const view = await buildStockHoldingsView(client, {
+      target: interaction.user,
+      member: interaction.member,
+      guildId: interaction.guildId,
+    });
+
+    if (!view.components || view.components.length === 0) {
+      return interaction.editReply(view.content || "📭 目前沒有任何持股。");
+    }
+
+    await interaction.editReply({
+      components: view.components,
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (err) {
+    console.log(`[STOCK] /股市 持股 失敗:${err?.stack || err}`.red);
+    await interaction.editReply("❌ 查詢持股失敗,請稍後再試。").catch(() => {});
   }
 }
 

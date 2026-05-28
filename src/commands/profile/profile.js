@@ -7,7 +7,8 @@ const {
 const { DEFAULT_TAB } = require("../../features/profile/tabs");
 const { renderTab } = require("../../features/profile/render");
 
-// /檔案 是個人資料聚合入口：等級卡、礦工、錢包、賭場紀錄、持股、成就 6 個分頁。
+// /檔案 是個人資料聚合入口：等級卡、礦工、錢包、賭場紀錄、成就 5 個分頁。
+// 持股已獨立成 /股市 持股 子指令。
 // 永遠是「公開訊息、看自己」，不接受任何選項，預設打開等級卡。
 // 切分頁的按鈕只限呼叫者本人點擊。
 module.exports = {
@@ -15,7 +16,7 @@ module.exports = {
   channelBuckets: ["general", "mining", "stock"],
   data: new SlashCommandBuilder()
     .setName("檔案")
-    .setDescription("查看你的個人檔案：等級卡、礦工、錢包、賭場、持股、成就 📇")
+    .setDescription("查看你的個人檔案：等級卡、礦工、錢包、賭場、成就 📇")
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {

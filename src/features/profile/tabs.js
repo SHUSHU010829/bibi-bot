@@ -8,7 +8,6 @@ const TABS = [
   { key: "miner",        label: "礦工檔案",  emoji: "⛏️" },
   { key: "wallet",       label: "錢包",      emoji: "💰" },
   { key: "casino",       label: "賭場紀錄",  emoji: "🎰" },
-  { key: "stock",        label: "持股",      emoji: "📈" },
   { key: "achievements", label: "成就",      emoji: "🏆" },
 ];
 
