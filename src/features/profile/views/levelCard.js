@@ -1,5 +1,12 @@
 require("colors");
-const { AttachmentBuilder, EmbedBuilder } = require("discord.js");
+const {
+  AttachmentBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+} = require("discord.js");
 
 const { getLevelProgress } = require("../../../utils/levelMath");
 const { getTier } = require("../../../utils/levelTier");
@@ -94,19 +101,25 @@ async function buildLevelCardView(client, { target, member, guildId }) {
       : "";
 
   const accentInt = parseInt(cardAccent.slice(1), 16);
-  const embed = new EmbedBuilder()
-    .setColor(accentInt)
-    .setAuthor({
-      name: `${tier.emoji} ${displayName} 的等級卡`,
-      iconURL: target.displayAvatarURL?.() || undefined,
-    })
-    .setDescription(
-      `Lv.${progress.level} ・ ${tier.label} ・ #${rank} / ${totalUsers}${subLine}`
+  const container = new ContainerBuilder()
+    .setAccentColor(accentInt)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `## ${tier.emoji} ${displayName} 的等級卡\n-# Lv.${progress.level} ・ ${tier.label} ・ #${rank} / ${totalUsers}${subLine}`
+      )
     )
-    .setImage(`attachment://${fileName}`);
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder()
+          .setURL(`attachment://${fileName}`)
+          .setDescription(`Lv.${progress.level} · ${tier.label}`)
+      )
+    );
 
   return {
-    embeds: [embed],
+    useV2: true,
+    components: [container],
     files: [attachment],
   };
 }

@@ -6,6 +6,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
 } = require("discord.js");
 
 const { TABS, TAB_BY_KEY } = require("./tabs");
@@ -62,12 +63,15 @@ function buildNavRows({ activeTab, ownerUid }) {
 }
 
 function wrapPayload(view, navRows) {
+  const useV2 = !!view.useV2;
   const components = [...(view.components || []), ...navRows];
   return {
     content: view.content || "",
-    embeds: view.embeds || [],
+    embeds: useV2 ? [] : view.embeds || [],
     components,
     files: view.files || [],
+    // V2 layout 要 IsComponentsV2 旗標；公開訊息不再帶 Ephemeral
+    flags: useV2 ? MessageFlags.IsComponentsV2 : 0,
   };
 }
 
