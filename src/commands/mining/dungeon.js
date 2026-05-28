@@ -1,7 +1,10 @@
 require("colors");
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
   InteractionContextType,
   ActionRowBuilder,
   ButtonBuilder,
@@ -83,25 +86,33 @@ module.exports = {
       const continueRow = buildContinueRow(interaction.user.id, name);
 
       if (!result.won) {
-        const embed = new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("💀 戰鬥失敗")
-          .setDescription(
-            `你遭遇了 **${m.emoji} ${m.name}**（HP ${m.hp}）！\n` +
-              `你的攻擊力 **${result.atk}**，勝率 **${winPct}%**…可惜這次落敗了，空手而歸。`
+        const container = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `# 💀 戰鬥失敗\n` +
+                `你遭遇了 **${m.emoji} ${m.name}**（HP ${m.hp}）！\n` +
+                `你的攻擊力 **${result.atk}**，勝率 **${winPct}%**…可惜這次落敗了，空手而歸。`,
+            ),
           )
-          .addFields(
-            { name: "狀態", value: staminaLine, inline: true },
-            {
-              name: "累積探索",
-              value: `${result.dungeonCount.toLocaleString()} 次`,
-              inline: true,
-            }
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`**狀態**\n${staminaLine}`),
           )
-          .setFooter({ text: "合成更好的鎬子能提升攻擊力，提高勝率！" });
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**累積探索**\n${result.dungeonCount.toLocaleString()} 次`,
+            ),
+          )
+          .addActionRowComponents(continueRow)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              "-# 合成更好的鎬子能提升攻擊力，提高勝率！",
+            ),
+          );
         return interaction.editReply({
-          embeds: [embed],
-          components: [continueRow],
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
         });
       }
 
@@ -123,33 +134,38 @@ module.exports = {
         rewardLine = "雖然贏了，但這次什麼都沒掉落…運氣差了點。";
       }
 
-      const embed = new EmbedBuilder()
-        .setColor(0x2ecc71)
-        .setTitle("⚔️ 戰鬥勝利！")
-        .setDescription(
-          `你擊敗了 **${m.emoji} ${m.name}**（HP ${m.hp}）！\n` +
-            `攻擊力 **${result.atk}** ・ 勝率 **${winPct}%**\n\n${rewardLine}`
+      const container = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# ⚔️ 戰鬥勝利！\n` +
+              `你擊敗了 **${m.emoji} ${m.name}**（HP ${m.hp}）！\n` +
+              `攻擊力 **${result.atk}** ・ 勝率 **${winPct}%**\n\n${rewardLine}`,
+          ),
         )
-        .addFields(
-          { name: "狀態", value: staminaLine, inline: true },
-          {
-            name: "累積探索",
-            value: `${result.dungeonCount.toLocaleString()} 次`,
-            inline: true,
-          }
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`**狀態**\n${staminaLine}`),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**累積探索**\n${result.dungeonCount.toLocaleString()} 次`,
+          ),
         );
 
       if (result.balance != null) {
-        embed.addFields({
-          name: "目前餘額",
-          value: `${result.balance.toLocaleString()} ${COIN_EMOJI}`,
-          inline: true,
-        });
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**目前餘額**\n${result.balance.toLocaleString()} ${COIN_EMOJI}`,
+          ),
+        );
       }
 
+      container.addActionRowComponents(continueRow);
+
       await interaction.editReply({
-        embeds: [embed],
-        components: [continueRow],
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
       });
     } catch (error) {
       console.log(`[ERROR] /地下城:\n${error}\n${error.stack}`.red);

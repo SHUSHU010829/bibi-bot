@@ -1,7 +1,10 @@
 require("colors");
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -108,20 +111,29 @@ module.exports = {
         return `${def.emoji || "⛏️"} ${def.name} ×${x.qty} → ${x.value.toLocaleString()} ${COIN_EMOJI}`;
       });
 
-      const embed = new EmbedBuilder()
-        .setColor(0x2ecc71)
-        .setTitle(`${COIN_EMOJI} 賣礦成功`)
-        .setDescription(lines.join("\n"))
-        .addFields(
-          { name: "總收入", value: `+${total.toLocaleString()} ${COIN_EMOJI}`, inline: true },
-          {
-            name: "目前餘額",
-            value: `${(grant?.doc?.totalCoins ?? 0).toLocaleString()} ${COIN_EMOJI}`,
-            inline: true,
-          }
+      const container = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# ${COIN_EMOJI} 賣礦成功\n${lines.join("\n")}`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**總收入**\n+${total.toLocaleString()} ${COIN_EMOJI}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**目前餘額**\n${(grant?.doc?.totalCoins ?? 0).toLocaleString()} ${COIN_EMOJI}`,
+          ),
         );
 
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
     } catch (error) {
       console.log(`[ERROR] /賣礦:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 賣礦失敗，請呼叫舒舒！").catch(() => {});

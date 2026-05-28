@@ -1,6 +1,16 @@
 require("colors");
 
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
+} = require("discord.js");
+
+function randomColor() {
+  return Math.floor(Math.random() * 0xffffff);
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -43,7 +53,6 @@ module.exports = {
     const CHOICE_NAMES = ["選擇一", "選擇二", "選擇三", "選擇四", "選擇五"];
     const COUNT_LABEL = ["", "一", "二", "三", "四", "五"];
 
-    // 收集所有非空的選項並去除前後空白
     const choices = CHOICE_NAMES
       .map((name) => options.getString(name)?.trim())
       .filter((value) => value);
@@ -57,16 +66,26 @@ module.exports = {
         .join(" v.s ");
       const headerLabel = COUNT_LABEL[choices.length] || "多";
 
-      const embed = new EmbedBuilder()
-        .setTitle(`機器人選了 "${result}"！`)
-        .setDescription(`➡️ ${choicesText}`)
-        .setColor("Random")
-        .setFooter({ text: `從 ${choices.length} 個選項中選出` })
-        .setTimestamp();
+      const container = new ContainerBuilder()
+        .setAccentColor(randomColor())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `${headerLabel}選一結果 ⬇️\n# 機器人選了 "${result}"！`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`➡️ ${choicesText}`),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# 從 ${choices.length} 個選項中選出 ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+          ),
+        );
 
       await interaction.editReply({
-        content: `${headerLabel}選一結果 ⬇️`,
-        embeds: [embed],
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
       });
     } catch (error) {
       await interaction.editReply("哎呀！今天懶得選擇 💤");

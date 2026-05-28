@@ -1,7 +1,9 @@
 require("colors");
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -87,16 +89,26 @@ module.exports = {
       }
 
       const def = result.oreDef;
-      const embed = new EmbedBuilder()
-        .setColor(0x1abc9c)
-        .setTitle("🎁 贈送成功")
-        .setDescription(
-          `${interaction.user} 送給 ${target} ` +
-            `**${def.emoji || "⛏️"} ${def.name} ×${result.qty}**！`
+      const container = new ContainerBuilder()
+        .setAccentColor(0x1abc9c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `${target}\n# 🎁 贈送成功\n` +
+              `${interaction.user} 送給 ${target} ` +
+              `**${def.emoji || "⛏️"} ${def.name} ×${result.qty}**！`,
+          ),
         )
-        .setFooter({ text: `今日贈送次數：${result.usedToday}/${result.dailyMax}` });
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# 今日贈送次數：${result.usedToday}/${result.dailyMax}`,
+          ),
+        );
 
-      await interaction.editReply({ content: `${target}`, embeds: [embed] });
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+        allowedMentions: { users: [target.id] },
+      });
     } catch (error) {
       console.log(`[ERROR] /贈送:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 贈送失敗，請呼叫舒舒！").catch(() => {});

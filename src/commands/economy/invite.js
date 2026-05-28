@@ -1,7 +1,9 @@
 require("colors");
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -73,57 +75,57 @@ module.exports = {
         : 0;
       const todayRemaining = dailyCap > 0 ? Math.max(0, dailyCap - todayUsed) : null;
 
-      const embed = new EmbedBuilder()
-        .setTitle("✉️ 你的邀請統計")
-        .setColor(0x5865f2)
-        .addFields(
-          { name: "✅ 有效邀請", value: `${active} 人`, inline: true },
-          { name: "💨 已退坑", value: `${left} 人`, inline: true },
-          { name: "↩️ 已扣回", value: `${clawedBack} 人`, inline: true },
-          {
-            name: `${MONEY_EMOJI} 累積獲得`,
-            value: `${totalReward.toLocaleString()} 金幣`,
-            inline: true,
-          },
-          {
-            name: "💸 累積扣回",
-            value: `${totalClawback.toLocaleString()} 金幣`,
-            inline: true,
-          },
-          {
-            name: "📊 淨收益",
-            value: `${netCoins.toLocaleString()} 金幣`,
-            inline: true,
-          },
-          {
-            name: "🎯 下一筆邀請可獲得",
-            value:
-              todayRemaining === 0
-                ? "今日已達邀請次數上限，明日再開放"
-                : `${nextReward.toLocaleString()} 金幣${atCap ? "（已達單筆上限）" : ""}`,
-            inline: false,
-          },
-          ...(dailyCap > 0
-            ? [
-                {
-                  name: "🗓️ 今日剩餘有獎次數",
-                  value: `${todayRemaining} / ${dailyCap} 次`,
-                  inline: false,
-                },
-              ]
-            : [])
-        )
-        .setFooter({
-          text:
-            `基礎 ${inviteSystem.rewardAmount} + 每多 1 人 +${inviteSystem.rewardStep || 0}` +
-            (cap > 0 ? `（上限 ${cap}）` : "") +
-            (inviteSystem.inviteeWelcomeBonus > 0
-              ? `・新成員歡迎金 ${inviteSystem.inviteeWelcomeBonus}`
-              : "") +
-            `・${inviteSystem.clawbackDays} 天內退坑扣回`,
-        });
+      const footerText =
+        `基礎 ${inviteSystem.rewardAmount} + 每多 1 人 +${inviteSystem.rewardStep || 0}` +
+        (cap > 0 ? `（上限 ${cap}）` : "") +
+        (inviteSystem.inviteeWelcomeBonus > 0
+          ? `・新成員歡迎金 ${inviteSystem.inviteeWelcomeBonus}`
+          : "") +
+        `・${inviteSystem.clawbackDays} 天內退坑扣回`;
 
-      await interaction.editReply({ embeds: [embed] });
+      const container = new ContainerBuilder()
+        .setAccentColor(0x5865f2)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("# ✉️ 你的邀請統計"),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**人數統計**\n` +
+              `✅ 有效邀請：**${active}** 人\n` +
+              `💨 已退坑：**${left}** 人\n` +
+              `↩️ 已扣回：**${clawedBack}** 人`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**金幣統計**\n` +
+              `${MONEY_EMOJI} 累積獲得：**${totalReward.toLocaleString()}** 金幣\n` +
+              `💸 累積扣回：**${totalClawback.toLocaleString()}** 金幣\n` +
+              `📊 淨收益：**${netCoins.toLocaleString()}** 金幣`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**🎯 下一筆邀請可獲得**\n` +
+              (todayRemaining === 0
+                ? "今日已達邀請次數上限，明日再開放"
+                : `${nextReward.toLocaleString()} 金幣${atCap ? "（已達單筆上限）" : ""}`) +
+              (dailyCap > 0
+                ? `\n\n**🗓️ 今日剩餘有獎次數**\n${todayRemaining} / ${dailyCap} 次`
+                : ""),
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`-# ${footerText}`),
+        );
+
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
     } catch (error) {
       console.log(`[ERROR] /邀請:\n${error}\n${error.stack}`.red);
       await interaction

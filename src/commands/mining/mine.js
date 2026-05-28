@@ -1,7 +1,10 @@
 require("colors");
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -60,54 +63,60 @@ module.exports = {
       const value = (oreDef?.price || 0) * result.qty;
       const readyEpoch = Math.floor(result.newCooldownAt / 1000);
 
-      // 鑽石（傳說）：特殊呈現 + 公告
       if (result.ore === "diamond") {
         await sendLegendaryAnnouncement(client, interaction);
       }
 
-      const embed = new EmbedBuilder()
-        .setColor(result.ore === "diamond" ? 0xff6ec7 : 0xf1c40f)
-        .setTitle(
-          result.ore === "diamond"
-            ? `✨ 傳說！你挖到了${oreDef?.name || "傳說礦"}！`
-            : "⛏️ 挖礦成功"
+      const headerTitle =
+        result.ore === "diamond"
+          ? `✨ 傳說！你挖到了${oreDef?.name || "傳說礦"}！`
+          : "⛏️ 挖礦成功";
+
+      const container = new ContainerBuilder()
+        .setAccentColor(result.ore === "diamond" ? 0xff6ec7 : 0xf1c40f)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# ${headerTitle}\n` +
+              `你挖到了 **${oreLabel(result.ore)} ×${result.qty}**！\n` +
+              `預估賣價：**${value.toLocaleString()}** ${COIN_EMOJI}`,
+          ),
         )
-        .setDescription(
-          `你挖到了 **${oreLabel(result.ore)} ×${result.qty}**！\n` +
-            `預估賣價：**${value.toLocaleString()}** ${COIN_EMOJI}`
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**下次可挖礦**\n<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）`,
+          ),
         )
-        .addFields(
-          {
-            name: "下次可挖礦",
-            value: `<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）`,
-            inline: true,
-          },
-          {
-            name: "累積挖礦",
-            value: `${result.mineCountTotal.toLocaleString()} 次`,
-            inline: true,
-          }
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**累積挖礦**\n${result.mineCountTotal.toLocaleString()} 次`,
+          ),
         );
 
       const buffNotes = [];
       if (result.buff.consume.usePotion) buffNotes.push("🍀 幸運藥水 +luck");
       if (buffNotes.length) {
-        embed.addFields({ name: "本次加成", value: buffNotes.join(" ・ ") });
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**本次加成**\n${buffNotes.join(" ・ ")}`,
+          ),
+        );
       }
 
       if (result.durabilityBroke) {
-        // footer 不會渲染自訂 emoji，這裡只放名稱
         const brokeDef = mining?.pickaxes?.[result.pickaxeBefore] || {};
-        embed.setFooter({
-          text: `你的 ${brokeDef.name || result.pickaxeBefore} 耐久耗盡，已退回木鎬。`,
-        });
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# 你的 ${brokeDef.name || result.pickaxeBefore} 耐久耗盡，已退回木鎬。`,
+          ),
+        );
         await dmPickaxeBroke(interaction, result.pickaxeBefore).catch(() => {});
       } else if (result.durabilityAfter !== null) {
-        embed.addFields({
-          name: "鎬子耐久",
-          value: `${pickaxeLabel(result.pickaxeBefore)} 剩 ${result.durabilityAfter} 次`,
-          inline: true,
-        });
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**鎬子耐久**\n${pickaxeLabel(result.pickaxeBefore)} 剩 ${result.durabilityAfter} 次`,
+          ),
+        );
       }
 
       const notifyState = await reminder.getState(client, {
@@ -116,7 +125,6 @@ module.exports = {
         type: "mining",
       });
       const notifyEnabled = !!notifyState?.enabled;
-      // 已開啟通知者，把追蹤的冷卻更新成本次最新值
       if (notifyEnabled) {
         await reminder.refreshIfEnabled(client, {
           userId: interaction.user.id,
@@ -131,9 +139,13 @@ module.exports = {
         enabled: notifyEnabled,
       });
 
-      await interaction.editReply({ embeds: [embed], components: [row] });
+      container.addActionRowComponents(row);
 
-      // 稱號解鎖檢查不阻塞回覆；MiningProfiles 已寫入本次挖礦數據
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
+
       gameTitleService
         .check(
           client,
@@ -164,7 +176,6 @@ async function sendLegendaryAnnouncement(client, interaction) {
         return;
       }
     }
-    // 沒設定公告頻道就在當前頻道公開慶祝
     if (interaction.channel?.isTextBased()) {
       await interaction.channel.send({ content });
     }

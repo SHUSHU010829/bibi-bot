@@ -1,10 +1,13 @@
 require("colors");
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -76,15 +79,6 @@ module.exports = {
       }
 
       const expiresEpoch = Math.floor(result.expiresAt / 1000);
-      const embed = new EmbedBuilder()
-        .setColor(0xe67e22)
-        .setTitle("⚔️ 決鬥邀請")
-        .setDescription(
-          `${interaction.user} 向 ${target} 發起決鬥！\n` +
-            `賭注：**${bet.toLocaleString()}** ${COIN_EMOJI}（雙方各押，勝者通吃 **${(bet * 2).toLocaleString()}**）\n\n` +
-            `${target}，你接受嗎？<t:${expiresEpoch}:R> 前未回應將自動取消。`
-        )
-        .setFooter({ text: "勝率由雙方鎬子攻擊力決定，裝備越好越有優勢！" });
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -98,13 +92,30 @@ module.exports = {
           .setStyle(ButtonStyle.Secondary)
       );
 
+      const container = new ContainerBuilder()
+        .setAccentColor(0xe67e22)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `${target}\n# ⚔️ 決鬥邀請\n` +
+              `${interaction.user} 向 ${target} 發起決鬥！\n` +
+              `賭注：**${bet.toLocaleString()}** ${COIN_EMOJI}（雙方各押，勝者通吃 **${(bet * 2).toLocaleString()}**）\n\n` +
+              `${target}，你接受嗎？<t:${expiresEpoch}:R> 前未回應將自動取消。`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addActionRowComponents(row)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "-# 勝率由雙方鎬子攻擊力決定，裝備越好越有優勢！",
+          ),
+        );
+
       const msg = await interaction.editReply({
-        content: `${target}`,
-        embeds: [embed],
-        components: [row],
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+        allowedMentions: { users: [target.id] },
       });
 
-      // 記錄訊息 ID 供按鈕處理後編輯
       await client.duelGamesCollection
         .updateOne(
           { duel_id: result.duelId },
