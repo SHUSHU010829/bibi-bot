@@ -71,7 +71,7 @@ async function run(client, interaction) {
 
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 🔒 = 未解鎖 ・ 用 \`/level title 設定\` 把已解鎖徽章設成等級卡稱號`
+        `-# 🔒 = 未解鎖 ・ 用 \`/稱號 設定\` 把已解鎖徽章設成等級卡稱號`
       )
     );
 

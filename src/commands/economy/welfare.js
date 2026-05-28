@@ -127,7 +127,7 @@ async function showStatus(client, interaction, userId, guildId) {
   } else if (!status.eligibleByBalance) {
     if (status.depositTotal > 0) {
       lines.push(
-        `\n${MONEY_EMOJI} 總資產（含存款）超過救濟線，先 \`/領回\` 存款或 \`/錢包\` 看看再說。`
+        `\n${MONEY_EMOJI} 總資產（含存款）超過救濟線，先 \`/領回\` 存款或 \`/檔案 分頁:錢包\` 看看再說。`
       );
     } else {
       lines.push(`\n${MONEY_EMOJI} 目前金幣超過救濟線，先去玩玩看吧。`);

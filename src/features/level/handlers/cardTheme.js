@@ -56,7 +56,7 @@ async function run(client, interaction) {
     );
 
     await interaction.reply({
-      content: `✅ 已將等級卡主題設為 **${themeKey}**（${CARD_THEMES[themeKey].label}）。下次 \`/level profile\` 就會看到新顏色！`,
+      content: `✅ 已將等級卡主題設為 **${themeKey}**（${CARD_THEMES[themeKey].label}）。下次 \`/檔案\` 就會看到新顏色！`,
       flags: MessageFlags.Ephemeral,
     });
   } catch (error) {

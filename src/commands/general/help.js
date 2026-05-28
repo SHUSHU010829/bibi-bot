@@ -62,8 +62,8 @@ const GROUPS = {
     label: "等級與統計",
     emoji: "🏅",
     order: 5,
-    blurb: "等級卡、徽章、簽到、排行榜、訊息/語音統計",
-    folders: ["level", "stats"],
+    blurb: "個人檔案、稱號、等級卡、徽章、簽到、排行榜、訊息/語音統計",
+    folders: ["profile", "level", "stats"],
   },
   community: {
     label: "社群互動",

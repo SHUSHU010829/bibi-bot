@@ -157,7 +157,7 @@ function buildContainer({
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 第 ${currentPage + 1} / ${totalPages} 頁 ・ 共 ${total} 人 ・ 用 \`/level profile\` 看詳細卡片`
+        `-# 第 ${currentPage + 1} / ${totalPages} 頁 ・ 共 ${total} 人 ・ 用 \`/檔案\` 看詳細卡片`
       )
     );
 

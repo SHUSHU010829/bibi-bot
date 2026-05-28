@@ -71,7 +71,7 @@ async function handleList(client, interaction) {
     .setColor(0xf1c40f)
     .setTitle(`🏅 ${interaction.user.username} 的遊戲稱號`)
     .setFooter({
-      text: "⭐ 展示中 ・ ✅ 已解鎖 ・ 🔒 未解鎖｜用 /稱號 設定 切換展示（也可在 /level title 設定）",
+      text: "⭐ 展示中 ・ ✅ 已解鎖 ・ 🔒 未解鎖｜用 /稱號 設定 切換展示",
     });
 
   const cats = {};
