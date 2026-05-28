@@ -13,6 +13,7 @@ const {
   parseUseTicketId,
 } = require("../../features/shop/backpackView");
 const mineService = require("../../features/mining/mineService");
+const reminder = require("../../features/reminders/cooldownReminderService");
 
 async function replyEphemeral(interaction, content) {
   try {
@@ -61,6 +62,16 @@ module.exports = async (client, interaction) => {
       userId: interaction.user.id,
       guildId: interaction.guildId,
     });
+
+    // 縮短了挖礦冷卻，同步刷新到點通知的 readyAt，避免照舊冷卻時間晚通知
+    if (result.ok) {
+      await reminder.refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "mining",
+        readyAt: result.newCooldownAt,
+      });
+    }
 
     if (result.reason === "disabled") {
       await replyEphemeral(interaction, "🔧 挖礦系統尚未啟動！");
