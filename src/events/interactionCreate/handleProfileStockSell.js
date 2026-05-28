@@ -1,0 +1,187 @@
+// /檔案 持股分頁的「賣 <symbol>」按鈕。
+//
+// customId 格式:`pf_stksell_<symbol>_<ownerUid>`(見 features/profile/views/stockHoldings.js)。
+// 流程:本人按下 → 彈 Modal 輸入股數(可填 all)→ 用 tradeService.sellMarket 直接成交。
+// 結果以 ephemeral 訊息回覆,不動原本的 /檔案 訊息(切回持股分頁就能看到最新數字)。
+
+require("colors");
+const {
+  MessageFlags,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ActionRowBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+} = require("discord.js");
+
+const { stockSystem } = require("../../config");
+const { checkServerTenure } = require("../../features/economy/eligibility");
+const {
+  sellMarket,
+  isMarketOpen,
+} = require("../../features/stock/tradeService");
+const { SELL_BUTTON_PREFIX } = require("../../features/profile/views/stockHoldings");
+const logger = require("../../utils/logger");
+const { trackError, trackSuccess } = require("../../utils/errorTracker");
+const { consume } = require("../../utils/rateLimiter");
+
+function parseSellButtonId(customId) {
+  if (!customId || !customId.startsWith(SELL_BUTTON_PREFIX)) return null;
+  const rest = customId.slice(SELL_BUTTON_PREFIX.length);
+  const sep = rest.lastIndexOf("_");
+  if (sep <= 0) return null;
+  return { symbol: rest.slice(0, sep), ownerUid: rest.slice(sep + 1) };
+}
+
+module.exports = async (client, interaction) => {
+  if (!interaction.isButton?.()) return;
+  const parsed = parseSellButtonId(interaction.customId);
+  if (!parsed) return;
+
+  const { symbol, ownerUid } = parsed;
+
+  if (interaction.user.id !== ownerUid) {
+    return interaction
+      .reply({
+        content: "🔒 這是別人檔案的賣出按鈕,請用 `/檔案` 看自己的持股。",
+        flags: MessageFlags.Ephemeral,
+      })
+      .catch(() => {});
+  }
+
+  const rl = consume(interaction.user.id, "btn:profileStockSell", {
+    windowMs: 2000,
+    max: 1,
+  });
+  if (!rl.allowed) {
+    return interaction
+      .reply({
+        content: `⏳ 點太快了,${Math.ceil(rl.retryAfterMs / 1000)} 秒後再試。`,
+        flags: MessageFlags.Ephemeral,
+      })
+      .catch(() => {});
+  }
+
+  if (!stockSystem?.enabled) {
+    return interaction
+      .reply({ content: "🔧 股市系統未啟用。", flags: MessageFlags.Ephemeral })
+      .catch(() => {});
+  }
+
+  try {
+    const modal = new ModalBuilder()
+      .setCustomId(`${SELL_BUTTON_PREFIX}modal_${symbol}_${ownerUid}`)
+      .setTitle(`賣出 ${symbol}`)
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId("shares")
+            .setLabel("賣出股數(可填 all 全部賣出)")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMinLength(1)
+            .setMaxLength(6)
+            .setPlaceholder("例如 10 或 all")
+        )
+      );
+    await interaction.showModal(modal);
+
+    const submitted = await interaction
+      .awaitModalSubmit({
+        time: 60 * 1000,
+        filter: (m) =>
+          m.user.id === interaction.user.id &&
+          m.customId === `${SELL_BUTTON_PREFIX}modal_${symbol}_${ownerUid}`,
+      })
+      .catch(() => null);
+    if (!submitted) return;
+
+    await submitted.deferReply({ flags: MessageFlags.Ephemeral });
+
+    if (!isMarketOpen()) {
+      return submitted.editReply(
+        "🌙 目前非開盤時間(09:00–21:00 Asia/Taipei),沒辦法賣出。"
+      );
+    }
+    const tenure = checkServerTenure(interaction.member);
+    if (!tenure.ok) return submitted.editReply(tenure.message);
+
+    const rawShares = submitted.fields.getTextInputValue("shares").trim();
+    let shares;
+    if (rawShares.toLowerCase() === "all") {
+      shares = "all";
+    } else {
+      shares = parseInt(rawShares, 10);
+      if (!Number.isInteger(shares) || shares <= 0) {
+        return submitted.editReply("❌ 股數需為正整數或 `all`。");
+      }
+    }
+
+    const result = await sellMarket(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      username: interaction.member?.displayName || interaction.user.username,
+      member: interaction.member,
+      symbol,
+      shares,
+    });
+    if (!result.ok) return submitted.editReply(result.message);
+
+    const pnlSign = result.pnl >= 0 ? "+" : "";
+    const pnlPct =
+      result.avgCost > 0
+        ? ((result.price - result.avgCost) / result.avgCost) * 100
+        : 0;
+
+    const container = new ContainerBuilder()
+      .setAccentColor(result.pnl >= 0 ? 0x2ecc71 : 0xe74c3c)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🔴 賣出成交｜${result.symbol} ${result.name}`
+        )
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**成交價**\n**${result.price.toFixed(1)}** × ${result.shares} 股`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**淨入帳**\n**${result.netProceeds.toLocaleString()}**(手續費 ${result.fee.toLocaleString()})`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**本筆損益**\n**${pnlSign}${result.pnl.toLocaleString()}**(${pnlSign}${pnlPct.toFixed(2)}%)`
+        )
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**剩餘持股**\n${result.remainingShares} 股 ・ 餘額 ${result.balanceAfter.toLocaleString()}\n-# 切回「📈 持股」分頁可看到最新數字`
+        )
+      );
+
+    await submitted.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+    trackSuccess("profile-stock-sell");
+  } catch (err) {
+    logger.error(
+      {
+        source: "profile-stock-sell",
+        customId: interaction?.customId,
+        err: err.message,
+        stack: err.stack,
+      },
+      "/檔案 持股賣出失敗"
+    );
+    trackError("profile-stock-sell", err, {
+      customId: interaction?.customId,
+    });
+  }
+};
