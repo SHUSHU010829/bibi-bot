@@ -25,6 +25,7 @@ const {
   TextInputBuilder,
   TextInputStyle,
   AttachmentBuilder,
+  EmbedBuilder,
   MessageFlags,
 } = require("discord.js");
 
@@ -643,7 +644,8 @@ async function runQuotePanel(client, interaction) {
     };
 
     const message = await interaction.editReply({
-      content: buildPanelText(stocks, selected),
+      content: "",
+      embeds: [buildPanelEmbed(stocks, selected)],
       components: buildComponents(),
     });
 
@@ -663,7 +665,8 @@ async function runQuotePanel(client, interaction) {
         if (i.customId === "stkq_pick") {
           selected = i.values[0];
           await i.update({
-            content: buildPanelText(stocks, selected),
+            content: "",
+            embeds: [buildPanelEmbed(stocks, selected)],
             components: buildComponents(),
           });
           collector.resetTimer();
@@ -792,7 +795,8 @@ async function runQuotePanel(client, interaction) {
           stocks.push(...refreshed);
           try {
             await interaction.editReply({
-              content: buildPanelText(stocks, selected),
+              content: "",
+              embeds: [buildPanelEmbed(stocks, selected)],
               components: buildComponents(),
             });
           } catch {
@@ -808,7 +812,8 @@ async function runQuotePanel(client, interaction) {
     collector.on("end", async () => {
       try {
         await interaction.editReply({
-          content: buildPanelText(stocks, selected) + "\n\n_面板已逾時_",
+          content: "",
+          embeds: [buildPanelEmbed(stocks, selected, { expired: true })],
           components: buildComponents(true),
         });
       } catch {
@@ -821,22 +826,45 @@ async function runQuotePanel(client, interaction) {
   }
 }
 
-function buildPanelText(stocks, selected) {
-  const marketLabel = isMarketOpen() ? "🟢 開盤中" : "🌙 收盤";
-  const lines = stocks.map((s) => {
+function buildPanelEmbed(stocks, selected, { expired = false } = {}) {
+  const open = isMarketOpen();
+  const marketLabel = open ? "🟢 開盤中" : "🌙 收盤";
+
+  // 等寬欄位:代號|名稱|報價(用 inline code 撐版面)
+  const maxName = Math.max(...stocks.map((s) => [...s.name].length), 4);
+  const padName = (name) => {
+    const w = [...name].length;
+    return name + "　".repeat(Math.max(0, maxName - w));
+  };
+  const rows = stocks.map((s) => {
     const tag = selected === s.symbol ? "▶︎" : "・";
-    return `${tag} \`${s.symbol}\` **${s.name}** ・ ${(s.currentPrice || 0).toFixed(1)}`;
+    const price = (s.currentPrice || 0).toFixed(1).padStart(7, " ");
+    return `${tag} \`${s.symbol}\`　${padName(s.name)}　\`${price}\``;
   });
-  let body = `# 📊 股市報價　${marketLabel}\n${lines.join("\n")}`;
+
+  const embed = new EmbedBuilder()
+    .setTitle("📊 股市報價")
+    .setColor(open ? 0x2ecc71 : 0x95a5a6)
+    .setDescription(`**${marketLabel}**\n\n${rows.join("\n")}`)
+    .setFooter({
+      text: `手續費 1%(最低 ${stockSystem.minFee} 逼幣)・ 持股上限 ${stockSystem.maxSharesPerUser} 股${expired ? " ・ 已逾時" : ""}`,
+    })
+    .setTimestamp();
+
   if (selected) {
     const cur = stocks.find((s) => s.symbol === selected);
     if (cur) {
-      body +=
-        `\n\n**目前選擇**:\`${cur.symbol}\` ${cur.name}　當前報價 **${(cur.currentPrice || 0).toFixed(1)}**`;
+      embed.addFields({
+        name: "目前選擇",
+        value: `\`${cur.symbol}\` **${cur.name}** ・ 當前報價 **${(cur.currentPrice || 0).toFixed(1)}**`,
+      });
     }
   } else {
-    body += `\n\n-# 從下拉選擇一支股票,下方按鈕會解鎖`;
+    embed.addFields({
+      name: "操作說明",
+      value: "從下拉選擇一支股票後,下方按鈕會解鎖",
+    });
   }
-  body += `\n-# 手續費 1%(最低 ${stockSystem.minFee} 逼幣)・ 持股上限 ${stockSystem.maxSharesPerUser} 股`;
-  return body;
+
+  return embed;
 }
