@@ -1,11 +1,6 @@
 // 個人賭場統計：總下注、總派彩、RTP、各遊戲分項
 require("colors");
-const {
-  ContainerBuilder,
-  TextDisplayBuilder,
-  SeparatorBuilder,
-  SeparatorSpacingSize,
-} = require("discord.js");
+const { EmbedBuilder } = require("discord.js");
 const { MONEY_EMOJI } = require("../../../constants/coin");
 const { DateTime } = require("luxon");
 
@@ -135,29 +130,18 @@ async function buildCasinoStatsView(client, { target, member, guildId, period })
 
   const accent = netProfit >= 0 ? 0x2ecc71 : 0xe74c3c;
 
-  const container = new ContainerBuilder()
-    .setAccentColor(accent)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("# 📊 你的賭場紀錄")
-    )
-    .addSeparatorComponents(
-      new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large)
-    )
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(overall))
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(perGameLines.join("\n\n"))
-    )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "-# RTP < 100% 表示你在賠錢，越低代表賠越多。賭多了還是會吐回去喔 🫠"
-      )
-    );
+  const description = `${overall}\n\n${perGameLines.join("\n\n")}`;
+
+  const embed = new EmbedBuilder()
+    .setColor(accent)
+    .setTitle("📊 你的賭場紀錄")
+    .setDescription(description)
+    .setFooter({
+      text: "RTP < 100% 表示你在賠錢，越低代表賠越多。賭多了還是會吐回去喔 🫠",
+    });
 
   return {
-    useV2: true,
-    components: [container],
+    embeds: [embed],
   };
 }
 
