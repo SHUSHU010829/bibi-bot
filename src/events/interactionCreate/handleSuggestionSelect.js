@@ -1,7 +1,9 @@
 const {
   ChannelType,
   PermissionFlagsBits,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -280,29 +282,40 @@ async function createSuggestionChannel(client, interaction) {
     }
 
     // 公開討論不顯示創建者名字（匿名），私密討論則 @ 並標示創建者
-    const welcomeEmbed = new EmbedBuilder()
-      .setColor("#FFD700")
-      .setTitle(`${suggestionType.emoji} ${suggestionType.label}${isPublic ? "（公開討論）" : ""}`)
-      .setDescription(
-        suggestionType.welcomeMessage.replace(
-          "{user}",
-          isPublic ? "大家" : interaction.user.toString(),
-        ),
-      )
-      .setTimestamp();
-
     const closeButton = new ButtonBuilder()
       .setCustomId("close_suggestion")
       .setLabel("關閉票務")
       .setEmoji("🔒")
       .setStyle(ButtonStyle.Danger);
 
-    const row = new ActionRowBuilder().addComponents(closeButton);
+    const head = isPublic ? "" : `${interaction.user}\n`;
+    const welcomeContainer = new ContainerBuilder()
+      .setAccentColor(0xffd700)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `${head}# ${suggestionType.emoji} ${suggestionType.label}${isPublic ? "（公開討論）" : ""}\n` +
+            suggestionType.welcomeMessage.replace(
+              "{user}",
+              isPublic ? "大家" : interaction.user.toString(),
+            ),
+        ),
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addActionRowComponents(
+        new ActionRowBuilder().addComponents(closeButton),
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+        ),
+      );
 
     await suggestionChannel.send({
-      content: isPublic ? undefined : `${interaction.user}`,
-      embeds: [welcomeEmbed],
-      components: [row],
+      components: [welcomeContainer],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: isPublic
+        ? { parse: [] }
+        : { users: [interaction.user.id] },
     });
 
     await interaction.editReply({

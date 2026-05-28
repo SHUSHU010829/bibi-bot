@@ -1,7 +1,12 @@
 require("colors");
 
 const cron = require("node-cron");
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
+} = require("discord.js");
 
 const { mining } = require("../../config");
 const rankService = require("../../features/mining/rankService");
@@ -48,18 +53,30 @@ async function announceKing(client, winnerId, ranking, championCount) {
     .map((r, i) => `${MEDALS[i]} <@${r.userId}> — **${r.total.toLocaleString()}** 顆`)
     .join("\n");
 
-  const embed = new EmbedBuilder()
-    .setColor(0xffd700)
-    .setTitle("👑 上週礦坑之王出爐！")
-    .setDescription(
-      `恭喜 <@${winnerId}> 拿下上週挖礦榜冠軍，獲得稱號 **${gameTitleService.label(KING_TITLE)}**！\n` +
-        `這是他第 **${championCount}** 次稱王 👑`
+  const container = new ContainerBuilder()
+    .setAccentColor(0xffd700)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 👑 上週礦坑之王出爐！\n` +
+          `恭喜 <@${winnerId}> 拿下上週挖礦榜冠軍，獲得稱號 **${gameTitleService.label(KING_TITLE)}**！\n` +
+          `這是他第 **${championCount}** 次稱王 👑`,
+      ),
     )
-    .addFields({ name: "上週前三名", value: top || "—" })
-    .setFooter({ text: "新的一週開始了，用 /挖礦 角逐本週王座！" })
-    .setTimestamp(new Date());
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**上週前三名**\n${top || "—"}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 新的一週開始了，用 /挖礦 角逐本週王座！",
+      ),
+    );
 
-  await channel.send({ embeds: [embed] }).catch(() => {});
+  await channel
+    .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
 }
 
 async function processGuild(client, guildId) {

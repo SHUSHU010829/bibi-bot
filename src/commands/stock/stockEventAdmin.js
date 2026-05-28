@@ -3,7 +3,9 @@ const {
   SlashCommandBuilder,
   PermissionFlagsBits,
   MessageFlags,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   InteractionContextType,
 } = require("discord.js");
 
@@ -286,23 +288,35 @@ module.exports = {
           const sign = d.effect >= 0 ? "+" : "";
           return `\`${d.id}\` ${d.name}｜\`${d.stock}\`｜${sign}${(d.effect * 100).toFixed(1)}%`;
         };
-        const embed = new EmbedBuilder()
-          .setTitle("📒 股市事件清單")
-          .setColor(0x3498db)
-          .setTimestamp(new Date());
+        const container = new ContainerBuilder()
+          .setAccentColor(0x3498db)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("# 📒 股市事件清單"),
+          )
+          .addSeparatorComponents(new SeparatorBuilder());
         if (staticDefs.length) {
-          embed.addFields({
-            name: `預設事件（${staticDefs.length}）`,
-            value: staticDefs.slice(0, 25).map(fmt).join("\n") || "（無）",
-          });
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**預設事件（${staticDefs.length}）**\n${staticDefs.slice(0, 25).map(fmt).join("\n") || "（無）"}`,
+            ),
+          );
         }
         if (dynamicDefs.length) {
-          embed.addFields({
-            name: `自訂事件（${dynamicDefs.length}）`,
-            value: dynamicDefs.slice(0, 25).map(fmt).join("\n") || "（無）",
-          });
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**自訂事件（${dynamicDefs.length}）**\n${dynamicDefs.slice(0, 25).map(fmt).join("\n") || "（無）"}`,
+            ),
+          );
         }
-        return interaction.editReply({ embeds: [embed] });
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+          ),
+        );
+        return interaction.editReply({
+          components: [container],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
       }
 
       return interaction.editReply("❌ 未知子指令。");

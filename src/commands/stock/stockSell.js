@@ -2,7 +2,10 @@ require("colors");
 const {
   SlashCommandBuilder,
   InteractionContextType,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
 } = require("discord.js");
 
 const { stockSystem } = require("../../config");
@@ -63,25 +66,66 @@ module.exports = {
 
       const pnlSign = result.pnl >= 0 ? "+" : "";
       const pnlPct = result.avgCost > 0 ? ((result.price - result.avgCost) / result.avgCost) * 100 : 0;
-      const embed = new EmbedBuilder()
-        .setTitle(`🔴 賣出成交｜${result.symbol} ${result.name}`)
-        .setColor(result.pnl >= 0 ? 0x2ecc71 : 0xe74c3c)
-        .addFields(
-          { name: "成交價", value: `**${result.price.toFixed(1)}** × ${result.shares} 股`, inline: true },
-          { name: "毛收入", value: `${result.proceeds.toLocaleString()}`, inline: true },
-          { name: "手續費", value: `${result.fee.toLocaleString()}`, inline: true },
-          { name: "淨入帳", value: `**${result.netProceeds.toLocaleString()}**`, inline: true },
-          { name: "平均成本", value: `${result.avgCost.toFixed(2)}`, inline: true },
-          {
-            name: "本筆損益",
-            value: `**${pnlSign}${result.pnl.toLocaleString()}**（${pnlSign}${pnlPct.toFixed(2)}%）`,
-            inline: true,
-          },
-          { name: "剩餘持股", value: `${result.remainingShares} 股`, inline: true },
-          { name: "餘額", value: `${result.balanceAfter.toLocaleString()}`, inline: true }
+
+      const container = new ContainerBuilder()
+        .setAccentColor(result.pnl >= 0 ? 0x2ecc71 : 0xe74c3c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 🔴 賣出成交｜${result.symbol} ${result.name}`,
+          ),
         )
-        .setTimestamp(new Date());
-      await interaction.editReply({ embeds: [embed] });
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**成交價**\n**${result.price.toFixed(1)}** × ${result.shares} 股`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**毛收入**\n${result.proceeds.toLocaleString()}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**手續費**\n${result.fee.toLocaleString()}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**淨入帳**\n**${result.netProceeds.toLocaleString()}**`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**平均成本**\n${result.avgCost.toFixed(2)}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**本筆損益**\n**${pnlSign}${result.pnl.toLocaleString()}**（${pnlSign}${pnlPct.toFixed(2)}%）`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**剩餘持股**\n${result.remainingShares} 股`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**餘額**\n${result.balanceAfter.toLocaleString()}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+          ),
+        );
+
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
     } catch (err) {
       console.log(`[STOCK] /賣股 失敗：${err?.stack || err}`.red);
       await interaction.editReply("❌ 賣出失敗，請稍後再試。").catch(() => {});

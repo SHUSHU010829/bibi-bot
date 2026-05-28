@@ -1,4 +1,10 @@
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+} = require("discord.js");
 const { DateTime } = require("luxon");
 
 const { buildStoreUrl } = require("./steam");
@@ -27,7 +33,7 @@ const formatRemaining = (endTime) => {
   return `剩餘 ${Math.ceil(days)} 天`;
 };
 
-const buildDealEmbed = ({ xhh, steam }) => {
+const buildDealContainer = ({ xhh, steam }) => {
   const price = steam.price_overview || {};
   const discount = price.discount_percent || 0;
   const finalFmt = price.final_formatted || "";
@@ -43,45 +49,59 @@ const buildDealEmbed = ({ xhh, steam }) => {
   if (xhh.newLowest) authorLabel = "新史低特價";
   else if (xhh.isLowest) authorLabel = "史低特價";
 
-  const embed = new EmbedBuilder()
-    .setAuthor({ name: authorLabel })
-    .setTitle(steam.name || xhh.rawName || `App ${xhh.appid}`)
-    .setURL(buildStoreUrl(xhh.appid))
-    .setColor(isLowest ? COLOR_LOWEST : COLOR_DEAL)
-    .setTimestamp(new Date())
-    .setFooter({ text: "來源:小黑盒 + Steam" });
-
-  embed.setDescription(
+  const title = steam.name || xhh.rawName || `App ${xhh.appid}`;
+  const url = buildStoreUrl(xhh.appid);
+  const summaryLine =
     summaryParts.length > 0
       ? `${NEWSPAPER_EMOJI} ${summaryParts.join("  ·  ")}`
-      : NEWSPAPER_EMOJI
-  );
+      : NEWSPAPER_EMOJI;
 
-  if (steam.header_image) embed.setImage(steam.header_image);
+  const container = new ContainerBuilder()
+    .setAccentColor(isLowest ? COLOR_LOWEST : COLOR_DEAL)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ${authorLabel}\n# [${title}](${url})\n${summaryLine}`,
+      ),
+    );
 
-  embed.addFields({ name: "平台", value: "Steam", inline: true });
+  if (steam.header_image) {
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder()
+          .setURL(steam.header_image)
+          .setDescription(title),
+      ),
+    );
+  }
 
+  const infoLines = [`**平台**：Steam`];
   if (typeof xhh.score === "number" && xhh.score > 0) {
-    embed.addFields({
-      name: "評分",
-      value: xhh.score.toFixed(1),
-      inline: true,
-    });
+    infoLines.push(`**評分**：${xhh.score.toFixed(1)}`);
   }
-
   const remaining = formatRemaining(xhh.endTime);
-  if (remaining) {
-    embed.addFields({ name: "截止", value: remaining, inline: true });
-  }
+  if (remaining) infoLines.push(`**截止**：${remaining}`);
+
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(infoLines.join("\n")),
+    );
 
   if (steam.short_description) {
-    embed.addFields({
-      name: "簡介",
-      value: truncate(steam.short_description, 100),
-    });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**簡介**\n${truncate(steam.short_description, 100)}`,
+      ),
+    );
   }
 
-  return embed;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# 來源：小黑盒 + Steam ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+    ),
+  );
+
+  return container;
 };
 
-module.exports = { buildDealEmbed };
+module.exports = { buildDealContainer };

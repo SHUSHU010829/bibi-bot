@@ -1,4 +1,8 @@
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+} = require("discord.js");
 
 function calculateVoteResult(proposal, template) {
   const passCondition = template.passCondition;
@@ -83,68 +87,67 @@ const REASON_LABELS = {
   cancelled: "被管理員取消",
 };
 
-function createResultEmbed(proposal, template, result, opts = {}) {
+function createResultContainer(proposal, template, result, opts = {}) {
   const reason = opts.reason || "expired";
   const passed = result.passed;
   const title = proposal.title || proposal.gameName || "提案";
+  const nowEpoch = Math.floor(Date.now() / 1000);
 
   if (reason === "cancelled") {
-    return new EmbedBuilder()
-      .setColor("#ff0000")
-      .setTitle(`🗑️ 投票已取消：【${title}】`)
-      .setDescription(
-        `此投票已被管理員取消。\n\n` +
-          `**投票類型：** ${template.name}\n` +
-          `**取消時間：** <t:${Math.floor(Date.now() / 1000)}:F>`,
+    return new ContainerBuilder()
+      .setAccentColor(0xff0000)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🗑️ 投票已取消：【${title}】\n` +
+            `此投票已被管理員取消。\n\n` +
+            `**投票類型：** ${template.name}\n` +
+            `**取消時間：** <t:${nowEpoch}:F>`,
+        ),
       )
-      .setTimestamp()
-      .setFooter({ text: "投票系統" });
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`-# 投票系統 ・ <t:${nowEpoch}:R>`),
+      );
   }
 
   const description =
     reason === "manual_end"
-      ? `此提案已於 <t:${Math.floor(Date.now() / 1000)}:F> ${REASON_LABELS[reason]}`
-      : `此提案已於 <t:${Math.floor(Date.now() / 1000)}:F> 結束投票`;
+      ? `此提案已於 <t:${nowEpoch}:F> ${REASON_LABELS[reason]}`
+      : `此提案已於 <t:${nowEpoch}:F> 結束投票`;
 
-  const embed = new EmbedBuilder()
-    .setTitle(`${passed ? "✅ 提案通過" : "❌ 提案未通過"}：${title}`)
-    .setColor(passed ? "#00ff00" : "#ff0000")
-    .setDescription(description)
-    .addFields({
-      name: "📋 投票類型",
-      value: template.name,
-      inline: true,
-    });
+  const buttonLines = template.buttons.map(
+    (btn) => `${btn.emoji} ${btn.label}：${result.voteCounts[btn.id] || 0} 人`,
+  );
 
-  for (const btn of template.buttons) {
-    embed.addFields({
-      name: `${btn.emoji} ${btn.label}`,
-      value: `${result.voteCounts[btn.id] || 0} 人`,
-      inline: true,
-    });
-  }
+  const container = new ContainerBuilder()
+    .setAccentColor(passed ? 0x00ff00 : 0xff0000)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ${passed ? "✅ 提案通過" : "❌ 提案未通過"}：${title}\n${description}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**📋 投票類型**：${template.name}\n${buttonLines.join("\n")}` +
+          (result.totalScore > 0 ? `\n**📊 總分**：${result.totalScore} 分` : ""),
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**📋 結算結果**\n${
+          passed ? `✅ **通過！**\n${result.reason}` : `❌ **未通過**\n${result.reason}`
+        }`,
+      ),
+    );
 
-  if (result.totalScore > 0) {
-    embed.addFields({
-      name: "📊 總分",
-      value: `${result.totalScore} 分`,
-      inline: true,
-    });
-  }
+  const footerSuffix = reason === "manual_end" ? " · 管理員提早結束" : "";
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# 投票系統${footerSuffix} ・ <t:${nowEpoch}:R>`,
+    ),
+  );
 
-  embed.addFields({
-    name: "📋 結算結果",
-    value: passed
-      ? `✅ **通過！**\n${result.reason}`
-      : `❌ **未通過**\n${result.reason}`,
-    inline: false,
-  });
-
-  const footerSuffix =
-    reason === "manual_end" ? " · 管理員提早結束" : "";
-  embed.setTimestamp().setFooter({ text: `投票系統${footerSuffix}` });
-
-  return embed;
+  return container;
 }
 
-module.exports = { calculateVoteResult, createResultEmbed };
+module.exports = { calculateVoteResult, createResultContainer };

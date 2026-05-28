@@ -1,7 +1,12 @@
 const {
   PermissionFlagsBits,
   ChannelType,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
 } = require("discord.js");
 const config = require("../../config");
@@ -205,17 +210,26 @@ async function handleTicketCreation(client, interaction) {
     }
 
     // 發送歡迎訊息
-    const welcomeEmbed = new EmbedBuilder()
-      .setColor("#00ff00")
-      .setTitle("🎫 票務已創建")
-      .setDescription(
-        ticketConfig.welcomeMessage.replace("{user}", interaction.user.toString())
+    const welcomeContainer = new ContainerBuilder()
+      .setAccentColor(0x00ff00)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `${interaction.user}\n# 🎫 票務已創建\n${ticketConfig.welcomeMessage.replace(
+            "{user}",
+            interaction.user.toString(),
+          )}`,
+        ),
       )
-      .setTimestamp();
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+        ),
+      );
 
     await ticketChannel.send({
-      content: `${interaction.user}`,
-      embeds: [welcomeEmbed],
+      components: [welcomeContainer],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { users: [interaction.user.id] },
     });
 
     await interaction.editReply({
@@ -353,16 +367,116 @@ async function handleVoteButton(client, interaction) {
   }
 }
 
+function getTemplateColor(templateKey) {
+  const colors = {
+    game_create: 0x00ff00,
+    game_archive: 0xff9900,
+    event: 0x9b59b6,
+    rule_change: 0x3498db,
+    general: 0x95a5a6,
+  };
+  return colors[templateKey] || 0x0099ff;
+}
+
+function rebuildVoteContainer(proposal, template) {
+  const title = proposal.title || proposal.gameName || "提案";
+  const description =
+    proposal.customDescription
+      ? `由 <@${proposal.proposerId}> 提出\n\n${proposal.customDescription}`
+      : `由 <@${proposal.proposerId}> 提出\n\n${template.description}`;
+
+  const createdEpoch = Math.floor(
+    new Date(proposal.createdAt || Date.now()).getTime() / 1000,
+  );
+  const expiresEpoch = Math.floor(
+    new Date(proposal.expiresAt || Date.now()).getTime() / 1000,
+  );
+
+  const voteCounts = {};
+  let totalScore = 0;
+  for (const btn of template.buttons) {
+    const count = proposal.votes?.[btn.id]?.length || 0;
+    voteCounts[btn.id] = count;
+    totalScore += count * (btn.weight || 0);
+  }
+
+  const passCondition = template.passCondition;
+  let thresholdText = "";
+  const countLines = template.buttons.map(
+    (btn) => `${btn.emoji} ${btn.label}：${voteCounts[btn.id]} 人`,
+  );
+
+  switch (passCondition?.type) {
+    case "weighted":
+      countLines.push(`📊 總分：${totalScore} 分`);
+      thresholdText = `總分 ≥ ${passCondition.minTotalScore} 且 高意願 ≥ ${passCondition.minHighInterest} 人`;
+      break;
+    case "reverse":
+      thresholdText = `如果活躍人數 < ${passCondition.maxStillActive + 1} 人，則通過`;
+      break;
+    case "majority": {
+      const totalVotes = Object.values(voteCounts).reduce((a, b) => a + b, 0);
+      countLines.push(`📊 總投票數：${totalVotes} 票`);
+      thresholdText = `總票數 ≥ ${passCondition.minTotalVotes} 且 贊成票 > 反對票`;
+      break;
+    }
+    case "simple":
+      thresholdText = `支持票 ≥ ${passCondition.minSupport} 票`;
+      break;
+  }
+
+  const buttons = new ActionRowBuilder();
+  for (const btn of template.buttons) {
+    buttons.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`vote_${proposal.templateKey}_${btn.id}`)
+        .setLabel(btn.label)
+        .setEmoji(btn.emoji)
+        .setStyle(ButtonStyle[btn.style]),
+    );
+  }
+
+  const container = new ContainerBuilder()
+    .setAccentColor(getTemplateColor(proposal.templateKey))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ${template.emoji} 提案：${title}\n${description}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**📋 投票類型**：${template.name}\n` +
+          `**⏰ 投票時間**：${proposal.duration} 小時\n` +
+          `**📅 截止時間**：<t:${expiresEpoch}:R>`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(countLines.join("\n")),
+    );
+
+  if (thresholdText) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**✅ 通過門檻**\n${thresholdText}`,
+      ),
+    );
+  }
+
+  container.addActionRowComponents(buttons).addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`-# <t:${createdEpoch}:R>`),
+  );
+
+  return container;
+}
+
 async function updateVoteMessage(client, interaction, proposal) {
   try {
-    // 重新獲取最新的投票數據
     const updatedProposal = await client.votingProposalsCollection.findOne({
-      _id: proposal._id
+      _id: proposal._id,
     });
-
     if (!updatedProposal) return;
 
-    // 獲取模板配置
     const template = config.voting.templates[updatedProposal.templateKey];
     if (!template) {
       logger.error(
@@ -373,73 +487,11 @@ async function updateVoteMessage(client, interaction, proposal) {
       return;
     }
 
-    const originalEmbed = interaction.message.embeds[0];
-    const { EmbedBuilder } = require("discord.js");
-
-    const updatedEmbed = EmbedBuilder.from(originalEmbed);
-
-    // 清除舊的投票統計欄位（保留前3個：類型、時間、截止）
-    updatedEmbed.spliceFields(3, updatedEmbed.data.fields?.length - 3 || 0);
-
-    // 添加新的投票統計
-    const voteCounts = {};
-    let totalScore = 0;
-
-    for (const btn of template.buttons) {
-      const count = updatedProposal.votes[btn.id]?.length || 0;
-      voteCounts[btn.id] = count;
-      totalScore += count * btn.weight;
-
-      updatedEmbed.addFields({
-        name: `${btn.emoji} ${btn.label}`,
-        value: `${count} 人`,
-        inline: true
-      });
-    }
-
-    // 根據通過條件類型添加門檻說明
-    const passCondition = template.passCondition;
-    let thresholdText = "";
-
-    switch (passCondition.type) {
-      case "weighted":
-        updatedEmbed.addFields({
-          name: "📊 總分",
-          value: `${totalScore} 分`,
-          inline: true
-        });
-        thresholdText = `總分 ≥ ${passCondition.minTotalScore} 且 高意願 ≥ ${passCondition.minHighInterest} 人`;
-        break;
-
-      case "reverse":
-        thresholdText = `如果活躍人數 < ${passCondition.maxStillActive + 1} 人，則通過`;
-        break;
-
-      case "majority":
-        const totalVotes = Object.values(voteCounts).reduce((a, b) => a + b, 0);
-        updatedEmbed.addFields({
-          name: "📊 總投票數",
-          value: `${totalVotes} 票`,
-          inline: true
-        });
-        thresholdText = `總票數 ≥ ${passCondition.minTotalVotes} 且 贊成票 > 反對票`;
-        break;
-
-      case "simple":
-        thresholdText = `支持票 ≥ ${passCondition.minSupport} 票`;
-        break;
-    }
-
-    if (thresholdText) {
-      updatedEmbed.addFields({
-        name: "✅ 通過門檻",
-        value: thresholdText,
-        inline: false
-      });
-    }
-
-    await interaction.message.edit({ embeds: [updatedEmbed] });
-
+    const container = rebuildVoteContainer(updatedProposal, template);
+    await interaction.message.edit({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
   } catch (error) {
     logger.error(
       { source: "vote-update", err: error.message, stack: error.stack },

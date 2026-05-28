@@ -1,7 +1,10 @@
 require("colors");
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -47,28 +50,35 @@ module.exports = {
       }
 
       const readyEpoch = Math.floor(result.newCooldownAt / 1000);
-      const embed = new EmbedBuilder()
-        .setColor(0x3498db)
-        .setTitle("💼 打工完成")
-        .setDescription(`你${result.job}，獲得了 **+${result.amount.toLocaleString()}** ${COIN_EMOJI}`)
-        .addFields(
-          {
-            name: "目前餘額",
-            value: `${result.balance.toLocaleString()} ${COIN_EMOJI}`,
-            inline: true,
-          },
-          {
-            name: "今日次數",
-            value: `${result.claimsToday}/${result.maxClaims}`,
-            inline: true,
-          },
-          {
-            name: "下次可打工",
-            value: `<t:${readyEpoch}:R>`,
-            inline: true,
-          }
+
+      const container = new ContainerBuilder()
+        .setAccentColor(0x3498db)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 💼 打工完成\n你${result.job}，獲得了 **+${result.amount.toLocaleString()}** ${COIN_EMOJI}`,
+          ),
         )
-        .setFooter({ text: "想要更高報酬？試試 /挖礦 吧！" });
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**目前餘額**\n${result.balance.toLocaleString()} ${COIN_EMOJI}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**今日次數**\n${result.claimsToday}/${result.maxClaims}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**下次可打工**\n<t:${readyEpoch}:R>`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "-# 想要更高報酬？試試 /挖礦 吧！",
+          ),
+        );
 
       const notifyState = await reminder.getState(client, {
         userId: interaction.user.id,
@@ -76,7 +86,6 @@ module.exports = {
         type: "work",
       });
       const notifyEnabled = !!notifyState?.enabled;
-      // 已開啟通知者，把追蹤的冷卻更新成本次最新值
       if (notifyEnabled) {
         await reminder.refreshIfEnabled(client, {
           userId: interaction.user.id,
@@ -90,8 +99,12 @@ module.exports = {
         ownerId: interaction.user.id,
         enabled: notifyEnabled,
       });
+      container.addActionRowComponents(row);
 
-      await interaction.editReply({ embeds: [embed], components: [row] });
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
     } catch (error) {
       console.log(`[ERROR] /打工:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 打工失敗，請呼叫舒舒！").catch(() => {});

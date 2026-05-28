@@ -1,5 +1,10 @@
 require("colors");
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
+} = require("discord.js");
 const { stockSystem } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 const { MONEY_EMOJI } = require("../../constants/coin");
@@ -126,17 +131,28 @@ async function announce(client, guildId, summaries) {
     );
   });
 
-  const embed = new EmbedBuilder()
-    .setTitle("📨 逼逼股市｜本週配息派發")
-    .setColor(0x2ecc71)
-    .setDescription(lines.join("\n\n"))
-    .addFields({
-      name: "本週總配發",
-      value: `${totalAll.toLocaleString()} credits（累計 ${totalRecipientHits} 筆派息）`,
-    })
-    .setTimestamp(new Date());
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 📨 逼逼股市｜本週配息派發\n${lines.join("\n\n")}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**本週總配發**\n${totalAll.toLocaleString()} credits（累計 ${totalRecipientHits} 筆派息）`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
+    );
 
-  await channel.send({ embeds: [embed] }).catch(() => {});
+  await channel
+    .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
 }
 
 // 彙總每位用戶在各股的本週配息，逐一 DM
@@ -180,17 +196,31 @@ async function sendDmNotifications(client, summaries) {
           );
         });
 
-      const embed = new EmbedBuilder()
-        .setTitle(`${MONEY_EMOJI} 你本週的股息入帳`)
-        .setColor(0x2ecc71)
-        .setDescription(lines.join("\n\n"))
-        .addFields({
-          name: "本週合計",
-          value: `**${entry.total.toLocaleString()}** credits（共 ${entry.items.length} 支股票）`,
-        })
-        .setTimestamp(new Date());
+      const container = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# ${MONEY_EMOJI} 你本週的股息入帳\n${lines.join("\n\n")}`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**本週合計**\n**${entry.total.toLocaleString()}** credits（共 ${entry.items.length} 支股票）`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+          ),
+        );
 
-      await user.send({ embeds: [embed] }).catch(() => {});
+      await user
+        .send({
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        })
+        .catch(() => {});
     } catch (e) {
       console.log(`[DIV] DM 失敗 user=${entry.userId}: ${e?.message || e}`.yellow);
     }

@@ -1,7 +1,10 @@
 require("colors");
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -53,10 +56,14 @@ module.exports = {
         `屬性：luck +${luckPct}% ・ CD -${cdReduceMin} 分 ・ 數量 +${pdef.qtyBonus || 0}`,
       ];
 
-      const embed = new EmbedBuilder()
-        .setColor(0x95a5a6)
-        .setTitle(`🔧 ${interaction.user.username} 的裝備`)
-        .setDescription(statLines.join("\n"));
+      const container = new ContainerBuilder()
+        .setAccentColor(0x95a5a6)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 🔧 ${interaction.user.username} 的裝備\n${statLines.join("\n")}`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder());
 
       for (const recipe of craft?.recipes || []) {
         const matParts = Object.entries(recipe.materials).map(([mat, need]) => {
@@ -68,22 +75,28 @@ module.exports = {
           ([mat, need]) => (backpack[mat] || 0) >= need
         );
         const targetPdef = mining.pickaxes[recipe.result?.id] || {};
-        // 欄位名稱不渲染自訂 emoji，emoji 放進欄位內容
-        embed.addFields({
-          name: `${recipe.name}${craftable ? "（可合成）" : ""}`,
-          value:
-            `${pickaxeLabel(recipe.result?.id)}\n` +
-            matParts.join("\n") +
-            `\n屬性：luck +${Math.round((targetPdef.luckBonus || 0) * 100)}% ・ ` +
-            `CD -${Math.round((targetPdef.cdReductionMs || 0) / 60000)} 分 ・ ` +
-            `數量 +${targetPdef.qtyBonus || 0} ・ 耐久 ${targetPdef.durability ?? "永久"}`,
-          inline: false,
-        });
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**${recipe.name}${craftable ? "（可合成）" : ""}**\n` +
+              `${pickaxeLabel(recipe.result?.id)}\n` +
+              matParts.join("\n") +
+              `\n屬性：luck +${Math.round((targetPdef.luckBonus || 0) * 100)}% ・ ` +
+              `CD -${Math.round((targetPdef.cdReductionMs || 0) / 60000)} 分 ・ ` +
+              `數量 +${targetPdef.qtyBonus || 0} ・ 耐久 ${targetPdef.durability ?? "永久"}`,
+          ),
+        );
       }
 
-      embed.setFooter({ text: "用 /合成 打造鎬子；材料來自 /挖礦 挖到的礦石" });
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# 用 /合成 打造鎬子；材料來自 /挖礦 挖到的礦石",
+        ),
+      );
 
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
     } catch (error) {
       console.log(`[ERROR] /裝備:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 查看裝備失敗，請呼叫舒舒！").catch(() => {});

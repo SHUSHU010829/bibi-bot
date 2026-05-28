@@ -1,6 +1,8 @@
 require("colors");
 const {
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -8,6 +10,7 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  MessageFlags,
 } = require("discord.js");
 
 const grantCoins = require("../economy/grantCoins");
@@ -24,7 +27,7 @@ function newEventId(hostId) {
   return `evt-${Date.now().toString(36)}-${hostId.slice(-5)}`;
 }
 
-function buildActiveEmbed(eventDoc) {
+function buildActiveContainer(eventDoc) {
   const {
     name,
     description,
@@ -51,26 +54,40 @@ function buildActiveEmbed(eventDoc) {
   else if (isFull) statusLabel = "報名中（已滿）";
   else statusLabel = "報名中";
 
-  return new EmbedBuilder()
-    .setColor(recruitmentClosed ? 0x95a5a6 : EMBED_COLOR_ACTIVE)
-    .setTitle(`🎉 ${name}`)
-    .setDescription(description || "（沒有描述）")
-    .addFields(
-      { name: "主辦人", value: `<@${hostId}>`, inline: true },
-      { name: "獎金池", value: `${prizePool.toLocaleString()} credits`, inline: true },
-      { name: "名次", value: `${rankCount} 名`, inline: true },
-      { name: "報名人數", value: capacityLabel, inline: false },
-      {
-        name: statusLabel,
-        value: participantLine.slice(0, 1024),
-        inline: false,
-      }
+  const createdEpoch = Math.floor(
+    (eventDoc.createdAt ? new Date(eventDoc.createdAt).getTime() : Date.now()) / 1000,
+  );
+
+  return new ContainerBuilder()
+    .setAccentColor(recruitmentClosed ? 0x95a5a6 : EMBED_COLOR_ACTIVE)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🎉 ${name}\n${description || "（沒有描述）"}`,
+      ),
     )
-    .setFooter({ text: `活動 ID：${eventDoc.eventId}` })
-    .setTimestamp(eventDoc.createdAt);
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**主辦人**：<@${hostId}>\n` +
+          `**獎金池**：${prizePool.toLocaleString()} credits\n` +
+          `**名次**：${rankCount} 名\n` +
+          `**報名人數**：${capacityLabel}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**${statusLabel}**\n${participantLine.slice(0, 3500)}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 活動 ID：${eventDoc.eventId} ・ <t:${createdEpoch}:f>`,
+      ),
+    );
 }
 
-function buildSettledEmbed(eventDoc) {
+function buildSettledContainer(eventDoc) {
   const { name, description, hostId, prizePool, winners = [], totalPaid = 0 } = eventDoc;
   const unpaid = prizePool - totalPaid;
   const medals = ["🥇", "🥈", "🥉", "🏅", "🏅"];
@@ -83,60 +100,82 @@ function buildSettledEmbed(eventDoc) {
   const refundFee = eventDoc.refundFee || 0;
   const refundNet = eventDoc.refundNet !== undefined ? eventDoc.refundNet : Math.max(unpaid - refundFee, 0);
 
-  const extraFields = [];
+  const settledEpoch = Math.floor(
+    (eventDoc.settledAt ? new Date(eventDoc.settledAt).getTime() : Date.now()) / 1000,
+  );
+
+  const container = new ContainerBuilder()
+    .setAccentColor(EMBED_COLOR_SETTLED)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🏆 ${name}（已結算）\n${description || "（沒有描述）"}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**主辦人**：<@${hostId}>\n**原始獎金池**：${prizePool.toLocaleString()} credits`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**得獎名單**\n${winnerLines || "（無）"}`,
+      ),
+    );
+
   if (unpaid > 0) {
-    extraFields.push({
-      name: "未發出退回主辦人",
-      value: `${refundNet.toLocaleString()} credits`,
-      inline: false,
-    });
-    if (refundFee > 0) {
-      extraFields.push({
-        name: "系統抽成（防洗錢）",
-        value: `${refundFee.toLocaleString()} credits`,
-        inline: false,
-      });
-    }
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**未發出退回主辦人**：${refundNet.toLocaleString()} credits` +
+          (refundFee > 0
+            ? `\n**系統抽成（防洗錢）**：${refundFee.toLocaleString()} credits`
+            : ""),
+      ),
+    );
   }
 
-  return new EmbedBuilder()
-    .setColor(EMBED_COLOR_SETTLED)
-    .setTitle(`🏆 ${name}（已結算）`)
-    .setDescription(description || "（沒有描述）")
-    .addFields(
-      { name: "主辦人", value: `<@${hostId}>`, inline: true },
-      { name: "原始獎金池", value: `${prizePool.toLocaleString()} credits`, inline: true },
-      { name: "得獎名單", value: winnerLines || "（無）", inline: false },
-      ...extraFields
-    )
-    .setFooter({ text: `活動 ID：${eventDoc.eventId}` })
-    .setTimestamp(eventDoc.settledAt || new Date());
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# 活動 ID：${eventDoc.eventId} ・ <t:${settledEpoch}:f>`,
+    ),
+  );
+
+  return container;
 }
 
-function buildCancelledEmbed(eventDoc) {
+function buildCancelledContainer(eventDoc) {
   const refundFee = eventDoc.refundFee || 0;
   const refundNet =
     eventDoc.refundNet !== undefined ? eventDoc.refundNet : Math.max(eventDoc.prizePool - refundFee, 0);
 
-  const fields = [
-    { name: "主辦人", value: `<@${eventDoc.hostId}>`, inline: true },
-    { name: "獎金已退還", value: `${refundNet.toLocaleString()} credits`, inline: true },
+  const lines = [
+    `**主辦人**：<@${eventDoc.hostId}>`,
+    `**獎金已退還**：${refundNet.toLocaleString()} credits`,
   ];
   if (refundFee > 0) {
-    fields.push({
-      name: "系統抽成（防洗錢）",
-      value: `${refundFee.toLocaleString()} credits`,
-      inline: true,
-    });
+    lines.push(`**系統抽成（防洗錢）**：${refundFee.toLocaleString()} credits`);
   }
 
-  return new EmbedBuilder()
-    .setColor(EMBED_COLOR_CANCELLED)
-    .setTitle(`🚫 ${eventDoc.name}（已取消）`)
-    .setDescription(eventDoc.description || "（沒有描述）")
-    .addFields(...fields)
-    .setFooter({ text: `活動 ID：${eventDoc.eventId}` })
-    .setTimestamp(eventDoc.cancelledAt || new Date());
+  const cancelledEpoch = Math.floor(
+    (eventDoc.cancelledAt ? new Date(eventDoc.cancelledAt).getTime() : Date.now()) / 1000,
+  );
+
+  return new ContainerBuilder()
+    .setAccentColor(EMBED_COLOR_CANCELLED)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🚫 ${eventDoc.name}（已取消）\n${eventDoc.description || "（沒有描述）"}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(lines.join("\n")),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 活動 ID：${eventDoc.eventId} ・ <t:${cancelledEpoch}:f>`,
+      ),
+    );
 }
 
 function buildActionRow(eventId, opts = {}) {
@@ -312,9 +351,12 @@ async function createEvent(client, opts) {
   };
 
   try {
+    const container = buildActiveContainer(eventDoc).addActionRowComponents(
+      buildActionRow(eventId),
+    );
     const msg = await channel.send({
-      embeds: [buildActiveEmbed(eventDoc)],
-      components: [buildActionRow(eventId)],
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
     });
     eventDoc.messageId = msg.id;
     await client.hostedEventsCollection.insertOne(eventDoc);
@@ -337,24 +379,23 @@ async function refreshEventMessage(client, eventDoc) {
   const msg = await channel.messages.fetch(eventDoc.messageId).catch(() => null);
   if (!msg) return null;
 
-  let embed;
-  let components;
+  let container;
   if (eventDoc.status === "RECRUITING") {
-    embed = buildActiveEmbed(eventDoc);
-    components = [
+    container = buildActiveContainer(eventDoc).addActionRowComponents(
       buildActionRow(eventDoc.eventId, {
         recruitmentClosed: !!eventDoc.recruitmentClosed,
       }),
-    ];
+    );
   } else if (eventDoc.status === "SETTLED") {
-    embed = buildSettledEmbed(eventDoc);
-    components = [];
+    container = buildSettledContainer(eventDoc);
   } else {
-    embed = buildCancelledEmbed(eventDoc);
-    components = [];
+    container = buildCancelledContainer(eventDoc);
   }
 
-  await msg.edit({ embeds: [embed], components });
+  await msg.edit({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
   return msg;
 }
 
@@ -591,9 +632,9 @@ module.exports = {
   settleEvent,
   setRecruitmentClosed,
   refreshEventMessage,
-  buildActiveEmbed,
-  buildSettledEmbed,
-  buildCancelledEmbed,
+  buildActiveContainer,
+  buildSettledContainer,
+  buildCancelledContainer,
   buildActionRow,
   buildManagePanel,
   buildPickSelect,

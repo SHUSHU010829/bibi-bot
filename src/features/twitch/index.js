@@ -1,7 +1,9 @@
 require("colors");
 
+const { MessageFlags } = require("discord.js");
+
 const { fetchStreamsByLogin, fetchUsersByLogin } = require("./api");
-const { buildLiveStreamPayload } = require("./embed");
+const { buildLiveStreamContainer } = require("./embed");
 const {
   ensureIndexes,
   getLastStreamId,
@@ -82,18 +84,22 @@ const runTwitchLiveJob = async ({ client, channelId, config, dryRun = false }) =
     }
 
     const user = userByLogin.get(login) || { login, display_name: stream.user_name };
-    const payload = buildLiveStreamPayload({ stream, user });
 
     const mention = config.mentionEveryone
       ? "@everyone"
       : config.mentionRoleId
       ? `<@&${config.mentionRoleId}>`
       : "";
-    const content = buildMessageContent(
+    const header = buildMessageContent(
       config.messageContent,
       user.display_name || login,
       mention
     );
+    const { container } = buildLiveStreamContainer({
+      stream,
+      user,
+      header: header || "",
+    });
 
     if (dryRun) {
       console.log(
@@ -105,9 +111,8 @@ const runTwitchLiveJob = async ({ client, channelId, config, dryRun = false }) =
 
     try {
       await channel.send({
-        content: content || undefined,
-        embeds: payload.embeds,
-        components: payload.components,
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
         allowedMentions: {
           parse: config.mentionEveryone ? ["everyone", "roles"] : ["roles"],
         },

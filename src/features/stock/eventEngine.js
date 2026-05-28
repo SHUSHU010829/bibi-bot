@@ -1,5 +1,10 @@
 require("colors");
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
+} = require("discord.js");
 const { stockSystem, stockEventConfig } = require("../../config");
 const { applyEvent } = require("./priceEngine");
 
@@ -141,14 +146,28 @@ async function announceEvent(client, def, changes) {
     .map((c) => `\`${c.symbol}\` ${c.name}：${c.before.toFixed(1)} → **${c.after.toFixed(1)}**`);
   if (changes.length > 6) lines.push(`…還有 ${changes.length - 6} 支`);
 
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setColor(def.dir === "up" ? 0x2ecc71 : 0xe74c3c)
-    .setDescription(`**${def.name}** 影響股價 ${sign}${pct}%`)
-    .addFields({ name: "成交價變動", value: lines.join("\n") || "（無）" })
-    .setTimestamp(new Date());
+  const container = new ContainerBuilder()
+    .setAccentColor(def.dir === "up" ? 0x2ecc71 : 0xe74c3c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ${title}\n**${def.name}** 影響股價 ${sign}${pct}%`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**成交價變動**\n${lines.join("\n") || "（無）"}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
+    );
 
-  await channel.send({ embeds: [embed] }).catch(() => {});
+  await channel
+    .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
 }
 
 module.exports = {

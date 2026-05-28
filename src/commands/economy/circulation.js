@@ -3,7 +3,10 @@ const {
   SlashCommandBuilder,
   PermissionFlagsBits,
   MessageFlags,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   InteractionContextType,
 } = require("discord.js");
 const { MONEY_EMOJI } = require("../../constants/coin");
@@ -124,62 +127,63 @@ module.exports = {
 
       const fmt = (n) => Number(n || 0).toLocaleString();
 
-      const embed = new EmbedBuilder()
-        .setTitle(`${MONEY_EMOJI} 全機器人金幣流通量`)
-        .setColor(0xf1c40f)
-        .setDescription(
-          `**總流通量：${fmt(totalCirculation)}**\n` +
-            `（錢包 + 啟用中存款本金，與每日經濟快照同口徑）`,
+      const container = new ContainerBuilder()
+        .setAccentColor(0xf1c40f)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# ${MONEY_EMOJI} 全機器人金幣流通量\n` +
+              `**總流通量：${fmt(totalCirculation)}**\n` +
+              `-# 錢包 + 啟用中存款本金，與每日經濟快照同口徑`,
+          ),
         )
-        .addFields(
-          {
-            name: "👛 玩家錢包",
-            value:
+        .addSeparatorComponents(
+          new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**👛 玩家錢包**\n` +
               `${fmt(wallets.totalWalletCoins)}\n` +
               `・有金幣玩家：${fmt(wallets.activeUsers)} / ${fmt(wallets.userCount)}`,
-            inline: true,
-          },
-          {
-            name: "🏦 定期存款本金",
-            value:
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**🏦 定期存款本金**\n` +
               `${fmt(deposits.totalDepositPrincipal)}\n` +
               `・啟用中存單：${fmt(deposits.activeDepositCount)}`,
-            inline: true,
-          },
-          {
-            name: "​",
-            value: "​",
-            inline: true,
-          },
-          {
-            name: "🎰 拉霸 Jackpot 累積池",
-            value:
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**🎰 拉霸 Jackpot 累積池**\n` +
               `${fmt(jackpot.totalJackpot)}\n` +
               `・池數：${fmt(jackpot.jackpotCount)}`,
-            inline: true,
-          },
-          {
-            name: "🎟️ 樂透開盤中彩池",
-            value:
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**🎟️ 樂透開盤中彩池**\n` +
               `${fmt(lottery.totalLotteryPool)}\n` +
               `・開盤中：${fmt(lottery.openDrawCount)}`,
-            inline: true,
-          },
-          {
-            name: "​",
-            value: "​",
-            inline: true,
-          },
-          {
-            name: "📊 系統內總金幣（含彩池）",
-            value: `${fmt(grandTotal)}`,
-            inline: false,
-          },
+          ),
         )
-        .setTimestamp(new Date())
-        .setFooter({ text: "口徑：UserCoins + CoinDeposits(active) + JackpotPool + LotteryDraws(open)" });
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**📊 系統內總金幣（含彩池）**\n${fmt(grandTotal)}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# 口徑：UserCoins + CoinDeposits(active) + JackpotPool + LotteryDraws(open) ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+          ),
+        );
 
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
     } catch (error) {
       console.log(`[ERROR] /circulation:\n${error}\n${error.stack}`.red);
       await interaction

@@ -1,6 +1,12 @@
 require("colors");
 
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
+} = require("discord.js");
 
 const getForeignExchangeRate = require("../../utils/getForeignExchangeRate");
 
@@ -75,16 +81,32 @@ module.exports = {
 
       // 預設 / 指定 TWD：顯示 USD ➡️ TWD
       if (targetCurrency === "TWD") {
-        const embed = new EmbedBuilder()
-          .setTitle("💱 USD ➡️ TWD")
-          .setColor(0x5865f2)
-          .addFields(
-            { name: "匯率", value: `\`${Number(twdRate.Exrate).toFixed(4)}\``, inline: true },
-            { name: "更新時間", value: `${twdRate.UTC}`, inline: true }
+        const container = new ContainerBuilder()
+          .setAccentColor(0x5865f2)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `即時匯率 ⬇️\n# 💱 USD ➡️ TWD`,
+            ),
           )
-          .setFooter({ text: "資料來源：RTER.info" });
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**匯率**\n\`${Number(twdRate.Exrate).toFixed(4)}\``,
+            ),
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**更新時間**\n${twdRate.UTC}`,
+            ),
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("-# 資料來源：RTER.info"),
+          );
 
-        await interaction.editReply({ content: "即時匯率 ⬇️", embeds: [embed] });
+        await interaction.editReply({
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        });
         return;
       }
 
@@ -98,23 +120,40 @@ module.exports = {
       }
 
       const exchangeRate = twdRate.Exrate / targetRate.Exrate;
-      const embed = new EmbedBuilder()
-        .setTitle(`💱 ${targetCurrency} ➡️ TWD`)
-        .setColor(0x5865f2)
-        .addFields(
-          { name: "匯率", value: `\`${exchangeRate.toFixed(4)}\``, inline: true },
-          { name: "更新時間", value: `${twdRate.UTC}`, inline: true },
-          {
-            name: "換算範例",
-            value:
+      const container = new ContainerBuilder()
+        .setAccentColor(0x5865f2)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `即時匯率 ⬇️\n# 💱 ${targetCurrency} ➡️ TWD`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**匯率**\n\`${exchangeRate.toFixed(4)}\``,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**更新時間**\n${twdRate.UTC}`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**換算範例**\n` +
               `1 ${targetCurrency} ≈ **${exchangeRate.toFixed(2)}** TWD\n` +
               `100 ${targetCurrency} ≈ **${(exchangeRate * 100).toFixed(2)}** TWD`,
-            inline: false,
-          }
+          ),
         )
-        .setFooter({ text: "資料來源：RTER.info" });
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 資料來源：RTER.info"),
+        );
 
-      await interaction.editReply({ content: "即時匯率 ⬇️", embeds: [embed] });
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
     } catch (error) {
       await interaction.editReply("哎呀！查詢不到對應資訊！");
       console.log(

@@ -1,6 +1,7 @@
 const {
   PermissionFlagsBits,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
   MessageFlags,
 } = require("discord.js");
 const config = require("../../config");
@@ -41,34 +42,47 @@ module.exports = async (client, interaction) => {
       (supportRoleId && interaction.member.roles.cache.has(supportRoleId));
 
     if (!hasAdminPermission) {
-      const requestEmbed = new EmbedBuilder()
-        .setColor("#FFA500")
-        .setTitle("📣 票務關閉請求")
-        .setDescription(
-          `${interaction.user} 想要關閉此票務。\n\n請管理員確認後點擊「關閉票務」按鈕來關閉此頻道。`,
+      const mention = supportRoleId ? `<@&${supportRoleId}>\n` : "";
+      const requestContainer = new ContainerBuilder()
+        .setAccentColor(0xffa500)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `${mention}# 📣 票務關閉請求\n` +
+              `${interaction.user} 想要關閉此票務。\n\n請管理員確認後點擊「關閉票務」按鈕來關閉此頻道。`,
+          ),
         )
-        .setTimestamp();
-
-      const mention = supportRoleId ? `<@&${supportRoleId}>` : "";
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+          ),
+        );
 
       await interaction.reply({
-        content: mention,
-        embeds: [requestEmbed],
+        components: [requestContainer],
+        flags: MessageFlags.IsComponentsV2,
         allowedMentions: { roles: supportRoleId ? [supportRoleId] : [] },
       });
       trackSuccess("close-suggestion-request");
       return;
     }
 
-    const closeEmbed = new EmbedBuilder()
-      .setColor("#ff0000")
-      .setTitle("🔒 票務已關閉")
-      .setDescription(
-        `此票務已被 ${interaction.user} 關閉。\n頻道將在 5 秒後刪除。`,
+    const closeContainer = new ContainerBuilder()
+      .setAccentColor(0xff0000)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🔒 票務已關閉\n此票務已被 ${interaction.user} 關閉。\n頻道將在 5 秒後刪除。`,
+        ),
       )
-      .setTimestamp();
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+        ),
+      );
 
-    await interaction.reply({ embeds: [closeEmbed] });
+    await interaction.reply({
+      components: [closeContainer],
+      flags: MessageFlags.IsComponentsV2,
+    });
 
     const t = setTimeout(async () => {
       try {

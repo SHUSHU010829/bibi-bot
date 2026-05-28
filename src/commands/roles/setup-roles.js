@@ -1,7 +1,6 @@
 const {
   SlashCommandBuilder,
   PermissionFlagsBits,
-  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -299,22 +298,29 @@ async function handleList(client, interaction) {
     });
   }
 
-  const embed = new EmbedBuilder()
-    .setColor("#0099ff")
-    .setTitle("🎮 已設定的遊戲角色")
-    .setDescription(
-      data.roles
-        .map((role, index) => {
-          const emojiText = role.emoji ? `${role.emoji} ` : "";
-          return `**${index + 1}.** ${emojiText}${role.name} - <@&${role.roleId}>`;
-        })
-        .join("\n"),
+  const listText = data.roles
+    .map((role, index) => {
+      const emojiText = role.emoji ? `${role.emoji} ` : "";
+      return `**${index + 1}.** ${emojiText}${role.name} - <@&${role.roleId}>`;
+    })
+    .join("\n");
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x0099ff)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("# 🎮 已設定的遊戲角色"),
     )
-    .setFooter({ text: `共 ${data.roles.length} 個遊戲` })
-    .setTimestamp();
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(listText))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 共 ${data.roles.length} 個遊戲 ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
+    );
 
   await interaction.reply({
-    embeds: [embed],
-    flags: 64, // MessageFlags.Ephemeral
+    components: [container],
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    allowedMentions: { parse: [] },
   });
 }

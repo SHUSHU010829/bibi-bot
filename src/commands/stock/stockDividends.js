@@ -2,7 +2,10 @@ require("colors");
 const {
   SlashCommandBuilder,
   InteractionContextType,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
 } = require("discord.js");
 
 const { stockSystem } = require("../../config");
@@ -58,7 +61,6 @@ module.exports = {
         return interaction.editReply(`📭 你在所選期間內沒有配息紀錄。`);
       }
 
-      // 依股票彙總
       const bySymbol = new Map();
       let grandTotal = 0;
       for (const r of rows) {
@@ -72,7 +74,6 @@ module.exports = {
         grandTotal += r.payout || 0;
       }
 
-      // 取得股票名稱
       const symbols = [...bySymbol.keys()];
       let nameBySymbol = new Map();
       if (client.stockMarketCollection) {
@@ -89,7 +90,6 @@ module.exports = {
           return `\`${s.symbol}\` ${name}　×${s.count} 次　**${s.total.toLocaleString()}** credits`;
         });
 
-      // 最近 10 筆明細
       const recentLines = rows.slice(0, 10).map((r) => {
         const ts = new Date(r.timestamp);
         const date = `${ts.getMonth() + 1}/${ts.getDate()}`;
@@ -98,20 +98,44 @@ module.exports = {
       });
 
       const periodLabel = period === "3m" ? "近 90 天" : "近 30 天";
-      const embed = new EmbedBuilder()
-        .setTitle(`${MONEY_EMOJI} ${interaction.member?.displayName || interaction.user.username} 的配息紀錄`)
-        .setColor(0x2ecc71)
-        .setDescription(summaryLines.join("\n"))
-        .addFields(
-          { name: "期間", value: periodLabel, inline: true },
-          { name: "派息次數", value: `${rows.length}`, inline: true },
-          { name: "合計入帳", value: `**${grandTotal.toLocaleString()}** credits`, inline: true },
-          { name: "最近明細", value: recentLines.join("\n") || "—" }
-        )
-        .setFooter({ text: "配息紀錄保留 90 天" })
-        .setTimestamp(new Date());
 
-      await interaction.editReply({ embeds: [embed] });
+      const container = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# ${MONEY_EMOJI} ${interaction.member?.displayName || interaction.user.username} 的配息紀錄\n${summaryLines.join("\n")}`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`**期間**\n${periodLabel}`),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**派息次數**\n${rows.length}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**合計入帳**\n**${grandTotal.toLocaleString()}** credits`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**最近明細**\n${recentLines.join("\n") || "—"}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# 配息紀錄保留 90 天 ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+          ),
+        );
+
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
     } catch (err) {
       console.log(`[STOCK] /配息紀錄 失敗：${err?.stack || err}`.red);
       await interaction.editReply("❌ 查詢失敗，請稍後再試。").catch(() => {});

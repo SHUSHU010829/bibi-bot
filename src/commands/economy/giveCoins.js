@@ -3,7 +3,9 @@ const {
   SlashCommandBuilder,
   PermissionFlagsBits,
   MessageFlags,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   InteractionContextType,
 } = require("discord.js");
 const { DateTime } = require("luxon");
@@ -127,18 +129,48 @@ module.exports = {
             .fetch(auditChannelId)
             .catch(() => null);
           if (auditChannel?.isTextBased?.()) {
-            const embed = new EmbedBuilder()
-              .setTitle("🛡️ Admin 金幣發放紀錄")
-              .setColor(amount >= 0 ? 0x57f287 : 0xed4245)
-              .addFields(
-                { name: "操作者", value: `<@${interaction.user.id}>`, inline: true },
-                { name: "對象", value: `<@${targetUser.id}>`, inline: true },
-                { name: "金額", value: `**${verb}${amount.toLocaleString()}**`, inline: true },
-                { name: "餘額", value: `${after.toLocaleString?.() ?? after}`, inline: true },
-                { name: "原因", value: reason || "（未填）", inline: false },
+            const container = new ContainerBuilder()
+              .setAccentColor(amount >= 0 ? 0x57f287 : 0xed4245)
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("# 🛡️ Admin 金幣發放紀錄"),
               )
-              .setTimestamp(new Date());
-            await auditChannel.send({ embeds: [embed] }).catch(() => {});
+              .addSeparatorComponents(new SeparatorBuilder())
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `**操作者**\n<@${interaction.user.id}>`,
+                ),
+              )
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `**對象**\n<@${targetUser.id}>`,
+                ),
+              )
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `**金額**\n**${verb}${amount.toLocaleString()}**`,
+                ),
+              )
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `**餘額**\n${after.toLocaleString?.() ?? after}`,
+                ),
+              )
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `**原因**\n${reason || "（未填）"}`,
+                ),
+              )
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `-# <t:${Math.floor(Date.now() / 1000)}:f>`,
+                ),
+              );
+            await auditChannel
+              .send({
+                components: [container],
+                flags: MessageFlags.IsComponentsV2,
+              })
+              .catch(() => {});
           }
         } catch (e) {
           console.log(`[ERROR] admin audit log: ${e}`.red);

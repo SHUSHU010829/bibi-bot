@@ -1,10 +1,12 @@
 require("colors");
 const { DateTime } = require("luxon");
 
+const { MessageFlags } = require("discord.js");
+
 const { fetchFreeGamesList } = require("./gamerpower");
 const { fetchAppDetails } = require("../steamDeals/steam");
 const { isAlreadyPushed, markPushed, ensureIndexes } = require("./dedupe");
-const { buildFreeGameEmbed } = require("./embed");
+const { buildFreeGameContainer } = require("./embed");
 
 const isInActiveHours = (cfg) => {
   if (!cfg.activeHours) return true;
@@ -88,7 +90,7 @@ const runFreeGamesJob = async ({
       // Steam 端可能還沒上架台灣區,沒關係,用 RSS 資料 fallback
     }
 
-    const embed = buildFreeGameEmbed({ item, steamData });
+    const container = buildFreeGameContainer({ item, steamData });
 
     if (dryRun) {
       console.log(
@@ -100,7 +102,10 @@ const runFreeGamesJob = async ({
     }
 
     try {
-      await channel.send({ embeds: [embed] });
+      await channel.send({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
       stats.pushed += 1;
       await markPushed(collection, item);
     } catch (error) {

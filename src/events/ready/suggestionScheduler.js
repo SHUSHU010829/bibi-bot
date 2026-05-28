@@ -93,14 +93,30 @@ async function deleteSuggestionChannel(client, channelId, deletion) {
   }
 
   // 發送最後通知
-  const { EmbedBuilder } = require("discord.js");
-  const finalEmbed = new EmbedBuilder()
-    .setColor("#ff0000")
-    .setTitle("🗑️ 建議頻道即將刪除")
-    .setDescription("此建議頻道將在 5 秒後自動刪除。")
-    .setTimestamp();
+  const {
+    ContainerBuilder,
+    TextDisplayBuilder,
+    MessageFlags,
+  } = require("discord.js");
+  const finalContainer = new ContainerBuilder()
+    .setAccentColor(0xff0000)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "# 🗑️ 建議頻道即將刪除\n此建議頻道將在 5 秒後自動刪除。",
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
+    );
 
-  await channel.send({ embeds: [finalEmbed] }).catch(() => null);
+  await channel
+    .send({
+      components: [finalContainer],
+      flags: MessageFlags.IsComponentsV2,
+    })
+    .catch(() => null);
 
   // 等待 5 秒後刪除
   setTimeout(async () => {

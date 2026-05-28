@@ -1,7 +1,10 @@
 const {
   ActionRowBuilder,
   StringSelectMenuBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
 } = require("discord.js");
 
 const { loadPanels } = require("../../utils/rolePanelsStore");
@@ -133,14 +136,19 @@ async function handleOpenPanel(client, interaction) {
 
     const rows = buildPersonalizedRows(data.roles, currentRoleIdSet);
 
-    const embed = new EmbedBuilder()
-      .setColor("#00ff00")
-      .setTitle("🎮 你的遊戲身份組")
-      .setDescription("已自動勾選你目前擁有的身份組，未變更的會保留。");
+    const container = new ContainerBuilder()
+      .setAccentColor(0x00ff00)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "# 🎮 你的遊戲身份組\n已自動勾選你目前擁有的身份組，未變更的會保留。",
+        ),
+      )
+      .addSeparatorComponents(new SeparatorBuilder());
+    for (const row of rows) container.addActionRowComponents(row);
 
     await interaction.editReply({
-      embeds: [embed],
-      components: rows,
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
     });
   } catch (error) {
     logger.error(

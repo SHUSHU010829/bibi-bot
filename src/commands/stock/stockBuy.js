@@ -2,7 +2,10 @@ require("colors");
 const {
   SlashCommandBuilder,
   InteractionContextType,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
 } = require("discord.js");
 
 const { stockSystem } = require("../../config");
@@ -50,20 +53,59 @@ module.exports = {
 
       if (!result.ok) return interaction.editReply(result.message);
 
-      const embed = new EmbedBuilder()
-        .setTitle(`🟢 買入成交｜${result.symbol} ${result.name}`)
-        .setColor(0x2ecc71)
-        .addFields(
-          { name: "成交價", value: `**${result.price.toFixed(1)}** × ${result.shares} 股`, inline: true },
-          { name: "本金", value: `${result.totalCost.toLocaleString()}`, inline: true },
-          { name: "手續費", value: `${result.fee.toLocaleString()}`, inline: true },
-          { name: "總扣款", value: `**${result.totalOut.toLocaleString()}**`, inline: true },
-          { name: "目前持有", value: `${result.newShares} 股`, inline: true },
-          { name: "平均成本", value: `${result.newAvgCost.toFixed(2)}`, inline: true },
-          { name: "餘額", value: `${result.balanceAfter.toLocaleString()}`, inline: false }
+      const container = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 🟢 買入成交｜${result.symbol} ${result.name}`,
+          ),
         )
-        .setTimestamp(new Date());
-      await interaction.editReply({ embeds: [embed] });
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**成交價**\n**${result.price.toFixed(1)}** × ${result.shares} 股`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**本金**\n${result.totalCost.toLocaleString()}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**手續費**\n${result.fee.toLocaleString()}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**總扣款**\n**${result.totalOut.toLocaleString()}**`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**目前持有**\n${result.newShares} 股`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**平均成本**\n${result.newAvgCost.toFixed(2)}`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**餘額**\n${result.balanceAfter.toLocaleString()}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+          ),
+        );
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
     } catch (err) {
       console.log(`[STOCK] /買股 失敗：${err?.stack || err}`.red);
       await interaction.editReply("❌ 買入失敗，請稍後再試。").catch(() => {});

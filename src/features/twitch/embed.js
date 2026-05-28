@@ -1,8 +1,12 @@
 const {
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
 } = require("discord.js");
 
 const TWITCH_PURPLE = 0x9146ff;
@@ -23,13 +27,10 @@ const buildThumbnailUrl = (template, { width = 640, height = 360 } = {}) => {
 };
 
 /**
- * 組出開台通知 embed + Watch Stream 按鈕。
- *
- * @param {object} opts
- * @param {object} opts.stream  Helix /streams 回傳的單筆資料
- * @param {object} opts.user    Helix /users 回傳的單筆資料 (拿 display_name / profile_image_url)
+ * 組出開台通知 Container（含 Watch Stream 按鈕）。
+ * 回傳 { container, channelUrl }；caller 自行決定要不要附通知文（以 TextDisplay 形式塞進首段）。
  */
-const buildLiveStreamPayload = ({ stream, user }) => {
+const buildLiveStreamContainer = ({ stream, user, header = "" } = {}) => {
   const login = (user?.login || stream?.user_login || "").toLowerCase();
   const displayName = user?.display_name || stream?.user_name || login;
   const channelUrl = `https://www.twitch.tv/${login}`;
@@ -37,35 +38,52 @@ const buildLiveStreamPayload = ({ stream, user }) => {
   const title = stream?.title?.trim() || "（無標題）";
   const game = stream?.game_name?.trim() || "未分類";
   const viewers = formatNumber(stream?.viewer_count ?? 0);
-  const startedAt = stream?.started_at ? new Date(stream.started_at) : new Date();
+  const startedAt = stream?.started_at
+    ? Math.floor(new Date(stream.started_at).getTime() / 1000)
+    : Math.floor(Date.now() / 1000);
 
-  const embed = new EmbedBuilder()
-    .setColor(TWITCH_PURPLE)
-    .setAuthor({
-      name: `${displayName} is now live on Twitch!`,
-      iconURL: user?.profile_image_url || undefined,
-      url: channelUrl,
-    })
-    .setTitle(title.slice(0, 256))
-    .setURL(channelUrl)
-    .addFields(
-      { name: "Game", value: game.slice(0, 1024), inline: true },
-      { name: "Viewers", value: viewers, inline: true }
-    )
-    .setTimestamp(startedAt)
-    .setFooter({ text: `twitch.tv/${login}` });
+  const headerLine = header ? `${header}\n` : "";
+  const safeTitle = title.slice(0, 256);
+
+  const container = new ContainerBuilder()
+    .setAccentColor(TWITCH_PURPLE)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${headerLine}-# [${displayName}](${channelUrl}) is now live on Twitch!\n# [${safeTitle}](${channelUrl})`,
+      ),
+    );
 
   const thumb = buildThumbnailUrl(stream?.thumbnail_url);
-  if (thumb) embed.setImage(thumb);
+  if (thumb) {
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder().setURL(thumb).setDescription(safeTitle),
+      ),
+    );
+  }
 
-  const button = new ButtonBuilder()
-    .setStyle(ButtonStyle.Link)
-    .setLabel("Watch Stream")
-    .setURL(channelUrl);
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**Game**：${game.slice(0, 1024)}\n` +
+          `**Viewers**：${viewers}\n` +
+          `**開台**：<t:${startedAt}:R>`,
+      ),
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setStyle(ButtonStyle.Link)
+          .setLabel("Watch Stream")
+          .setURL(channelUrl),
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# twitch.tv/${login}`),
+    );
 
-  const row = new ActionRowBuilder().addComponents(button);
-
-  return { embeds: [embed], components: [row] };
+  return { container, channelUrl };
 };
 
-module.exports = { buildLiveStreamPayload, TWITCH_PURPLE };
+module.exports = { buildLiveStreamContainer, TWITCH_PURPLE };

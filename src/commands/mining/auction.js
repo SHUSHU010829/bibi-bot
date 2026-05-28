@@ -1,7 +1,10 @@
 require("colors");
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -88,24 +91,33 @@ async function handleList(client, interaction) {
     return interaction.editReply("🏷️ 目前沒有拍賣中的物品，用 `/拍賣 掛牌` 來掛第一件吧！");
   }
 
-  const embed = new EmbedBuilder()
-    .setColor(0xe1b12c)
-    .setTitle("🏷️ 拍賣行")
-    .setDescription("出價請用 `/拍賣 出價 編號 金額`");
+  const container = new ContainerBuilder()
+    .setAccentColor(0xe1b12c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "# 🏷️ 拍賣行\n出價請用 `/拍賣 出價 編號 金額`",
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder());
 
   for (const l of listings) {
     const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
     const bidLine = l.current_bid
       ? `目前最高：**${l.current_bid.toLocaleString()}** ${COIN_EMOJI}（${l.bidder_name || "匿名"}）`
       : `起標：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}（尚無人出價）`;
-    embed.addFields({
-      name: `#${l.listing_id} ・ ${oreLabel(l.ore)} ×${l.qty}`,
-      value: `${bidLine}\n賣家：${l.seller_name || "?"} ・ 截止 <t:${expiresEpoch}:R>`,
-      inline: false,
-    });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**#${l.listing_id} ・ ${oreLabel(l.ore)} ×${l.qty}**\n` +
+          `${bidLine}\n` +
+          `賣家：${l.seller_name || "?"} ・ 截止 <t:${expiresEpoch}:R>`,
+      ),
+    );
   }
 
-  await interaction.editReply({ embeds: [embed] });
+  await interaction.editReply({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }
 
 async function handleSell(client, interaction) {
@@ -144,19 +156,26 @@ async function handleSell(client, interaction) {
 
   const l = result.listing;
   const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
-  const embed = new EmbedBuilder()
-    .setColor(0x2ecc71)
-    .setTitle("🏷️ 掛牌成功")
-    .setDescription(
-      `**#${l.listing_id}** ・ ${oreLabel(l.ore)} ×${l.qty}\n` +
-        `起標價：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}\n` +
-        `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）`
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🏷️ 掛牌成功\n` +
+          `**#${l.listing_id}** ・ ${oreLabel(l.ore)} ×${l.qty}\n` +
+          `起標價：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}\n` +
+          `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）`,
+      ),
     )
-    .setFooter({
-      text: `成交將收取 ${Math.round((auction.feeRate ?? 0.05) * 100)}% 手續費；無人出價會自動退回礦石。`,
-    });
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 成交將收取 ${Math.round((auction.feeRate ?? 0.05) * 100)}% 手續費；無人出價會自動退回礦石。`,
+      ),
+    );
 
-  await interaction.editReply({ embeds: [embed] });
+  await interaction.editReply({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }
 
 async function handleBid(client, interaction) {
@@ -200,13 +219,18 @@ async function handleBid(client, interaction) {
 
   const l = result.listing;
   const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
-  const embed = new EmbedBuilder()
-    .setColor(0x3498db)
-    .setTitle("✅ 出價成功")
-    .setDescription(
-      `你對 **#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty} 出價 **${l.current_bid.toLocaleString()}** ${COIN_EMOJI}，目前最高！\n` +
-        `截止 <t:${expiresEpoch}:R>，若被超越會自動退款。`
+  const container = new ContainerBuilder()
+    .setAccentColor(0x3498db)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ✅ 出價成功\n` +
+          `你對 **#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty} 出價 **${l.current_bid.toLocaleString()}** ${COIN_EMOJI}，目前最高！\n` +
+          `截止 <t:${expiresEpoch}:R>，若被超越會自動退款。`,
+      ),
     );
 
-  await interaction.editReply({ embeds: [embed] });
+  await interaction.editReply({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }

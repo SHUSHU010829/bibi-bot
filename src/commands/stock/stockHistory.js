@@ -2,8 +2,13 @@ require("colors");
 const {
   SlashCommandBuilder,
   InteractionContextType,
-  EmbedBuilder,
   AttachmentBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+  MessageFlags,
 } = require("discord.js");
 
 const { stockSystem } = require("../../config");
@@ -52,7 +57,6 @@ module.exports = {
       if (!market) return interaction.editReply(`❌ 找不到股票代號 \`${symbol}\`。`);
 
       const since = new Date(Date.now() - periodMs);
-      // StockPrices TTL 30 天，1m 期間剛好上限
       const points = await client.stockPricesCollection
         .find({ guildId, symbol, timestamp: { $gte: since } })
         .sort({ timestamp: 1 })
@@ -76,7 +80,8 @@ module.exports = {
       const buf = renderSingleLine(symbol, market.name, sampled, {
         title: `${symbol} ${market.name} ｜ ${period} 走勢（${sampled.length} 點）`,
       });
-      const attachment = new AttachmentBuilder(buf, { name: `stock_${symbol}.png` });
+      const fileName = `stock_${symbol}.png`;
+      const attachment = new AttachmentBuilder(buf, { name: fileName });
 
       const prices = sampled.map((p) => p.price);
       const high = Math.max(...prices);
@@ -86,18 +91,45 @@ module.exports = {
       const pct = first > 0 ? ((last - first) / first) * 100 : 0;
       const sign = pct >= 0 ? "+" : "";
 
-      const embed = new EmbedBuilder()
-        .setTitle(`📜 ${symbol} ${market.name} 走勢`)
-        .setColor(pct >= 0 ? 0x2ecc71 : 0xe74c3c)
-        .addFields(
-          { name: "期間", value: period, inline: true },
-          { name: "起 → 終", value: `${first.toFixed(1)} → **${last.toFixed(1)}**（${sign}${pct.toFixed(2)}%）`, inline: true },
-          { name: "高 / 低", value: `${high.toFixed(1)} / ${low.toFixed(1)}`, inline: true }
+      const container = new ContainerBuilder()
+        .setAccentColor(pct >= 0 ? 0x2ecc71 : 0xe74c3c)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 📜 ${symbol} ${market.name} 走勢`,
+          ),
         )
-        .setImage(`attachment://stock_${symbol}.png`)
-        .setTimestamp(new Date());
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`**期間**\n${period}`),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**起 → 終**\n${first.toFixed(1)} → **${last.toFixed(1)}**（${sign}${pct.toFixed(2)}%）`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**高 / 低**\n${high.toFixed(1)} / ${low.toFixed(1)}`,
+          ),
+        )
+        .addMediaGalleryComponents(
+          new MediaGalleryBuilder().addItems(
+            new MediaGalleryItemBuilder()
+              .setURL(`attachment://${fileName}`)
+              .setDescription(`${symbol} ${market.name} 走勢圖`),
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+          ),
+        );
 
-      await interaction.editReply({ embeds: [embed], files: [attachment] });
+      await interaction.editReply({
+        components: [container],
+        files: [attachment],
+        flags: MessageFlags.IsComponentsV2,
+      });
     } catch (err) {
       console.log(`[STOCK] /股歷 失敗：${err?.stack || err}`.red);
       await interaction.editReply("❌ 查詢失敗，請稍後再試。").catch(() => {});

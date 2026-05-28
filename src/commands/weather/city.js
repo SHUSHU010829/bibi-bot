@@ -4,9 +4,15 @@ const axios = require("axios");
 
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   MessageFlags,
 } = require("discord.js");
+
+function randomColor() {
+  return Math.floor(Math.random() * 0xffffff);
+}
 
 const VALID_LOCATIONS = [
   "臺北市",
@@ -139,21 +145,35 @@ module.exports = {
         temperature: `${weatherElement[2].time[0].parameter.parameterName}°C - ${weatherElement[4].time[0].parameter.parameterName}°C`, // 溫度範圍 (MinT 和 MaxT)
       };
 
-      const embed = new EmbedBuilder()
-        .setColor("Random")
-        .setTitle(`今日${locationData.locationName}天氣預報 🌤️`)
-        .setAuthor({
-          name: "中央氣象署",
-          iconURL: "https://openweathermap.org/img/wn/10d@2x.png",
-          url: "https://www.cwa.gov.tw/V8/C/",
-        })
-        .addFields(
-          { name: "🔅 溫度", value: weatherInfo.temperature },
-          { name: "🔅 降雨機率", value: weatherInfo.precipitation },
-          { name: "🔅 天氣狀況", value: weatherInfo.weather }
+      const container = new ContainerBuilder()
+        .setAccentColor(randomColor())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 今日${locationData.locationName}天氣預報 🌤️\n` +
+              `-# 資料來源：[中央氣象署](https://www.cwa.gov.tw/V8/C/)`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**🔅 溫度**\n${weatherInfo.temperature}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**🔅 降雨機率**\n${weatherInfo.precipitation}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**🔅 天氣狀況**\n${weatherInfo.weather}`,
+          ),
         );
 
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
     } catch (error) {
       await interaction.editReply("哎呀！氣象局可能罷工了。");
       console.log(

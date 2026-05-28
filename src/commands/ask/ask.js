@@ -1,8 +1,18 @@
 require("colors");
 
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
+} = require("discord.js");
 const getAnswer = require("../../utils/getAnswer.js");
 const changeTraditional = require("../../utils/changeTraditional.js");
+
+function randomColor() {
+  return Math.floor(Math.random() * 0xffffff);
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -18,7 +28,6 @@ module.exports = {
   run: async (client, interaction) => {
     const question = interaction.options.getString("問題");
 
-    // 先 defer，避免外部 API 慢於 3 秒導致互動逾時
     await interaction.deferReply();
 
     try {
@@ -30,13 +39,25 @@ module.exports = {
         if (final?.text) title = final.text;
       }
 
-      const embed = new EmbedBuilder()
-        .setTitle(title)
-        .setDescription(`📝 問題：${question}`)
-        .setColor("Random")
-        .setTimestamp();
+      const container = new ContainerBuilder()
+        .setAccentColor(randomColor())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`# ${title}`),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`📝 問題：${question}`),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+          ),
+        );
 
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
     } catch (error) {
       console.log(
         `[ERROR] An error occurred inside the command ask:\n${error}`.red

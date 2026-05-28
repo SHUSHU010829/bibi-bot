@@ -1,7 +1,11 @@
 require("colors");
 
 const cron = require("node-cron");
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  MessageFlags,
+} = require("discord.js");
 const { DateTime } = require("luxon");
 
 const { twitchPerks, twitchSync, serverId } = require("../../config");
@@ -64,16 +68,27 @@ async function grantFreeTitle(client, member, cfg) {
   });
 
   const expEpoch = Math.floor(expiresAt.getTime() / 1000);
-  const embed = new EmbedBuilder()
-    .setColor(0x9146ff)
-    .setTitle("🪪 Tier 3 訂閱者每月好禮")
-    .setDescription(
-      "感謝你的 **Twitch Tier 3** 訂閱！這個月的免費 **自訂稱號（30 天）** 已送到你的背包。\n" +
-        "到 `/商店` 的背包選單就能設定你想顯示的稱號文字。"
+  const container = new ContainerBuilder()
+    .setAccentColor(0x9146ff)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🪪 Tier 3 訂閱者每月好禮\n` +
+          "感謝你的 **Twitch Tier 3** 訂閱！這個月的免費 **自訂稱號（30 天）** 已送到你的背包。\n" +
+          "到 `/商店` 的背包選單就能設定你想顯示的稱號文字。",
+      ),
     )
-    .addFields({ name: "有效期限", value: `<t:${expEpoch}:R>（<t:${expEpoch}:f>）` });
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**有效期限**\n<t:${expEpoch}:R>（<t:${expEpoch}:f>）`,
+      ),
+    );
 
-  await member.send({ embeds: [embed] }).catch(() => {});
+  await member
+    .send({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    })
+    .catch(() => {});
   return true;
 }
 

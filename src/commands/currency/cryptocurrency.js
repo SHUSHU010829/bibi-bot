@@ -2,7 +2,9 @@ require("colors");
 
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   MessageFlags,
 } = require("discord.js");
 
@@ -85,14 +87,29 @@ module.exports = {
             ? price.toLocaleString("en-US", { maximumFractionDigits: 2 })
             : price.toString();
 
-        const embed = new EmbedBuilder()
-          .setTitle(`${MONEY_EMOJI} ${coin} 即時報價`)
-          .setColor(0xf7931a)
-          .addFields({ name: "價格 (USD)", value: `\`$${formattedPrice}\`` })
-          .setTimestamp()
-          .setFooter({ text: "資料來源：CryptoCompare" });
+        const container = new ContainerBuilder()
+          .setAccentColor(0xf7931a)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `即時價格 ⬇️\n# ${MONEY_EMOJI} ${coin} 即時報價`,
+            ),
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**價格 (USD)**\n\`$${formattedPrice}\``,
+            ),
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `-# 資料來源：CryptoCompare ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+            ),
+          );
 
-        await interaction.editReply({ content: "即時價格 ⬇️", embeds: [embed] });
+        await interaction.editReply({
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        });
       } else {
         await interaction.editReply(
           `❌ 找不到 \`${coin}\` 的報價。\n` +

@@ -1,7 +1,9 @@
 require("colors");
 const {
   PermissionFlagsBits,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -66,30 +68,6 @@ async function handleProposalStart(client, interaction) {
   const description =
     `由 ${proposer} 提出\n\n${template.description}`;
 
-  const votingEmbed = new EmbedBuilder()
-    .setColor(proposalType === "create" ? "#00ff00" : "#ff9900")
-    .setTitle(`${template.emoji} 提案：${title}`)
-    .setDescription(description)
-    .addFields(
-      {
-        name: "📋 投票類型",
-        value: template.name,
-        inline: true,
-      },
-      {
-        name: "⏰ 投票時間",
-        value: `${duration} 小時`,
-        inline: true,
-      },
-      {
-        name: "📅 截止時間",
-        value: `<t:${Math.floor(Date.now() / 1000) + duration * 3600}:R>`,
-        inline: true,
-      }
-    )
-    .setTimestamp()
-    .setFooter({ text: `提案人：${proposer.user.tag}` });
-
   const buttons = new ActionRowBuilder();
   for (const btn of template.buttons) {
     buttons.addComponents(
@@ -101,9 +79,31 @@ async function handleProposalStart(client, interaction) {
     );
   }
 
+  const votingContainer = new ContainerBuilder()
+    .setAccentColor(proposalType === "create" ? 0x00ff00 : 0xff9900)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ${template.emoji} 提案：${title}\n${description}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**📋 投票類型**：${template.name}\n` +
+          `**⏰ 投票時間**：${duration} 小時\n` +
+          `**📅 截止時間**：<t:${Math.floor(Date.now() / 1000) + duration * 3600}:R>`,
+      ),
+    )
+    .addActionRowComponents(buttons)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 提案人：${proposer.user.tag} ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
+    );
+
   const voteMessage = await votingChannel.send({
-    embeds: [votingEmbed],
-    components: [buttons],
+    components: [votingContainer],
+    flags: MessageFlags.IsComponentsV2,
   });
 
   const voteId = randomUUID();
@@ -135,18 +135,27 @@ async function handleProposalStart(client, interaction) {
     content: `✅ 投票已發起！\n\n🗳️ 投票連結：${voteMessage.url}\n⏰ 投票將在 ${duration} 小時後結束`,
   });
 
-  const ticketEmbed = new EmbedBuilder()
-    .setColor("#0099ff")
-    .setTitle("📢 投票已發起")
-    .setDescription(
-      `${proposer}，您的提案已進入投票階段！\n\n` +
-        `**遊戲名稱：** ${gameName}\n` +
-        `**提案類型：** ${proposalType === "create" ? "新增頻道" : "封存頻道"}\n\n` +
-        `[點擊此處前往投票](${voteMessage.url})`
+  const ticketContainer = new ContainerBuilder()
+    .setAccentColor(0x0099ff)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 📢 投票已發起\n` +
+          `${proposer}，您的提案已進入投票階段！\n\n` +
+          `**遊戲名稱：** ${gameName}\n` +
+          `**提案類型：** ${proposalType === "create" ? "新增頻道" : "封存頻道"}\n\n` +
+          `[點擊此處前往投票](${voteMessage.url})`,
+      ),
     )
-    .setTimestamp();
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
+    );
 
-  await interaction.channel.send({ embeds: [ticketEmbed] });
+  await interaction.channel.send({
+    components: [ticketContainer],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }
 
 async function handleProposalEndCommand(client, interaction) {

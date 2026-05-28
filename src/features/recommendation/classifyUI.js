@@ -3,7 +3,9 @@ const {
   ButtonBuilder,
   ButtonStyle,
   StringSelectMenuBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
 } = require("discord.js");
 
 const {
@@ -45,37 +47,44 @@ function buildClassifyComponents(messageId, currentType, disabled = false) {
   ];
 }
 
-function buildClassifyEmbed(doc) {
+function buildDocLines(doc) {
   const lines = [];
   lines.push(`類別：${TYPE_DISPLAY[doc.type] || doc.type}`);
   if (doc.cuisine) lines.push(`料理：${doc.cuisine}`);
   if (doc.area) lines.push(`地區：${doc.area}`);
   if (doc.name) lines.push(`店名：${doc.name}`);
   if (doc.summary) lines.push(`特色：${doc.summary}`);
-  return new EmbedBuilder()
-    .setTitle("🤖 我幫你分到這個分類，對嗎？")
-    .setDescription(lines.join("\n"))
-    .setFooter({
-      text: "點選單可改分類、按「編輯資訊」可修改店名／料理／地區／特色，按「確認分類」即可保留",
-    })
-    .setColor(0x5865f2);
+  return lines.join("\n");
 }
 
-function buildConfirmedEmbed(doc) {
-  const lines = [];
-  lines.push(`類別：${TYPE_DISPLAY[doc.type] || doc.type}`);
-  if (doc.cuisine) lines.push(`料理：${doc.cuisine}`);
-  if (doc.area) lines.push(`地區：${doc.area}`);
-  if (doc.name) lines.push(`店名：${doc.name}`);
-  if (doc.summary) lines.push(`特色：${doc.summary}`);
-  return new EmbedBuilder()
-    .setTitle("✅ 分類已確認")
-    .setDescription(lines.join("\n"))
-    .setColor(0x57f287);
+function buildClassifyContainer(doc) {
+  return new ContainerBuilder()
+    .setAccentColor(0x5865f2)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🤖 我幫你分到這個分類，對嗎？\n${buildDocLines(doc)}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 點選單可改分類、按「編輯資訊」可修改店名／料理／地區／特色，按「確認分類」即可保留",
+      ),
+    );
+}
+
+function buildConfirmedContainer(doc) {
+  return new ContainerBuilder()
+    .setAccentColor(0x57f287)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ✅ 分類已確認\n${buildDocLines(doc)}`,
+      ),
+    );
 }
 
 module.exports = {
   buildClassifyComponents,
-  buildClassifyEmbed,
-  buildConfirmedEmbed,
+  buildClassifyContainer,
+  buildConfirmedContainer,
 };

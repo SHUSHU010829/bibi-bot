@@ -1,7 +1,10 @@
 require("colors");
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
@@ -86,26 +89,39 @@ module.exports = {
         matLabel(mat, qty)
       );
 
-      const embed = new EmbedBuilder()
-        .setColor(0x9b59b6)
-        .setTitle("🔨 合成成功")
-        .setDescription(`你打造出了 **${pickaxeLabel(result.pickaxe)}**！`)
-        .addFields(
-          { name: "消耗材料", value: matLines.join("\n"), inline: false },
-          {
-            name: "耐久",
-            value: result.durability == null ? "永久" : `${result.durability} 次`,
-            inline: true,
-          },
-          {
-            name: "累積合成",
-            value: `${result.craftCountTotal} 件`,
-            inline: true,
-          }
+      const container = new ContainerBuilder()
+        .setAccentColor(0x9b59b6)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 🔨 合成成功\n你打造出了 **${pickaxeLabel(result.pickaxe)}**！`,
+          ),
         )
-        .setFooter({ text: "用 /裝備 查看裝備，/挖礦 開挖！" });
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**消耗材料**\n${matLines.join("\n")}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**耐久**\n${result.durability == null ? "永久" : `${result.durability} 次`}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**累積合成**\n${result.craftCountTotal} 件`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "-# 用 /裝備 查看裝備，/挖礦 開挖！",
+          ),
+        );
 
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
 
       gameTitleService
         .check(

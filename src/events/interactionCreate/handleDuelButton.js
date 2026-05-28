@@ -2,7 +2,11 @@
 //   duel_accept_<duelId>   對手接受 → 判定勝負、發放彩池
 //   duel_decline_<duelId>  對手拒絕 / 挑戰者取消 → 退回賭注
 
-const { EmbedBuilder, MessageFlags } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  MessageFlags,
+} = require("discord.js");
 const duelService = require("../../features/mining/duelService");
 const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 const logger = require("../../utils/logger");
@@ -52,15 +56,20 @@ module.exports = async (client, interaction) => {
       }
 
       const cancelledBySelf = res.byUserId === res.duel.challenger_id;
-      const embed = new EmbedBuilder()
-        .setColor(0x95a5a6)
-        .setTitle("⚔️ 決鬥取消")
-        .setDescription(
-          cancelledBySelf
-            ? `<@${res.duel.challenger_id}> 取消了對 <@${res.duel.opponent_id}> 的決鬥，賭注已退回。`
-            : `<@${res.duel.opponent_id}> 拒絕了 <@${res.duel.challenger_id}> 的決鬥，賭注已退回。`
+      const container = new ContainerBuilder()
+        .setAccentColor(0x95a5a6)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# ⚔️ 決鬥取消\n` +
+              (cancelledBySelf
+                ? `<@${res.duel.challenger_id}> 取消了對 <@${res.duel.opponent_id}> 的決鬥，賭注已退回。`
+                : `<@${res.duel.opponent_id}> 拒絕了 <@${res.duel.challenger_id}> 的決鬥，賭注已退回。`),
+          ),
         );
-      await interaction.editReply({ content: "", embeds: [embed], components: [] });
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
       trackSuccess("duel-decline");
       return;
     }
@@ -102,17 +111,26 @@ module.exports = async (client, interaction) => {
     }
 
     const winPct = Math.round(res.challengerWinRate * 100);
-    const embed = new EmbedBuilder()
-      .setColor(0xf1c40f)
-      .setTitle("⚔️ 決鬥結果")
-      .setDescription(
-        `**勝者 🏆 <@${res.winnerId}>** 贏走了 **${res.pot.toLocaleString()}** ${COIN_EMOJI}！\n\n` +
-          `挑戰者 <@${res.duel.challenger_id}>（攻擊 ${res.atkChallenger}・勝率 ${winPct}%）\n` +
-          `對手 <@${res.duel.opponent_id}>（攻擊 ${res.atkOpponent}・勝率 ${100 - winPct}%）`
+    const container = new ContainerBuilder()
+      .setAccentColor(0xf1c40f)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# ⚔️ 決鬥結果\n` +
+            `**勝者 🏆 <@${res.winnerId}>** 贏走了 **${res.pot.toLocaleString()}** ${COIN_EMOJI}！\n\n` +
+            `挑戰者 <@${res.duel.challenger_id}>（攻擊 ${res.atkChallenger}・勝率 ${winPct}%）\n` +
+            `對手 <@${res.duel.opponent_id}>（攻擊 ${res.atkOpponent}・勝率 ${100 - winPct}%）`,
+        ),
       )
-      .setFooter({ text: "想提升勝率？用 /合成 打造更強的鎬子！" });
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# 想提升勝率？用 /合成 打造更強的鎬子！",
+        ),
+      );
 
-    await interaction.editReply({ content: "", embeds: [embed], components: [] });
+    await interaction.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
     trackSuccess("duel-accept");
   } catch (error) {
     if (error?.code === 10062 || error?.code === 40060) {
