@@ -10,9 +10,10 @@ const {
   analyzeRecommendation,
 } = require("../../services/recommendationClassifier");
 const { fetchMapMetaForUrls } = require("../../services/mapMetaFetcher");
+const { MessageFlags } = require("discord.js");
 const {
   buildClassifyComponents,
-  buildClassifyEmbed,
+  buildClassifyContainer,
 } = require("../../features/recommendation/classifyUI");
 
 module.exports = async (client, message) => {
@@ -78,9 +79,13 @@ module.exports = async (client, message) => {
 
     // 在頻道公開回覆分類確認提示；按下「確認」後會自動刪除
     try {
+      const container = buildClassifyContainer(doc);
+      for (const row of buildClassifyComponents(message.id, doc.type)) {
+        container.addActionRowComponents(row);
+      }
       const prompt = await message.reply({
-        embeds: [buildClassifyEmbed(doc)],
-        components: buildClassifyComponents(message.id, doc.type),
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
         allowedMentions: { repliedUser: false },
       });
 

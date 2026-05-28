@@ -2,7 +2,15 @@ require("colors");
 const fs = require("fs");
 const cron = require("node-cron");
 const axios = require("axios");
-const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
+const {
+  AttachmentBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+  MessageFlags,
+} = require("discord.js");
 
 const { RSS_FEEDS } = require("../config/rssFeeds");
 const { fetchFeedItems } = require("../services/rssFeedService");
@@ -154,51 +162,62 @@ const compileFilter = (filter, feedId) => {
       : checkers.every((fn) => fn(item));
 };
 
-const buildEmbedsAndFiles = async ({ item, feed }) => {
-  const embeds = [];
+const buildContainerAndFiles = async ({ item, feed }) => {
   const files = [];
 
   const description = truncate(item.textContent || "", MAX_DESCRIPTION_LENGTH);
 
-  const main = new EmbedBuilder().setColor(0x5865f2);
-  if (item.author) main.setAuthor({ name: item.author });
-  if (item.link) main.setTitle(item.link).setURL(item.link);
-  main.setDescription(
-    description ? `${NEWSPAPER_EMOJI} ${description}` : NEWSPAPER_EMOJI
+  const headerLines = [];
+  if (item.author) headerLines.push(`-# ${item.author}`);
+  if (item.link) headerLines.push(`# [${item.link}](${item.link})`);
+  headerLines.push(
+    description ? `${NEWSPAPER_EMOJI} ${description}` : NEWSPAPER_EMOJI,
   );
-  if (item.pubDate) {
-    const ts = new Date(item.pubDate);
-    if (!Number.isNaN(ts.getTime())) main.setTimestamp(ts);
-  }
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x5865f2)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(headerLines.join("\n")),
+    );
 
   const useAttachment = needsAttachmentFallback(feed.type);
   const usedImages = item.images.slice(0, 1 + EXTRA_IMAGE_COUNT);
 
-  for (let i = 0; i < usedImages.length; i++) {
-    const url = usedImages[i];
-    let imageRef = url;
+  if (usedImages.length > 0) {
+    const gallery = new MediaGalleryBuilder();
+    for (let i = 0; i < usedImages.length; i++) {
+      const url = usedImages[i];
+      let imageRef = url;
 
-    if (useAttachment) {
-      const ext = (url.match(/\.(jpe?g|png|gif|webp)/i)?.[1] || "jpg").toLowerCase();
-      const filename = `rss_${feed.id}_${Date.now()}_${i}.${ext}`;
-      const attachment = await downloadImageAsAttachment(url, filename);
-      if (attachment) {
-        files.push(attachment);
-        imageRef = `attachment://${filename}`;
+      if (useAttachment) {
+        const ext = (url.match(/\.(jpe?g|png|gif|webp)/i)?.[1] || "jpg").toLowerCase();
+        const filename = `rss_${feed.id}_${Date.now()}_${i}.${ext}`;
+        const attachment = await downloadImageAsAttachment(url, filename);
+        if (attachment) {
+          files.push(attachment);
+          imageRef = `attachment://${filename}`;
+        }
       }
-    }
 
-    if (i === 0) {
-      main.setImage(imageRef);
-    } else {
-      const extra = new EmbedBuilder().setColor(0x5865f2).setImage(imageRef);
-      // url 共用主貼文連結時,Discord 會把同 url 的多 embed 合成 gallery
-      if (item.link) extra.setURL(item.link);
-      embeds.push(extra);
+      gallery.addItems(new MediaGalleryItemBuilder().setURL(imageRef));
+    }
+    container.addMediaGalleryComponents(gallery);
+  }
+
+  if (item.pubDate) {
+    const ts = new Date(item.pubDate);
+    if (!Number.isNaN(ts.getTime())) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# <t:${Math.floor(ts.getTime() / 1000)}:f>`,
+          ),
+        );
     }
   }
 
-  return { embeds: [main, ...embeds], files };
+  return { container, files };
 };
 
 const pollFeed = async (client, feed) => {
@@ -279,8 +298,12 @@ const pollFeed = async (client, feed) => {
       continue;
     }
     try {
-      const { embeds, files } = await buildEmbedsAndFiles({ item, feed });
-      await channel.send({ embeds, files });
+      const { container, files } = await buildContainerAndFiles({ item, feed });
+      await channel.send({
+        components: [container],
+        files,
+        flags: MessageFlags.IsComponentsV2,
+      });
       // 推完馬上落盤,即使下一筆失敗或進程被殺也不會重推這篇
       persistSeen(itemKeys(item));
     } catch (err) {

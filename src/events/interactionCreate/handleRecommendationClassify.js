@@ -11,9 +11,14 @@ const {
 const { TYPES } = require("../../constants/recommendationCategories");
 const {
   buildClassifyComponents,
-  buildClassifyEmbed,
-  buildConfirmedEmbed,
+  buildClassifyContainer,
+  buildConfirmedContainer,
 } = require("../../features/recommendation/classifyUI");
+
+function withRows(container, rows) {
+  for (const row of rows) container.addActionRowComponents(row);
+  return container;
+}
 
 const PREFIX = "rec_class_";
 
@@ -119,8 +124,13 @@ module.exports = async (client, interaction) => {
       const updatedDoc = { ...doc, ...update };
 
       await interaction.update({
-        embeds: [buildClassifyEmbed(updatedDoc)],
-        components: buildClassifyComponents(messageId, newType, false),
+        components: [
+          withRows(
+            buildClassifyContainer(updatedDoc),
+            buildClassifyComponents(messageId, newType, false),
+          ),
+        ],
+        flags: MessageFlags.IsComponentsV2,
       });
       console.log(
         `[Recommendation] ${interaction.user.username} 改分類 ${doc.type} → ${newType} (${messageId})`
@@ -151,8 +161,13 @@ module.exports = async (client, interaction) => {
       const updatedDoc = { ...doc, ...update };
 
       await interaction.update({
-        embeds: [buildClassifyEmbed(updatedDoc)],
-        components: buildClassifyComponents(messageId, updatedDoc.type, false),
+        components: [
+          withRows(
+            buildClassifyContainer(updatedDoc),
+            buildClassifyComponents(messageId, updatedDoc.type, false),
+          ),
+        ],
+        flags: MessageFlags.IsComponentsV2,
       });
       console.log(
         `[Recommendation] ${interaction.user.username} 編輯推薦資訊 (${messageId})`
@@ -181,8 +196,13 @@ module.exports = async (client, interaction) => {
         // 刪不掉就退回 update 顯示已確認
         await interaction
           .update({
-            embeds: [buildConfirmedEmbed(doc)],
-            components: buildClassifyComponents(messageId, doc.type, true),
+            components: [
+              withRows(
+                buildConfirmedContainer(doc),
+                buildClassifyComponents(messageId, doc.type, true),
+              ),
+            ],
+            flags: MessageFlags.IsComponentsV2,
           })
           .catch(() => {});
       }

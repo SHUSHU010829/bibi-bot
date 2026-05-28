@@ -1,5 +1,10 @@
 require("colors");
-const { PermissionFlagsBits, EmbedBuilder, MessageFlags } = require("discord.js");
+const {
+  PermissionFlagsBits,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  MessageFlags,
+} = require("discord.js");
 const config = require("../../../config");
 
 async function run(client, interaction) {
@@ -25,18 +30,26 @@ async function run(client, interaction) {
       });
     }
 
-    const closeEmbed = new EmbedBuilder()
-      .setColor("#ff0000")
-      .setTitle(config.ticket.closeMessage)
-      .setDescription(
-        config.ticket.closeDescription.replace(
-          "{user}",
-          interaction.user.toString()
-        )
+    const container = new ContainerBuilder()
+      .setAccentColor(0xff0000)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# ${config.ticket.closeMessage}\n${config.ticket.closeDescription.replace(
+            "{user}",
+            interaction.user.toString(),
+          )}`,
+        ),
       )
-      .setTimestamp();
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+        ),
+      );
 
-    await interaction.reply({ embeds: [closeEmbed] });
+    await interaction.reply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
 
     setTimeout(async () => {
       try {

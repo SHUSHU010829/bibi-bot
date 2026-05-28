@@ -1,7 +1,12 @@
 require("colors");
 
 const cron = require("node-cron");
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
+} = require("discord.js");
 const { DateTime } = require("luxon");
 
 const { coinSystem } = require("../../config");
@@ -179,26 +184,42 @@ async function sendTaxDMs(client, cfg, affectedDetails) {
         return `・${range}（${(s.rate * 100).toFixed(0)}%）：扣 **${Math.floor(s.tax).toLocaleString()}**`;
       });
 
-    const embed = new EmbedBuilder()
-      .setTitle("💸 每週財富稅扣繳通知")
-      .setColor(0xed4245)
-      .setDescription(
-        [
-          `你在本週的累進財富稅結算中被徵收了 **${d.tax.toLocaleString()}** ${COIN_EMOJI}。`,
-          "",
-          `・稅前餘額：**${d.before.toLocaleString()}**`,
-          `・稅後餘額：**${(d.before - d.tax).toLocaleString()}**`,
-          `・有效稅率：**${(d.effectiveRate * 100).toFixed(2)}%**`,
-        ].join("\n"),
-      )
-      .setTimestamp(new Date());
+    const container = new ContainerBuilder()
+      .setAccentColor(0xed4245)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 💸 每週財富稅扣繳通知\n` +
+            [
+              `你在本週的累進財富稅結算中被徵收了 **${d.tax.toLocaleString()}** ${COIN_EMOJI}。`,
+              "",
+              `・稅前餘額：**${d.before.toLocaleString()}**`,
+              `・稅後餘額：**${(d.before - d.tax).toLocaleString()}**`,
+              `・有效稅率：**${(d.effectiveRate * 100).toFixed(2)}%**`,
+            ].join("\n"),
+        ),
+      );
 
     if (sliceLines.length > 0) {
-      embed.addFields({ name: "分級扣繳明細", value: sliceLines.join("\n") });
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**分級扣繳明細**\n${sliceLines.join("\n")}`,
+          ),
+        );
     }
 
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
+    );
+
     const ok = await user
-      .send({ embeds: [embed] })
+      .send({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      })
       .then(() => true)
       .catch(() => false);
     if (ok) sent += 1;
@@ -222,17 +243,19 @@ async function postReport(client, cfg, summary) {
     return `・${range}：**${(b.rate * 100).toFixed(0)}%**`;
   });
 
-  const embed = new EmbedBuilder()
-    .setTitle("💸 每週累進財富稅結算")
-    .setColor(0xed4245)
-    .setDescription(
-      [
-        `・受影響玩家數：**${summary.affectedUsers}**`,
-        `・本次回收金幣：**${summary.totalTaxed.toLocaleString()}**`,
-        "",
-        "**累進級距（邊際稅率，越富越狠）**",
-        ...bracketLines,
-      ].join("\n"),
+  const container = new ContainerBuilder()
+    .setAccentColor(0xed4245)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 💸 每週累進財富稅結算\n` +
+          [
+            `・受影響玩家數：**${summary.affectedUsers}**`,
+            `・本次回收金幣：**${summary.totalTaxed.toLocaleString()}**`,
+            "",
+            "**累進級距（邊際稅率，越富越狠）**",
+            ...bracketLines,
+          ].join("\n"),
+      ),
     );
 
   if (summary.topAffected.length > 0) {
@@ -242,10 +265,14 @@ async function postReport(client, cfg, summary) {
           `${i + 1}. <@${t.userId}> 扣 **${t.tax.toLocaleString()}**（${t.before.toLocaleString()} → ${(t.before - t.tax).toLocaleString()}，有效稅率 ${(t.effectiveRate * 100).toFixed(2)}%）`,
       )
       .join("\n");
-    embed.addFields({ name: "本次扣最多 Top 5", value: top });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**本次扣最多 Top 5**\n${top}`,
+      ),
+    );
   }
 
-  // 賭場週報彩蛋：本週賭場賺最多 / 賠最多 Top 3
+  // 賭場週報彩蛋
   const guildId = channel.guild?.id;
   const casino = await fetchCasinoWeekly(client, guildId);
   if (casino) {
@@ -256,7 +283,11 @@ async function postReport(client, cfg, summary) {
             `${i + 1}. <@${r._id}> 賺 **+${r.netProfit.toLocaleString()}**（下注 ${r.wagered.toLocaleString()}）`,
         )
         .join("\n");
-      embed.addFields({ name: "🎰 本週賭場大贏家 Top 3", value: lines });
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**🎰 本週賭場大贏家 Top 3**\n${lines}`,
+        ),
+      );
     }
     if (casino.losers.length > 0) {
       const lines = casino.losers
@@ -265,18 +296,29 @@ async function postReport(client, cfg, summary) {
             `${i + 1}. <@${r._id}> 賠 **${r.netProfit.toLocaleString()}**（下注 ${r.wagered.toLocaleString()}）`,
         )
         .join("\n");
-      embed.addFields({ name: "💸 本週賭場大輸家 Top 3", value: lines });
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**💸 本週賭場大輸家 Top 3**\n${lines}`,
+        ),
+      );
     }
     if (casino.winners.length === 0 && casino.losers.length === 0) {
-      embed.addFields({
-        name: "🎰 本週賭場",
-        value: "本週沒人有顯著輸贏，整個賭場很平靜～",
-      });
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**🎰 本週賭場**\n本週沒人有顯著輸贏，整個賭場很平靜～`,
+        ),
+      );
     }
   }
 
-  embed.setTimestamp(new Date());
-  await channel.send({ embeds: [embed] }).catch(() => {});
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+    ),
+  );
+  await channel
+    .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
 }
 
 async function runSweep(client) {

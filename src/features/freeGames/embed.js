@@ -1,12 +1,17 @@
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+} = require("discord.js");
 const { DateTime } = require("luxon");
 const { NEWSPAPER_EMOJI } = require("../../constants/emoji");
 
-const COLOR_FREE = 0x06a77d; // 限時領取 (claimable, 永久持有)
-const COLOR_ALWAYS = 0x3b82f6; // 永久免費 (always free)
-const COLOR_TEMPORARY = 0xf59e0b; // 試玩週末 (不持有)
+const COLOR_FREE = 0x06a77d;
+const COLOR_ALWAYS = 0x3b82f6;
+const COLOR_TEMPORARY = 0xf59e0b;
 
-// LootScraper duration tag → 本地顯示
 const DURATION_META = {
   "Always Free": {
     label: "永久免費",
@@ -54,7 +59,7 @@ const formatRemaining = (endTime) => {
   return `剩餘 ${Math.ceil(days)} 天`;
 };
 
-const buildFreeGameEmbed = ({ item, steamData = null }) => {
+const buildFreeGameContainer = ({ item, steamData = null }) => {
   const meta = PLATFORM_META[item.platform] || PLATFORM_META.steam;
 
   const displayName =
@@ -74,55 +79,60 @@ const buildFreeGameEmbed = ({ item, steamData = null }) => {
   if (originalPriceText) summaryParts.push(`原價 ~~${originalPriceText}~~`);
 
   const claimUrl = item.link || meta.fallbackUrl(item.appid);
+  const title = displayName.slice(0, 256);
 
-  const embed = new EmbedBuilder()
-    .setAuthor({ name: baseLabel })
-    .setTitle(displayName.slice(0, 256))
-    .setURL(claimUrl)
-    .setColor(color)
-    .setDescription(`${NEWSPAPER_EMOJI} ${summaryParts.join("  ·  ")}`)
-    .setTimestamp(new Date())
-    .setFooter({ text: "來源:GamerPower" });
+  const container = new ContainerBuilder()
+    .setAccentColor(color)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ${baseLabel}\n# [${title}](${claimUrl})\n${NEWSPAPER_EMOJI} ${summaryParts.join("  ·  ")}`,
+      ),
+    );
 
   const image = (steamData && steamData.header_image) || item.image;
-  if (image) embed.setImage(image);
+  if (image) {
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder().setURL(image).setDescription(title),
+      ),
+    );
+  }
 
-  embed.addFields({ name: "平台", value: meta.label, inline: true });
-
+  const infoLines = [`**平台**：${meta.label}`];
   if (typeof item.score === "number" && item.score > 0) {
-    embed.addFields({
-      name: "評分",
-      value: item.score.toFixed(1),
-      inline: true,
-    });
+    infoLines.push(`**評分**：${item.score.toFixed(1)}`);
   }
-
   if (item.chineseSupport !== null && item.chineseSupport !== undefined) {
-    embed.addFields({
-      name: "中文",
-      value: item.chineseSupport ? "支援" : "不支援",
-      inline: true,
-    });
+    infoLines.push(`**中文**：${item.chineseSupport ? "支援" : "不支援"}`);
   }
-
   const remaining = formatRemaining(item.endTime);
-  if (remaining) {
-    embed.addFields({ name: "截止", value: remaining, inline: true });
+  if (remaining) infoLines.push(`**截止**：${remaining}`);
+  if (item.isDlc && item.parentName) {
+    infoLines.push(`**本體**：${item.parentName}`);
   }
 
-  if (item.isDlc && item.parentName) {
-    embed.addFields({ name: "本體", value: item.parentName, inline: true });
-  }
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(infoLines.join("\n")),
+    );
 
   const shortDesc = steamData?.short_description || item.description;
   if (shortDesc) {
-    embed.addFields({
-      name: "簡介",
-      value: truncate(shortDesc, 100),
-    });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**簡介**\n${truncate(shortDesc, 100)}`,
+      ),
+    );
   }
 
-  return embed;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# 來源：GamerPower ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+    ),
+  );
+
+  return container;
 };
 
-module.exports = { buildFreeGameEmbed, PLATFORM_META };
+module.exports = { buildFreeGameContainer, PLATFORM_META };

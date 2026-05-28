@@ -1,6 +1,8 @@
 require("colors");
 const {
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -11,13 +13,13 @@ const config = require("../../../config");
 
 function getTemplateColor(templateKey) {
   const colors = {
-    game_create: "#00ff00",
-    game_archive: "#ff9900",
-    event: "#9b59b6",
-    rule_change: "#3498db",
-    general: "#95a5a6",
+    game_create: 0x00ff00,
+    game_archive: 0xff9900,
+    event: 0x9b59b6,
+    rule_change: 0x3498db,
+    general: 0x95a5a6,
   };
-  return colors[templateKey] || "#0099ff";
+  return colors[templateKey] || 0x0099ff;
 }
 
 async function handleVoteCreate(client, interaction) {
@@ -77,30 +79,6 @@ async function handleVoteCreate(client, interaction) {
     let description = customDescription || template.description;
     description = `由 ${proposer} 提出\n\n${description}`;
 
-    const votingEmbed = new EmbedBuilder()
-      .setColor(embedColor)
-      .setTitle(`${template.emoji} 提案：${title}`)
-      .setDescription(description)
-      .addFields(
-        {
-          name: "📋 投票類型",
-          value: template.name,
-          inline: true,
-        },
-        {
-          name: "⏰ 投票時間",
-          value: `${duration} 小時`,
-          inline: true,
-        },
-        {
-          name: "📅 截止時間",
-          value: `<t:${Math.floor(Date.now() / 1000) + (duration * 3600)}:R>`,
-          inline: true,
-        }
-      )
-      .setTimestamp()
-      .setFooter({ text: `提案人：${proposer.user.tag}` });
-
     const buttons = new ActionRowBuilder();
     for (const btn of template.buttons) {
       buttons.addComponents(
@@ -112,9 +90,31 @@ async function handleVoteCreate(client, interaction) {
       );
     }
 
+    const votingContainer = new ContainerBuilder()
+      .setAccentColor(embedColor)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# ${template.emoji} 提案：${title}\n${description}`,
+        ),
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**📋 投票類型**：${template.name}\n` +
+            `**⏰ 投票時間**：${duration} 小時\n` +
+            `**📅 截止時間**：<t:${Math.floor(Date.now() / 1000) + duration * 3600}:R>`,
+        ),
+      )
+      .addActionRowComponents(buttons)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 提案人：${proposer.user.tag} ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+        ),
+      );
+
     const voteMessage = await votingChannel.send({
-      embeds: [votingEmbed],
-      components: [buttons],
+      components: [votingContainer],
+      flags: MessageFlags.IsComponentsV2,
     });
 
     const voteId = randomUUID();
@@ -151,18 +151,27 @@ async function handleVoteCreate(client, interaction) {
     });
 
     if (isTicketChannel) {
-      const ticketEmbed = new EmbedBuilder()
-        .setColor("#0099ff")
-        .setTitle("📢 投票已發起")
-        .setDescription(
-          `${proposer}，您的提案已進入投票階段！\n\n` +
-          `**提案標題：** ${title}\n` +
-          `**投票類型：** ${template.name}\n\n` +
-          `[點擊此處前往投票](${voteMessage.url})`
+      const ticketContainer = new ContainerBuilder()
+        .setAccentColor(0x0099ff)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 📢 投票已發起\n` +
+              `${proposer}，您的提案已進入投票階段！\n\n` +
+              `**提案標題：** ${title}\n` +
+              `**投票類型：** ${template.name}\n\n` +
+              `[點擊此處前往投票](${voteMessage.url})`,
+          ),
         )
-        .setTimestamp();
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+          ),
+        );
 
-      await interaction.channel.send({ embeds: [ticketEmbed] });
+      await interaction.channel.send({
+        components: [ticketContainer],
+        flags: MessageFlags.IsComponentsV2,
+      });
     }
   } catch (error) {
     console.log(`[ERROR] 發起投票時出錯：\n${error}\n${error.stack}`.red);

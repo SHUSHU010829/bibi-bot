@@ -1,7 +1,15 @@
 require("colors");
 
 const cron = require("node-cron");
-const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
+const {
+  AttachmentBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+  MessageFlags,
+} = require("discord.js");
 const { DateTime } = require("luxon");
 
 const { stockSystem } = require("../../config");
@@ -65,14 +73,21 @@ async function announceSentimentChange(client, prev, next) {
   if (!channel?.isTextBased?.()) return;
   if (prev === next) return;
   const color = next === "bull" ? 0x2ecc71 : next === "bear" ? 0xe74c3c : 0x95a5a6;
-  const embed = new EmbedBuilder()
-    .setTitle("🧭 市場情緒切換")
-    .setColor(color)
-    .setDescription(
-      `今日市場情緒：**${SENTIMENT_LABEL[next] || next}**（前日：${SENTIMENT_LABEL[prev] || prev}）`
+  const container = new ContainerBuilder()
+    .setAccentColor(color)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🧭 市場情緒切換\n今日市場情緒：**${SENTIMENT_LABEL[next] || next}**（前日：${SENTIMENT_LABEL[prev] || prev}）`,
+      ),
     )
-    .setTimestamp(new Date());
-  await channel.send({ embeds: [embed] }).catch(() => {});
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
+    );
+  await channel
+    .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
 }
 
 async function listGuildIdsWithMarket(client) {
@@ -153,7 +168,7 @@ async function postMarketBroadcast(client, guildId) {
   const sentimentLabel = SENTIMENT_LABEL[sentiment] || sentiment;
 
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const fields = [];
+  const stockLines = [];
   for (const s of stocks) {
     const open = s.openPrice || s.currentPrice;
     const chg = open > 0 ? ((s.currentPrice - open) / open) * 100 : 0;
@@ -163,13 +178,11 @@ async function postMarketBroadcast(client, guildId) {
     const weekPrices = weekly.map((w) => w.price);
     const wh = weekPrices.length ? Math.max(...weekPrices, s.currentPrice) : s.currentPrice;
     const wl = weekPrices.length ? Math.min(...weekPrices, s.currentPrice) : s.currentPrice;
-    fields.push({
-      name: `\`${s.symbol}\` ${s.name}`,
-      value:
+    stockLines.push(
+      `**\`${s.symbol}\` ${s.name}**\n` +
         `現價 **${s.currentPrice.toFixed(1)}**　今日 ${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%\n` +
         `週高 ${wh.toFixed(1)}　週低 ${wl.toFixed(1)}`,
-      inline: true,
-    });
+    );
   }
 
   // 下次 tick 時間：對齊 tickIntervalMinutes
@@ -181,17 +194,39 @@ async function postMarketBroadcast(client, guildId) {
   if (nextTickMin >= 60) next.setHours(next.getHours() + 1);
   const epoch = Math.floor(next.getTime() / 1000);
 
-  const embed = new EmbedBuilder()
-    .setTitle("📈 逼逼股市")
-    .setColor(0x3498db)
-    .setDescription(`市場情緒：${sentimentLabel}　下次更新：<t:${epoch}:R>`)
-    .addFields(fields)
-    .setImage("attachment://stock_market.png")
-    .setTimestamp(new Date());
+  const container = new ContainerBuilder()
+    .setAccentColor(0x3498db)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 📈 逼逼股市\n市場情緒：${sentimentLabel}　下次更新：<t:${epoch}:R>`,
+      ),
+    )
+    .addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder()
+          .setURL("attachment://stock_market.png")
+          .setDescription("市場走勢圖"),
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(stockLines.join("\n\n")),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
+    );
 
-  await channel.send({ embeds: [embed], files: [attachment] }).catch((e) =>
-    console.log(`[STOCK] broadcast send failed: ${e?.message || e}`.yellow)
-  );
+  await channel
+    .send({
+      components: [container],
+      files: [attachment],
+      flags: MessageFlags.IsComponentsV2,
+    })
+    .catch((e) =>
+      console.log(`[STOCK] broadcast send failed: ${e?.message || e}`.yellow),
+    );
 }
 
 async function runOpen(client) {
@@ -217,12 +252,21 @@ async function postOpenReport(client, guildId, stocks) {
   const lines = stocks.map(
     (s) => `\`${s.symbol}\` ${s.name}：開盤 **${(s.currentPrice).toFixed(1)}**`
   );
-  const embed = new EmbedBuilder()
-    .setTitle("🔔 逼逼股市｜今日開盤")
-    .setColor(0x3498db)
-    .setDescription(lines.join("\n") || "（無上市股票）")
-    .setTimestamp(new Date());
-  await channel.send({ embeds: [embed] }).catch(() => {});
+  const container = new ContainerBuilder()
+    .setAccentColor(0x3498db)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🔔 逼逼股市｜今日開盤\n${lines.join("\n") || "（無上市股票）"}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
+    );
+  await channel
+    .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
 }
 
 async function runClose(client) {
@@ -297,18 +341,43 @@ async function postCloseReport(client, guildId) {
       .map((r, i) => `${i + 1}. \`${r.symbol}\` ${r.change >= 0 ? "+" : ""}${r.change.toFixed(2)}%`)
       .join("\n") || "—";
 
-  const embed = new EmbedBuilder()
-    .setTitle("📊 逼逼股市｜今日收盤報告")
-    .setColor(0xf1c40f)
-    .addFields(
-      { name: "漲幅榜", value: fmtList(gainers), inline: true },
-      { name: "跌幅榜", value: fmtList(losers), inline: true },
-      { name: "成交量最高", value: topVolumeLine, inline: false },
-      { name: "今日事件", value: eventLine, inline: false }
+  const container = new ContainerBuilder()
+    .setAccentColor(0xf1c40f)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "# 📊 逼逼股市｜今日收盤報告",
+      ),
     )
-    .setTimestamp(new Date());
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**漲幅榜**\n${fmtList(gainers)}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**跌幅榜**\n${fmtList(losers)}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**成交量最高**\n${topVolumeLine}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**今日事件**\n${eventLine}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
+    );
 
-  await channel.send({ embeds: [embed] }).catch(() => {});
+  await channel
+    .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
 }
 
 module.exports = async (client) => {

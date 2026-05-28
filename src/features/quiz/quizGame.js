@@ -1,9 +1,12 @@
 require("colors");
 const {
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
 } = require("discord.js");
 
 const grantCoins = require("../economy/grantCoins");
@@ -65,7 +68,11 @@ function kindLabel(quizDoc) {
   return isPrediction(quizDoc) ? "預測" : "問答";
 }
 
-function buildActiveEmbed(quizDoc) {
+function tsEpoch(d) {
+  return Math.floor((d ? new Date(d).getTime() : Date.now()) / 1000);
+}
+
+function buildActiveContainer(quizDoc, { intro = "" } = {}) {
   const { question, options, prizePool, hostId, endsAt, answers = {} } = quizDoc;
   const answerCount = Object.keys(answers).length;
   const prediction = isPrediction(quizDoc);
@@ -92,30 +99,35 @@ function buildActiveEmbed(quizDoc) {
     ? COLOR_SOLO_ACTIVE
     : COLOR_ACTIVE;
 
-  const fields = [
-    { name: "主辦人", value: `<@${hostId}>`, inline: true },
-    { name: "獎金池", value: `${prizePool.toLocaleString()} credits`, inline: true },
-    { name: "已作答人數", value: `${answerCount} 人`, inline: true },
+  const infoLines = [
+    `**主辦人**：<@${hostId}>`,
+    `**獎金池**：${prizePool.toLocaleString()} credits`,
+    `**已作答人數**：${answerCount} 人`,
   ];
-  if (!prediction) {
-    fields.push({ name: "模式", value: modeLabel(quizDoc), inline: true });
-  }
-  fields.push({
-    name: "截止時間",
-    value: endsAt ? formatEndsAt(endsAt) : "♾️ 無時間限制（等待主辦人結算或首位答對者搶答）",
-    inline: false,
-  });
+  if (!prediction) infoLines.push(`**模式**：${modeLabel(quizDoc)}`);
+  infoLines.push(
+    `**截止時間**：${
+      endsAt ? formatEndsAt(endsAt) : "♾️ 無時間限制（等待主辦人結算或首位答對者搶答）"
+    }`,
+  );
 
-  return new EmbedBuilder()
-    .setColor(color)
-    .setTitle(title)
-    .setDescription(optionLines)
-    .addFields(...fields)
-    .setFooter({ text: `${kindLabel(quizDoc)} ID：${quizDoc.quizId}　提示：${footerTip}` })
-    .setTimestamp(quizDoc.createdAt);
+  const head = intro ? `${intro}\n# ${title}\n${optionLines}` : `# ${title}\n${optionLines}`;
+
+  return new ContainerBuilder()
+    .setAccentColor(color)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(head))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(infoLines.join("\n")),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ${kindLabel(quizDoc)} ID：${quizDoc.quizId} ・ 提示：${footerTip} ・ <t:${tsEpoch(quizDoc.createdAt)}:f>`,
+      ),
+    );
 }
 
-function buildLockedEmbed(quizDoc) {
+function buildLockedContainer(quizDoc) {
   const { question, options, prizePool, hostId, answers = {}, lockedAt } = quizDoc;
   const answerCount = Object.keys(answers).length;
 
@@ -128,23 +140,32 @@ function buildLockedEmbed(quizDoc) {
     ? "**作答已截止**，等待主辦人公布正確答案 🔮"
     : "**作答已截止**，等待主辦人公布答案 ⏳";
 
-  return new EmbedBuilder()
-    .setColor(COLOR_LOCKED)
-    .setTitle(`🔒 ${question}`)
-    .setDescription(`${optionLines}\n\n${tip}`)
-    .addFields(
-      { name: "主辦人", value: `<@${hostId}>`, inline: true },
-      { name: "獎金池", value: `${prizePool.toLocaleString()} credits`, inline: true },
-      { name: "已作答人數", value: `${answerCount} 人`, inline: true },
-      ts
-        ? { name: "截止時間", value: `<t:${ts}:R>（<t:${ts}:T>）`, inline: false }
-        : { name: "狀態", value: "作答已截止", inline: false }
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_LOCKED)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🔒 ${question}\n${optionLines}\n\n${tip}`,
+      ),
     )
-    .setFooter({ text: `${kindLabel(quizDoc)} ID：${quizDoc.quizId}` })
-    .setTimestamp(new Date(lockedAt || Date.now()));
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**主辦人**：<@${hostId}>\n` +
+          `**獎金池**：${prizePool.toLocaleString()} credits\n` +
+          `**已作答人數**：${answerCount} 人\n` +
+          (ts
+            ? `**截止時間**：<t:${ts}:R>（<t:${ts}:T>）`
+            : `**狀態**：作答已截止`),
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ${kindLabel(quizDoc)} ID：${quizDoc.quizId} ・ <t:${tsEpoch(lockedAt)}:f>`,
+      ),
+    );
 }
 
-function buildSettledEmbed(quizDoc) {
+function buildSettledContainer(quizDoc) {
   const {
     question,
     options,
@@ -181,86 +202,86 @@ function buildSettledEmbed(quizDoc) {
         .map((w) =>
           solo
             ? `🏆 <@${w.userId}> 搶答成功 — ${w.prize.toLocaleString()} credits`
-            : `🎉 <@${w.userId}> — ${w.prize.toLocaleString()} credits`
+            : `🎉 <@${w.userId}> — ${w.prize.toLocaleString()} credits`,
         )
         .join("\n")
-        .slice(0, 1024)
     : "（無人答對，獎金已退回主辦人）";
 
   const winnersHeader = solo
-    ? `搶答得獎者（獨得 ${perWinnerPrize.toLocaleString()} credits）`
-    : `得獎者（每人 ${perWinnerPrize.toLocaleString()} credits）`;
+    ? `**搶答得獎者**（獨得 ${perWinnerPrize.toLocaleString()} credits）`
+    : `**得獎者**（每人 ${perWinnerPrize.toLocaleString()} credits）`;
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_SETTLED)
-    .setTitle(`🏁 ${question}`)
-    .setDescription(optionLines)
-    .addFields(
-      { name: "主辦人", value: `<@${hostId}>`, inline: true },
-      { name: "原始獎金池", value: `${prizePool.toLocaleString()} credits`, inline: true },
-      ...(!isPrediction(quizDoc)
-        ? [{ name: "模式", value: modeLabel(quizDoc), inline: true }]
-        : []),
-      {
-        name: "正確答案",
-        value: `${OPTION_EMOJIS[correctKey]} **${correctKey}.** ${correctOpt?.text || ""}`,
-        inline: false,
-      },
-      {
-        name: winnersHeader,
-        value: winnersField,
-        inline: false,
-      }
+  const infoLines = [
+    `**主辦人**：<@${hostId}>`,
+    `**原始獎金池**：${prizePool.toLocaleString()} credits`,
+  ];
+  if (!isPrediction(quizDoc)) infoLines.push(`**模式**：${modeLabel(quizDoc)}`);
+
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_SETTLED)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# 🏁 ${question}\n${optionLines}`),
     )
-    .setFooter({ text: `${kindLabel(quizDoc)} ID：${quizDoc.quizId}` })
-    .setTimestamp(quizDoc.settledAt || new Date());
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(infoLines.join("\n")),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**正確答案**\n${OPTION_EMOJIS[correctKey]} **${correctKey}.** ${correctOpt?.text || ""}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`${winnersHeader}\n${winnersField}`),
+    );
 
   if (unpaid > 0) {
-    embed.addFields({
-      name: "退回主辦人",
-      value: `${refundNet.toLocaleString()} credits`,
-      inline: false,
-    });
-    if (refundFee > 0) {
-      embed.addFields({
-        name: "系統抽成（防洗錢）",
-        value: `${refundFee.toLocaleString()} credits`,
-        inline: false,
-      });
-    }
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**退回主辦人**：${refundNet.toLocaleString()} credits` +
+          (refundFee > 0
+            ? `\n**系統抽成（防洗錢）**：${refundFee.toLocaleString()} credits`
+            : ""),
+      ),
+    );
   }
-  return embed;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# ${kindLabel(quizDoc)} ID：${quizDoc.quizId} ・ <t:${tsEpoch(quizDoc.settledAt)}:f>`,
+    ),
+  );
+  return container;
 }
 
-function buildCancelledEmbed(quizDoc) {
+function buildCancelledContainer(quizDoc) {
   const refundFee = quizDoc.refundFee || 0;
   const refundNet =
     quizDoc.refundNet !== undefined
       ? quizDoc.refundNet
       : Math.max(quizDoc.prizePool - refundFee, 0);
 
-  const fields = [
-    { name: "主辦人", value: `<@${quizDoc.hostId}>`, inline: true },
-    {
-      name: "獎金已退還",
-      value: `${refundNet.toLocaleString()} credits`,
-      inline: true,
-    },
+  const lines = [
+    `**主辦人**：<@${quizDoc.hostId}>`,
+    `**獎金已退還**：${refundNet.toLocaleString()} credits`,
   ];
   if (refundFee > 0) {
-    fields.push({
-      name: "系統抽成（防洗錢）",
-      value: `${refundFee.toLocaleString()} credits`,
-      inline: true,
-    });
+    lines.push(`**系統抽成（防洗錢）**：${refundFee.toLocaleString()} credits`);
   }
 
-  return new EmbedBuilder()
-    .setColor(COLOR_CANCELLED)
-    .setTitle(`🚫 ${quizDoc.question}（已取消）`)
-    .addFields(...fields)
-    .setFooter({ text: `${kindLabel(quizDoc)} ID：${quizDoc.quizId}` })
-    .setTimestamp(quizDoc.cancelledAt || new Date());
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_CANCELLED)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# 🚫 ${quizDoc.question}（已取消）`),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(lines.join("\n")),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ${kindLabel(quizDoc)} ID：${quizDoc.quizId} ・ <t:${tsEpoch(quizDoc.cancelledAt)}:f>`,
+      ),
+    );
 }
 
 function buildActionRow(quizDoc) {
@@ -499,10 +520,14 @@ async function createQuiz(client, opts) {
       mode === MODE_SOLO
         ? `📣 新${label}（⚡ 搶答獨佔）！首位答對者獨得 **${prizePool.toLocaleString()}** credits！`
         : `📣 新${label}！答對者平分 **${prizePool.toLocaleString()}** credits 獎金池。`;
+    const container = buildActiveContainer(quizDoc, { intro });
+    for (const row of buildActionRow(quizDoc)) {
+      container.addActionRowComponents(row);
+    }
     const msg = await channel.send({
-      content: intro,
-      embeds: [buildActiveEmbed(quizDoc)],
-      components: buildActionRow(quizDoc),
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { parse: [] },
     });
     quizDoc.messageId = msg.id;
     await client.quizGamesCollection.insertOne(quizDoc);
@@ -530,19 +555,23 @@ async function refreshQuizMessage(client, quizDoc) {
   const msg = await channel.messages.fetch(quizDoc.messageId).catch(() => null);
   if (!msg) return null;
 
-  let embed;
+  let container;
   if (quizDoc.status === "ACTIVE") {
-    embed = buildActiveEmbed(quizDoc);
+    container = buildActiveContainer(quizDoc);
   } else if (quizDoc.status === "LOCKED") {
-    embed = buildLockedEmbed(quizDoc);
+    container = buildLockedContainer(quizDoc);
   } else if (quizDoc.status === "SETTLED") {
-    embed = buildSettledEmbed(quizDoc);
+    container = buildSettledContainer(quizDoc);
   } else {
-    embed = buildCancelledEmbed(quizDoc);
+    container = buildCancelledContainer(quizDoc);
   }
-  const components = buildActionRow(quizDoc);
+  for (const row of buildActionRow(quizDoc)) {
+    container.addActionRowComponents(row);
+  }
 
-  await msg.edit({ embeds: [embed], components }).catch(() => {});
+  await msg
+    .edit({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
   return msg;
 }
 
@@ -923,9 +952,9 @@ module.exports = {
   setCorrectAnswerAndSettle,
   cancelQuiz,
   refreshQuizMessage,
-  buildActiveEmbed,
-  buildLockedEmbed,
-  buildSettledEmbed,
-  buildCancelledEmbed,
+  buildActiveContainer,
+  buildLockedContainer,
+  buildSettledContainer,
+  buildCancelledContainer,
   buildActionRow,
 };

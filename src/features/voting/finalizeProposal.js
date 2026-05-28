@@ -1,9 +1,14 @@
 require("colors");
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
+} = require("discord.js");
 const config = require("../../config");
 const {
   calculateVoteResult,
-  createResultEmbed,
+  createResultContainer,
 } = require("./calculateResult");
 
 const TICKET_AUTOCLOSE_MS = 5 * 60 * 1000;
@@ -36,7 +41,7 @@ async function finalizeProposal(client, proposal, opts = {}) {
       : calculateVoteResult(proposal, template);
 
   const passed = reason === "cancelled" ? false : result.passed;
-  const resultEmbed = createResultEmbed(proposal, template, result, { reason });
+  const resultContainer = createResultContainer(proposal, template, result, { reason });
 
   // 更新投票訊息
   const votingChannel = await guild.channels
@@ -45,7 +50,10 @@ async function finalizeProposal(client, proposal, opts = {}) {
   if (votingChannel) {
     try {
       const voteMessage = await votingChannel.messages.fetch(proposal.messageId);
-      await voteMessage.edit({ embeds: [resultEmbed], components: [] });
+      await voteMessage.edit({
+        components: [resultContainer],
+        flags: MessageFlags.IsComponentsV2,
+      });
     } catch (error) {
       console.log(`[ERROR] 更新投票訊息時出錯：\n${error}`.red);
     }
@@ -74,7 +82,7 @@ async function finalizeProposal(client, proposal, opts = {}) {
     }
   }
 
-  // 通過時通知結果頻道（保留原 proposal.js 行為）
+  // 通過時通知結果頻道
   if (reason !== "cancelled" && passed) {
     try {
       await notifyResultChannel(guild, proposal, template, result, { reason, endedBy, client });
@@ -119,29 +127,34 @@ async function notifyTicketChannel(client, ticketChannel, proposal, template, re
   const proposer = await client.users.fetch(proposal.proposerId).catch(() => null);
   const proposerMention = proposer ? `<@${proposal.proposerId}>` : "提案人";
   const title = proposal.title || proposal.gameName || "提案";
+  const nowEpoch = Math.floor(Date.now() / 1000);
 
-  let notificationEmbed;
+  let container;
 
   if (reason === "cancelled") {
-    notificationEmbed = new EmbedBuilder()
-      .setColor("#ff0000")
-      .setTitle("🗑️ 投票已被取消")
-      .setDescription(
-        `${proposerMention}，您的提案【${title}】投票已被管理員取消。\n\n` +
-          `**投票類型：** ${template.name}\n` +
-          `**取消原因：** 管理員手動取消\n\n` +
-          `此票務將在 5 分鐘後自動關閉。`,
+    container = new ContainerBuilder()
+      .setAccentColor(0xff0000)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🗑️ 投票已被取消\n` +
+            `${proposerMention}，您的提案【${title}】投票已被管理員取消。\n\n` +
+            `**投票類型：** ${template.name}\n` +
+            `**取消原因：** 管理員手動取消\n\n` +
+            `此票務將在 5 分鐘後自動關閉。`,
+        ),
       );
   } else if (passed) {
     const suffix = reason === "manual_end" ? "（管理員提早結束）" : "";
-    notificationEmbed = new EmbedBuilder()
-      .setColor("#00ff00")
-      .setTitle("🎉 恭喜！您的提案已通過")
-      .setDescription(
-        `${proposerMention}，您的提案【${title}】已獲得通過！\n\n` +
-          `**投票類型：** ${template.name}\n` +
-          `**結果：** ✅ 通過${suffix}\n` +
-          `**原因：** ${result.reason}`,
+    container = new ContainerBuilder()
+      .setAccentColor(0x00ff00)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🎉 恭喜！您的提案已通過\n` +
+            `${proposerMention}，您的提案【${title}】已獲得通過！\n\n` +
+            `**投票類型：** ${template.name}\n` +
+            `**結果：** ✅ 通過${suffix}\n` +
+            `**原因：** ${result.reason}`,
+        ),
       );
 
     const maxWeight = Math.max(...template.buttons.map((b) => b.weight || 0));
@@ -155,34 +168,42 @@ async function notifyTicketChannel(client, ticketChannel, proposal, template, re
       const participantMentions = proposal.votes[highInterestBtn.id]
         .map((id) => `<@${id}>`)
         .join(", ");
-      notificationEmbed.addFields({
-        name: `${highInterestBtn.emoji} ${highInterestBtn.label}名單`,
-        value: participantMentions,
-        inline: false,
-      });
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**${highInterestBtn.emoji} ${highInterestBtn.label}名單**\n${participantMentions}`,
+        ),
+      );
     }
 
-    notificationEmbed.addFields({
-      name: "📢 下一步",
-      value: "管理員將根據提案類型進行後續處理。",
-      inline: false,
-    });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "**📢 下一步**\n管理員將根據提案類型進行後續處理。",
+      ),
+    );
   } else {
     const suffix = reason === "manual_end" ? "（管理員提早結束）" : "";
-    notificationEmbed = new EmbedBuilder()
-      .setColor("#ff0000")
-      .setTitle("😔 很遺憾，您的提案未通過")
-      .setDescription(
-        `${proposerMention}，您的提案【${title}】未達到通過門檻。\n\n` +
-          `**投票類型：** ${template.name}\n` +
-          `**結果：** ❌ 未通過${suffix}\n` +
-          `**原因：** ${result.reason}\n\n` +
-          `此票務將在 5 分鐘後自動關閉。`,
+    container = new ContainerBuilder()
+      .setAccentColor(0xff0000)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 😔 很遺憾，您的提案未通過\n` +
+            `${proposerMention}，您的提案【${title}】未達到通過門檻。\n\n` +
+            `**投票類型：** ${template.name}\n` +
+            `**結果：** ❌ 未通過${suffix}\n` +
+            `**原因：** ${result.reason}\n\n` +
+            `此票務將在 5 分鐘後自動關閉。`,
+        ),
       );
   }
 
-  notificationEmbed.setTimestamp();
-  await ticketChannel.send({ embeds: [notificationEmbed] });
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`-# <t:${nowEpoch}:R>`),
+  );
+
+  await ticketChannel.send({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }
 
 function scheduleTicketClose(ticketChannel) {
@@ -193,13 +214,25 @@ function scheduleTicketClose(ticketChannel) {
         .catch(() => null);
       if (!channelExists) return;
 
-      const closeEmbed = new EmbedBuilder()
-        .setColor("#ff0000")
-        .setTitle("🔒 票務自動關閉")
-        .setDescription("此票務因提案結束而自動關閉。\n頻道將在 5 秒後刪除。")
-        .setTimestamp();
+      const closeContainer = new ContainerBuilder()
+        .setAccentColor(0xff0000)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "# 🔒 票務自動關閉\n此票務因提案結束而自動關閉。\n頻道將在 5 秒後刪除。",
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+          ),
+        );
 
-      await ticketChannel.send({ embeds: [closeEmbed] }).catch(() => null);
+      await ticketChannel
+        .send({
+          components: [closeContainer],
+          flags: MessageFlags.IsComponentsV2,
+        })
+        .catch(() => null);
 
       const t2 = setTimeout(async () => {
         try {
@@ -217,7 +250,7 @@ function scheduleTicketClose(ticketChannel) {
 }
 
 async function notifyResultChannel(guild, proposal, template, result, opts) {
-  const { reason, endedBy, client } = opts;
+  const { reason, endedBy } = opts;
   const resultChannel = await guild.channels
     .fetch(RESULT_CHANNEL_ID)
     .catch(() => null);
@@ -227,36 +260,37 @@ async function notifyResultChannel(guild, proposal, template, result, opts) {
   const titlePrefix =
     reason === "manual_end" ? "✅ 投票通過通知（提早結束）" : "✅ 投票通過通知";
 
-  const embed = new EmbedBuilder()
-    .setColor("#00ff00")
-    .setTitle(titlePrefix)
-    .setDescription(
-      `**提案標題：** ${title}\n` +
-        `**投票類型：** ${template.name}` +
-        (endedBy ? `\n**操作者：** <@${endedBy}>` : ""),
+  const buttonLines = template.buttons.map(
+    (btn) => `${btn.emoji} ${btn.label}：${result.voteCounts[btn.id] || 0} 人`,
+  );
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x00ff00)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ${titlePrefix}\n` +
+          `**提案標題：** ${title}\n` +
+          `**投票類型：** ${template.name}` +
+          (endedBy ? `\n**操作者：** <@${endedBy}>` : ""),
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        buttonLines.join("\n") +
+          (result.totalScore > 0 ? `\n**📊 總分**：${result.totalScore} 分` : ""),
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 投票 ID：${proposal.voteId} ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
     );
 
-  for (const btn of template.buttons) {
-    embed.addFields({
-      name: `${btn.emoji} ${btn.label}`,
-      value: `${result.voteCounts[btn.id] || 0} 人`,
-      inline: true,
-    });
-  }
-
-  if (result.totalScore > 0) {
-    embed.addFields({
-      name: "📊 總分",
-      value: `${result.totalScore} 分`,
-      inline: true,
-    });
-  }
-
-  embed
-    .setTimestamp()
-    .setFooter({ text: `投票 ID：${proposal.voteId}` });
-
-  await resultChannel.send({ embeds: [embed] });
+  await resultChannel.send({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }
 
 module.exports = { finalizeProposal };

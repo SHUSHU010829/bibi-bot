@@ -1,11 +1,13 @@
 require("colors");
 const { DateTime } = require("luxon");
 
+const { MessageFlags } = require("discord.js");
+
 const { fetchDiscountList } = require("./xiaoheihe");
 const { fetchAppDetailsBatch } = require("./steam");
 const { shouldPush } = require("./filter");
 const { isAlreadyPushed, markPushed, ensureIndexes } = require("./dedupe");
-const { buildDealEmbed } = require("./embed");
+const { buildDealContainer } = require("./embed");
 
 /**
  * Run one full pass of the steam-deals job.
@@ -106,7 +108,7 @@ const runSteamDealsJob = async ({ client, channelId, config, dryRun = false }) =
       continue;
     }
 
-    const embed = buildDealEmbed({ xhh, steam: steamData });
+    const container = buildDealContainer({ xhh, steam: steamData });
 
     if (dryRun) {
       console.log(
@@ -118,7 +120,10 @@ const runSteamDealsJob = async ({ client, channelId, config, dryRun = false }) =
     }
 
     try {
-      await channel.send({ embeds: [embed] });
+      await channel.send({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
       stats.pushed += 1;
       await markPushed(collection, {
         appid: xhh.appid,

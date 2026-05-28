@@ -1,10 +1,25 @@
 require("colors");
 
 const {
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
   PermissionFlagsBits,
   MessageFlags,
 } = require("discord.js");
+
+function parseColor(value) {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") return 0xed4245;
+  const trimmed = value.replace(/^#/, "");
+  const n = Number.parseInt(trimmed, 16);
+  return Number.isFinite(n) ? n : 0xed4245;
+}
+
+function errorContainer(text) {
+  return new ContainerBuilder()
+    .setAccentColor(parseColor(mConfig.embedColorError))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text));
+}
 const { developersId, serverId, commandChannels } = require("../../config");
 const mConfig = require("../../messageConfig.json");
 const getLocalCommands = require("../../utils/getLocalCommands");
@@ -29,10 +44,14 @@ const UNKNOWN_INTERACTION = 10062;
 
 async function safeReply(interaction, payload) {
   try {
+    const flags = payload?.components
+      ? MessageFlags.Ephemeral | MessageFlags.IsComponentsV2
+      : MessageFlags.Ephemeral;
+    const finalPayload = { ...payload, flags };
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ ...payload, flags: MessageFlags.Ephemeral });
+      await interaction.followUp(finalPayload);
     } else {
-      await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+      await interaction.reply(finalPayload);
     }
   } catch (replyErr) {
     if (replyErr?.code !== UNKNOWN_INTERACTION) {
@@ -87,20 +106,18 @@ module.exports = async (client, interaction) => {
 
     if (commandObject.devOnly) {
       if (!developersId.includes(interaction.member.id)) {
-        const rEmbed = new EmbedBuilder()
-          .setColor(`${mConfig.embedColorError}`)
-          .setDescription(`${mConfig.commandDevOnly}`);
-        await safeReply(interaction, { embeds: [rEmbed] });
+        await safeReply(interaction, {
+          components: [errorContainer(`${mConfig.commandDevOnly}`)],
+        });
         return;
       }
     }
 
     if (commandObject.testMode) {
       if (interaction.guild.id !== serverId) {
-        const rEmbed = new EmbedBuilder()
-          .setColor(`${mConfig.embedColorError}`)
-          .setDescription(`${mConfig.commandTestMode}`);
-        await safeReply(interaction, { embeds: [rEmbed] });
+        await safeReply(interaction, {
+          components: [errorContainer(`${mConfig.commandTestMode}`)],
+        });
         return;
       }
     }
@@ -110,10 +127,9 @@ module.exports = async (client, interaction) => {
         if (interaction.member.permissions.has(permission)) {
           continue;
         }
-        const rEmbed = new EmbedBuilder()
-          .setColor(`${mConfig.embedColorError}`)
-          .setDescription(`${mConfig.userNoPermissions}`);
-        await safeReply(interaction, { embeds: [rEmbed] });
+        await safeReply(interaction, {
+          components: [errorContainer(`${mConfig.userNoPermissions}`)],
+        });
         return;
       }
     }
@@ -124,10 +140,9 @@ module.exports = async (client, interaction) => {
         if (bot.permissions.has(permission)) {
           continue;
         }
-        const rEmbed = new EmbedBuilder()
-          .setColor(`${mConfig.embedColorError}`)
-          .setDescription(`${mConfig.botNoPermissions}`);
-        await safeReply(interaction, { embeds: [rEmbed] });
+        await safeReply(interaction, {
+          components: [errorContainer(`${mConfig.botNoPermissions}`)],
+        });
         return;
       }
     }

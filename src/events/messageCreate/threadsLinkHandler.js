@@ -1,4 +1,11 @@
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+  MessageFlags,
+} = require("discord.js");
 
 // ============================================================
 // Threads Embed Handler - 支援 Carousel 多圖 + 影片
@@ -286,69 +293,51 @@ module.exports = async (client, message) => {
     }
     recordSuccess();
 
-    // 建立主 embed
-    const mainEmbed = new EmbedBuilder()
-      .setColor(0x000000)
-      .setAuthor({
-        name: `@${data.username}${data.isVerified ? " ✓" : ""}`,
-        url: threadsUrl,
-        iconURL: data.userPic || undefined,
-      })
-      .setURL(threadsUrl);
-
-    // 設定描述文字
+    // 主頭：作者 + 文字
+    const headLines = [
+      `-# [@${data.username}${data.isVerified ? " ✓" : ""}](${threadsUrl})`,
+    ];
     if (data.text) {
       const desc =
         data.text.length > 400 ? data.text.slice(0, 400) + "..." : data.text;
-      mainEmbed.setDescription(desc);
+      headLines.push(desc);
     }
 
-    // 添加互動數據
+    const container = new ContainerBuilder()
+      .setAccentColor(0x000000)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(headLines.join("\n")),
+      );
+
+    // 圖片牆（最多 10 張）
+    if (data.images.length > 0) {
+      const gallery = new MediaGalleryBuilder();
+      for (let i = 0; i < Math.min(data.images.length, 10); i++) {
+        gallery.addItems(new MediaGalleryItemBuilder().setURL(data.images[i]));
+      }
+      container.addMediaGalleryComponents(gallery);
+    }
+
+    // 互動數據與影片提示
     const stats = [];
     if (data.likeCount > 0) stats.push(`❤️ ${formatNumber(data.likeCount)}`);
     if (data.replyCount > 0) stats.push(`💬 ${formatNumber(data.replyCount)}`);
+    if (data.images.length > 10) stats.push(`📷 +${data.images.length - 10} more`);
+    if (data.videos.length > 0) stats.push("🎬 此貼文包含影片");
     if (stats.length > 0) {
-      mainEmbed.setFooter({ text: stats.join("  •  ") });
-    }
-
-    // 第一張圖放在主 embed
-    if (data.images.length > 0) {
-      mainEmbed.setImage(data.images[0]);
-    }
-
-    const embeds = [mainEmbed];
-
-    // 額外圖片（Discord 限制：最多 4 個 embed 可以組成圖片牆）
-    // 使用相同的 URL 讓 Discord 合併成 gallery
-    for (let i = 1; i < Math.min(data.images.length, 4); i++) {
-      embeds.push(
-        new EmbedBuilder().setURL(threadsUrl).setImage(data.images[i])
-      );
-    }
-
-    // 如果還有更多圖片，在 footer 提示
-    if (data.images.length > 4) {
-      const existingFooter = mainEmbed.data.footer?.text || "";
-      const separator = existingFooter ? "  •  " : "";
-      mainEmbed.setFooter({
-        text: `${existingFooter}${separator}📷 +${data.images.length - 4} more`,
-      });
-    }
-
-    // 處理影片：Discord embed 不支援外部影片，提供連結
-    let videoMessage = "";
-    if (data.videos.length > 0) {
-      // 只顯示影片存在的提示，不直接貼 URL（太長太醜）
-      videoMessage = `\n🎬 此貼文包含影片`;
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`-# ${stats.join("  •  ")}`),
+        );
     }
 
     // 隱藏原始 embed
     await message.suppressEmbeds(true);
 
-    // 發送自訂 embed
     await message.reply({
-      content: videoMessage || undefined,
-      embeds,
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
       allowedMentions: { repliedUser: false },
     });
   } catch (error) {

@@ -1,7 +1,11 @@
 require("colors");
 
 const cron = require("node-cron");
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  MessageFlags,
+} = require("discord.js");
 const duelService = require("../../features/mining/duelService");
 
 // 每分鐘掃逾時未回應的決鬥邀請：退回挑戰者賭注並更新訊息。
@@ -31,14 +35,21 @@ async function sweepOnce(client) {
             .fetch(duel.message_id)
             .catch(() => null);
           if (message) {
-            const embed = new EmbedBuilder()
-              .setColor(0x95a5a6)
-              .setTitle("⚔️ 決鬥逾時")
-              .setDescription(
-                `<@${duel.opponent_id}> 未在時間內回應，` +
-                  `<@${duel.challenger_id}> 的賭注已退回。`
+            const container = new ContainerBuilder()
+              .setAccentColor(0x95a5a6)
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `# ⚔️ 決鬥逾時\n` +
+                    `<@${duel.opponent_id}> 未在時間內回應，` +
+                    `<@${duel.challenger_id}> 的賭注已退回。`,
+                ),
               );
-            await message.edit({ content: "", embeds: [embed], components: [] }).catch(() => {});
+            await message
+              .edit({
+                components: [container],
+                flags: MessageFlags.IsComponentsV2,
+              })
+              .catch(() => {});
           }
         }
       }

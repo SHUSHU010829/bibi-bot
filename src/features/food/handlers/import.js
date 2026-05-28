@@ -1,6 +1,11 @@
 require("colors");
 
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
+} = require("discord.js");
 
 const autocompleteBeverageStore = require("../../../utils/autocompleteBeverageStore");
 
@@ -87,22 +92,21 @@ async function run(client, interaction) {
     }
     const skippedCount = skippedItems.length;
 
-    const embed = new EmbedBuilder()
-      .setTitle(`✅ ${beverageStore} 菜單匯入完成`)
-      .setColor(0x00ae86)
-      .setTimestamp();
-
     let description = "";
-    if (shouldOverwrite) {
-      description += `🗑️ 已清空現有菜單\n\n`;
-    }
+    if (shouldOverwrite) description += `🗑️ 已清空現有菜單\n\n`;
+    description +=
+      `📊 **匯入統計**\n` +
+      `✅ 成功新增：${addedCount} 項\n` +
+      `⏭️ 已存在跳過：${skippedCount} 項\n` +
+      `📝 總共處理：${items.length} 項`;
 
-    description += `📊 **匯入統計**\n`;
-    description += `✅ 成功新增：${addedCount} 項\n`;
-    description += `⏭️ 已存在跳過：${skippedCount} 項\n`;
-    description += `📝 總共處理：${items.length} 項\n`;
-
-    embed.setDescription(description);
+    const container = new ContainerBuilder()
+      .setAccentColor(0x00ae86)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# ✅ ${beverageStore} 菜單匯入完成\n${description}`,
+        ),
+      );
 
     if (addedCount > 0) {
       const addedItems = items.filter(
@@ -112,20 +116,21 @@ async function run(client, interaction) {
         addedItems.length > 20
           ? addedItems.slice(0, 20).join(", ") + ` ... 等 ${addedItems.length} 項`
           : addedItems.join(", ");
-
-      embed.addFields({
-        name: "新增的品項",
-        value: displayItems,
-        inline: false,
-      });
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**新增的品項**\n${displayItems}`,
+          ),
+        );
     }
 
     if (skippedCount > 0 && skippedCount <= 10) {
-      embed.addFields({
-        name: "已存在的品項",
-        value: skippedItems.join(", "),
-        inline: false,
-      });
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**已存在的品項**\n${skippedItems.join(", ")}`,
+        ),
+      );
     }
 
     const totalItems = await collection.countDocuments({
@@ -133,11 +138,17 @@ async function run(client, interaction) {
       beverageStore: beverageStore,
     });
 
-    embed.setFooter({
-      text: `${beverageStore} 目前共有 ${totalItems} 項飲品`,
-    });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ${beverageStore} 目前共有 ${totalItems} 項飲品 ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+      ),
+    );
 
-    interaction.editReply({ content: "", embeds: [embed] });
+    interaction.editReply({
+      content: "",
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
 
     console.log(
       `[SUCCESS] Imported ${addedCount} items for ${beverageStore}`.green

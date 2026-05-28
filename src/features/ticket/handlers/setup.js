@@ -1,7 +1,9 @@
 require("colors");
 const {
   PermissionFlagsBits,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -50,20 +52,24 @@ async function run(client, interaction) {
       }
     }
 
-    const embed = new EmbedBuilder()
-      .setColor("#0099ff")
-      .setTitle(title)
-      .setDescription(description)
-      .setTimestamp()
-      .setFooter({ text: interaction.guild.name });
-
     const button = new ButtonBuilder()
       .setCustomId("create_ticket")
       .setLabel(buttonLabel)
       .setEmoji(buttonEmoji)
       .setStyle(ButtonStyle.Primary);
 
-    const row = new ActionRowBuilder().addComponents(button);
+    const container = new ContainerBuilder()
+      .setAccentColor(0x0099ff)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`# ${title}\n${description}`),
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addActionRowComponents(new ActionRowBuilder().addComponents(button))
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# ${interaction.guild.name} ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+        ),
+      );
 
     await interaction.reply({
       content: "✅ 票務面板已設置！",
@@ -71,8 +77,8 @@ async function run(client, interaction) {
     });
 
     const message = await interaction.channel.send({
-      embeds: [embed],
-      components: [row],
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
     });
 
     const panels = loadPanels();

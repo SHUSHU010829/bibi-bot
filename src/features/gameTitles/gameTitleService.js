@@ -1,5 +1,9 @@
 require("colors");
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  MessageFlags,
+} = require("discord.js");
 const { gameTitles, mining, commandChannels } = require("../../config");
 
 // 遊戲區共用稱號系統。
@@ -361,15 +365,20 @@ async function announceUnlock(client, { member, userId, titleId }) {
   const channel = await client.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased?.()) return;
   const mention = member?.user ? `${member.user}` : `<@${userId}>`;
-  const embed = new EmbedBuilder()
-    .setColor(0xf1c40f)
-    .setTitle("🏅 解鎖新稱號！")
-    .setDescription(
-      `${mention} 解鎖了【${categoryLabel(d.category)}】稱號 **${label(titleId)}**！\n` +
-        "用 `/稱號 設定` 把它掛上錢包卡展示吧。"
+  const container = new ContainerBuilder()
+    .setAccentColor(0xf1c40f)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🏅 解鎖新稱號！\n${mention} 解鎖了【${categoryLabel(d.category)}】稱號 **${label(titleId)}**！\n` +
+          "用 `/稱號 設定` 把它掛上錢包卡展示吧。",
+      ),
     )
-    .setFooter({ text: d.desc || "" });
-  await channel.send({ embeds: [embed] }).catch(() => {});
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# ${d.desc || ""}`),
+    );
+  await channel
+    .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
 }
 
 module.exports = {
