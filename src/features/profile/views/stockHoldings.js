@@ -12,9 +12,14 @@ const { stockSystem } = require("../../../config");
 const portfolioService = require("../../stock/portfolioService");
 
 const SELL_BUTTON_PREFIX = "pf_stksell_";
+const CHART_BUTTON_PREFIX = "pf_stkchart_";
 
 function buildSellCustomId(symbol, ownerUid) {
   return `${SELL_BUTTON_PREFIX}${symbol}_${ownerUid}`;
+}
+
+function buildChartCustomId(symbol, ownerUid) {
+  return `${CHART_BUTTON_PREFIX}${symbol}_${ownerUid}`;
 }
 
 async function buildStockHoldingsView(client, { target, member, guildId }) {
@@ -105,27 +110,45 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
       new TextDisplayBuilder().setContent(summaryLines.join("\n"))
     );
 
-  // /檔案 永遠是看自己,所以可以直接掛賣出按鈕;handler 仍會再驗一次擁有者。
-  // Discord 一列最多 5 顆按鈕,持股最多上 5 列也不容易超過。
+  // /檔案 永遠是看自己,所以可以直接掛賣出 / 走勢按鈕;handler 仍會再驗一次擁有者。
+  // 一列最多 5 顆按鈕。為了讓「賣 / 走勢」對應到同一支股票,兩排按鈕排同樣順序。
   const sellRows = [];
-  const sellable = positions.filter((p) => p.shares > 0).slice(0, 25);
-  for (let i = 0; i < sellable.length; i += 5) {
-    const row = new ActionRowBuilder().addComponents(
-      sellable.slice(i, i + 5).map((p) =>
-        new ButtonBuilder()
-          .setCustomId(buildSellCustomId(p.symbol, target.id))
-          .setLabel(`賣 ${p.symbol}`)
-          .setEmoji("🔴")
-          .setStyle(ButtonStyle.Danger)
+  const chartRows = [];
+  const tradable = positions.filter((p) => p.shares > 0).slice(0, 10);
+  for (let i = 0; i < tradable.length; i += 5) {
+    const slice = tradable.slice(i, i + 5);
+    sellRows.push(
+      new ActionRowBuilder().addComponents(
+        slice.map((p) =>
+          new ButtonBuilder()
+            .setCustomId(buildSellCustomId(p.symbol, target.id))
+            .setLabel(`賣 ${p.symbol}`)
+            .setEmoji("🔴")
+            .setStyle(ButtonStyle.Danger)
+        )
       )
     );
-    sellRows.push(row);
+    chartRows.push(
+      new ActionRowBuilder().addComponents(
+        slice.map((p) =>
+          new ButtonBuilder()
+            .setCustomId(buildChartCustomId(p.symbol, target.id))
+            .setLabel(`${p.symbol} 走勢`)
+            .setEmoji("📜")
+            .setStyle(ButtonStyle.Secondary)
+        )
+      )
+    );
   }
 
   return {
     useV2: true,
-    components: [container, ...sellRows],
+    components: [container, ...sellRows, ...chartRows],
   };
 }
 
-module.exports = { buildStockHoldingsView, SELL_BUTTON_PREFIX };
+module.exports = {
+  buildStockHoldingsView,
+  SELL_BUTTON_PREFIX,
+  CHART_BUTTON_PREFIX,
+};
