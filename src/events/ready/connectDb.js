@@ -150,6 +150,9 @@ module.exports = async (client) => {
     // 拍賣行掛牌
     const auctionListingsCollection = database.collection("AuctionListings");
 
+    // 打工 / 挖礦到點通知訂閱
+    const cooldownRemindersCollection = database.collection("CooldownReminders");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -208,10 +211,21 @@ module.exports = async (client) => {
     client.workProfilesCollection = workProfilesCollection;
     client.duelGamesCollection = duelGamesCollection;
     client.auctionListingsCollection = auctionListingsCollection;
+    client.cooldownRemindersCollection = cooldownRemindersCollection;
     await economySnapshotsCollection
       .createIndex({ guildId: 1, date: 1 }, { unique: true })
       .catch((e) =>
         console.log(`[WARN] EconomySnapshots index 建立失敗：${e.message}`.yellow),
+      );
+    await cooldownRemindersCollection
+      .createIndex({ userId: 1, guildId: 1, type: 1 }, { unique: true })
+      .catch((e) =>
+        console.log(`[WARN] CooldownReminders index 建立失敗：${e.message}`.yellow),
+      );
+    await cooldownRemindersCollection
+      .createIndex({ enabled: 1, notified: 1, readyAt: 1 })
+      .catch((e) =>
+        console.log(`[WARN] CooldownReminders 掃描索引建立失敗：${e.message}`.yellow),
       );
     console.log(`[DATA] Successfully connected to MongoDB!`.cyan);
 
