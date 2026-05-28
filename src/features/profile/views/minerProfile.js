@@ -1,5 +1,11 @@
 require("colors");
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SectionBuilder,
+  ThumbnailBuilder,
+} = require("discord.js");
 
 const { mining } = require("../../../config");
 const {
@@ -25,7 +31,7 @@ function oreLine(lifetime) {
     .join("\n");
 }
 
-async function buildMinerProfileView(client, { target, guildId }) {
+async function buildMinerProfileView(client, { target, member, guildId }) {
   if (!mining?.enabled || !client.miningProfilesCollection) {
     return { content: "🔧 挖礦系統尚未啟動！" };
   }
@@ -52,49 +58,54 @@ async function buildMinerProfileView(client, { target, guildId }) {
   const cap = backpackCapacity(profile, mining);
   const used = backpackUsed(profile);
 
-  const embed = new EmbedBuilder()
-    .setColor(0xe67e22)
-    .setTitle(`📜 ${target.username} 的礦工檔案`)
-    .setThumbnail(target.displayAvatarURL?.() || null)
-    .addFields(
-      { name: "展示稱號", value: activeTitle, inline: true },
-      {
-        name: "已解鎖稱號",
-        value: `${unlockedCount}/${totalTitles}`,
-        inline: true,
-      },
-      {
-        name: "週冠次數",
-        value: `${(profile.weekly_champion_count || 0).toLocaleString()} 次`,
-        inline: true,
-      },
-      {
-        name: "目前鎬子",
-        value: `${pickaxeLabel(profile.pickaxe)}（耐久 ${durabilityText}）`,
-        inline: true,
-      },
-      {
-        name: "錢包餘額",
-        value: `${coins.toLocaleString()} ${COIN_EMOJI}`,
-        inline: true,
-      },
-      { name: "背包", value: `${used}/${cap}`, inline: true },
-      {
-        name: "生涯統計",
-        value:
-          `⛏️ 挖礦 **${(profile.mine_count_total || 0).toLocaleString()}** 次\n` +
-          `🔨 合成 **${(profile.craft_count_total || 0).toLocaleString()}** 件\n` +
-          `🗺️ 地下城 **${(profile.dungeon_count || 0).toLocaleString()}** 次`,
-        inline: false,
-      },
-      {
-        name: "歷史採集量",
-        value: oreLine(profile.lifetime_ore),
-        inline: false,
-      }
-    );
+  const displayName = member?.displayName || target.username;
+  const avatarUrl = target.displayAvatarURL?.({ extension: "png", size: 256 });
 
-  return { embeds: [embed] };
+  const container = new ContainerBuilder().setAccentColor(0xe67e22);
+
+  const headerSection = new SectionBuilder().addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## 📜 ${displayName} 的礦工檔案\n-# 展示稱號：${activeTitle}`
+    )
+  );
+  if (avatarUrl) {
+    headerSection.setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl));
+  }
+  container.addSectionComponents(headerSection);
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `### 📋 基本資料\n` +
+        `🏷️ 已解鎖稱號：**${unlockedCount}/${totalTitles}**\n` +
+        `🏆 週冠次數：**${(profile.weekly_champion_count || 0).toLocaleString()}** 次\n` +
+        `⛏️ 目前鎬子：${pickaxeLabel(profile.pickaxe)}（耐久 ${durabilityText}）\n` +
+        `💰 錢包餘額：**${coins.toLocaleString()}** ${COIN_EMOJI}\n` +
+        `🎒 背包：**${used}/${cap}**`
+    )
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `### 📊 生涯統計\n` +
+        `⛏️ 挖礦 **${(profile.mine_count_total || 0).toLocaleString()}** 次\n` +
+        `🔨 合成 **${(profile.craft_count_total || 0).toLocaleString()}** 件\n` +
+        `🗺️ 地下城 **${(profile.dungeon_count || 0).toLocaleString()}** 次`
+    )
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `### 📦 歷史採集量\n${oreLine(profile.lifetime_ore)}`
+    )
+  );
+
+  return {
+    useV2: true,
+    components: [container],
+  };
 }
 
 module.exports = { buildMinerProfileView };

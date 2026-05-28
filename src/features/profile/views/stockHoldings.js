@@ -1,5 +1,9 @@
 require("colors");
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+} = require("discord.js");
 
 const { stockSystem } = require("../../../config");
 const portfolioService = require("../../stock/portfolioService");
@@ -57,46 +61,45 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
   const sign = totalPnl >= 0 ? "+" : "";
 
-  const embed = new EmbedBuilder()
-    .setTitle(`💼 ${member?.displayName || target.username} 的持股`)
-    .setColor(totalPnl >= 0 ? 0x2ecc71 : 0xe74c3c)
-    .setDescription(lines.join("\n\n"))
-    .addFields(
-      {
-        name: "總投入",
-        value: `${Math.round(totalCost).toLocaleString()}`,
-        inline: true,
-      },
-      {
-        name: "現值",
-        value: `${Math.round(totalValue).toLocaleString()}`,
-        inline: true,
-      },
-      {
-        name: "總損益",
-        value: `**${sign}${Math.round(totalPnl).toLocaleString()}**（${sign}${totalPnlPct.toFixed(2)}%）`,
-        inline: true,
-      }
-    );
+  const displayName = member?.displayName || target.username;
+  const accent = totalPnl >= 0 ? 0x2ecc71 : 0xe74c3c;
+
+  const summaryLines = [
+    `💵 總投入：**${Math.round(totalCost).toLocaleString()}**`,
+    `📊 現值：**${Math.round(totalValue).toLocaleString()}**`,
+    `${totalPnl >= 0 ? "📈" : "📉"} 總損益：**${sign}${Math.round(totalPnl).toLocaleString()}**（${sign}${totalPnlPct.toFixed(2)}%）`,
+  ];
   if (best) {
     const s = best.pnl >= 0 ? "+" : "";
-    embed.addFields({
-      name: "最大獲利",
-      value: `\`${best.symbol}\` ${best.name}（${s}${Math.round(best.pnl).toLocaleString()}）`,
-      inline: true,
-    });
+    summaryLines.push(
+      `🏆 最大獲利：\`${best.symbol}\` ${best.name}（${s}${Math.round(best.pnl).toLocaleString()}）`
+    );
   }
   if (worst && worst.symbol !== best?.symbol) {
     const s = worst.pnl >= 0 ? "+" : "";
-    embed.addFields({
-      name: "最大虧損",
-      value: `\`${worst.symbol}\` ${worst.name}（${s}${Math.round(worst.pnl).toLocaleString()}）`,
-      inline: true,
-    });
+    summaryLines.push(
+      `💀 最大虧損：\`${worst.symbol}\` ${worst.name}（${s}${Math.round(worst.pnl).toLocaleString()}）`
+    );
   }
-  embed.setTimestamp(new Date());
 
-  return { embeds: [embed] };
+  const container = new ContainerBuilder()
+    .setAccentColor(accent)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`## 💼 ${displayName} 的持股`)
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(lines.join("\n\n").slice(0, 4000))
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(summaryLines.join("\n"))
+    );
+
+  return {
+    useV2: true,
+    components: [container],
+  };
 }
 
 module.exports = { buildStockHoldingsView };
