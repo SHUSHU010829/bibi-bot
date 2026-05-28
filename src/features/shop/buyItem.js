@@ -82,12 +82,15 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     };
   }
 
-  // 一次性主題：已擁有就拒絕重買
-  if (item.type === "wallet_theme") {
+  // 一次性主題與等級卡顏色：已擁有就拒絕重買
+  if (item.type === "wallet_theme" || item.type === "card_accent") {
     const owned = await client.userInventoryCollection
-      .findOne({ userId, guildId, itemId, type: "wallet_theme" })
+      .findOne({ userId, guildId, itemId, type: item.type })
       .catch(() => null);
-    if (owned) return { ok: false, error: "你已經擁有這個主題了" };
+    if (owned) {
+      const label = item.type === "card_accent" ? "等級卡顏色" : "主題";
+      return { ok: false, error: `你已經擁有這個${label}了` };
+    }
   }
 
   // 期限內非消耗品（role_color / custom_title）：持有未過期同 itemId 就拒絕重買
@@ -187,7 +190,7 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
       { $inc: { [incField]: incAmount }, $set: { updatedAt: now } },
     );
   } else {
-    // role_color / wallet_theme / custom_title：個別建一筆
+    // role_color / wallet_theme / custom_title / card_accent：個別建一筆
     inventoryDoc = await client.userInventoryCollection.insertOne({
       userId,
       guildId,

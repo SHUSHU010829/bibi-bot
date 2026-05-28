@@ -66,6 +66,12 @@
       { "id": "theme_hologram", "category": "卡面風格", "type": "wallet_theme", "name": "全息投影", "description": "永久解鎖：深藍底 + 虹彩疊字 + 四角 L 形掃描框", "price": 15000, "payload": { "themeId": "hologram" } },
       { "id": "theme_graffiti", "category": "卡面風格", "type": "wallet_theme", "name": "街頭塗鴉", "description": "永久解鎖：黑磚牆 + 螢光黃噴漆 + 紅色陰影 + 黃膠帶貼紙", "price": 18000, "payload": { "themeId": "graffiti" } },
 
+      { "id": "accent_pink", "category": "等級卡顏色", "type": "card_accent", "name": "粉紅", "description": "永久解鎖：等級卡強調色換成粉紅 #E97AAB", "price": 500, "payload": { "themeKey": "pink" } },
+      { "id": "accent_blue", "category": "等級卡顏色", "type": "card_accent", "name": "海藍", "description": "永久解鎖：等級卡強調色換成海藍 #5E8AD8", "price": 500, "payload": { "themeKey": "blue" } },
+      { "id": "accent_gold", "category": "等級卡顏色", "type": "card_accent", "name": "金箔", "description": "永久解鎖：等級卡強調色換成金箔 #D4A437", "price": 500, "payload": { "themeKey": "gold" } },
+      { "id": "accent_mint", "category": "等級卡顏色", "type": "card_accent", "name": "薄荷", "description": "永久解鎖：等級卡強調色換成薄荷 #7BC9A6", "price": 500, "payload": { "themeKey": "mint" } },
+      { "id": "accent_mono", "category": "等級卡顏色", "type": "card_accent", "name": "墨黑", "description": "永久解鎖：等級卡強調色換成墨黑 #2A2420", "price": 500, "payload": { "themeKey": "mono" } },
+
       { "id": "title_custom", "category": "自訂稱號", "type": "custom_title", "name": "自訂稱號（30 天）", "description": "在錢包卡與升等公告顯示自訂稱號 30 天", "price": 10000, "durationDays": 30, "payload": {} },
 
       { "id": "boost_xp_double_1d", "category": "加成藥水", "type": "xp_boost", "name": "XP 雙倍藥水（1 日）", "description": "24 小時內主動互動獲得的 XP ×2（高額消耗）（發言／語音／表情／簽到／Twitch 聊天）；伺服器加成一次性獎勵與管理員發放不適用", "price": 12000, "payload": { "multiplier": 2.0, "durationMinutes": 1440 } },

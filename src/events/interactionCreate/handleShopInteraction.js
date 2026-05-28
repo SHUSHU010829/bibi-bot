@@ -140,8 +140,18 @@ async function handleConfirmButton(client, interaction, qty, itemId) {
     ? String(result.inventoryDoc.insertedId)
     : null;
   const components = [];
-  if (invId && (item.type === "role_color" || item.type === "wallet_theme")) {
-    const label = item.type === "role_color" ? "🎨 立即裝備顏色" : "🎴 立即套用卡面";
+  if (
+    invId &&
+    (item.type === "role_color" ||
+      item.type === "wallet_theme" ||
+      item.type === "card_accent")
+  ) {
+    const label =
+      item.type === "role_color"
+        ? "🎨 立即裝備顏色"
+        : item.type === "wallet_theme"
+          ? "🎴 立即套用卡面"
+          : "🌈 立即套用顏色";
     components.push(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()

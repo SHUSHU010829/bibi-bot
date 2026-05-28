@@ -30,11 +30,12 @@ function parseUseTicketId(customId) {
 const TYPE_LABEL = {
   role_color: "🎨 顏色身份組",
   wallet_theme: "🎴 卡面風格",
+  card_accent: "🌈 等級卡顏色",
   custom_title: "🪪 自訂稱號",
   casino_token: "🎲 賭場道具",
 };
 
-const EQUIPPABLE_TYPES = ["role_color", "wallet_theme", "custom_title"];
+const EQUIPPABLE_TYPES = ["role_color", "wallet_theme", "card_accent", "custom_title"];
 
 function fmtExpiry(expiresAt) {
   if (!expiresAt) return "永久";
