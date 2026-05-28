@@ -23,6 +23,14 @@ function resolve(profile, member) {
     cdMs -= perks.miningCdReductionMs || 0;
   }
 
+  // 抖內 luck buff（永久 expiresAt=null，限時則需 > now）
+  const donationLuckBonus = Number(profile?.donation_luck_bonus || 0);
+  if (donationLuckBonus > 0) {
+    const exp = profile?.donation_luck_expires_at;
+    const stillValid = !exp || new Date(exp).getTime() > Date.now();
+    if (stillValid) luckBonus += donationLuckBonus;
+  }
+
   // luck 全域上限
   const cap = mining?.luckCap ?? 0.25;
   if (luckBonus > cap) luckBonus = cap;

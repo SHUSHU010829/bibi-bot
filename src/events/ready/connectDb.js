@@ -153,6 +153,11 @@ module.exports = async (client) => {
     // 打工 / 挖礦到點通知訂閱
     const cooldownRemindersCollection = database.collection("CooldownReminders");
 
+    // 抖內系統 collections（與 bibi-website 共用，website 唯讀）
+    const donationSessionsCollection = database.collection("DonationSessions");
+    const donationRecordsCollection = database.collection("DonationRecords");
+    const unmatchedDonationsCollection = database.collection("UnmatchedDonations");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -212,6 +217,77 @@ module.exports = async (client) => {
     client.duelGamesCollection = duelGamesCollection;
     client.auctionListingsCollection = auctionListingsCollection;
     client.cooldownRemindersCollection = cooldownRemindersCollection;
+    client.donationSessionsCollection = donationSessionsCollection;
+    client.donationRecordsCollection = donationRecordsCollection;
+    client.unmatchedDonationsCollection = unmatchedDonationsCollection;
+
+    // 抖內系統索引
+    // - code unique：用於 webhook 對應 session
+    // - status + createdAt：給 reconcile cron 掃過期 pending
+    // - createdAt TTL 24 小時：sessionTtlMinutes 是 30 分業務語意，
+    //   存 24 小時是保留一段時間讓對帳查得到，避免 mongo TTL 把剛 grant
+    //   完還沒寫 record 的 doc 掃掉
+    await donationSessionsCollection
+      .createIndex({ code: 1 }, { unique: true, name: "uniq_donation_session_code" })
+      .catch((e) =>
+        console.log(`[WARN] DonationSessions code 索引建立失敗：${e.message}`.yellow),
+      );
+    await donationSessionsCollection
+      .createIndex({ status: 1, createdAt: 1 }, { name: "donation_session_status_time" })
+      .catch((e) =>
+        console.log(`[WARN] DonationSessions status 索引建立失敗：${e.message}`.yellow),
+      );
+    await donationSessionsCollection
+      .createIndex(
+        { createdAt: 1 },
+        { expireAfterSeconds: 24 * 60 * 60, name: "donation_session_ttl_24h" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] DonationSessions TTL 索引建立失敗：${e.message}`.yellow),
+      );
+
+    // donation_records：tradeNo unique 為冪等鍵；歷史永久保留不設 TTL
+    await donationRecordsCollection
+      .createIndex({ tradeNo: 1 }, { unique: true, name: "uniq_donation_record_trade" })
+      .catch((e) =>
+        console.log(`[WARN] DonationRecords tradeNo 索引建立失敗：${e.message}`.yellow),
+      );
+    await donationRecordsCollection
+      .createIndex(
+        { userId: 1, guildId: 1, grantedAt: -1 },
+        { name: "donation_record_user_guild_time" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] DonationRecords 玩家索引建立失敗：${e.message}`.yellow),
+      );
+    await donationRecordsCollection
+      .createIndex(
+        { guildId: 1, grantedAt: -1 },
+        { name: "donation_record_guild_time" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] DonationRecords guild 索引建立失敗：${e.message}`.yellow),
+      );
+
+    // unmatched_donations：code 找不到 session 時的備援。tradeNo 仍然 unique
+    // 防止 webhook 重送重複寫入。resolved=false 是待處理。
+    await unmatchedDonationsCollection
+      .createIndex(
+        { tradeNo: 1 },
+        { unique: true, name: "uniq_unmatched_trade" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] UnmatchedDonations tradeNo 索引建立失敗：${e.message}`.yellow),
+      );
+    await unmatchedDonationsCollection
+      .createIndex(
+        { resolved: 1, createdAt: -1 },
+        { name: "unmatched_resolved_time" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] UnmatchedDonations resolved 索引建立失敗：${e.message}`.yellow),
+      );
+
     await economySnapshotsCollection
       .createIndex({ guildId: 1, date: 1 }, { unique: true })
       .catch((e) =>

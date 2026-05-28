@@ -1,0 +1,90 @@
+{
+  "donation": {
+    "enabled": true,
+    "sessionTtlMinutes": 30,
+    "luckCap": 0.25,
+    "announceChannelId": "1192666043571773580",
+    "roleIds": {
+      "donor": "1509577270040461342",
+      "vipDonor": "1509576114811703436"
+    },
+    "themes": {
+      "donor": "theme_donor"
+    },
+    "titles": {
+      "custom30d": "custom_donor_30d",
+      "custom90d": "custom_donor_90d"
+    },
+    "tiers": [
+      {
+        "id": "coffee",
+        "emoji": "☕",
+        "name": "小額支持",
+        "minAmount": 50,
+        "maxAmount": 149,
+        "coins": 500,
+        "items": { "luck_potion": 3 },
+        "role": "donor",
+        "roleDurationDays": 7,
+        "luckBonus": 0,
+        "luckDurationDays": 0,
+        "themeId": null,
+        "titleId": null,
+        "permanentRole": false
+      },
+      {
+        "id": "standard",
+        "emoji": "🎮",
+        "name": "一般贊助",
+        "minAmount": 150,
+        "maxAmount": 499,
+        "coins": 2000,
+        "items": { "cd_ticket": 5 },
+        "role": "donor",
+        "roleDurationDays": 30,
+        "luckBonus": 0.05,
+        "luckDurationDays": 30,
+        "themeId": null,
+        "titleId": null,
+        "permanentRole": false
+      },
+      {
+        "id": "premium",
+        "emoji": "💎",
+        "name": "大額贊助",
+        "minAmount": 500,
+        "maxAmount": 999,
+        "coins": 6000,
+        "items": {},
+        "role": "donor",
+        "roleDurationDays": 90,
+        "luckBonus": 0.08,
+        "luckDurationDays": 90,
+        "themeId": "theme_donor",
+        "themePermanent": true,
+        "titleId": "custom_donor_30d",
+        "titleDurationDays": 30,
+        "permanentRole": false
+      },
+      {
+        "id": "vip",
+        "emoji": "👑",
+        "name": "頂級贊助",
+        "minAmount": 1000,
+        "maxAmount": null,
+        "coins": 15000,
+        "items": {},
+        "role": "vipDonor",
+        "roleDurationDays": null,
+        "luckBonus": 0.12,
+        "luckDurationDays": null,
+        "themeId": "theme_donor",
+        "themePermanent": true,
+        "titleId": "custom_donor_90d",
+        "titleDurationDays": 90,
+        "permanentRole": true,
+        "canNominateTitle": true
+      }
+    ]
+  }
+}
