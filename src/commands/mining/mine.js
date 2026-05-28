@@ -8,6 +8,7 @@ const {
 const { mining } = require("../../config");
 const mineService = require("../../features/mining/mineService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
+const reminder = require("../../features/reminders/cooldownReminderService");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 function oreLabel(oreKey) {
@@ -109,7 +110,28 @@ module.exports = {
         });
       }
 
-      await interaction.editReply({ embeds: [embed] });
+      const notifyState = await reminder.getState(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "mining",
+      });
+      const notifyEnabled = !!notifyState?.enabled;
+      // 已開啟通知者，把追蹤的冷卻更新成本次最新值
+      if (notifyEnabled) {
+        await reminder.refreshIfEnabled(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          type: "mining",
+          readyAt: result.newCooldownAt,
+        });
+      }
+      const row = reminder.buildButtonRow({
+        type: "mining",
+        ownerId: interaction.user.id,
+        enabled: notifyEnabled,
+      });
+
+      await interaction.editReply({ embeds: [embed], components: [row] });
 
       // 稱號解鎖檢查不阻塞回覆；MiningProfiles 已寫入本次挖礦數據
       gameTitleService

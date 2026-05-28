@@ -7,6 +7,7 @@ const {
 
 const { work } = require("../../config");
 const workService = require("../../features/work/workService");
+const reminder = require("../../features/reminders/cooldownReminderService");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 module.exports = {
@@ -69,7 +70,28 @@ module.exports = {
         )
         .setFooter({ text: "想要更高報酬？試試 /挖礦 吧！" });
 
-      await interaction.editReply({ embeds: [embed] });
+      const notifyState = await reminder.getState(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "work",
+      });
+      const notifyEnabled = !!notifyState?.enabled;
+      // 已開啟通知者，把追蹤的冷卻更新成本次最新值
+      if (notifyEnabled) {
+        await reminder.refreshIfEnabled(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          type: "work",
+          readyAt: result.newCooldownAt,
+        });
+      }
+      const row = reminder.buildButtonRow({
+        type: "work",
+        ownerId: interaction.user.id,
+        enabled: notifyEnabled,
+      });
+
+      await interaction.editReply({ embeds: [embed], components: [row] });
     } catch (error) {
       console.log(`[ERROR] /打工:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 打工失敗，請呼叫舒舒！").catch(() => {});
