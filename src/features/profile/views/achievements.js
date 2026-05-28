@@ -1,5 +1,9 @@
 require("colors");
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+} = require("discord.js");
 
 const gameTitleService = require("../../gameTitles/gameTitleService");
 const {
@@ -16,7 +20,7 @@ function progressBar(cur, target) {
 // 同時呈現「等級徽章」與「遊戲稱號」兩類成就：
 // - 等級徽章來自 features/leveling/badgeDefinitions
 // - 遊戲稱號來自 features/gameTitles/gameTitleService
-async function buildAchievementsView(client, { target, guildId }) {
+async function buildAchievementsView(client, { target, member, guildId }) {
   if (!client.userLevelsCollection) {
     return { content: "🔧 等級／成就系統尚未啟動！" };
   }
@@ -38,16 +42,16 @@ async function buildAchievementsView(client, { target, guildId }) {
   const totalUnlocked = badgeUnlocked + gtUnlockedCount;
   const totalTotal = badgeTotal + gtTotalCount;
 
-  const embed = new EmbedBuilder()
-    .setColor(0x9b59b6)
-    .setTitle(`🏆 ${target.username} 的成就`)
-    .setDescription(
-      `已解鎖 **${totalUnlocked} / ${totalTotal}**\n` +
-        `-# 🏅 等級徽章 ${badgeUnlocked}/${badgeTotal} ・ 🎮 遊戲稱號 ${gtUnlockedCount}/${gtTotalCount}`
-    )
-    .setFooter({
-      text: "👑 礦坑之王為每週挖礦榜第一 ・ 用 /稱號 設定 把成就掛上等級卡",
-    });
+  const displayName = member?.displayName || target.username;
+  const container = new ContainerBuilder()
+    .setAccentColor(0x9b59b6)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `## 🏆 ${displayName} 的成就\n` +
+          `已解鎖 **${totalUnlocked} / ${totalTotal}**\n` +
+          `-# 🏅 等級徽章 ${badgeUnlocked}/${badgeTotal} ・ 🎮 遊戲稱號 ${gtUnlockedCount}/${gtTotalCount}`
+      )
+    );
 
   // ── 等級徽章區 ──
   for (const [catKey, catLabel] of Object.entries(BADGE_CATEGORIES)) {
@@ -79,11 +83,12 @@ async function buildAchievementsView(client, { target, guildId }) {
       return `🔒 ${nameDecoration} — ${b.description}${progressStr}`;
     });
 
-    embed.addFields({
-      name: catLabel,
-      value: lines.join("\n"),
-      inline: false,
-    });
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### ${catLabel}\n${lines.join("\n")}`.slice(0, 4000)
+      )
+    );
   }
 
   // ── 遊戲稱號區 ──
@@ -109,14 +114,28 @@ async function buildAchievementsView(client, { target, guildId }) {
         .join("\n");
       return `${head}\n${parts}`;
     });
-    embed.addFields({
-      name: gameTitleService.categoryLabel(cat),
-      value: lines.join("\n\n"),
-      inline: false,
-    });
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### ${gameTitleService.categoryLabel(cat)}\n${lines.join("\n\n")}`.slice(
+          0,
+          4000
+        )
+      )
+    );
   }
 
-  return { embeds: [embed] };
+  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "-# 👑 礦坑之王為每週挖礦榜第一 ・ 用 /稱號 設定 把成就掛上等級卡"
+    )
+  );
+
+  return {
+    useV2: true,
+    components: [container],
+  };
 }
 
 module.exports = { buildAchievementsView };

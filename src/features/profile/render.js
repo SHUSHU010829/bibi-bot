@@ -6,6 +6,8 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ContainerBuilder,
+  TextDisplayBuilder,
   MessageFlags,
 } = require("discord.js");
 
@@ -62,16 +64,23 @@ function buildNavRows({ activeTab, ownerUid }) {
   return rows;
 }
 
+// 所有分頁統一用 Components V2 呈現。沒有 V2 components 的 view（例如錯誤
+// 訊息只回傳 { content }）會在這裡自動包成 ContainerBuilder + TextDisplay，
+// 避免訊息一旦帶上 IsComponentsV2 旗標就無法在 editReply 中拆掉的問題。
 function wrapPayload(view, navRows) {
-  const useV2 = !!view.useV2;
-  const components = [...(view.components || []), ...navRows];
+  let viewComponents = view.components;
+  if (!viewComponents || viewComponents.length === 0) {
+    const fallbackText = view.content || "—";
+    viewComponents = [
+      new ContainerBuilder().addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(fallbackText)
+      ),
+    ];
+  }
   return {
-    content: view.content || "",
-    embeds: useV2 ? [] : view.embeds || [],
-    components,
+    components: [...viewComponents, ...navRows],
     files: view.files || [],
-    // V2 layout 要 IsComponentsV2 旗標；公開訊息不再帶 Ephemeral
-    flags: useV2 ? MessageFlags.IsComponentsV2 : 0,
+    flags: MessageFlags.IsComponentsV2,
   };
 }
 

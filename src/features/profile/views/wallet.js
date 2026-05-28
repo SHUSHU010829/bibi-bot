@@ -1,5 +1,12 @@
 require("colors");
-const { AttachmentBuilder } = require("discord.js");
+const {
+  AttachmentBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+} = require("discord.js");
 
 const { coinSystem } = require("../../../config");
 const generateWalletCard = require("../../../utils/generateWalletCard");
@@ -34,10 +41,11 @@ async function buildWalletView(client, { target, member, guildId }) {
     }
   }
 
+  const displayName = member?.displayName || target.username;
   const buf = await generateWalletCard({
     userId,
     guildId,
-    username: member?.displayName || target.username,
+    username: displayName,
     totalCoins: doc.totalCoins || 0,
     lifetimeCoins: lifetime,
     cardNo: userId.slice(-4),
@@ -45,12 +53,26 @@ async function buildWalletView(client, { target, member, guildId }) {
     styleId,
   });
 
-  const attachment = new AttachmentBuilder(buf, {
-    name: `wallet-${userId}.png`,
-  });
+  const fileName = `wallet-${userId}.png`;
+  const attachment = new AttachmentBuilder(buf, { name: fileName });
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0xffd166)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `## ${MONEY_EMOJI} ${displayName} 的錢包\n-# 目前金幣 **${(doc.totalCoins || 0).toLocaleString()}** ・ 累積 **${lifetime.toLocaleString()}**`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder().setURL(`attachment://${fileName}`)
+      )
+    );
 
   return {
-    content: `${MONEY_EMOJI} **目前金幣：${(doc.totalCoins || 0).toLocaleString()}**`,
+    useV2: true,
+    components: [container],
     files: [attachment],
   };
 }
