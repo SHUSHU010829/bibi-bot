@@ -55,10 +55,19 @@ function isAdminCommand(commandObject) {
 
 // 回傳該指令允許使用的頻道清單；null = 不限制（豁免）。
 // 豁免條件：標記 ephemeral 的私人指令、管理員 / 開發者指令。
+//
+// 指令可在 module 上覆寫 `channelBuckets: ["general", "mining", …]`，
+// 同時收進多個 bucket 對應的所有頻道（用於跨領域的查看類指令）。
 function allowedChannelsFor(commandObject, restrictions) {
   if (!commandObject?.data?.name || !restrictions) return null;
   if (commandObject.ephemeral === true) return null;
   if (commandObject.devOnly || isAdminCommand(commandObject)) return null;
+
+  const explicit = commandObject.channelBuckets;
+  if (Array.isArray(explicit) && explicit.length) {
+    const channels = explicit.flatMap((b) => restrictions[b] || []);
+    return channels.length ? channels : null;
+  }
 
   const folder = getFolderMap()[commandObject.data.name];
   const bucket = FOLDER_BUCKET[folder] || DEFAULT_BUCKET;
