@@ -9,6 +9,7 @@ const nordic = require("./nordic");
 const leather = require("./leather");
 const hologram = require("./hologram");
 const graffiti = require("./graffiti");
+const donor = require("./donor");
 
 const STYLES = {
   classic,
@@ -19,6 +20,7 @@ const STYLES = {
   leather,
   hologram,
   graffiti,
+  donor,
 };
 
 const DEFAULT_STYLE = "classic";
