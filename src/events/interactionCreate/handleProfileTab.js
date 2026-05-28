@@ -10,12 +10,12 @@ const {
 const logger = require("../../utils/logger");
 const { trackError } = require("../../utils/errorTracker");
 
-function isProfileTabButton(customId) {
-  return typeof customId === "string" && customId.startsWith(CUSTOM_ID_PREFIX);
-}
+module.exports = async (client, interaction) => {
+  if (!interaction.isButton?.()) return;
+  const cid = interaction.customId;
+  if (!cid || !cid.startsWith(CUSTOM_ID_PREFIX)) return;
 
-async function handle(client, interaction) {
-  const parsed = parseCustomId(interaction.customId);
+  const parsed = parseCustomId(cid);
   if (!parsed) return;
 
   const { tabKey, targetUid, ephemeral } = parsed;
@@ -54,13 +54,13 @@ async function handle(client, interaction) {
     logger.error(
       {
         source: "profile-tab",
-        customId: interaction.customId,
+        customId: cid,
         err: error.message,
         stack: error.stack,
       },
       "切換 /檔案 分頁失敗"
     );
-    trackError("profile-tab", error, { customId: interaction.customId });
+    trackError("profile-tab", error, { customId: cid });
     await interaction
       .editReply({
         content: "🔧 切換分頁失敗，請重試或重新呼叫 `/檔案`",
@@ -70,6 +70,4 @@ async function handle(client, interaction) {
       })
       .catch(() => {});
   }
-}
-
-module.exports = { handle, isProfileTabButton };
+};

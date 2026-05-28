@@ -63,7 +63,7 @@ const GROUPS = {
     emoji: "🏅",
     order: 5,
     blurb: "個人檔案、稱號、等級卡、徽章、簽到、排行榜、訊息/語音統計",
-    folders: ["profile", "level", "stats"],
+    folders: ["profile", "level", "leaderboard", "stats"],
   },
   community: {
     label: "社群互動",

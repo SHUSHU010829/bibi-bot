@@ -10,7 +10,6 @@ const { getDataFile } = require("../../utils/dataPaths");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
-const profileTab = require("./handleProfileTab");
 
 // 票務面板數據文件路徑
 const PANELS_FILE = getDataFile("ticket-panels.json");
@@ -53,12 +52,6 @@ module.exports = async (client, interaction) => {
         } catch (_) { /* noop */ }
         return;
       }
-    }
-
-    // 處理 /檔案 分頁切換按鈕
-    if (profileTab.isProfileTabButton(customId)) {
-      await profileTab.handle(client, interaction);
-      return;
     }
 
     // 處理票務按鈕
