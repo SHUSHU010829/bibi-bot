@@ -604,7 +604,7 @@ async function runQuotePanel(client, interaction) {
         .addOptions(
           stocks.slice(0, 25).map((s) => ({
             label: `${s.symbol} ${s.name}`,
-            description: `當前 ${(s.price || 0).toFixed(1)}`,
+            description: `當前 ${(s.currentPrice || 0).toFixed(1)}`,
             value: s.symbol,
             default: selected === s.symbol,
           }))
@@ -825,14 +825,14 @@ function buildPanelText(stocks, selected) {
   const marketLabel = isMarketOpen() ? "🟢 開盤中" : "🌙 收盤";
   const lines = stocks.map((s) => {
     const tag = selected === s.symbol ? "▶︎" : "・";
-    return `${tag} \`${s.symbol}\` **${s.name}** ・ ${(s.price || 0).toFixed(1)}`;
+    return `${tag} \`${s.symbol}\` **${s.name}** ・ ${(s.currentPrice || 0).toFixed(1)}`;
   });
   let body = `# 📊 股市報價　${marketLabel}\n${lines.join("\n")}`;
   if (selected) {
     const cur = stocks.find((s) => s.symbol === selected);
     if (cur) {
       body +=
-        `\n\n**目前選擇**:\`${cur.symbol}\` ${cur.name}　當前報價 **${(cur.price || 0).toFixed(1)}**`;
+        `\n\n**目前選擇**:\`${cur.symbol}\` ${cur.name}　當前報價 **${(cur.currentPrice || 0).toFixed(1)}**`;
     }
   } else {
     body += `\n\n-# 從下拉選擇一支股票,下方按鈕會解鎖`;
