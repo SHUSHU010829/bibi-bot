@@ -33,7 +33,6 @@ const CASINO_COMMANDS = new Set([
   "射龍門",
   "roulette",
   "slot",
-  "slottest",
   "poker",
   "骰寶",
 ]);
