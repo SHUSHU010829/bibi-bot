@@ -5,7 +5,10 @@
 >
 > 與 `PLAN_INTEGRATED.md`（未實作功能）平行進行，不需互相等待。
 >
-> 最後更新：2026-05-28
+> 最後更新：2026-05-29
+>
+> ✅ **實作進度：Opt-1 ~ Opt-5 全數完成**（PR #282，分支 `claude/stoic-bell-BQ7tP`）。
+> 各項詳細狀態與實作差異見下方對應段落的「✅ 實作狀態」。
 
 ---
 
@@ -30,19 +33,26 @@
 
 優化清單：
 
-| Opt | 對應規劃書 Phase | 現況差距 | 預估時間 |
-|---|---|---|---|
-| Opt-1 | Phase B 決鬥 | 公式、上限、冷卻不同 | 1–2 天 |
-| Opt-2 | Phase E 稱號管理 | 過期、admin、DM 缺失 | 1–2 天 |
-| Opt-3 | Phase S1 挖礦任務 | 任務未定義、未埋鉤子 | 1–2 天 |
-| Opt-4 | Phase S2 排行榜 | 缺 value/rainbow/titles/weekly | 1–2 天 |
-| Opt-5 | （主動發現） | buff 邏輯散落、難擴充 | 2 天 |
+| Opt | 對應規劃書 Phase | 現況差距 | 預估時間 | 狀態 |
+|---|---|---|---|---|
+| Opt-1 | Phase B 決鬥 | 公式、上限、冷卻不同 | 1–2 天 | ✅ 已完成 |
+| Opt-2 | Phase E 稱號管理 | 過期、admin、DM 缺失 | 1–2 天 | ✅ 已完成 |
+| Opt-3 | Phase S1 挖礦任務 | 任務未定義、未埋鉤子 | 1–2 天 | ✅ 已完成 |
+| Opt-4 | Phase S2 排行榜 | 缺 value/rainbow/titles/weekly | 1–2 天 | ✅ 已完成 |
+| Opt-5 | （主動發現） | buff 邏輯散落、難擴充 | 2 天 | ✅ 已完成 |
 
-**合計**：6–10 天。
+**合計**：6–10 天。**（全數完成於 PR #282）**
 
 ---
 
-## Opt-1：決鬥系統公式與限制重做（Phase B）
+## Opt-1：決鬥系統公式與限制重做（Phase B）✅ 已完成
+
+> **✅ 實作狀態（PR #282）**
+> - 判定改分數制 `score = 攻擊力 + rand(0~30)`，分數高者勝（平手判挑戰者）
+> - 賭注 100–5,000、每日 3 場、同對手 6 小時冷卻、系統抽 5%（`bet×1.9`）
+> - 對局補存 `score_*/pot/rake` 欄位；新增 `/決鬥紀錄`
+> - 設定改放 `dungeon.duel`（非新建 `duel.json`），新增 `dailyLimit/samePairCooldownMs/systemRakePct/scoreRandMax`
+> - ATK 取得改走 `buffResolver.atkFromProfile`（見 Opt-5）
 
 ### 現況
 
@@ -113,7 +123,17 @@
 
 ---
 
-## Opt-2：稱號進階管理（Phase E）
+## Opt-2：稱號進階管理（Phase E）✅ 已完成
+
+> **✅ 實作狀態（PR #282）**
+> - 資料結構採**平行 meta 欄位** `gameTitleMeta`（`{titleId, grantedAt, expiresAt, source, status}`）
+>   而非直接改 `gameTitles` 型別 —— 零風險相容既有資料與所有讀寫點；`gameTitles` 仍為權威解鎖清單
+> - `grant` 支援 `expiresAt/source`；`revoke` 標記 meta 狀態保留歷史
+> - 新增 `findExpiredActive` + `titleExpiryChecker` cron（每小時掃描過期 → 自動卸下 + DM）
+> - 多稱號展示：強化 `/檔案` 成就分頁（標示「⭐展示中」與限時稱號到期時間），非另建 Embed
+> - 新增 `/title-admin grant|revoke|list`（含稱號 ID 自動完成）
+> - 換王 DM：前任王/新王皆收 DM，公告 mention 雙方並標註王座移交
+> - 備註：遊戲稱號目前無對應 Discord role（role 屬抖內 Phase 8），故過期僅卸稱號不動 role
 
 ### 現況
 
@@ -177,7 +197,15 @@
 
 ---
 
-## Opt-3：挖礦專屬任務埋鉤子（Phase S1）
+## Opt-3：挖礦專屬任務埋鉤子（Phase S1）✅ 已完成
+
+> **✅ 實作狀態（PR #282）**
+> - `quests.json` 新增 4 daily + 4 weekly 共 8 項
+> - `questService` 新增 `addMetaValue`（累計金額型，供 `weekly_sell_value`）
+> - 新增 `applyQuestHooks` 通用指令層鉤子（自動入帳通知、非阻塞），埋進 mine/sell/craft/work
+> - **礦石 key 修正**：原規劃 `crystal`/`rainbow` 實際不存在，對應為真實礦石 ——
+>   稀有礦 = `iron/gold/diamond`（`daily_rare_ore`）、傳說礦 = `diamond`
+>   （`weekly_rainbow` → 實作為 `weekly_diamond`「鑽石獵人」）
 
 ### 現況
 
@@ -233,7 +261,15 @@
 
 ---
 
-## Opt-4：排行榜多維度擴充（Phase S2）
+## Opt-4：排行榜多維度擴充（Phase S2）✅ 已完成
+
+> **✅ 實作狀態（PR #282）**
+> - 依實際「類別 + fetcher」架構新增類別：挖礦市值 / 鑽石獵人 / 稱號收藏 / 週報總覽
+> - 抽出共用服務 `miningLeaderboard`（byCount/byValue/byDiamond）、`titleLeaderboard`、`weeklySummary`
+> - `render` 擴充支援 `sections` 複合區段（週報用）；`rankService` 新增 `periodWindow`
+> - 新增 Dashboard 用 HTTP API：`/api/v1/leaderboard/mining|titles|weekly-summary`
+> - 鑽石獵人對應實際傳說礦 `diamond`（原規劃 rainbow 不存在），取自 `lifetime_ore.diamond`（全時）
+> - UI 採既有下拉選單切換類別，未走 `/leaderboard <子指令>` 形式（與現行入口一致）
 
 ### 現況
 
@@ -292,7 +328,18 @@
 
 ---
 
-## Opt-5：統一 buffResolver（主動發現）
+## Opt-5：統一 buffResolver（主動發現）✅ 已完成
+
+> **✅ 實作狀態（PR #282）**
+> - 新增 `src/features/buff/buffResolver.js` 作為**統一讀取門面**：
+>   `atkFromProfile / getEffectiveAtk / getEffectiveLuck / getEffectiveCdMs /
+>   getEffectiveIncomeMultiplier / summary`，委派既有 mining resolve / playerAtk /
+>   coinMultiplier / activeBuff，並標明公會(A)/技能(S3)/食物(S4)/活動(S5) 擴充點
+> - 決鬥 ATK 改走 `buffResolver.atkFromProfile`（單一來源）
+> - 新增 `/加成` 指令（個人加成總覽）
+> - **務實調整**：金幣倍率的「實際套用」仍保留在 `grantCoins`（load-bearing 集中點），
+>   buffResolver 提供統一「查詢」口徑，避免改動線上經濟計算路徑；mine/work/sell 的
+>   收入計算未強制改寫（相依的 Phase A/S3 尚未啟動，待其啟動時再逐步遷移套用點）
 
 ### 現況
 
@@ -350,15 +397,16 @@
 
 不需等所有新 Phase 啟動，可在現有系統穩定運行時穿插執行：
 
-| 週次 | 工作 | 時間 |
-|---|---|---|
-| 本週 | Opt-3（挖礦任務） | 1–2 天 |
-| 本週 | Opt-4（排行榜） | 1–2 天 |
-| 下週 | Opt-1（決鬥重做） | 1–2 天 |
-| 下週 | Opt-2（稱號管理） | 1–2 天 |
-| Phase A 啟動前 | Opt-5（buffResolver） | 2 天 |
+| 週次 | 工作 | 時間 | 狀態 |
+|---|---|---|---|
+| 本週 | Opt-3（挖礦任務） | 1–2 天 | ✅ 完成 |
+| 本週 | Opt-4（排行榜） | 1–2 天 | ✅ 完成 |
+| 下週 | Opt-1（決鬥重做） | 1–2 天 | ✅ 完成 |
+| 下週 | Opt-2（稱號管理） | 1–2 天 | ✅ 完成 |
+| Phase A 啟動前 | Opt-5（buffResolver） | 2 天 | ✅ 完成 |
 
 **合計 6–10 天**，可與 `PLAN_INTEGRATED.md` 的 Phase 8 / G / F 並行進行。
+**→ 全數於 PR #282 完成（2026-05-29）。**
 
 ---
 
@@ -391,4 +439,4 @@
 
 ---
 
-_Last updated: 2026-05-28_
+_Last updated: 2026-05-29 — Opt-1 ~ Opt-5 全數完成（PR #282）_
