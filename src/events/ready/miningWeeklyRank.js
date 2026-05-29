@@ -27,22 +27,39 @@ async function guildsWithLogs(client, window) {
 }
 
 // 卸下上一任礦坑之王（贏家除外）。解鎖清單存在 UserLevels.gameTitles。
-async function dethronePrevious(client, guildId, winnerId) {
-  if (!client.userLevelsCollection) return;
+// 回傳實際被卸任的舊王 userId 陣列（供公告 mention / 已在內部發 DM）。
+async function dethronePrevious(client, guildId, winnerId, winnerMention) {
+  if (!client.userLevelsCollection) return [];
   const prev = await client.userLevelsCollection
     .find({ guildId, gameTitles: KING_TITLE })
     .project({ userId: 1 })
     .toArray()
     .catch(() => []);
+  const dethroned = [];
   for (const p of prev) {
     if (p.userId === winnerId) continue;
     await gameTitleService
-      .revoke(client, { userId: p.userId, guildId, titleId: KING_TITLE })
+      .revoke(client, { userId: p.userId, guildId, titleId: KING_TITLE, status: "revoked" })
       .catch(() => {});
+    dethroned.push(p.userId);
+    // 前任王 DM 通知
+    try {
+      const user = await client.users.fetch(p.userId).catch(() => null);
+      if (user) {
+        await user
+          .send(
+            `👑 你的 **${gameTitleService.label(KING_TITLE)}** 稱號已移交給 ${winnerMention}，期待你下週奪回王座 ⛏️`
+          )
+          .catch(() => {});
+      }
+    } catch (_) {
+      /* noop */
+    }
   }
+  return dethroned;
 }
 
-async function announceKing(client, winnerId, ranking, championCount) {
+async function announceKing(client, winnerId, ranking, championCount, dethroned = []) {
   const channelId = gameTitleService.announceChannelId();
   if (!channelId) return;
   const channel = await client.channels.fetch(channelId).catch(() => null);
@@ -53,13 +70,18 @@ async function announceKing(client, winnerId, ranking, championCount) {
     .map((r, i) => `${MEDALS[i]} <@${r.userId}> — **${r.total.toLocaleString()}** 顆`)
     .join("\n");
 
+  const handoverNote = dethroned.length
+    ? `\n王座由 ${dethroned.map((id) => `<@${id}>`).join("、")} 移交 👑`
+    : "";
+  const mentionIds = [winnerId, ...dethroned];
+
   const container = new ContainerBuilder()
     .setAccentColor(0xffd700)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# 👑 上週礦坑之王出爐！\n` +
           `恭喜 <@${winnerId}> 拿下上週挖礦榜冠軍，獲得稱號 **${gameTitleService.label(KING_TITLE)}**！\n` +
-          `這是他第 **${championCount}** 次稱王 👑`,
+          `這是他第 **${championCount}** 次稱王 👑${handoverNote}`,
       ),
     )
     .addSeparatorComponents(new SeparatorBuilder())
@@ -75,7 +97,11 @@ async function announceKing(client, winnerId, ranking, championCount) {
     );
 
   await channel
-    .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .send({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { users: mentionIds },
+    })
     .catch(() => {});
 }
 
@@ -88,7 +114,13 @@ async function processGuild(client, guildId) {
 
   // 先頒給新王（idempotent，自行做專屬公告所以關掉預設公告），再卸下舊王
   await gameTitleService
-    .grant(client, { userId: winnerId, guildId, titleId: KING_TITLE, announce: false })
+    .grant(client, {
+      userId: winnerId,
+      guildId,
+      titleId: KING_TITLE,
+      announce: false,
+      source: "weekly_king",
+    })
     .catch(() => {});
 
   const updated = await client.miningProfilesCollection
@@ -100,8 +132,22 @@ async function processGuild(client, guildId) {
     .catch(() => null);
   const championCount = (updated?.value || updated)?.weekly_champion_count || 1;
 
-  await dethronePrevious(client, guildId, winnerId);
-  await announceKing(client, winnerId, ranking, championCount);
+  const dethroned = await dethronePrevious(client, guildId, winnerId, `<@${winnerId}>`);
+  await announceKing(client, winnerId, ranking, championCount, dethroned);
+
+  // 新王 DM 通知
+  try {
+    const winner = await client.users.fetch(winnerId).catch(() => null);
+    if (winner) {
+      await winner
+        .send(
+          `👑 恭喜你成為 **${gameTitleService.label(KING_TITLE)}**！這是你第 ${championCount} 次稱王，繼續用 /挖礦 守住王座 ⛏️`
+        )
+        .catch(() => {});
+    }
+  } catch (_) {
+    /* noop */
+  }
 
   // 週冠次數變動可能解鎖傳說礦工
   await gameTitleService
