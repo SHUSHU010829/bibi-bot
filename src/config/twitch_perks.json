@@ -1,13 +1,6 @@
 {
   "twitchPerks": {
     "enabled": true,
-    "monthlyTitle": {
-      "cronSchedule": "0 9 1 * *",
-      "timezone": "Asia/Taipei",
-      "itemId": "title_custom",
-      "durationDays": 30,
-      "source": "twitch_tier3_monthly"
-    },
     "tiers": {
       "tier1": {
         "miningLuckBonus": 0.05,
@@ -30,7 +23,6 @@
         "depositSlotBonus": 2,
         "auctionFeeRate": 0.02,
         "lotteryTicketBonus": 5,
-        "monthlyFreeTitleEnabled": true,
         "exclusiveThemeId": "theme_subscriber_t3",
         "exclusiveColorRoleId": ""
       }

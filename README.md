@@ -686,10 +686,8 @@ embed.js → 發送 Embed
 | 定存單上限 | 5 | 7 | 7 |
 | 拍賣手續費 | 5% | 5% | 2% |
 | 樂透每期張數上限 | 10 | 10 | 15 |
-| 每月免費自訂稱號 | ✗ | ✗ | ✓ |
 
 - 挖礦 luck 中鎬子 / 藥水 / Twitch 來源相加後受 `luckCap = 25%` 全域上限；抖內 luck 加成則獨立於上限外額外疊加（見 `buffResolver.js`）。拍賣手續費依「賣家」tier，於結算時判定。
-- **cron**：`twitchMonthlyTitle`（每月 1 日發 Tier3 免費自訂稱號 30 天 + DM，當月冪等）。
 - **尚未接（保留待做）**：訂閱限定卡面 `exclusiveThemeId` 與永久限定名字顏色 `exclusiveColorRoleId`——前者需在錢包卡渲染器實作 `theme_subscriber_t2/t3` 畫法、後者需先建顏色身分組並填入 ID。
 
 > 🪙 **金幣顯示 emoji**：金額 / 餘額 / 獎勵的顯示集中在 `src/constants/coin.js`（`COIN_EMOJI` 動態金幣、`MONEY_EMOJI` 錢袋），用於訊息內容、Embed 描述 / 標題 / 欄位值；Embed footer、按鈕 setEmoji、斜線指令說明、canvas 圖片不適用，仍用一般 emoji。
