@@ -109,7 +109,11 @@ module.exports = async (client, reaction, user) => {
         member: authorMember,
         username: message.author.username,
       };
-      const notifyCtx = { user: message.author, userId: message.author.id };
+      const notifyCtx = {
+        user: message.author,
+        userId: message.author.id,
+        guildId: message.guild.id,
+      };
       questService
         .incrementProgress(
           client,

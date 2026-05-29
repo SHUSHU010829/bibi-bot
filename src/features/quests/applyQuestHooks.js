@@ -5,7 +5,7 @@ const notifyQuestClaim = require("./notifyQuestClaim");
 // 在指令層套用一組任務進度，並對「自動入帳」的任務送出通知。
 //
 // ctx：{ interaction, user, userId, guildId, member, username }
-//   - interaction / user / userId 供 notifyQuestClaim 決定通知方式（ephemeral followUp 或 DM）
+//   - interaction 供 notifyQuestClaim 以 ephemeral 私人回覆（無 interaction 則靜默不通知）
 //   - guildId / member / username 供任務發幣
 // hooks：[{ questId, type?, delta?, key? }]
 //   - type 'meta'：累計型，呼叫 addMetaValue(key, delta)

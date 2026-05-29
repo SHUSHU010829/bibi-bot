@@ -113,6 +113,9 @@ module.exports = async (client) => {
     // 任務進度（每日/每週任務的進度與領取狀態）
     const questProgressCollection = database.collection("QuestProgress");
 
+    // 任務通知偏好（每位玩家的「完成 DM 通知」開關）
+    const questSettingsCollection = database.collection("QuestSettings");
+
     // 經濟健康快照（每日聚合，用於通膨追蹤）
     const economySnapshotsCollection = database.collection("EconomySnapshots");
 
@@ -202,6 +205,7 @@ module.exports = async (client) => {
     client.coinDepositsCollection = coinDepositsCollection;
     client.welfareClaimsCollection = welfareClaimsCollection;
     client.questProgressCollection = questProgressCollection;
+    client.questSettingsCollection = questSettingsCollection;
     client.economySnapshotsCollection = economySnapshotsCollection;
     client.hostedEventsCollection = hostedEventsCollection;
     client.quizGamesCollection = quizGamesCollection;
@@ -683,6 +687,12 @@ module.exports = async (client) => {
       await questProgressCollection.createIndex(
         { updatedAt: 1 },
         { expireAfterSeconds: 90 * 24 * 60 * 60, name: "quest_ttl_90d" }
+      );
+
+      // 任務通知偏好：(user, guild) 唯一
+      await questSettingsCollection.createIndex(
+        { userId: 1, guildId: 1 },
+        { unique: true, name: "uniq_quest_settings_user_guild" }
       );
 
       // 股市系統索引

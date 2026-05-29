@@ -105,7 +105,7 @@ async function tryUpdateMessageQuests(client, message) {
       member: message.member,
       username: message.author.username,
     };
-    const notifyCtx = { user: message.author, userId };
+    const notifyCtx = { user: message.author, userId, guildId };
 
     const dailyMsgRes = await questService
       .incrementProgress(client, userId, guildId, "daily_messages", 1, claimCtx)
