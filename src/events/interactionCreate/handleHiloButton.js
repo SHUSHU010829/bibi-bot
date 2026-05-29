@@ -143,7 +143,12 @@ module.exports = async (client, interaction) => {
 
     const payload = await renderMessage(
       { ...next, gameId, userId },
-      { username, balance: balanceAfter }
+      {
+        username,
+        balance: balanceAfter,
+        userId,
+        avatarURL: interaction.user.displayAvatarURL(),
+      }
     );
     await interaction.editReply({
       ...payload,
