@@ -31,14 +31,19 @@ async function buildWalletView(client, { target, member, guildId }) {
     lifetime >= 20000 ? "platinum" : lifetime >= 5000 ? "premium" : "standard";
 
   let styleId = null;
+  let customCardNumber = null;
   if (client.userLevelsCollection) {
     const lv = await client.userLevelsCollection
-      .findOne({ userId, guildId }, { projection: { walletTheme: 1 } })
+      .findOne(
+        { userId, guildId },
+        { projection: { walletTheme: 1, customCardNumber: 1 } }
+      )
       .catch(() => null);
     if (lv?.walletTheme) {
       const themeMeta = getTheme(lv.walletTheme);
       styleId = themeMeta?.styleId || lv.walletTheme;
     }
+    customCardNumber = lv?.customCardNumber || null;
   }
 
   const displayName = member?.displayName || target.username;
@@ -51,6 +56,7 @@ async function buildWalletView(client, { target, member, guildId }) {
     cardNo: userId.slice(-4),
     tier,
     styleId,
+    cardNumber: customCardNumber,
   });
 
   const fileName = `wallet-${userId}.png`;

@@ -46,6 +46,7 @@ function buildCacheKey(data, styleId) {
     data.lifetimeCoins ?? "",
     data.cardNo || "",
     data.tier || "",
+    data.cardNumber || "",
   ].join("|");
 }
 
