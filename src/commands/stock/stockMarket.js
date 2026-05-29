@@ -44,6 +44,18 @@ const DIVIDEND_PERIOD_MS = {
   "3m": 90 * 24 * 60 * 60 * 1000,
 };
 
+const TRADE_PERIOD_MS = {
+  "1w": 7 * 24 * 60 * 60 * 1000,
+  "1m": 30 * 24 * 60 * 60 * 1000,
+  "3m": 90 * 24 * 60 * 60 * 1000,
+};
+
+const TRADE_PERIOD_LABEL = {
+  "1w": "近 7 天",
+  "1m": "近 30 天",
+  "3m": "近 90 天",
+};
+
 const QUOTE_PANEL_TIMEOUT_MS = 5 * 60 * 1000;
 
 // 為了讓 addChoices 可以用,先從 config 的 pool 取靜態股票清單;
@@ -138,6 +150,29 @@ module.exports = {
     )
     .addSubcommand((s) =>
       s
+        .setName("紀錄")
+        .setDescription("查詢自己過去的股票買賣成交紀錄 📒")
+        .addStringOption((o) =>
+          o
+            .setName("期間")
+            .setDescription("查詢期間(預設 1m)")
+            .addChoices(
+              { name: "近 7 天", value: "1w" },
+              { name: "近 30 天", value: "1m" },
+              { name: "近 90 天", value: "3m" }
+            )
+            .setRequired(false)
+        )
+        .addStringOption((o) =>
+          o
+            .setName("股票代號")
+            .setDescription("只看單一股票(預設全部)")
+            .setRequired(false)
+            .addChoices(...getStaticSymbolChoices())
+        )
+    )
+    .addSubcommand((s) =>
+      s
         .setName("報價")
         .setDescription("打開互動報價面板,用按鈕直接買賣 📊")
     )
@@ -154,6 +189,7 @@ module.exports = {
     if (sub === "賣") return runSell(client, interaction);
     if (sub === "走勢") return runHistory(client, interaction);
     if (sub === "配息") return runDividends(client, interaction);
+    if (sub === "紀錄") return runTradeHistory(client, interaction);
     if (sub === "報價") return runQuotePanel(client, interaction);
     if (sub === "持股") return runHoldings(client, interaction);
   },
@@ -494,6 +530,148 @@ async function runDividends(client, interaction) {
     });
   } catch (err) {
     console.log(`[STOCK] /股市 配息 失敗:${err?.stack || err}`.red);
+    await interaction.editReply("❌ 查詢失敗,請稍後再試。").catch(() => {});
+  }
+}
+
+// ──────────────────────────── /股市 紀錄 ────────────────────────────
+async function runTradeHistory(client, interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    if (!stockSystem?.enabled) return interaction.editReply("🔧 股市系統未啟用。");
+    if (!client.stockTransactionsCollection) {
+      return interaction.editReply("🔧 股市系統尚未就緒。");
+    }
+    const userId = interaction.user.id;
+    const guildId = interaction.guildId;
+    const period = interaction.options.getString("期間") || "1m";
+    const periodMs = TRADE_PERIOD_MS[period] || TRADE_PERIOD_MS["1m"];
+    const since = new Date(Date.now() - periodMs);
+
+    const filterSymbol = interaction.options.getString("股票代號");
+    const query = {
+      userId,
+      guildId,
+      side: { $in: ["buy", "sell"] },
+      timestamp: { $gte: since },
+    };
+    if (filterSymbol) query.symbol = filterSymbol.toUpperCase().trim();
+
+    const rows = await client.stockTransactionsCollection
+      .find(query)
+      .sort({ timestamp: -1 })
+      .toArray();
+
+    if (rows.length === 0) {
+      return interaction.editReply(
+        filterSymbol
+          ? `📭 你在所選期間內沒有 \`${filterSymbol.toUpperCase().trim()}\` 的買賣紀錄。`
+          : `📭 你在所選期間內沒有買賣紀錄。`
+      );
+    }
+
+    // 統計買 / 賣與已實現損益
+    let buyCount = 0;
+    let sellCount = 0;
+    let buyShares = 0;
+    let sellShares = 0;
+    let buyAmount = 0; // 含手續費總支出
+    let sellAmount = 0; // 扣手續費後淨入帳
+    let totalFee = 0;
+    let realizedPnl = 0;
+    for (const r of rows) {
+      totalFee += r.fee || 0;
+      if (r.side === "buy") {
+        buyCount += 1;
+        buyShares += r.shares || 0;
+        buyAmount += r.totalCost != null ? r.totalCost + (r.fee || 0) : 0;
+      } else {
+        sellCount += 1;
+        sellShares += r.shares || 0;
+        sellAmount += (r.proceeds || 0) - (r.fee || 0);
+        realizedPnl += r.pnl || 0;
+      }
+    }
+
+    // 撈股票名稱
+    const symbols = [...new Set(rows.map((r) => r.symbol))];
+    let nameBySymbol = new Map();
+    if (client.stockMarketCollection) {
+      const markets = await client.stockMarketCollection
+        .find({ guildId, symbol: { $in: symbols } })
+        .toArray();
+      nameBySymbol = new Map(markets.map((m) => [m.symbol, m.name]));
+    }
+
+    const recentLines = rows.slice(0, 15).map((r) => {
+      const ts = new Date(r.timestamp);
+      const date = `${ts.getMonth() + 1}/${ts.getDate()}`;
+      const name = nameBySymbol.get(r.symbol) || "";
+      const price = (r.price || 0).toFixed(1);
+      if (r.side === "buy") {
+        return `\`${date}\`　🟢 買　\`${r.symbol}\` ${name}　${r.shares} 股 @ ${price}`;
+      }
+      const pnl = r.pnl || 0;
+      const pnlSign = pnl >= 0 ? "+" : "";
+      return `\`${date}\`　🔴 賣　\`${r.symbol}\` ${name}　${r.shares} 股 @ ${price}　**${pnlSign}${pnl.toLocaleString()}**`;
+    });
+
+    const pnlSign = realizedPnl >= 0 ? "+" : "";
+    const titleSuffix = filterSymbol
+      ? `｜${filterSymbol.toUpperCase().trim()}`
+      : "";
+
+    const container = new ContainerBuilder()
+      .setAccentColor(realizedPnl >= 0 ? 0x2ecc71 : 0xe74c3c)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 📒 ${interaction.member?.displayName || interaction.user.username} 的買賣紀錄${titleSuffix}`
+        )
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**期間**\n${TRADE_PERIOD_LABEL[period] || "近 30 天"}`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**買入**\n${buyCount} 筆 ・ ${buyShares} 股\n支出 ${buyAmount.toLocaleString()}`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**賣出**\n${sellCount} 筆 ・ ${sellShares} 股\n淨入帳 ${sellAmount.toLocaleString()}`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**手續費合計**\n${totalFee.toLocaleString()}`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**已實現損益**\n**${pnlSign}${realizedPnl.toLocaleString()}** credits`
+        )
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**最近成交**\n${recentLines.join("\n") || "—"}`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 買賣紀錄保留 90 天 ・ 已實現損益僅計算賣出 ・ <t:${Math.floor(Date.now() / 1000)}:R>`
+        )
+      );
+
+    await interaction.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  } catch (err) {
+    console.log(`[STOCK] /股市 紀錄 失敗:${err?.stack || err}`.red);
     await interaction.editReply("❌ 查詢失敗,請稍後再試。").catch(() => {});
   }
 }
