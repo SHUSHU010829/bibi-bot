@@ -104,13 +104,21 @@ async function toggle(client, { userId, guildId, type, readyAt }) {
 
 // 只有「已開啟通知」的訂閱才更新到最新冷卻並重置 notified；沒訂閱不主動建立。
 // 供 /打工、/挖礦 成功後呼叫，讓通知持續追蹤最近一次的冷卻。
+// 若 readyAt 已過（例如用 CD 縮短券把冷卻直接歸零），代表玩家當下就能挖、人也在現場，
+// 直接標記 notified 避免掃描器補送多餘的「冷卻結束」DM。
 async function refreshIfEnabled(client, { userId, guildId, type, readyAt }) {
   const c = coll(client);
   if (!c) return;
   await c
     .updateOne(
       { userId, guildId, type, enabled: true },
-      { $set: { readyAt, notified: false, updatedAt: new Date() } }
+      {
+        $set: {
+          readyAt,
+          notified: (readyAt || 0) <= Date.now(),
+          updatedAt: new Date(),
+        },
+      }
     )
     .catch(() => {});
 }
