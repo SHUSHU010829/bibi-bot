@@ -842,18 +842,18 @@ for (const event of activeEvents) {
 
 ## 開發時程總覽
 
-| Phase | 內容 | 時間 | 前置 |
-|---|---|---|---|
-| Phase 8 | 抖內發放 | 4–5 天 | website webhook |
-| Phase G | Dashboard 贊助後台 | 2–3 天 | Phase 8 + Dashboard W4 |
-| Phase F | 每日市價波動 | 1–2 天 | Phase 1 |
-| Phase S5 | 限時活動框架 | 3–4 天 | Phase 1–3、Opt-5 |
-| Phase S4 | 釣魚系統 | 2–3 天 | Phase 1、Opt-5 |
-| Phase D | 農場 / 種植 | 3–4 天 | Phase 1, 3、Opt-5 |
-| Phase C | 頻道共鬥 BOSS | 3–4 天 | Phase 4 |
-| Phase S3 | 技能樹 | 4–6 天 | Phase 1–4、Opt-5 |
-| Phase A | 公會系統 | 5–7 天 | Phase 5、Opt-5 |
-| **合計** | | **27–38 天** | |
+| Phase | 內容 | 時間 | 前置 | 狀態 |
+|---|---|---|---|---|
+| Phase 8 | 抖內發放 | 4–5 天 | website webhook | ✅ 已完成 |
+| Phase G | Dashboard 贊助後台 | 2–3 天 | Phase 8 + Dashboard W4 | ⏳ bibi-website |
+| Phase F | 每日市價波動 | 1–2 天 | Phase 1 | ✅ 已完成（2026-05-29） |
+| Phase S5 | 限時活動框架 | 3–4 天 | Phase 1–3、Opt-5 | ⬜ 待開發 |
+| Phase S4 | 釣魚系統 | 2–3 天 | Phase 1、Opt-5 | ⬜ 待開發 |
+| Phase D | 農場 / 種植 | 3–4 天 | Phase 1, 3、Opt-5 | ⬜ 待開發 |
+| Phase C | 頻道共鬥 BOSS | 3–4 天 | Phase 4 | ⬜ 待開發 |
+| Phase S3 | 技能樹 | 4–6 天 | Phase 1–4、Opt-5 | ⬜ 待開發 |
+| Phase A | 公會系統 | 5–7 天 | Phase 5、Opt-5 | ⬜ 待開發 |
+| **合計** | | **27–38 天** | | |
 
 **建議啟動順序**：`Phase 8 → G → F → S5 → S4 → D → C → S3 → A`
 
