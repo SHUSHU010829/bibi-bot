@@ -3,6 +3,9 @@
 //   /donation-admin list                  列出未處理的 unmatched_donations
 //   /donation-admin grant <trade_no> <user>  把一筆 unmatched 補發給指定使用者
 //   /donation-admin info <trade_no>       查詢 donation_records / unmatched 紀錄
+//   /donation-admin direct <user> <amount> [platform] [trade_no] [note]
+//                                         直接補發整套權益（公告 / DM / 加成全上）；
+//                                         免 unmatched，trade_no 留空則自動產生 MANUAL- 編號
 
 require("colors");
 const {
@@ -49,6 +52,38 @@ module.exports = {
             .setDescription("平台交易編號")
             .setRequired(true),
         ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("direct")
+        .setDescription("直接補發整套權益給指定使用者（公告 / DM / 加成全上）")
+        .addUserOption((o) =>
+          o.setName("user").setDescription("要補發給誰").setRequired(true),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName("amount")
+            .setDescription("金額（NT$）")
+            .setRequired(true)
+            .setMinValue(1),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("platform")
+            .setDescription("平台（影響 DM / 公告顯示，預設歐付寶）")
+            .addChoices(
+              { name: "歐付寶", value: "opay" },
+              { name: "綠界", value: "ecpay" },
+            ),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("trade_no")
+            .setDescription("平台交易編號（沒有就留空，系統自動產生 MANUAL- 編號）"),
+        )
+        .addStringOption((o) =>
+          o.setName("note").setDescription("備註 / 原始留言（選填）"),
+        ),
     ),
 
   run: async (client, interaction) => {
@@ -56,6 +91,7 @@ module.exports = {
     if (sub === "list") return runList(client, interaction);
     if (sub === "grant") return runGrant(client, interaction);
     if (sub === "info") return runInfo(client, interaction);
+    if (sub === "direct") return runDirect(client, interaction);
   },
 };
 
@@ -191,6 +227,118 @@ async function runGrant(client, interaction) {
   await interaction.editReply(
     `✅ 已補發 NT$${unmatchedDoc.amountNtd}（${tier?.name || "未達門檻"}）給 <@${user.id}>。\n` +
       `成功項目：${grantSummary || "(無)"}\n` +
+      `tradeNo \`${tradeNo}\``,
+  );
+}
+
+// 直接補發整套權益：不需要 unmatched 紀錄，由管理員指定 user + 金額。
+// 走與 webhook 完全相同的 grantDonationPerks（金幣 / 身分組 / 道具 / buff /
+// 卡面 / 稱號 / DM / 頻道公告），用於 webhook 完全沒留紀錄的情況
+// （例如 CheckMacValue 驗證失敗於寫入前中止）。
+//   - 有平台交易編號 → 帶入並做冪等檢查、順手把對應 unmatched 標記已處理
+//   - 沒有交易編號   → 自動產生 MANUAL- 前綴的合成編號
+async function runDirect(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const user = interaction.options.getUser("user");
+  const amountNtd = interaction.options.getInteger("amount");
+  const platform = interaction.options.getString("platform") || "opay";
+  const note = interaction.options.getString("note") || "";
+  const inputTradeNo = interaction.options.getString("trade_no")?.trim();
+  const guildId = interaction.guildId;
+
+  const records = client.donationRecordsCollection;
+  const unmatched = client.unmatchedDonationsCollection;
+  if (!records) return interaction.editReply("DB 未連線");
+
+  // 有給交易編號就用，否則合成 MANUAL- 前綴確保唯一
+  const tradeNo =
+    inputTradeNo || `MANUAL-${Date.now()}-${interaction.user.id.slice(-6)}`;
+
+  // 冪等：避免同一筆交易重複發放
+  const existing = await records.findOne({ tradeNo });
+  if (existing) {
+    return interaction.editReply(
+      `這筆交易 \`${tradeNo}\` 已經發放過了（user=<@${existing.userId}>）。`,
+    );
+  }
+
+  const tier = tierForAmount(amountNtd);
+  const record = {
+    tradeNo,
+    sessionId: null,
+    userId: user.id,
+    guildId,
+    amountNtd,
+    tierId: tier?.id || null,
+    platform,
+    patronName: "",
+    patronNote: note,
+    perks: tier ? summaryFromTier(tier, amountNtd) : null,
+    grantedAt: new Date(),
+    coinsGranted: false,
+    roleGranted: false,
+    itemsGranted: false,
+    buffGranted: false,
+    themeGranted: false,
+    titleGranted: false,
+    announced: false,
+    dmSent: false,
+    manualGrantBy: interaction.user.id,
+  };
+
+  // insert record（unique tradeNo 防 race）
+  try {
+    await records.insertOne(record);
+  } catch (err) {
+    if (err && err.code === 11000) {
+      return interaction.editReply(
+        "這筆交易剛剛被別處發放了，請重新查詢。",
+      );
+    }
+    throw err;
+  }
+
+  // 真實發放整套權益（含 DM 與頻道公告）
+  let updates = {};
+  try {
+    updates = await grantDonationPerks(client, { record, tier });
+  } catch (err) {
+    console.log(`[ERROR] direct grant perks: ${err.message}`.red);
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await records.updateOne(
+      { tradeNo },
+      { $set: { ...updates, updatedAt: new Date() } },
+    );
+  }
+
+  // 若這個交易編號剛好有對應的 unmatched 紀錄，順手標記已處理
+  if (inputTradeNo && unmatched) {
+    await unmatched
+      .updateOne(
+        { tradeNo, resolved: { $ne: true } },
+        {
+          $set: {
+            resolved: true,
+            resolvedAt: new Date(),
+            resolvedBy: interaction.user.id,
+            resolvedTo: user.id,
+          },
+        },
+      )
+      .catch(() => {});
+  }
+
+  const grantSummary = Object.entries(updates)
+    .filter(([, v]) => v === true)
+    .map(([k]) => k)
+    .join(", ");
+
+  await interaction.editReply(
+    `✅ 已直接補發 NT$${amountNtd}（${tier?.name || "未達門檻"}）給 <@${user.id}>。\n` +
+      `平台：${platform === "ecpay" ? "綠界" : "歐付寶"}　成功項目：${grantSummary || "(無)"}\n` +
       `tradeNo \`${tradeNo}\``,
   );
 }
