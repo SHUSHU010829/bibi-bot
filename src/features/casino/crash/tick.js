@@ -137,6 +137,7 @@ function start(client, gameDoc) {
           const payload = await buildSettledPayload(res.committed, {
             username: state.username,
             balance,
+            userId: state.userId,
           });
           await editMessage(client, ctx, payload);
         }
@@ -158,6 +159,7 @@ function start(client, gameDoc) {
             const payload = await buildSettledPayload(res.committed, {
               username: state.username,
               balance,
+              userId: state.userId,
             });
             await editMessage(client, ctx, payload);
           }
@@ -171,6 +173,7 @@ function start(client, gameDoc) {
       const payload = buildPlayingPayload(state, {
         username: state.username,
         balance,
+        userId: state.userId,
       });
       await editMessage(client, ctx, payload);
     } catch (e) {

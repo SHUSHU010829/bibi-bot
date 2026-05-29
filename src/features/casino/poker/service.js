@@ -67,7 +67,7 @@ function actionDeadlineNow() {
   return new Date(Date.now() + sec * 1000);
 }
 
-async function refreshTableMessage(client, doc, { viewerId } = {}) {
+async function refreshTableMessage(client, doc, { viewerId, avatarURL } = {}) {
   try {
     const channel = await client.channels.fetch(doc.threadId).catch(() => null);
     if (!channel) {
@@ -81,7 +81,7 @@ async function refreshTableMessage(client, doc, { viewerId } = {}) {
       );
       return;
     }
-    const payload = await renderTableMessage(doc, { viewerId });
+    const payload = await renderTableMessage(doc, { viewerId, avatarURL });
     await msg.edit({ ...payload, attachments: [] }).catch((e) => {
       console.log(`[POKER] refresh edit failed: ${e.message}`.red);
     });
@@ -345,7 +345,7 @@ async function announceSettlement(client, doc) {
 }
 
 // 把舊桌面訊息刪掉、重新發一張新的（給「重貼桌面」按鈕用）
-async function resendTableMessage(client, doc) {
+async function resendTableMessage(client, doc, { avatarURL } = {}) {
   const thread = await client.channels.fetch(doc.threadId).catch(() => null);
   if (!thread) return null;
   // 試著刪舊訊息
@@ -353,7 +353,7 @@ async function resendTableMessage(client, doc) {
     const old = await thread.messages.fetch(doc.messageId).catch(() => null);
     if (old) await old.delete().catch(() => {});
   }
-  const payload = await renderTableMessage(doc);
+  const payload = await renderTableMessage(doc, { avatarURL });
   const msg = await thread.send(payload).catch((e) => {
     console.log(`[POKER] resend send failed: ${e.message}`.red);
     return null;
@@ -484,7 +484,9 @@ async function createTable(client, interaction, { maxPlayers, blind }) {
     expiresAt: ttlExpiresAt(),
   };
 
-  const payload = await renderTableMessage(doc);
+  const payload = await renderTableMessage(doc, {
+    avatarURL: interaction.user.displayAvatarURL(),
+  });
   let msg;
   try {
     msg = await thread.send(payload);
