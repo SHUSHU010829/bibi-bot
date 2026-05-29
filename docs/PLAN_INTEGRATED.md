@@ -52,7 +52,7 @@
 | Phase C | 頻道共鬥 BOSS | ❌ 未實作 | 本文件 |
 | Phase D | 農場/種植 | ❌ 未實作 | 本文件 |
 | Phase E | 稱號進階管理 | ⚠️ 週冠換王已有，其餘待補 | `PLAN_OPTIMIZATION.md` |
-| Phase F | 每日市價波動 | ❌ 未實作 | 本文件 |
+| Phase F | 每日市價波動 | ✅ 已實作 | 本文件 |
 | Phase G | Dashboard 贊助後台 | ❌ 未實作 | 本文件 |
 | Phase S1 | 挖礦專屬任務 | ⚠️ 框架完整、任務未定義 | `PLAN_OPTIMIZATION.md` |
 | Phase S2 | 排行榜多維度 | ⚠️ 週榜已有、其餘待補 | `PLAN_OPTIMIZATION.md` |
@@ -434,6 +434,15 @@ playerShare = floor(myDamage / totalDamage × totalPool)
 
 ## Phase F — 每日市價波動系統
 
+> ✅ **已實作（2026-05-29）**
+> - 引擎：`src/features/market/orePriceEngine.js`（seeded random、freeze 當日價、走勢查詢、過期清理）
+> - 指令：`/行情`（無參數＝今日全礦石；指定礦石＝近 7 天走勢 + sparkline）→ `src/commands/mining/oreMarket.js`
+> - 每日 cron：`src/events/ready/oreMarketScheduler.js`（00:00 freeze + 公告 + 清理）
+> - DB：`OreMarketPrices`（date unique，保留 90 天），於 `connectDb.js` 註冊
+> - 接點：`/賣礦` 改為先查當日行情、fallback 基礎價；設定放 `mining.json` 的 `oreMarket`
+> - 實作差異：實際礦石為 stone/coal/iron/gold/diamond（非企劃示意的 crystal/rainbow）；
+>   公告頻道由 `mining.oreMarket.announceChannelId` 設定（未設則略過公告）。
+>
 > **前置需求**：Phase 1（挖礦 + 賣礦）✅
 > **預估時間**：1–2 天
 > **定位**：讓囤積礦石有策略意義
@@ -833,18 +842,18 @@ for (const event of activeEvents) {
 
 ## 開發時程總覽
 
-| Phase | 內容 | 時間 | 前置 |
-|---|---|---|---|
-| Phase 8 | 抖內發放 | 4–5 天 | website webhook |
-| Phase G | Dashboard 贊助後台 | 2–3 天 | Phase 8 + Dashboard W4 |
-| Phase F | 每日市價波動 | 1–2 天 | Phase 1 |
-| Phase S5 | 限時活動框架 | 3–4 天 | Phase 1–3、Opt-5 |
-| Phase S4 | 釣魚系統 | 2–3 天 | Phase 1、Opt-5 |
-| Phase D | 農場 / 種植 | 3–4 天 | Phase 1, 3、Opt-5 |
-| Phase C | 頻道共鬥 BOSS | 3–4 天 | Phase 4 |
-| Phase S3 | 技能樹 | 4–6 天 | Phase 1–4、Opt-5 |
-| Phase A | 公會系統 | 5–7 天 | Phase 5、Opt-5 |
-| **合計** | | **27–38 天** | |
+| Phase | 內容 | 時間 | 前置 | 狀態 |
+|---|---|---|---|---|
+| Phase 8 | 抖內發放 | 4–5 天 | website webhook | ✅ 已完成 |
+| Phase G | Dashboard 贊助後台 | 2–3 天 | Phase 8 + Dashboard W4 | ⏳ bibi-website |
+| Phase F | 每日市價波動 | 1–2 天 | Phase 1 | ✅ 已完成（2026-05-29） |
+| Phase S5 | 限時活動框架 | 3–4 天 | Phase 1–3、Opt-5 | ⬜ 待開發 |
+| Phase S4 | 釣魚系統 | 2–3 天 | Phase 1、Opt-5 | ⬜ 待開發 |
+| Phase D | 農場 / 種植 | 3–4 天 | Phase 1, 3、Opt-5 | ⬜ 待開發 |
+| Phase C | 頻道共鬥 BOSS | 3–4 天 | Phase 4 | ⬜ 待開發 |
+| Phase S3 | 技能樹 | 4–6 天 | Phase 1–4、Opt-5 | ⬜ 待開發 |
+| Phase A | 公會系統 | 5–7 天 | Phase 5、Opt-5 | ⬜ 待開發 |
+| **合計** | | **27–38 天** | | |
 
 **建議啟動順序**：`Phase 8 → G → F → S5 → S4 → D → C → S3 → A`
 

@@ -153,6 +153,9 @@ module.exports = async (client) => {
     // 打工 / 挖礦到點通知訂閱
     const cooldownRemindersCollection = database.collection("CooldownReminders");
 
+    // 礦石每日市價（Phase F）：一天一份 doc，date 為 YYYYMMDD
+    const oreMarketPricesCollection = database.collection("OreMarketPrices");
+
     // 抖內系統 collections（與 bibi-website 共用，website 唯讀）
     const donationSessionsCollection = database.collection("DonationSessions");
     const donationRecordsCollection = database.collection("DonationRecords");
@@ -217,6 +220,7 @@ module.exports = async (client) => {
     client.duelGamesCollection = duelGamesCollection;
     client.auctionListingsCollection = auctionListingsCollection;
     client.cooldownRemindersCollection = cooldownRemindersCollection;
+    client.oreMarketPricesCollection = oreMarketPricesCollection;
     client.donationSessionsCollection = donationSessionsCollection;
     client.donationRecordsCollection = donationRecordsCollection;
     client.unmatchedDonationsCollection = unmatchedDonationsCollection;
@@ -304,6 +308,12 @@ module.exports = async (client) => {
       .createIndex({ guildId: 1, date: 1 }, { unique: true })
       .catch((e) =>
         console.log(`[WARN] EconomySnapshots index 建立失敗：${e.message}`.yellow),
+      );
+    // 礦石市價：date unique 作冪等鍵（freeze 當日只寫一次），走勢查詢靠 date 排序
+    await oreMarketPricesCollection
+      .createIndex({ date: 1 }, { unique: true, name: "uniq_ore_market_date" })
+      .catch((e) =>
+        console.log(`[WARN] OreMarketPrices index 建立失敗：${e.message}`.yellow),
       );
     await cooldownRemindersCollection
       .createIndex({ userId: 1, guildId: 1, type: 1 }, { unique: true })

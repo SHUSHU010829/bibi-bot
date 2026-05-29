@@ -10,6 +10,7 @@ const {
 
 const { mining } = require("../../config");
 const { getOrCreate } = require("../../features/mining/miningProfile");
+const orePriceEngine = require("../../features/market/orePriceEngine");
 const grantCoins = require("../../features/economy/grantCoins");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const { COIN_EMOJI } = require("../../constants/coin");
@@ -58,6 +59,12 @@ module.exports = {
       const profile = await getOrCreate(client, userId, guildId);
       const backpack = profile.backpack || {};
 
+      // 依今日礦石行情計價（找不到行情則 fallback 到基礎價）
+      const market = await orePriceEngine.getDailyPrices(client);
+      const priceMap = market.prices || {};
+      const priceOf = (key, def) =>
+        typeof priceMap[key] === "number" ? priceMap[key] : def.price;
+
       // 決定要賣的清單 [{ ore, qty, price, value }]
       const toSell = [];
       if (oreArg) {
@@ -73,12 +80,14 @@ module.exports = {
             `你只有 **${have}** 顆 ${def.name}，無法賣出 ${qty} 顆。`
           );
         }
-        toSell.push({ ore: oreArg, qty, price: def.price, value: def.price * qty });
+        const price = priceOf(oreArg, def);
+        toSell.push({ ore: oreArg, qty, price, value: price * qty });
       } else {
         for (const [key, def] of Object.entries(mining.ores)) {
           const have = backpack[key] || 0;
           if (have > 0) {
-            toSell.push({ ore: key, qty: have, price: def.price, value: def.price * have });
+            const price = priceOf(key, def);
+            toSell.push({ ore: key, qty: have, price, value: price * have });
           }
         }
       }
@@ -109,7 +118,10 @@ module.exports = {
 
       const lines = toSell.map((x) => {
         const def = mining.ores[x.ore];
-        return `${def.emoji || "⛏️"} ${def.name} ×${x.qty} → ${x.value.toLocaleString()} ${COIN_EMOJI}`;
+        const base = def.price || 0;
+        const pct = base > 0 ? Math.round((x.price / base - 1) * 100) : 0;
+        const trend = pct > 0 ? `▲+${pct}%` : pct < 0 ? `▼${pct}%` : "▬";
+        return `${def.emoji || "⛏️"} ${def.name} ×${x.qty} ＠${x.price.toLocaleString()} ${trend} → ${x.value.toLocaleString()} ${COIN_EMOJI}`;
       });
 
       const container = new ContainerBuilder()
@@ -128,6 +140,11 @@ module.exports = {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `**目前餘額**\n${(grant?.doc?.totalCoins ?? 0).toLocaleString()} ${COIN_EMOJI}`,
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "-# 依今日行情計價，用 /行情 查看當日礦石收購價",
           ),
         );
 

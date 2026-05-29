@@ -24,6 +24,15 @@
     "weeklyRank": {
       "cronSchedule": "1 0 * * 1",
       "timezone": "Asia/Taipei"
+    },
+    "oreMarket": {
+      "enabled": true,
+      "minFactor": 0.7,
+      "maxFactor": 1.3,
+      "retentionDays": 90,
+      "announceChannelId": "",
+      "cronSchedule": "0 0 * * *",
+      "timezone": "Asia/Taipei"
     }
   }
 }
