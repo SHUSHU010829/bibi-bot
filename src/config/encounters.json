@@ -1,0 +1,120 @@
+{
+  "randomEncounters": {
+    "enabled": true,
+    "miningChance": 0.12,
+    "dungeonChance": 0.15,
+    "mining": [
+      {
+        "id": "hidden_vein",
+        "name": "隱藏礦脈",
+        "emoji": "💎",
+        "weight": 18,
+        "effect": { "type": "bonus_ore_same", "mult": 1 },
+        "text": "你敲開岩壁，後面竟藏著一條隱藏礦脈！本次採集翻倍！"
+      },
+      {
+        "id": "abandoned_cart",
+        "name": "廢棄礦車",
+        "emoji": "🛒",
+        "weight": 20,
+        "effect": { "type": "bonus_coins", "min": 80, "max": 220 },
+        "text": "你發現一台廢棄礦車，翻出了一些被遺落的金幣。"
+      },
+      {
+        "id": "time_rift",
+        "name": "時間裂隙",
+        "emoji": "⏳",
+        "weight": 9,
+        "effect": { "type": "clear_cd" },
+        "text": "一道時間裂隙閃過，你的鎬子瞬間恢復精神，挖礦冷卻立即解除！"
+      },
+      {
+        "id": "wandering_merchant",
+        "name": "流浪商人",
+        "emoji": "🧙",
+        "weight": 11,
+        "effect": { "type": "gift_potion", "qty": 1 },
+        "text": "一位流浪商人路過，塞給你一瓶幸運藥水後消失在坑道深處。"
+      },
+      {
+        "id": "cave_in",
+        "name": "礦坑崩塌",
+        "emoji": "🪨",
+        "weight": 16,
+        "effect": { "type": "lose_ore", "pct": 0.5 },
+        "text": "礦坑突然崩塌，你慌忙逃出，掉落了一部分剛採到的礦石…"
+      },
+      {
+        "id": "monster_ambush",
+        "name": "怪物突襲",
+        "emoji": "🦇",
+        "weight": 14,
+        "effect": {
+          "type": "ambush",
+          "monsterHpMin": 40,
+          "monsterHpMax": 110,
+          "winCoinsMin": 120,
+          "winCoinsMax": 280,
+          "loseStamina": 1
+        }
+      }
+    ],
+    "dungeon": [
+      {
+        "id": "treasure_chest",
+        "name": "藏寶箱",
+        "emoji": "📦",
+        "weight": 18,
+        "effect": { "type": "bonus_coins", "min": 150, "max": 400 },
+        "text": "陰影中藏著一個藏寶箱，你撬開它拿走了裡面的金幣！"
+      },
+      {
+        "id": "lost_supplies",
+        "name": "遺落補給",
+        "emoji": "🎒",
+        "weight": 14,
+        "effect": { "type": "bonus_ore", "ore": "gold", "min": 1, "max": 2 },
+        "text": "你發現一批冒險者遺落的補給，裡面有些黃金！"
+      },
+      {
+        "id": "mystery_potion",
+        "name": "神秘藥水",
+        "emoji": "🩹",
+        "weight": 16,
+        "effect": { "type": "restore_stamina", "amount": 2 },
+        "text": "你撿到一瓶神秘藥水，喝下後體力恢復了一些。"
+      },
+      {
+        "id": "whetstone",
+        "name": "磨刀石",
+        "emoji": "🪓",
+        "weight": 12,
+        "effect": { "type": "repair_weapon" },
+        "text": "你找到一塊上等磨刀石，順手把武器磨利、耐久完全恢復！"
+      },
+      {
+        "id": "trap",
+        "name": "陷阱",
+        "emoji": "⚠️",
+        "weight": 16,
+        "effect": { "type": "lose_stamina", "amount": 1 },
+        "text": "你踩中了一個陷阱，慌亂中多耗了一點體力。"
+      },
+      {
+        "id": "elite_monster",
+        "name": "精英怪",
+        "emoji": "👹",
+        "weight": 13,
+        "effect": {
+          "type": "elite",
+          "hpMin": 200,
+          "hpMax": 360,
+          "winCoinsMin": 400,
+          "winCoinsMax": 900,
+          "fragmentChance": 0.35,
+          "loseStamina": 1
+        }
+      }
+    ]
+  }
+}

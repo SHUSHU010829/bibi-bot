@@ -8,7 +8,7 @@ const {
   InteractionContextType,
 } = require("discord.js");
 
-const { mining, craft } = require("../../config");
+const { mining, craft, dungeon } = require("../../config");
 const craftService = require("../../features/mining/craftService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
@@ -17,32 +17,39 @@ function recipeChoices() {
   return (craft?.recipes || []).map((r) => ({ name: r.name, value: r.id }));
 }
 
-function matLabel(mat, qty) {
+// 材料標籤：礦石走 mining.ores，傳說碎片走獨立顯示。
+function materialLabel(mat, qty) {
+  if (mat === "legendary_fragment") return `✨ 傳說素材碎片 ×${qty}`;
   const def = mining?.ores?.[mat] || {};
   return `${def.emoji || "⛏️"} ${def.name || mat} ×${qty}`;
 }
 
-function pickaxeLabel(key) {
-  const def = mining?.pickaxes?.[key] || {};
-  return `${def.emoji || "⛏️"} ${def.name || key}`;
+// 裝備標籤：依類型取鎬子 / 武器定義。
+function gearLabel(type, id) {
+  if (type === "weapon") {
+    const d = (dungeon?.weapons || {})[id] || {};
+    return `${d.emoji || "👊"} ${d.name || id}`;
+  }
+  const d = (mining?.pickaxes || {})[id] || {};
+  return `${d.emoji || "⛏️"} ${d.name || id}`;
 }
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("合成")
-    .setDescription("用礦石合成更好的鎬子 🔨")
+    .setDescription("用礦石合成更好的鎬子，或打造武器去地下城打怪 🔨")
     .setContexts(InteractionContextType.Guild)
     .addStringOption((o) =>
       o
         .setName("裝備")
-        .setDescription("要合成的裝備")
+        .setDescription("要合成的鎬子或武器")
         .setRequired(true)
         .addChoices(...recipeChoices())
     )
     .addBooleanOption((o) =>
       o
         .setName("確認")
-        .setDescription("確認替換目前仍可用的鎬子")
+        .setDescription("確認替換目前仍可用的裝備")
         .setRequired(false)
     ),
 
@@ -70,15 +77,16 @@ module.exports = {
         if (result.reason === "insufficient") {
           const lines = result.missing.map(
             (m) =>
-              `${matLabel(m.mat, m.need)}（你有 ${m.have}，還缺 ${m.need - m.have}）`
+              `${materialLabel(m.mat, m.need)}（你有 ${m.have}，還缺 ${m.need - m.have}）`
           );
           return interaction.editReply(
             `❌ 材料不足，無法合成 **${result.recipe.name}**：\n${lines.join("\n")}`
           );
         }
         if (result.reason === "confirm_needed") {
+          const curLabel = gearLabel(result.type, result.current.id);
           return interaction.editReply(
-            `⚠️ 你目前的 **${pickaxeLabel(result.current.pickaxe)}** 還有 ${result.current.durability} 次耐久，` +
+            `⚠️ 你目前的 **${curLabel}** 還有 ${result.current.durability} 次耐久，` +
               `合成 **${result.recipe.name}** 會直接替換掉它。\n` +
               `確定要換，請再執行一次並把 \`確認\` 設為 \`true\`。`
           );
@@ -87,14 +95,19 @@ module.exports = {
       }
 
       const matLines = Object.entries(result.recipe.materials).map(([mat, qty]) =>
-        matLabel(mat, qty)
+        materialLabel(mat, qty)
       );
+      const resultLabel = `${result.resultEmoji || ""} ${result.resultName}`.trim();
+      const isWeapon = result.type === "weapon";
+      const tail = isWeapon
+        ? "-# 帶著武器去 /地下城 打怪吧！用 /裝備 查看裝備"
+        : "-# 用 /裝備 查看裝備，/挖礦 開挖！";
 
       const container = new ContainerBuilder()
-        .setAccentColor(0x9b59b6)
+        .setAccentColor(isWeapon ? 0xe67e22 : 0x9b59b6)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `# 🔨 合成成功\n你打造出了 **${pickaxeLabel(result.pickaxe)}**！`,
+            `# 🔨 合成成功\n你打造出了 **${resultLabel}**！`,
           ),
         )
         .addSeparatorComponents(new SeparatorBuilder())
@@ -113,11 +126,7 @@ module.exports = {
             `**累積合成**\n${result.craftCountTotal} 件`,
           ),
         )
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            "-# 用 /裝備 查看裝備，/挖礦 開挖！",
-          ),
-        );
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(tail));
 
       await interaction.editReply({
         components: [container],

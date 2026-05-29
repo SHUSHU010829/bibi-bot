@@ -1,15 +1,53 @@
 require("colors");
-const { mining, craft } = require("../../config");
+const { mining, craft, dungeon } = require("../../config");
 const { getOrCreate } = require("./miningProfile");
 
-// 鎬子階級（用於判定升級 / 同級 / 降級）
+// 鎬子 / 武器階級（用於判定升級 / 同級 / 降級）
 const PICKAXE_TIER = { wood: 0, iron: 1, gold: 2, diamond: 3 };
+const WEAPON_TIER = {
+  fist: 0,
+  iron_sword: 1,
+  steel_sword: 2,
+  gold_sword: 3,
+  diamond_sword: 4,
+  legendary_sword: 5,
+};
+
+// 特殊材料：傳說素材碎片存在 profile.legendary_fragments，不在 backpack 內。
+const FRAGMENT_KEY = "legendary_fragment";
 
 function getRecipe(recipeId) {
   return (craft?.recipes || []).find((r) => r.id === recipeId) || null;
 }
 
-// 合成裝備。confirm=true 時略過「替換仍可用鎬子」的二次確認。
+// 依裝備類型回傳該裝備的定義表與玩家身上的對應欄位名稱。
+function resolveSlot(type) {
+  if (type === "weapon") {
+    return {
+      defs: dungeon?.weapons || {},
+      tiers: WEAPON_TIER,
+      equippedField: "weapon",
+      durabilityField: "weapon_durability",
+      defaultId: "fist",
+    };
+  }
+  // 預設視為鎬子
+  return {
+    defs: mining?.pickaxes || {},
+    tiers: PICKAXE_TIER,
+    equippedField: "pickaxe",
+    durabilityField: "pickaxe_durability",
+    defaultId: "wood",
+  };
+}
+
+// 玩家目前持有某材料的數量（傳說碎片走獨立欄位）。
+function ownedMaterial(profile, mat) {
+  if (mat === FRAGMENT_KEY) return profile.legendary_fragments || 0;
+  return (profile.backpack || {})[mat] || 0;
+}
+
+// 合成裝備（鎬子 / 武器）。confirm=true 時略過「替換仍可用裝備」的二次確認。
 async function craftItem(client, { userId, guildId, recipeId, confirm = false }) {
   if (!mining?.enabled || !craft?.recipes) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
@@ -17,54 +55,59 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
   const recipe = getRecipe(recipeId);
   if (!recipe) return { ok: false, reason: "no_recipe" };
 
+  const type = recipe.result?.type || "pickaxe";
   const resultId = recipe.result?.id;
-  const pdef = mining.pickaxes?.[resultId];
-  if (!pdef) return { ok: false, reason: "no_recipe" };
+  const slot = resolveSlot(type);
+  const targetDef = slot.defs[resultId];
+  if (!targetDef) return { ok: false, reason: "no_recipe" };
 
   const profile = await getOrCreate(client, userId, guildId);
-  const backpack = profile.backpack || {};
 
   // 材料檢查
   const missing = [];
   for (const [mat, need] of Object.entries(recipe.materials || {})) {
-    const have = backpack[mat] || 0;
+    const have = ownedMaterial(profile, mat);
     if (have < need) missing.push({ mat, need, have });
   }
   if (missing.length > 0) {
     return { ok: false, reason: "insufficient", missing, recipe };
   }
 
-  // 替換確認：目前鎬子非木鎬、仍有耐久，且新鎬子階級 <= 目前階級（同級或降級）
-  const curTier = PICKAXE_TIER[profile.pickaxe] ?? 0;
-  const newTier = PICKAXE_TIER[resultId] ?? 0;
-  const hasUsablePickaxe =
-    profile.pickaxe !== "wood" &&
-    typeof profile.pickaxe_durability === "number" &&
-    profile.pickaxe_durability > 0;
-  if (!confirm && hasUsablePickaxe && newTier <= curTier) {
+  // 替換確認：目前裝備非預設、仍有耐久，且新裝備階級 <= 目前階級（同級或降級）
+  const curId = profile[slot.equippedField] || slot.defaultId;
+  const curDurability = profile[slot.durabilityField];
+  const curTier = slot.tiers[curId] ?? 0;
+  const newTier = slot.tiers[resultId] ?? 0;
+  const hasUsable =
+    curId !== slot.defaultId &&
+    typeof curDurability === "number" &&
+    curDurability > 0;
+  if (!confirm && hasUsable && newTier <= curTier) {
     return {
       ok: false,
       reason: "confirm_needed",
       recipe,
-      current: {
-        pickaxe: profile.pickaxe,
-        durability: profile.pickaxe_durability,
-      },
+      type,
+      current: { id: curId, durability: curDurability },
     };
   }
 
-  // 扣材料 + 換鎬子 + craft_count_total
-  const dec = {};
+  // 扣材料（傳說碎片走獨立欄位）+ 換裝備 + craft_count_total
+  const inc = { craft_count_total: 1 };
   for (const [mat, need] of Object.entries(recipe.materials)) {
-    dec[`backpack.${mat}`] = -need;
+    if (mat === FRAGMENT_KEY) {
+      inc.legendary_fragments = (inc.legendary_fragments || 0) - need;
+    } else {
+      inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+    }
   }
   await client.miningProfilesCollection.updateOne(
     { userId, guildId },
     {
-      $inc: { ...dec, craft_count_total: 1 },
+      $inc: inc,
       $set: {
-        pickaxe: resultId,
-        pickaxe_durability: pdef.durability ?? null,
+        [slot.equippedField]: resultId,
+        [slot.durabilityField]: targetDef.durability ?? null,
         updatedAt: new Date(),
       },
     }
@@ -73,10 +116,13 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
   return {
     ok: true,
     recipe,
-    pickaxe: resultId,
-    durability: pdef.durability ?? null,
+    type,
+    resultId,
+    resultName: targetDef.name || resultId,
+    resultEmoji: targetDef.emoji || "",
+    durability: targetDef.durability ?? null,
     craftCountTotal: (profile.craft_count_total || 0) + 1,
   };
 }
 
-module.exports = { craftItem, getRecipe, PICKAXE_TIER };
+module.exports = { craftItem, getRecipe, PICKAXE_TIER, WEAPON_TIER, FRAGMENT_KEY };

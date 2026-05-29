@@ -169,6 +169,17 @@ module.exports = {
         enabled: notifyEnabled,
       });
 
+      // 突發事件（戰鬥擴充）：採集途中的隨機事件
+      if (result.encounter) {
+        container
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**${result.encounter.emoji} 突發事件：${result.encounter.name}**\n${result.encounter.body}`,
+            ),
+          );
+      }
+
       container.addActionRowComponents(row);
 
       await interaction.editReply({
