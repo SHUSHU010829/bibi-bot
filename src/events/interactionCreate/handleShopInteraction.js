@@ -24,6 +24,14 @@ const {
 } = require("../../features/shop/buyConfirmView");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { consume } = require("../../utils/rateLimiter");
+const {
+  MAX_LEN,
+  CARDNO_OPEN_ID,
+  CARDNO_MODAL_ID,
+  groupBy4,
+  ownsDonorCard,
+  setCustomCardNumber,
+} = require("../../features/donation/customCardNumber");
 
 const EQUIP_BTN_PREFIX = "shop_equip_btn_";
 const TITLE_OPEN_PREFIX = "shop_title_open_";
@@ -56,6 +64,42 @@ function buildTitleModal(inventoryId) {
     .setMaxLength(24);
   modal.addComponents(new ActionRowBuilder().addComponents(input));
   return modal;
+}
+
+function buildCardNumberModal() {
+  const modal = new ModalBuilder()
+    .setCustomId(CARDNO_MODAL_ID)
+    .setTitle("設定贊助卡號");
+  const input = new TextInputBuilder()
+    .setCustomId("cardno_text")
+    .setLabel(`卡號（英文/數字，最多 ${MAX_LEN} 字）`)
+    .setPlaceholder("留空並送出＝清除自訂卡號")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(MAX_LEN);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
+async function handleCardNumberModalSubmit(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const raw = interaction.fields.getTextInputValue("cardno_text");
+  const result = await setCustomCardNumber(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    raw,
+  });
+  if (!result.ok) {
+    return interaction.editReply(
+      result.error === "locked"
+        ? "🔒 自訂卡號是「贊助限定卡面」專屬功能。"
+        : `❌ 卡號格式不符：${result.error}。`
+    );
+  }
+  if (result.cleared) {
+    return interaction.editReply("✅ 已清除自訂卡號，卡面將顯示系統預設編號。");
+  }
+  return interaction.editReply(`✅ 卡號已設定為：\`${groupBy4(result.value)}\``);
 }
 
 // 切換分類 → 回到該分類第 1 頁（直接更新公開面板）
@@ -279,7 +323,9 @@ module.exports = async (client, interaction) => {
       cid.startsWith(TITLE_OPEN_PREFIX) ||
       cid.startsWith(EQUIP_SELECT_PREFIX) ||
       cid === TITLE_SELECT_ID ||
-      cid.startsWith(TITLE_MODAL_PREFIX);
+      cid.startsWith(TITLE_MODAL_PREFIX) ||
+      cid === CARDNO_OPEN_ID ||
+      cid === CARDNO_MODAL_ID;
     if (!isShopInteraction) return;
 
     // 防連點：面板瀏覽 / 開啟購買確認限流（購買後的裝備、設定稱號等下游動作不限流）
@@ -385,6 +431,22 @@ module.exports = async (client, interaction) => {
       const invId = interaction.customId.slice(TITLE_MODAL_PREFIX.length);
       if (!isValidObjectId(invId)) return replyInvalidId(interaction);
       return handleTitleModalSubmit(client, interaction, invId);
+    }
+
+    // 自訂卡號：按鈕開彈窗（需擁有贊助限定卡面）→ 送出寫入
+    if (interaction.isButton() && cid === CARDNO_OPEN_ID) {
+      if (
+        !(await ownsDonorCard(client, interaction.user.id, interaction.guildId))
+      ) {
+        return interaction.reply({
+          content: "🔒 自訂卡號是「贊助限定卡面」專屬功能。",
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      return interaction.showModal(buildCardNumberModal());
+    }
+    if (interaction.isModalSubmit() && cid === CARDNO_MODAL_ID) {
+      return handleCardNumberModalSubmit(client, interaction);
     }
   } catch (error) {
     console.log(`[ERROR] handleShopInteraction:\n${error}\n${error.stack}`.red);
