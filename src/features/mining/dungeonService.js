@@ -64,6 +64,41 @@ function resolveStamina(profile, max = staminaMax()) {
   return { stamina, updatedAt, nextRegenAt: updatedAt + regenMs };
 }
 
+// 立即恢復體力（體力藥水用）。回傳恢復前後數值；已滿時 full=true 不寫庫。
+async function restoreStamina(client, { userId, guildId, member, amount }) {
+  if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
+  const max = staminaMax(member);
+  const profile = await getOrCreate(client, userId, guildId);
+  const st = resolveStamina(profile, max);
+
+  if (st.stamina >= max) {
+    return { ok: true, full: true, restored: 0, staminaBefore: st.stamina, staminaAfter: st.stamina, max };
+  }
+
+  const add = Math.max(0, Math.floor(Number(amount) || 0));
+  const newStamina = Math.min(max, st.stamina + add);
+  // 還沒補滿就沿用原本的回復計時；補滿則停錶（updatedAt = 0）。
+  const newUpdatedAt = newStamina >= max ? 0 : st.updatedAt || Date.now();
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $set: { stamina: newStamina, stamina_updated_at: newUpdatedAt, updatedAt: new Date() } },
+  );
+
+  return {
+    ok: true,
+    full: false,
+    restored: newStamina - st.stamina,
+    staminaBefore: st.stamina,
+    staminaAfter: newStamina,
+    max,
+    nextRegenAt: resolveStamina(
+      { stamina: newStamina, stamina_updated_at: newUpdatedAt },
+      max,
+    ).nextRegenAt,
+  };
+}
+
 // 戰鬥力 = baseAtk + 武器 ATK（鎬子不再貢獻戰鬥力，純採集）。
 function playerAtk(profile) {
   const base = dungeon?.baseAtk ?? 20;
@@ -291,6 +326,7 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
 module.exports = {
   enterDungeon,
   resolveStamina,
+  restoreStamina,
   staminaMax,
   staminaBonus,
   playerAtk,

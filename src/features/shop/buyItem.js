@@ -4,8 +4,24 @@ const grantCoins = require("../economy/grantCoins");
 const { getItem, isStackable, stackMax } = require("./catalog");
 const { addBuff } = require("./activeBuff");
 const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
+const {
+  restoreStamina,
+  resolveStamina,
+  staminaMax,
+} = require("../mining/dungeonService");
 
-const MINING_ITEM_TYPES = ["mining_luck_potion", "mining_cd_ticket", "mining_backpack"];
+const MINING_ITEM_TYPES = [
+  "mining_luck_potion",
+  "mining_cd_ticket",
+  "mining_backpack",
+  "mining_stamina_potion",
+];
+
+// 每日購買上限的數量單位（純文案用）。
+const DAILY_LIMIT_UNIT = {
+  mining_cd_ticket: "張",
+  mining_stamina_potion: "瓶",
+};
 
 // 統計今天（Asia/Taipei）已購買的某商品數量（用於每日購買上限）。
 async function getTodayBoughtQty(client, { userId, guildId, itemId }) {
@@ -60,14 +76,26 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     }
   }
 
-  // CD 縮短券：每日購買上限（依 Asia/Taipei 跨日重置）
-  if (item.type === "mining_cd_ticket" && item.payload?.dailyLimit > 0) {
+  // 每日購買上限（依 Asia/Taipei 跨日重置）：任何帶 payload.dailyLimit 的商品都適用
+  if (item.payload?.dailyLimit > 0) {
+    const limit = item.payload.dailyLimit;
     const boughtToday = await getTodayBoughtQty(client, { userId, guildId, itemId });
-    if (boughtToday + qty > item.payload.dailyLimit) {
+    if (boughtToday + qty > limit) {
+      const unit = DAILY_LIMIT_UNIT[item.type] || "個";
       return {
         ok: false,
-        error: `CD 縮短券每日最多購買 ${item.payload.dailyLimit} 張，你今天已買 ${boughtToday} 張，今天最多再買 ${Math.max(0, item.payload.dailyLimit - boughtToday)} 張。`,
+        error: `「${item.name}」每日最多購買 ${limit} ${unit}，你今天已買 ${boughtToday} ${unit}，今天最多再買 ${Math.max(0, limit - boughtToday)} ${unit}。`,
       };
+    }
+  }
+
+  // 體力藥水：體力已滿時拒絕購買（避免浪費），在扣款前檢查
+  if (item.type === "mining_stamina_potion") {
+    const max = staminaMax(member);
+    const prof = await getMiningProfile(client, userId, guildId);
+    const st = resolveStamina(prof, max);
+    if (st.stamina >= max) {
+      return { ok: false, error: `你的體力已滿（${st.stamina}/${max}），不需要購買體力藥水。` };
     }
   }
 
@@ -140,6 +168,7 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
 
   // 寫入背包（buff 類型不需要 inventory，直接生效）
   let inventoryDoc = null;
+  let staminaResult = null;
   if (item.type === "xp_boost" || item.type === "coin_boost") {
     await addBuff(client, {
       userId,
@@ -170,6 +199,14 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
       },
       { upsert: true, returnDocument: "after" },
     );
+  } else if (item.type === "mining_stamina_potion") {
+    // 體力藥水：購買後立即恢復體力（不進 UserInventory）
+    staminaResult = await restoreStamina(client, {
+      userId,
+      guildId,
+      member,
+      amount: item.payload?.restore || 0,
+    });
   } else if (MINING_ITEM_TYPES.includes(item.type)) {
     // 挖礦道具：寫入 MiningProfiles，不進 UserInventory
     await getMiningProfile(client, userId, guildId);
@@ -235,6 +272,7 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     balanceAfter: grant.doc?.totalCoins || 0,
     expiresAt,
     inventoryDoc,
+    stamina: staminaResult,
   };
 }
 

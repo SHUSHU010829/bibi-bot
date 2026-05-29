@@ -34,6 +34,7 @@ function itemMeta(item) {
     return `${m} 分鐘`;
   }
   if (item.type === "mining_luck_potion") return `${item.payload?.uses || 0} 次`;
+  if (item.type === "mining_stamina_potion") return `+${item.payload?.restore || 0} 體力`;
   return null;
 }
 
