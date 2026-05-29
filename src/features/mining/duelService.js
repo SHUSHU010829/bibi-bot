@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const { DateTime } = require("luxon");
 const { dungeon } = require("../../config");
 const { getOrCreate } = require("./miningProfile");
-const { playerAtk } = require("./dungeonService");
+const buffResolver = require("../buff/buffResolver");
 const grantCoins = require("../economy/grantCoins");
 
 const TZ = dungeon?.timezone || "Asia/Taipei";
@@ -173,8 +173,8 @@ async function acceptDuel(client, { duelId, opponentId, opponentName, member }) 
     getOrCreate(client, duel.challenger_id, duel.guild_id),
     getOrCreate(client, opponentId, duel.guild_id),
   ]);
-  const atkC = playerAtk(cProfile);
-  const atkO = playerAtk(oProfile);
+  const atkC = buffResolver.atkFromProfile(cProfile);
+  const atkO = buffResolver.atkFromProfile(oProfile);
   const randMax = c.scoreRandMax ?? 30;
   const scoreC = atkC + randInt(randMax);
   const scoreO = atkO + randInt(randMax);
