@@ -47,6 +47,34 @@
         "description": "完成任意一筆股票交易（買或賣）",
         "reward": 250,
         "target": 1
+      },
+      {
+        "id": "daily_mine_3",
+        "name": "礦工打卡",
+        "description": "當日成功挖礦 ≥ 3 次",
+        "reward": 150,
+        "target": 3
+      },
+      {
+        "id": "daily_sell_ore",
+        "name": "礦石出清",
+        "description": "當日完成任意一次賣礦",
+        "reward": 100,
+        "target": 1
+      },
+      {
+        "id": "daily_rare_ore",
+        "name": "幸運礦工",
+        "description": "當日挖到稀有礦石（鐵礦／黃金／鑽石）≥ 1 次",
+        "reward": 200,
+        "target": 1
+      },
+      {
+        "id": "daily_work",
+        "name": "今日打工",
+        "description": "當日完成任意一次打工",
+        "reward": 100,
+        "target": 1
       }
     ],
     "weekly": [
@@ -70,6 +98,34 @@
         "description": "本週收到 ≥ 20 個表情符號反應",
         "reward": 2000,
         "target": 20
+      },
+      {
+        "id": "weekly_mine_20",
+        "name": "週末礦工",
+        "description": "本週成功挖礦 ≥ 20 次",
+        "reward": 1000,
+        "target": 20
+      },
+      {
+        "id": "weekly_diamond",
+        "name": "鑽石獵人",
+        "description": "本週挖到鑽石 ≥ 1 次",
+        "reward": 2500,
+        "target": 1
+      },
+      {
+        "id": "weekly_craft",
+        "name": "鍛造師週記",
+        "description": "本週完成合成 ≥ 3 次",
+        "reward": 1200,
+        "target": 3
+      },
+      {
+        "id": "weekly_sell_value",
+        "name": "礦石大亨",
+        "description": "本週賣礦累積收入 ≥ 1,000 金幣",
+        "reward": 1500,
+        "target": 1000
       }
     ]
   }
