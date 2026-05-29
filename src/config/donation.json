@@ -2,7 +2,6 @@
   "donation": {
     "enabled": true,
     "sessionTtlMinutes": 30,
-    "luckCap": 0.25,
     "announceChannelId": "1199579576699985940",
     "roleIds": {
       "donor": "1509577270040461342",
