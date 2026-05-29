@@ -281,8 +281,11 @@ async function sendDonationDm(client, record, tier, extras) {
     (await client.users.fetch(record.userId).catch(() => null));
   if (!user) throw new Error(`user ${record.userId} not fetchable`);
 
+  const COIN_EMOJI = "<a:golden_spin_coin:1509128878881247293>";
+  const THANKFUL_EMOJI = "<:thankful:1509781026761736282>";
+
   const lines = [
-    `# 🙏 你讓逼逼機器人吃上一頓飯啦！`,
+    `# ${THANKFUL_EMOJI} 你讓逼逼機器人吃上一頓飯啦！`,
     `## 十分感謝你的贊助！`,
     "",
     `金額：**NT$${record.amountNtd}**　·　平台：${record.platform === "ecpay" ? "綠界" : "歐付寶"}`,
@@ -292,7 +295,7 @@ async function sendDonationDm(client, record, tier, extras) {
   if (tier) {
     lines.push(`## ${tier.emoji} ${tier.name}`);
     lines.push("");
-    if (tier.coins) lines.push(`- 💰 ${tier.coins.toLocaleString()} 金幣`);
+    if (tier.coins) lines.push(`- ${COIN_EMOJI} ${tier.coins.toLocaleString()} 金幣`);
     if (extras?.itemsLog) {
       for (const [field, qty] of Object.entries(extras.itemsLog)) {
         const label =
@@ -322,6 +325,9 @@ async function sendDonationDm(client, record, tier, extras) {
       lines.push(`- 🪪 自訂稱號（${dur}）— 到 \`/商店\` 背包選單設定`);
     }
     if (tier.canNominateTitle) lines.push(`- 🌟 可提名限定稱號`);
+
+    lines.push("");
+    lines.push("以上獎勵已全數發送至你的帳號 ✨ — 金幣可在 `/錢包` 查看，道具與卡面在 `/商店` 背包選單。");
   } else {
     lines.push("（金額未達方案門檻，未發放回饋。如有疑問請聯絡管理員。）");
   }
