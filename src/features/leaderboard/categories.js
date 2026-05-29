@@ -7,6 +7,10 @@ const fetchMessages = require("./fetchers/messages");
 const fetchVoice = require("./fetchers/voice");
 const fetchChannels = require("./fetchers/channels");
 const fetchMining = require("./fetchers/mining");
+const fetchMiningValue = require("./fetchers/miningValue");
+const fetchMiningDiamond = require("./fetchers/miningDiamond");
+const fetchTitles = require("./fetchers/titles");
+const fetchWeeklySummary = require("./fetchers/weeklySummary");
 const { fetchCasinoWinners, fetchCasinoLosers } = require("./fetchers/casino");
 
 const PERIODS = {
@@ -59,13 +63,53 @@ const CATEGORIES = [
   },
   {
     key: "mining",
-    label: "挖礦（週）",
+    label: "挖礦次數（週）",
     emoji: "⛏️",
     accent: 0xe67e22,
     description: "本週挖礦數量，週一頒發礦坑之王 👑",
     periods: ["week"],
     defaultPeriod: "week",
     fetch: fetchMining,
+  },
+  {
+    key: "mining_value",
+    label: "挖礦市值",
+    emoji: "💎",
+    accent: 0xf1c40f,
+    description: "依礦石總市值排名（qty × 單價）",
+    periods: ["week", "month", "all"],
+    defaultPeriod: "week",
+    fetch: fetchMiningValue,
+  },
+  {
+    key: "mining_diamond",
+    label: "鑽石獵人",
+    emoji: "💠",
+    accent: 0x00bcd4,
+    description: "依累計挖到的鑽石數排名（全時）",
+    periods: ["all"],
+    defaultPeriod: "all",
+    fetch: fetchMiningDiamond,
+  },
+  {
+    key: "titles",
+    label: "稱號收藏",
+    emoji: "🎖️",
+    accent: 0xe91e63,
+    description: "依已解鎖稱號數排名（全時）",
+    periods: ["all"],
+    defaultPeriod: "all",
+    fetch: fetchTitles,
+  },
+  {
+    key: "weekly",
+    label: "週報總覽",
+    emoji: "📅",
+    accent: 0x1abc9c,
+    description: "本週挖礦 / 市值 / 稱號 Top 3 一覽",
+    periods: ["week"],
+    defaultPeriod: "week",
+    fetch: fetchWeeklySummary,
   },
   {
     key: "casino_winners",
