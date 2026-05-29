@@ -9,22 +9,18 @@ const formatClaim = (claimed) => {
 
 module.exports = async (client, ctx, claimed) => {
   if (!claimed) return;
+
+  // 與挖礦任務同步：任務完成一律以 ephemeral 私人回覆（只有本人看得到）。
+  // 沒有 interaction 的情境（發言／語音／表情等被動事件、grantCoins 賭博／股市）
+  // 一律靜默自動入帳，不再額外發 DM 通知。
+  if (!ctx?.interaction) return;
+
   const text = formatClaim(claimed);
 
   try {
-    if (ctx?.interaction) {
-      await ctx.interaction
-        .followUp({ content: text, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
-      return;
-    }
-
-    let user = ctx?.user;
-    if (!user && ctx?.userId) {
-      user = await client.users.fetch(ctx.userId).catch(() => null);
-    }
-    if (!user) return;
-    await user.send(text).catch(() => {});
+    await ctx.interaction
+      .followUp({ content: text, flags: MessageFlags.Ephemeral })
+      .catch(() => {});
   } catch (e) {
     console.log(`[ERROR] notifyQuestClaim: ${e}`.red);
   }
