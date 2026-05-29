@@ -26,6 +26,14 @@ const COLORS = {
 // 燙金漸層：外框 / 印章 / monogram 共用，模擬金箔反光。
 const GOLD_GRAD = `linear-gradient(135deg, ${COLORS.goldShine} 0%, ${COLORS.gold} 28%, ${COLORS.goldDim} 50%, ${COLORS.gold} 72%, ${COLORS.goldShine} 100%)`;
 
+// 皇冠 icon：內嵌 SVG（字型沒有 ♔ glyph，改用向量保證渲染、不依賴網路）。
+// fill 可帶入金或墨黑，做出燙金 / 雕刻效果。
+function crownImg(fill, size) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="${fill}" d="M12 80 L12 60 L26 30 L39 50 L50 22 L61 50 L74 30 L88 60 L88 80 Z"/><circle cx="26" cy="28" r="5" fill="${fill}"/><circle cx="50" cy="20" r="5" fill="${fill}"/><circle cx="74" cy="28" r="5" fill="${fill}"/></svg>`;
+  const uri = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+  return `<img src="${uri}" style="display:flex;width:${size}px;height:${size}px;" />`;
+}
+
 // 黑卡雕刻金屬底紋：極淡的金色斜向髮絲線（guilloché 感）。
 function metalTexture() {
   return `<div style="display:flex;position:absolute;left:0;top:0;right:0;bottom:0;background-image:repeating-linear-gradient(45deg, rgba(212,175,55,0.05) 0px, rgba(212,175,55,0.05) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) 9px);"></div>`;
@@ -92,13 +100,19 @@ function wallet(data) {
 
     <!-- 左上 monogram -->
     <div style="display:flex;position:absolute;left:36px;top:34px;flex-direction:column;">
-      <div style="display:flex;width:68px;height:68px;border:1px solid ${COLORS.goldShine};background-image:${GOLD_GRAD};align-items:center;justify-content:center;font-family:'NotoSansTC';font-weight:900;font-size:32px;color:${COLORS.ink};line-height:1;padding-bottom:4px;">舒</div>
+      <div style="display:flex;width:68px;height:68px;border:1px solid ${COLORS.goldShine};background-image:${GOLD_GRAD};align-items:center;justify-content:center;">${crownImg(COLORS.ink, 40)}</div>
       <div style="display:flex;margin-top:8px;font-family:'SpaceMono';font-size:11px;letter-spacing:4px;color:${COLORS.goldDim};padding-right:2px;">PATRON · ${cardNo}</div>
     </div>
 
     <div style="display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;padding:0 60px;">
       <div style="display:flex;font-family:'SpaceMono';font-size:12px;letter-spacing:10px;color:${COLORS.goldDim};padding-left:10px;">— LIMITED EDITION —</div>
-      <div style="display:flex;margin-top:6px;font-family:'NotoSansTC';font-weight:900;font-size:38px;color:${COLORS.cream};letter-spacing:12px;line-height:1;padding-left:12px;">贊 助 限 定 卡 面</div>
+
+      <!-- 贊助限定徽章 -->
+      <div style="display:flex;margin-top:14px;align-items:center;border:1px solid ${COLORS.gold};padding:10px 26px;background-image:linear-gradient(180deg, rgba(212,175,55,0.14) 0%, rgba(212,175,55,0) 100%);">
+        ${crownImg(COLORS.goldBright, 26)}
+        <div style="display:flex;margin:0 18px;font-family:'NotoSansTC';font-weight:900;font-size:28px;letter-spacing:8px;color:${COLORS.goldShine};padding-left:8px;">贊助限定</div>
+        ${crownImg(COLORS.goldBright, 26)}
+      </div>
 
       <!-- 大餘額 -->
       <div style="display:flex;margin-top:32px;align-items:flex-end;">
