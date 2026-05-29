@@ -248,7 +248,12 @@ module.exports = {
       // 第一次回應：playing payload
       const payload = buildPlayingPayload(
         { ...initial, gameId },
-        { username, balance: balanceAfter },
+        {
+          username,
+          balance: balanceAfter,
+          userId,
+          avatarURL: interaction.user.displayAvatarURL(),
+        },
       );
       const msg = await interaction.editReply(payload);
 

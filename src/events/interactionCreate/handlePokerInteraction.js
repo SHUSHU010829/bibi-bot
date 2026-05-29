@@ -43,6 +43,14 @@ async function fetchByGameId(client, gameId) {
   return client.pokerGamesCollection.findOne({ gameId });
 }
 
+// embed 身分以「開桌者」為準；只有當按按鈕的人就是開桌者時，
+// 才把他的頭像帶給 renderer（避免拿到別人的頭像配開桌者名字）。
+function hostAvatarFor(interaction, doc) {
+  return doc && interaction.user.id === doc.creatorId
+    ? { avatarURL: interaction.user.displayAvatarURL() }
+    : {};
+}
+
 // 行為分類：決定要先 deferUpdate / deferReply / 或保留（showModal 不能 defer）
 const POKER_ACTIONS_DEFER_UPDATE = new Set([
   "raiseto",
@@ -163,13 +171,13 @@ async function handleButton(client, interaction) {
       return true;
     }
     const updated = await fetchByGameId(client, gameId);
-    await refreshTableMessage(client, updated);
+    await refreshTableMessage(client, updated, hostAvatarFor(interaction, updated));
     return true;
   }
 
   // 重貼桌面：把舊訊息刪掉重發一張
   if (action === "resend") {
-    const msg = await resendTableMessage(client, doc);
+    const msg = await resendTableMessage(client, doc, hostAvatarFor(interaction, doc));
     if (!msg) return interaction.editReply("🔧 重貼失敗，可能執行緒被封存或權限不足。");
     return interaction.editReply("🔄 桌面已重貼，往下找新訊息。");
   }
@@ -212,7 +220,7 @@ async function handleButton(client, interaction) {
     const next = engine.startHand(doc);
     await persistEngineState(client, doc, next);
     const updated = await fetchByGameId(client, gameId);
-    await refreshTableMessage(client, updated);
+    await refreshTableMessage(client, updated, hostAvatarFor(interaction, updated));
     await announceHandStart(client, updated);
     return true;
   }
@@ -233,7 +241,7 @@ async function handleButton(client, interaction) {
       return true;
     }
     const updated = await fetchByGameId(client, gameId);
-    await refreshTableMessage(client, updated);
+    await refreshTableMessage(client, updated, hostAvatarFor(interaction, updated));
     await announceHandStart(client, updated);
     return true;
   }
@@ -259,7 +267,7 @@ async function handleButton(client, interaction) {
         await closeTable(client, doc, { reason: "everyone_left" });
         return interaction.editReply("👋 已退回進桌費，牌桌已解散。");
       }
-      await refreshTableMessage(client, r.doc);
+      await refreshTableMessage(client, r.doc, hostAvatarFor(interaction, r.doc));
       return interaction.editReply(
         `👋 已退回進桌費 **${doc.buyIn.toLocaleString()}** credits。`
       );
@@ -287,7 +295,7 @@ async function handleButton(client, interaction) {
         );
       }
       const refreshed = await fetchByGameId(client, gameId);
-      await refreshTableMessage(client, refreshed);
+      await refreshTableMessage(client, refreshed, hostAvatarFor(interaction, refreshed));
     }
     return interaction.editReply("👋 已標記離桌，本局結束後退回剩餘籌碼。");
   }
@@ -359,7 +367,7 @@ async function handleButton(client, interaction) {
     if (updated.status === "settled") {
       await onSettled(client, updated);
     }
-    await refreshTableMessage(client, updated);
+    await refreshTableMessage(client, updated, hostAvatarFor(interaction, updated));
     return true;
   }
 
@@ -427,7 +435,7 @@ async function handleModal(client, interaction) {
   if (updated.status === "settled") {
     await onSettled(client, updated);
   }
-  await refreshTableMessage(client, updated);
+  await refreshTableMessage(client, updated, hostAvatarFor(interaction, updated));
   return true;
 }
 

@@ -14,6 +14,7 @@ const {
 const generateCrashCard = require("../../../utils/generateCrashCard");
 const { multiplierAt } = require("./engine");
 const { buildReplayRow } = require("../replay");
+const { buildCasinoEmbed } = require("../casinoEmbed");
 
 function buildCashOutButton(state) {
   return new ActionRowBuilder().addComponents(
@@ -48,6 +49,41 @@ function renderPlayingText(state, { username, balance } = {}) {
   return `${big}\n${meta}\n${hint}\n${note}`;
 }
 
+// 升空中的 embed 內文行（圖卡太貴，飛行階段只用文字＋每 tick 更新）。
+function playingLines(state) {
+  const now = Date.now();
+  const m = multiplierAt(state, now);
+  const lines = [
+    `## 🚀 火箭升空中... ×${m.toFixed(2)}`,
+    "按下「💰 收手」鎖定當下倍率，慢一步火箭就炸了！",
+    "⚠️ DC 訊息更新太快會被限流，畫面上的倍率每隔幾秒才會跳一次，實際數字以伺服器為準（你按下去那一刻的倍率才是真的）",
+  ];
+  if (state.autocashout != null) {
+    lines.push(`自動收手目標：×${state.autocashout.toFixed(2)}`);
+  }
+  return lines;
+}
+
+// 結算時的輸贏判定：回傳顏色用的 outcome 與淨輸贏 net。
+function settleOutcome(state) {
+  if (state.status !== "settled") return { outcome: "neutral", net: undefined };
+  if (state.result === "cashout") {
+    return { outcome: "win", net: (state.payout || 0) - state.bet };
+  }
+  // 爆炸 → 全輸
+  return { outcome: "lose", net: -state.bet };
+}
+
+// 圖片渲染失敗時，把結算牌況寫進 embed 內文的備援文字行。
+function settledLines(state) {
+  const lines = [];
+  if (state.autocashout != null) {
+    lines.push(`自動收手目標：×${state.autocashout.toFixed(2)}`);
+  }
+  lines.push(`本局爆炸倍率：×${state.bust.toFixed(2)}`);
+  return lines;
+}
+
 function settleHeadline(state) {
   if (state.result === "cashout") {
     return `🚀 **成功收手！** ×${state.cashoutAt.toFixed(2)} ＝ +${state.payout.toLocaleString()} credits（本局爆炸於 ×${state.bust.toFixed(2)}）`;
@@ -72,40 +108,64 @@ function renderSettledText(state, { username, balance } = {}) {
   return lines.join("\n");
 }
 
-function buildPlayingPayload(state, ctx = {}) {
+// 升空中：火箭還在飛 → neutral 底色，只顯示下注（餘額不顯示，飛行中還沒結算）。
+// 註：飛行階段不畫圖卡（太貴），直接把當下倍率塞進 embed 內文行＋頁尾。
+function buildPlayingPayload(state, { username, balance, userId, avatarURL } = {}) {
+  void balance; // 飛行中不顯示餘額
+  const embed = buildCasinoEmbed({
+    game: "🚀 火箭",
+    user: { id: userId || state.userId, displayName: username, avatarURL },
+    outcome: "neutral",
+    lines: playingLines(state),
+    bet: state.bet,
+    footer: `當前倍率 ×${multiplierAt(state, Date.now()).toFixed(2)}${state.autocashout != null ? ` ・ 自動收手 ×${state.autocashout.toFixed(2)}` : ""}`,
+  });
   return {
-    content: renderPlayingText(state, ctx),
+    content: "",
+    embeds: [embed],
     components: [buildCashOutButton(state)],
     files: [],
     attachments: [],
   };
 }
 
-async function buildSettledPayload(state, { username, balance } = {}) {
+async function buildSettledPayload(state, { username, balance, userId, avatarURL } = {}) {
   const components = state.userId
     ? [buildReplayRow("crash", state.userId, { name: username })]
     : [];
-  let content = "";
+  const { outcome, net } = settleOutcome(state);
+
   let files = [];
+  let imageName;
+  let fallbackLines = [];
   try {
     const buf = await generateCrashCard({
       username,
       state,
       balance: balance ?? 0,
     });
-    files = [
-      new AttachmentBuilder(buf, {
-        name: `crash-${state.gameId || "result"}.png`,
-      }),
-    ];
-    content = settleHeadline(state);
+    imageName = `crash-${state.gameId || "result"}.png`;
+    files = [new AttachmentBuilder(buf, { name: imageName })];
   } catch (e) {
     console.log(
       `[WARN] crash card render failed, falling back to text: ${e.message}`,
     );
-    content = renderSettledText(state, { username, balance });
+    fallbackLines = settledLines(state); // 沒有圖時改用文字呈現本局結果
   }
-  return { content, components, files, attachments: [] };
+
+  const embed = buildCasinoEmbed({
+    game: "🚀 火箭",
+    user: { id: userId || state.userId, displayName: username, avatarURL },
+    outcome,
+    headline: settleHeadline(state),
+    lines: fallbackLines,
+    bet: state.bet,
+    net,
+    balance: typeof balance === "number" ? balance : undefined,
+    imageName,
+  });
+
+  return { content: "", embeds: [embed], components, files, attachments: [] };
 }
 
 module.exports = {

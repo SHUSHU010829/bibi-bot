@@ -89,6 +89,8 @@ module.exports = async (client, interaction) => {
         const payload = await buildSettledPayload(res.committed, {
           username: state.username,
           balance,
+          userId: state.userId,
+          avatarURL: interaction.user.displayAvatarURL(),
         });
         await tickManager.editMessage(
           client,
@@ -140,6 +142,8 @@ module.exports = async (client, interaction) => {
     const payload = await buildSettledPayload(res.committed, {
       username: state.username,
       balance,
+      userId: state.userId,
+      avatarURL: interaction.user.displayAvatarURL(),
     });
     await tickManager.editMessage(
       client,

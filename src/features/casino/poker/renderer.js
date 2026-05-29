@@ -12,6 +12,7 @@ const {
 const { legalActions, totalPot } = require("./engine");
 const { categoryLabel, evaluate7 } = require("./hand");
 const generatePokerCard = require("../../../utils/generatePokerCard");
+const { buildCasinoEmbed } = require("../casinoEmbed");
 
 const SUIT_EMOJI = { S: "♠", H: "♥", D: "♦", C: "♣" };
 const RANK_LABEL = {
@@ -314,21 +315,41 @@ function buildActionButtons(state, viewerId) {
   return rows;
 }
 
-async function renderTableMessage(state, { viewerId } = {}) {
+// 撲克是多人共桌，沒有單一「玩家輸贏」可對應到 embed 欄位。
+// 因此 embed 以「開桌者（host）」作為身分標示（author 頭像＋名稱、內文 mention/ID），
+// 牌桌全貌（公牌 / 籌碼 / 行動倒數 / 攤牌贏家）一律放進內文行；底色維持 neutral。
+function pokerOutcome(state) {
+  // 結算時若桌上出現贏家，用 jackpot 金色點綴一下；其餘狀態 neutral。
+  if (state.status === "settled" && state.settle?.winners?.length) {
+    return "jackpot";
+  }
+  return "neutral";
+}
+
+function hostIdentity(state, avatarURL) {
+  const host = state.players?.find((p) => p.userId === state.creatorId);
+  return {
+    id: state.creatorId || host?.userId,
+    displayName: host?.username || "開桌者",
+    avatarURL,
+  };
+}
+
+async function renderTableMessage(state, { viewerId, avatarURL } = {}) {
   const components =
     state.status === "abandoned" ? [] : buildActionButtons(state, viewerId);
+  // mention 玩家但不觸發通知（沿用舊行為）
   const allowedMentions = { parse: [] };
-  let content = buildTableLines(state);
+
+  const fullText = buildTableLines(state);
   let files = [];
+  let imageName;
+  let lines = fullText.split("\n");
   try {
     const buf = await generatePokerCard(state);
-    files = [
-      new AttachmentBuilder(buf, {
-        name: `poker-${state.gameId}-h${state.handNumber || 0}-${state.phase || "wait"}.png`,
-      }),
-    ];
-    // 圖卡涵蓋公牌 / 籌碼 / 玩家；文字內容只留：行動倒數（最重要）+ 標題 + 攤牌結果
-    const lines = content.split("\n");
+    imageName = `poker-${state.gameId}-h${state.handNumber || 0}-${state.phase || "wait"}.png`;
+    files = [new AttachmentBuilder(buf, { name: imageName })];
+    // 有圖卡時：圖卡已涵蓋公牌 / 籌碼 / 玩家，內文只留最重要的：行動倒數 + 標題 + 攤牌結果
     const headline = lines[0]; // 🃏 德州撲克 ・ 第 N 局 ・ Phase
     const action = lines.find((l) => l.startsWith("⏳"));
     const settleLines = lines.filter((l) => l.startsWith("🏆"));
@@ -336,11 +357,31 @@ async function renderTableMessage(state, { viewerId } = {}) {
     if (action) blocks.push(action);
     blocks.push(headline);
     blocks.push(...settleLines);
-    content = blocks.filter(Boolean).join("\n");
+    lines = blocks.filter(Boolean);
   } catch (e) {
     console.log(`[WARN] poker card render failed, falling back to text: ${e.message}`);
+    // 沒圖時：保留完整桌面文字行
   }
-  return { content, components, files, allowedMentions };
+
+  const embed = buildCasinoEmbed({
+    game: "🃏 德州撲克",
+    user: hostIdentity(state, avatarURL),
+    outcome: pokerOutcome(state),
+    lines,
+    imageName,
+    footer:
+      state.status === "waiting"
+        ? `等候開桌 ・ 盲注 ${state.smallBlind}/${state.bigBlind} ・ 進桌 ${state.buyIn.toLocaleString()}`
+        : `第 ${state.handNumber || 0} 局 ・ ${phaseLabel(state.phase)}`,
+  });
+
+  return {
+    content: "",
+    embeds: [embed],
+    components,
+    files,
+    allowedMentions,
+  };
 }
 
 // 起手評估（pre-flop 沒公牌時提供簡易提示）。
