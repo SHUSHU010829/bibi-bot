@@ -24,6 +24,16 @@ function extractCode(text) {
   return m ? `DON-${m[1]}` : null;
 }
 
+/**
+ * 抖內身份組顯示文案（統一口徑）：
+ *  - 一般贊助（donor）→「贈舒人」
+ *  - 頂級贊助（vipDonor）→「滿腹詩舒」
+ * DM、website success 摘要等所有對外文案都應走這裡，避免各處名稱不一致。
+ */
+function roleName(tier) {
+  return tier?.role === "vipDonor" ? "滿腹詩舒" : "贈舒人";
+}
+
 /** 依金額找方案；找不到時回 null（< 50 元 或設定錯誤）。 */
 function tierForAmount(amountNtd) {
   const tiers = donation?.tiers || [];
@@ -76,4 +86,4 @@ function coinsForAmount(amountNtd) {
   return 0;
 }
 
-module.exports = { generateCode, extractCode, tierForAmount, coinsForAmount };
+module.exports = { generateCode, extractCode, roleName, tierForAmount, coinsForAmount };

@@ -99,6 +99,11 @@ module.exports = {
 
       const buffNotes = [];
       if (result.buff.consume.usePotion) buffNotes.push("🍀 幸運藥水 +luck");
+      if (result.buff.donationLuckBonus > 0) {
+        buffNotes.push(
+          `💝 抖內幸運 +${Math.round(result.buff.donationLuckBonus * 100)}%`,
+        );
+      }
       if (buffNotes.length) {
         container.addTextDisplayComponents(
           new TextDisplayBuilder().setContent(

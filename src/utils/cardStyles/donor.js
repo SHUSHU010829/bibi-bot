@@ -1,4 +1,4 @@
-// 贊助限定卡面：墨黑 + 金箔。專為抖內贈舒人 / 大恩讀舒人解鎖的卡面。
+// 贊助限定卡面：墨黑 + 金箔。專為抖內贈舒人 / 滿腹詩舒解鎖的卡面。
 //
 // Satori 限制：避免 backdrop-filter / gradient text。border 沿用 leather 的
 // 雙層金框結構，加一個右上「THANK YOU」金箔印章。
