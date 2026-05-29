@@ -35,6 +35,13 @@ function weaponLabel(key) {
 
 // 武器耐久提示 + 突發事件，兩種戰鬥結果共用，append 進 container。
 function appendCombatExtras(container, result) {
+  if (result.usingFist) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 👊 你空手搏鬥，勝率極低！用 /合成 打一把劍（🗡️ 鐵劍只要鐵礦 ×20）大幅提升戰鬥力。",
+      ),
+    );
+  }
   if (result.weaponBroke) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -98,12 +105,6 @@ module.exports = {
       if (!result.ok) {
         if (result.reason === "disabled") {
           return interaction.editReply("🔧 地下城系統尚未啟動！");
-        }
-        if (result.reason === "no_weapon") {
-          return interaction.editReply(
-            "👊 你赤手空拳，沒辦法打怪！\n" +
-              "先用 `/合成` 打造一把 **🗡️ 鐵劍**（鐵礦 ×20）再來闖地下城。用 `/裝備` 查看武器配方。",
-          );
         }
         if (result.reason === "no_stamina") {
           const tail = result.nextRegenAt

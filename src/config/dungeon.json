@@ -8,6 +8,7 @@
     "monsterHpMax": 280,
     "winRateMin": 0.2,
     "winRateMax": 0.9,
+    "fistWinRateMax": 0.1,
     "weapons": {
       "fist": { "name": "赤手空拳", "emoji": "👊", "atk": 0, "critRate": 0, "durability": null },
       "iron_sword": { "name": "鐵劍", "emoji": "🗡️", "atk": 25, "critRate": 0, "durability": 60 },
