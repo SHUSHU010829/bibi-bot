@@ -18,25 +18,45 @@ const COLORS = {
   gold: "#D4AF37",
   goldDim: "#7A6526",
   goldBright: "#F1D777",
+  goldShine: "#FBEFC0",
   cream: "#F5E6C8",
   ink: "#0A0A0C",
 };
 
+// 燙金漸層：外框 / 印章 / monogram 共用，模擬金箔反光。
+const GOLD_GRAD = `linear-gradient(135deg, ${COLORS.goldShine} 0%, ${COLORS.gold} 28%, ${COLORS.goldDim} 50%, ${COLORS.gold} 72%, ${COLORS.goldShine} 100%)`;
+
 function thankStamp() {
   return `
     <div style="display:flex;position:absolute;right:36px;top:34px;flex-direction:column;align-items:flex-end;">
-      <div style="display:flex;border:2px solid ${COLORS.gold};padding:8px 14px;font-family:'SpaceMono';font-size:11px;letter-spacing:6px;color:${COLORS.gold};padding-right:8px;">THANK YOU</div>
-      <div style="display:flex;margin-top:6px;font-family:'NotoSansTC';font-weight:500;font-size:11px;letter-spacing:6px;color:${COLORS.goldDim};padding-right:0px;">贊助限定</div>
+      <div style="display:flex;border:1px solid ${COLORS.goldShine};background-image:${GOLD_GRAD};padding:8px 14px;font-family:'SpaceMono';font-size:11px;letter-spacing:6px;color:${COLORS.ink};padding-right:8px;">THANK YOU</div>
+      <div style="display:flex;margin-top:6px;font-family:'NotoSansTC';font-weight:500;font-size:11px;letter-spacing:6px;color:${COLORS.goldBright};padding-right:0px;">贊助限定</div>
     </div>
+  `;
+}
+
+// 四角燙金框飾：每個角只畫相鄰兩邊，形成 L 形包角。
+function cornerOrnaments() {
+  const mk = (pos, borders) =>
+    `<div style="display:flex;position:absolute;${pos}width:20px;height:20px;${borders}"></div>`;
+  return `
+    ${mk("left:13px;top:13px;", `border-left:2px solid ${COLORS.goldShine};border-top:2px solid ${COLORS.goldShine};`)}
+    ${mk("right:13px;top:13px;", `border-right:2px solid ${COLORS.goldShine};border-top:2px solid ${COLORS.goldShine};`)}
+    ${mk("left:13px;bottom:13px;", `border-left:2px solid ${COLORS.goldShine};border-bottom:2px solid ${COLORS.goldShine};`)}
+    ${mk("right:13px;bottom:13px;", `border-right:2px solid ${COLORS.goldShine};border-bottom:2px solid ${COLORS.goldShine};`)}
   `;
 }
 
 function frame(inner) {
   return `
-    <div style="display:flex;width:1080px;height:600px;background:${COLORS.bg};padding:14px;box-sizing:border-box;font-family:'NotoSansTC';">
-      <div style="display:flex;flex:1;border:2px solid ${COLORS.gold};box-sizing:border-box;padding:6px;">
-        <div style="display:flex;flex:1;position:relative;border:1px solid ${COLORS.goldDim};box-sizing:border-box;background:${COLORS.bgInner};">
-          ${inner}
+    <div style="display:flex;width:1080px;height:600px;background:${COLORS.bg};background-image:radial-gradient(circle at 50% 16%, #1d160c 0%, ${COLORS.bg} 62%);padding:14px;box-sizing:border-box;font-family:'NotoSansTC';">
+      <!-- 漸層燙金外框（以 padding 露出底層 gradient 當邊） -->
+      <div style="display:flex;flex:1;padding:3px;box-sizing:border-box;background-image:${GOLD_GRAD};">
+        <div style="display:flex;flex:1;padding:5px;box-sizing:border-box;background:${COLORS.bg};">
+          <div style="display:flex;flex:1;position:relative;border:1px solid ${COLORS.gold};box-sizing:border-box;background:${COLORS.bgInner};background-image:radial-gradient(circle at 50% 30%, #241c0e 0%, ${COLORS.bgInner} 60%);">
+            ${cornerOrnaments()}
+            ${inner}
+          </div>
         </div>
       </div>
     </div>
@@ -56,7 +76,7 @@ function wallet(data) {
 
     <!-- 左上 monogram -->
     <div style="display:flex;position:absolute;left:36px;top:34px;flex-direction:column;">
-      <div style="display:flex;width:68px;height:68px;border:2px solid ${COLORS.gold};background:transparent;align-items:center;justify-content:center;font-family:'NotoSansTC';font-weight:900;font-size:32px;color:${COLORS.gold};line-height:1;padding-bottom:4px;">舒</div>
+      <div style="display:flex;width:68px;height:68px;border:1px solid ${COLORS.goldShine};background-image:${GOLD_GRAD};align-items:center;justify-content:center;font-family:'NotoSansTC';font-weight:900;font-size:32px;color:${COLORS.ink};line-height:1;padding-bottom:4px;">舒</div>
       <div style="display:flex;margin-top:8px;font-family:'SpaceMono';font-size:11px;letter-spacing:4px;color:${COLORS.goldDim};padding-right:2px;">PATRON · ${cardNo}</div>
     </div>
 
@@ -67,7 +87,7 @@ function wallet(data) {
       <!-- 大餘額 -->
       <div style="display:flex;margin-top:32px;align-items:flex-end;">
         <div style="display:flex;font-family:'SpaceMono';font-size:32px;color:${COLORS.goldDim};margin-right:8px;margin-bottom:18px;letter-spacing:2px;">NT$</div>
-        <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:128px;color:${COLORS.goldBright};letter-spacing:-3px;line-height:1;">${balance}</div>
+        <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:128px;color:${COLORS.goldShine};letter-spacing:-3px;line-height:1;">${balance}</div>
       </div>
 
       <div style="display:flex;margin-top:8px;font-family:'SpaceMono';font-size:12px;letter-spacing:5px;color:${COLORS.cream};opacity:0.6;max-width:880px;text-align:center;">${htmlEscape(balanceWords)}</div>
@@ -86,8 +106,8 @@ function level(data) {
   const pct = Math.round(xpProgress(data.currentLevelXp, data.xpToNextLevel) * 100);
 
   const avatarHtml = data.avatarDataUri
-    ? `<img src="${data.avatarDataUri}" style="display:flex;width:120px;height:120px;object-fit:cover;border-radius:9999px;border:3px solid ${COLORS.gold};" />`
-    : `<div style="display:flex;width:120px;height:120px;background:${COLORS.gold};color:${COLORS.ink};font-family:'NotoSansTC';font-weight:900;font-size:56px;justify-content:center;align-items:center;border-radius:9999px;">${avatarFallbackChar(data.username)}</div>`;
+    ? `<img src="${data.avatarDataUri}" style="display:flex;width:120px;height:120px;object-fit:cover;border-radius:9999px;border:3px solid ${COLORS.goldShine};" />`
+    : `<div style="display:flex;width:120px;height:120px;background-image:${GOLD_GRAD};color:${COLORS.ink};font-family:'NotoSansTC';font-weight:900;font-size:56px;justify-content:center;align-items:center;border-radius:9999px;">${avatarFallbackChar(data.username)}</div>`;
 
   const stats = [
     { label: "MSG", v: fmtNumber(data.totalMessages || 0) },
@@ -107,8 +127,6 @@ function level(data) {
     .join("");
 
   const inner = `
-    ${thankStamp()}
-
     <div style="display:flex;flex:1;flex-direction:column;padding:36px 44px;">
 
       <!-- header -->
@@ -116,13 +134,13 @@ function level(data) {
         ${avatarHtml}
         <div style="display:flex;flex-direction:column;margin-left:22px;">
           <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:34px;color:${COLORS.cream};line-height:1.1;letter-spacing:1px;">${htmlEscape(name)}</div>
-          <div style="display:flex;margin-top:8px;padding:5px 14px;background:${COLORS.gold};color:${COLORS.ink};font-family:'NotoSansTC';font-weight:500;font-size:14px;letter-spacing:4px;align-self:flex-start;">${htmlEscape(data.title || "—")}</div>
+          <div style="display:flex;margin-top:8px;padding:5px 14px;background-image:${GOLD_GRAD};color:${COLORS.ink};font-family:'NotoSansTC';font-weight:500;font-size:14px;letter-spacing:4px;align-self:flex-start;">${htmlEscape(data.title || "—")}</div>
           <div style="display:flex;margin-top:8px;font-family:'SpaceMono';font-size:12px;letter-spacing:2px;color:${COLORS.goldDim};">RANK #${data.rank || 0} / ${data.totalUsers || 0}</div>
         </div>
 
         <div style="display:flex;flex-direction:column;align-items:flex-end;margin-left:auto;">
           <div style="display:flex;font-family:'SpaceMono';font-size:12px;letter-spacing:6px;color:${COLORS.goldDim};">LEVEL</div>
-          <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:96px;color:${COLORS.goldBright};line-height:1;letter-spacing:-2px;">${data.level || 0}</div>
+          <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:96px;color:${COLORS.goldShine};line-height:1;letter-spacing:-2px;">${data.level || 0}</div>
         </div>
       </div>
 
@@ -133,7 +151,7 @@ function level(data) {
           <div style="display:flex;color:${COLORS.cream};">${fmtNumber(data.currentLevelXp || 0)} / ${fmtNumber(data.xpToNextLevel || 0)}</div>
         </div>
         <div style="display:flex;width:100%;height:18px;border:1px solid ${COLORS.goldDim};background:${COLORS.bg};box-sizing:border-box;">
-          <div style="display:flex;width:${pct}%;height:100%;background:${COLORS.gold};"></div>
+          <div style="display:flex;width:${pct}%;height:100%;background-image:${GOLD_GRAD};"></div>
         </div>
       </div>
 
