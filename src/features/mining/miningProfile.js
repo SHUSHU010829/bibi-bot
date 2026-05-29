@@ -7,6 +7,8 @@ function defaultProfile(userId, guildId) {
     mine_cooldown_at: 0,
     pickaxe: "wood",
     pickaxe_durability: null,
+    weapon: "fist",
+    weapon_durability: null,
     luck_potion_uses: 0,
     cd_ticket_count: 0,
     cd_ticket_used_date: null,
@@ -35,6 +37,8 @@ function normalize(doc) {
   doc.mine_cooldown_at ??= 0;
   doc.pickaxe ??= "wood";
   if (doc.pickaxe_durability === undefined) doc.pickaxe_durability = null;
+  doc.weapon ??= "fist";
+  if (doc.weapon_durability === undefined) doc.weapon_durability = null;
   doc.luck_potion_uses ??= 0;
   doc.cd_ticket_count ??= 0;
   if (doc.cd_ticket_used_date === undefined) doc.cd_ticket_used_date = null;

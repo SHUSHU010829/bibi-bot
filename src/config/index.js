@@ -24,6 +24,7 @@ const twitchPerks = require("./twitch_perks.json");
 const titles = require("./titles.json");
 const donation = require("./donation.json");
 const events = require("./events.json");
+const encounters = require("./encounters.json");
 
 module.exports = {
   ...server,
@@ -50,4 +51,5 @@ module.exports = {
   ...titles,
   ...donation,
   ...events,
+  ...encounters,
 };

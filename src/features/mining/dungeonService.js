@@ -1,16 +1,33 @@
 require("colors");
-const { mining, dungeon } = require("../../config");
+const { mining, dungeon, shop } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
 const { weightedRandom } = require("./weightedRandom");
 const grantCoins = require("../economy/grantCoins");
 const twitchPerks = require("./twitchPerks");
+const encounterService = require("./encounterService");
+
+// CD 縮短券持有上限（與商店 shop.json maxStack 一致）
+const CD_TICKET_MAX = 30;
+
+// CD 縮短券滿倉時的折算金幣價（取商店售價，fallback 150）
+function cdTicketCoinValue() {
+  const item = (shop?.items || []).find((i) => i.type === "mining_cd_ticket");
+  return item?.price || 150;
+}
+
+function randInt(min, max) {
+  const lo = Math.ceil(min ?? 0);
+  const hi = Math.floor(max ?? lo);
+  if (hi <= lo) return lo;
+  return Math.floor(Math.random() * (hi - lo + 1)) + lo;
+}
 
 function rollLoot() {
   const table = dungeon?.loot || [];
   const weights = {};
   for (const l of table) weights[l.id] = l.weight;
   const id = weightedRandom(weights);
-  return table.find((l) => l.id === id) || { id: "nothing" };
+  return table.find((l) => l.id === id) || { id: "nothing", kind: "nothing" };
 }
 
 function staminaBonus(member) {
@@ -47,10 +64,17 @@ function resolveStamina(profile, max = staminaMax()) {
   return { stamina, updatedAt, nextRegenAt: updatedAt + regenMs };
 }
 
+// 戰鬥力 = baseAtk + 武器 ATK（鎬子不再貢獻戰鬥力，純採集）。
 function playerAtk(profile) {
-  const base = dungeon?.baseAtk ?? 30;
-  const map = dungeon?.pickaxeAtk || {};
-  return base + (map[profile?.pickaxe] || 0);
+  const base = dungeon?.baseAtk ?? 20;
+  const weapons = dungeon?.weapons || {};
+  const wdef = weapons[profile?.weapon] || weapons.fist || {};
+  return base + (wdef.atk || 0);
+}
+
+// 是否持有可用武器（非赤手）。打怪硬門檻：必須先打造劍。
+function hasWeapon(profile) {
+  return !!profile?.weapon && profile.weapon !== "fist";
 }
 
 function rollMonster() {
@@ -76,6 +100,12 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
   const max = staminaMax(member);
   const bonus = staminaBonus(member);
   const profile = await getOrCreate(client, userId, guildId);
+
+  // 硬門檻：沒有武器（赤手）無法打怪，提示去 /合成 打劍
+  if (!hasWeapon(profile)) {
+    return { ok: false, reason: "no_weapon" };
+  }
+
   const st = resolveStamina(profile, max);
 
   if (st.stamina <= 0) {
@@ -95,7 +125,11 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
     dungeon?.winRateMin ?? 0.2,
     dungeon?.winRateMax ?? 0.9
   );
-  const won = Math.random() < winRate;
+  const weapons = dungeon?.weapons || {};
+  const wdef = weapons[profile.weapon] || {};
+  const critRate = wdef.critRate || 0;
+  const crit = Math.random() < critRate; // 暴擊保證命中要害 → 直接獲勝
+  const won = Math.random() < winRate || crit;
 
   const set = {
     stamina: newStamina,
@@ -104,41 +138,84 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
   };
   const inc = { dungeon_count: 1 };
 
-  // 戰利品（僅勝利時）
-  let loot = { id: "nothing" };
-  if (won) {
-    loot = rollLoot();
+  // 武器耐久：打怪時消耗（與鎬子挖礦時消耗同模式）；歸 0 退回赤手。
+  let weaponBroke = false;
+  let weaponDurabilityAfter = null;
+  const weaponBefore = profile.weapon;
+  const hasWeaponDurability =
+    profile.weapon !== "fist" && typeof profile.weapon_durability === "number";
+  if (hasWeaponDurability) {
+    weaponDurabilityAfter = profile.weapon_durability - 1;
+    if (weaponDurabilityAfter <= 0) {
+      weaponBroke = true;
+      weaponDurabilityAfter = null;
+      set.weapon = "fist";
+      set.weapon_durability = null;
+    } else {
+      inc.weapon_durability = -1;
+    }
   }
 
+  // 戰利品（僅勝利時）
+  let loot = { id: "nothing", kind: "nothing" };
   let coinsGained = 0;
   let oreGained = null; // { ore, qty }
   let oreOverflowToCoins = false;
   let legendaryGained = 0;
+  let potionGained = 0;
+  let ticketGained = 0;
+  let ticketOverflowToCoins = false;
 
-  if (won && loot.id === "ore_fragment") {
-    const oreKey = loot.ore || "iron";
-    const qty = loot.qty || 1;
-    const cap = backpackCapacity(profile, mining);
-    const used = backpackUsed(profile);
-    const space = Math.max(0, cap - used);
-    if (space >= qty) {
-      inc[`backpack.${oreKey}`] = qty;
-      inc[`lifetime_ore.${oreKey}`] = qty;
-      oreGained = { ore: oreKey, qty };
-    } else {
-      // 背包滿了就折算成等值金幣，避免戰利品憑空消失
-      const price = mining?.ores?.[oreKey]?.price || 0;
-      coinsGained = price * qty;
-      oreOverflowToCoins = true;
-      oreGained = { ore: oreKey, qty };
+  if (won) {
+    loot = rollLoot();
+    const kind = loot.kind || loot.id;
+
+    if (kind === "ore" || loot.id === "ore_fragment") {
+      const oreKey = loot.ore || "iron";
+      const qty = loot.qty || 1;
+      const cap = backpackCapacity(profile, mining);
+      const used = backpackUsed(profile);
+      const space = Math.max(0, cap - used);
+      if (space >= qty) {
+        inc[`backpack.${oreKey}`] = (inc[`backpack.${oreKey}`] || 0) + qty;
+        inc[`lifetime_ore.${oreKey}`] = (inc[`lifetime_ore.${oreKey}`] || 0) + qty;
+        oreGained = { ore: oreKey, qty };
+      } else {
+        // 背包滿了就折算成等值金幣，避免戰利品憑空消失
+        const price = mining?.ores?.[oreKey]?.price || 0;
+        coinsGained += price * qty;
+        oreOverflowToCoins = true;
+        oreGained = { ore: oreKey, qty };
+      }
+    } else if (kind === "coins") {
+      const lo = loot.minCoins ?? 150;
+      const hi = loot.maxCoins ?? 300;
+      coinsGained += randInt(lo, hi);
+    } else if (kind === "fragment" || loot.id === "legendary_fragment") {
+      legendaryGained = loot.qty || 1;
+      inc.legendary_fragments = (inc.legendary_fragments || 0) + legendaryGained;
+    } else if (kind === "luck_potion") {
+      potionGained = loot.qty || 1;
+      inc.luck_potion_uses = (inc.luck_potion_uses || 0) + potionGained;
+    } else if (kind === "cd_ticket") {
+      const owned = profile.cd_ticket_count || 0;
+      const want = loot.qty || 1;
+      ticketGained = Math.min(want, Math.max(0, CD_TICKET_MAX - owned));
+      if (ticketGained > 0) {
+        inc.cd_ticket_count = (inc.cd_ticket_count || 0) + ticketGained;
+      }
+      // 滿倉的部分折算成金幣，避免撿到的券白白浪費
+      const overflow = want - ticketGained;
+      if (overflow > 0) {
+        coinsGained += overflow * cdTicketCoinValue();
+        ticketOverflowToCoins = true;
+      }
     }
-  } else if (won && loot.id === "coins") {
-    const lo = loot.minCoins ?? 150;
-    const hi = loot.maxCoins ?? 300;
-    coinsGained = Math.floor(Math.random() * (hi - lo + 1)) + lo;
-  } else if (won && loot.id === "legendary_fragment") {
-    legendaryGained = loot.qty || 1;
-    inc.legendary_fragments = legendaryGained;
+
+    // 暴擊額外獎勵：金幣類戰利品 ×1.5
+    if (crit && coinsGained > 0) {
+      coinsGained = Math.round(coinsGained * 1.5);
+    }
   }
 
   await client.miningProfilesCollection.updateOne(
@@ -160,9 +237,10 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
     balance = grant?.doc?.totalCoins ?? null;
   }
 
-  return {
+  const result = {
     ok: true,
     won,
+    crit,
     monster,
     atk,
     winRate,
@@ -171,6 +249,9 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
     oreGained,
     oreOverflowToCoins,
     legendaryGained,
+    potionGained,
+    ticketGained,
+    ticketOverflowToCoins,
     balance,
     stamina: newStamina,
     staminaMax: max,
@@ -180,7 +261,37 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
       max
     ).nextRegenAt,
     dungeonCount: (profile.dungeon_count || 0) + 1,
+    weaponBefore,
+    weaponBroke,
+    weaponDurabilityAfter,
   };
+
+  // 突發事件（戰鬥擴充）：戰後以一定機率觸發。會自行寫庫並可能改動體力。
+  const enc = await encounterService
+    .trigger(client, {
+      context: "dungeon",
+      userId,
+      guildId,
+      member,
+      username,
+      baseResult: result,
+    })
+    .catch(() => null);
+  if (enc) {
+    if (typeof enc.patch?.staminaAfter === "number") {
+      result.stamina = enc.patch.staminaAfter;
+    }
+    result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body };
+  }
+
+  return result;
 }
 
-module.exports = { enterDungeon, resolveStamina, staminaMax, staminaBonus, playerAtk };
+module.exports = {
+  enterDungeon,
+  resolveStamina,
+  staminaMax,
+  staminaBonus,
+  playerAtk,
+  hasWeapon,
+};

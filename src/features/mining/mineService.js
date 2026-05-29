@@ -4,6 +4,7 @@ const { mining } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
 const dropTable = require("./dropTable");
 const buffResolver = require("./buffResolver");
+const encounterService = require("./encounterService");
 
 // 執行一次挖礦。回傳結果物件交由指令層呈現（含彩虹石公告與耐久 DM 所需資料）。
 async function mine(client, { userId, guildId, member, username }) {
@@ -73,7 +74,7 @@ async function mine(client, { userId, guildId, member, username }) {
     ?.insertOne({ user_id: userId, guild_id: guildId, ore, qty, ts: new Date() })
     .catch((e) => console.log(`[ERROR] insert mine log: ${e}`.red));
 
-  return {
+  const result = {
     ok: true,
     ore,
     qty,
@@ -84,6 +85,27 @@ async function mine(client, { userId, guildId, member, username }) {
     durabilityAfter,
     mineCountTotal: (profile.mine_count_total || 0) + 1,
   };
+
+  // 突發事件（戰鬥擴充）：採集後以一定機率觸發。會自行寫庫，可能翻倍 / 損失本次掉落、
+  // 清除冷卻、或觸發怪物突襲（用玩家武器自動結算）。
+  const enc = await encounterService
+    .trigger(client, {
+      context: "mining",
+      userId,
+      guildId,
+      member,
+      username,
+      baseResult: result,
+    })
+    .catch(() => null);
+  if (enc) {
+    if (typeof enc.patch?.newCooldownAt === "number") {
+      result.newCooldownAt = enc.patch.newCooldownAt;
+    }
+    result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body };
+  }
+
+  return result;
 }
 
 // 冷卻中主動使用一張 CD 縮短券：直接縮短目前的挖礦冷卻。
