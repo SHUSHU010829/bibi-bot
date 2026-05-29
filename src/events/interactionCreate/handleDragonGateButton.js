@@ -175,7 +175,12 @@ async function handleFold(client, interaction, gameId) {
 
   const payload = await renderMessage(
     { ...next, gameId, userId: state.userId },
-    { username: state.username, balance: balanceAfter }
+    {
+      username: state.username,
+      balance: balanceAfter,
+      userId: state.userId,
+      avatarURL: interaction.user.displayAvatarURL(),
+    }
   );
   await interaction.editReply({ ...payload, attachments: [] });
   trackSuccess("dragonGate-button");
@@ -300,7 +305,12 @@ async function submitBet(client, interaction, gameId) {
 
   const payload = await renderMessage(
     { ...next, gameId, userId: state.userId },
-    { username: state.username, balance: balanceAfter }
+    {
+      username: state.username,
+      balance: balanceAfter,
+      userId: state.userId,
+      avatarURL: interaction.user.displayAvatarURL(),
+    }
   );
   await interaction.editReply({ ...payload, attachments: [] });
   trackSuccess("dragonGate-button");

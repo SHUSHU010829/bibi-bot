@@ -130,7 +130,12 @@ module.exports = {
 
       const payload = await renderMessage(
         { ...doc, gameId },
-        { username, balance: balanceAfter }
+        {
+          username,
+          balance: balanceAfter,
+          userId,
+          avatarURL: interaction.user.displayAvatarURL(),
+        }
       );
       await interaction.editReply(payload);
     } catch (error) {

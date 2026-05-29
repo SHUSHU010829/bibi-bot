@@ -10,6 +10,7 @@ const generateRouletteGif = require('../../utils/generateRouletteGif');
 const { spinWheel, settle, totalWagered } = require('../../features/casino/roulette/engine');
 const { buildBettingRows, buildStatusContent } = require('../../commands/casino/roulette');
 const { saveLastBet, buildReplayRow } = require('../../features/casino/replay');
+const { buildCasinoEmbed } = require('../../features/casino/casinoEmbed');
 const logger = require('../../utils/logger');
 const { trackError, trackSuccess } = require('../../utils/errorTracker');
 const { consume } = require('../../utils/rateLimiter');
@@ -168,15 +169,8 @@ module.exports = async (client, interaction) => {
         })
         .join('\n');
 
+      // 淨輸贏：總贏得 - 已押注（profit，輸為負）
       const netResult = settlement.totalWin - wagered;
-      const netStr = netResult >= 0
-        ? `+${netResult.toLocaleString()}`
-        : netResult.toLocaleString();
-
-      const textContent =
-        `🎰 **${result}** ${resultEmoji(result)}\n\n` +
-        `${winLines}\n\n` +
-        `淨利 **${netStr}**　餘額 **${balanceAfter.toLocaleString()}**`;
 
       // 生成 GIF（失敗不影響派彩，降級為純文字）
       let gifAttachment = null;
@@ -213,8 +207,26 @@ module.exports = async (client, interaction) => {
         },
       });
 
+      // 改用賭場共用 embed：作者放玩家頭像＋名稱，欄位顯示下注／淨輸贏／餘額，遊戲 GIF 放進 embed
+      const embed = buildCasinoEmbed({
+        game: "🎰 輪盤",
+        user: {
+          id: game.userId,
+          displayName: game.username,
+          avatarURL: interaction.user.displayAvatarURL(),
+        },
+        outcome: netResult > 0 ? "win" : netResult < 0 ? "lose" : "neutral",
+        headline: `開出 **${result}** ${resultEmoji(result)}`,
+        lines: winLines ? winLines.split("\n") : [],
+        bet: wagered,
+        net: netResult,
+        balance: balanceAfter,
+        imageName: gifAttachment ? "roulette.gif" : undefined,
+      });
+
       await interaction.editReply({
-        content: textContent,
+        content: "",
+        embeds: [embed],
         files: gifAttachment ? [gifAttachment] : [],
         components: [buildReplayRow("roulette", game.userId, { name: game.username })],
       });
