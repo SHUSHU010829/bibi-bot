@@ -23,17 +23,18 @@ function resolve(profile, member) {
     cdMs -= perks.miningCdReductionMs || 0;
   }
 
+  // luck 全域上限：僅套用於鎬子 / 幸運藥水 / Twitch 權益的加總
+  const cap = mining?.luckCap ?? 0.25;
+  if (luckBonus > cap) luckBonus = cap;
+
   // 抖內 luck buff（永久 expiresAt=null，限時則需 > now）
+  // 抖內加成獨立於上限之外，於封頂後額外疊加，故等級給多少實拿多少。
   const donationLuckBonus = Number(profile?.donation_luck_bonus || 0);
   if (donationLuckBonus > 0) {
     const exp = profile?.donation_luck_expires_at;
     const stillValid = !exp || new Date(exp).getTime() > Date.now();
     if (stillValid) luckBonus += donationLuckBonus;
   }
-
-  // luck 全域上限
-  const cap = mining?.luckCap ?? 0.25;
-  if (luckBonus > cap) luckBonus = cap;
 
   // CD 下限保護（避免負數 / 零）
   const actualCdMs = Math.max(cdMs, 60 * 1000);
