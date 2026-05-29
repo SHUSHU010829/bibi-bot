@@ -3,7 +3,7 @@
     "enabled": true,
     "sessionTtlMinutes": 30,
     "luckCap": 0.25,
-    "announceChannelId": "1192666043571773580",
+    "announceChannelId": "1199579576699985940",
     "roleIds": {
       "donor": "1509577270040461342",
       "vipDonor": "1509576114811703436"
