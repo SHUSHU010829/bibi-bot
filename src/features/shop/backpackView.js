@@ -16,6 +16,10 @@ const {
   backpackUsed,
 } = require("../mining/miningProfile");
 const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
+const {
+  DONOR_THEME_ITEM_ID,
+  CARDNO_OPEN_ID,
+} = require("../donation/customCardNumber");
 
 // CD 縮短券「使用」按鈕 customId 格式：mining_use_cd_ticket_<ownerId>
 // 由 events/interactionCreate/handleMiningTicket.js 處理。
@@ -268,6 +272,21 @@ async function buildBackpackView(client, { userId, guildId, displayName }) {
       const row = buildSelectMenu(type, list);
       if (row) equipRows.push(row);
       if (equipRows.length >= 3) break;
+    }
+
+    // 贊助限定卡面持有者：提供「設定卡號」按鈕（自訂浮雕卡號）
+    const ownsDonorCard = (grouped.get("wallet_theme") || []).some(
+      (it) => it.itemId === DONOR_THEME_ITEM_ID && isUsable(it)
+    );
+    if (ownsDonorCard) {
+      equipRows.push(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(CARDNO_OPEN_ID)
+            .setLabel("💳 設定卡號")
+            .setStyle(ButtonStyle.Secondary)
+        )
+      );
     }
   }
 
