@@ -216,28 +216,70 @@ module.exports = async function grantDonationPerks(client, { record, tier }) {
     }
   }
 
-  // 6. 自訂稱號（限時或永久）
+  // 6. 自訂稱號（限時或永久）— 再次抖內時「續期累加」：
+  //    既有未過期的自訂稱號（永久優先，其次取最晚到期）→ 在其到期日上累加天數；
+  //    新的是永久 → 升級為永久；既有已是永久 → 不動；都沒有 → 新發一筆。
+  //    只動 expiresAt，保留 payload（已設定的稱號文字）與 equipped 狀態。
   if (tier?.titleId && client.userInventoryCollection) {
     try {
       const now = new Date();
-      const expiresAt =
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const addDays =
         tier.titleDurationDays === null || tier.titleDurationDays === undefined
           ? null
-          : new Date(now.getTime() + tier.titleDurationDays * 24 * 60 * 60 * 1000);
-      await client.userInventoryCollection.insertOne({
-        userId,
-        guildId,
-        itemId: tier.titleId,
-        name: tier.id === "vip" ? "自訂稱號（90 天）" : "自訂稱號（30 天）",
-        type: "custom_title",
-        payload: {},
-        equipped: false,
-        expiresAt,
-        acquiredAt: now,
-        updatedAt: now,
-        source: "donation",
-        freeGrant: true,
+          : tier.titleDurationDays;
+
+      const existing = await client.userInventoryCollection
+        .find({
+          userId,
+          guildId,
+          type: "custom_title",
+          expired: { $ne: true },
+          $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+        })
+        .toArray();
+      // 永久(null) 最前，其餘依到期日由晚到早
+      existing.sort((a, b) => {
+        if (a.expiresAt === null) return -1;
+        if (b.expiresAt === null) return 1;
+        return new Date(b.expiresAt) - new Date(a.expiresAt);
       });
+      const base = existing[0] || null;
+
+      if (!base) {
+        const expiresAt = addDays === null ? null : new Date(now.getTime() + addDays * DAY_MS);
+        await client.userInventoryCollection.insertOne({
+          userId,
+          guildId,
+          itemId: tier.titleId,
+          name: tier.id === "vip" ? "自訂稱號（90 天）" : "自訂稱號（30 天）",
+          type: "custom_title",
+          payload: {},
+          equipped: false,
+          expiresAt,
+          acquiredAt: now,
+          updatedAt: now,
+          source: "donation",
+          freeGrant: true,
+        });
+      } else if (base.expiresAt === null) {
+        // 既有永久 → 不需處理（永久 > 任何限時）
+      } else if (addDays === null) {
+        // 新的是永久 → 升級為永久
+        await client.userInventoryCollection.updateOne(
+          { _id: base._id },
+          { $set: { expiresAt: null, name: "自訂稱號（永久）", updatedAt: now } },
+        );
+      } else {
+        // 兩者皆限時 → 以未過期的既有到期日為基礎累加天數
+        const baseMs = Math.max(new Date(base.expiresAt).getTime(), now.getTime());
+        const extended = new Date(baseMs + addDays * DAY_MS);
+        await client.userInventoryCollection.updateOne(
+          { _id: base._id },
+          { $set: { expiresAt: extended, updatedAt: now } },
+        );
+      }
+
       updates.titleGranted = true;
     } catch (err) {
       logger.error(
