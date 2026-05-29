@@ -26,8 +26,12 @@
     ],
     "duel": {
       "enabled": true,
-      "minBet": 10,
+      "minBet": 100,
       "maxBet": 5000,
+      "dailyLimit": 3,
+      "samePairCooldownMs": 21600000,
+      "systemRakePct": 0.05,
+      "scoreRandMax": 30,
       "acceptWindowMs": 120000
     }
   }

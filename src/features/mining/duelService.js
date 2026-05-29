@@ -1,13 +1,18 @@
 require("colors");
 const crypto = require("crypto");
+const { DateTime } = require("luxon");
 const { dungeon } = require("../../config");
 const { getOrCreate } = require("./miningProfile");
 const { playerAtk } = require("./dungeonService");
 const grantCoins = require("../economy/grantCoins");
 
+const TZ = dungeon?.timezone || "Asia/Taipei";
+
 function cfg() {
   return dungeon?.duel || {};
 }
+
+const randInt = (max) => Math.floor(Math.random() * (max + 1)); // 0..max（含）
 
 async function getBalance(client, userId, guildId) {
   const doc = await client.userCoinsCollection
@@ -39,6 +44,47 @@ async function createDuel(
     status: "pending",
   });
   if (existing) return { ok: false, reason: "already_pending" };
+
+  // 每日場次上限（以挑戰者當日已完成的發起場數計）
+  const dailyLimit = c.dailyLimit ?? 0;
+  if (dailyLimit > 0) {
+    const dayStart = DateTime.now().setZone(TZ).startOf("day").toJSDate();
+    const todayCount = await client.duelGamesCollection
+      .countDocuments({
+        guild_id: guildId,
+        challenger_id: challengerId,
+        status: "completed",
+        completed_at: { $gte: dayStart },
+      })
+      .catch(() => 0);
+    if (todayCount >= dailyLimit) {
+      return { ok: false, reason: "daily_limit", dailyLimit, todayCount };
+    }
+  }
+
+  // 同對手冷卻：近 N 小時內與同一對手（不分方向）已對戰過則擋下
+  const pairCdMs = c.samePairCooldownMs ?? 0;
+  if (pairCdMs > 0) {
+    const since = new Date(Date.now() - pairCdMs);
+    const recent = await client.duelGamesCollection
+      .findOne(
+        {
+          guild_id: guildId,
+          status: "completed",
+          completed_at: { $gte: since },
+          $or: [
+            { challenger_id: challengerId, opponent_id: opponentId },
+            { challenger_id: opponentId, opponent_id: challengerId },
+          ],
+        },
+        { sort: { completed_at: -1 } }
+      )
+      .catch(() => null);
+    if (recent?.completed_at) {
+      const readyAt = new Date(recent.completed_at).getTime() + pairCdMs;
+      return { ok: false, reason: "pair_cooldown", readyAt };
+    }
+  }
 
   const balance = await getBalance(client, challengerId, guildId);
   if (balance < bet) return { ok: false, reason: "insufficient", balance };
@@ -78,6 +124,7 @@ async function createDuel(
 // 對手接受：扣其賭注、判定勝負、發放彩池。
 async function acceptDuel(client, { duelId, opponentId, opponentName, member }) {
   if (!client.duelGamesCollection) return { ok: false, reason: "disabled" };
+  const c = cfg();
 
   const duel = await client.duelGamesCollection.findOne({ duel_id: duelId });
   if (!duel || duel.status !== "pending") return { ok: false, reason: "not_found" };
@@ -121,20 +168,26 @@ async function acceptDuel(client, { duelId, opponentId, opponentName, member }) 
     return { ok: false, reason: "race" };
   }
 
-  // 判定勝負：攻擊力越高勝率越高
+  // 判定勝負：分數 = 攻擊力 + 隨機(0~scoreRandMax)，分數高者勝（平手判挑戰者勝）
   const [cProfile, oProfile] = await Promise.all([
     getOrCreate(client, duel.challenger_id, duel.guild_id),
     getOrCreate(client, opponentId, duel.guild_id),
   ]);
   const atkC = playerAtk(cProfile);
   const atkO = playerAtk(oProfile);
-  const challengerWinRate = atkC / (atkC + atkO || 1);
-  const challengerWins = Math.random() < challengerWinRate;
+  const randMax = c.scoreRandMax ?? 30;
+  const scoreC = atkC + randInt(randMax);
+  const scoreO = atkO + randInt(randMax);
+  const challengerWins = scoreC >= scoreO;
   const winnerId = challengerWins ? duel.challenger_id : opponentId;
   const winnerName = challengerWins ? duel.challenger_name : opponentName;
   const loserId = challengerWins ? opponentId : duel.challenger_id;
 
-  const pot = duel.bet * 2;
+  // 彩池抽水：雙方各押 bet（共 2×bet），系統抽 systemRakePct，餘額給勝者
+  const rakePct = c.systemRakePct ?? 0;
+  const grossPot = duel.bet * 2;
+  const pot = Math.floor(grossPot * (1 - rakePct));
+  const rakeAmount = grossPot - pot;
   const winnerMember = challengerWins ? null : member; // member 為對手；挑戰者 member 不在手上
   const payout = await grantCoins(client, {
     userId: winnerId,
@@ -143,7 +196,7 @@ async function acceptDuel(client, { duelId, opponentId, opponentName, member }) 
     amount: pot,
     source: "duel_payout",
     member: winnerMember,
-    meta: { duelId, bet: duel.bet },
+    meta: { duelId, bet: duel.bet, rake: rakeAmount },
   });
 
   await client.duelGamesCollection.updateOne(
@@ -153,6 +206,10 @@ async function acceptDuel(client, { duelId, opponentId, opponentName, member }) 
         status: "completed",
         winner_id: winnerId,
         loser_id: loserId,
+        score_challenger: scoreC,
+        score_opponent: scoreO,
+        pot,
+        rake: rakeAmount,
         completed_at: new Date(),
         updated_at: new Date(),
       },
@@ -167,10 +224,37 @@ async function acceptDuel(client, { duelId, opponentId, opponentName, member }) 
     challengerWins,
     atkChallenger: atkC,
     atkOpponent: atkO,
-    challengerWinRate,
+    scoreChallenger: scoreC,
+    scoreOpponent: scoreO,
     pot,
+    rakeAmount,
     winnerBalance: payout?.doc?.totalCoins ?? null,
   };
+}
+
+// 個人決鬥戰績：最近 N 場 + 累積勝負。
+async function getHistory(client, { guildId, userId, limit = 10 }) {
+  if (!client.duelGamesCollection) {
+    return { recent: [], wins: 0, losses: 0, total: 0 };
+  }
+  const participantFilter = {
+    guild_id: guildId,
+    status: "completed",
+    $or: [{ challenger_id: userId }, { opponent_id: userId }],
+  };
+  const [recent, wins, total] = await Promise.all([
+    client.duelGamesCollection
+      .find(participantFilter)
+      .sort({ completed_at: -1 })
+      .limit(limit)
+      .toArray()
+      .catch(() => []),
+    client.duelGamesCollection
+      .countDocuments({ guild_id: guildId, status: "completed", winner_id: userId })
+      .catch(() => 0),
+    client.duelGamesCollection.countDocuments(participantFilter).catch(() => 0),
+  ]);
+  return { recent, wins, losses: total - wins, total };
 }
 
 // 拒絕 / 取消：退回挑戰者賭注。
@@ -222,4 +306,4 @@ async function expireDuel(client, duel) {
   return true;
 }
 
-module.exports = { createDuel, acceptDuel, declineDuel, expireDuel };
+module.exports = { createDuel, acceptDuel, declineDuel, expireDuel, getHistory };
