@@ -48,6 +48,21 @@ function cardNumberFrom(userId) {
   return `${d.slice(0, 4)} ${d.slice(4, 10)} ${d.slice(10)}`;
 }
 
+// 自訂卡號（限英數、≤20 字）：每 4 字一組以空白分隔，做出信用卡分段感。
+function formatCustomCardNumber(raw) {
+  const s = String(raw || "")
+    .replace(/[^0-9A-Za-z]/g, "")
+    .toUpperCase()
+    .slice(0, 20);
+  if (!s) return null;
+  return s.match(/.{1,4}/g).join(" ");
+}
+
+// 決定要顯示的卡號：自訂優先，否則回退 userId 衍生。
+function resolveCardNumber(data) {
+  return formatCustomCardNumber(data.cardNumber) || cardNumberFrom(data.userId);
+}
+
 function thankStamp() {
   return `
     <div style="display:flex;position:absolute;right:36px;top:34px;flex-direction:column;align-items:flex-end;">
@@ -93,7 +108,7 @@ function wallet(data) {
   const balance = fmtNumber(data.totalCoins || 0);
   const lifetime = fmtNumber(data.lifetimeCoins || 0);
   const balanceWords = numberToWords(data.totalCoins || 0).slice(0, 60);
-  const cardNumber = cardNumberFrom(data.userId);
+  const cardNumber = resolveCardNumber(data);
 
   const inner = `
     ${thankStamp()}
@@ -123,7 +138,7 @@ function wallet(data) {
       <div style="display:flex;margin-top:8px;font-family:'SpaceMono';font-size:12px;letter-spacing:5px;color:${COLORS.cream};opacity:0.6;max-width:880px;text-align:center;">${htmlEscape(balanceWords)}</div>
 
       <!-- 浮雕卡號 -->
-      <div style="display:flex;margin-top:26px;font-family:'SpaceMono';font-weight:700;font-size:30px;letter-spacing:8px;color:${COLORS.cream};padding-left:8px;">${cardNumber}</div>
+      <div style="display:flex;margin-top:26px;font-family:'SpaceMono';font-weight:700;font-size:${cardNumber.length > 19 ? 22 : cardNumber.length > 14 ? 26 : 30}px;letter-spacing:${cardNumber.length > 19 ? 5 : 8}px;color:${COLORS.cream};padding-left:8px;">${cardNumber}</div>
 
       <!-- 信用卡式三欄資訊 -->
       <div style="display:flex;margin-top:22px;width:100%;justify-content:space-between;align-items:flex-end;">
