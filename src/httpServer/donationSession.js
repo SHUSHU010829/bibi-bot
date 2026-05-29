@@ -36,8 +36,11 @@ module.exports = function createDonationSessionHandler(client) {
     if (!body || typeof body !== "object") {
       return res.status(400).json({ error: "invalid payload" });
     }
-    const userId = typeof body.userId === "string" ? body.userId : "";
-    const guildId = typeof body.guildId === "string" ? body.guildId : "";
+    // trim：Discord snowflake 不含空白；若呼叫端（如 PRIMARY_GUILD_ID env）夾帶
+    // 前後空白會污染 session，後續所有以 {userId, guildId} 為鍵的 Mongo 發放
+    // （金幣 / 道具 / luck / 卡面 / 稱號）都會落到對不到使用者的孤兒桶 → 等於沒發。
+    const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+    const guildId = typeof body.guildId === "string" ? body.guildId.trim() : "";
     const amountNtd = Number(body.amountNtd);
     const platform = String(body.platform || "");
 

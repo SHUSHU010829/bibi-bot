@@ -11,7 +11,8 @@
     "convert-calendar": "node ./src/scripts/convertCalendarFormat.js",
     "clear-crash-stats": "node ./src/scripts/clearCrashStats.js",
     "backfill-recommendations": "node ./src/scripts/backfillRecommendations.js",
-    "backfill-map-meta": "node ./src/scripts/backfillMapMeta.js"
+    "backfill-map-meta": "node ./src/scripts/backfillMapMeta.js",
+    "fix-donation-guild-space": "node ./src/scripts/fixDonationGuildSpace.js"
   },
   "keywords": [],
   "author": "ShuShu",
