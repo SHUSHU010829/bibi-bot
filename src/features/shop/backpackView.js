@@ -20,6 +20,7 @@ const {
   DONOR_THEME_ITEM_ID,
   CARDNO_OPEN_ID,
 } = require("../donation/customCardNumber");
+const { roleBuffSummary } = require("../buff/buffResolver");
 
 // CD 縮短券「使用」按鈕 customId 格式：mining_use_cd_ticket_<ownerId>
 // 由 events/interactionCreate/handleMiningTicket.js 處理。
@@ -94,7 +95,7 @@ function buildSelectMenu(type, items) {
 
 // 統一背包：挖礦（礦石／挖礦道具）＋ 商店（購買道具／生效 buff／裝備選單）合在同一張卡片。
 // 回傳 { components, flags }，以 IsComponentsV2 + Ephemeral 私訊送出。
-async function buildBackpackView(client, { userId, guildId, displayName }) {
+async function buildBackpackView(client, { userId, guildId, member, displayName }) {
   const container = new ContainerBuilder().setAccentColor(0x9b59b6);
 
   container.addTextDisplayComponents(
@@ -116,6 +117,24 @@ async function buildBackpackView(client, { userId, guildId, displayName }) {
       `💰 目前金幣：**${totalCoins.toLocaleString()}** ${MONEY_EMOJI}`
     )
   );
+
+  // ── 身分組加成（依 Twitch 訂閱 / 伺服器加成 / 贊助 等身分組彙整）──
+  if (member) {
+    const roleGroups = await roleBuffSummary(client, userId, guildId, member).catch(
+      () => []
+    );
+    if (roleGroups.length > 0) {
+      const roleText = roleGroups
+        .map((g) => `${g.header}\n${g.lines.map((l) => `　${l}`).join("\n")}`)
+        .join("\n");
+      container.addSeparatorComponents(new SeparatorBuilder());
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🎖️ 身分組加成\n${roleText}\n-# 這些加成來自你目前持有的身分組，失去身分組即失效`
+        )
+      );
+    }
+  }
 
   // ── 挖礦區 ──
   if (mining?.enabled && client.miningProfilesCollection) {

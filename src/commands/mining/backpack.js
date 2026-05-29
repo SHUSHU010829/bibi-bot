@@ -29,6 +29,7 @@ module.exports = {
       const view = await buildBackpackView(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
+        member: interaction.member,
         displayName:
           interaction.member?.displayName ||
           interaction.user.displayName ||
