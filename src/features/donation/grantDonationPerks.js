@@ -7,6 +7,7 @@ const {
 const logger = require("../../utils/logger");
 const { trackError } = require("../../utils/errorTracker");
 const grantCoins = require("../economy/grantCoins");
+const { coinsForAmount } = require("./code");
 const { donation } = require("../../config");
 
 const ITEM_NAMES = {
@@ -30,19 +31,23 @@ module.exports = async function grantDonationPerks(client, { record, tier }) {
   const userId = record.userId;
   const guildId = record.guildId;
 
+  // 金幣依「實際付款金額」線性換算（方案 A），級距內平滑浮動
+  const coinsAmount = coinsForAmount(record.amountNtd);
+
   // 1. 金幣
-  if (tier?.coins && coinsEnabled()) {
+  if (tier?.coins && coinsAmount > 0 && coinsEnabled()) {
     try {
       await grantCoins(client, {
         userId,
         guildId,
-        amount: tier.coins,
+        amount: coinsAmount,
         source: "donation",
         meta: {
           tradeNo: record.tradeNo,
           tierId: tier.id,
           amountNtd: record.amountNtd,
           platform: record.platform,
+          coins: coinsAmount,
         },
       });
       updates.coinsGranted = true;
@@ -245,7 +250,7 @@ module.exports = async function grantDonationPerks(client, { record, tier }) {
 
   // 7. DM 收據
   try {
-    await sendDonationDm(client, record, tier, { itemsLog, roleExpiresAt });
+    await sendDonationDm(client, record, tier, { itemsLog, roleExpiresAt, coins: coinsAmount });
     updates.dmSent = true;
   } catch (err) {
     logger.warn(
@@ -295,7 +300,8 @@ async function sendDonationDm(client, record, tier, extras) {
   if (tier) {
     lines.push(`## ${tier.emoji} ${tier.name}`);
     lines.push("");
-    if (tier.coins) lines.push(`- ${COIN_EMOJI} ${tier.coins.toLocaleString()} 金幣`);
+    const coins = extras?.coins ?? tier.coins;
+    if (coins) lines.push(`- ${COIN_EMOJI} ${coins.toLocaleString()} 金幣`);
     if (extras?.itemsLog) {
       for (const [field, qty] of Object.entries(extras.itemsLog)) {
         const label =

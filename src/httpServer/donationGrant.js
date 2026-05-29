@@ -1,6 +1,6 @@
 const logger = require("../utils/logger");
 const { trackError, trackSuccess } = require("../utils/errorTracker");
-const { tierForAmount } = require("../features/donation/code");
+const { tierForAmount, coinsForAmount } = require("../features/donation/code");
 const grantDonationPerks = require("../features/donation/grantDonationPerks");
 const { donation } = require("../config");
 
@@ -125,7 +125,7 @@ module.exports = function createDonationGrantHandler(client) {
       );
     }
 
-    const perks = tier ? computePerksSummary(tier) : null;
+    const perks = tier ? computePerksSummary(tier, amountNtd) : null;
     const grantedAt = new Date();
 
     // 寫 donation_records（tradeNo unique 防併發重複）
@@ -248,9 +248,10 @@ module.exports = function createDonationGrantHandler(client) {
 };
 
 /** 整理供 website success 頁顯示的權益摘要（字串清單） */
-function computePerksSummary(tier) {
+function computePerksSummary(tier, amountNtd) {
   const list = [];
-  if (tier.coins) list.push(`${tier.coins.toLocaleString()} 金幣`);
+  const coins = amountNtd != null ? coinsForAmount(amountNtd) : tier.coins;
+  if (coins) list.push(`${coins.toLocaleString()} 金幣`);
   if (tier.items) {
     for (const [itemId, qty] of Object.entries(tier.items)) {
       if (!qty) continue;

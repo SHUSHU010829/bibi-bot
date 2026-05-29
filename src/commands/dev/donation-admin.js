@@ -13,7 +13,7 @@ const {
 const { DateTime } = require("luxon");
 
 const grantDonationPerks = require("../../features/donation/grantDonationPerks");
-const { tierForAmount } = require("../../features/donation/code");
+const { tierForAmount, coinsForAmount } = require("../../features/donation/code");
 
 module.exports = {
   devOnly: true,
@@ -132,7 +132,7 @@ async function runGrant(client, interaction) {
     platform: unmatchedDoc.platform,
     patronName: unmatchedDoc.patronName || "",
     patronNote: unmatchedDoc.patronNote || "",
-    perks: tier ? summaryFromTier(tier) : null,
+    perks: tier ? summaryFromTier(tier, unmatchedDoc.amountNtd) : null,
     grantedAt: new Date(),
     coinsGranted: false,
     roleGranted: false,
@@ -256,8 +256,9 @@ async function runInfo(client, interaction) {
   return interaction.editReply(`找不到 trade_no \`${tradeNo}\` 對應紀錄。`);
 }
 
-function summaryFromTier(tier) {
+function summaryFromTier(tier, amountNtd) {
   const list = [];
-  if (tier.coins) list.push(`${tier.coins.toLocaleString()} 金幣`);
+  const coins = amountNtd != null ? coinsForAmount(amountNtd) : tier.coins;
+  if (coins) list.push(`${coins.toLocaleString()} 金幣`);
   return list;
 }
