@@ -206,12 +206,25 @@ async function runInfo(client, interaction) {
   if (record) {
     const tz = "Asia/Taipei";
     const grantedAt = DateTime.fromJSDate(record.grantedAt).setZone(tz).toFormat("yyyy/MM/dd HH:mm:ss");
-    const flags = ["coins", "role", "items", "buff", "theme", "title", "dm", "announced"]
-      .map((k) => {
-        const field = k === "announced" ? "announced" : `${k}Granted`;
-        return `${record[field] ? "✅" : "❌"} ${k}`;
-      })
-      .join("　");
+    const tier = record.tierId
+      ? (require("../../config").donation?.tiers || []).find((t) => t.id === record.tierId)
+      : null;
+    // 欄位名對齊 grantDonationPerks 真實寫入：dmSent / announced 是無 "Granted" 尾巴的特例
+    // not-applicable（這個 tier 本來就沒這項 perk）顯示 — 而不是 ❌
+    const FLAGS = [
+      { key: "coins",     field: "coinsGranted",  applies: () => !!tier?.coins },
+      { key: "role",      field: "roleGranted",   applies: () => !!tier?.role },
+      { key: "items",     field: "itemsGranted",  applies: () => tier?.items && Object.values(tier.items).some(Boolean) },
+      { key: "buff",      field: "buffGranted",   applies: () => tier?.luckBonus > 0 },
+      { key: "theme",     field: "themeGranted",  applies: () => !!tier?.themeId },
+      { key: "title",     field: "titleGranted",  applies: () => !!tier?.titleId },
+      { key: "dm",        field: "dmSent",        applies: () => true },
+      { key: "announced", field: "announced",     applies: () => true },
+    ];
+    const flags = FLAGS.map((f) => {
+      if (!f.applies()) return `— ${f.key}`;
+      return `${record[f.field] ? "✅" : "❌"} ${f.key}`;
+    }).join("　");
     return interaction.editReply(
       [
         `**Donation Record \`${tradeNo}\`**`,

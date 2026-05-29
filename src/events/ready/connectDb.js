@@ -232,6 +232,18 @@ module.exports = async (client) => {
       .catch((e) =>
         console.log(`[WARN] DonationSessions code 索引建立失敗：${e.message}`.yellow),
       );
+    // sessionId index：website /api/donation/status/[id] 用這個查
+    await donationSessionsCollection
+      .createIndex({ sessionId: 1 }, { unique: true, name: "uniq_donation_session_id" })
+      .catch((e) =>
+        console.log(`[WARN] DonationSessions sessionId 索引建立失敗：${e.message}`.yellow),
+      );
+    // donation_records.sessionId 同樣讓 website 反查 perks
+    await donationRecordsCollection
+      .createIndex({ sessionId: 1 }, { name: "donation_record_sessionId", sparse: true })
+      .catch((e) =>
+        console.log(`[WARN] DonationRecords sessionId 索引建立失敗：${e.message}`.yellow),
+      );
     await donationSessionsCollection
       .createIndex({ status: 1, createdAt: 1 }, { name: "donation_session_status_time" })
       .catch((e) =>
