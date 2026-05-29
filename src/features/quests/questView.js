@@ -11,7 +11,12 @@ const questNotifyPref = require("./questNotifyPref");
 const questClaimButton = require("./questClaimButton");
 const { COIN_EMOJI } = require("../../constants/coin");
 
-const PROGRESS_BAR_LEN = 10;
+const PROGRESS_BAR_LEN = 8;
+// 進度條方塊：填滿用綠色、未填用深色（接近 Dank Memer 那種綠色長條 + 深色底）。
+// 已領取的任務改用藍色，跟「進行中／待入帳」的綠色區隔開。
+const BAR_FILLED = "🟩";
+const BAR_FILLED_CLAIMED = "🟦";
+const BAR_EMPTY = "⬛";
 const STATE_EMOJI = {
   pending: "⬜",
   in_progress: "🟡",
@@ -25,18 +30,21 @@ const STATE_LABEL = {
   claimed: "已領取",
 };
 
-const renderBar = (progress, target) => {
+const renderBar = (progress, target, claimed) => {
   const ratio = target > 0 ? Math.min(1, progress / target) : 0;
-  const filled = Math.round(ratio * PROGRESS_BAR_LEN);
-  return "▰".repeat(filled) + "▱".repeat(PROGRESS_BAR_LEN - filled);
+  let filled = Math.round(ratio * PROGRESS_BAR_LEN);
+  // 有進度但四捨五入成 0 時，至少亮一格（呼應圖上 1/10 也有一小段綠）。
+  if (filled === 0 && progress > 0) filled = 1;
+  const fillEmoji = claimed ? BAR_FILLED_CLAIMED : BAR_FILLED;
+  return fillEmoji.repeat(filled) + BAR_EMPTY.repeat(PROGRESS_BAR_LEN - filled);
 };
 
 const renderQuestLine = (q) => {
-  const bar = renderBar(q.progress, q.target);
+  const bar = renderBar(q.progress, q.target, q.state === "claimed");
   return [
     `${STATE_EMOJI[q.state]} **${q.name}** ・ ${STATE_LABEL[q.state]}`,
     `-# ${q.description}`,
-    `\`${bar}\` ${q.progress}/${q.target} ・ 獎勵 **${q.reward}** ${COIN_EMOJI}`,
+    `${bar} \`${q.progress} / ${q.target}\` ・ 獎勵 **${q.reward}** ${COIN_EMOJI}`,
   ].join("\n");
 };
 
