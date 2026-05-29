@@ -169,7 +169,7 @@ module.exports = async (client, opts) => {
       if (res?.autoClaimed) {
         await notifyQuestClaim(
           client,
-          { user: opts.member?.user, userId: opts.userId },
+          { user: opts.member?.user, userId: opts.userId, guildId: opts.guildId },
           res.autoClaimed
         );
       }
@@ -192,7 +192,7 @@ module.exports = async (client, opts) => {
       if (res?.autoClaimed) {
         await notifyQuestClaim(
           client,
-          { user: opts.member?.user, userId: opts.userId },
+          { user: opts.member?.user, userId: opts.userId, guildId: opts.guildId },
           res.autoClaimed
         );
       }

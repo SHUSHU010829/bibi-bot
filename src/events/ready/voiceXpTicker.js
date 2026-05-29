@@ -138,7 +138,7 @@ module.exports = async (client) => {
               member,
               username: member.user.username || session.username,
             };
-            const notifyCtx = { user: member.user, userId: session.userId };
+            const notifyCtx = { user: member.user, userId: session.userId, guildId: session.guildId };
             questService
               .incrementProgress(client, session.userId, session.guildId, "daily_voice_30", 1, claimCtx)
               .then((res) => {
