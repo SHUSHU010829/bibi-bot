@@ -53,6 +53,13 @@ module.exports = {
             .setRequired(true)
             .setMinValue(1)
         )
+        .addIntegerOption((o) =>
+          o
+            .setName("一口價")
+            .setDescription("選填：出價達到此價立即成交（總價，須 ≥ 起標價）")
+            .setRequired(false)
+            .setMinValue(1)
+        )
     )
     .addSubcommand((s) =>
       s
@@ -105,10 +112,13 @@ async function handleList(client, interaction) {
     const bidLine = l.current_bid
       ? `目前最高：**${l.current_bid.toLocaleString()}** ${COIN_EMOJI}（${l.bidder_name || "匿名"}）`
       : `起標：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}（尚無人出價）`;
+    const buyoutLine = l.buyout_price
+      ? ` ・ 💰 一口價 **${l.buyout_price.toLocaleString()}** ${COIN_EMOJI}`
+      : "";
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `**#${l.listing_id} ・ ${oreLabel(l.ore)} ×${l.qty}**\n` +
-          `${bidLine}\n` +
+          `${bidLine}${buyoutLine}\n` +
           `賣家：${l.seller_name || "?"} ・ 截止 <t:${expiresEpoch}:R>`,
       ),
     );
@@ -124,6 +134,7 @@ async function handleSell(client, interaction) {
   const ore = interaction.options.getString("礦石");
   const qty = interaction.options.getInteger("數量");
   const startPrice = interaction.options.getInteger("起標價");
+  const buyoutPrice = interaction.options.getInteger("一口價");
 
   const result = await auctionService.createListing(client, {
     sellerId: interaction.user.id,
@@ -132,6 +143,7 @@ async function handleSell(client, interaction) {
     ore,
     qty,
     startPrice,
+    buyoutPrice,
   });
 
   if (!result.ok) {
@@ -139,6 +151,11 @@ async function handleSell(client, interaction) {
     if (result.reason === "low_start") {
       return interaction.editReply(
         `❌ ${result.oreDef.name} 的起標價至少要 **${result.minStart.toLocaleString()}** ${COIN_EMOJI}（系統收購價的 80%）。`
+      );
+    }
+    if (result.reason === "low_buyout") {
+      return interaction.editReply(
+        `❌ 一口價不能低於起標價 **${result.startPrice.toLocaleString()}** ${COIN_EMOJI}。`
       );
     }
     if (result.reason === "too_many") {
@@ -156,13 +173,16 @@ async function handleSell(client, interaction) {
 
   const l = result.listing;
   const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
+  const buyoutLine = l.buyout_price
+    ? `\n💰 一口價：**${l.buyout_price.toLocaleString()}** ${COIN_EMOJI}（出到這價立即成交）`
+    : "";
   const container = new ContainerBuilder()
     .setAccentColor(0x2ecc71)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# 🏷️ 掛牌成功\n` +
           `**#${l.listing_id}** ・ ${oreLabel(l.ore)} ×${l.qty}\n` +
-          `起標價：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}\n` +
+          `起標價：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}${buyoutLine}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）`,
       ),
     )
@@ -218,14 +238,35 @@ async function handleBid(client, interaction) {
   }
 
   const l = result.listing;
+
+  // 達到一口價 → 已即時成交，礦石已入袋。
+  if (result.buyout) {
+    const container = new ContainerBuilder()
+      .setAccentColor(0xe1b12c)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 💰 直接成交！\n` +
+            `你以一口價 **${l.current_bid.toLocaleString()}** ${COIN_EMOJI} 買下 **#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty}！\n` +
+            `礦石已放進你的背包，去 \`/挖礦 背包\` 看看吧 🎒`,
+        ),
+      );
+    return interaction.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
   const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
+  const buyoutLine = l.buyout_price
+    ? `\n💰 出到 **${l.buyout_price.toLocaleString()}** ${COIN_EMOJI} 可直接成交。`
+    : "";
   const container = new ContainerBuilder()
     .setAccentColor(0x3498db)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# ✅ 出價成功\n` +
           `你對 **#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty} 出價 **${l.current_bid.toLocaleString()}** ${COIN_EMOJI}，目前最高！\n` +
-          `截止 <t:${expiresEpoch}:R>，若被超越會自動退款。`,
+          `截止 <t:${expiresEpoch}:R>，若被超越會自動退款。${buyoutLine}`,
       ),
     );
 
