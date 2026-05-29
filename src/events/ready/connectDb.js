@@ -159,6 +159,9 @@ module.exports = async (client) => {
     // 礦石每日市價（Phase F）：一天一份 doc，date 為 YYYYMMDD
     const oreMarketPricesCollection = database.collection("OreMarketPrices");
 
+    // 限時活動公告去重（Phase S5）：(eventId, phase, occurrence) 唯一，避免每分鐘掃描重發
+    const eventAnnouncementsCollection = database.collection("EventAnnouncements");
+
     // 抖內系統 collections（與 bibi-website 共用，website 唯讀）
     const donationSessionsCollection = database.collection("DonationSessions");
     const donationRecordsCollection = database.collection("DonationRecords");
@@ -225,6 +228,7 @@ module.exports = async (client) => {
     client.auctionListingsCollection = auctionListingsCollection;
     client.cooldownRemindersCollection = cooldownRemindersCollection;
     client.oreMarketPricesCollection = oreMarketPricesCollection;
+    client.eventAnnouncementsCollection = eventAnnouncementsCollection;
     client.donationSessionsCollection = donationSessionsCollection;
     client.donationRecordsCollection = donationRecordsCollection;
     client.unmatchedDonationsCollection = unmatchedDonationsCollection;
@@ -318,6 +322,23 @@ module.exports = async (client) => {
       .createIndex({ date: 1 }, { unique: true, name: "uniq_ore_market_date" })
       .catch((e) =>
         console.log(`[WARN] OreMarketPrices index 建立失敗：${e.message}`.yellow),
+      );
+    // 限時活動公告去重：同活動同階段同實例只發一次；createdAt TTL 400 天清理
+    await eventAnnouncementsCollection
+      .createIndex(
+        { eventId: 1, phase: 1, occurrence: 1 },
+        { unique: true, name: "uniq_event_announce" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] EventAnnouncements index 建立失敗：${e.message}`.yellow),
+      );
+    await eventAnnouncementsCollection
+      .createIndex(
+        { createdAt: 1 },
+        { expireAfterSeconds: 400 * 24 * 60 * 60, name: "event_announce_ttl_400d" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] EventAnnouncements TTL 索引建立失敗：${e.message}`.yellow),
       );
     await cooldownRemindersCollection
       .createIndex({ userId: 1, guildId: 1, type: 1 }, { unique: true })

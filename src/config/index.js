@@ -23,6 +23,7 @@ const auction = require("./auction.json");
 const twitchPerks = require("./twitch_perks.json");
 const titles = require("./titles.json");
 const donation = require("./donation.json");
+const events = require("./events.json");
 
 module.exports = {
   ...server,
@@ -48,4 +49,5 @@ module.exports = {
   ...twitchPerks,
   ...titles,
   ...donation,
+  ...events,
 };

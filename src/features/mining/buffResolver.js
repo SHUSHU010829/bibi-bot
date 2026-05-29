@@ -1,5 +1,6 @@
 const { mining } = require("../../config");
 const twitchPerks = require("./twitchPerks");
+const eventEngine = require("../event/eventEngine");
 
 // 整合鎬子 / 幸運藥水 / Twitch 訂閱者權益。
 // CD 縮短券改為冷卻中於 /背包 主動使用（見 mineService.useCdTicket），不在挖礦時自動消耗。
@@ -9,7 +10,7 @@ function resolve(profile, member) {
   const pdef = pickaxes[profile?.pickaxe] || pickaxes.wood || {};
 
   let luckBonus = pdef.luckBonus || 0;
-  const qtyBonus = pdef.qtyBonus || 0;
+  let qtyBonus = pdef.qtyBonus || 0;
   let cdMs = (mining?.cooldownMs || 0) - (pdef.cdReductionMs || 0);
 
   // 幸運藥水：持有次數 > 0 時自動生效並消耗一次
@@ -39,11 +40,26 @@ function resolve(profile, member) {
     donationLuckBonus = 0;
   }
 
+  // 限時活動加成（Phase S5）：與抖內同，獨立於 luckCap 之外於封頂後額外疊加，
+  // 讓「加倍週末」等活動的加成可靠生效；數量加成直接累加。
+  const eventLuckBonus = eventEngine.getMiningLuckBonus();
+  if (eventLuckBonus > 0) luckBonus += eventLuckBonus;
+  const eventQtyBonus = eventEngine.getMiningQtyBonus();
+  if (eventQtyBonus > 0) qtyBonus += eventQtyBonus;
+
   // CD 下限保護（避免負數 / 零）
   const actualCdMs = Math.max(cdMs, 60 * 1000);
 
-  // donationLuckBonus：本次實際生效的抖內幸運加成（未持有或已過期則為 0），供指令層顯示
-  return { luckBonus, qtyBonus, actualCdMs, donationLuckBonus, consume: { usePotion } };
+  // donationLuckBonus / eventLuckBonus / eventQtyBonus：本次實際生效值，供指令層顯示
+  return {
+    luckBonus,
+    qtyBonus,
+    actualCdMs,
+    donationLuckBonus,
+    eventLuckBonus,
+    eventQtyBonus,
+    consume: { usePotion },
+  };
 }
 
 module.exports = { resolve };

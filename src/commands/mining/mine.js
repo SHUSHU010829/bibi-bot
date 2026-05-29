@@ -13,13 +13,14 @@ const mineService = require("../../features/mining/mineService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
+const eventEngine = require("../../features/event/eventEngine");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 // 稀有礦石（幸運礦工任務）
 const RARE_ORES = ["iron", "gold", "diamond"];
 
 function oreLabel(oreKey) {
-  const def = mining?.ores?.[oreKey] || {};
+  const def = eventEngine.resolveOreDef(oreKey) || mining?.ores?.[oreKey] || {};
   return `${def.emoji || "⛏️"} ${def.name || oreKey}`;
 }
 
@@ -63,7 +64,7 @@ module.exports = {
         return interaction.editReply("🔧 挖礦失敗，請稍後再試。");
       }
 
-      const oreDef = mining.ores[result.ore];
+      const oreDef = eventEngine.resolveOreDef(result.ore) || mining.ores[result.ore];
       const value = (oreDef?.price || 0) * result.qty;
       const readyEpoch = Math.floor(result.newCooldownAt / 1000);
 
@@ -71,13 +72,18 @@ module.exports = {
         await sendLegendaryAnnouncement(client, interaction);
       }
 
+      const isEventOre = !!oreDef?.event;
       const headerTitle =
         result.ore === "diamond"
           ? `✨ 傳說！你挖到了${oreDef?.name || "傳說礦"}！`
-          : "⛏️ 挖礦成功";
+          : isEventOre
+            ? `🎉 限定！你挖到了${oreDef?.name || "限定礦"}！`
+            : "⛏️ 挖礦成功";
 
       const container = new ContainerBuilder()
-        .setAccentColor(result.ore === "diamond" ? 0xff6ec7 : 0xf1c40f)
+        .setAccentColor(
+          result.ore === "diamond" ? 0xff6ec7 : isEventOre ? 0x9b59b6 : 0xf1c40f,
+        )
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `# ${headerTitle}\n` +
@@ -103,6 +109,14 @@ module.exports = {
         buffNotes.push(
           `<:money:1509128163504947210> 贊助加成幸運 +${Math.round(result.buff.donationLuckBonus * 100)}%`,
         );
+      }
+      if (result.buff.eventLuckBonus > 0) {
+        buffNotes.push(
+          `🎉 活動幸運 +${Math.round(result.buff.eventLuckBonus * 100)}%`,
+        );
+      }
+      if (result.buff.eventQtyBonus > 0) {
+        buffNotes.push(`🎉 活動數量 +${result.buff.eventQtyBonus}`);
       }
       if (buffNotes.length) {
         container.addTextDisplayComponents(
@@ -178,6 +192,10 @@ module.exports = {
       if (result.ore === "diamond") {
         mineHooks.push({ questId: "weekly_diamond" });
       }
+      // 限時活動限定任務（Phase S5）：挖礦次數型，依目前生效活動動態併入
+      mineHooks.push(
+        ...eventEngine.getEventQuestHooksByType("mine_count", { ore: result.ore }),
+      );
       await applyQuestHooks(
         client,
         {

@@ -6,22 +6,30 @@ const {
   getQuestById,
   dailyQuests,
   weeklyQuests,
+  eventQuests,
   isEnabled,
 } = require("./questDefinitions");
 
 const getTz = () => questSystem?.resetTimezone || "Asia/Taipei";
 
+const isEventPeriod = (period) =>
+  typeof period === "string" && period.startsWith("evt-");
+
 const periodKey = (period, tz = getTz()) => {
-  const now = DateTime.now().setZone(tz);
   if (period === "weekly") {
     // ISO 週：YYYY-Www（例：2026-W19）
-    return now.toFormat("kkkk-'W'WW");
+    return DateTime.now().setZone(tz).toFormat("kkkk-'W'WW");
   }
-  return now.toISODate(); // YYYY-MM-DD
+  // 限時活動任務：period 本身即週期 token（`evt-<id>`），以活動實例為界。
+  if (isEventPeriod(period)) return period;
+  return DateTime.now().setZone(tz).toISODate(); // daily → YYYY-MM-DD
 };
 
-const grantSourceFor = (period) =>
-  period === "weekly" ? "quest_weekly" : "quest_daily";
+const grantSourceFor = (period) => {
+  if (period === "weekly") return "quest_weekly";
+  if (isEventPeriod(period)) return "quest_event";
+  return "quest_daily";
+};
 
 // 內部：原子標 claimed + 發幣。成功 → 回傳 { id, name, reward, period }；否則 null
 const tryAutoClaim = async (
@@ -284,16 +292,19 @@ const markCompleted = async (
 
 const getStatus = async (client, userId, guildId) => {
   if (!client.questProgressCollection) {
-    return { daily: [], weekly: [] };
+    return { daily: [], weekly: [], event: [] };
   }
   const dailyDefs = dailyQuests();
   const weeklyDefs = weeklyQuests();
+  // 限時活動任務：僅取生效中活動，period token 由定義自帶（`evt-<id>`）。
+  const eventDefs = eventQuests();
   const dailyPeriod = periodKey("daily");
   const weeklyPeriod = periodKey("weekly");
 
   const allIds = [
     ...dailyDefs.map((q) => ({ id: q.id, period: dailyPeriod })),
     ...weeklyDefs.map((q) => ({ id: q.id, period: weeklyPeriod })),
+    ...eventDefs.map((q) => ({ id: q.id, period: q.period })),
   ];
 
   const docs = await client.questProgressCollection
@@ -327,12 +338,14 @@ const getStatus = async (client, userId, guildId) => {
       completed,
       claimed,
       state,
+      eventName: def.eventName,
     };
   };
 
   return {
     daily: dailyDefs.map((q) => enrich(q, dailyPeriod)),
     weekly: weeklyDefs.map((q) => enrich(q, weeklyPeriod)),
+    event: eventDefs.map((q) => enrich(q, q.period)),
   };
 };
 
@@ -345,6 +358,7 @@ const claimAll = async (client, userId, guildId, member, username) => {
   const ready = [
     ...status.daily.map((q) => ({ ...q, period: "daily" })),
     ...status.weekly.map((q) => ({ ...q, period: "weekly" })),
+    ...(status.event || []).map((q) => ({ ...q, period: "event" })),
   ].filter((q) => q.state === "ready");
 
   const claimedList = [];
