@@ -47,8 +47,49 @@ async function getUnlocked(client, userId, guildId) {
   return new Set(doc?.gameTitles || []);
 }
 
+// 稱號詮釋資料（與 gameTitles 字串清單平行存放，向後相容）：
+//   gameTitleMeta: [{ titleId, grantedAt, expiresAt|null, source, status }]
+// gameTitles 仍是權威解鎖清單（$addToSet/$pull），meta 僅補充時效 / 來源 / 紀錄。
+async function getTitleMeta(client, userId, guildId) {
+  const doc = await getDoc(client, userId, guildId);
+  return Array.isArray(doc?.gameTitleMeta) ? doc.gameTitleMeta : [];
+}
+
+// 寫入 / 刷新某稱號的 meta（先移除同 titleId 舊紀錄再 push，確保唯一）。
+async function writeTitleMeta(
+  client,
+  { userId, guildId, titleId, expiresAt = null, source = "system" }
+) {
+  if (!client.userLevelsCollection) return;
+  await client.userLevelsCollection
+    .updateOne({ userId, guildId }, { $pull: { gameTitleMeta: { titleId } } })
+    .catch(() => {});
+  await client.userLevelsCollection
+    .updateOne(
+      { userId, guildId },
+      {
+        $push: {
+          gameTitleMeta: {
+            titleId,
+            grantedAt: Date.now(),
+            expiresAt: expiresAt ? new Date(expiresAt).getTime() : null,
+            source,
+            status: "active",
+          },
+        },
+        $set: { updatedAt: new Date() },
+      },
+      { upsert: true }
+    )
+    .catch(() => {});
+}
+
 // 解鎖一個稱號（idempotent）。回傳 { newlyAdded }。
-async function grant(client, { userId, guildId, member, titleId, announce = true }) {
+// expiresAt（ms 或 Date，null=永久）、source 會寫入 gameTitleMeta。
+async function grant(
+  client,
+  { userId, guildId, member, titleId, announce = true, expiresAt = null, source = "system" }
+) {
   if (!def(titleId) || !client.userLevelsCollection) return { newlyAdded: false };
   const res = await client.userLevelsCollection.updateOne(
     { userId, guildId },
@@ -56,6 +97,8 @@ async function grant(client, { userId, guildId, member, titleId, announce = true
     { upsert: true }
   );
   const newlyAdded = (res.modifiedCount || 0) > 0 || (res.upsertedCount || 0) > 0;
+  // 重新發放（含 admin 設定期限）時也刷新 meta，確保 grantedAt / expiresAt 正確
+  await writeTitleMeta(client, { userId, guildId, titleId, expiresAt, source });
   if (newlyAdded && announce) {
     await announceUnlock(client, { member, userId, titleId }).catch(() => {});
   }
@@ -84,8 +127,9 @@ async function setActive(client, { userId, guildId, titleId }) {
   return { ok: true };
 }
 
-// 收回一個稱號（週冠更替用）。若正在展示則一併清掉展示。
-async function revoke(client, { userId, guildId, titleId }) {
+// 收回一個稱號（週冠更替 / 過期 / admin 撤銷）。若正在展示則一併清掉展示。
+// status：寫進 meta 的最終狀態（'revoked' | 'expired'），保留紀錄不刪除。
+async function revoke(client, { userId, guildId, titleId, status = "revoked" }) {
   if (!def(titleId) || !client.userLevelsCollection) return;
   const doc = await getDoc(client, userId, guildId);
   const set = { updatedAt: new Date() };
@@ -94,6 +138,44 @@ async function revoke(client, { userId, guildId, titleId }) {
     { userId, guildId },
     { $pull: { gameTitles: titleId }, $set: set }
   );
+  // 標記 meta（若存在 active 紀錄），不刪除以保留歷史
+  await client.userLevelsCollection
+    .updateOne(
+      { userId, guildId },
+      {
+        $set: {
+          "gameTitleMeta.$[e].status": status,
+          "gameTitleMeta.$[e].revokedAt": Date.now(),
+        },
+      },
+      { arrayFilters: [{ "e.titleId": titleId, "e.status": "active" }] }
+    )
+    .catch(() => {});
+}
+
+// 掃出所有「已過期但仍 active」的稱號 meta（給 titleExpiryChecker cron 用）。
+// 回傳 [{ userId, guildId, titleId }]。
+async function findExpiredActive(client, now = Date.now()) {
+  if (!client.userLevelsCollection) return [];
+  const docs = await client.userLevelsCollection
+    .find({
+      gameTitleMeta: {
+        $elemMatch: { status: "active", expiresAt: { $ne: null, $lt: now } },
+      },
+    })
+    .project({ userId: 1, guildId: 1, gameTitleMeta: 1 })
+    .toArray()
+    .catch(() => []);
+
+  const out = [];
+  for (const d of docs) {
+    for (const m of d.gameTitleMeta || []) {
+      if (m.status === "active" && m.expiresAt != null && m.expiresAt < now) {
+        out.push({ userId: d.userId, guildId: d.guildId, titleId: m.titleId });
+      }
+    }
+  }
+  return out;
 }
 
 // ── 成就統計擷取（單次 check 內以 cache 共用，未解鎖才查）─────────────
@@ -390,6 +472,9 @@ module.exports = {
   idsByCategory,
   getDoc,
   getUnlocked,
+  getTitleMeta,
+  writeTitleMeta,
+  findExpiredActive,
   grant,
   setActive,
   revoke,

@@ -110,20 +110,23 @@ module.exports = async (client, interaction) => {
       });
     }
 
-    const winPct = Math.round(res.challengerWinRate * 100);
+    const rakeNote =
+      res.rakeAmount > 0
+        ? `（已扣系統手續費 ${res.rakeAmount.toLocaleString()} ${COIN_EMOJI}）`
+        : "";
     const container = new ContainerBuilder()
       .setAccentColor(0xf1c40f)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `# ⚔️ 決鬥結果\n` +
-            `**勝者 🏆 <@${res.winnerId}>** 贏走了 **${res.pot.toLocaleString()}** ${COIN_EMOJI}！\n\n` +
-            `挑戰者 <@${res.duel.challenger_id}>（攻擊 ${res.atkChallenger}・勝率 ${winPct}%）\n` +
-            `對手 <@${res.duel.opponent_id}>（攻擊 ${res.atkOpponent}・勝率 ${100 - winPct}%）`,
+            `**勝者 🏆 <@${res.winnerId}>** 贏走了 **${res.pot.toLocaleString()}** ${COIN_EMOJI}！${rakeNote}\n\n` +
+            `挑戰者 <@${res.duel.challenger_id}>（攻擊 ${res.atkChallenger} → 分數 **${res.scoreChallenger}**）\n` +
+            `對手 <@${res.duel.opponent_id}>（攻擊 ${res.atkOpponent} → 分數 **${res.scoreOpponent}**）`,
         ),
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          "-# 想提升勝率？用 /合成 打造更強的鎬子！",
+          "-# 分數 = 攻擊力 + 隨機值；用 /合成 打造更強的鎬子提高底分！",
         ),
       );
 

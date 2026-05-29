@@ -99,13 +99,30 @@ async function buildAchievementsView(client, { target, member, guildId }) {
     (byCat[d.category] ||= []).push(row);
   }
 
+  // 稱號 meta（展示中高亮 + 限時到期），向後相容：舊資料無此欄位
+  const metaById = new Map(
+    (levelDoc?.gameTitleMeta || []).map((m) => [m.titleId, m])
+  );
+  const activeTitleLabel = levelDoc?.title || null;
+  const titleSuffix = (id) => {
+    const parts = [];
+    if (activeTitleLabel && activeTitleLabel === gameTitleService.label(id)) {
+      parts.push("⭐展示中");
+    }
+    const meta = metaById.get(id);
+    if (meta?.status === "active" && meta.expiresAt) {
+      parts.push(`⏳<t:${Math.floor(meta.expiresAt / 1000)}:R>到期`);
+    }
+    return parts.length ? ` ・ ${parts.join(" ・ ")}` : "";
+  };
+
   for (const [cat, list] of Object.entries(byCat)) {
     const lines = list.map((row) => {
       const d = gameTitleService.def(row.id);
       const done = gtUnlocked.has(row.id);
       const head = `${done ? "✅" : "🔒"} ${d.emoji || ""} ${d.name || row.id}`.trim();
-      if (row.weekly) return `${head} — 每週爭奪`;
-      if (done) return head;
+      if (row.weekly) return `${head}${done ? titleSuffix(row.id) : ""} — 每週爭奪`;
+      if (done) return `${head}${titleSuffix(row.id)}`;
       const parts = row.parts
         .map((p) => {
           const cur = Math.min(p.cur, p.target);

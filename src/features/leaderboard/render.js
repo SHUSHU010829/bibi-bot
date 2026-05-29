@@ -105,6 +105,23 @@ function buildContainer({ cat, period, result }) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(result.disabled)
     );
+  } else if (Array.isArray(result.sections)) {
+    // 複合榜（如週報）：逐段標題 + 該段 rows
+    result.sections.forEach((section, idx) => {
+      if (idx > 0) container.addSeparatorComponents(new SeparatorBuilder());
+      const body =
+        section.rows && section.rows.length > 0
+          ? section.rows
+              .map((row, i) => {
+                const medal = row.medal || MEDALS[i] || `**${i + 1}.**`;
+                return `${medal} ${row.mention} ・ ${row.detail}`;
+              })
+              .join("\n")
+          : `-# ${section.emptyHint || "目前還沒有資料"}`;
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`### ${section.title}\n${body}`)
+      );
+    });
   } else if (!result.rows || result.rows.length === 0) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(

@@ -11,6 +11,7 @@ const {
 const { mining, craft } = require("../../config");
 const craftService = require("../../features/mining/craftService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
+const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 
 function recipeChoices() {
   return (craft?.recipes || []).map((r) => ({ name: r.name, value: r.id }));
@@ -134,6 +135,20 @@ module.exports = {
           ["mining"]
         )
         .catch(() => {});
+
+      // 合成任務進度（非阻塞）
+      await applyQuestHooks(
+        client,
+        {
+          interaction,
+          user: interaction.user,
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+          username: interaction.user.username,
+        },
+        [{ questId: "weekly_craft" }]
+      );
     } catch (error) {
       console.log(`[ERROR] /合成:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 合成失敗，請呼叫舒舒！").catch(() => {});

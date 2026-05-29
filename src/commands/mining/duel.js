@@ -26,9 +26,10 @@ module.exports = {
     .addIntegerOption((o) =>
       o
         .setName("賭注")
-        .setDescription("雙方各押的金幣數")
+        .setDescription("雙方各押的金幣數（100 ~ 5000）")
         .setRequired(true)
-        .setMinValue(1)
+        .setMinValue(100)
+        .setMaxValue(5000)
     ),
 
   run: async (client, interaction) => {
@@ -70,6 +71,17 @@ module.exports = {
             "⚔️ 你已經有一場決鬥邀請還在等待回應，等它結束再發起新的吧。"
           );
         }
+        if (result.reason === "daily_limit") {
+          return interaction.editReply(
+            `⚔️ 今天發起的決鬥已達上限（${result.todayCount}/${result.dailyLimit}），明天再來吧！`
+          );
+        }
+        if (result.reason === "pair_cooldown") {
+          const readyEpoch = Math.floor(result.readyAt / 1000);
+          return interaction.editReply(
+            `⚔️ 你剛跟 ${target} 決鬥過，冷卻中！可再戰時間：<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）`
+          );
+        }
         if (result.reason === "insufficient") {
           return interaction.editReply(
             `${MONEY_EMOJI} 餘額不足！你目前 **${(result.balance ?? 0).toLocaleString()}** ${COIN_EMOJI}，無法押 ${bet.toLocaleString()}。`
@@ -79,6 +91,8 @@ module.exports = {
       }
 
       const expiresEpoch = Math.floor(result.expiresAt / 1000);
+      const rakePct = c.systemRakePct ?? 0;
+      const winnerTake = Math.floor(bet * 2 * (1 - rakePct));
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -98,7 +112,7 @@ module.exports = {
           new TextDisplayBuilder().setContent(
             `${target}\n# ⚔️ 決鬥邀請\n` +
               `${interaction.user} 向 ${target} 發起決鬥！\n` +
-              `賭注：**${bet.toLocaleString()}** ${COIN_EMOJI}（雙方各押，勝者通吃 **${(bet * 2).toLocaleString()}**）\n\n` +
+              `賭注：**${bet.toLocaleString()}** ${COIN_EMOJI}（雙方各押，勝者贏走 **${winnerTake.toLocaleString()}**${rakePct > 0 ? `，系統抽 ${Math.round(rakePct * 100)}%` : ""}）\n\n` +
               `${target}，你接受嗎？<t:${expiresEpoch}:R> 前未回應將自動取消。`,
           ),
         )
@@ -106,7 +120,7 @@ module.exports = {
         .addActionRowComponents(row)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            "-# 勝率由雙方鎬子攻擊力決定，裝備越好越有優勢！",
+            "-# 勝負＝攻擊力＋隨機值，分數高者勝；裝備越好底分越高！",
           ),
         );
 

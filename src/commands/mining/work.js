@@ -10,6 +10,7 @@ const {
 
 const { work } = require("../../config");
 const workService = require("../../features/work/workService");
+const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const { COIN_EMOJI } = require("../../constants/coin");
 
@@ -105,6 +106,20 @@ module.exports = {
         components: [container],
         flags: MessageFlags.IsComponentsV2,
       });
+
+      // 打工任務進度（非阻塞）
+      await applyQuestHooks(
+        client,
+        {
+          interaction,
+          user: interaction.user,
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+          username: interaction.user.username,
+        },
+        [{ questId: "daily_work" }]
+      );
     } catch (error) {
       console.log(`[ERROR] /打工:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 打工失敗，請呼叫舒舒！").catch(() => {});

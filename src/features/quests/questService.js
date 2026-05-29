@@ -151,6 +151,76 @@ const incrementProgress = async (
   return { doc, autoClaimed };
 };
 
+// 累計型任務：把 delta 累加到 meta[key]，並以累計值對比 target 判定完成。
+// 用於「金額」「分鐘數」等非次數型條件（例：weekly_sell_value 累計賣礦收入）。
+const addMetaValue = async (
+  client,
+  userId,
+  guildId,
+  questId,
+  key,
+  delta = 0,
+  claimCtx = null
+) => {
+  if (!isEnabled()) return null;
+  if (!client.questProgressCollection) return null;
+  if (!key || !(delta > 0)) return null;
+  const quest = getQuestById(questId);
+  if (!quest) return null;
+  const period = periodKey(quest.period);
+  const target = quest.target || 1;
+
+  const existing = await client.questProgressCollection.findOne({
+    userId,
+    guildId,
+    questId,
+    period,
+  });
+  if (existing?.claimed) {
+    return { doc: existing, autoClaimed: null };
+  }
+
+  const newMetaVal = (existing?.meta?.[key] || 0) + delta;
+  const cappedProgress = Math.min(target, newMetaVal);
+  const completed = cappedProgress >= target;
+
+  const update = await client.questProgressCollection.findOneAndUpdate(
+    { userId, guildId, questId, period },
+    {
+      $set: {
+        [`meta.${key}`]: newMetaVal,
+        progress: cappedProgress,
+        completed,
+        updatedAt: new Date(),
+      },
+      $setOnInsert: {
+        userId,
+        guildId,
+        questId,
+        period,
+        claimed: false,
+        createdAt: new Date(),
+      },
+    },
+    { upsert: true, returnDocument: "after" }
+  );
+  const doc = update?.value || update;
+
+  let autoClaimed = null;
+  if (completed && !doc?.claimed) {
+    autoClaimed = await tryAutoClaim(
+      client,
+      userId,
+      guildId,
+      quest,
+      claimCtx?.member,
+      claimCtx?.username
+    );
+  }
+
+  return { doc, autoClaimed };
+};
+
 const markCompleted = async (
   client,
   userId,
@@ -300,6 +370,7 @@ const claimAll = async (client, userId, guildId, member, username) => {
 module.exports = {
   periodKey,
   incrementProgress,
+  addMetaValue,
   markCompleted,
   getStatus,
   claimAll,

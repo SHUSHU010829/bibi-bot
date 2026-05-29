@@ -11,8 +11,12 @@ const {
 const { mining } = require("../../config");
 const mineService = require("../../features/mining/mineService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
+const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const { COIN_EMOJI } = require("../../constants/coin");
+
+// 稀有礦石（幸運礦工任務）
+const RARE_ORES = ["iron", "gold", "diamond"];
 
 function oreLabel(oreKey) {
   const def = mining?.ores?.[oreKey] || {};
@@ -157,6 +161,30 @@ module.exports = {
           ["mining"]
         )
         .catch(() => {});
+
+      // 挖礦任務進度（非阻塞）
+      const mineHooks = [
+        { questId: "daily_mine_3" },
+        { questId: "weekly_mine_20" },
+      ];
+      if (RARE_ORES.includes(result.ore)) {
+        mineHooks.push({ questId: "daily_rare_ore" });
+      }
+      if (result.ore === "diamond") {
+        mineHooks.push({ questId: "weekly_diamond" });
+      }
+      await applyQuestHooks(
+        client,
+        {
+          interaction,
+          user: interaction.user,
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+          username: interaction.user.username,
+        },
+        mineHooks
+      );
     } catch (error) {
       console.log(`[ERROR] /挖礦:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 挖礦失敗，請呼叫舒舒！").catch(() => {});

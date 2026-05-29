@@ -11,6 +11,7 @@ const {
 const { mining } = require("../../config");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const grantCoins = require("../../features/economy/grantCoins");
+const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 // 礦石選項（純文字，避免自訂 emoji 在下拉顯示成原始字串）
@@ -134,6 +135,23 @@ module.exports = {
         components: [container],
         flags: MessageFlags.IsComponentsV2,
       });
+
+      // 賣礦任務進度（非阻塞）：出清 +1、本週累積收入
+      await applyQuestHooks(
+        client,
+        {
+          interaction,
+          user: interaction.user,
+          userId,
+          guildId,
+          member: interaction.member,
+          username: interaction.user.username,
+        },
+        [
+          { questId: "daily_sell_ore" },
+          { questId: "weekly_sell_value", type: "meta", key: "sellValue", delta: total },
+        ]
+      );
     } catch (error) {
       console.log(`[ERROR] /賣礦:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 賣礦失敗，請呼叫舒舒！").catch(() => {});
