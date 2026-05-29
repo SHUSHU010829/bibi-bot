@@ -231,7 +231,9 @@ async function buildBackpackView(client, { userId, guildId, displayName }) {
             .join("\n")
         : "（沒有）";
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`### ✨ 生效中的 buff\n${buffText}`)
+      new TextDisplayBuilder().setContent(
+        `### ✨ 生效中的 buff\n${buffText}\n-# 此處僅顯示商店購買的 XP／金幣 buff，贊助等挖礦幸運加成請於 \`/挖礦\` 結果或 \`/buff\` 查看`
+      )
     );
 
     const grouped = new Map();
