@@ -232,7 +232,12 @@ module.exports = async (client, interaction) => {
     // gameId 在 doc 上、不在 next 上（next 來自 engine pure state），補進去給 renderer 命名 attachment
     const payload = await renderMessage(
       { ...next, gameId, userId },
-      { username, balance: balanceAfter }
+      {
+        username,
+        balance: balanceAfter,
+        userId,
+        avatarURL: interaction.user.displayAvatarURL(),
+      }
     );
     // editReply 預設不會清掉舊 attachments，每次 hit 都要覆蓋成新檔
     await interaction.editReply({

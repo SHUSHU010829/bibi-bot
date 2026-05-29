@@ -13,7 +13,10 @@ const { ObjectId } = require("mongodb");
 const equipItem = require("../../features/shop/equipItem");
 const buyItem = require("../../features/shop/buyItem");
 const { getItem } = require("../../features/shop/catalog");
-const { buildBackpackView } = require("../../features/shop/backpackView");
+const {
+  buildBackpackView,
+  UNIFIED_EQUIP_ID,
+} = require("../../features/shop/backpackView");
 const { buildShopView } = require("../../features/shop/shopView");
 const {
   buildBuyConfirmView,
@@ -179,6 +182,12 @@ async function handleConfirmButton(client, interaction, qty, itemId) {
   if (item.type === "xp_boost" || item.type === "coin_boost") {
     lines.push("・效果：已自動套用，可用 `/背包` 查看剩餘時間");
   }
+  if (item.type === "mining_stamina_potion" && result.stamina) {
+    const s = result.stamina;
+    lines.push(
+      `・體力：${s.staminaBefore} → **${s.staminaAfter}** / ${s.max}（+${s.restored}）`,
+    );
+  }
 
   const invId = result.inventoryDoc?.insertedId
     ? String(result.inventoryDoc.insertedId)
@@ -322,6 +331,7 @@ module.exports = async (client, interaction) => {
       cid.startsWith(EQUIP_BTN_PREFIX) ||
       cid.startsWith(TITLE_OPEN_PREFIX) ||
       cid.startsWith(EQUIP_SELECT_PREFIX) ||
+      cid === UNIFIED_EQUIP_ID ||
       cid === TITLE_SELECT_ID ||
       cid.startsWith(TITLE_MODAL_PREFIX) ||
       cid === CARDNO_OPEN_ID ||
@@ -412,6 +422,19 @@ module.exports = async (client, interaction) => {
     ) {
       const invId = interaction.values?.[0];
       if (!isValidObjectId(invId)) return replyInvalidId(interaction);
+      return handleEquipFromInventorySelect(client, interaction, invId);
+    }
+
+    // 統一裝備選單：value = `<type>:<inventoryId>`。自訂稱號開彈窗設定文字，其餘直接裝備。
+    if (interaction.isStringSelectMenu() && interaction.customId === UNIFIED_EQUIP_ID) {
+      const raw = interaction.values?.[0] || "";
+      const sep = raw.indexOf(":");
+      const type = sep > 0 ? raw.slice(0, sep) : "";
+      const invId = sep > 0 ? raw.slice(sep + 1) : "";
+      if (!isValidObjectId(invId)) return replyInvalidId(interaction);
+      if (type === "custom_title") {
+        return interaction.showModal(buildTitleModal(invId));
+      }
       return handleEquipFromInventorySelect(client, interaction, invId);
     }
 

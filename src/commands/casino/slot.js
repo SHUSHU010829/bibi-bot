@@ -20,6 +20,7 @@ const {
 } = require("../../features/casino/slot/poolAnnouncer");
 const generateSlotGif = require("../../utils/generateSlotGif");
 const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
+const { buildCasinoEmbed } = require("../../features/casino/casinoEmbed");
 
 function getSlotConfig() {
   return casino?.slot || {};
@@ -198,11 +199,11 @@ module.exports = {
 
       const jackpotLine =
         result.matchType === "jackpot" && jackpotBust > 0
-          ? `\n💥 **爆池啦！** 你獨得 jackpot pool **+${jackpotBust.toLocaleString()}** credits！（基礎賠率 ${result.payout.toLocaleString()} + 累積池 ${jackpotBust.toLocaleString()}）`
+          ? `💥 **爆池啦！** 你獨得 jackpot pool **+${jackpotBust.toLocaleString()}** credits！（基礎賠率 ${result.payout.toLocaleString()} + 累積池 ${jackpotBust.toLocaleString()}）`
           : "";
       const poolLine =
         jackpotEnabled && jackpotPool != null
-          ? `\n${MONEY_EMOJI} 目前 Jackpot Pool：**${jackpotPool.toLocaleString()}** credits`
+          ? `${MONEY_EMOJI} 目前 Jackpot Pool：**${jackpotPool.toLocaleString()}** credits`
           : "";
 
       const headline =
@@ -214,7 +215,7 @@ module.exports = {
 
       const bankruptLine =
         balanceAfter <= 0
-          ? `\n🚨 **你破產了！** 餘額歸零，去發言、聊天賺金幣再來吧！`
+          ? `🚨 **你破產了！** 餘額歸零，去發言、聊天賺金幣再來吧！`
           : "";
 
       await saveLastBet(client, {
@@ -224,8 +225,39 @@ module.exports = {
         payload: { options: { 下注: bet, 梭哈: false } },
       });
 
+      // 結果改用賭場共用 embed 呈現：作者放玩家頭像／名稱，圖片塞進 embed 內。
+      const net = totalPayout - bet;
+      const outcome =
+        result.matchType === "jackpot"
+          ? "jackpot"
+          : net > 0
+          ? "win"
+          : net < 0
+          ? "lose"
+          : "neutral";
+
+      // 保留原本 content 內的額外資訊（爆池、彩池、破產提示）。
+      const extraLines = [jackpotLine, poolLine, bankruptLine].filter(Boolean);
+
+      const embed = buildCasinoEmbed({
+        game: "🎰 拉霸",
+        user: {
+          id: interaction.user.id,
+          displayName: interaction.member?.displayName || interaction.user.username,
+          avatarURL: interaction.user.displayAvatarURL(),
+        },
+        outcome,
+        headline,
+        lines: extraLines,
+        bet,
+        net,
+        balance: balanceAfter,
+        imageName: attachment.name,
+      });
+
       await interaction.editReply({
-        content: `${headline}${jackpotLine}\n・下注：**${bet.toLocaleString()}**　・餘額：**${balanceAfter.toLocaleString()}**${poolLine}${bankruptLine}`,
+        content: "",
+        embeds: [embed],
         files: [attachment],
         components: [buildReplayRow("slot", userId, { name: username })],
       });

@@ -11,6 +11,7 @@ const { MONEY_EMOJI } = require("../../../constants/coin");
 
 const { calcOdds, valueOf } = require("./engine");
 const { buildReplayRow } = require("../replay");
+const { buildCasinoEmbed } = require("../casinoEmbed");
 const generateHiloCard = require("../../../utils/generateHiloCard");
 
 const SUIT_EMOJI = { S: "♠", H: "♥", D: "♦", C: "♣" };
@@ -138,7 +139,46 @@ function renderText(state, { username, balance } = {}) {
   return lines.join("\n");
 }
 
-async function renderMessage(state, { username, balance } = {}) {
+// 結算時的輸贏判定：回傳顏色用的 outcome 與淨輸贏 net。
+function settleOutcome(state) {
+  if (state.status === "playing") return { outcome: "neutral", net: undefined };
+  switch (state.result) {
+    case "lose":
+      return { outcome: "lose", net: -state.bet };
+    case "cashout":
+    case "win":
+      return { outcome: "win", net: (state.payout || 0) - state.bet };
+    default:
+      return { outcome: "neutral", net: undefined };
+  }
+}
+
+// 圖片渲染失敗時，把牌況寫進 embed 內文的備援文字行。
+function gameStatusLines(state) {
+  const last = state.history[state.history.length - 1];
+  const isPlaying = state.status === "playing";
+  const odds = isPlaying
+    ? calcOdds(state.baseCard, state.deck, state.houseEdge)
+    : null;
+  const lines = [
+    `底牌：[ ${formatCard(state.baseCard)} ] ＝ ${valueOf(state.baseCard)}`,
+  ];
+  if (last) {
+    const tag = last.correct ? "✅ 對" : "❌ 錯";
+    lines.push(
+      `上一把：猜 ${last.guess.toUpperCase()} → 翻出 [ ${formatCard(last.drawn)} ] ${tag}`
+    );
+  }
+  lines.push(`連勝：${state.wins} ・ 累積倍率：×${state.accMultiplier.toFixed(2)}`);
+  if (isPlaying && odds) {
+    const m = odds.multipliers;
+    const fmt = (x) => (x > 0 ? `×${x.toFixed(2)}` : "×—");
+    lines.push(`下一張：HI ${fmt(m.hi)} ・ LO ${fmt(m.lo)} ・ SAME ${fmt(m.same)}`);
+  }
+  return lines;
+}
+
+async function renderMessage(state, { username, balance, userId, avatarURL } = {}) {
   const components =
     state.status === "playing"
       ? [buildButtons(state)]
@@ -146,26 +186,41 @@ async function renderMessage(state, { username, balance } = {}) {
         ? [buildReplayRow("hilo", state.userId, { name: username })]
         : [];
 
-  let content = "";
+  const isPlaying = state.status === "playing";
+  const { outcome, net } = settleOutcome(state);
+
   let files = [];
+  let imageName;
+  let fallbackLines = [];
   try {
     const buf = await generateHiloCard({
       username,
       state,
       balance: balance ?? 0,
     });
-    files = [
-      new AttachmentBuilder(buf, { name: `hilo-${state.gameId}.png` }),
-    ];
-    if (state.status === "settled") {
-      content = settleHeadline(state);
-    }
+    imageName = `hilo-${state.gameId}.png`;
+    files = [new AttachmentBuilder(buf, { name: imageName })];
   } catch (e) {
     console.log(`[WARN] hilo card render failed, falling back to text: ${e.message}`);
-    content = renderText(state, { username, balance });
+    fallbackLines = gameStatusLines(state); // 沒有圖時改用文字呈現牌況
   }
 
-  return { content, components, files };
+  const embed = buildCasinoEmbed({
+    game: "🎴 HI-LO",
+    user: { id: userId || state.userId, displayName: username, avatarURL },
+    outcome,
+    headline: isPlaying ? null : settleHeadline(state),
+    lines: fallbackLines,
+    bet: state.bet,
+    net: isPlaying ? undefined : net,
+    balance: isPlaying || typeof balance !== "number" ? undefined : balance,
+    imageName,
+    footer: isPlaying
+      ? `累積倍率 ×${state.accMultiplier.toFixed(2)} ・ 連勝 ${state.wins}`
+      : undefined,
+  });
+
+  return { content: "", embeds: [embed], components, files };
 }
 
 module.exports = {

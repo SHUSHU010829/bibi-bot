@@ -48,6 +48,12 @@ async function mine(client, { userId, guildId, member, username }) {
 
   const set = { mine_cooldown_at: newCooldownAt, updatedAt: new Date() };
 
+  // 賭石（鑑定師）：只有「剛挖到石頭那一次」能賭。每次挖礦都覆寫 pending_appraisal——
+  // 挖到石頭就記下本次數量與時間戳，挖到別的礦則清為 null，確保只認最新一次挖礦。
+  const sa = mining?.stoneAppraisal;
+  const appraisalEligible = !!(sa?.enabled && ore === "stone");
+  set.pending_appraisal = appraisalEligible ? { qty, ts: now } : null;
+
   // 耐久：非木鎬且有耐久值才消耗；歸 0 退回木鎬
   let durabilityBroke = false;
   let durabilityAfter = null;
@@ -85,6 +91,11 @@ async function mine(client, { userId, guildId, member, username }) {
     durabilityAfter,
     mineCountTotal: (profile.mine_count_total || 0) + 1,
   };
+
+  // 提供指令層組「找鑑定師賭石」按鈕所需資訊（ts 要與寫入 DB 的 pending_appraisal 一致）
+  if (appraisalEligible) {
+    result.appraisal = { qty, ts: now, feePerStone: sa.feePerStone || 0 };
+  }
 
   // 突發事件（戰鬥擴充）：採集後以一定機率觸發。會自行寫庫，可能翻倍 / 損失本次掉落、
   // 清除冷卻、或觸發怪物突襲（用玩家武器自動結算）。

@@ -11,6 +11,7 @@ const {
 const { evaluateHand } = require("./hand");
 const { FIVE_CARD_THRESHOLD } = require("./engine");
 const { buildReplayRow } = require("../replay");
+const { buildCasinoEmbed } = require("../casinoEmbed");
 const generateBlackjackCard = require("../../../utils/generateBlackjackCard");
 
 const SUIT_EMOJI = { S: "♠", H: "♥", D: "♦", C: "♣" };
@@ -207,7 +208,52 @@ function buildSettleHeadlineLine(state) {
   return settleHeadline(state);
 }
 
-async function renderMessage(state, { username, balance } = {}) {
+// 結算時的輸贏判定：回傳顏色用的 outcome 與淨輸贏 net。
+function settleOutcome(state) {
+  if (state.status !== "settled") return { outcome: "neutral", net: undefined };
+  const stake = totalStakeOf(state);
+  const payout = state.payout || 0;
+  const net = payout - stake;
+  let outcome;
+  if (net > 0) outcome = state.result === "blackjack" ? "jackpot" : "win";
+  else if (net < 0) outcome = "lose";
+  else outcome = "neutral"; // 平手
+  return { outcome, net };
+}
+
+// 圖片渲染失敗時，把牌況寫進 embed 內文的備援文字行。
+function gameStatusLines(state) {
+  const isPlaying = state.status === "playing";
+  const dealerEval = evaluateHand(state.dealerHand);
+  const hands =
+    Array.isArray(state.hands) && state.hands.length > 0
+      ? state.hands
+      : [
+          {
+            cards: state.playerHand,
+            bet: state.bet,
+            doubled: !!state.doubled,
+            result: null,
+          },
+        ];
+
+  const lines = [
+    renderHandLine("莊家", state.dealerHand, dealerEval.total, isPlaying),
+  ];
+  hands.forEach((h, i) => {
+    const ev = evaluateHand(h.cards);
+    const label = state.isSplit ? `第 ${i + 1} 手` : "你的";
+    const marker =
+      isPlaying && i === state.activeIndex && state.isSplit ? " ▶" : "";
+    lines.push(renderHandLine(label + marker, h.cards, ev.total, false));
+  });
+  return lines;
+}
+
+async function renderMessage(
+  state,
+  { username, balance, userId, avatarURL } = {}
+) {
   const components =
     state.status === "playing"
       ? [buildButtons(state, balance ?? 0)]
@@ -215,27 +261,46 @@ async function renderMessage(state, { username, balance } = {}) {
         ? [buildReplayRow("blackjack", state.userId, { name: username })]
         : [];
 
-  let content = "";
+  const isPlaying = state.status === "playing";
+  const { outcome, net } = settleOutcome(state);
+
   let files = [];
+  let imageName;
+  let fallbackLines = [];
   try {
     const buf = await generateBlackjackCard({
       username,
       state,
       balance: balance ?? 0,
     });
-    files = [
-      new AttachmentBuilder(buf, { name: `blackjack-${state.gameId}.png` }),
-    ];
-    // 圖卡已含完整資訊；只在結算時補一句結算文字方便手機通知預覽
-    const settleLine = buildSettleHeadlineLine(state);
-    if (settleLine) content = settleLine;
+    imageName = `blackjack-${state.gameId}.png`;
+    files = [new AttachmentBuilder(buf, { name: imageName })];
   } catch (e) {
-    // 圖卡生成失敗就 fallback 純文字
-    console.log(`[WARN] blackjack card render failed, falling back to text: ${e.message}`);
-    content = renderText(state, { username, balance });
+    // 圖卡生成失敗就 fallback：把牌況放進 embed 內文
+    console.log(
+      `[WARN] blackjack card render failed, falling back to text: ${e.message}`
+    );
+    fallbackLines = gameStatusLines(state);
   }
 
-  return { content, components, files };
+  const embed = buildCasinoEmbed({
+    game: "🃏 BLACKJACK",
+    user: { id: userId || state.userId, displayName: username, avatarURL },
+    outcome,
+    headline: isPlaying ? null : buildSettleHeadlineLine(state),
+    lines: fallbackLines,
+    bet: totalStakeOf(state),
+    net: isPlaying ? undefined : net,
+    balance: isPlaying || typeof balance !== "number" ? undefined : balance,
+    imageName,
+    footer: isPlaying
+      ? state.isSplit
+        ? `分牌中 ・ 進行第 ${state.activeIndex + 1} 手`
+        : undefined
+      : undefined,
+  });
+
+  return { content: "", embeds: [embed], components, files };
 }
 
 module.exports = {

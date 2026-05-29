@@ -17,6 +17,7 @@ const {
 } = require("../../features/casino/sicbo/paytable");
 const generateSicboCard = require("../../utils/generateSicboCard");
 const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
+const { buildCasinoEmbed } = require("../../features/casino/casinoEmbed");
 
 const BET_CHOICES = [
   { name: "大 (11-17)", value: "big" },
@@ -249,11 +250,10 @@ module.exports = {
         : `💸 ${dice.join("・")} = ${sum}，全部沒中，下次加油！`;
 
       const net = round.totalPayout - totalBet;
-      const netLine = `\n📊 淨輸贏：**${net >= 0 ? "+" : ""}${net.toLocaleString()}** credits`;
 
       const bankruptLine =
         balanceAfter <= 0
-          ? `\n🚨 **你破產了！** 餘額歸零，去發言、聊天賺金幣再來吧！`
+          ? `🚨 **你破產了！** 餘額歸零，去發言、聊天賺金幣再來吧！`
           : "";
 
       // 紀錄上一注（押法/金額/數值），供「再來一局」用相同押注重跑
@@ -271,8 +271,32 @@ module.exports = {
         payload: { options: replayOptions },
       });
 
+      // 結果改用賭場共用 embed 呈現：作者放玩家頭像／名稱，圖片塞進 embed 內。
+      const outcome = net > 0 ? "win" : net < 0 ? "lose" : "neutral";
+
+      // 保留原本 content 內的每注明細與破產提示。
+      const extraLines = [...lines];
+      if (bankruptLine) extraLines.push(bankruptLine);
+
+      const embed = buildCasinoEmbed({
+        game: "🎲 骰寶",
+        user: {
+          id: interaction.user.id,
+          displayName: interaction.member?.displayName || interaction.user.username,
+          avatarURL: interaction.user.displayAvatarURL(),
+        },
+        outcome,
+        headline,
+        lines: extraLines,
+        bet: totalBet,
+        net,
+        balance: balanceAfter,
+        imageName: attachment.name,
+      });
+
       await interaction.editReply({
-        content: `${headline}\n${lines.join("\n")}${netLine}　・餘額：**${balanceAfter.toLocaleString()}**${bankruptLine}`,
+        content: "",
+        embeds: [embed],
         files: [attachment],
         components: [buildReplayRow("sicbo", userId, { name: username })],
       });
