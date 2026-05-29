@@ -4,6 +4,9 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -27,6 +30,34 @@ function oreLabel(oreKey) {
 function pickaxeLabel(key) {
   const def = mining?.pickaxes?.[key] || {};
   return `${def.emoji || "⛏️"} ${def.name || key}`;
+}
+
+// 「找鑑定師賭石」按鈕 customId 格式：mining_appraise_<ownerId>_<mineTs>
+// mineTs 用來對上 DB 的 pending_appraisal.ts，確保只認最新一次挖礦、且單次有效。
+const APPRAISE_PREFIX = "mining_appraise_";
+const MAX_LABEL_LEN = 80;
+
+function buildAppraiseRow(ownerId, ts, qty, feePerStone) {
+  const fee = (feePerStone || 0) * (qty || 0);
+  let label = `🔍 找鑑定師賭石（${qty} 顆・${fee.toLocaleString()} 金幣）`;
+  if (label.length > MAX_LABEL_LEN) label = label.slice(0, MAX_LABEL_LEN);
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${APPRAISE_PREFIX}${ownerId}_${ts}`)
+      .setLabel(label)
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+function parseAppraiseId(customId) {
+  if (!customId || !customId.startsWith(APPRAISE_PREFIX)) return null;
+  const rest = customId.slice(APPRAISE_PREFIX.length);
+  const us = rest.lastIndexOf("_");
+  if (us <= 0) return null;
+  const ownerId = rest.slice(0, us);
+  const ts = Number(rest.slice(us + 1));
+  if (!ownerId || !Number.isFinite(ts)) return null;
+  return { ownerId, ts };
 }
 
 module.exports = {
@@ -176,6 +207,25 @@ module.exports = {
           );
       }
 
+      // 剛挖到石頭：附上「找鑑定師賭石」按鈕（只有這次、限時有效）
+      if (result.appraisal) {
+        container
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              "**🔍 賭石**\n-# 付費請鑑定師逐顆開石頭，有機率變成更值錢的礦——也可能全部碎掉！只有剛挖到時能賭。",
+            ),
+          )
+          .addActionRowComponents(
+            buildAppraiseRow(
+              interaction.user.id,
+              result.appraisal.ts,
+              result.appraisal.qty,
+              result.appraisal.feePerStone,
+            ),
+          );
+      }
+
       container.addActionRowComponents(row);
 
       await interaction.editReply({
@@ -227,6 +277,10 @@ module.exports = {
       await interaction.editReply("🔧 挖礦失敗，請呼叫舒舒！").catch(() => {});
     }
   },
+
+  APPRAISE_PREFIX,
+  parseAppraiseId,
+  oreLabel,
 };
 
 async function sendLegendaryAnnouncement(client, interaction) {

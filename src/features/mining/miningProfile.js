@@ -23,6 +23,7 @@ function defaultProfile(userId, guildId) {
     stamina_updated_at: 0,
     dungeon_count: 0,
     legendary_fragments: 0,
+    pending_appraisal: null,
     gift_date: null,
     gift_count: 0,
     createdAt: new Date(),
@@ -51,6 +52,7 @@ function normalize(doc) {
   doc.stamina_updated_at ??= 0;
   doc.dungeon_count ??= 0;
   doc.legendary_fragments ??= 0;
+  if (doc.pending_appraisal === undefined) doc.pending_appraisal = null;
   if (doc.gift_date === undefined) doc.gift_date = null;
   doc.gift_count ??= 0;
   return doc;

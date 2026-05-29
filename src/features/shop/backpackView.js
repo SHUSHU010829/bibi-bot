@@ -42,6 +42,10 @@ const TYPE_LABEL = {
 
 const EQUIPPABLE_TYPES = ["role_color", "wallet_theme", "card_accent", "custom_title"];
 
+// 統一的「裝備／設定道具」下拉選單 customId（見 events/interactionCreate/handleShopInteraction.js）。
+// 把四種可裝備道具併進同一個選單，避免每種一排撞到 Discord 動作列上限（導致自訂稱號選單被吃掉）。
+const UNIFIED_EQUIP_ID = "shop_equip_unified";
+
 function fmtExpiry(expiresAt) {
   if (!expiresAt) return "永久";
   const ts = Math.floor(new Date(expiresAt).getTime() / 1000);
@@ -66,26 +70,37 @@ function fmtExpiryPlain(expiresAt) {
   return `剩 ${mins} 分鐘`;
 }
 
-function buildSelectMenu(type, items) {
-  const usable = items.filter(isUsable).slice(0, 25);
-  if (usable.length === 0) return null;
+// 純文字的型別標籤（去掉 emoji 前綴），用於選項描述。
+function typeLabelText(type) {
+  return (TYPE_LABEL[type] || type).replace(/^[^\s]+\s/, "");
+}
 
-  const customId =
-    type === "custom_title" ? "shop_title_select" : `shop_equip_select_${type}`;
-  const placeholder =
-    type === "custom_title"
-      ? "✏️ 選擇要設定文字的自訂稱號…"
-      : `選擇要裝備的${TYPE_LABEL[type]?.replace(/^[^\s]+\s/, "") || type}…`;
-
-  const options = usable.map((it) => ({
-    label: `${it.equipped ? "✅ " : ""}${it.name}`.slice(0, 100),
-    description: fmtExpiryPlain(it.expiresAt).slice(0, 100),
-    value: String(it._id),
-  }));
+// 單一「裝備／設定道具」選單：跨四種可裝備型別合併成同一個下拉。
+// 選項 value 編碼成 `<type>:<inventoryId>`，由 handler 依型別決定要直接裝備或開稱號彈窗。
+function buildUnifiedEquipMenu(grouped) {
+  const options = [];
+  for (const type of EQUIPPABLE_TYPES) {
+    const list = (grouped.get(type) || []).filter(isUsable);
+    for (const it of list) {
+      const emoji = (TYPE_LABEL[type] || "").split(" ")[0] || "";
+      const detail =
+        type === "custom_title"
+          ? "點選設定／修改文字"
+          : `${it.equipped ? "目前裝備中・" : ""}${fmtExpiryPlain(it.expiresAt)}`;
+      options.push({
+        label: `${it.equipped ? "✅ " : ""}${emoji ? `${emoji} ` : ""}${it.name}`.slice(0, 100),
+        description: `${typeLabelText(type)}・${detail}`.slice(0, 100),
+        value: `${type}:${it._id}`,
+      });
+      if (options.length >= 25) break;
+    }
+    if (options.length >= 25) break;
+  }
+  if (options.length === 0) return null;
 
   const menu = new StringSelectMenuBuilder()
-    .setCustomId(customId)
-    .setPlaceholder(placeholder)
+    .setCustomId(UNIFIED_EQUIP_ID)
+    .setPlaceholder("🎁 選擇要裝備／設定的道具…")
     .setMinValues(1)
     .setMaxValues(1)
     .addOptions(options);
@@ -287,13 +302,9 @@ async function buildBackpackView(client, { userId, guildId, member, displayName 
       );
     }
 
-    for (const type of EQUIPPABLE_TYPES) {
-      const list = grouped.get(type);
-      if (!list || list.length === 0) continue;
-      const row = buildSelectMenu(type, list);
-      if (row) equipRows.push(row);
-      if (equipRows.length >= 3) break;
-    }
+    // 四種可裝備道具併成單一下拉，徹底避免動作列爆量導致選單被截掉
+    const unifiedMenu = buildUnifiedEquipMenu(grouped);
+    if (unifiedMenu) equipRows.push(unifiedMenu);
 
     // 贊助限定卡面持有者：提供「設定卡號」按鈕（自訂浮雕卡號）
     const ownsDonorCard = (grouped.get("wallet_theme") || []).some(
@@ -326,4 +337,9 @@ async function buildBackpackView(client, { userId, guildId, member, displayName 
   };
 }
 
-module.exports = { buildBackpackView, USE_TICKET_PREFIX, parseUseTicketId };
+module.exports = {
+  buildBackpackView,
+  USE_TICKET_PREFIX,
+  parseUseTicketId,
+  UNIFIED_EQUIP_ID,
+};
