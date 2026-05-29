@@ -55,6 +55,8 @@ module.exports = {
       const userId = interaction.user.id;
       const username =
         interaction.member?.displayName || interaction.user.username;
+      // 開盤者頭像：存進 state 供 renderer 當 embed author 圖示
+      const hostAvatarURL = interaction.user.displayAvatarURL();
 
       // 取播報頻道（沒設定 / 抓不到就退回到指令當下頻道）
       const announceChannelId = cfg.announceChannelId;
@@ -96,6 +98,7 @@ module.exports = {
         messageId: null,
         hostUserId: userId,
         hostUsername: username,
+        hostAvatarURL,
         status: "betting",
         bets: [],
         winnerId: null,

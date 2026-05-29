@@ -8,6 +8,17 @@ const {
 const { MONEY_EMOJI } = require("../../../constants/coin");
 
 const { HORSES } = require("./engine");
+const { buildCasinoEmbed } = require("../casinoEmbed");
+
+// 由 state 取出開盤者資訊，當成 embed 的玩家（author + mention）。
+function hostUser(state) {
+  if (!state?.hostUserId) return undefined;
+  return {
+    id: state.hostUserId,
+    displayName: state.hostUsername,
+    avatarURL: state.hostAvatarURL,
+  };
+}
 
 function aggregateBetsByHorse(bets = []) {
   const map = new Map();
@@ -60,7 +71,6 @@ function renderBettingPhase(state) {
   const byHorse = aggregateBetsByHorse(state.bets || []);
 
   const lines = [
-    `🐎 **賽馬大賽開盤！** 由 <@${state.hostUserId}> 發起`,
     `🎫 售票截止：<t:${expiresAtTs}:R>（<t:${expiresAtTs}:T>）・每人可押多匹`,
     "─────────────────────",
     "**馬匹賠率（總倍率，含本金）**",
@@ -85,40 +95,59 @@ function renderBettingPhase(state) {
     lines.push(`-# ${state.bets.length} 筆下注 ・ 點下方按鈕押你看好的馬`);
   }
 
+  // 售票期：開盤者當 author，狀態 neutral；尚未結算所以不顯示輸贏。
+  const embed = buildCasinoEmbed({
+    game: "🐎 賽馬大賽 ・ 開盤中",
+    user: hostUser(state),
+    outcome: "neutral",
+    headline: "🐎 **賽馬大賽開盤！** 點下方按鈕押你看好的馬",
+    lines,
+    footer: "開盤者可提早開賽或取消",
+  });
+
   return {
-    content: lines.join("\n"),
+    content: "",
+    embeds: [embed],
     components: buildBettingButtons(state.gameId),
   };
 }
 
 // ── 比賽中：上方文字搭配 GIF 附件 ──
-function renderRunningPhase(state) {
+// withImage：是否已附上 GIF（呼叫端先做一次無附件 edit 清按鈕，再帶 GIF edit）。
+function renderRunningPhase(state, { withImage = false } = {}) {
   const totalPool = (state.bets || []).reduce((s, b) => s + b.amount, 0);
   const lines = [
-    `🐎 **賽馬大賽 ・ 比賽進行中**`,
     `${MONEY_EMOJI} 總彩池：**${totalPool.toLocaleString()}** credits ・ ${(state.bets || []).length} 筆下注`,
     "-# 🏇 看誰先衝過終點線…",
   ];
-  return { content: lines.join("\n"), components: [] };
+
+  // 比賽中：只有確定有 GIF 附件時才 setImage，避免顯示破圖。
+  const embed = buildCasinoEmbed({
+    game: "🐎 賽馬大賽 ・ 比賽進行中",
+    user: hostUser(state),
+    outcome: "neutral",
+    lines,
+    imageName: withImage && state.gameId ? `race-${state.gameId}.gif` : undefined,
+  });
+
+  return { content: "", embeds: [embed], components: [] };
 }
 
 // ── 結算 ──
 // 圖卡裡已經有領獎台 / 完整名次 / 彩池統計,文字部分只負責「冠軍宣告 + 中獎玩家 mention」。
-function renderSettledPhase(state) {
+// withImage：是否附上結果卡 PNG。
+function renderSettledPhase(state, { withImage = false } = {}) {
   const rankings = state.rankings || [];
   const winnerHorse = HORSES.find((h) => h.id === rankings[0]);
 
-  const lines = [
-    `🐎 **賽馬大賽 ・ 結果出爐**`,
-    winnerHorse
-      ? `🏆 冠軍：${winnerHorse.emoji} **${winnerHorse.name}** ×${winnerHorse.payout.toFixed(1)}`
-      : `🏆 冠軍：—`,
-  ];
+  const headline = winnerHorse
+    ? `🏆 冠軍：${winnerHorse.emoji} **${winnerHorse.name}** ×${winnerHorse.payout.toFixed(1)}`
+    : "🏆 冠軍：—";
 
+  const lines = [];
   const settles = state.settles || [];
   const winners = settles.filter((s) => s.payout > 0);
   if (winners.length > 0) {
-    lines.push("");
     lines.push("**🎉 中獎玩家**");
     for (const w of winners) {
       lines.push(
@@ -126,28 +155,47 @@ function renderSettledPhase(state) {
       );
     }
   } else if (settles.length > 0) {
-    lines.push("");
     lines.push("-# 🥲 本局無人押中，全部下注沒入莊家口袋。");
   }
 
-  return { content: lines.join("\n"), components: [] };
+  const totalPool = (state.bets || []).reduce((s, b) => s + b.amount, 0);
+  const totalPaid = settles.reduce((s, x) => s + (x.payout || 0), 0);
+
+  // 多人賽局：有人中獎 → win（綠），全槓龜 → lose（紅）。
+  const embed = buildCasinoEmbed({
+    game: "🐎 賽馬大賽 ・ 結果出爐",
+    user: hostUser(state),
+    outcome: winners.length > 0 ? "win" : "lose",
+    headline,
+    lines,
+    footer: `總彩池 ${totalPool.toLocaleString()} ・ 派彩 ${totalPaid.toLocaleString()} ・ ${(state.bets || []).length} 筆下注`,
+    imageName: withImage && state.gameId ? `race-${state.gameId}.png` : undefined,
+  });
+
+  return { content: "", embeds: [embed], components: [] };
 }
 
 function renderCancelled(state, reason = "已取消") {
   const refunds = (state.bets || []).map(
     (b) => `・<@${b.userId}> 退款 ${b.amount.toLocaleString()}`,
   );
-  const lines = [
-    `🐎 **賽馬大賽 ・ ${reason}**`,
-    "─────────────────────",
-  ];
+  const lines = [];
   if (refunds.length > 0) {
     lines.push("已下注金額將全額退回：");
     lines.push(...refunds);
   } else {
     lines.push("-# 沒有任何下注，直接取消。");
   }
-  return { content: lines.join("\n"), components: [] };
+
+  // 取消：中性顏色，不顯示輸贏欄位（已退款）。
+  const embed = buildCasinoEmbed({
+    game: `🐎 賽馬大賽 ・ ${reason}`,
+    user: hostUser(state),
+    outcome: "neutral",
+    lines,
+  });
+
+  return { content: "", embeds: [embed], components: [] };
 }
 
 module.exports = {

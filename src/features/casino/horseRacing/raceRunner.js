@@ -111,8 +111,9 @@ async function runRaceAnimation(client, state) {
   // 動畫：能拿到 message 就產一張 GIF 貼出，等播完再走結算
   if (message) {
     // GIF 編碼大約 3~5 秒，先做一次無附件 edit 讓按鈕消失、避免玩家對著舊 UI 戳。
+    // 這次先不帶圖（withImage:false），embed 不 setImage 以免破圖。
     const racingPayload = renderRunningPhase(state);
-    await message.edit(racingPayload).catch(() => {});
+    await message.edit({ ...racingPayload, attachments: [] }).catch(() => {});
 
     const totalPool = (state.bets || []).reduce((s, b) => s + b.amount, 0);
     let waitMs = 5000;
@@ -127,8 +128,9 @@ async function runRaceAnimation(client, state) {
       const attachment = new AttachmentBuilder(buffer, {
         name: `race-${state.gameId}.gif`,
       });
+      // 帶 GIF 的 edit：renderRunningPhase withImage:true 才會 setImage。
       await message
-        .edit({ ...racingPayload, files: [attachment] })
+        .edit({ ...renderRunningPhase(state, { withImage: true }), files: [attachment] })
         .catch((e) =>
           console.log(
             `[HORSE] race gif edit failed (size=${buffer.length}B): ${e}`.yellow,
