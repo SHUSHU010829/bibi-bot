@@ -282,7 +282,8 @@ async function sendDonationDm(client, record, tier, extras) {
   if (!user) throw new Error(`user ${record.userId} not fetchable`);
 
   const lines = [
-    `# 🙏 感謝你的贊助！`,
+    `# 🙏 你讓逼逼機器人吃上一頓飯啦！`,
+    `## 十分感謝你的贊助！`,
     "",
     `金額：**NT$${record.amountNtd}**　·　平台：${record.platform === "ecpay" ? "綠界" : "歐付寶"}`,
     `交易編號：\`${record.tradeNo}\``,
@@ -346,7 +347,7 @@ async function announceDonation(client, record, tier) {
     throw new Error(`announce channel ${channelId} not text-based`);
   }
   const tierLabel = tier ? `${tier.emoji} ${tier.name}` : "未達門檻贊助";
-  const content = `🎉 <@${record.userId}> 抖內 **NT$${record.amountNtd}** 解鎖 **${tierLabel}**，謝謝你！`;
+  const content = `🎉 <@${record.userId}> 抖內 **NT$${record.amountNtd}** 解鎖 **${tierLabel}**，讓逼逼機器人吃上一頓飯啦！十分感謝你！`;
   await channel.send({
     content,
     allowedMentions: { users: [record.userId] },
