@@ -105,6 +105,13 @@ module.exports = {
 
       const buffNotes = [];
       if (result.buff.consume.usePotion) buffNotes.push("🍀 幸運藥水 +luck");
+      if (result.buff.twitchLuckBonus > 0) {
+        const tierLabel = { tier1: "T1", tier2: "T2", tier3: "T3" };
+        const tierName = tierLabel[result.buff.twitchTierKey] || "";
+        buffNotes.push(
+          `💜 訂閱${tierName ? ` ${tierName}` : ""}幸運 +${Math.round(result.buff.twitchLuckBonus * 100)}%`,
+        );
+      }
       if (result.buff.donationLuckBonus > 0) {
         buffNotes.push(
           `<:money:1509128163504947210> 贊助加成幸運 +${Math.round(result.buff.donationLuckBonus * 100)}%`,
