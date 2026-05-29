@@ -101,11 +101,6 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
   const bonus = staminaBonus(member);
   const profile = await getOrCreate(client, userId, guildId);
 
-  // 硬門檻：沒有武器（赤手）無法打怪，提示去 /合成 打劍
-  if (!hasWeapon(profile)) {
-    return { ok: false, reason: "no_weapon" };
-  }
-
   const st = resolveStamina(profile, max);
 
   if (st.stamina <= 0) {
@@ -120,11 +115,16 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
 
   const monster = rollMonster();
   const atk = playerAtk(profile);
-  const winRate = clamp(
-    atk / monster.hp,
-    dungeon?.winRateMin ?? 0.2,
-    dungeon?.winRateMax ?? 0.9
-  );
+  // 赤手空拳也能打，但勝率極低（套較低的天花板、且不吃 winRateMin 保底）；
+  // 有武器才適用一般的 winRateMin ~ winRateMax 區間。
+  const usingFist = !hasWeapon(profile);
+  const winRate = usingFist
+    ? clamp(atk / monster.hp, 0, dungeon?.fistWinRateMax ?? 0.1)
+    : clamp(
+        atk / monster.hp,
+        dungeon?.winRateMin ?? 0.2,
+        dungeon?.winRateMax ?? 0.9
+      );
   const weapons = dungeon?.weapons || {};
   const wdef = weapons[profile.weapon] || {};
   const critRate = wdef.critRate || 0;
@@ -241,6 +241,7 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
     ok: true,
     won,
     crit,
+    usingFist,
     monster,
     atk,
     winRate,
