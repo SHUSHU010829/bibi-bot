@@ -116,7 +116,7 @@ module.exports = {
       const atk = playerAtk(profile);
       const weaponNote =
         wKey === "fist"
-          ? "（赤手無法打怪，先去合成一把劍！）"
+          ? "（赤手也能打怪但勝率極低，先去合成一把劍！）"
           : "";
 
       const statLines = [
