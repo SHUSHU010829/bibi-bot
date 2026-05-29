@@ -72,7 +72,7 @@ function buildCardNumberModal() {
     .setTitle("設定贊助卡號");
   const input = new TextInputBuilder()
     .setCustomId("cardno_text")
-    .setLabel(`卡號（英文/數字，最多 ${MAX_LEN} 字）`)
+    .setLabel(`卡號（英文/數字/空白，最多 ${MAX_LEN} 字）`)
     .setPlaceholder("留空並送出＝清除自訂卡號")
     .setStyle(TextInputStyle.Short)
     .setRequired(false)

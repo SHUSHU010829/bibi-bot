@@ -25,11 +25,11 @@ module.exports = {
     .addSubcommand((sub) =>
       sub
         .setName("設定")
-        .setDescription(`設定卡號（限英文與數字，最多 ${MAX_LEN} 字）`)
+        .setDescription(`設定卡號（限英文、數字與空白，最多 ${MAX_LEN} 字）`)
         .addStringOption((opt) =>
           opt
             .setName("編號")
-            .setDescription(`只能用英文與數字，最多 ${MAX_LEN} 字`)
+            .setDescription(`只能用英文、數字與空白，最多 ${MAX_LEN} 字`)
             .setRequired(true)
             .setMinLength(1)
             .setMaxLength(MAX_LEN)
