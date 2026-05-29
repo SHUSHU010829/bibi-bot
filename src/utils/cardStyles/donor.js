@@ -26,6 +26,20 @@ const COLORS = {
 // 燙金漸層：外框 / 印章 / monogram 共用，模擬金箔反光。
 const GOLD_GRAD = `linear-gradient(135deg, ${COLORS.goldShine} 0%, ${COLORS.gold} 28%, ${COLORS.goldDim} 50%, ${COLORS.gold} 72%, ${COLORS.goldShine} 100%)`;
 
+// 黑卡雕刻金屬底紋：極淡的金色斜向髮絲線（guilloché 感）。
+function metalTexture() {
+  return `<div style="display:flex;position:absolute;left:0;top:0;right:0;bottom:0;background-image:repeating-linear-gradient(45deg, rgba(212,175,55,0.05) 0px, rgba(212,175,55,0.05) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) 9px);"></div>`;
+}
+
+// 浮雕卡號：取 userId 數字尾段，套 AmEx 4-6-5 分組。
+function cardNumberFrom(userId) {
+  const d = String(userId || "")
+    .replace(/\D/g, "")
+    .padStart(15, "3")
+    .slice(-15);
+  return `${d.slice(0, 4)} ${d.slice(4, 10)} ${d.slice(10)}`;
+}
+
 function thankStamp() {
   return `
     <div style="display:flex;position:absolute;right:36px;top:34px;flex-direction:column;align-items:flex-end;">
@@ -54,6 +68,7 @@ function frame(inner) {
       <div style="display:flex;flex:1;padding:3px;box-sizing:border-box;background-image:${GOLD_GRAD};">
         <div style="display:flex;flex:1;padding:5px;box-sizing:border-box;background:${COLORS.bg};">
           <div style="display:flex;flex:1;position:relative;border:1px solid ${COLORS.gold};box-sizing:border-box;background:${COLORS.bgInner};background-image:radial-gradient(circle at 50% 30%, #241c0e 0%, ${COLORS.bgInner} 60%);">
+            ${metalTexture()}
             ${cornerOrnaments()}
             ${inner}
           </div>
@@ -70,6 +85,7 @@ function wallet(data) {
   const balance = fmtNumber(data.totalCoins || 0);
   const lifetime = fmtNumber(data.lifetimeCoins || 0);
   const balanceWords = numberToWords(data.totalCoins || 0).slice(0, 60);
+  const cardNumber = cardNumberFrom(data.userId);
 
   const inner = `
     ${thankStamp()}
@@ -92,9 +108,23 @@ function wallet(data) {
 
       <div style="display:flex;margin-top:8px;font-family:'SpaceMono';font-size:12px;letter-spacing:5px;color:${COLORS.cream};opacity:0.6;max-width:880px;text-align:center;">${htmlEscape(balanceWords)}</div>
 
-      <div style="display:flex;margin-top:32px;width:100%;justify-content:space-between;align-items:center;font-family:'SpaceMono';font-size:12px;letter-spacing:4px;color:${COLORS.gold};">
-        <div style="display:flex;">HOLDER · ${htmlEscape(handle)}</div>
-        <div style="display:flex;">LIFETIME · ${lifetime}</div>
+      <!-- 浮雕卡號 -->
+      <div style="display:flex;margin-top:26px;font-family:'SpaceMono';font-weight:700;font-size:30px;letter-spacing:8px;color:${COLORS.cream};padding-left:8px;">${cardNumber}</div>
+
+      <!-- 信用卡式三欄資訊 -->
+      <div style="display:flex;margin-top:22px;width:100%;justify-content:space-between;align-items:flex-end;">
+        <div style="display:flex;flex-direction:column;">
+          <div style="display:flex;font-family:'SpaceMono';font-size:10px;letter-spacing:3px;color:${COLORS.goldDim};margin-bottom:4px;">CARD HOLDER</div>
+          <div style="display:flex;font-family:'SpaceMono';font-size:13px;letter-spacing:3px;color:${COLORS.gold};">${htmlEscape(handle)}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <div style="display:flex;font-family:'SpaceMono';font-size:10px;letter-spacing:3px;color:${COLORS.goldDim};margin-bottom:4px;">LIFETIME</div>
+          <div style="display:flex;font-family:'SpaceMono';font-size:13px;letter-spacing:3px;color:${COLORS.gold};">NT$ ${lifetime}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+          <div style="display:flex;font-family:'SpaceMono';font-size:10px;letter-spacing:3px;color:${COLORS.goldDim};margin-bottom:4px;">VALID THRU</div>
+          <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:15px;letter-spacing:2px;color:${COLORS.goldBright};">∞ 永久</div>
+        </div>
       </div>
     </div>
   `;
