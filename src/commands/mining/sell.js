@@ -27,12 +27,12 @@ function oreChoices() {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("賣礦")
-    .setDescription("把背包裡的礦石賣給系統換金幣 🪙（不指定則賣全部）")
+    .setDescription("把背包裡的礦石賣給系統換金幣 🪙")
     .setContexts(InteractionContextType.Guild)
     .addStringOption((o) =>
       o
         .setName("礦石")
-        .setDescription("要賣的礦石種類，不選則賣出全部")
+        .setDescription("要賣的礦石種類")
         .setRequired(false)
         .addChoices(...oreChoices())
     )
@@ -57,6 +57,13 @@ module.exports = {
       const oreArg = interaction.options.getString("礦石");
       const qtyArg = interaction.options.getInteger("數量");
 
+      // 沒指定礦石就什麼都不賣，避免手滑全數出清
+      if (!oreArg) {
+        return interaction.editReply(
+          "🤔 你沒有選擇要賣的礦石，什麼都沒賣到喔！記得指定要賣的礦石種類～",
+        );
+      }
+
       const profile = await getOrCreate(client, userId, guildId);
       const backpack = profile.backpack || {};
 
@@ -72,36 +79,20 @@ module.exports = {
 
       // 決定要賣的清單 [{ ore, qty, price, value }]
       const toSell = [];
-      if (oreArg) {
-        const def = resolveDef(oreArg);
-        if (!def) return interaction.editReply("❌ 找不到這種礦石。");
-        const have = backpack[oreArg] || 0;
-        if (have <= 0) {
-          return interaction.editReply(`你的背包裡沒有 **${def.name}**。`);
-        }
-        let qty = qtyArg ? qtyArg : have;
-        if (qty > have) {
-          return interaction.editReply(
-            `你只有 **${have}** 顆 ${def.name}，無法賣出 ${qty} 顆。`
-          );
-        }
-        const price = priceOf(oreArg, def);
-        toSell.push({ ore: oreArg, qty, price, value: price * qty });
-      } else {
-        // 賣全部：掃背包所有礦石（含限定礦石），略過數量為 0 或無法解析者
-        for (const key of Object.keys(backpack)) {
-          const have = backpack[key] || 0;
-          if (have <= 0) continue;
-          const def = resolveDef(key);
-          if (!def) continue;
-          const price = priceOf(key, def);
-          toSell.push({ ore: key, qty: have, price, value: price * have });
-        }
+      const def = resolveDef(oreArg);
+      if (!def) return interaction.editReply("❌ 找不到這種礦石。");
+      const have = backpack[oreArg] || 0;
+      if (have <= 0) {
+        return interaction.editReply(`你的背包裡沒有 **${def.name}**。`);
       }
-
-      if (toSell.length === 0) {
-        return interaction.editReply("🎒 你的背包是空的，先去 `/挖礦` 吧！");
+      let qty = qtyArg ? qtyArg : have;
+      if (qty > have) {
+        return interaction.editReply(
+          `你只有 **${have}** 顆 ${def.name}，無法賣出 ${qty} 顆。`
+        );
       }
+      const price = priceOf(oreArg, def);
+      toSell.push({ ore: oreArg, qty, price, value: price * qty });
 
       const total = toSell.reduce((s, x) => s + x.value, 0);
 
