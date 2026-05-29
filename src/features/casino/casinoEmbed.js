@@ -48,7 +48,7 @@ function buildCasinoEmbed({
   }
 
   const descParts = [];
-  if (user?.id) descParts.push(`玩家：<@${user.id}>　\`ID:${user.id}\``);
+  if (user?.id) descParts.push(`玩家：<@${user.id}>`);
   if (headline) descParts.push(headline);
   if (lines.length) descParts.push(lines.join("\n"));
   if (descParts.length) embed.setDescription(descParts.join("\n").slice(0, 4096));
