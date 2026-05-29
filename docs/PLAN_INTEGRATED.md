@@ -52,7 +52,7 @@
 | Phase C | 頻道共鬥 BOSS | ❌ 未實作 | 本文件 |
 | Phase D | 農場/種植 | ❌ 未實作 | 本文件 |
 | Phase E | 稱號進階管理 | ⚠️ 週冠換王已有，其餘待補 | `PLAN_OPTIMIZATION.md` |
-| Phase F | 每日市價波動 | ❌ 未實作 | 本文件 |
+| Phase F | 每日市價波動 | ✅ 已實作 | 本文件 |
 | Phase G | Dashboard 贊助後台 | ❌ 未實作 | 本文件 |
 | Phase S1 | 挖礦專屬任務 | ⚠️ 框架完整、任務未定義 | `PLAN_OPTIMIZATION.md` |
 | Phase S2 | 排行榜多維度 | ⚠️ 週榜已有、其餘待補 | `PLAN_OPTIMIZATION.md` |
@@ -434,6 +434,15 @@ playerShare = floor(myDamage / totalDamage × totalPool)
 
 ## Phase F — 每日市價波動系統
 
+> ✅ **已實作（2026-05-29）**
+> - 引擎：`src/features/market/orePriceEngine.js`（seeded random、freeze 當日價、走勢查詢、過期清理）
+> - 指令：`/行情`（無參數＝今日全礦石；指定礦石＝近 7 天走勢 + sparkline）→ `src/commands/mining/oreMarket.js`
+> - 每日 cron：`src/events/ready/oreMarketScheduler.js`（00:00 freeze + 公告 + 清理）
+> - DB：`OreMarketPrices`（date unique，保留 90 天），於 `connectDb.js` 註冊
+> - 接點：`/賣礦` 改為先查當日行情、fallback 基礎價；設定放 `mining.json` 的 `oreMarket`
+> - 實作差異：實際礦石為 stone/coal/iron/gold/diamond（非企劃示意的 crystal/rainbow）；
+>   公告頻道由 `mining.oreMarket.announceChannelId` 設定（未設則略過公告）。
+>
 > **前置需求**：Phase 1（挖礦 + 賣礦）✅
 > **預估時間**：1–2 天
 > **定位**：讓囤積礦石有策略意義
