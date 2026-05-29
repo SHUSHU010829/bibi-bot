@@ -8,6 +8,7 @@ const {
 
 const questService = require("./questService");
 const questNotifyPref = require("./questNotifyPref");
+const questClaimButton = require("./questClaimButton");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 const PROGRESS_BAR_LEN = 10;
@@ -79,14 +80,15 @@ async function buildQuestContainer(client, userId, guildId) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `-# 任務完成會自動入帳；若有「待入帳」未到帳，可用 \`/領錢\` 補領。\n` +
-        `-# 下方按鈕可開關「被動任務（發言／語音／表情等）完成時的 DM 通知」，目前**${
+      `-# 任務完成會自動入帳；若有「待入帳」未到帳，按下方「領錢」即可補領。\n` +
+        `-# 「完成 DM 通知」可開關「被動任務（發言／語音／表情等）完成時的 DM 通知」，目前**${
           dmNotify ? "已開啟 🔔" : "已關閉 🔕"
         }**。`
     )
   );
 
   container.addActionRowComponents(
+    questClaimButton.buildButtonRow({ userId, hasReady: readyCount > 0 }),
     questNotifyPref.buildButtonRow({ userId, enabled: dmNotify })
   );
 
