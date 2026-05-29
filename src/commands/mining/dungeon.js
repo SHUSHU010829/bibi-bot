@@ -179,7 +179,7 @@ module.exports = {
         rewardLine =
           result.ticketGained > 0
             ? `掉落 **🎫 CD 縮短券 ×${result.ticketGained}**！`
-            : "發現了 CD 縮短券，但你已達持有上限，只好留給別人…";
+            : `🎫 CD 縮短券已達持有上限，折算成 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}`;
       } else {
         rewardLine = "雖然贏了，但這次什麼都沒掉落…運氣差了點。";
       }

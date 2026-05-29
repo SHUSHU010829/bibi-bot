@@ -105,22 +105,40 @@ async function trigger(client, ctx) {
             0,
             backpackCapacity(profile, mining) - backpackUsed(profile)
           );
-          let extra = Math.floor(baseQty * (eff.mult ?? 1));
-          if (extra > space) extra = space;
-          if (extra > 0) {
+          const intended = Math.floor(baseQty * (eff.mult ?? 1));
+          const granted = Math.min(intended, space);
+          if (granted > 0) {
             await coll(client).updateOne(
               { userId, guildId },
               {
                 $inc: {
-                  [`backpack.${ore}`]: extra,
-                  [`lifetime_ore.${ore}`]: extra,
+                  [`backpack.${ore}`]: granted,
+                  [`lifetime_ore.${ore}`]: granted,
                 },
                 $set: { updatedAt: new Date() },
               }
             );
-            lines.push(`${oreLabel(ore)} ×${extra}（額外獲得）`);
-          } else {
-            lines.push("可惜背包沒空間，礦脈白白溜走了…");
+            lines.push(`${oreLabel(ore)} ×${granted}（額外獲得）`);
+          }
+          // 背包塞不下的部分折算成金幣，不浪費
+          const overflow = intended - granted;
+          if (overflow > 0) {
+            const price = mining?.ores?.[ore]?.price || 0;
+            const coins = overflow * price;
+            if (coins > 0) {
+              await grantCoins(client, {
+                userId,
+                guildId,
+                username,
+                amount: coins,
+                source: "encounter",
+                member,
+                meta: { encounter: enc.id, overflow: true },
+              });
+              lines.push(
+                `🎒 背包已滿，${oreLabel(ore)} ×${overflow} 折算成 +${coins.toLocaleString()} ${COIN_EMOJI}`
+              );
+            }
           }
         }
         break;

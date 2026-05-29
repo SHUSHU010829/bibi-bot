@@ -1,5 +1,5 @@
 require("colors");
-const { mining, dungeon } = require("../../config");
+const { mining, dungeon, shop } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
 const { weightedRandom } = require("./weightedRandom");
 const grantCoins = require("../economy/grantCoins");
@@ -8,6 +8,12 @@ const encounterService = require("./encounterService");
 
 // CD 縮短券持有上限（與商店 shop.json maxStack 一致）
 const CD_TICKET_MAX = 30;
+
+// CD 縮短券滿倉時的折算金幣價（取商店售價，fallback 150）
+function cdTicketCoinValue() {
+  const item = (shop?.items || []).find((i) => i.type === "mining_cd_ticket");
+  return item?.price || 150;
+}
 
 function randInt(min, max) {
   const lo = Math.ceil(min ?? 0);
@@ -158,6 +164,7 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
   let legendaryGained = 0;
   let potionGained = 0;
   let ticketGained = 0;
+  let ticketOverflowToCoins = false;
 
   if (won) {
     loot = rollLoot();
@@ -192,9 +199,16 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
       inc.luck_potion_uses = (inc.luck_potion_uses || 0) + potionGained;
     } else if (kind === "cd_ticket") {
       const owned = profile.cd_ticket_count || 0;
-      ticketGained = Math.min(loot.qty || 1, Math.max(0, CD_TICKET_MAX - owned));
+      const want = loot.qty || 1;
+      ticketGained = Math.min(want, Math.max(0, CD_TICKET_MAX - owned));
       if (ticketGained > 0) {
         inc.cd_ticket_count = (inc.cd_ticket_count || 0) + ticketGained;
+      }
+      // 滿倉的部分折算成金幣，避免撿到的券白白浪費
+      const overflow = want - ticketGained;
+      if (overflow > 0) {
+        coinsGained += overflow * cdTicketCoinValue();
+        ticketOverflowToCoins = true;
       }
     }
 
@@ -237,6 +251,7 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
     legendaryGained,
     potionGained,
     ticketGained,
+    ticketOverflowToCoins,
     balance,
     stamina: newStamina,
     staminaMax: max,
