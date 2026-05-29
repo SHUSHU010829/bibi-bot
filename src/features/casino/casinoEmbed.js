@@ -47,8 +47,8 @@ function buildCasinoEmbed({
     });
   }
 
+  // 玩家名稱已由 embed 標頭（author）呈現，內文不再重複標註
   const descParts = [];
-  if (user?.id) descParts.push(`玩家：<@${user.id}>`);
   if (headline) descParts.push(headline);
   if (lines.length) descParts.push(lines.join("\n"));
   if (descParts.length) embed.setDescription(descParts.join("\n").slice(0, 4096));
