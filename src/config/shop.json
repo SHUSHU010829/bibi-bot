@@ -38,6 +38,10 @@
       "graffiti": {
         "name": "街頭塗鴉",
         "styleId": "graffiti"
+      },
+      "donor": {
+        "name": "贊助限定卡面",
+        "styleId": "donor"
       }
     },
     "items": [
