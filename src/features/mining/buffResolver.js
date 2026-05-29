@@ -17,16 +17,27 @@ function resolve(profile, member) {
   const usePotion = (profile?.luck_potion_uses || 0) > 0;
   if (usePotion) luckBonus += mining?.luckPotionBonus || 0;
 
+  // luck 全域上限：僅套用於鎬子 / 幸運藥水 / Twitch 權益的加總
+  const cap = mining?.luckCap ?? 0.25;
+
+  // Twitch 加入「前」的封頂值，用來換算訂閱實際生效的幸運加成
+  const cappedBeforeTwitch = Math.min(luckBonus, cap);
+
   // Twitch 訂閱者權益：依 tier 加挖礦 luck、縮短 CD（沿用訂閱角色 ID）
   const perks = twitchPerks.resolvePerks(member);
+  let twitchTierKey = null;
   if (perks) {
+    twitchTierKey = perks.tierKey || null;
     luckBonus += perks.miningLuckBonus || 0;
     cdMs -= perks.miningCdReductionMs || 0;
   }
 
-  // luck 全域上限：僅套用於鎬子 / 幸運藥水 / Twitch 權益的加總
-  const cap = mining?.luckCap ?? 0.25;
+  // luck 全域上限
   if (luckBonus > cap) luckBonus = cap;
+
+  // 訂閱在封頂後「實際生效」的幸運加成：被上限吃掉的部分不計
+  // = 封頂後（鎬子+藥水+訂閱）- 封頂後（鎬子+藥水）
+  const twitchLuckBonus = luckBonus - cappedBeforeTwitch;
 
   // 抖內 luck buff（永久 expiresAt=null，限時則需 > now）
   // 抖內加成獨立於上限之外，於封頂後額外疊加，故等級給多少實拿多少。
@@ -50,7 +61,7 @@ function resolve(profile, member) {
   // CD 下限保護（避免負數 / 零）
   const actualCdMs = Math.max(cdMs, 60 * 1000);
 
-  // donationLuckBonus / eventLuckBonus / eventQtyBonus：本次實際生效值，供指令層顯示
+  // donationLuckBonus / eventLuckBonus / eventQtyBonus / twitchLuckBonus：本次實際生效值，供指令層顯示
   return {
     luckBonus,
     qtyBonus,
@@ -58,6 +69,8 @@ function resolve(profile, member) {
     donationLuckBonus,
     eventLuckBonus,
     eventQtyBonus,
+    twitchLuckBonus,
+    twitchTierKey,
     consume: { usePotion },
   };
 }
