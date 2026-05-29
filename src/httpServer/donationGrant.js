@@ -83,6 +83,14 @@ module.exports = function createDonationGrantHandler(client) {
       ? await sessions.findOne({ code, status: "pending" }).catch(() => null)
       : null;
 
+    // 防禦性 trim：舊版 session 可能存了夾帶空白的 guildId/userId（PRIMARY_GUILD_ID
+    // env 污染），會讓以 {userId, guildId} 為鍵的 Mongo 發放落到孤兒桶。在此校正，
+    // 確保 record 與後續 grantDonationPerks 都用乾淨的 ID。
+    if (session) {
+      if (typeof session.guildId === "string") session.guildId = session.guildId.trim();
+      if (typeof session.userId === "string") session.userId = session.userId.trim();
+    }
+
     if (!session) {
       // code 對不到 → 寫 unmatched 供人工補發
       try {
