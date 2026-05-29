@@ -1,6 +1,6 @@
 const logger = require("../utils/logger");
 const { trackError, trackSuccess } = require("../utils/errorTracker");
-const { tierForAmount, coinsForAmount } = require("../features/donation/code");
+const { tierForAmount, coinsForAmount, roleName } = require("../features/donation/code");
 const grantDonationPerks = require("../features/donation/grantDonationPerks");
 const { donation } = require("../config");
 
@@ -259,12 +259,11 @@ function computePerksSummary(tier, amountNtd) {
     }
   }
   if (tier.role) {
-    const roleName = tier.role === "vipDonor" ? "頂級贊助者" : "贊助者";
     const dur =
       tier.permanentRole || tier.roleDurationDays === null
         ? "永久"
         : `${tier.roleDurationDays} 天`;
-    list.push(`${roleName}身分組（${dur}）`);
+    list.push(`${roleName(tier)}身分組（${dur}）`);
   }
   if (tier.luckBonus && tier.luckBonus > 0) {
     const dur =

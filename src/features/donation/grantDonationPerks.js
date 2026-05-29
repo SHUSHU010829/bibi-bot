@@ -7,7 +7,7 @@ const {
 const logger = require("../../utils/logger");
 const { trackError } = require("../../utils/errorTracker");
 const grantCoins = require("../economy/grantCoins");
-const { coinsForAmount } = require("./code");
+const { coinsForAmount, roleName } = require("./code");
 const { donation } = require("../../config");
 
 const ITEM_NAMES = {
@@ -314,12 +314,11 @@ async function sendDonationDm(client, record, tier, extras) {
       }
     }
     if (tier.role) {
-      const roleName = tier.role === "vipDonor" ? "大恩讀舒人" : "贈舒人";
       const dur =
         tier.permanentRole || tier.roleDurationDays === null
           ? "永久"
           : `${tier.roleDurationDays} 天`;
-      lines.push(`- 🎭 身分組：${roleName}（${dur}）`);
+      lines.push(`- 🎭 身分組：${roleName(tier)}（${dur}）`);
     }
     if (tier.luckBonus > 0) {
       const dur = tier.luckDurationDays === null ? "永久" : `${tier.luckDurationDays} 天`;

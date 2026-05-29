@@ -29,17 +29,21 @@ function resolve(profile, member) {
 
   // 抖內 luck buff（永久 expiresAt=null，限時則需 > now）
   // 抖內加成獨立於上限之外，於封頂後額外疊加，故等級給多少實拿多少。
-  const donationLuckBonus = Number(profile?.donation_luck_bonus || 0);
+  let donationLuckBonus = Number(profile?.donation_luck_bonus || 0);
   if (donationLuckBonus > 0) {
     const exp = profile?.donation_luck_expires_at;
     const stillValid = !exp || new Date(exp).getTime() > Date.now();
     if (stillValid) luckBonus += donationLuckBonus;
+    else donationLuckBonus = 0;
+  } else {
+    donationLuckBonus = 0;
   }
 
   // CD 下限保護（避免負數 / 零）
   const actualCdMs = Math.max(cdMs, 60 * 1000);
 
-  return { luckBonus, qtyBonus, actualCdMs, consume: { usePotion } };
+  // donationLuckBonus：本次實際生效的抖內幸運加成（未持有或已過期則為 0），供指令層顯示
+  return { luckBonus, qtyBonus, actualCdMs, donationLuckBonus, consume: { usePotion } };
 }
 
 module.exports = { resolve };
