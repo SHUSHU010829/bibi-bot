@@ -633,7 +633,7 @@ embed.js → 發送 Embed
 | 鑽石鎬 | 鑽石 ×5＋黃金 ×10 | −60 分 | +12% | +1 | 50 次 |
 
 - **背包**：基礎 100 格（`backpackBaseSlots`），裝滿就不能再挖，要先 `/賣礦`。
-- **luck 加成**：鎬子 luck ＋幸運藥水（每次 +8%）＋抖內 / Twitch 加成，全部受 `luckCap = 25%` 上限。
+- **luck 加成**：鎬子 luck ＋幸運藥水（每次 +8%）＋ Twitch 加成的加總受 `luckCap = 25%` 上限；**抖內 luck 加成獨立於上限之外**，於封頂後額外疊加，斗內等級給多少實拿多少。
 - **打工**：每次 80–120 🪙，每日次數用當日 `CoinTransactions(source=work)` 筆數判定，不需額外計數欄位。
 - **金流串接**：`/賣礦` 走 `grantCoins` 的 `source: "mining_sell"`、`/打工` 走 `source: "work"`，皆納入經濟日報的 inflow 統計。
 
@@ -688,7 +688,7 @@ embed.js → 發送 Embed
 | 樂透每期張數上限 | 10 | 10 | 15 |
 | 每月免費自訂稱號 | ✗ | ✗ | ✓ |
 
-- 挖礦 luck 與其他來源（鎬子 / 藥水 / 抖內）相加後仍受 `luckCap = 25%` 全域上限。拍賣手續費依「賣家」tier，於結算時判定。
+- 挖礦 luck 中鎬子 / 藥水 / Twitch 來源相加後受 `luckCap = 25%` 全域上限；抖內 luck 加成則獨立於上限外額外疊加（見 `buffResolver.js`）。拍賣手續費依「賣家」tier，於結算時判定。
 - **cron**：`twitchMonthlyTitle`（每月 1 日發 Tier3 免費自訂稱號 30 天 + DM，當月冪等）。
 - **尚未接（保留待做）**：訂閱限定卡面 `exclusiveThemeId` 與永久限定名字顏色 `exclusiveColorRoleId`——前者需在錢包卡渲染器實作 `theme_subscriber_t2/t3` 畫法、後者需先建顏色身分組並填入 ID。
 
