@@ -4,16 +4,19 @@
 const { donation } = require("../../config");
 
 const MAX_LEN = 20;
-const VALID_RE = /^[A-Za-z0-9]{1,20}$/;
+// 允許英文、數字與空白（讓使用者自訂分段，如「ABCD 1234」）。
+const VALID_RE = /^[A-Za-z0-9 ]{1,20}$/;
 const DONOR_THEME_ITEM_ID = donation?.themes?.donor || "theme_donor";
 
 // 背包按鈕 / 彈窗 customId（集中於此，避免多檔各寫一份而漂移）
 const CARDNO_OPEN_ID = "shop_cardno_open";
 const CARDNO_MODAL_ID = "shop_cardno_modal";
 
-// 每 4 字一組以空白分隔（與卡面顯示一致）。
+// 顯示用分組：使用者若已自行以空白分段就尊重原樣，否則每 4 字一組（與卡面顯示一致）。
 function groupBy4(s) {
-  return String(s).match(/.{1,4}/g).join(" ");
+  const str = String(s || "");
+  if (str.includes(" ")) return str;
+  return str.match(/.{1,4}/g)?.join(" ") || str;
 }
 
 // 是否擁有贊助限定卡面（永久 perk）。
@@ -32,14 +35,15 @@ async function ownsDonorCard(client, userId, guildId) {
 
 // 驗證並正規化（不寫 DB）。回傳 { ok:true, value } 或 { ok:false, reason }。
 function normalize(raw) {
-  const s = String(raw || "").trim();
+  // 收斂頭尾與連續空白為單一空白，避免顯示破版。
+  const s = String(raw || "").replace(/\s+/g, " ").trim();
   if (!VALID_RE.test(s)) {
     return {
       ok: false,
       reason:
         s.length > MAX_LEN
           ? `最多 ${MAX_LEN} 字（目前 ${s.length} 字）`
-          : "只能使用英文（A–Z）與數字（0–9），不能有空白或符號",
+          : "只能使用英文（A–Z）、數字（0–9）與空白，不能有其他符號",
     };
   }
   return { ok: true, value: s.toUpperCase() };

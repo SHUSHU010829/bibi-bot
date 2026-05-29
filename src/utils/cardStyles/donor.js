@@ -48,13 +48,17 @@ function cardNumberFrom(userId) {
   return `${d.slice(0, 4)} ${d.slice(4, 10)} ${d.slice(10)}`;
 }
 
-// 自訂卡號（限英數、≤20 字）：每 4 字一組以空白分隔，做出信用卡分段感。
+// 自訂卡號（限英數與空白、≤20 字）：使用者自行以空白分段就尊重原樣，
+// 否則每 4 字一組以空白分隔，做出信用卡分段感。
 function formatCustomCardNumber(raw) {
   const s = String(raw || "")
-    .replace(/[^0-9A-Za-z]/g, "")
+    .replace(/[^0-9A-Za-z ]/g, "")
+    .replace(/\s+/g, " ")
     .toUpperCase()
-    .slice(0, 20);
+    .slice(0, 20)
+    .trim();
   if (!s) return null;
+  if (s.includes(" ")) return s;
   return s.match(/.{1,4}/g).join(" ");
 }
 
