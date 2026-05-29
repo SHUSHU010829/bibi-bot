@@ -58,7 +58,7 @@
 | Phase S2 | 排行榜多維度 | ⚠️ 週榜已有、其餘待補 | `PLAN_OPTIMIZATION.md` |
 | Phase S3 | 技能樹 | ❌ 未實作 | 本文件 |
 | Phase S4 | 釣魚系統 | ❌ 未實作 | 本文件 |
-| Phase S5 | 限時活動框架 | ❌ 未實作 | 本文件 |
+| Phase S5 | 限時活動框架 | ✅ 已實作 | 本文件 |
 
 ---
 
@@ -712,6 +712,24 @@ GET  /api/v1/admin/donation/stats
 
 ## Phase S5 — 限時活動 / 節日系統
 
+> ✅ **已實作（2026-05-29）**
+> - 設定：`src/config/events.json`（`eventSystem`：enabled / timezone / announceChannelId /
+>   scanCronSchedule / announceEndGraceMinutes / events[]），合併進 `config/index.js`。
+> - 框架核心：`src/features/event/eventEngine.js`（生效視窗判定、限定礦石注入、挖礦
+>   luck/qty 加成彙整、限定任務注入、force-start/force-end 進程內覆寫、狀態標籤）。
+> - 排程：`src/events/ready/eventScheduler.js`（每分鐘掃描，活動開始/結束各發一次公告，
+>   靠 `EventAnnouncements` 的 (eventId, phase, occurrence) unique 去重 + 結束寬限窗）。
+> - DB：`EventAnnouncements`（unique 去重 + createdAt TTL 400 天），於 `connectDb.js` 註冊。
+> - 接點：
+>   - 掉落注入 → `dropTable.js` 改讀 `eventEngine.getEffectiveOreDefs()`；
+>   - buff 注入 → `mining/buffResolver.js` 疊加活動 luck/qty（獨立於 luckCap，與抖內同）；
+>   - 任務注入 → `questDefinitions`/`questService` 支援 `evt-<id>` 週期，`/逼幣任務` 顯示
+>     「限時活動任務」區塊，`/挖礦` 動態併入 `mine_count` 型活動任務 hook；
+>   - 顯示 → `/挖礦`、`/賣礦`（限定礦石可正常賣出、活動結束後仍可賣）、`/加成` 列出生效活動。
+> - 管理指令：`/活動管理`（列表 / 預覽 / 強制開始 / 強制結束 / 清除強制，皆 ADMIN）。
+> - 實作差異：活動定義改為單一 `events.json` 陣列（非企劃示意的每活動一檔），與既有
+>   `questSystem`/`stockSystem` 設定風格一致；force-start/force-end 為進程內覆寫（重啟失效）。
+>
 > **前置需求**：Phase 1–3 ✅、Opt-5（buffResolver）
 > **預估時間**：3–4 天（框架）；每次活動內容 0.5–1 天
 > **定位**：製造稀缺感與話題
@@ -847,7 +865,7 @@ for (const event of activeEvents) {
 | Phase 8 | 抖內發放 | 4–5 天 | website webhook | ✅ 已完成 |
 | Phase G | Dashboard 贊助後台 | 2–3 天 | Phase 8 + Dashboard W4 | ⏳ bibi-website |
 | Phase F | 每日市價波動 | 1–2 天 | Phase 1 | ✅ 已完成（2026-05-29） |
-| Phase S5 | 限時活動框架 | 3–4 天 | Phase 1–3、Opt-5 | ⬜ 待開發 |
+| Phase S5 | 限時活動框架 | 3–4 天 | Phase 1–3、Opt-5 | ✅ 已完成（2026-05-29） |
 | Phase S4 | 釣魚系統 | 2–3 天 | Phase 1、Opt-5 | ⬜ 待開發 |
 | Phase D | 農場 / 種植 | 3–4 天 | Phase 1, 3、Opt-5 | ⬜ 待開發 |
 | Phase C | 頻道共鬥 BOSS | 3–4 天 | Phase 4 | ⬜ 待開發 |
@@ -897,10 +915,10 @@ for (const event of activeEvents) {
 | `src/features/fishing/cookService.js` | 食物合成 | S4 |
 | `src/commands/fishing/fish.js` | `/fish` 等指令 | S4 |
 | `src/commands/fishing/buff.js` | `/buff` 統一查詢 | S4 |
-| `src/config/events/` | 各次活動 JSON 目錄 | S5 |
+| `src/config/events.json` | 活動定義（eventSystem.events 陣列） | S5 |
 | `src/features/event/eventEngine.js` | 活動框架核心 | S5 |
-| `src/features/event/eventScheduler.js` | 活動排程 cron | S5 |
-| `src/commands/event/eventAdmin.js` | `/event-admin` | S5 |
+| `src/events/ready/eventScheduler.js` | 活動開始/結束公告 cron | S5 |
+| `src/commands/event/eventAdmin.js` | `/活動管理` | S5 |
 
 ---
 

@@ -44,9 +44,11 @@ async function buildQuestContainer(client, userId, guildId) {
   const status = await questService.getStatus(client, userId, guildId);
   const dmNotify = await questNotifyPref.isDmEnabled(client, userId, guildId);
 
+  const eventQuestList = status.event || [];
   const readyCount =
     status.daily.filter((q) => q.state === "ready").length +
-    status.weekly.filter((q) => q.state === "ready").length;
+    status.weekly.filter((q) => q.state === "ready").length +
+    eventQuestList.filter((q) => q.state === "ready").length;
 
   const container = new ContainerBuilder()
     .setAccentColor(readyCount > 0 ? 0xffa726 : 0x607d8b)
@@ -73,6 +75,16 @@ async function buildQuestContainer(client, userId, guildId) {
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `### 📅 週常任務\n${status.weekly.map(renderQuestLine).join("\n\n")}`
+        )
+      );
+  }
+
+  if (eventQuestList.length > 0) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🎉 限時活動任務\n${eventQuestList.map(renderQuestLine).join("\n\n")}`
         )
       );
   }

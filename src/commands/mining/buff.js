@@ -69,12 +69,29 @@ module.exports = {
           new TextDisplayBuilder().setContent(
             `**📈 經驗加成**：${s.xpBoost > 1 ? `+${pct(s.xpBoost)}` : "無"}`
           )
-        )
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            "-# 加成來源：鎬子 / 幸運藥水 / Twitch 訂閱 / 伺服器加成 / 抖內 / 商店 buff"
-          )
         );
+
+      if (s.events && s.events.length > 0) {
+        const eventLines = s.events.map((e) => {
+          const bits = [];
+          if (e.luck > 0) bits.push(`幸運 +${Math.round(e.luck * 100)}%`);
+          if (e.qty > 0) bits.push(`數量 +${e.qty}`);
+          return `• ${e.name}${bits.length ? `：${bits.join(" ・ ")}` : ""}`;
+        });
+        container
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**🎉 限時活動**\n${eventLines.join("\n")}`
+            )
+          );
+      }
+
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# 加成來源：鎬子 / 幸運藥水 / Twitch 訂閱 / 伺服器加成 / 抖內 / 商店 buff / 限時活動"
+        )
+      );
 
       await interaction.editReply({
         components: [container],

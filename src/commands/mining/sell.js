@@ -11,6 +11,7 @@ const {
 const { mining } = require("../../config");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const orePriceEngine = require("../../features/market/orePriceEngine");
+const eventEngine = require("../../features/event/eventEngine");
 const grantCoins = require("../../features/economy/grantCoins");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const { COIN_EMOJI } = require("../../constants/coin");
@@ -59,16 +60,20 @@ module.exports = {
       const profile = await getOrCreate(client, userId, guildId);
       const backpack = profile.backpack || {};
 
-      // 依今日礦石行情計價（找不到行情則 fallback 到基礎價）
+      // 依今日礦石行情計價（找不到行情則 fallback 到基礎價）；
+      // 限時活動限定礦石不在行情表內，直接以其 def.price 計價。
       const market = await orePriceEngine.getDailyPrices(client);
       const priceMap = market.prices || {};
       const priceOf = (key, def) =>
         typeof priceMap[key] === "number" ? priceMap[key] : def.price;
+      // 解析礦石 def：基礎礦石 + 任一活動（含已結束）限定礦石，確保活動結束後仍賣得掉
+      const resolveDef = (key) =>
+        eventEngine.resolveOreDef(key) || mining.ores[key];
 
       // 決定要賣的清單 [{ ore, qty, price, value }]
       const toSell = [];
       if (oreArg) {
-        const def = mining.ores[oreArg];
+        const def = resolveDef(oreArg);
         if (!def) return interaction.editReply("❌ 找不到這種礦石。");
         const have = backpack[oreArg] || 0;
         if (have <= 0) {
@@ -83,12 +88,14 @@ module.exports = {
         const price = priceOf(oreArg, def);
         toSell.push({ ore: oreArg, qty, price, value: price * qty });
       } else {
-        for (const [key, def] of Object.entries(mining.ores)) {
+        // 賣全部：掃背包所有礦石（含限定礦石），略過數量為 0 或無法解析者
+        for (const key of Object.keys(backpack)) {
           const have = backpack[key] || 0;
-          if (have > 0) {
-            const price = priceOf(key, def);
-            toSell.push({ ore: key, qty: have, price, value: price * have });
-          }
+          if (have <= 0) continue;
+          const def = resolveDef(key);
+          if (!def) continue;
+          const price = priceOf(key, def);
+          toSell.push({ ore: key, qty: have, price, value: price * have });
         }
       }
 
@@ -117,7 +124,7 @@ module.exports = {
       });
 
       const lines = toSell.map((x) => {
-        const def = mining.ores[x.ore];
+        const def = resolveDef(x.ore) || {};
         const base = def.price || 0;
         const pct = base > 0 ? Math.round((x.price / base - 1) * 100) : 0;
         const trend = pct > 0 ? `▲+${pct}%` : pct < 0 ? `▼${pct}%` : "▬";

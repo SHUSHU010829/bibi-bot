@@ -1,0 +1,57 @@
+{
+  "eventSystem": {
+    "enabled": true,
+    "timezone": "Asia/Taipei",
+    "announceChannelId": "",
+    "scanCronSchedule": "* * * * *",
+    "announceEndGraceMinutes": 360,
+    "upcomingWithinHours": 48,
+    "events": [
+      {
+        "id": "christmas_2026",
+        "name": "🎄 聖誕挖礦節",
+        "enabled": true,
+        "description": "限定礦石「雪晶石」混入礦坑，活動期間挖礦額外幸運 +5%。",
+        "startAt": "2026-12-24T00:00:00",
+        "endAt": "2026-12-27T00:00:00",
+        "effects": {
+          "miningLuckBonus": 0.05,
+          "extraOre": {
+            "id": "snow_crystal",
+            "name": "雪晶石",
+            "emoji": "❄️",
+            "rarity": "限定",
+            "weight": 8,
+            "luckFactor": 1,
+            "price": 500,
+            "minQty": 1,
+            "maxQty": 1
+          }
+        },
+        "quests": [
+          {
+            "id": "event_xmas_mine",
+            "name": "聖誕礦工",
+            "description": "活動期間成功挖礦 10 次",
+            "reward": 500,
+            "target": 10,
+            "condition": { "type": "mine_count" }
+          }
+        ],
+        "announcementText": "🎄 **聖誕挖礦節** 開跑！限定 ❄️ 雪晶石已混入礦坑，挖礦幸運 +5%，快用 `/挖礦` 試試手氣！"
+      },
+      {
+        "id": "new_year_2027",
+        "name": "🎆 新年大爆發",
+        "enabled": true,
+        "description": "全員挖礦幸運 +10%，限時 24 小時。",
+        "startAt": "2027-01-01T00:00:00",
+        "endAt": "2027-01-02T00:00:00",
+        "effects": {
+          "miningLuckBonus": 0.1
+        },
+        "announcementText": "🎆 新年快樂！今天一整天挖礦幸運 +10%，把握良辰！"
+      }
+    ]
+  }
+}

@@ -16,6 +16,7 @@ const {
   getCoinServerBoostBonus,
 } = require("../economy/coinMultiplier");
 const { getActiveBuffMultiplier } = require("../shop/activeBuff");
+const eventEngine = require("../event/eventEngine");
 
 // ── ATK ───────────────────────────────────────────────
 // 目前 = baseAtk + 鎬子加成；未來食物 / 技能 / 活動 buff 在此加分支。
@@ -78,6 +79,12 @@ async function summary(client, userId, guildId, member) {
       coinBoost: coinBuff,
     },
     xpBoost: xpBuff,
+    events: eventEngine.getActiveEvents().map((e) => ({
+      id: e.id,
+      name: e.name,
+      luck: Number(e.effects?.miningLuckBonus) || 0,
+      qty: Number(e.effects?.miningQtyBonus) || 0,
+    })),
   };
 }
 
