@@ -104,31 +104,27 @@ module.exports = {
         );
 
       const buffNotes = [];
-      if (result.buff.consume.usePotion) buffNotes.push("🍀 幸運藥水 +luck");
+      if (result.buff.consume.usePotion) buffNotes.push("🍀 幸運藥水加成");
       if (result.buff.twitchLuckBonus > 0) {
         const tierLabel = { tier1: "T1", tier2: "T2", tier3: "T3" };
         const tierName = tierLabel[result.buff.twitchTierKey] || "";
         buffNotes.push(
-          `💜 訂閱${tierName ? ` ${tierName}` : ""}幸運 +${Math.round(result.buff.twitchLuckBonus * 100)}%`,
+          `<:twitch:1509949525618589786> 訂閱${tierName ? ` ${tierName}` : ""} 加成`,
         );
       }
       if (result.buff.donationLuckBonus > 0) {
-        buffNotes.push(
-          `<:money:1509128163504947210> 贊助加成幸運 +${Math.round(result.buff.donationLuckBonus * 100)}%`,
-        );
+        buffNotes.push("<:money:1509128163504947210> 贊助加成");
       }
       if (result.buff.eventLuckBonus > 0) {
-        buffNotes.push(
-          `🎉 活動幸運 +${Math.round(result.buff.eventLuckBonus * 100)}%`,
-        );
+        buffNotes.push("🎉 活動幸運加成");
       }
       if (result.buff.eventQtyBonus > 0) {
-        buffNotes.push(`🎉 活動數量 +${result.buff.eventQtyBonus}`);
+        buffNotes.push("🎉 活動數量加成");
       }
       if (buffNotes.length) {
         container.addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `**本次加成**\n${buffNotes.join(" ・ ")}`,
+            `**挖礦幸運加成**\n${buffNotes.join(" ・ ")}`,
           ),
         );
       }
