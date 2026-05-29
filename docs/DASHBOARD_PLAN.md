@@ -86,7 +86,10 @@ session → fetch Discord member from cache → check permission flag → allow/
 
 ## 4. 後端 API 設計
 
-### 4.1 路徑慣例
+### 4.1 路徑慣例（Dashboard 規劃路由）
+
+> ⚠️ 以下為 Dashboard 完整規劃藍圖，**多數尚未實作**。bibi-website 目前實際可呼叫的
+> 端點請以 [4.3 Bot 已實作的對外 API](#43-bot-已實作的對外-api現況契約) 為準。
 
 ```
 /api/v1/auth/login          → 302 redirect to Discord OAuth
@@ -105,7 +108,7 @@ session → fetch Discord member from cache → check permission flag → allow/
 
 /api/v1/me/profile                   GET
 /api/v1/me/history                   GET
-/api/v1/leaderboard/:type            GET (level | coin | message)
+/api/v1/leaderboard/:type            GET (level | coin | message)   ← 規劃；實作為 4.3 的 mining/titles/weekly-summary
 /api/v1/voting/proposals             GET
 /api/v1/shop/items                   GET
 ```
@@ -116,6 +119,75 @@ session → fetch Discord member from cache → check permission flag → allow/
 - Rate limit：public 60/min、admin 200/min
 - CSRF：使用 double-submit cookie 或交給 Next.js Server Actions
 - 所有金錢操作寫稽核日誌到 `DashboardAuditLog`
+
+### 4.3 Bot 已實作的對外 API（現況契約）
+
+> 這是 `src/httpServer/` **已上線**、bibi-website 目前實際串接的端點清單，以程式碼為準
+> （4.1 為尚未實作的規劃藍圖）。任何改動請同步本節。
+
+**通用**
+- Base URL：bot 服務 `PORT`（預設 `8080`）
+- Content-Type：`application/json`（body 上限 1 MB）
+
+**健康檢查 / 診斷**
+```
+GET /health
+  → 200 { ok: true, ready: <bool> }
+
+GET /diagnostics            （設了 DISCORD_BOT_DIAGNOSTICS_TOKEN 時須帶 header: x-diagnostics-token）
+  → 200 { ok, ready, windowMs, sources: { <source>: { errorsLastWindow, errorsTotal, … } } }
+  → 401 { error: "unauthorized" }
+```
+
+**抖內（website → bot）** — Auth：`Authorization: Bearer <DONATION_GRANT_SECRET>`
+
+建立 session（付款前由 website 呼叫）：
+```
+POST /api/donation/session
+Body: { userId: string, guildId: string, amountNtd: number(≥1), platform: "ecpay" | "opay" }
+  → 200 { ok: true, sessionId, code }      // code = 短碼，donor 於付款頁 / 備註填入供回對
+  → 400 { error }                          // missing userId / guildId、invalid amountNtd / platform
+  → 401 { error: "unauthorized" }
+  → 503 { error }                          // donation disabled / secret 未設 / db 未就緒 / code collision
+```
+
+發放（webhook 驗證成功後由 website 呼叫）：
+```
+POST /api/donation/grant
+Body: { code?: string, tradeNo: string, amountNtd: number(>0),
+        platform: "ecpay" | "opay", patronName?: string, patronNote?: string }
+  → 200 { ok: true, matched: true,  alreadyGranted: false, perks: string[], grants: {…} }
+  → 200 { ok: true, matched: true,  alreadyGranted: true,  perks }   // 冪等：tradeNo 已處理過
+  → 200 { ok: true, matched: false }                                 // code 對不到 → 寫 unmatched，webhook 不需重送
+  → 400 / 401 / 503 { error }
+```
+- 冪等鍵：`tradeNo`（unique）；webhook 重送安全。
+- `userId` / `guildId` 一律由 bot 依 `code` 從 session 還原，**webhook 不得帶入身分**（防偽造）。
+- `perks`：供 website success 頁顯示的權益字串清單（金幣 / 道具 / 身分組 / luck / 卡面 / 稱號…）。
+- 金額 < 最低方案門檻時：仍回 `matched:true` 並寫 record，但無方案回饋（`tierId: null`）。
+
+**排行榜（dashboard → bot）** — 無 Auth，皆須帶 `?guildId=<id>`
+```
+GET /api/v1/leaderboard/mining?guildId=&type=count|value|diamond&period=today|week|month|all&limit=
+  → 200 { ok, type, period, rows }         // limit ≤100（預設 10）；type=diamond 時 period 強制 all
+
+GET /api/v1/leaderboard/titles?guildId=&limit=
+  → 200 { ok, rows }                       // limit ≤100（預設 10）
+
+GET /api/v1/leaderboard/weekly-summary?guildId=&top=
+  → 200 { ok, …summary }                   // top ≤25（預設 3）
+
+共同錯誤：400 { error: "missing guildId" }
+```
+
+**Twitch 聊天積分（外部服務 → bot）**
+```
+POST /api/twitch-chat-score                // Twitch 端回沖聊天積分；契約見 src/httpServer/flushChatScore.js
+```
+
+**尚未實作（Phase G 待辦）**：4.1 的 auth / admin / me / voting / shop 路由，以及 Phase 8 後台所需的
+`/api/v1/admin/donation/*`（records / unmatched / patrons / stats、unmatched resolve）——這些仍待在
+bibi-website + bot httpServer 補齊。
 
 ---
 
