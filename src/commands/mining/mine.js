@@ -176,6 +176,7 @@ module.exports = {
         );
       }
 
+      // 到點通知改由 /通知設定 集中管理；這裡只負責把「已訂閱」者的冷卻時間更新到最新。
       const notifyState = await reminder.getState(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -190,11 +191,6 @@ module.exports = {
           readyAt: result.newCooldownAt,
         });
       }
-      const row = reminder.buildButtonRow({
-        type: "mining",
-        ownerId: interaction.user.id,
-        enabled: notifyEnabled,
-      });
 
       // 突發事件（戰鬥擴充）：採集途中的隨機事件
       if (result.encounter) {
@@ -226,7 +222,13 @@ module.exports = {
           );
       }
 
-      container.addActionRowComponents(row);
+      if (!notifyEnabled) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "-# 🔔 想冷卻結束時收到提醒？用 `/通知設定` 開啟挖礦到點通知。",
+          ),
+        );
+      }
 
       await interaction.editReply({
         components: [container],

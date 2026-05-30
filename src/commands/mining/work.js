@@ -81,6 +81,7 @@ module.exports = {
           ),
         );
 
+      // 到點通知改由 /通知設定 集中管理；這裡只負責把「已訂閱」者的冷卻時間更新到最新。
       const notifyState = await reminder.getState(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -95,12 +96,14 @@ module.exports = {
           readyAt: result.newCooldownAt,
         });
       }
-      const row = reminder.buildButtonRow({
-        type: "work",
-        ownerId: interaction.user.id,
-        enabled: notifyEnabled,
-      });
-      container.addActionRowComponents(row);
+
+      if (!notifyEnabled) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "-# 🔔 想冷卻結束時收到提醒？用 `/通知設定` 開啟打工到點通知。",
+          ),
+        );
+      }
 
       await interaction.editReply({
         components: [container],

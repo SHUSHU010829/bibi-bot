@@ -5,6 +5,8 @@
 // 這支只是讓玩家在 bot 線上時看到倍率動。
 
 const grantCoins = require("../../economy/grantCoins");
+const { casino } = require("../../../config");
+const reminder = require("../../reminders/cooldownReminderService");
 const {
   multiplierAt,
   settleCrashed,
@@ -65,6 +67,21 @@ async function tryCommitSettled(client, gameId, settled) {
   // 不同版本的 driver 回傳形式不一致，兼容處理
   const doc = result?.value ?? result;
   if (!doc || doc.status !== "settled") return null;
+
+  // 火箭落地 → 進入補燃料冷卻。若玩家有訂閱「火箭到點通知」，把冷卻結束時間更新到
+  // 最新一局，讓 cron 在冷卻結束時 DM 提醒（沒訂閱者不會被建立，故不影響其他人）。
+  const cooldownSec = casino?.crash?.cooldownSeconds ?? 0;
+  if (cooldownSec > 0 && doc.userId && doc.guildId) {
+    reminder
+      .refreshIfEnabled(client, {
+        userId: doc.userId,
+        guildId: doc.guildId,
+        type: "crash",
+        readyAt: now.getTime() + cooldownSec * 1000,
+      })
+      .catch(() => {});
+  }
+
   return doc;
 }
 

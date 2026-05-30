@@ -13,12 +13,16 @@ const {
   ButtonStyle,
 } = require("discord.js");
 
+const { casino } = require("../../config");
+const notifyPrefs = require("./notifyPrefs");
+
 const CUSTOM_ID_PREFIX = "cdnotify";
 
 // 各活動的呈現與 DM 文案。type 同時用於 customId 與 DB 欄位。
 const TYPE_META = {
   work: { label: "打工", emoji: "💼", command: "/打工" },
   mining: { label: "挖礦", emoji: "⛏️", command: "/挖礦" },
+  crash: { label: "火箭", emoji: "🚀", command: "/火箭" },
 };
 
 function coll(client) {
@@ -65,6 +69,20 @@ async function currentCooldownAt(client, { userId, guildId, type }) {
       ?.findOne({ userId, guildId })
       .catch(() => null);
     return p?.work_cooldown_at || 0;
+  }
+  if (type === "crash") {
+    // 火箭沒有冷卻 profile，改由「上一局結算時間 + 補燃料冷卻」推算下次可發射時間。
+    const cooldownSec = casino?.crash?.cooldownSeconds ?? 0;
+    if (cooldownSec <= 0) return 0;
+    const lastSettled = await client.crashGamesCollection
+      ?.findOne(
+        { userId, guildId, status: "settled" },
+        { sort: { updatedAt: -1 }, projection: { updatedAt: 1 } }
+      )
+      .catch(() => null);
+    if (!lastSettled?.updatedAt) return 0;
+    const readyAt = +lastSettled.updatedAt + cooldownSec * 1000;
+    return readyAt > Date.now() ? readyAt : 0;
   }
   const p = await client.miningProfilesCollection
     ?.findOne({ userId, guildId })
@@ -147,6 +165,14 @@ async function scanAndNotify(client) {
     const meta = TYPE_META[r.type];
     if (!meta) continue;
 
+    // 通知總開關關閉時，靜默跳過（已標記 notified，不會反覆補送）。
+    const masterOn = await notifyPrefs.isMasterEnabled(
+      client,
+      r.userId,
+      r.guildId
+    );
+    if (!masterOn) continue;
+
     const user = await client.users.fetch(r.userId).catch(() => null);
     if (!user) continue;
 
@@ -154,7 +180,7 @@ async function scanAndNotify(client) {
     await user
       .send(
         `${meta.emoji} 你在 **${guildName}** 的${meta.label}冷卻結束囉，快來 \`${meta.command}\`！\n` +
-          `（不想再收到提醒？點一下結果訊息下方的通知按鈕即可關閉）`
+          `（不想再收到提醒？用 \`/通知設定\` 即可關閉）`
       )
       .catch(() => {});
   }

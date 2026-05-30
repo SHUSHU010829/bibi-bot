@@ -2,6 +2,7 @@ require("colors");
 const { MessageFlags } = require("discord.js");
 const { COIN_EMOJI } = require("../../constants/coin");
 const questNotifyPref = require("./questNotifyPref");
+const notifyPrefs = require("../reminders/notifyPrefs");
 
 const formatClaim = (claimed) => {
   const tag = claimed.period === "weekly" ? "📅 週常" : "🌞 每日";
@@ -28,6 +29,10 @@ module.exports = async (client, ctx, claimed) => {
 
     const enabled = await questNotifyPref.isDmEnabled(client, userId, guildId);
     if (!enabled) return;
+
+    // 通知總開關關閉時，連被動任務 DM 也一併靜音。
+    const masterOn = await notifyPrefs.isMasterEnabled(client, userId, guildId);
+    if (!masterOn) return;
 
     let user = ctx?.user;
     if (!user) user = await client.users.fetch(userId).catch(() => null);
