@@ -132,14 +132,17 @@ module.exports = {
     ),
 
   run: async (client, interaction) => {
-    await interaction.deferReply();
+    const sub = interaction.options.getSubcommand();
+    // 逛攤改為僅自己可見
+    await interaction.deferReply(
+      sub === "逛攤" ? { flags: MessageFlags.Ephemeral } : undefined
+    );
 
     try {
       if (!mining?.enabled || !marketplace?.enabled || !client.marketListingsCollection) {
         return interaction.editReply("🔧 市集尚未啟動！");
       }
 
-      const sub = interaction.options.getSubcommand();
       if (sub === "逛攤") return await handleBrowse(client, interaction);
       if (sub === "我的攤位") return await handleMyStall(client, interaction);
       if (sub === "賣礦") return await handleSell(client, interaction);

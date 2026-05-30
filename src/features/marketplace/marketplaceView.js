@@ -1,7 +1,9 @@
 const {
   ContainerBuilder,
   TextDisplayBuilder,
+  SectionBuilder,
   SeparatorBuilder,
+  SeparatorSpacingSize,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -88,49 +90,44 @@ function listingText(l) {
   return header;
 }
 
-// 組單筆掛單對應的操作按鈕（從其他玩家視角）
-function listingActionRow(l, viewerIsSeller = false) {
+// 組單筆掛單對應的操作按鈕（作為 Section 右側配件，與該筆掛單同排）
+function listingAccessoryButton(l, viewerIsSeller = false) {
   if (viewerIsSeller) {
     // 我的攤位：只顯示下架鈕
-    return new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${CANCEL_PREFIX}${l.listing_id}`)
-        .setLabel("🗑️ 下架")
-        .setStyle(ButtonStyle.Danger)
-    );
+    return new ButtonBuilder()
+      .setCustomId(`${CANCEL_PREFIX}${l.listing_id}`)
+      .setLabel("下架")
+      .setEmoji("🗑️")
+      .setStyle(ButtonStyle.Danger);
   }
 
   if (l.listing_type === "sell") {
-    return new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${BUY_PREFIX}${l.listing_id}`)
-        .setLabel(`💰 購買`)
-        .setStyle(ButtonStyle.Success)
-    );
+    return new ButtonBuilder()
+      .setCustomId(`${BUY_PREFIX}${l.listing_id}`)
+      .setLabel("購買")
+      .setEmoji("💰")
+      .setStyle(ButtonStyle.Success);
   }
   if (l.listing_type === "barter") {
-    return new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${ACCEPT_PREFIX}${l.listing_id}`)
-        .setLabel("🔄 接受交換")
-        .setStyle(ButtonStyle.Primary)
-    );
+    return new ButtonBuilder()
+      .setCustomId(`${ACCEPT_PREFIX}${l.listing_id}`)
+      .setLabel("接受交換")
+      .setEmoji("🔄")
+      .setStyle(ButtonStyle.Primary);
   }
   if (l.listing_type === "want") {
-    return new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${FULFILL_PREFIX}${l.listing_id}`)
-        .setLabel("📋 賣給他")
-        .setStyle(ButtonStyle.Primary)
-    );
+    return new ButtonBuilder()
+      .setCustomId(`${FULFILL_PREFIX}${l.listing_id}`)
+      .setLabel("賣給他")
+      .setEmoji("📋")
+      .setStyle(ButtonStyle.Primary);
   }
   if (l.listing_type === "auction") {
-    return new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${BID_PREFIX}${l.listing_id}`)
-        .setLabel("🏷️ 出價")
-        .setStyle(ButtonStyle.Primary)
-    );
+    return new ButtonBuilder()
+      .setCustomId(`${BID_PREFIX}${l.listing_id}`)
+      .setLabel("出價")
+      .setEmoji("🏷️")
+      .setStyle(ButtonStyle.Primary);
   }
   return null;
 }
@@ -153,19 +150,36 @@ function buildBrowseView(listings, total, page, pageSize) {
     return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
   }
 
-  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large)
+  );
 
-  const rows = [];
-  for (const l of listings) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(listingText(l))
-    );
-    const row = listingActionRow(l, false);
-    if (row) rows.push(row);
-  }
+  // 每筆掛單一個區塊：左側敘述 + 右側操作鈕（同排），區塊之間以分隔線分開
+  listings.forEach((l, idx) => {
+    const btn = listingAccessoryButton(l, false);
+    if (btn) {
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(listingText(l)))
+          .setButtonAccessory(btn)
+      );
+    } else {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(listingText(l))
+      );
+    }
+    if (idx < listings.length - 1) {
+      container.addSeparatorComponents(
+        new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+      );
+    }
+  });
 
-  // 翻頁按鈕
+  // 翻頁按鈕（放進 Container 底部）
   if (totalPages > 1) {
+    container.addSeparatorComponents(
+      new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large)
+    );
     const pageRow = new ActionRowBuilder();
     if (page > 0) {
       pageRow.addComponents(
@@ -183,10 +197,10 @@ function buildBrowseView(listings, total, page, pageSize) {
           .setStyle(ButtonStyle.Secondary)
       );
     }
-    if (pageRow.components.length > 0) rows.push(pageRow);
+    if (pageRow.components.length > 0) container.addActionRowComponents(pageRow);
   }
 
-  return { container, rows, flags: MessageFlags.IsComponentsV2 };
+  return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
 }
 
 // ─── 我的攤位 ─────────────────────────────────────────────────────────────────
@@ -205,16 +219,30 @@ function buildMyStallView(listings) {
     return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
   }
 
-  container.addSeparatorComponents(new SeparatorBuilder());
-  const rows = [];
-  for (const l of listings) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(listingText(l))
-    );
-    const row = listingActionRow(l, true);
-    if (row) rows.push(row);
-  }
-  return { container, rows, flags: MessageFlags.IsComponentsV2 };
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large)
+  );
+  // 每筆掛單一個區塊：左側敘述 + 右側下架鈕（同排），區塊之間以分隔線分開
+  listings.forEach((l, idx) => {
+    const btn = listingAccessoryButton(l, true);
+    if (btn) {
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(listingText(l)))
+          .setButtonAccessory(btn)
+      );
+    } else {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(listingText(l))
+      );
+    }
+    if (idx < listings.length - 1) {
+      container.addSeparatorComponents(
+        new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+      );
+    }
+  });
+  return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
 }
 
 // ─── 二次確認面板（ephemeral）────────────────────────────────────────────────

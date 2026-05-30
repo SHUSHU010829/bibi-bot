@@ -29,6 +29,14 @@ const { COIN_EMOJI } = require("../../constants/coin");
 
 const PAGE_SIZE = 5;
 
+// 二次確認面板是 Components V2 訊息，不能被更新成「空 components」（Discord 會拒絕，
+// 導致 update 直接 throw，成交／下架因此失敗）。改為更新成一段非空的狀態文字。
+function statusPanel(text) {
+  return new ContainerBuilder()
+    .setAccentColor(0x95a5a6)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text));
+}
+
 module.exports = async (client, interaction) => {
   try {
     if (!client.marketListingsCollection) return;
@@ -161,7 +169,10 @@ module.exports = async (client, interaction) => {
 
     // ─── 取消按鈕（中止二次確認）─────────────────────────────────────────────
     if (interaction.isButton() && cid === ABORT_ID) {
-      return interaction.update({ components: [] });
+      return interaction.update({
+        components: [statusPanel("✖️ 已取消操作。")],
+        flags: MessageFlags.IsComponentsV2,
+      });
     }
 
     // ─── 確認購買（confirm buy）────────────────────────────────────────────
@@ -173,7 +184,11 @@ module.exports = async (client, interaction) => {
           flags: MessageFlags.Ephemeral,
         }).catch(() => {});
       }
-      await interaction.update({ components: [] }); // 鎖面板防重複
+      // 鎖面板防重複（V2 訊息不可清空 components，改更新為處理中狀態）
+      await interaction.update({
+        components: [statusPanel("⏳ 處理中…")],
+        flags: MessageFlags.IsComponentsV2,
+      });
       const listingId = cid.slice(CONFIRM_BUY.length);
       const result = await marketplaceService.buyNow(client, {
         listingId,
@@ -197,7 +212,10 @@ module.exports = async (client, interaction) => {
           flags: MessageFlags.Ephemeral,
         }).catch(() => {});
       }
-      await interaction.update({ components: [] });
+      await interaction.update({
+        components: [statusPanel("⏳ 處理中…")],
+        flags: MessageFlags.IsComponentsV2,
+      });
       const listingId = cid.slice(CONFIRM_ACCEPT.length);
       const result = await marketplaceService.acceptBarter(client, {
         listingId,
@@ -220,7 +238,10 @@ module.exports = async (client, interaction) => {
           flags: MessageFlags.Ephemeral,
         }).catch(() => {});
       }
-      await interaction.update({ components: [] });
+      await interaction.update({
+        components: [statusPanel("⏳ 處理中…")],
+        flags: MessageFlags.IsComponentsV2,
+      });
       const listingId = cid.slice(CONFIRM_FULFILL.length);
       const result = await marketplaceService.fulfillWant(client, {
         listingId,
@@ -244,7 +265,10 @@ module.exports = async (client, interaction) => {
           flags: MessageFlags.Ephemeral,
         }).catch(() => {});
       }
-      await interaction.update({ components: [] });
+      await interaction.update({
+        components: [statusPanel("⏳ 處理中…")],
+        flags: MessageFlags.IsComponentsV2,
+      });
       const listingId = cid.slice(CONFIRM_CANCEL.length);
       const result = await marketplaceService.cancelListing(client, {
         listingId,

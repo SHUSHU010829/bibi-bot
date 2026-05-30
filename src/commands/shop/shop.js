@@ -23,7 +23,7 @@ module.exports = {
       });
     }
 
-    await interaction.deferReply();
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
       await interaction.editReply(buildShopView(0, 0));
