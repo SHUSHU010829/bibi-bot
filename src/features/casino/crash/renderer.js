@@ -16,14 +16,28 @@ const { multiplierAt } = require("./engine");
 const { buildReplayRow } = require("../replay");
 const { buildCasinoEmbed } = require("../casinoEmbed");
 
-function buildCashOutButton(state) {
+// startedAt 在 DB 是 Date、開局當下是 number，統一轉成 ms。
+function startedAtMs(state) {
+  return state.startedAt instanceof Date
+    ? state.startedAt.getTime()
+    : state.startedAt;
+}
+
+// 火箭是否還在蓄勢（還沒真的升空）。蓄勢期間 now < startedAt。
+function isLaunching(state, now = Date.now()) {
+  const started = startedAtMs(state);
+  return typeof started === "number" && now < started;
+}
+
+function buildCashOutButton(state, now = Date.now()) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`cr_cash_${state.gameId}`)
       .setLabel("收手")
       .setEmoji("💰")
       .setStyle(ButtonStyle.Success)
-      .setDisabled(state.status !== "playing"),
+      // 蓄勢中（火箭還沒升空）先關著，等真的起飛才亮
+      .setDisabled(state.status !== "playing" || isLaunching(state, now)),
   );
 }
 
@@ -40,8 +54,10 @@ function renderPlayingText(state, { username, balance } = {}) {
       ? ` ・ 餘額 ${balance.toLocaleString()}`
       : "";
 
-  // 倍率區塊放大一點，方便看
-  const big = `## 🚀 火箭升空中... ×${m.toFixed(2)}`;
+  // 倍率區塊放大一點，方便看。蓄勢中還沒升空 → 顯示「蓄勢待發」。
+  const big = isLaunching(state, now)
+    ? "## 🚀 火箭蓄勢待發... 即將升空！"
+    : `## 🚀 火箭升空中... ×${m.toFixed(2)}`;
   const meta = `Bet **${state.bet.toLocaleString()}**${handle ? ` ・ ${handle}` : ""}${target}${tail}`;
   const hint = "按下「💰 收手」鎖定當下倍率，慢一步火箭就炸了！";
   const note = "⚠️ DC 訊息更新太快會被限流，畫面上的倍率每隔幾秒才會跳一次，實際數字以伺服器為準（你按下去那一刻的倍率才是真的）";
@@ -53,8 +69,11 @@ function renderPlayingText(state, { username, balance } = {}) {
 function playingLines(state) {
   const now = Date.now();
   const m = multiplierAt(state, now);
+  const headline = isLaunching(state, now)
+    ? "## 🚀 火箭蓄勢待發... 即將升空！"
+    : `## 🚀 火箭升空中... ×${m.toFixed(2)}`;
   const lines = [
-    `## 🚀 火箭升空中... ×${m.toFixed(2)}`,
+    headline,
     "按下「💰 收手」鎖定當下倍率，慢一步火箭就炸了！",
     "⚠️ DC 訊息更新太快會被限流，畫面上的倍率每隔幾秒才會跳一次，實際數字以伺服器為準（你按下去那一刻的倍率才是真的）",
   ];
