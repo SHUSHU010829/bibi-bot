@@ -24,7 +24,8 @@ const questNotifyPref = require("../quests/questNotifyPref");
 const CUSTOM_ID_PREFIX = "notifyset";
 
 // 面板上會出現的「冷卻到點」類型（沿用 cooldownReminderService 的 type）。
-const COOLDOWN_ACTIONS = ["mining", "work", "crash"];
+// dungeon 嚴格來說不是冷卻，而是體力補滿提醒；通知行為相同所以共用同一條鏈路。
+const COOLDOWN_ACTIONS = ["mining", "work", "crash", "dungeon"];
 const ACTIONS = ["master", ...COOLDOWN_ACTIONS, "quest"];
 
 function buildCustomId(action, userId) {
@@ -54,19 +55,27 @@ function toggleButton(action, userId, enabled, label) {
 
 // 讀取所有偏好並組出 /通知設定 的 V2 容器。
 async function buildContainer(client, userId, guildId) {
-  const [masterEnabled, miningState, workState, crashState, questEnabled] =
-    await Promise.all([
-      notifyPrefs.isMasterEnabled(client, userId, guildId),
-      reminder.getState(client, { userId, guildId, type: "mining" }),
-      reminder.getState(client, { userId, guildId, type: "work" }),
-      reminder.getState(client, { userId, guildId, type: "crash" }),
-      questNotifyPref.isDmEnabled(client, userId, guildId),
-    ]);
+  const [
+    masterEnabled,
+    miningState,
+    workState,
+    crashState,
+    dungeonState,
+    questEnabled,
+  ] = await Promise.all([
+    notifyPrefs.isMasterEnabled(client, userId, guildId),
+    reminder.getState(client, { userId, guildId, type: "mining" }),
+    reminder.getState(client, { userId, guildId, type: "work" }),
+    reminder.getState(client, { userId, guildId, type: "crash" }),
+    reminder.getState(client, { userId, guildId, type: "dungeon" }),
+    questNotifyPref.isDmEnabled(client, userId, guildId),
+  ]);
 
   const states = {
     mining: !!miningState?.enabled,
     work: !!workState?.enabled,
     crash: !!crashState?.enabled,
+    dungeon: !!dungeonState?.enabled,
     quest: !!questEnabled,
   };
 
@@ -90,10 +99,11 @@ async function buildContainer(client, userId, guildId) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**⏰ 到點通知**（冷卻結束時私訊你）\n` +
+        `**⏰ 到點通知**（冷卻結束或體力補滿時私訊你）\n` +
           `${reminder.TYPE_META.mining.emoji} 挖礦：${onOff(states.mining)}\n` +
           `${reminder.TYPE_META.work.emoji} 打工：${onOff(states.work)}\n` +
-          `${reminder.TYPE_META.crash.emoji} 火箭：${onOff(states.crash)}`
+          `${reminder.TYPE_META.crash.emoji} 火箭：${onOff(states.crash)}\n` +
+          `${reminder.TYPE_META.dungeon.emoji} 地下城體力：${onOff(states.dungeon)}`
       )
     )
     .addTextDisplayComponents(
@@ -125,7 +135,8 @@ async function buildContainer(client, userId, guildId) {
     new ActionRowBuilder().addComponents(
       toggleButton("mining", userId, states.mining, "挖礦到點"),
       toggleButton("work", userId, states.work, "打工到點"),
-      toggleButton("crash", userId, states.crash, "火箭到點")
+      toggleButton("crash", userId, states.crash, "火箭到點"),
+      toggleButton("dungeon", userId, states.dungeon, "地下城體力")
     )
   );
   container.addActionRowComponents(

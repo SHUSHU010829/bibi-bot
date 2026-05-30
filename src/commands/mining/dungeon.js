@@ -13,6 +13,7 @@ const {
 
 const { mining, dungeon } = require("../../config");
 const dungeonService = require("../../features/mining/dungeonService");
+const reminder = require("../../features/reminders/cooldownReminderService");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 // 「繼續探索」按鈕 customId 格式：dungeon_continue_<ownerId>
@@ -64,6 +65,42 @@ function appendCombatExtras(container, result) {
           `**${result.encounter.emoji} 突發事件：${result.encounter.name}**\n${result.encounter.body}`,
         ),
       );
+  }
+}
+
+// 體力補滿到點通知：刷新已訂閱者的 readyAt；沒訂閱就在訊息底部給個小提示。
+async function applyStaminaNotify(client, interaction, container) {
+  const fullAt = await dungeonService
+    .staminaFullAt(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      member: interaction.member,
+    })
+    .catch(() => 0);
+
+  const state = await reminder
+    .getState(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      type: "dungeon",
+    })
+    .catch(() => null);
+
+  if (state?.enabled) {
+    await reminder
+      .refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "dungeon",
+        readyAt: fullAt,
+      })
+      .catch(() => {});
+  } else if (fullAt > Date.now()) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 🔔 想在體力補滿時收到提醒？用 `/通知設定` 開啟地下城體力通知。"
+      )
+    );
   }
 }
 
@@ -153,6 +190,7 @@ module.exports = {
             "-# 合成更好的武器能提升戰鬥力，提高勝率！",
           ),
         );
+        await applyStaminaNotify(client, interaction, container);
         return interaction.editReply({
           components: [container],
           flags: MessageFlags.IsComponentsV2,
@@ -216,6 +254,7 @@ module.exports = {
 
       container.addActionRowComponents(continueRow);
       appendCombatExtras(container, result);
+      await applyStaminaNotify(client, interaction, container);
 
       await interaction.editReply({
         components: [container],
