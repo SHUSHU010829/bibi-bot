@@ -21,6 +21,11 @@ const { saveLastBet } = require("../../features/casino/replay");
 
 const WEEKDAY_LABEL = ["", "週一", "週二", "週三", "週四", "週五", "週六", "週日"];
 
+// 按下開始（發射 /火箭）後先暫停這段時間，火箭停在 ×1.00 蓄勢，
+// 過了才真正升空。multiplierAt 在 now < startedAt 時本來就回 1.00，
+// 所以只要把開局時間往後挪即可。
+const LAUNCH_DELAY_MS = 1_000;
+
 function getCrashConfig() {
   return casino?.crash || {};
 }
@@ -206,11 +211,12 @@ module.exports = {
       }
       const balanceAfter = betResult.doc?.totalCoins ?? balance - bet;
 
-      // 開局
+      // 開局：延後 1 秒再讓火箭升空（按下開始後先蓄勢一秒）
       const initial = startGame({
         bet,
         autocashout: autocashoutInput,
         houseEdge,
+        now: Date.now() + LAUNCH_DELAY_MS,
       });
       const now = new Date();
       const ttlSec = cfg.gameTtlSeconds ?? 300;
