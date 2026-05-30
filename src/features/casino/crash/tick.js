@@ -26,6 +26,8 @@ function stop(gameId) {
   const t = tickers.get(gameId);
   if (!t) return;
   clearInterval(t.intervalId);
+  // 起飛那一刻的一次性 edit 還沒觸發就結束（例如提早被結算），一併清掉
+  if (t.launchTimeout) clearTimeout(t.launchTimeout);
   tickers.delete(gameId);
 }
 
@@ -198,8 +200,40 @@ function start(client, gameDoc) {
     }
   };
 
+  // 起飛準時切換：火箭真正升空那一刻補一次 edit，讓「收手」按鈕剛好亮起。
+  // （蓄勢期間 buildPlayingPayload 會把按鈕關著，過了 startedAt 才會亮）
+  const startedAtMs =
+    gameDoc.startedAt instanceof Date
+      ? gameDoc.startedAt.getTime()
+      : gameDoc.startedAt;
+  const bustAtMs =
+    gameDoc.bustAt instanceof Date ? gameDoc.bustAt.getTime() : gameDoc.bustAt;
+  const launchDelayMs =
+    typeof startedAtMs === "number" ? startedAtMs - Date.now() : 0;
+
+  let launchTimeout = null;
+  if (launchDelayMs > 0) {
+    launchTimeout = setTimeout(async () => {
+      try {
+        // 已被搶先結算就不畫飛行畫面；剛好同時 bust 的瞬爆局交給 tick 收尾
+        if (typeof bustAtMs === "number" && Date.now() >= bustAtMs) return;
+        const state = await client.crashGamesCollection.findOne({ gameId });
+        if (!state || state.status !== "playing") return;
+        const balance = await resolveBalance(client, state);
+        const payload = buildPlayingPayload(state, {
+          username: state.username,
+          balance,
+          userId: state.userId,
+        });
+        await editMessage(client, ctx, payload);
+      } catch (e) {
+        console.log(`[crash launch] gameId=${gameId} err=${e.message}`);
+      }
+    }, launchDelayMs);
+  }
+
   const intervalId = setInterval(tick, TICK_MS);
-  tickers.set(gameId, { intervalId });
+  tickers.set(gameId, { intervalId, launchTimeout });
 }
 
 module.exports = {
