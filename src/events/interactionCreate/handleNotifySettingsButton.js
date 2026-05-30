@@ -100,11 +100,13 @@ module.exports = async (client, interaction) => {
         return;
       }
       const meta = reminder.TYPE_META[action];
+      // dungeon 是「體力補滿」語意，跟一般冷卻文案要分開講。
+      const triggerWord = meta.notifyText ? "體力補滿" : "冷卻結束";
       if (result.enabled) {
         const tail =
           readyAt > Date.now()
-            ? `目前冷卻結束時（<t:${Math.floor(readyAt / 1000)}:R>）會私訊提醒你。`
-            : "下次冷卻結束時會私訊提醒你。";
+            ? `目前${triggerWord}時（<t:${Math.floor(readyAt / 1000)}:R>）會私訊提醒你。`
+            : `下次${triggerWord}時會私訊提醒你。`;
         note = `🔔 已開啟${meta.label}到點通知！${tail}`;
       } else {
         note = `🔕 已關閉${meta.label}到點通知。`;

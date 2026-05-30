@@ -19,10 +19,18 @@ const notifyPrefs = require("./notifyPrefs");
 const CUSTOM_ID_PREFIX = "cdnotify";
 
 // 各活動的呈現與 DM 文案。type 同時用於 customId 與 DB 欄位。
+// notifyText：若有指定，scanAndNotify 會用它取代預設「冷卻結束囉」的文案；
+// 用於語意不是「冷卻結束」的提醒（例如地下城體力補滿）。
 const TYPE_META = {
   work: { label: "打工", emoji: "💼", command: "/打工" },
   mining: { label: "挖礦", emoji: "⛏️", command: "/挖礦" },
   crash: { label: "火箭", emoji: "🚀", command: "/火箭" },
+  dungeon: {
+    label: "地下城",
+    emoji: "🔋",
+    command: "/地下城",
+    notifyText: "體力已補滿，快來大顯身手！",
+  },
 };
 
 function coll(client) {
@@ -69,6 +77,23 @@ async function currentCooldownAt(client, { userId, guildId, type }) {
       ?.findOne({ userId, guildId })
       .catch(() => null);
     return p?.work_cooldown_at || 0;
+  }
+  if (type === "dungeon") {
+    // 地下城體力滿的預估時間：拿目前 stamina + 回復速率推算到上限為止。
+    // 透過 guild 反查 member 才能算進 Twitch 訂閱的體力上限加乘。
+    const dungeonService = require("../mining/dungeonService");
+    let member = null;
+    try {
+      const guild = client.guilds?.cache?.get(guildId);
+      if (guild) {
+        member =
+          guild.members.cache.get(userId) ||
+          (await guild.members.fetch(userId).catch(() => null));
+      }
+    } catch (_) {
+      member = null;
+    }
+    return dungeonService.staminaFullAt(client, { userId, guildId, member });
   }
   if (type === "crash") {
     // 火箭沒有冷卻 profile，改由「上一局結算時間 + 補燃料冷卻」推算下次可發射時間。
@@ -177,11 +202,11 @@ async function scanAndNotify(client) {
     if (!user) continue;
 
     const guildName = client.guilds.cache.get(r.guildId)?.name || "伺服器";
+    const body = meta.notifyText
+      ? `${meta.emoji} 你在 **${guildName}** 的${meta.label}${meta.notifyText}快來 \`${meta.command}\`！`
+      : `${meta.emoji} 你在 **${guildName}** 的${meta.label}冷卻結束囉，快來 \`${meta.command}\`！`;
     await user
-      .send(
-        `${meta.emoji} 你在 **${guildName}** 的${meta.label}冷卻結束囉，快來 \`${meta.command}\`！\n` +
-          `（不想再收到提醒？用 \`/通知設定\` 即可關閉）`
-      )
+      .send(`${body}\n（不想再收到提醒？用 \`/通知設定\` 即可關閉）`)
       .catch(() => {});
   }
 }

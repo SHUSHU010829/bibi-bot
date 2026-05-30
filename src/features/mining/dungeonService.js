@@ -99,6 +99,22 @@ async function restoreStamina(client, { userId, guildId, member, amount }) {
   };
 }
 
+// 估算「體力補滿」的 epoch ms。已滿回 0；用於到點通知與 /通知設定 面板。
+// member 可選，用於把 Twitch 訂閱的體力上限加乘算進去。
+async function staminaFullAt(client, { userId, guildId, member }) {
+  if (!client?.miningProfilesCollection) return 0;
+  const max = staminaMax(member);
+  const profile = await client.miningProfilesCollection
+    .findOne({ userId, guildId })
+    .catch(() => null);
+  if (!profile) return 0;
+  const st = resolveStamina(profile, max);
+  if (st.stamina >= max) return 0;
+  const regenMs = dungeon?.staminaRegenMs ?? 3600000;
+  const baseAt = st.updatedAt || Date.now();
+  return baseAt + (max - st.stamina) * regenMs;
+}
+
 // 戰鬥力 = baseAtk + 武器 ATK（鎬子不再貢獻戰鬥力，純採集）。
 function playerAtk(profile) {
   const base = dungeon?.baseAtk ?? 20;
@@ -329,6 +345,7 @@ module.exports = {
   restoreStamina,
   staminaMax,
   staminaBonus,
+  staminaFullAt,
   playerAtk,
   hasWeapon,
 };

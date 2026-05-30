@@ -3,12 +3,12 @@
 require("colors");
 const cron = require("node-cron");
 
-const { work, mining } = require("../../config");
+const { work, mining, dungeon } = require("../../config");
 const reminder = require("../../features/reminders/cooldownReminderService");
 
 module.exports = (client) => {
-  // 兩個系統都沒開就不需要這個排程
-  if (!work?.enabled && !mining?.enabled) return;
+  // 三個系統都沒開就不需要這個排程
+  if (!work?.enabled && !mining?.enabled && !dungeon?.enabled) return;
 
   cron.schedule("* * * * *", async () => {
     try {
