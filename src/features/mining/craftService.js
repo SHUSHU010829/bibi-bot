@@ -73,7 +73,7 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
     return { ok: false, reason: "insufficient", missing, recipe };
   }
 
-  // 替換確認：目前裝備非預設、仍有耐久，且新裝備階級 <= 目前階級（同級或降級）
+  // 替換確認：目前裝備非預設且仍有耐久時，無論升級 / 同級 / 降級都先要求確認
   const curId = profile[slot.equippedField] || slot.defaultId;
   const curDurability = profile[slot.durabilityField];
   const curTier = slot.tiers[curId] ?? 0;
@@ -82,13 +82,17 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
     curId !== slot.defaultId &&
     typeof curDurability === "number" &&
     curDurability > 0;
-  if (!confirm && hasUsable && newTier <= curTier) {
+  if (!confirm && hasUsable) {
+    let relation = "same";
+    if (newTier > curTier) relation = "upgrade";
+    else if (newTier < curTier) relation = "downgrade";
     return {
       ok: false,
       reason: "confirm_needed",
       recipe,
       type,
       current: { id: curId, durability: curDurability },
+      relation,
     };
   }
 

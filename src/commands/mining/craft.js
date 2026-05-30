@@ -85,9 +85,15 @@ module.exports = {
         }
         if (result.reason === "confirm_needed") {
           const curLabel = gearLabel(result.type, result.current.id);
+          const relationHint =
+            result.relation === "upgrade"
+              ? "（雖然是升級，但舊裝備剩餘耐久不會保留也無法折抵）"
+              : result.relation === "downgrade"
+                ? "（這是降級替換，請再三確認）"
+                : "（這是同級替換）";
           return interaction.editReply(
             `⚠️ 你目前的 **${curLabel}** 還有 ${result.current.durability} 次耐久，` +
-              `合成 **${result.recipe.name}** 會直接替換掉它。\n` +
+              `合成 **${result.recipe.name}** 會直接替換掉它${relationHint}。\n` +
               `確定要換，請再執行一次並把 \`確認\` 設為 \`true\`。`
           );
         }
