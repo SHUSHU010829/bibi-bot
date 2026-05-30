@@ -19,7 +19,7 @@
     },
     "luckPotionBonus": 0.08,
     "cdTicketReductionMs": 1800000,
-    "cdTicketDailyUseLimit": 30,
+    "cdTicketDailyUseLimit": 0,
     "announceChannelId": "",
     "weeklyRank": {
       "cronSchedule": "1 0 * * 1",
