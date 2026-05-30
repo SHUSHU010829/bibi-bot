@@ -10,8 +10,8 @@ const { getActiveBuffMultiplier } = require("../shop/activeBuff");
 
 const MSG_VOICE_SOURCES = ["message", "voice"];
 const CASINO_SOURCES = ["bet", "payout"];
-const SINK_SOURCES = ["shop_buy", "auction_bid", "wealth_tax", "transfer_out", "deposit_lock", "stock_buy", "stock_fee", "event_host_lock", "invite_clawback", "duel_stake", "stone_appraisal"];
-const PEER_SOURCES = ["transfer_in", "transfer_out", "deposit_lock", "deposit_release", "event_prize", "event_refund", "auction_payout", "auction_refund", "duel_payout", "duel_refund"];
+const SINK_SOURCES = ["shop_buy", "auction_bid", "wealth_tax", "transfer_out", "deposit_lock", "stock_buy", "stock_fee", "event_host_lock", "invite_clawback", "duel_stake", "stone_appraisal", "market_buy", "market_escrow", "market_bid"];
+const PEER_SOURCES = ["transfer_in", "transfer_out", "deposit_lock", "deposit_release", "event_prize", "event_refund", "auction_payout", "auction_refund", "duel_payout", "duel_refund", "market_payout", "market_refund"];
 const FLAT_REWARD_SOURCES = ["welfare", "quest_daily", "quest_weekly", "quest_event", "stock_sell", "stock_dividend", "invite_reward", "invite_welcome", "mining_sell", "work", "dungeon", "donation", "encounter"];
 // source → 遊戲區稱號分類（金流出入口觸發解鎖檢查）
 const GAME_TITLE_SOURCE_MAP = {
@@ -22,6 +22,7 @@ const GAME_TITLE_SOURCE_MAP = {
   stock_dividend: ["stock"],
   mining_sell: ["mining"],
   auction_payout: ["auction"],
+  market_payout: ["auction"],
 };
 
 module.exports = async (client, opts) => {

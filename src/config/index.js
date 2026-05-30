@@ -25,6 +25,7 @@ const titles = require("./titles.json");
 const donation = require("./donation.json");
 const events = require("./events.json");
 const encounters = require("./encounters.json");
+const marketplace = require("./marketplace.json");
 
 module.exports = {
   ...server,
@@ -52,4 +53,5 @@ module.exports = {
   ...donation,
   ...events,
   ...encounters,
+  ...marketplace,
 };

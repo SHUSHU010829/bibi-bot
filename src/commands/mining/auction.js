@@ -25,6 +25,7 @@ function oreLabel(oreKey) {
 }
 
 module.exports = {
+  deleted: true, // 已整合進 /市集，不再對外開放
   data: new SlashCommandBuilder()
     .setName("拍賣")
     .setDescription("拍賣行：掛牌賣礦石、出價競標 🏷️")

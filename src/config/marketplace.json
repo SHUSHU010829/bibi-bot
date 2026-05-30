@@ -1,0 +1,16 @@
+{
+  "marketplace": {
+    "enabled": true,
+    "durationMs": 86400000,
+    "maxActivePerSeller": 8,
+    "sellFeeRate": 0.05,
+    "wantCoinFeeRate": 0.05,
+    "barterFee": 0,
+    "minSellPriceFactor": 0.8,
+    "auction": {
+      "feeRate": 0.05,
+      "minStartPriceFactor": 0.8,
+      "minBidIncrementRate": 0.05
+    }
+  }
+}

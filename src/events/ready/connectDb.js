@@ -153,6 +153,9 @@ module.exports = async (client) => {
     // 拍賣行掛牌
     const auctionListingsCollection = database.collection("AuctionListings");
 
+    // 市集掛單（擺攤/換礦/徵求/競標）
+    const marketListingsCollection = database.collection("MarketListings");
+
     // 打工 / 挖礦到點通知訂閱
     const cooldownRemindersCollection = database.collection("CooldownReminders");
 
@@ -229,6 +232,7 @@ module.exports = async (client) => {
     client.workProfilesCollection = workProfilesCollection;
     client.duelGamesCollection = duelGamesCollection;
     client.auctionListingsCollection = auctionListingsCollection;
+    client.marketListingsCollection = marketListingsCollection;
     client.cooldownRemindersCollection = cooldownRemindersCollection;
     client.notifySettingsCollection = notifySettingsCollection;
     client.oreMarketPricesCollection = oreMarketPricesCollection;
@@ -895,6 +899,28 @@ module.exports = async (client) => {
         { settled_at: 1 },
         { expireAfterSeconds: 7 * 24 * 60 * 60, name: "auction_ttl_7d", sparse: true }
       );
+
+      // 市集索引：(guild, listing_id) 唯一；cron 用 (status, expires_at)；type 篩選
+      await marketListingsCollection.createIndex(
+        { guild_id: 1, listing_id: 1 },
+        { unique: true, name: "uniq_market_guild_listing" }
+      ).catch((e) => console.log(`[WARN] MarketListings uniq 索引：${e.message}`.yellow));
+      await marketListingsCollection.createIndex(
+        { guild_id: 1, status: 1, expires_at: 1 },
+        { name: "market_guild_status_expiry" }
+      ).catch((e) => console.log(`[WARN] MarketListings status 索引：${e.message}`.yellow));
+      await marketListingsCollection.createIndex(
+        { guild_id: 1, listing_type: 1, status: 1 },
+        { name: "market_guild_type_status" }
+      ).catch((e) => console.log(`[WARN] MarketListings type 索引：${e.message}`.yellow));
+      await marketListingsCollection.createIndex(
+        { guild_id: 1, seller_id: 1, status: 1 },
+        { name: "market_guild_seller_status" }
+      ).catch((e) => console.log(`[WARN] MarketListings seller 索引：${e.message}`.yellow));
+      await marketListingsCollection.createIndex(
+        { settled_at: 1 },
+        { expireAfterSeconds: 7 * 24 * 60 * 60, name: "market_ttl_7d", sparse: true }
+      ).catch((e) => console.log(`[WARN] MarketListings TTL 索引：${e.message}`.yellow));
     } catch (indexError) {
       console.log(
         `[WARNING] Failed to create LevelSystem indexes:\n${indexError.message}`.yellow
