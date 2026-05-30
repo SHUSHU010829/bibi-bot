@@ -44,6 +44,7 @@ const TITLE_SELECT_ID = "shop_title_select";
 const CAT_SELECT_ID = "shop_cat";
 const NAV_PREFIX = "shop_nav_";
 const BUY_PREFIX = "shop_buy_";
+const CUSTOM_COLOR_MODAL_ID = "shop_custom_color_modal";
 
 function isValidObjectId(id) {
   if (typeof id !== "string") return false;
@@ -65,6 +66,22 @@ function buildTitleModal(inventoryId) {
     .setRequired(true)
     .setMinLength(1)
     .setMaxLength(24);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
+function buildCustomColorModal(item) {
+  const modal = new ModalBuilder()
+    .setCustomId(CUSTOM_COLOR_MODAL_ID)
+    .setTitle(`自訂顏色（${item.price.toLocaleString()} 金幣・30 天）`);
+  const input = new TextInputBuilder()
+    .setCustomId("hex_color")
+    .setLabel("HEX 色碼（送出即確認購買）")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMinLength(4)
+    .setMaxLength(7)
+    .setPlaceholder("#RRGGBB，例：#FF5733");
   modal.addComponents(new ActionRowBuilder().addComponents(input));
   return modal;
 }
@@ -129,13 +146,85 @@ async function handleNav(client, interaction) {
 }
 
 // 購買鈕：customId = shop_buy_<itemId>。不直接扣款，先跳出（僅自己可見的）確認面板防誤觸。
+// role_color_custom 例外：改為彈出 Modal 讓玩家輸入 HEX 色碼。
 async function handleBuyButton(client, interaction, itemId) {
   const item = getItem(itemId);
   if (!item) {
     return interaction.reply({ content: "❌ 找不到該商品", flags: MessageFlags.Ephemeral });
   }
+  if (item.type === "role_color_custom") {
+    return interaction.showModal(buildCustomColorModal(item));
+  }
   const view = buildBuyConfirmView(item, 1);
   await interaction.reply({ ...view, flags: MessageFlags.Ephemeral });
+}
+
+// 自訂顏色 Modal 送出：驗證 HEX → 扣款 → 存入背包 → 提供裝備按鈕
+async function handleCustomColorModalSubmit(client, interaction) {
+  const rl = consume(interaction.user.id, "shop:buy", { windowMs: 2500, max: 1 });
+  if (!rl.allowed) {
+    return interaction.reply({
+      content: `⏳ 別急，${Math.ceil(rl.retryAfterMs / 1000)} 秒後再試。`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const hexRaw = interaction.fields.getTextInputValue("hex_color").trim();
+  const match = /^#?([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.exec(hexRaw);
+  if (!match) {
+    return interaction.reply({
+      content: "❌ 無效的 Hex 色碼，請使用 `#RRGGBB` 格式（例：`#FF5733`）",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  let hexDigits = match[1].toUpperCase();
+  if (hexDigits.length === 3) {
+    hexDigits = hexDigits[0]+hexDigits[0]+hexDigits[1]+hexDigits[1]+hexDigits[2]+hexDigits[2];
+  }
+  const hex = `#${hexDigits}`;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const item = getItem("color_custom");
+  if (!item) return interaction.editReply({ content: "❌ 找不到商品設定" });
+
+  const result = await buyItem(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    username: interaction.user.username,
+    member: interaction.member,
+    itemId: "color_custom",
+    quantity: 1,
+    overridePayload: { hex, roleName: `🎨 ${hex}` },
+  });
+
+  if (!result.ok) return interaction.editReply({ content: `❌ ${result.error}`, components: [] });
+
+  const lines = [
+    `✅ 已購買 **自訂顏色** — \`${hex}\``,
+    `・花費：${(result.totalPrice || item.price).toLocaleString()} ${MONEY_EMOJI}`,
+    `・剩餘餘額：${(result.balanceAfter || 0).toLocaleString()} ${MONEY_EMOJI}`,
+  ];
+  if (result.expiresAt) {
+    const ts = Math.floor(new Date(result.expiresAt).getTime() / 1000);
+    lines.push(`・有效期限：<t:${ts}:f>（<t:${ts}:R>）`);
+  }
+
+  const invId = result.inventoryDoc?.insertedId ? String(result.inventoryDoc.insertedId) : null;
+  const components = [];
+  if (invId) {
+    components.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${EQUIP_BTN_PREFIX}${invId}`)
+          .setLabel("🎨 立即裝備顏色")
+          .setStyle(ButtonStyle.Primary)
+      )
+    );
+  }
+
+  await interaction.editReply({ content: lines.join("\n"), components });
 }
 
 // 數量選單：customId = shop_qty_<itemId>，value = 數量。更新確認面板的小計。
@@ -335,7 +424,8 @@ module.exports = async (client, interaction) => {
       cid === TITLE_SELECT_ID ||
       cid.startsWith(TITLE_MODAL_PREFIX) ||
       cid === CARDNO_OPEN_ID ||
-      cid === CARDNO_MODAL_ID;
+      cid === CARDNO_MODAL_ID ||
+      cid === CUSTOM_COLOR_MODAL_ID;
     if (!isShopInteraction) return;
 
     // 防連點：面板瀏覽 / 開啟購買確認限流（購買後的裝備、設定稱號等下游動作不限流）
@@ -470,6 +560,10 @@ module.exports = async (client, interaction) => {
     }
     if (interaction.isModalSubmit() && cid === CARDNO_MODAL_ID) {
       return handleCardNumberModalSubmit(client, interaction);
+    }
+
+    if (interaction.isModalSubmit() && cid === CUSTOM_COLOR_MODAL_ID) {
+      return handleCustomColorModalSubmit(client, interaction);
     }
   } catch (error) {
     console.log(`[ERROR] handleShopInteraction:\n${error}\n${error.stack}`.red);

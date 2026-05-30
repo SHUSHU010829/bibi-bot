@@ -39,7 +39,8 @@ async function getTodayBoughtQty(client, { userId, guildId, itemId }) {
 
 // 處理一筆購買：扣款 → 寫入 inventory → 對特殊 type 立即生效（buff/casino_token）
 // quantity 只對可堆疊商品（挖礦道具／賭場代幣）生效，其餘一律當作 1。
-async function buyItem(client, { userId, guildId, username, member, itemId, quantity = 1 }) {
+// overridePayload：僅 role_color_custom 使用，將自訂 hex 注入 inventory payload。
+async function buyItem(client, { userId, guildId, username, member, itemId, quantity = 1, overridePayload }) {
   const item = getItem(itemId);
   if (!item) return { ok: false, error: "找不到商品" };
 
@@ -121,8 +122,8 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     }
   }
 
-  // 期限內非消耗品（role_color / custom_title）：持有未過期同 itemId 就拒絕重買
-  if (item.type === "role_color" || item.type === "custom_title") {
+  // 期限內非消耗品（role_color / role_color_custom / custom_title）：持有未過期同 itemId 就拒絕重買
+  if (item.type === "role_color" || item.type === "role_color_custom" || item.type === "custom_title") {
     const owned = await client.userInventoryCollection
       .findOne({
         userId,
@@ -227,14 +228,14 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
       { $inc: { [incField]: incAmount }, $set: { updatedAt: now } },
     );
   } else {
-    // role_color / wallet_theme / custom_title / card_accent：個別建一筆
+    // role_color / role_color_custom / wallet_theme / custom_title / card_accent：個別建一筆
     inventoryDoc = await client.userInventoryCollection.insertOne({
       userId,
       guildId,
       itemId,
       name: item.name,
       type: item.type,
-      payload: item.payload || {},
+      payload: overridePayload || item.payload || {},
       equipped: false,
       expiresAt,
       acquiredAt: now,

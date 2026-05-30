@@ -55,6 +55,7 @@
       { "id": "color_pink", "category": "顏色身份組", "type": "role_color", "name": "櫻花粉", "description": "30 天柔嫩粉色身份組", "price": 1800, "durationDays": 30, "payload": { "hex": "#FF79C6", "roleName": "🎨 櫻花粉" } },
       { "id": "color_silver", "category": "顏色身份組", "type": "role_color", "name": "月光銀", "description": "30 天銀灰色身份組", "price": 1800, "durationDays": 30, "payload": { "hex": "#BDC3C7", "roleName": "🎨 月光銀" } },
       { "id": "color_premium", "category": "顏色身份組", "type": "role_color", "name": "極光金", "description": "30 天頂級金色（含特殊光澤標記）", "price": 5000, "durationDays": 30, "payload": { "hex": "#FFD700", "roleName": "✨ 極光金" } },
+      { "id": "color_custom", "category": "顏色身份組", "type": "role_color_custom", "name": "自訂顏色", "description": "30 天任意色碼身份組，購買後輸入你想要的 HEX 色碼", "price": 3000, "durationDays": 30, "payload": {} },
 
       { "id": "boost_xp_1h", "category": "加成藥水", "type": "xp_boost", "name": "XP 藥水（1.5×／1 小時）", "description": "1 小時內主動互動獲得的 XP ×1.5（發言／語音／表情／簽到／Twitch 聊天）；伺服器加成一次性獎勵與管理員發放不適用", "price": 600, "payload": { "multiplier": 1.5, "durationMinutes": 60 } },
       { "id": "boost_xp_1d", "category": "加成藥水", "type": "xp_boost", "name": "XP 藥水（1.5×／1 日）", "description": "24 小時內主動互動獲得的 XP ×1.5（發言／語音／表情／簽到／Twitch 聊天）；伺服器加成一次性獎勵與管理員發放不適用", "price": 4000, "payload": { "multiplier": 1.5, "durationMinutes": 1440 } },

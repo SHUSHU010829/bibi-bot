@@ -34,13 +34,14 @@ function parseUseTicketId(customId) {
 
 const TYPE_LABEL = {
   role_color: "🎨 顏色身份組",
+  role_color_custom: "🎨 自訂顏色身份組",
   wallet_theme: "🎴 卡面風格",
   card_accent: "🌈 等級卡顏色",
   custom_title: "🪪 自訂稱號",
   casino_token: "🎲 賭場道具",
 };
 
-const EQUIPPABLE_TYPES = ["role_color", "wallet_theme", "card_accent", "custom_title"];
+const EQUIPPABLE_TYPES = ["role_color", "role_color_custom", "wallet_theme", "card_accent", "custom_title"];
 
 // 統一的「裝備／設定道具」下拉選單 customId（見 events/interactionCreate/handleShopInteraction.js）。
 // 把四種可裝備道具併進同一個選單，避免每種一排撞到 Discord 動作列上限（導致自訂稱號選單被吃掉）。

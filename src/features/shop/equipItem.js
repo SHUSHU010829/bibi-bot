@@ -25,13 +25,17 @@ async function equipItem(client, { userId, guildId, member, guild, inventoryId, 
     return { ok: false, error: "這個道具已過期了" };
   }
 
-  // 同類型其他已裝備 → 卸下（role_color 額外要把 Discord 身份組拿掉）
+  // 同類型其他已裝備 → 卸下（顏色身份組類型互斥：role_color 與 role_color_custom 視為同群）
+  const isColorType = item.type === "role_color" || item.type === "role_color_custom";
+  const typeQuery = isColorType
+    ? { $in: ["role_color", "role_color_custom"] }
+    : item.type;
   const sameType = await client.userInventoryCollection
-    .find({ userId, guildId, type: item.type, equipped: true })
+    .find({ userId, guildId, type: typeQuery, equipped: true })
     .toArray();
   for (const s of sameType) {
     if (s._id.equals(_id)) continue;
-    if (s.type === "role_color" && guild && member && s.payload?.hex) {
+    if (isColorType && guild && member && s.payload?.hex) {
       await removeColorRole(client, { guild, member, hex: s.payload.hex });
     }
     await client.userInventoryCollection.updateOne(
@@ -40,7 +44,7 @@ async function equipItem(client, { userId, guildId, member, guild, inventoryId, 
     );
   }
 
-  if (item.type === "role_color") {
+  if (item.type === "role_color" || item.type === "role_color_custom") {
     if (!guild || !member) return { ok: false, error: "缺少 guild/member 上下文" };
     const result = await assignColorRole(client, {
       guild,

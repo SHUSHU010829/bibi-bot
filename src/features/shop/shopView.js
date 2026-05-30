@@ -23,6 +23,89 @@ const CATEGORY_EMOJI = {
   挖礦道具: "⛏️",
 };
 
+// 顏色身份組：每件商品各自一個 Container，accent 即為顏色預覽
+function buildColorCategoryView(catIndex, cat, items, page, totalPages, cats) {
+  const start = page * PAGE_SIZE;
+  const pageItems = items.slice(start, start + PAGE_SIZE);
+  const catEmoji = CATEGORY_EMOJI[cat] || "🛒";
+  const components = [];
+
+  const headerContainer = new ContainerBuilder().setAccentColor(0xffd166);
+  headerContainer.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## 🛒 商店 — ${catEmoji} ${cat || ""}\n-# 左側色條即為顏色預覽；自訂顏色購買後可輸入任意 HEX 碼`
+    )
+  );
+  const catSelect = new StringSelectMenuBuilder()
+    .setCustomId("shop_cat")
+    .setPlaceholder("切換分類…")
+    .addOptions(
+      cats.slice(0, 25).map((c, idx) => ({
+        label: `${CATEGORY_EMOJI[c] || "🛒"} ${c}`.slice(0, 100),
+        value: String(idx),
+        default: idx === catIndex,
+      }))
+    );
+  headerContainer.addActionRowComponents(new ActionRowBuilder().addComponents(catSelect));
+  components.push(headerContainer);
+
+  if (pageItems.length === 0) {
+    const empty = new ContainerBuilder().setAccentColor(0xffd166);
+    empty.addTextDisplayComponents(new TextDisplayBuilder().setContent("這個分類目前沒有商品。"));
+    components.push(empty);
+  } else {
+    for (const it of pageItems) {
+      const hex = it.payload?.hex;
+      const colorInt = hex ? parseInt(hex.replace("#", ""), 16) : 0x7289da;
+      const meta = itemMeta(it);
+      const head = `**${it.name}** — **${it.price.toLocaleString()}** ${MONEY_EMOJI}${meta ? `（${meta}）` : ""}`;
+      let desc = it.description;
+      if (hex) {
+        desc += `\n-# 🎨 色碼：\`${hex}\``;
+      } else if (it.type === "role_color_custom") {
+        desc += "\n-# 🎨 購買後可輸入任意 HEX 色碼（如 \`#FF5733\`）";
+      }
+
+      const itemContainer = new ContainerBuilder().setAccentColor(colorInt);
+      itemContainer.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`${head}\n${desc}`))
+          .setButtonAccessory(
+            new ButtonBuilder()
+              .setCustomId(`shop_buy_${it.id}`)
+              .setLabel("購買")
+              .setEmoji("🛒")
+              .setStyle(ButtonStyle.Success)
+          )
+      );
+      components.push(itemContainer);
+    }
+  }
+
+  const footerContainer = new ContainerBuilder().setAccentColor(0xffd166);
+  footerContainer.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`-# 第 ${page + 1} / ${totalPages} 頁`)
+  );
+  const nav = (action, emoji, disabled, style = ButtonStyle.Secondary) =>
+    new ButtonBuilder()
+      .setCustomId(`shop_nav_${catIndex}_${page}_${action}`)
+      .setEmoji(emoji)
+      .setStyle(style)
+      .setDisabled(disabled);
+  footerContainer.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      nav("first", "⏮️", page === 0),
+      nav("prev", "◀️", page === 0),
+      nav("refresh", "🔄", false, ButtonStyle.Primary),
+      nav("next", "▶️", page >= totalPages - 1),
+      nav("last", "⏭️", page >= totalPages - 1)
+    )
+  );
+  components.push(footerContainer);
+
+  return { components, flags: MessageFlags.IsComponentsV2 };
+}
+
 // 每件商品在清單上顯示的「效期 / 數量」提示。
 function itemMeta(item) {
   if (item.type === "wallet_theme" || item.type === "mining_backpack") return "永久";
@@ -57,6 +140,11 @@ function buildShopView(catIndex = 0, page = 0) {
   const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
   if (!Number.isInteger(page) || page < 0) page = 0;
   if (page >= totalPages) page = totalPages - 1;
+
+  // 顏色身份組：每件各自一個 Container + accent 色預覽
+  if (cat === "顏色身份組") {
+    return buildColorCategoryView(catIndex, cat, items, page, totalPages, cats);
+  }
 
   const start = page * PAGE_SIZE;
   const pageItems = items.slice(start, start + PAGE_SIZE);
