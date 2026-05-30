@@ -33,7 +33,7 @@ function buildColorCategoryView(catIndex, cat, items, page, totalPages, cats) {
   const headerContainer = new ContainerBuilder().setAccentColor(0xffd166);
   headerContainer.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## 🛒 商店 — ${catEmoji} ${cat || ""}\n-# 左側色條即為顏色預覽；自訂顏色購買後可輸入任意 HEX 碼`
+      `## 🛒 商店 — ${catEmoji} ${cat || ""}\n-# 左側色條即為顏色預覽`
     )
   );
   const catSelect = new StringSelectMenuBuilder()
