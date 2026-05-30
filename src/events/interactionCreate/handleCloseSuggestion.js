@@ -42,12 +42,11 @@ module.exports = async (client, interaction) => {
       (supportRoleId && interaction.member.roles.cache.has(supportRoleId));
 
     if (!hasAdminPermission) {
-      const mention = supportRoleId ? `<@&${supportRoleId}>\n` : "";
       const requestContainer = new ContainerBuilder()
         .setAccentColor(0xffa500)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `${mention}# 📣 票務關閉請求\n` +
+            `# 📣 票務關閉請求\n` +
               `${interaction.user} 想要關閉此票務。\n\n請管理員確認後點擊「關閉票務」按鈕來關閉此頻道。`,
           ),
         )
@@ -60,7 +59,7 @@ module.exports = async (client, interaction) => {
       await interaction.reply({
         components: [requestContainer],
         flags: MessageFlags.IsComponentsV2,
-        allowedMentions: { roles: supportRoleId ? [supportRoleId] : [] },
+        allowedMentions: { roles: [] },
       });
       trackSuccess("close-suggestion-request");
       return;
