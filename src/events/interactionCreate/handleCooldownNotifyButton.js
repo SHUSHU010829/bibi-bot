@@ -1,7 +1,13 @@
-// 打工 / 挖礦結果訊息下方「到點通知」開關按鈕處理器。
+// 【舊版相容】打工 / 挖礦結果訊息下方「到點通知」開關按鈕處理器。
+//
+// 通知開關已改由 /通知設定 集中管理，新的結果訊息不再附這顆按鈕；此處僅為了讓
+// 改版前已發出、仍帶 cdnotify 按鈕的舊訊息能繼續運作。
+//
+// 注意：舊訊息是 Components V2 容器，過去直接 editReply({components:[row]}) 會把整個
+// embed 洗掉（少了 IsComponentsV2 + 只剩一顆按鈕）。這裡改成「只切換訂閱 + ephemeral
+// 回覆」，不再去動原訊息，從根本避開 embed 消失的問題。
 //
 // 按鈕 customId = cdnotify_<type>_<ownerId>（見 features/reminders/cooldownReminderService.js）。
-// 確認本人後切換訂閱狀態，就地刷新按鈕外觀，並 ephemeral 回覆目前狀態。
 
 const { MessageFlags } = require("discord.js");
 
@@ -50,7 +56,7 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    // 先確認互動，避免後續 DB 操作超過 3 秒 token 視窗
+    // 先確認互動（deferUpdate 不會更動原訊息），避免後續 DB 操作超過 3 秒 token 視窗。
     await interaction.deferUpdate();
 
     const readyAt = await reminder.currentCooldownAt(client, {
@@ -71,14 +77,7 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    // 刷新訊息上的按鈕外觀（保留原本的 embed）
-    const row = reminder.buildButtonRow({
-      type,
-      ownerId,
-      enabled: result.enabled,
-    });
-    await interaction.editReply({ components: [row] });
-
+    // 不再就地改寫原訊息（避免洗掉 V2 embed）；只用 ephemeral 回覆結果，並導引到新面板。
     const meta = reminder.TYPE_META[type];
     if (result.enabled) {
       const note =
@@ -88,10 +87,13 @@ module.exports = async (client, interaction) => {
       await replyEphemeral(
         interaction,
         `🔔 已開啟${meta.label}到點通知！${note}\n` +
-          "（提醒需要你對機器人開放私訊）"
+          "（提醒需要你對機器人開放私訊；之後可用 `/通知設定` 集中管理通知）"
       );
     } else {
-      await replyEphemeral(interaction, `🔕 已關閉${meta.label}到點通知。`);
+      await replyEphemeral(
+        interaction,
+        `🔕 已關閉${meta.label}到點通知。\n（之後可用 \`/通知設定\` 集中管理通知）`
+      );
     }
     trackSuccess("cooldown-notify-toggle");
   } catch (err) {

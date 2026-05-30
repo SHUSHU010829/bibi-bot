@@ -156,6 +156,9 @@ module.exports = async (client) => {
     // 打工 / 挖礦到點通知訂閱
     const cooldownRemindersCollection = database.collection("CooldownReminders");
 
+    // 通知總開關（master switch）：(userId, guildId) 唯一
+    const notifySettingsCollection = database.collection("NotifySettings");
+
     // 礦石每日市價（Phase F）：一天一份 doc，date 為 YYYYMMDD
     const oreMarketPricesCollection = database.collection("OreMarketPrices");
 
@@ -227,6 +230,7 @@ module.exports = async (client) => {
     client.duelGamesCollection = duelGamesCollection;
     client.auctionListingsCollection = auctionListingsCollection;
     client.cooldownRemindersCollection = cooldownRemindersCollection;
+    client.notifySettingsCollection = notifySettingsCollection;
     client.oreMarketPricesCollection = oreMarketPricesCollection;
     client.eventAnnouncementsCollection = eventAnnouncementsCollection;
     client.donationSessionsCollection = donationSessionsCollection;
@@ -349,6 +353,11 @@ module.exports = async (client) => {
       .createIndex({ enabled: 1, notified: 1, readyAt: 1 })
       .catch((e) =>
         console.log(`[WARN] CooldownReminders 掃描索引建立失敗：${e.message}`.yellow),
+      );
+    await notifySettingsCollection
+      .createIndex({ userId: 1, guildId: 1 }, { unique: true })
+      .catch((e) =>
+        console.log(`[WARN] NotifySettings index 建立失敗：${e.message}`.yellow),
       );
     console.log(`[DATA] Successfully connected to MongoDB!`.cyan);
 
