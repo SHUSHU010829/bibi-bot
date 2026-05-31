@@ -235,22 +235,32 @@ async function useInferiorWhetstone(client, { userId, guildId }) {
   }
 
   // 原子更新：補滿耐久到新 max（舊 max - 10），扣一顆磨刀石
-  // pipeline $set 內所有運算式都參照「更新前」的文件值，所以先算新 max 再補滿是正確的：
-  //   pickaxe_durability = 舊 max - 10  （補滿到新的上限）
-  //   pickaxe_max_durability = 舊 max - 10
+  // pipeline $set 內所有運算式都參照「更新前」的文件值。
+  //
+  // 舊存檔玩家 DB 文件可能沒有 pickaxe_max_durability 欄位（miningProfile.normalize
+  // 只在記憶體裡用 config 補回，沒寫回 DB），所以這裡：
+  //   1) filter 不再要求 pickaxe_max_durability >= 20——前面 JS 已用 normalize 後
+  //      的值預檢過，否則舊文件會卡在「操作衝突」。
+  //   2) pipeline 內用 $ifNull 把可能 missing 的欄位 fallback 成 normalize 出來
+  //      的 max（profile.pickaxe_max_durability），避免 $add(null,-10) → null
+  //      把鎬子上限算成空值。
+  const fallbackMax = profile.pickaxe_max_durability;
   const res = await client.miningProfilesCollection.updateOne(
     {
       userId,
       guildId,
       whetstone_inferior_count: { $gte: 1 },
       pickaxe: { $ne: "wood" },
-      pickaxe_max_durability: { $gte: 20 },
     },
     [
       {
         $set: {
-          pickaxe_max_durability: { $add: ["$pickaxe_max_durability", -10] },
-          pickaxe_durability: { $add: ["$pickaxe_max_durability", -10] },
+          pickaxe_max_durability: {
+            $add: [{ $ifNull: ["$pickaxe_max_durability", fallbackMax] }, -10],
+          },
+          pickaxe_durability: {
+            $add: [{ $ifNull: ["$pickaxe_max_durability", fallbackMax] }, -10],
+          },
           whetstone_inferior_count: { $add: ["$whetstone_inferior_count", -1] },
           updatedAt: "$$NOW",
         },
