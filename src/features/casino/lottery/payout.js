@@ -1,6 +1,6 @@
 // 樂透派彩計算(純函數,不寫 DB)。
 // 6/49: 頭獎 70%、二獎 15%、三獎 10%、四獎固定 100/張、剩 5% 滾下期。
-//        頭獎沒人中 → 全部滾下期。
+//        頭獎沒人中 → 頭獎 share 滾下期,二/三獎照常按 share 分配。
 // 3/20: 頭獎 80%、二獎固定 50/張、剩 20% 滾下期。
 
 /**
@@ -32,21 +32,22 @@ function calculatePayout649({ pool, fourthPrizeFixed, tickets }) {
   let thirdPerWinner = 0;
   let rolledOver = 0;
 
+  // 二/三獎照常發(獨立於頭獎是否有人中)
+  if (secondTickets.length > 0) {
+    secondPerWinner = Math.floor(secondShare / secondTickets.length);
+    secondPayout = secondPerWinner * secondTickets.length;
+  }
+  if (thirdTickets.length > 0) {
+    thirdPerWinner = Math.floor(thirdShare / thirdTickets.length);
+    thirdPayout = thirdPerWinner * thirdTickets.length;
+  }
+
   if (jackpotTickets.length === 0) {
-    // 頭獎沒人中 → 整個彩池(含 2nd/3rd 配額)全部滾下期
-    rolledOver = pool;
+    // 頭獎沒人中 → 頭獎 share 全滾下期,二/三獎已照發
+    rolledOver = pool - secondPayout - thirdPayout;
   } else {
     jackpotPerWinner = Math.floor(jackpotShare / jackpotTickets.length);
     jackpotPayout = jackpotPerWinner * jackpotTickets.length;
-
-    if (secondTickets.length > 0) {
-      secondPerWinner = Math.floor(secondShare / secondTickets.length);
-      secondPayout = secondPerWinner * secondTickets.length;
-    }
-    if (thirdTickets.length > 0) {
-      thirdPerWinner = Math.floor(thirdShare / thirdTickets.length);
-      thirdPayout = thirdPerWinner * thirdTickets.length;
-    }
     // 5% 留作下期底池 + 頭獎均分餘數
     rolledOver =
       pool - jackpotShare - secondShare - thirdShare + (jackpotShare - jackpotPayout);
