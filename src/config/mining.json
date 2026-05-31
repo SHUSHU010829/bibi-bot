@@ -44,7 +44,7 @@
         { "ore": "coal", "weight": 18, "minQty": 1, "maxQty": 2 },
         { "ore": "iron", "weight": 10, "minQty": 1, "maxQty": 1 },
         { "ore": "gold", "weight": 7, "minQty": 1, "maxQty": 1 },
-        { "ore": "diamond", "weight": 5, "minQty": 1, "maxQty": 1 }
+        { "ore": "diamond", "weight": 2, "minQty": 1, "maxQty": 1 }
       ]
     }
   }
