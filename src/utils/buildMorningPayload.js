@@ -19,13 +19,10 @@ module.exports = async function buildMorningPayload({ timezone, client }) {
   );
 
   // 昨日全服挖到的鑽石總量（資料來自 mine_logs，僅統計挖礦掉落）
-  const startOfYesterday = now.startOf("day").minus({ days: 1 });
-  const startOfToday = now.startOf("day");
+  const start = now.startOf("day").minus({ days: 1 }).toJSDate();
+  const end = now.startOf("day").toJSDate();
   const diamondCount = await rankService
-    .oreTotalInRange(client, guildId, "diamond", {
-      sinceTs: startOfYesterday.toMillis(),
-      untilTs: startOfToday.toMillis(),
-    })
+    .oreTotalInRange(client, guildId, "diamond", { start, end })
     .catch(() => 0);
 
   const cardData = buildCardData({

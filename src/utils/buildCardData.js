@@ -9,6 +9,7 @@ function buildCardData({
   strawResult,
   nextSpecialDay,
   daysUntilSpecialDay,
+  diamondCount,
 }) {
   const dateStr = `${now.toFormat("yyyy.MM.dd")} ${WEEKDAY_EN[now.weekday] || ""}`.trim();
 
@@ -30,6 +31,7 @@ function buildCardData({
     fortuneText,
     recommends: lunarInfo?.recommends || [],
     avoids: lunarInfo?.avoids || [],
+    diamondCount: diamondCount || 0,
     serialNo: "0829",
   };
 }
