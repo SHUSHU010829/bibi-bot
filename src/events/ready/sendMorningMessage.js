@@ -19,6 +19,7 @@ module.exports = (client) => {
       try {
         const { attachment } = await buildMorningPayload({
           timezone: morningMessage.timezone,
+          client,
         });
 
         await channel.send({

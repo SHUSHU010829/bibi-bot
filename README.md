@@ -342,7 +342,7 @@ embed.js → 發送 Embed
 
 ### 7. 每日早安卡
 
-- **早安卡**：`events/ready/sendMorningMessage.js` 依 `morningMessage.cronSchedule`（預設每天早上 8 點）發送，使用 `satori` 動態繪製含日期、星期、節氣、農民曆、詩詞、運勢的 PNG 卡片。
+- **早安卡**：`events/ready/sendMorningMessage.js` 依 `morningMessage.cronSchedule`（預設每天早上 8 點）發送，使用 `satori` 動態繪製含日期、星期、節氣、農民曆、詩詞、運勢的 PNG 卡片，卡片底部另附**昨日全服挖到的鑽石總量**（由 `rankService.oreTotalInRange` 從 `MineLogs` 聚合，僅統計挖礦掉落）。
 - **資料來源**：本地 `src/data/calender.json`（透過 `npm run update-calendar` 從 TaiwanCalendar 更新）、`utils/getLunarInfo.js`（農民曆）、`utils/getPoem.js`（詩詞）。
 
 ---
@@ -626,7 +626,7 @@ embed.js → 發送 Embed
 | 黃金 | 稀有 | 200 🪙 | 1 |
 | 鑽石 | 傳說 | 800 🪙 | 1（挖到全服公告） |
 
-**賭石（鑑定師）**（`mining.stoneAppraisal`，`stoneAppraisalService` / `handleStoneAppraisal`）：**只有「剛挖到石頭那一次」能賭**。挖到石頭時 `/挖礦` 結果會出現「🔍 找鑑定師賭石」按鈕，付費（預設每顆 `feePerStone = 150`）請鑑定師把該次石頭逐顆開出，依加權表（碎掉 60% / 煤炭 18% / 鐵礦 10% / 黃金 7% / 鑽石 5%）有機率變成別種礦——也可能全部碎掉，是高風險高報酬的金幣 sink。開出鑽石同樣全服公告。實作上以 `MiningProfiles.pending_appraisal{qty, ts}` 紀錄「最新一次挖到的石頭」，按鈕帶 `ts` 對鎖、原子清除確保**單次有效**且只認最新一次挖礦；超過 `windowMs`（預設 10 分）按鈕失效。鑑定費走 `grantCoins` 的 `source: "stone_appraisal"`（sink）。
+**賭石（鑑定師）**（`mining.stoneAppraisal`，`stoneAppraisalService` / `handleStoneAppraisal`）：**只有「剛挖到石頭那一次」能賭**。挖到石頭時 `/挖礦` 結果會出現「🔍 找鑑定師賭石」按鈕，付費（預設每顆 `feePerStone = 150`）請鑑定師把該次石頭逐顆開出，依加權表（碎掉 60% / 煤炭 18% / 鐵礦 10% / 黃金 7% / 鑽石 2%）有機率變成別種礦——也可能全部碎掉，是高風險高報酬的金幣 sink。開出鑽石同樣全服公告。實作上以 `MiningProfiles.pending_appraisal{qty, ts}` 紀錄「最新一次挖到的石頭」，按鈕帶 `ts` 對鎖、原子清除確保**單次有效**且只認最新一次挖礦；超過 `windowMs`（預設 10 分）按鈕失效。鑑定費走 `grantCoins` 的 `source: "stone_appraisal"`（sink）。
 
 **鎬子與合成**（`mining.pickaxes` / `craft.recipes`，每把鎬子提供 CD 縮短 / luck / 出礦量加成；非木鎬有耐久，耗盡自動退回木鎬）：
 

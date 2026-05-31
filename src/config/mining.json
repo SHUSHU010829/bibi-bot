@@ -9,7 +9,7 @@
       "coal": { "name": "煤炭", "emoji": "<:ore_coal:1509063448481366106>", "rarity": "普通", "weight": 25, "luckFactor": 0, "price": 20, "minQty": 1, "maxQty": 2 },
       "iron": { "name": "鐵礦", "emoji": "<:ore_iron:1509064765249556670>", "rarity": "稀有", "weight": 12, "luckFactor": 1, "price": 60, "minQty": 1, "maxQty": 1 },
       "gold": { "name": "黃金", "emoji": "<:ore_gold:1509064763550994432>", "rarity": "稀有", "weight": 6, "luckFactor": 1.5, "price": 200, "minQty": 1, "maxQty": 1 },
-      "diamond": { "name": "鑽石", "emoji": "<:ore_diamond:1509064761709559818>", "rarity": "傳說", "weight": 2, "luckFactor": 2, "price": 800, "minQty": 1, "maxQty": 1 }
+      "diamond": { "name": "鑽石", "emoji": "<:ore_diamond:1509064761709559818>", "rarity": "傳說", "weight": 1, "luckFactor": 2, "price": 800, "minQty": 1, "maxQty": 1 }
     },
     "pickaxes": {
       "wood": { "name": "木鎬", "emoji": "<:pickaxe_wood:1509061543055331338>", "cdReductionMs": 0, "luckBonus": 0, "qtyBonus": 0, "durability": null },
@@ -44,7 +44,7 @@
         { "ore": "coal", "weight": 18, "minQty": 1, "maxQty": 2 },
         { "ore": "iron", "weight": 10, "minQty": 1, "maxQty": 1 },
         { "ore": "gold", "weight": 7, "minQty": 1, "maxQty": 1 },
-        { "ore": "diamond", "weight": 5, "minQty": 1, "maxQty": 1 }
+        { "ore": "diamond", "weight": 2, "minQty": 1, "maxQty": 1 }
       ]
     }
   }

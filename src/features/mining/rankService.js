@@ -66,6 +66,19 @@ async function previousWeekRanking(client, guildId, limit = 10) {
   return rankByWindow(client, guildId, { ...previousWeekWindow(), limit });
 }
 
+// 統計 [start, end) 區間內，全服某礦石的挖礦掉落總量（從 mineLogs 聚合）。
+async function oreTotalInRange(client, guildId, ore, { start, end }) {
+  if (!client?.mineLogsCollection) return 0;
+  const rows = await client.mineLogsCollection
+    .aggregate([
+      { $match: { guild_id: guildId, ore, ts: { $gte: start, $lt: end } } },
+      { $group: { _id: null, total: { $sum: "$qty" } } },
+    ])
+    .toArray()
+    .catch(() => []);
+  return rows[0]?.total || 0;
+}
+
 module.exports = {
   currentWeekWindow,
   previousWeekWindow,
@@ -73,4 +86,5 @@ module.exports = {
   rankByWindow,
   currentWeekRanking,
   previousWeekRanking,
+  oreTotalInRange,
 };

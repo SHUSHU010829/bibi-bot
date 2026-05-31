@@ -43,6 +43,7 @@ function buildMarkup(data) {
     countdownDays,
     recommends,
     avoids,
+    diamondCount,
     serialNo,
   } = data;
 
@@ -125,6 +126,7 @@ function buildMarkup(data) {
         <!-- E. Footer -->
         <div style="display:flex;flex-direction:column;width:100%;margin-top:18px;">
           <div style="display:flex;width:100%;height:1px;border-top:1px dashed ${theme.muted};"></div>
+          <div style="display:flex;justify-content:center;align-items:center;margin-top:12px;font-family:'NotoSansTC';font-weight:500;font-size:22px;letter-spacing:2px;color:${theme.ink};">昨日全服挖到鑽石 <span style="font-family:'NotoSansTC';font-weight:900;font-size:26px;color:${theme.accent};margin:0 8px;">${diamondCount}</span> 顆</div>
           <div style="display:flex;justify-content:center;margin-top:10px;font-family:'SpaceMono';font-size:18px;letter-spacing:10px;color:${theme.muted};">@SHUSHU</div>
         </div>
 
