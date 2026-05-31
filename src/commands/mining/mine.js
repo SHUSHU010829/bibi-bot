@@ -89,7 +89,7 @@ module.exports = {
         }
         if (result.reason === "backpack_full") {
           return interaction.editReply(
-            `🎒 背包滿了（${result.used}/${result.cap}）！先用 \`/賣礦\` 賣掉一些礦石再來挖。`
+            `🎒 背包滿了（${result.used}/${result.cap}）！先用 \`/賣出\` 賣掉一些礦石再來挖。`
           );
         }
         return interaction.editReply("🔧 挖礦失敗，請稍後再試。");

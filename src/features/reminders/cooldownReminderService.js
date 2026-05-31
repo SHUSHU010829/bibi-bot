@@ -24,6 +24,7 @@ const CUSTOM_ID_PREFIX = "cdnotify";
 const TYPE_META = {
   work: { label: "打工", emoji: "💼", command: "/打工" },
   mining: { label: "挖礦", emoji: "⛏️", command: "/挖礦" },
+  fish: { label: "釣魚", emoji: "🎣", command: "/釣魚" },
   crash: { label: "火箭", emoji: "🚀", command: "/火箭" },
   dungeon: {
     label: "地下城",
@@ -112,6 +113,7 @@ async function currentCooldownAt(client, { userId, guildId, type }) {
   const p = await client.miningProfilesCollection
     ?.findOne({ userId, guildId })
     .catch(() => null);
+  if (type === "fish") return p?.fish_cooldown_at || 0;
   return p?.mine_cooldown_at || 0;
 }
 

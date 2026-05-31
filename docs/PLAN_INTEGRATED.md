@@ -819,7 +819,8 @@ for (const event of activeEvents) {
 |---|---|---|
 | 挖礦 + 打工 + 鍛造 | **財富牢改城** | `/mine` `/work` `/craft` |
 | 地下城 + 決鬥 + BOSS | **暗黑競技場** | `/dungeon` `/duel` `/攻擊` |
-| 農場 + 釣魚 | **田園採集所** | `/farm` `/fish` |
+| 農場 | **田園採集所** | `/farm` |
+| 釣魚 | **深淵垂釣所** | `/釣魚` `/魚袋` `/烹飪` `/賣魚` |
 | 拍賣行 + 贈送 | **上海拍賣行** | `/auction` `/give` |
 | 公會 | **江湖幫派堂** | `/公會` |
 | 行情公告 | **逼逼交易所** | 每日行情自動公告 |
@@ -842,6 +843,7 @@ for (const event of activeEvents) {
 
 📁 採集
   # 田園採集所
+  # 深淵垂釣所
 
 📁 市場
   # 上海拍賣行
@@ -866,7 +868,7 @@ for (const event of activeEvents) {
 | Phase G | Dashboard 贊助後台 | 2–3 天 | Phase 8 + Dashboard W4 | ⏳ bibi-website |
 | Phase F | 每日市價波動 | 1–2 天 | Phase 1 | ✅ 已完成（2026-05-29） |
 | Phase S5 | 限時活動框架 | 3–4 天 | Phase 1–3、Opt-5 | ✅ 已完成（2026-05-29） |
-| Phase S4 | 釣魚系統 | 2–3 天 | Phase 1、Opt-5 | ⬜ 待開發 |
+| Phase S4 | 釣魚系統 | 2–3 天 | Phase 1、Opt-5 | ✅ 已完成（2026-05-31） |
 | Phase D | 農場 / 種植 | 3–4 天 | Phase 1, 3、Opt-5 | ⬜ 待開發 |
 | Phase C | 頻道共鬥 BOSS | 3–4 天 | Phase 4 | ⬜ 待開發 |
 | Phase S3 | 技能樹 | 4–6 天 | Phase 1–4、Opt-5 | ⬜ 待開發 |

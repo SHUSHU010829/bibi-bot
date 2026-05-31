@@ -66,7 +66,8 @@ module.exports = {
         .setAccentColor(0x3498db)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `# 💼 打工完成\n你${result.job}，獲得了 **+${result.amount.toLocaleString()}** ${COIN_EMOJI}`,
+            `# 💼 打工完成\n你${result.job}，獲得了 **+${result.amount.toLocaleString()}** ${COIN_EMOJI}` +
+            (result.foodWorkBonus > 0 ? ` （食物加成 +${Math.round(result.foodWorkBonus * 100)}%）` : ""),
           ),
         )
         .addSeparatorComponents(new SeparatorBuilder())

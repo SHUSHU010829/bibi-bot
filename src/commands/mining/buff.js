@@ -9,6 +9,9 @@ const {
 } = require("discord.js");
 
 const buffResolver = require("../../features/buff/buffResolver");
+const { getActiveFoodBuffs } = require("../../features/fishing/cookService");
+const { getOrCreate: getMiningProfile } = require("../../features/mining/miningProfile");
+const { fishing } = require("../../config");
 
 function pct(mult) {
   return `${Math.round((mult - 1) * 100)}%`;
@@ -87,9 +90,49 @@ module.exports = {
           );
       }
 
+      // 食物 buff（Phase S4）
+      try {
+        const miningProfile = await getMiningProfile(
+          client, interaction.user.id, interaction.guildId
+        ).catch(() => null);
+        if (miningProfile) {
+          const foodBuffs = getActiveFoodBuffs(miningProfile);
+          if (foodBuffs.length > 0) {
+            const recipes = fishing?.recipes || {};
+            const foodLines = foodBuffs.map((b) => {
+              const recipe = Object.values(recipes).find(
+                (r) => r.buff?.type === b.type || r.coalBuff?.type === b.type
+              );
+              const name = recipe?.name || b.type;
+              const emoji = recipe?.emoji || "🍽️";
+              let desc = "";
+              if (b.type === "work_income") desc = `打工收入 +${Math.round(b.value * 100)}%`;
+              else if (b.type === "dungeon_atk") desc = `地下城 ATK +${b.value}`;
+              else if (b.type === "mine_luck") desc = `挖礦幸運 +${Math.round(b.value * 100)}%`;
+              else if (b.type === "all_boost") desc = `全屬性 +${Math.round(b.value * 100)}%`;
+              else desc = `${b.type}`;
+              let expire = "";
+              if (b.uses_left !== null && b.uses_left !== undefined) {
+                expire = `（剩餘 ${b.uses_left} 次）`;
+              } else if (b.expires_at) {
+                expire = `（<t:${Math.floor(b.expires_at / 1000)}:R>）`;
+              }
+              return `• ${emoji} **${name}**：${desc}${expire}`;
+            });
+            container
+              .addSeparatorComponents(new SeparatorBuilder())
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `**🍽️ 食物 Buff**\n${foodLines.join("\n")}`
+                )
+              );
+          }
+        }
+      } catch { /* 讀取食物 buff 失敗不影響主流程 */ }
+
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          "-# 加成來源：鎬子 / 幸運藥水 / Twitch 訂閱 / 伺服器加成 / 抖內 / 商店 buff / 限時活動"
+          "-# 加成來源：鎬子 / 幸運藥水 / Twitch 訂閱 / 伺服器加成 / 抖內 / 商店 buff / 限時活動 / 食物"
         )
       );
 

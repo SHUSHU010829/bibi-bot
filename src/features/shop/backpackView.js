@@ -9,12 +9,13 @@ const {
   ButtonStyle,
   MessageFlags,
 } = require("discord.js");
-const { mining, shop } = require("../../config");
+const { mining, shop, fishing } = require("../../config");
 const {
   getOrCreate,
   backpackCapacity,
   backpackUsed,
 } = require("../mining/miningProfile");
+const { getActiveFoodBuffs } = require("../fishing/cookService");
 const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 const {
   DONOR_THEME_ITEM_ID,
@@ -139,13 +140,39 @@ function buildUnifiedEquipMenu(grouped) {
   return new ActionRowBuilder().addComponents(menu);
 }
 
-// 統一背包：挖礦（礦石／挖礦道具）＋ 商店（購買道具／生效 buff／裝備選單）合在同一張卡片。
+// 背包分類常數
+const BACKPACK_CATEGORIES = [
+  { value: "all",  label: "🎒 全部" },
+  { value: "ore",  label: "⛏️ 礦石" },
+  { value: "mine", label: "🪓 挖礦道具" },
+  { value: "fish", label: "🎣 釣魚" },
+  { value: "shop", label: "🛍️ 商店道具" },
+];
+
+// 統一背包：礦石 / 挖礦道具 / 釣魚 / 商店（購買道具 / 生效 buff / 裝備選單）合在同一張卡片。
+// category: "all" | "ore" | "mine" | "fish" | "shop"（預設 "all"）
 // 回傳 { components, flags }，以 IsComponentsV2 + Ephemeral 私訊送出。
-async function buildBackpackView(client, { userId, guildId, member, displayName }) {
+async function buildBackpackView(client, { userId, guildId, member, displayName, category = "all" }) {
   const container = new ContainerBuilder().setAccentColor(0x9b59b6);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(`## 🎒 ${displayName} 的背包`)
+  );
+
+  // 分類篩選下拉選單
+  container.addComponents(
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`backpack_cat_${userId}`)
+        .setPlaceholder("🔍 篩選分類…")
+        .addOptions(
+          BACKPACK_CATEGORIES.map((c) => ({
+            label: c.label,
+            value: c.value,
+            default: c.value === category,
+          }))
+        )
+    )
   );
 
   // 錢包餘額 + 生效中 buff（同一份文件，一次查回）
@@ -183,7 +210,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName 
   }
 
   // ── 挖礦區 ──
-  if (mining?.enabled && client.miningProfilesCollection) {
+  if ((category === "all" || category === "ore" || category === "mine") && mining?.enabled && client.miningProfilesCollection) {
     const profile = await getOrCreate(client, userId, guildId);
     const cap = backpackCapacity(profile, mining);
     const used = backpackUsed(profile);
@@ -242,27 +269,32 @@ async function buildBackpackView(client, { userId, guildId, member, displayName 
     };
 
     // ── 礦石 ──
-    container.addSeparatorComponents(new SeparatorBuilder());
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        oreLines.length > 0
-          ? `### ⛏️ 礦石\n${oreLines.join("\n")}\n-# 💰 全部賣出可得 ${totalValue.toLocaleString()} ${COIN_EMOJI}`
-          : "### ⛏️ 礦石\n-# 背包裡還沒有礦石，快去 /挖礦 吧！"
-      )
-    );
+    if (category === "all" || category === "ore") {
+      container.addSeparatorComponents(new SeparatorBuilder());
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          oreLines.length > 0
+            ? `### ⛏️ 礦石\n${oreLines.join("\n")}\n-# 💰 全部賣出可得 ${totalValue.toLocaleString()} ${COIN_EMOJI}`
+            : "### ⛏️ 礦石\n-# 背包裡還沒有礦石，快去 /挖礦 吧！"
+        )
+      );
+    }
 
     // ── 挖礦狀態 ──
-    container.addSeparatorComponents(new SeparatorBuilder());
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `### 🪓 挖礦狀態\n` +
-          `⛏️ 目前鎬子：${pdef.emoji || "⛏️"} ${pdef.name}（${durabilityText}）\n` +
-          `📦 背包容量：${used} / ${cap}\n` +
-          `⏳ 挖礦冷卻：${cdText}`
-      )
-    );
+    if (category === "all" || category === "mine") {
+      container.addSeparatorComponents(new SeparatorBuilder());
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🪓 挖礦狀態\n` +
+            `⛏️ 目前鎬子：${pdef.emoji || "⛏️"} ${pdef.name}（${durabilityText}）\n` +
+            `📦 背包容量：${used} / ${cap}\n` +
+            `⏳ 挖礦冷卻：${cdText}`
+        )
+      );
+    }
 
     // ── 挖礦道具 ──
+    if (category === "all" || category === "mine") {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -344,11 +376,92 @@ async function buildBackpackView(client, { userId, guildId, member, displayName 
         `✨ **傳說素材碎片** ×${fragments}\n-# 合成傳說裝備材料`
       )
     );
+    } // end category === "mine"
+  }
+
+  // ── 釣魚區 ──
+  if ((category === "all" || category === "fish") && fishing?.enabled && client.miningProfilesCollection) {
+    const fishProfile = await getOrCreate(client, userId, guildId);
+    const fishBag = fishProfile.fish_bag || {};
+    const fishCdAt = fishProfile.fish_cooldown_at || 0;
+    const now = Date.now();
+    const fishCdText = fishCdAt > now
+      ? `<t:${Math.floor(fishCdAt / 1000)}:R> 可釣`
+      : "✅ 現在可釣魚";
+
+    const foodBuffs = getActiveFoodBuffs(fishProfile);
+    const buffLines = foodBuffs.map((b) => {
+      const recipe = Object.values(fishing.recipes || {}).find(
+        (r) => r.buff?.type === b.type || r.coalBuff?.type === b.type
+      );
+      const emoji = recipe?.emoji || "🍽️";
+      const name = recipe?.name || b.type;
+      let desc = b.type === "work_income" ? `打工 +${Math.round(b.value * 100)}%`
+               : b.type === "dungeon_atk" ? `地城 ATK +${b.value}`
+               : b.type === "mine_luck"   ? `幸運 +${Math.round(b.value * 100)}%`
+               : b.type === "all_boost"   ? `全屬性 +${Math.round(b.value * 100)}%`
+               : b.type;
+      const expire = b.uses_left != null
+        ? `（剩 ${b.uses_left} 次）`
+        : b.expires_at ? `（<t:${Math.floor(b.expires_at / 1000)}:R>）` : "";
+      return `・${emoji} **${name}**：${desc}${expire}`;
+    });
+
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### 🎣 釣魚\n⏳ 釣魚冷卻：${fishCdText}` +
+        (buffLines.length > 0 ? `\n**食物 Buff**\n${buffLines.join("\n")}` : "\n-# 目前無食物 buff・用 /烹飪 製作")
+      )
+    );
+
+    // 每種有魚的魚種：顯示數量 + 賣全部按鈕
+    const hasFish = Object.entries(fishing.fish || {}).some(([k]) => (fishBag[k] || 0) > 0);
+    if (hasFish) {
+      for (const [key, def] of Object.entries(fishing.fish || {})) {
+        const qty = fishBag[key] || 0;
+        if (qty <= 0) continue;
+        const total = qty * def.price;
+        const matchedRecipe = Object.entries(fishing.recipes || {}).find(
+          ([, r]) => r.materials?.[key] !== undefined
+        );
+        const recipeHint = matchedRecipe ? `・可烹飪成 ${matchedRecipe[1].emoji} ${matchedRecipe[1].name}` : "";
+        container.addComponents(
+          new SectionBuilder()
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                `${def.emoji} **${def.name}**（${def.rarity}）×${qty}${recipeHint}`
+              )
+            )
+            .setButtonAccessory(
+              new ButtonBuilder()
+                .setCustomId(`fish_sell_${userId}_${key}`)
+                .setLabel(`賣全部 +${total.toLocaleString()}`)
+                .setStyle(ButtonStyle.Secondary)
+            )
+        );
+      }
+    } else {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("-# 魚袋空空，快去 /釣魚 吧！")
+      );
+    }
+
+    // 0 條的魚種低調收到底部
+    const emptyFish = Object.entries(fishing.fish || {})
+      .filter(([k]) => (fishBag[k] || 0) === 0)
+      .map(([, def]) => def.name)
+      .join("・");
+    if (emptyFish) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`-# 尚無：${emptyFish}`)
+      );
+    }
   }
 
   // ── 商店區 ──
   const equipRows = [];
-  if (shop?.enabled && client.userInventoryCollection) {
+  if ((category === "all" || category === "shop") && shop?.enabled && client.userInventoryCollection) {
     const items = await client.userInventoryCollection
       .find({ userId, guildId, expired: { $ne: true } })
       .sort({ acquiredAt: -1 })
@@ -433,7 +546,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName 
   container.addSeparatorComponents(new SeparatorBuilder());
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "-# 下方選單可直接裝備道具；用 /賣礦 換金幣、/合成 打造鎬子、/商店 逛逛"
+      "-# 上方下拉可切換分類｜/賣出 換金幣、/釣魚 去釣魚、/烹飪 製作 buff、/商店 逛逛"
     )
   );
 
@@ -447,6 +560,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName 
 
 module.exports = {
   buildBackpackView,
+  BACKPACK_CATEGORIES,
   USE_TICKET_PREFIX,
   parseUseTicketId,
   USE_WHETSTONE_INFERIOR_PREFIX,

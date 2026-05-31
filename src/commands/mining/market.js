@@ -6,7 +6,7 @@ const {
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
-const { mining, marketplace } = require("../../config");
+const { mining, marketplace, fishing } = require("../../config");
 const marketplaceService = require("../../features/marketplace/marketplaceService");
 const {
   buildBrowseView,
@@ -22,7 +22,15 @@ function oreChoices() {
   }));
 }
 
+function fishChoices() {
+  return Object.entries(fishing?.fish || {}).map(([key, def]) => ({
+    name: `${def.emoji} ${def.name}（${def.price} 幣/條）`,
+    value: key,
+  }));
+}
+
 module.exports = {
+  channelBuckets: ["marketplace"],
   data: new SlashCommandBuilder()
     .setName("市集")
     .setDescription("礦石市集：賣礦、換礦、徵求、競標 🏪")
@@ -108,6 +116,21 @@ module.exports = {
             .setMinValue(1)
         )
     )
+    // 賣魚
+    .addSubcommand((s) =>
+      s
+        .setName("賣魚")
+        .setDescription("以一口價在市集掛牌賣魚，收金幣")
+        .addStringOption((o) =>
+          o.setName("魚").setDescription("要賣的魚種").setRequired(true).addChoices(...fishChoices())
+        )
+        .addIntegerOption((o) =>
+          o.setName("數量").setDescription("數量").setRequired(true).setMinValue(1)
+        )
+        .addIntegerOption((o) =>
+          o.setName("總價").setDescription("你要賣多少金幣（一口價總額）").setRequired(true).setMinValue(1)
+        )
+    )
     // 競標
     .addSubcommand((s) =>
       s
@@ -149,6 +172,7 @@ module.exports = {
       if (sub === "換礦") return await handleBarter(client, interaction);
       if (sub === "徵求") return await handleWant(client, interaction);
       if (sub === "競標") return await handleAuction(client, interaction);
+      if (sub === "賣魚") return await handleFishSell(client, interaction);
     } catch (error) {
       console.log(`[ERROR] /市集:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 市集操作失敗，請呼叫舒舒！").catch(() => {});
@@ -406,6 +430,57 @@ async function handleAuction(client, interaction) {
           `起標價：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}${buyoutLine}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
           `-# 成交將收取 ${feeRate}% 手續費；無人出價會自動退回礦石。`
+      )
+    );
+  await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+}
+
+// ─── 賣魚 ────────────────────────────────────────────────────────────────────
+async function handleFishSell(client, interaction) {
+  const fishKey = interaction.options.getString("魚");
+  const qty = interaction.options.getInteger("數量");
+  const price = interaction.options.getInteger("總價");
+
+  const result = await marketplaceService.createFishSellListing(client, {
+    sellerId: interaction.user.id,
+    guildId: interaction.guildId,
+    sellerName: interaction.member?.displayName || interaction.user.username,
+    fishKey,
+    qty,
+    price,
+  });
+
+  if (!result.ok) {
+    if (result.reason === "no_fish") return interaction.editReply("❌ 找不到這種魚。");
+    if (result.reason === "low_price") {
+      return interaction.editReply(
+        `❌ ${result.fishDef.name} ×${qty} 的最低售價為 **${result.minPrice.toLocaleString()}** ${COIN_EMOJI}（收購價的 80%）。`
+      );
+    }
+    if (result.reason === "too_many") {
+      return interaction.editReply(`📦 你同時最多只能掛 **${result.max}** 件掛單。`);
+    }
+    if (result.reason === "insufficient") {
+      return interaction.editReply(
+        `🎒 你只有 **${result.have}** 條 ${result.fishDef.name}，無法掛 ${qty} 條。`
+      );
+    }
+    return interaction.editReply("🔧 掛牌失敗，請稍後再試。");
+  }
+
+  const l = result.listing;
+  const feeRate = Math.round((marketplace.sellFeeRate ?? 0.05) * 100);
+  const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
+  const fishDef = result.fishDef;
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🐟 賣魚掛牌成功\n` +
+          `**#${l.listing_id}** ・ ${fishDef.emoji} ${fishDef.name} ×${l.qty}\n` +
+          `一口價：**${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
+          `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
+          `-# 成交將收取 ${feeRate}% 手續費；無人購買將自動退回魚袋。`
       )
     );
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });

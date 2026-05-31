@@ -106,7 +106,7 @@ module.exports = async (client, interaction) => {
         expired: "⌛ 鑑定師等不及先走了，下次剛挖到石頭時手腳快一點！",
         no_stone: "🪨 你的背包沒有足夠的石頭可以賭了。",
         no_coins: `${COIN_EMOJI} 金幣不足！這次鑑定要 ${(result.fee || 0).toLocaleString()}，你只有 ${(result.balance || 0).toLocaleString()}。`,
-        backpack_full: `🎒 背包快滿了（${result.used}/${result.cap}），先 /賣礦 清一點再來賭。`,
+        backpack_full: `🎒 背包快滿了（${result.used}/${result.cap}），先 /賣出 清一點再來賭。`,
         charge_failed: "🔧 扣款失敗，已取消這次賭石，請稍後再試。",
       };
       await replyEphemeral(

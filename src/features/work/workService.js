@@ -3,6 +3,8 @@ const { DateTime } = require("luxon");
 const { work } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 const twitchPerks = require("../mining/twitchPerks");
+const { getFoodWorkBonus, getActiveFoodBuffs } = require("../fishing/cookService");
+const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
 
 const TZ = "Asia/Taipei";
 
@@ -80,7 +82,20 @@ async function doWork(client, { userId, guildId, member, username }) {
   const levelInfo = resolveWorkLevel(workCount);
   const min = levelInfo.minReward;
   const max = levelInfo.maxReward;
-  const amount = Math.floor(Math.random() * (max - min + 1)) + min;
+  let baseAmount = Math.floor(Math.random() * (max - min + 1)) + min;
+
+  // 食物 buff：work_income / all_boost 類型加成
+  let foodWorkBonus = 0;
+  try {
+    const miningProfile = await getMiningProfile(client, userId, guildId).catch(() => null);
+    if (miningProfile) {
+      foodWorkBonus = getFoodWorkBonus(miningProfile);
+    }
+  } catch { /* 讀不到 profile 就忽略食物加成 */ }
+
+  const amount = foodWorkBonus > 0
+    ? Math.floor(baseAmount * (1 + foodWorkBonus))
+    : baseAmount;
 
   const grant = await grantCoins(client, {
     userId,
@@ -118,6 +133,8 @@ async function doWork(client, { userId, guildId, member, username }) {
     ok: true,
     job,
     amount,
+    baseAmount,
+    foodWorkBonus,
     balance: grant.doc?.totalCoins ?? 0,
     newCooldownAt,
     claimsToday: claimsToday + 1,

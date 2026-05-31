@@ -11,6 +11,7 @@ const {
   buildConfirmView,
   buildBidModal,
   oreLabel,
+  itemLabel,
   BUY_PREFIX,
   ACCEPT_PREFIX,
   FULFILL_PREFIX,
@@ -24,6 +25,8 @@ const {
   PAGE_PREV,
   PAGE_NEXT,
   BID_MODAL_PREFIX,
+  FILTER_TYPE_ID,
+  FILTER_ITEM_ID,
 } = require("../../features/marketplace/marketplaceView");
 const { COIN_EMOJI } = require("../../constants/coin");
 
@@ -46,6 +49,56 @@ module.exports = async (client, interaction) => {
       cid.startsWith("market_");
     if (!isMarket) return;
 
+    // ─── 篩選器（逛攤 type / item 下拉）─────────────────────────────────────
+    if (interaction.isStringSelectMenu() && (cid === FILTER_TYPE_ID || cid === FILTER_ITEM_ID)) {
+      const rl = consume(interaction.user.id, "market:browse", { windowMs: 1000, max: 3 });
+      if (!rl.allowed) {
+        return interaction.reply({
+          content: `⏳ 切換太快，等 ${Math.ceil(rl.retryAfterMs / 1000)} 秒。`,
+          flags: MessageFlags.Ephemeral,
+        }).catch(() => {});
+      }
+      // 讀當前訊息的兩個 select 選中值（從舊 message 拿另一個 filter 的當前值）
+      // 最簡單做法：從 interaction.message 的 components 解析，或直接給 default
+      // 這裡用 interaction.message.components 解析目前另一個 filter 的選中值
+      let listingType = "all";
+      let itemType = "all";
+      try {
+        const rows = interaction.message?.components || [];
+        for (const row of rows) {
+          for (const comp of (row.components || [])) {
+            if (comp.customId === FILTER_TYPE_ID) {
+              const sel = comp.options?.find((o) => o.default);
+              listingType = sel?.value || "all";
+            }
+            if (comp.customId === FILTER_ITEM_ID) {
+              const sel = comp.options?.find((o) => o.default);
+              itemType = sel?.value || "all";
+            }
+          }
+        }
+      } catch { /* 解析失敗就用 all */ }
+
+      // 把剛選的那個覆蓋
+      if (cid === FILTER_TYPE_ID) listingType = interaction.values[0] || "all";
+      if (cid === FILTER_ITEM_ID) itemType = interaction.values[0] || "all";
+
+      await interaction.deferUpdate();
+      const typeArg = listingType !== "all" ? listingType : null;
+      const itemArg = itemType !== "all" ? itemType : null;
+      const { listings, total } = await marketplaceService.listActive(client, interaction.guildId, {
+        page: 0,
+        pageSize: PAGE_SIZE,
+        type: typeArg,
+        itemType: itemArg,
+      });
+      const { container, rows: viewRows } = buildBrowseView(listings, total, 0, PAGE_SIZE, { listingType, itemType });
+      return interaction.editReply({
+        components: [container, ...viewRows],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+
     // ─── 翻頁（逛攤）────────────────────────────────────────────────────────
     if (interaction.isButton() && (cid.startsWith(PAGE_PREV) || cid.startsWith(PAGE_NEXT))) {
       // 限流：翻頁
@@ -56,18 +109,25 @@ module.exports = async (client, interaction) => {
           flags: MessageFlags.Ephemeral,
         }).catch(() => {});
       }
-      const page = parseInt(
-        cid.startsWith(PAGE_PREV)
-          ? cid.slice(PAGE_PREV.length)
-          : cid.slice(PAGE_NEXT.length),
-        10
-      ) || 0;
+      // 解析 customId 格式：<prefix><page>:<listingType>:<itemType>
+      const rest = cid.startsWith(PAGE_PREV)
+        ? cid.slice(PAGE_PREV.length)
+        : cid.slice(PAGE_NEXT.length);
+      const [pageStr, ltFilter, itFilter] = rest.split(":");
+      const page = parseInt(pageStr, 10) || 0;
+      const typeArg = ltFilter && ltFilter !== "all" ? ltFilter : null;
+      const itemArg = itFilter && itFilter !== "all" ? itFilter : null;
+      const listingType = ltFilter || "all";
+      const itemType = itFilter || "all";
+
       await interaction.deferUpdate();
       const { listings, total } = await marketplaceService.listActive(client, interaction.guildId, {
         page,
         pageSize: PAGE_SIZE,
+        type: typeArg,
+        itemType: itemArg,
       });
-      const { container, rows } = buildBrowseView(listings, total, page, PAGE_SIZE);
+      const { container, rows } = buildBrowseView(listings, total, page, PAGE_SIZE, { listingType, itemType });
       return interaction.editReply({
         components: [container, ...rows],
         flags: MessageFlags.IsComponentsV2,

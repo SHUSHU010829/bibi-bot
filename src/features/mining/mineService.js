@@ -5,6 +5,7 @@ const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile
 const dropTable = require("./dropTable");
 const buffResolver = require("./buffResolver");
 const encounterService = require("./encounterService");
+const { consumeMineLuckUse } = require("../fishing/cookService");
 
 // 執行一次挖礦。回傳結果物件交由指令層呈現（含彩虹石公告與耐久 DM 所需資料）。
 async function mine(client, { userId, guildId, member, username }) {
@@ -80,6 +81,11 @@ async function mine(client, { userId, guildId, member, username }) {
   client.mineLogsCollection
     ?.insertOne({ user_id: userId, guild_id: guildId, ore, qty, ts: new Date() })
     .catch((e) => console.log(`[ERROR] insert mine log: ${e}`.red));
+
+  // 食物 buff：若 mine_luck uses 型 buff 生效，異步消耗一次使用次數
+  if (buff.foodLuckBonus > 0) {
+    consumeMineLuckUse(client, userId, guildId, profile).catch(() => {});
+  }
 
   const result = {
     ok: true,

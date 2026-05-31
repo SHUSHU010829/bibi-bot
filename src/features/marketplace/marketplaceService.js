@@ -408,11 +408,18 @@ async function buyNow(client, { listingId, buyerId, guildId, buyerName, member }
     meta: { listingId, fee, gross: listing.price },
   }).catch((e) => console.log(`[ERROR] market buyNow payout: ${e}`.red));
 
-  // 交貨給買家
-  await client.miningProfilesCollection.updateOne(
-    { userId: buyerId, guildId },
-    { $inc: { [`backpack.${listing.ore}`]: listing.qty }, $set: { updatedAt: new Date() } }
-  ).catch((e) => console.log(`[ERROR] market buyNow deliver: ${e}`.red));
+  // 交貨給買家（魚 → fish_bag；礦石 → backpack）
+  if (listing.item_type === "fish") {
+    await client.miningProfilesCollection.updateOne(
+      { userId: buyerId, guildId },
+      { $inc: { [`fish_bag.${listing.fish_key}`]: listing.qty }, $set: { updatedAt: new Date() } }
+    ).catch((e) => console.log(`[ERROR] market buyNow deliver fish: ${e}`.red));
+  } else {
+    await client.miningProfilesCollection.updateOne(
+      { userId: buyerId, guildId },
+      { $inc: { [`backpack.${listing.ore}`]: listing.qty }, $set: { updatedAt: new Date() } }
+    ).catch((e) => console.log(`[ERROR] market buyNow deliver: ${e}`.red));
+  }
 
   // 標記 sold
   await client.marketListingsCollection.updateOne(
@@ -420,7 +427,15 @@ async function buyNow(client, { listingId, buyerId, guildId, buyerName, member }
     { $set: { status: "sold", fee, proceeds, buyer_id: buyerId, buyer_name: buyerName, settled_at: new Date() } }
   );
 
-  return { ok: true, listing, fee, proceeds, oreDef: mining?.ores?.[listing.ore] };
+  const { fishing } = require("../../config");
+  return {
+    ok: true,
+    listing,
+    fee,
+    proceeds,
+    oreDef: listing.item_type === "fish" ? null : mining?.ores?.[listing.ore],
+    fishDef: listing.item_type === "fish" ? fishing?.fish?.[listing.fish_key] : null,
+  };
 }
 
 // ─── 成交：換礦（接受者付 want_ore 換 give_ore）──────────────────────────────
@@ -815,6 +830,14 @@ async function _refundEscrow(client, listing) {
     ).catch((e) => console.log(`[ERROR] market refund ore: ${e}`.red));
   }
 
+  // 退魚（fish sell）
+  if (listing.escrow_fish) {
+    await client.miningProfilesCollection.updateOne(
+      { userId: sellerId, guildId },
+      { $inc: { [`fish_bag.${listing.escrow_fish.fish_key}`]: listing.escrow_fish.qty }, $set: { updatedAt: new Date() } }
+    ).catch((e) => console.log(`[ERROR] market refund fish: ${e}`.red));
+  }
+
   // 退金幣（want 付金幣）
   if (listing.escrow_coin) {
     await grantCoins(client, {
@@ -836,11 +859,69 @@ async function _refundEscrow(client, listing) {
   }
 }
 
+// ─── 掛牌：賣魚（一口價，收金幣）─────────────────────────────────────────────
+async function createFishSellListing(client, { sellerId, guildId, sellerName, fishKey, qty, price }) {
+  const { fishing } = require("../../config");
+  const c = cfg();
+  if (!c.enabled) return { ok: false, reason: "disabled" };
+  if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
+
+  const fishDef = fishing?.fish?.[fishKey];
+  if (!fishDef) return { ok: false, reason: "no_fish" };
+  if (!Number.isFinite(qty) || qty <= 0) return { ok: false, reason: "bad_qty" };
+
+  const minPrice = Math.max(1, Math.ceil(fishDef.price * qty * (c.minSellPriceFactor ?? 0.8)));
+  if (!Number.isFinite(price) || price < minPrice) {
+    return { ok: false, reason: "low_price", minPrice, fishDef };
+  }
+
+  const limit = await checkActiveLimit(client, sellerId, guildId);
+  if (!limit.allowed) return { ok: false, reason: "too_many", max: limit.max };
+
+  const seller = await getOrCreate(client, sellerId, guildId);
+  const have = seller.fish_bag?.[fishKey] || 0;
+  if (have < qty) return { ok: false, reason: "insufficient", have, fishDef };
+
+  // 託管：扣賣家魚袋
+  await client.miningProfilesCollection.updateOne(
+    { userId: sellerId, guildId },
+    { $inc: { [`fish_bag.${fishKey}`]: -qty }, $set: { updatedAt: new Date() } }
+  );
+
+  const listingId = await genListingId(client, guildId);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + (c.durationMs ?? 86400000));
+  const doc = {
+    listing_id: listingId,
+    listing_type: "sell",
+    item_type: "fish",
+    seller_id: sellerId,
+    seller_name: sellerName,
+    guild_id: guildId,
+    fish_key: fishKey,
+    qty,
+    price,
+    status: "active",
+    escrow_fish: { fish_key: fishKey, qty },
+    created_at: now,
+    expires_at: expiresAt,
+    updated_at: now,
+    settled_at: null,
+  };
+  await client.marketListingsCollection.insertOne(doc);
+  return { ok: true, listing: doc, fishDef };
+}
+
 // ─── 查詢────────────────────────────────────────────────────────────────────
-async function listActive(client, guildId, { page = 0, pageSize = 5, type = null } = {}) {
+async function listActive(client, guildId, { page = 0, pageSize = 5, type = null, itemType = null } = {}) {
   if (!client.marketListingsCollection) return { listings: [], total: 0 };
   const filter = { guild_id: guildId, status: "active" };
   if (type) filter.listing_type = type;
+  if (itemType === "fish") {
+    filter.item_type = "fish";
+  } else if (itemType === "ore") {
+    filter.$or = [{ item_type: "ore" }, { item_type: { $exists: false } }];
+  }
   const total = await client.marketListingsCollection.countDocuments(filter);
   const listings = await client.marketListingsCollection
     .find(filter)
@@ -861,6 +942,7 @@ async function listByOwner(client, guildId, sellerId) {
 
 module.exports = {
   createSellListing,
+  createFishSellListing,
   createBarterListing,
   createWantListing,
   createAuctionListing,

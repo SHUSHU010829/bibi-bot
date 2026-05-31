@@ -11,6 +11,7 @@ const FOLDER_BUCKET = {
   casino: "casino",
   stock: "stock",
   mining: "mining",
+  fishing: "fishing",
 };
 const DEFAULT_BUCKET = "general";
 

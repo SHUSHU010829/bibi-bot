@@ -5,6 +5,7 @@ const {
   SeparatorBuilder,
   SeparatorSpacingSize,
   ActionRowBuilder,
+  StringSelectMenuBuilder,
   ButtonBuilder,
   ButtonStyle,
   MessageFlags,
@@ -12,7 +13,7 @@ const {
   TextInputBuilder,
   TextInputStyle,
 } = require("discord.js");
-const { mining } = require("../../config");
+const { mining, fishing } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 // customId 前綴常數（與 handleMarketInteraction 共用）
@@ -34,6 +35,19 @@ function oreLabel(oreKey) {
   return `${def.emoji || "⛏️"} ${def.name || oreKey}`;
 }
 
+// 統一 item 顯示：根據 item_type 決定顯示礦石或魚
+function itemLabel(listing) {
+  if (listing.item_type === "fish") {
+    const def = fishing?.fish?.[listing.fish_key] || {};
+    return `${def.emoji || "🐟"} ${def.name || listing.fish_key}`;
+  }
+  return oreLabel(listing.ore);
+}
+
+// 市集篩選器 customId 前綴
+const FILTER_TYPE_ID = "market_filter_type";
+const FILTER_ITEM_ID = "market_filter_item";
+
 function typeLabel(type) {
   const map = { sell: "賣礦", barter: "換礦", want: "徵求", auction: "競標" };
   return map[type] || type;
@@ -53,7 +67,7 @@ function listingText(l) {
   if (l.listing_type === "sell") {
     return (
       `${header}\n` +
-      `${oreLabel(l.ore)} ×${l.qty}　💰 **${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
+      `${itemLabel(l)} ×${l.qty}　💰 **${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
       `賣家：${l.seller_name || "?"}　截止 <t:${expiresEpoch}:R>`
     );
   }
@@ -132,8 +146,16 @@ function listingAccessoryButton(l, viewerIsSeller = false) {
   return null;
 }
 
+// 把 filter 狀態編碼進翻頁 customId，格式：<prefix><page>:<listingType>:<itemType>
+// 例：market_page_next_2:sell:fish
+function encodePageId(prefix, page, { listingType = "all", itemType = "all" } = {}) {
+  return `${prefix}${page}:${listingType}:${itemType}`;
+}
+
 // ─── 逛攤清單 ─────────────────────────────────────────────────────────────────
-function buildBrowseView(listings, total, page, pageSize) {
+// filters: { listingType: "all"|"sell"|"barter"|"want"|"auction", itemType: "all"|"ore"|"fish" }
+function buildBrowseView(listings, total, page, pageSize, filters = {}) {
+  const { listingType = "all", itemType = "all" } = filters;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const container = new ContainerBuilder()
     .setAccentColor(0xe1b12c)
@@ -141,10 +163,38 @@ function buildBrowseView(listings, total, page, pageSize) {
       new TextDisplayBuilder().setContent(
         `# 🏪 市集\n` +
         (total === 0
-          ? "目前沒有任何掛單，用 `/市集 賣礦`、`/市集 換礦`、`/市集 徵求` 或 `/市集 競標` 來掛牌吧！"
+          ? "目前沒有符合條件的掛單。"
           : `共 **${total}** 筆掛單・第 ${page + 1} / ${totalPages} 頁`)
       )
     );
+
+  // ── 篩選器 ──
+  container.addComponents(
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(FILTER_TYPE_ID)
+        .setPlaceholder("📋 交易類型篩選")
+        .addOptions([
+          { label: "全部類型", value: "all",     default: listingType === "all" },
+          { label: "💰 賣出",  value: "sell",    default: listingType === "sell" },
+          { label: "🔄 換物",  value: "barter",  default: listingType === "barter" },
+          { label: "📋 徵求",  value: "want",    default: listingType === "want" },
+          { label: "🏷️ 競標", value: "auction", default: listingType === "auction" },
+        ])
+    )
+  );
+  container.addComponents(
+    new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(FILTER_ITEM_ID)
+        .setPlaceholder("📦 物品類別篩選")
+        .addOptions([
+          { label: "全部物品", value: "all",  default: itemType === "all" },
+          { label: "⛏️ 礦石",  value: "ore",  default: itemType === "ore" },
+          { label: "🐟 魚類",  value: "fish", default: itemType === "fish" },
+        ])
+    )
+  );
 
   if (listings.length === 0) {
     return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
@@ -175,7 +225,7 @@ function buildBrowseView(listings, total, page, pageSize) {
     }
   });
 
-  // 翻頁按鈕（放進 Container 底部）
+  // 翻頁按鈕（放進 Container 底部，customId 包含 filter 狀態）
   if (totalPages > 1) {
     container.addSeparatorComponents(
       new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large)
@@ -184,7 +234,7 @@ function buildBrowseView(listings, total, page, pageSize) {
     if (page > 0) {
       pageRow.addComponents(
         new ButtonBuilder()
-          .setCustomId(`${PAGE_PREV}${page - 1}`)
+          .setCustomId(encodePageId(PAGE_PREV, page - 1, { listingType, itemType }))
           .setLabel("◀ 上一頁")
           .setStyle(ButtonStyle.Secondary)
       );
@@ -192,7 +242,7 @@ function buildBrowseView(listings, total, page, pageSize) {
     if (page + 1 < totalPages) {
       pageRow.addComponents(
         new ButtonBuilder()
-          .setCustomId(`${PAGE_NEXT}${page + 1}`)
+          .setCustomId(encodePageId(PAGE_NEXT, page + 1, { listingType, itemType }))
           .setLabel("下一頁 ▶")
           .setStyle(ButtonStyle.Secondary)
       );
@@ -332,7 +382,10 @@ module.exports = {
   buildConfirmView,
   buildBidModal,
   oreLabel,
+  itemLabel,
   listingText,
+  FILTER_TYPE_ID,
+  FILTER_ITEM_ID,
   // customId 前綴常數（handler 共用）
   BUY_PREFIX,
   ACCEPT_PREFIX,

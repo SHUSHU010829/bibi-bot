@@ -149,6 +149,9 @@ module.exports = async (client) => {
     const miningProfilesCollection = database.collection("MiningProfiles");
     const mineLogsCollection = database.collection("MineLogs");
 
+    // 釣魚系統 collections（Phase S4）
+    const fishLogsCollection = database.collection("FishLogs");
+
     // 打工系統 collection（記每位玩家的打工冷卻）
     const workProfilesCollection = database.collection("WorkProfiles");
 
@@ -234,6 +237,7 @@ module.exports = async (client) => {
     client.inviteRecordsCollection = inviteRecordsCollection;
     client.miningProfilesCollection = miningProfilesCollection;
     client.mineLogsCollection = mineLogsCollection;
+    client.fishLogsCollection = fishLogsCollection;
     client.workProfilesCollection = workProfilesCollection;
     client.duelGamesCollection = duelGamesCollection;
     client.auctionListingsCollection = auctionListingsCollection;
@@ -849,6 +853,16 @@ module.exports = async (client) => {
         { userId: 1, guildId: 1 },
         { unique: true, name: "uniq_mining_user_guild" }
       );
+
+      // 釣魚系統索引（Phase S4）
+      await fishLogsCollection.createIndex(
+        { guild_id: 1, ts: -1 },
+        { name: "fish_logs_guild_time" }
+      ).catch((e) => console.log(`[WARN] FishLogs index: ${e.message}`.yellow));
+      await fishLogsCollection.createIndex(
+        { ts: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "fish_logs_ttl_90d" }
+      ).catch((e) => console.log(`[WARN] FishLogs TTL index: ${e.message}`.yellow));
       // 挖礦記錄：排行榜 / 成就 / 彩虹石計數用，TTL 90 天
       await mineLogsCollection.createIndex(
         { guild_id: 1, ts: -1 },

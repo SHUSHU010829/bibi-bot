@@ -1,0 +1,180 @@
+require("colors");
+const { fishing } = require("../../config");
+const { getOrCreate } = require("../mining/miningProfile");
+
+// 食物合成與食物 buff 管理。
+//
+// 食物 buff 結構（存於 miningProfiles.active_food_buffs）：
+//   { type, value, expires_at, uses_left }
+//   - type:       "work_income" | "dungeon_atk" | "mine_luck" | "all_boost"
+//   - value:      數值（倍率或加成量）
+//   - expires_at: ms timestamp；null = 不過期（依 uses_left）
+//   - uses_left:  null = 依時間；>0 = 使用次數
+//
+// 煤炭烤製聯動：coalFuel > 0 的食譜，若玩家揀選消耗煤炭，
+// 改套 coalBuff（效果更強、時效更長），礦石背包同步扣除煤炭。
+
+// 清除過期或用完的食物 buff（回傳清除後的陣列，不修改 profile）
+function cleanExpiredBuffs(buffs) {
+  if (!Array.isArray(buffs)) return [];
+  const now = Date.now();
+  return buffs.filter((b) => {
+    if (b.uses_left !== null && b.uses_left !== undefined && b.uses_left <= 0) return false;
+    if (b.expires_at && b.expires_at <= now) return false;
+    return true;
+  });
+}
+
+// 取得有效的食物 buff 列表（已過濾過期）
+function getActiveFoodBuffs(profile) {
+  return cleanExpiredBuffs(profile?.active_food_buffs || []);
+}
+
+// 取得食物 buff 對挖礦幸運的加成（mine_luck + all_boost）
+function getFoodLuckBonus(profile) {
+  let bonus = 0;
+  for (const b of getActiveFoodBuffs(profile)) {
+    if (b.type === "mine_luck") bonus += Number(b.value) || 0;
+    if (b.type === "all_boost") bonus += Number(b.value) || 0;
+  }
+  return bonus;
+}
+
+// 取得食物 buff 對地下城 ATK 的加成（dungeon_atk + all_boost × baseAtk）
+// baseAtk 傳入是為了讓 all_boost 能按比例計算，若未傳入就只加絕對值
+function getFoodAtkBonus(profile, baseAtk = 0) {
+  let bonus = 0;
+  for (const b of getActiveFoodBuffs(profile)) {
+    if (b.type === "dungeon_atk") bonus += Number(b.value) || 0;
+    if (b.type === "all_boost") bonus += Math.round(baseAtk * (Number(b.value) || 0));
+  }
+  return bonus;
+}
+
+// 取得食物 buff 對打工收入的倍率加成（work_income + all_boost）
+// 回傳 0.XX（額外加成量，不是最終倍率）
+function getFoodWorkBonus(profile) {
+  let bonus = 0;
+  for (const b of getActiveFoodBuffs(profile)) {
+    if (b.type === "work_income") bonus += Number(b.value) || 0;
+    if (b.type === "all_boost") bonus += Number(b.value) || 0;
+  }
+  return bonus;
+}
+
+// 消耗一次 mine_luck 的使用次數（挖礦時呼叫）
+// 回傳更新後的 active_food_buffs 陣列，並同步寫入 DB
+async function consumeMineLuckUse(client, userId, guildId, profile) {
+  const buffs = getActiveFoodBuffs(profile);
+  let consumed = false;
+  const updated = buffs.map((b) => {
+    if (!consumed && b.type === "mine_luck" && b.uses_left > 0) {
+      consumed = true;
+      return { ...b, uses_left: b.uses_left - 1 };
+    }
+    return b;
+  });
+  if (!consumed) return;
+  const cleaned = cleanExpiredBuffs(updated);
+  await client.miningProfilesCollection
+    .updateOne(
+      { userId, guildId },
+      { $set: { active_food_buffs: cleaned, updatedAt: new Date() } }
+    )
+    .catch((e) => console.log(`[ERROR] consumeMineLuckUse: ${e}`.red));
+  return cleaned;
+}
+
+// 執行一次烹飪。回傳結果物件。
+async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
+  if (!fishing?.enabled) return { ok: false, reason: "disabled" };
+  if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
+
+  const recipes = fishing.recipes || {};
+  const recipe = recipes[recipeId];
+  if (!recipe) return { ok: false, reason: "invalid_recipe" };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const fishBag = profile.fish_bag || {};
+  const backpack = profile.backpack || {};
+
+  // 檢查魚袋材料
+  const missingFish = [];
+  for (const [fishKey, need] of Object.entries(recipe.materials || {})) {
+    const have = fishBag[fishKey] || 0;
+    if (have < need) missingFish.push({ fish: fishKey, need, have });
+  }
+  if (missingFish.length > 0) {
+    return { ok: false, reason: "insufficient_fish", missingFish };
+  }
+
+  // 煤炭烤製：useCoal=true 且 recipe.coalFuel > 0 時才套強化 buff
+  const coalNeeded = useCoal ? (recipe.coalFuel || 0) : 0;
+  if (coalNeeded > 0 && (backpack.coal || 0) < coalNeeded) {
+    return {
+      ok: false,
+      reason: "insufficient_coal",
+      coalNeeded,
+      coalHave: backpack.coal || 0,
+    };
+  }
+
+  const buffDef = (useCoal && coalNeeded > 0 && recipe.coalBuff) ? recipe.coalBuff : recipe.buff;
+  const isCoalEnhanced = useCoal && coalNeeded > 0 && !!recipe.coalBuff;
+
+  // 建立新 buff
+  const now = Date.now();
+  let newBuff;
+  if (typeof buffDef.uses === "number") {
+    newBuff = { type: buffDef.type, value: buffDef.value, expires_at: null, uses_left: buffDef.uses };
+  } else {
+    newBuff = {
+      type: buffDef.type,
+      value: buffDef.value,
+      expires_at: now + (buffDef.durationMs || 3600000),
+      uses_left: null,
+    };
+  }
+
+  // 若已有相同 type 的食物 buff → 重置（覆蓋，不疊加，避免無限堆疊）
+  const existingBuffs = cleanExpiredBuffs(profile.active_food_buffs || []);
+  const otherBuffs = existingBuffs.filter((b) => b.type !== newBuff.type);
+  const updatedBuffs = [...otherBuffs, newBuff];
+
+  // 原子更新：扣材料 + 扣煤炭 + 寫入新 buff
+  const inc = {};
+  for (const [fishKey, need] of Object.entries(recipe.materials || {})) {
+    inc[`fish_bag.${fishKey}`] = -need;
+  }
+  if (coalNeeded > 0) {
+    inc["backpack.coal"] = -coalNeeded;
+  }
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    {
+      $inc: inc,
+      $set: { active_food_buffs: updatedBuffs, updatedAt: new Date() },
+    }
+  );
+
+  return {
+    ok: true,
+    recipe,
+    recipeId,
+    buffDef,
+    isCoalEnhanced,
+    coalUsed: coalNeeded,
+    newBuff,
+  };
+}
+
+module.exports = {
+  cleanExpiredBuffs,
+  getActiveFoodBuffs,
+  getFoodLuckBonus,
+  getFoodAtkBonus,
+  getFoodWorkBonus,
+  consumeMineLuckUse,
+  cook,
+};

@@ -5,6 +5,7 @@ const { weightedRandom } = require("./weightedRandom");
 const grantCoins = require("../economy/grantCoins");
 const twitchPerks = require("./twitchPerks");
 const encounterService = require("./encounterService");
+const { getFoodAtkBonus } = require("../fishing/cookService");
 
 // CD 縮短券持有上限（與商店 shop.json maxStack 一致）
 const CD_TICKET_MAX = 30;
@@ -115,12 +116,13 @@ async function staminaFullAt(client, { userId, guildId, member }) {
   return baseAt + (max - st.stamina) * regenMs;
 }
 
-// 戰鬥力 = baseAtk + 武器 ATK（鎬子不再貢獻戰鬥力，純採集）。
+// 戰鬥力 = baseAtk + 武器 ATK + 食物 buff（鎬子不再貢獻戰鬥力，純採集）。
 function playerAtk(profile) {
   const base = dungeon?.baseAtk ?? 20;
   const weapons = dungeon?.weapons || {};
   const wdef = weapons[profile?.weapon] || weapons.fist || {};
-  return base + (wdef.atk || 0);
+  const weaponAtk = base + (wdef.atk || 0);
+  return weaponAtk + getFoodAtkBonus(profile, weaponAtk);
 }
 
 // 是否持有可用武器（非赤手）。打怪硬門檻：必須先打造劍。

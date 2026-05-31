@@ -49,7 +49,7 @@ async function announce(client, date, prices) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 行情每日 00:00 更新　·　用 /賣礦 趁高點出貨，/行情 看走勢",
+        "-# 行情每日 00:00 更新　·　用 /賣出 趁高點出貨，/行情 看走勢",
       ),
     );
 

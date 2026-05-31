@@ -1,6 +1,7 @@
 const { mining } = require("../../config");
 const twitchPerks = require("./twitchPerks");
 const eventEngine = require("../event/eventEngine");
+const { getFoodLuckBonus, consumeMineLuckUse } = require("../fishing/cookService");
 
 // 整合鎬子 / 幸運藥水 / Twitch 訂閱者權益。
 // CD 縮短券改為冷卻中於 /背包 主動使用（見 mineService.useCdTicket），不在挖礦時自動消耗。
@@ -58,10 +59,17 @@ function resolve(profile, member) {
   const eventQtyBonus = eventEngine.getMiningQtyBonus();
   if (eventQtyBonus > 0) qtyBonus += eventQtyBonus;
 
+  // 食物 buff（Phase S4）：mine_luck / all_boost 類型，獨立於 luckCap 之外疊加。
+  // uses_left 型 buff（章魚飯）在此扣次數；cookService 負責非同步寫 DB，
+  // resolve() 本身保持同步以免影響挖礦主流程效能。
+  const foodLuckBonus = getFoodLuckBonus(profile);
+  if (foodLuckBonus > 0) luckBonus += foodLuckBonus;
+
   // CD 下限保護（避免負數 / 零）
   const actualCdMs = Math.max(cdMs, 60 * 1000);
 
-  // donationLuckBonus / eventLuckBonus / eventQtyBonus / twitchLuckBonus：本次實際生效值，供指令層顯示
+  // donationLuckBonus / eventLuckBonus / eventQtyBonus / twitchLuckBonus / foodLuckBonus：
+  // 本次實際生效值，供指令層顯示
   return {
     luckBonus,
     qtyBonus,
@@ -71,6 +79,7 @@ function resolve(profile, member) {
     eventQtyBonus,
     twitchLuckBonus,
     twitchTierKey,
+    foodLuckBonus,
     consume: { usePotion },
   };
 }

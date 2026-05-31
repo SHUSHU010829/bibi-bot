@@ -1,7 +1,7 @@
 require("colors");
 
 const { DateTime } = require("luxon");
-const { mining } = require("../../config");
+const { mining, fishing } = require("../../config");
 
 // Phase F — 每日礦石市價波動引擎
 //
@@ -151,11 +151,71 @@ async function pruneOld(client, retentionDays = marketCfg().retentionDays || 90)
   return res ? res.deletedCount || 0 : 0;
 }
 
+// ── 魚類市價（Phase S4）─────────────────────────────────────────────────────
+// 與礦石使用同一套 seeded random 機制，key 前綴 "fish_" 與礦石隔離。
+// 魚價存於同一份 OreMarketPrices document 的 fishPrices / fishFactors 欄位。
+
+function fishDefs() {
+  return (fishing && fishing.fish) || {};
+}
+
+function computeFishPrices(dateStr) {
+  const cfg = marketCfg(); // 沿用礦石的 minFactor / maxFactor 設定
+  const min = typeof cfg.minFactor === "number" ? cfg.minFactor : 0.7;
+  const max = typeof cfg.maxFactor === "number" ? cfg.maxFactor : 1.3;
+  const prices = {};
+  const factors = {};
+  for (const [key, def] of Object.entries(fishDefs())) {
+    const base = def.price || 0;
+    const dateInt = parseInt(dateStr, 10) || 0;
+    const seed = (dateInt ^ hashStr(`fish_${key}`)) >>> 0;
+    const rng = mulberry32(seed);
+    const factor = min + rng() * (max - min);
+    prices[key] = Math.max(1, Math.round(base * factor));
+    factors[key] = factor;
+  }
+  return { prices, factors };
+}
+
+async function getDailyFishPrices(client, dateStr = todayDate()) {
+  const computed = computeFishPrices(dateStr);
+  const col = client && client.oreMarketPricesCollection;
+  if (!col) {
+    return { date: dateStr, prices: computed.prices, factors: computed.factors, persisted: false };
+  }
+
+  const existing = await col.findOne({ date: dateStr }).catch(() => null);
+  if (existing && existing.fishPrices) {
+    return {
+      date: dateStr,
+      prices: existing.fishPrices,
+      factors: existing.fishFactors || computed.factors,
+      persisted: true,
+    };
+  }
+
+  // Freeze（與礦石不干擾：fish 用 $set，礦石用 $setOnInsert）
+  await col
+    .updateOne(
+      { date: dateStr },
+      {
+        $setOnInsert: { date: dateStr, createdAt: new Date() },
+        $set: { fishPrices: computed.prices, fishFactors: computed.factors },
+      },
+      { upsert: true }
+    )
+    .catch((e) => console.log(`[MARKET] freeze 魚類市價失敗 date=${dateStr}: ${e.message}`.yellow));
+
+  return { date: dateStr, prices: computed.prices, factors: computed.factors, persisted: true };
+}
+
 module.exports = {
   todayDate,
   computePrices,
+  computeFishPrices,
   factorFor,
   getDailyPrices,
+  getDailyFishPrices,
   getOrePrice,
   getPriceHistory,
   pruneOld,

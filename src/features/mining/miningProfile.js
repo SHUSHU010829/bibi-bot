@@ -29,6 +29,10 @@ function defaultProfile(userId, guildId) {
     pending_appraisal: null,
     gift_date: null,
     gift_count: 0,
+    fish_cooldown_at: 0,
+    fish_count_total: 0,
+    fish_bag: { small_fish: 0, crucian: 0, shark: 0, octopus: 0, lava_fish: 0 },
+    active_food_buffs: [],
     createdAt: new Date(),
   };
 }
@@ -71,6 +75,10 @@ function normalize(doc) {
   if (doc.pending_appraisal === undefined) doc.pending_appraisal = null;
   if (doc.gift_date === undefined) doc.gift_date = null;
   doc.gift_count ??= 0;
+  doc.fish_cooldown_at ??= 0;
+  doc.fish_count_total ??= 0;
+  doc.fish_bag = { small_fish: 0, crucian: 0, shark: 0, octopus: 0, lava_fish: 0, ...(doc.fish_bag || {}) };
+  if (!Array.isArray(doc.active_food_buffs)) doc.active_food_buffs = [];
   return doc;
 }
 

@@ -1,0 +1,116 @@
+{
+  "fishing": {
+    "enabled": true,
+    "cooldownMs": 9000000,
+    "locations": {
+      "stream": {
+        "name": "溪流",
+        "emoji": "🏞️",
+        "unlockLevel": 0,
+        "requireDungeonClears": 0
+      },
+      "sea": {
+        "name": "海邊",
+        "emoji": "🌊",
+        "unlockLevel": 15,
+        "requireDungeonClears": 0
+      },
+      "lava_lake": {
+        "name": "熔岩湖",
+        "emoji": "🔥",
+        "unlockLevel": 40,
+        "requireDungeonClears": 10
+      }
+    },
+    "fish": {
+      "small_fish": { "name": "小雜魚", "emoji": "🐟", "rarity": "普通", "price": 5 },
+      "crucian":    { "name": "鯽魚",   "emoji": "🎣", "rarity": "普通", "price": 15 },
+      "shark":      { "name": "鯊魚",   "emoji": "🦈", "rarity": "稀有", "price": 60 },
+      "octopus":    { "name": "章魚",   "emoji": "🐙", "rarity": "稀有", "price": 150 },
+      "lava_fish":  { "name": "熔岩魚", "emoji": "🐉", "rarity": "傳說", "price": 600 }
+    },
+    "dropTable": {
+      "stream":    { "small_fish": 50, "crucian": 30, "shark": 12, "octopus": 6,  "lava_fish": 2 },
+      "sea":       { "small_fish": 30, "crucian": 25, "shark": 25, "octopus": 15, "lava_fish": 5 },
+      "lava_lake": { "small_fish": 10, "crucian": 15, "shark": 20, "octopus": 20, "lava_fish": 35 }
+    },
+    "recipes": {
+      "fish_bento": {
+        "name": "魚排便當",
+        "emoji": "🍱",
+        "description": "鯽魚製成的便當，打工時格外有精神",
+        "materials": { "crucian": 3 },
+        "coalFuel": 3,
+        "buff": {
+          "type": "work_income",
+          "value": 0.20,
+          "durationMs": 7200000,
+          "label": "打工收入 +20%"
+        },
+        "coalBuff": {
+          "type": "work_income",
+          "value": 0.30,
+          "durationMs": 10800000,
+          "label": "打工收入 +30%（煤炭烤製）"
+        }
+      },
+      "shark_noodle": {
+        "name": "鯊魚麵",
+        "emoji": "🍜",
+        "description": "鯊魚熬成的湯底，戰鬥力大幅提升",
+        "materials": { "shark": 2, "small_fish": 5 },
+        "coalFuel": 5,
+        "buff": {
+          "type": "dungeon_atk",
+          "value": 20,
+          "durationMs": 10800000,
+          "label": "地下城 ATK +20"
+        },
+        "coalBuff": {
+          "type": "dungeon_atk",
+          "value": 35,
+          "durationMs": 14400000,
+          "label": "地下城 ATK +35（煤炭烤製）"
+        }
+      },
+      "octopus_rice": {
+        "name": "章魚飯",
+        "emoji": "🐙",
+        "description": "章魚的神奇能量，讓礦工直覺大幅提升",
+        "materials": { "octopus": 1 },
+        "coalFuel": 3,
+        "buff": {
+          "type": "mine_luck",
+          "value": 0.10,
+          "uses": 2,
+          "label": "挖礦幸運 +10%（共 2 次）"
+        },
+        "coalBuff": {
+          "type": "mine_luck",
+          "value": 0.15,
+          "uses": 3,
+          "label": "挖礦幸運 +15%（共 3 次，煤炭烤製）"
+        }
+      },
+      "lava_hotpot": {
+        "name": "熔岩鍋",
+        "emoji": "🍲",
+        "description": "熔岩魚與鯊魚共煮，全屬性短暫爆發",
+        "materials": { "lava_fish": 1, "shark": 1 },
+        "coalFuel": 10,
+        "buff": {
+          "type": "all_boost",
+          "value": 0.10,
+          "durationMs": 3600000,
+          "label": "全屬性 +10%"
+        },
+        "coalBuff": {
+          "type": "all_boost",
+          "value": 0.15,
+          "durationMs": 5400000,
+          "label": "全屬性 +15%（煤炭烤製）"
+        }
+      }
+    }
+  }
+}
