@@ -160,7 +160,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
   );
 
   // 分類篩選下拉選單
-  container.addComponents(
+  container.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(`backpack_cat_${userId}`)
@@ -426,7 +426,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           ([, r]) => r.materials?.[key] !== undefined
         );
         const recipeHint = matchedRecipe ? `・可烹飪成 ${matchedRecipe[1].emoji} ${matchedRecipe[1].name}` : "";
-        container.addComponents(
+        container.addSectionComponents(
           new SectionBuilder()
             .addTextDisplayComponents(
               new TextDisplayBuilder().setContent(
