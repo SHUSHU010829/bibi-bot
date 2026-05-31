@@ -209,6 +209,22 @@ async function getDailyFishPrices(client, dateStr = todayDate()) {
   return { date: dateStr, prices: computed.prices, factors: computed.factors, persisted: true };
 }
 
+// 取得某魚近 N 天價格走勢（由舊到新）
+async function getFishPriceHistory(client, fishKey, days = 7) {
+  const col = client && client.oreMarketPricesCollection;
+  if (!col) return [];
+  const docs = await col
+    .find({})
+    .sort({ date: -1 })
+    .limit(days)
+    .toArray()
+    .catch(() => []);
+  return docs
+    .map((d) => ({ date: d.date, price: d.fishPrices ? d.fishPrices[fishKey] : undefined }))
+    .filter((d) => typeof d.price === "number")
+    .reverse();
+}
+
 module.exports = {
   todayDate,
   computePrices,
@@ -218,6 +234,7 @@ module.exports = {
   getDailyFishPrices,
   getOrePrice,
   getPriceHistory,
+  getFishPriceHistory,
   pruneOld,
   timezone,
 };
