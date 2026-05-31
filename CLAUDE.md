@@ -93,3 +93,9 @@ Discord bot（discord.js v14，Node 22，MongoDB）。
 - **config 驅動**：數值、文案、清單放 JSON，不寫死在程式裡。
 - **指令層不含業務邏輯**：run() 只做：取參數 → 呼叫 service → 呈現結果。
 - **錯誤處理統一 catch**：每個 run() 最外層包 try/catch，catch 裡 `console.log` + ephemeral 回覆。
+- **ContainerBuilder 方法名稱**：`addComponents` 不存在於 ContainerBuilder，正確方法為：
+  - ActionRow → `container.addActionRowComponents(new ActionRowBuilder()...)`
+  - Section → `container.addSectionComponents(new SectionBuilder()...)`
+  - TextDisplay → `container.addTextDisplayComponents(...)`
+  - Separator → `container.addSeparatorComponents(...)`
+  - `addComponents` 只存在於 ActionRowBuilder 本身（用來加 Button / SelectMenu）。
