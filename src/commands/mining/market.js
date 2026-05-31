@@ -156,9 +156,10 @@ module.exports = {
 
   run: async (client, interaction) => {
     const sub = interaction.options.getSubcommand();
-    // 逛攤改為僅自己可見
+    // 逛攤、我的攤位 僅自己可見
+    const privateSubs = ["逛攤", "我的攤位"];
     await interaction.deferReply(
-      sub === "逛攤" ? { flags: MessageFlags.Ephemeral } : undefined
+      privateSubs.includes(sub) ? { flags: MessageFlags.Ephemeral } : undefined
     );
 
     try {
