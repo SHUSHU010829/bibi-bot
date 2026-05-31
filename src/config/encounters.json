@@ -57,6 +57,22 @@
           "winCoinsMax": 280,
           "loseStamina": 1
         }
+      },
+      {
+        "id": "ancient_fossil",
+        "name": "遠古化石",
+        "emoji": "🦴",
+        "weight": 8,
+        "effect": { "type": "bonus_coins", "min": 200, "max": 500 },
+        "text": "你挖出一塊奇異的遠古化石，附近研究員喜出望外，塞給你一筆謝禮！"
+      },
+      {
+        "id": "echo_tunnel",
+        "name": "迴音坑道",
+        "emoji": "🎫",
+        "weight": 8,
+        "effect": { "type": "gift_cd_ticket", "qty": 1 },
+        "text": "坑道深處的迴音讓你靈感乍現，發現了一條捷徑，挖礦效率大提升！（獲得 CD 縮短券 ×1）"
       }
     ],
     "dungeon": [
@@ -72,7 +88,7 @@
         "id": "lost_supplies",
         "name": "遺落補給",
         "emoji": "🎒",
-        "weight": 14,
+        "weight": 12,
         "effect": { "type": "bonus_ore", "ore": "gold", "min": 1, "max": 2 },
         "text": "你發現一批冒險者遺落的補給，裡面有些黃金！"
       },
@@ -80,7 +96,7 @@
         "id": "mystery_potion",
         "name": "神秘藥水",
         "emoji": "🩹",
-        "weight": 16,
+        "weight": 14,
         "effect": { "type": "restore_stamina", "amount": 2 },
         "text": "你撿到一瓶神秘藥水，喝下後體力恢復了一些。"
       },
@@ -88,7 +104,7 @@
         "id": "whetstone",
         "name": "磨刀石",
         "emoji": "🪓",
-        "weight": 12,
+        "weight": 5,
         "effect": { "type": "repair_weapon" },
         "text": "你找到一塊上等磨刀石，順手把武器磨利、耐久完全恢復！"
       },
@@ -96,7 +112,7 @@
         "id": "trap",
         "name": "陷阱",
         "emoji": "⚠️",
-        "weight": 16,
+        "weight": 12,
         "effect": { "type": "lose_stamina", "amount": 1 },
         "text": "你踩中了一個陷阱，慌亂中多耗了一點體力。"
       },
@@ -114,6 +130,38 @@
           "fragmentChance": 0.35,
           "loseStamina": 1
         }
+      },
+      {
+        "id": "wandering_blacksmith",
+        "name": "流浪鐵匠",
+        "emoji": "🔨",
+        "weight": 7,
+        "effect": { "type": "gift_cd_ticket", "qty": 1 },
+        "text": "一位流浪鐵匠路過，感謝你幫他擋了怪物，塞給你一張省時券（CD 縮短券 ×1）！"
+      },
+      {
+        "id": "crystal_vein",
+        "name": "晶洞密室",
+        "emoji": "💠",
+        "weight": 6,
+        "effect": { "type": "bonus_ore", "ore": "diamond", "min": 1, "max": 1 },
+        "text": "你鑿開一塊奇怪的石板，後面竟藏著一個小晶洞！鑽石就躺在裡面。"
+      },
+      {
+        "id": "cursed_altar",
+        "name": "詛咒祭壇",
+        "emoji": "⚖️",
+        "weight": 8,
+        "effect": { "type": "gamble_coins", "winChance": 0.6, "winMin": 300, "winMax": 700, "loseStamina": 1 },
+        "text": "你發現一座詛咒祭壇，上面擺著一個閃閃發光的寶箱……"
+      },
+      {
+        "id": "forgotten_forge",
+        "name": "遺忘的鍛爐",
+        "emoji": "🛠️",
+        "weight": 8,
+        "effect": { "type": "gift_whetstone_inferior", "qty": 1 },
+        "text": "牆角有座廢棄的鍛爐，灰塵底下還留著一塊劣質磨刀石，你收進背包。"
       }
     ]
   }

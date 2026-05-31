@@ -52,6 +52,16 @@ module.exports = {
 
       const readyEpoch = Math.floor(result.newCooldownAt / 1000);
 
+      // 等級顯示
+      const levelLine = result.level != null
+        ? `Lv.${result.level} **${result.levelName}**`
+        : "—";
+      const progressLine = result.toNext != null
+        ? `-# 距下一級（${result.nextLevelName}）還需 ${result.toNext} 次`
+        : result.level != null
+          ? "-# 已達最高等級 🎉"
+          : "";
+
       const container = new ContainerBuilder()
         .setAccentColor(0x3498db)
         .addTextDisplayComponents(
@@ -60,6 +70,11 @@ module.exports = {
           ),
         )
         .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**打工等級**\n${levelLine}\n${progressLine}`,
+          ),
+        )
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `**目前餘額**\n${result.balance.toLocaleString()} ${COIN_EMOJI}`,

@@ -5,28 +5,28 @@
         "id": "pickaxe_iron",
         "name": "鐵鎬",
         "emoji": "<:pickaxe_iron:1509061628698693713>",
-        "materials": { "iron": 15 },
+        "materials": { "iron": 10 },
         "result": { "type": "pickaxe", "id": "iron" }
       },
       {
         "id": "pickaxe_gold",
         "name": "黃金鎬",
         "emoji": "<:pickaxe_gold:1509066702489649296>",
-        "materials": { "gold": 5, "iron": 20 },
+        "materials": { "gold": 5, "iron": 15, "coal": 8 },
         "result": { "type": "pickaxe", "id": "gold" }
       },
       {
         "id": "pickaxe_diamond",
         "name": "鑽石鎬",
         "emoji": "<:pickaxe_diamond:1509126881184583740>",
-        "materials": { "diamond": 5, "gold": 10 },
+        "materials": { "diamond": 7, "gold": 14, "coal": 10 },
         "result": { "type": "pickaxe", "id": "diamond" }
       },
       {
         "id": "sword_iron",
         "name": "鐵劍",
         "emoji": "🗡️",
-        "materials": { "iron": 20 },
+        "materials": { "iron": 15 },
         "result": { "type": "weapon", "id": "iron_sword" }
       },
       {
@@ -40,21 +40,21 @@
         "id": "sword_gold",
         "name": "黃金劍",
         "emoji": "🌟",
-        "materials": { "gold": 8, "iron": 30 },
+        "materials": { "gold": 8, "iron": 24, "coal": 10 },
         "result": { "type": "weapon", "id": "gold_sword" }
       },
       {
         "id": "sword_diamond",
         "name": "鑽石劍",
         "emoji": "💎",
-        "materials": { "diamond": 6, "gold": 15 },
+        "materials": { "diamond": 8, "gold": 18, "coal": 12 },
         "result": { "type": "weapon", "id": "diamond_sword" }
       },
       {
         "id": "sword_legendary",
         "name": "傳說之劍",
         "emoji": "🔥",
-        "materials": { "legendary_fragment": 15, "diamond": 10 },
+        "materials": { "legendary_fragment": 18, "diamond": 12, "coal": 15 },
         "result": { "type": "weapon", "id": "legendary_sword" }
       }
     ]

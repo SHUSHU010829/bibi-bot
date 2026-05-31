@@ -66,6 +66,7 @@ async function mine(client, { userId, guildId, member, username }) {
       durabilityAfter = null;
       set.pickaxe = "wood";
       set.pickaxe_durability = null;
+      set.pickaxe_max_durability = null;
     } else {
       inc.pickaxe_durability = -1;
     }
@@ -192,4 +193,143 @@ async function useCdTicket(client, { userId, guildId }) {
   };
 }
 
-module.exports = { mine, useCdTicket };
+// 依當前鎬子的合成配方計算材料修復所需材料。
+// 成本 = 合成配方礦石各取一半（ceil），加固定 石頭×20、煤炭×10。
+// 回傳 { stone: N, coal: N, iron?: N, gold?: N, diamond?: N } 或 null（木鎬）。
+function getPickaxeRepairCost(profile) {
+  const { craft } = require("../../config");
+  const pickaxeId = profile?.pickaxe;
+  if (!pickaxeId || pickaxeId === "wood") return null;
+  const recipeId = `pickaxe_${pickaxeId}`;
+  const recipe = (craft?.recipes || []).find((r) => r.id === recipeId);
+  if (!recipe) return null;
+  const cost = { stone: 20, coal: 10 };
+  for (const [mat, qty] of Object.entries(recipe.materials || {})) {
+    // 不把煤炭的「配方中煤炭 ÷2」加進去，只算礦石部分（coal 屬燃料不分）
+    if (mat === "coal") continue;
+    cost[mat] = (cost[mat] || 0) + Math.ceil(qty / 2);
+  }
+  return cost;
+}
+
+// 使用一個劣質磨刀石：補滿鎬子耐久到目前 pickaxe_max_durability，然後 max -10。
+// max < 20 時拒用（避免降至 10 以下，讓玩家知道是最終次數）。
+async function useInferiorWhetstone(client, { userId, guildId }) {
+  if (!mining?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+
+  const profile = await getOrCreate(client, userId, guildId);
+
+  if ((profile.whetstone_inferior_count || 0) <= 0) {
+    return { ok: false, reason: "no_whetstone" };
+  }
+  if (!profile.pickaxe || profile.pickaxe === "wood") {
+    return { ok: false, reason: "no_pickaxe" };
+  }
+  if (typeof profile.pickaxe_max_durability !== "number") {
+    return { ok: false, reason: "no_pickaxe" };
+  }
+  if (profile.pickaxe_max_durability < 20) {
+    return { ok: false, reason: "max_too_low", maxDurability: profile.pickaxe_max_durability };
+  }
+
+  // 原子更新：補滿耐久到新 max（舊 max - 10），扣一顆磨刀石
+  // pipeline $set 內所有運算式都參照「更新前」的文件值，所以先算新 max 再補滿是正確的：
+  //   pickaxe_durability = 舊 max - 10  （補滿到新的上限）
+  //   pickaxe_max_durability = 舊 max - 10
+  const res = await client.miningProfilesCollection.updateOne(
+    {
+      userId,
+      guildId,
+      whetstone_inferior_count: { $gte: 1 },
+      pickaxe: { $ne: "wood" },
+      pickaxe_max_durability: { $gte: 20 },
+    },
+    [
+      {
+        $set: {
+          pickaxe_max_durability: { $add: ["$pickaxe_max_durability", -10] },
+          pickaxe_durability: { $add: ["$pickaxe_max_durability", -10] },
+          whetstone_inferior_count: { $add: ["$whetstone_inferior_count", -1] },
+          updatedAt: "$$NOW",
+        },
+      },
+    ]
+  );
+
+  if (res.modifiedCount === 0) {
+    return { ok: false, reason: "retry" };
+  }
+
+  const newMax = profile.pickaxe_max_durability - 10;
+  return {
+    ok: true,
+    durabilityAfter: newMax,
+    maxAfter: newMax,
+    inferiorLeft: (profile.whetstone_inferior_count || 0) - 1,
+  };
+}
+
+// 使用礦石材料原地修復鎬子：補滿耐久至 pickaxe_max_durability，無懲罰。
+// 成本為合成配方礦石各取一半（ceil）加石頭×20、煤炭×10。
+async function repairPickaxeWithMaterials(client, { userId, guildId }) {
+  if (!mining?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+
+  const profile = await getOrCreate(client, userId, guildId);
+
+  if (!profile.pickaxe || profile.pickaxe === "wood") {
+    return { ok: false, reason: "no_pickaxe" };
+  }
+  if (typeof profile.pickaxe_max_durability !== "number") {
+    return { ok: false, reason: "no_pickaxe" };
+  }
+  if (
+    typeof profile.pickaxe_durability === "number" &&
+    profile.pickaxe_durability >= profile.pickaxe_max_durability
+  ) {
+    return { ok: false, reason: "already_full", durability: profile.pickaxe_durability };
+  }
+
+  const cost = getPickaxeRepairCost(profile);
+  if (!cost) return { ok: false, reason: "no_recipe" };
+
+  // 檢查背包足量
+  const bp = profile.backpack || {};
+  const missing = [];
+  for (const [mat, need] of Object.entries(cost)) {
+    const have = bp[mat] || 0;
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) {
+    return { ok: false, reason: "insufficient", missing, cost };
+  }
+
+  // 原子更新：扣材料 + 補滿耐久
+  const inc = {};
+  for (const [mat, need] of Object.entries(cost)) {
+    inc[`backpack.${mat}`] = -need;
+  }
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    {
+      $inc: inc,
+      $set: {
+        pickaxe_durability: profile.pickaxe_max_durability,
+        updatedAt: new Date(),
+      },
+    }
+  );
+
+  return {
+    ok: true,
+    cost,
+    durabilityAfter: profile.pickaxe_max_durability,
+    maxDurability: profile.pickaxe_max_durability,
+  };
+}
+
+module.exports = { mine, useCdTicket, getPickaxeRepairCost, useInferiorWhetstone, repairPickaxeWithMaterials };

@@ -15,7 +15,14 @@ const MINING_ITEM_TYPES = [
   "mining_cd_ticket",
   "mining_backpack",
   "mining_stamina_potion",
+  "mining_whetstone_inferior",
 ];
+
+// 持有上限需在扣款前檢查的挖礦道具：type → 對應 miningProfile 欄位
+const MINING_STACK_LIMIT_MAP = {
+  mining_cd_ticket: "cd_ticket_count",
+  mining_whetstone_inferior: "whetstone_inferior_count",
+};
 
 // 每日購買上限的數量單位（純文案用）。
 const DAILY_LIMIT_UNIT = {
@@ -64,15 +71,16 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
 
   const totalPrice = item.price * qty;
 
-  // CD 縮短券：背包持有上限（在扣款前檢查）
-  if (item.type === "mining_cd_ticket" && item.payload?.maxStack > 0) {
+  // 持有上限檢查：有 payload.maxStack 且對應欄位定義的挖礦道具（在扣款前檢查）
+  const stackLimitField = MINING_STACK_LIMIT_MAP[item.type];
+  if (stackLimitField && item.payload?.maxStack > 0) {
     const prof = await getMiningProfile(client, userId, guildId);
-    const owned = prof?.cd_ticket_count || 0;
+    const owned = prof?.[stackLimitField] || 0;
     const add = (item.payload?.qty || 0) * qty;
     if (owned + add > item.payload.maxStack) {
       return {
         ok: false,
-        error: `CD 縮短券背包最多持有 ${item.payload.maxStack} 張，你目前已有 ${owned} 張，這次最多再買 ${Math.max(0, item.payload.maxStack - owned)} 張。`,
+        error: `「${item.name}」最多持有 ${item.payload.maxStack} 個，你目前已有 ${owned} 個，這次最多再買 ${Math.max(0, item.payload.maxStack - owned)} 個。`,
       };
     }
   }
@@ -211,18 +219,16 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
   } else if (MINING_ITEM_TYPES.includes(item.type)) {
     // 挖礦道具：寫入 MiningProfiles，不進 UserInventory
     await getMiningProfile(client, userId, guildId);
-    const incField =
-      item.type === "mining_luck_potion"
-        ? "luck_potion_uses"
-        : item.type === "mining_cd_ticket"
-          ? "cd_ticket_count"
-          : "backpack_bonus_slots";
-    const incAmount =
-      (item.type === "mining_luck_potion"
-        ? item.payload?.uses || 0
-        : item.type === "mining_cd_ticket"
-          ? item.payload?.qty || 0
-          : item.payload?.slots || 0) * qty;
+    // 各道具型別對應的 profile 欄位與 payload 中的單位數量鍵
+    const MINING_FIELD_MAP = {
+      mining_luck_potion: { field: "luck_potion_uses", payloadKey: "uses" },
+      mining_cd_ticket:   { field: "cd_ticket_count",  payloadKey: "qty"  },
+      mining_backpack:    { field: "backpack_bonus_slots", payloadKey: "slots" },
+      mining_whetstone_inferior: { field: "whetstone_inferior_count", payloadKey: "qty" },
+    };
+    const mapping = MINING_FIELD_MAP[item.type];
+    const incField = mapping?.field || "luck_potion_uses";
+    const incAmount = (item.payload?.[mapping?.payloadKey] || 0) * qty;
     await client.miningProfilesCollection.updateOne(
       { userId, guildId },
       { $inc: { [incField]: incAmount }, $set: { updatedAt: now } },

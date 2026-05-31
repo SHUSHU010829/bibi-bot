@@ -112,6 +112,8 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
       $set: {
         [slot.equippedField]: resultId,
         [slot.durabilityField]: targetDef.durability ?? null,
+        // 合成鎬子時同步設定最大耐久上限（武器無此欄位）
+        ...(type !== "weapon" ? { pickaxe_max_durability: targetDef.durability ?? null } : {}),
         updatedAt: new Date(),
       },
     }

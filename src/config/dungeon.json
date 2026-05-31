@@ -27,15 +27,15 @@
       { "name": "暗影狼", "emoji": "🐺" }
     ],
     "loot": [
-      { "id": "ore_iron", "kind": "ore", "ore": "iron", "qty": 3, "weight": 24 },
+      { "id": "ore_iron", "kind": "ore", "ore": "iron", "qty": 3, "weight": 27 },
       { "id": "ore_coal", "kind": "ore", "ore": "coal", "qty": 4, "weight": 14 },
       { "id": "ore_gold", "kind": "ore", "ore": "gold", "qty": 1, "weight": 9 },
       { "id": "coins_small", "kind": "coins", "minCoins": 150, "maxCoins": 320, "weight": 22 },
       { "id": "coins_big", "kind": "coins", "minCoins": 450, "maxCoins": 850, "weight": 7 },
       { "id": "luck_potion", "kind": "luck_potion", "qty": 1, "weight": 7 },
       { "id": "cd_ticket", "kind": "cd_ticket", "qty": 1, "weight": 7 },
-      { "id": "legendary_fragment", "kind": "fragment", "qty": 1, "weight": 5 },
-      { "id": "nothing", "kind": "nothing", "weight": 12 }
+      { "id": "legendary_fragment", "kind": "fragment", "qty": 1, "weight": 3 },
+      { "id": "nothing", "kind": "nothing", "weight": 14 }
     ],
     "duel": {
       "enabled": true,

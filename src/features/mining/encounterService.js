@@ -265,6 +265,53 @@ async function trigger(client, ctx) {
         break;
       }
 
+      case "gamble_coins": {
+        // 詛咒祭壇：依 winChance 賭一把，勝得金幣，敗扣體力
+        const won = Math.random() < (eff.winChance ?? 0.6);
+        if (won) {
+          const coins = randInt(eff.winMin ?? 300, eff.winMax ?? 700);
+          await grantCoins(client, {
+            userId,
+            guildId,
+            username,
+            amount: coins,
+            source: "encounter",
+            member,
+            meta: { encounter: enc.id, result: "win" },
+          });
+          lines.push(`⚖️ 你鼓起勇氣打開寶箱，奪得 +${coins.toLocaleString()} ${COIN_EMOJI}！`);
+        } else {
+          const max = baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 10);
+          const cur = typeof baseResult?.stamina === "number" ? baseResult.stamina : max;
+          const lose = eff.loseStamina || 1;
+          const next = clamp(cur - lose, 0, max);
+          const set = { stamina: next, updatedAt: new Date() };
+          if (cur >= max) set.stamina_updated_at = Date.now();
+          await coll(client).updateOne({ userId, guildId }, { $set: set });
+          patch.staminaAfter = next;
+          lines.push(`⚖️ 你伸手觸碰寶箱，機關觸發！損失 ${lose} 點體力。`);
+        }
+        break;
+      }
+
+      case "gift_whetstone_inferior": {
+        // 遺忘的鍛爐：贈送一塊劣質磨刀石（遵守持有上限 20）
+        const WHETSTONE_INFERIOR_MAX = 20;
+        const profile = await getOrCreate(client, userId, guildId);
+        const owned = profile.whetstone_inferior_count || 0;
+        const give = Math.min(eff.qty || 1, Math.max(0, WHETSTONE_INFERIOR_MAX - owned));
+        if (give > 0) {
+          await coll(client).updateOne(
+            { userId, guildId },
+            { $inc: { whetstone_inferior_count: give }, $set: { updatedAt: new Date() } }
+          );
+          lines.push(`🪨 劣質磨刀石 ×${give}（可在 /背包 使用）`);
+        } else {
+          lines.push("你的劣質磨刀石已達持有上限，這次沒拿到。");
+        }
+        break;
+      }
+
       case "repair_weapon": {
         const profile = await getOrCreate(client, userId, guildId);
         const wdef = (dungeon?.weapons || {})[profile.weapon] || {};

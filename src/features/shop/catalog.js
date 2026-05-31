@@ -5,6 +5,7 @@ const STACKABLE_TYPES = [
   "mining_luck_potion",
   "mining_cd_ticket",
   "mining_backpack",
+  "mining_whetstone_inferior",
   "casino_token",
 ];
 
@@ -16,10 +17,10 @@ function isStackable(item) {
   return !!item && STACKABLE_TYPES.includes(item.type);
 }
 
-// 單次購買的數量上限：CD 縮短券吃持有上限（maxStack），其餘給一個合理的天花板。
+// 單次購買的數量上限：有 payload.maxStack 的商品吃持有上限，其餘給一個合理的天花板。
 function stackMax(item) {
   if (!isStackable(item)) return 1;
-  if (item.type === "mining_cd_ticket" && item.payload?.maxStack > 0) {
+  if (item.payload?.maxStack > 0) {
     return item.payload.maxStack;
   }
   return 50;

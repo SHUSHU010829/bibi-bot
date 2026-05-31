@@ -21,6 +21,7 @@ const {
   CARDNO_OPEN_ID,
 } = require("../donation/customCardNumber");
 const { roleBuffSummary } = require("../buff/buffResolver");
+const { getPickaxeRepairCost } = require("../mining/mineService");
 
 // CD 縮短券「使用」按鈕 customId 格式：mining_use_cd_ticket_<ownerId>
 // 由 events/interactionCreate/handleMiningTicket.js 處理。
@@ -30,6 +31,35 @@ function parseUseTicketId(customId) {
   if (!customId || !customId.startsWith(USE_TICKET_PREFIX)) return null;
   const ownerId = customId.slice(USE_TICKET_PREFIX.length);
   return ownerId ? { ownerId } : null;
+}
+
+// 劣質磨刀石「使用」按鈕：mining_use_whetstone_inferior_<ownerId>
+// 注意：_inferior_ 是 _whetstone_ 的超集，handler 內先比長的 prefix。
+const USE_WHETSTONE_INFERIOR_PREFIX = "mining_use_whetstone_inferior_";
+
+function parseUseWhetstoneInferiorId(customId) {
+  if (!customId || !customId.startsWith(USE_WHETSTONE_INFERIOR_PREFIX)) return null;
+  const ownerId = customId.slice(USE_WHETSTONE_INFERIOR_PREFIX.length);
+  return ownerId ? { ownerId } : null;
+}
+
+// 材料修復預覽按鈕：mining_repair_material_<ownerId>
+// 確認按鈕：mining_repair_material_confirm_<ownerId>
+const REPAIR_MATERIAL_PREFIX = "mining_repair_material_";
+const REPAIR_MATERIAL_CONFIRM_PREFIX = "mining_repair_material_confirm_";
+
+function parseRepairMaterialId(customId) {
+  // 先比長的（confirm 是 preview 的超集）
+  if (!customId) return null;
+  if (customId.startsWith(REPAIR_MATERIAL_CONFIRM_PREFIX)) {
+    const ownerId = customId.slice(REPAIR_MATERIAL_CONFIRM_PREFIX.length);
+    return ownerId ? { ownerId, confirm: true } : null;
+  }
+  if (customId.startsWith(REPAIR_MATERIAL_PREFIX)) {
+    const ownerId = customId.slice(REPAIR_MATERIAL_PREFIX.length);
+    return ownerId ? { ownerId, confirm: false } : null;
+  }
+  return null;
 }
 
 const TYPE_LABEL = {
@@ -175,7 +205,9 @@ async function buildBackpackView(client, { userId, guildId, member, displayName 
     const durabilityText =
       profile.pickaxe === "wood" || profile.pickaxe_durability == null
         ? "永久"
-        : `耐久 ${profile.pickaxe_durability} 次`;
+        : typeof profile.pickaxe_max_durability === "number"
+          ? `耐久 ${profile.pickaxe_durability} / ${profile.pickaxe_max_durability}`
+          : `耐久 ${profile.pickaxe_durability}`;
 
     const now = Date.now();
     const inCooldown = (profile.mine_cooldown_at || 0) > now;
@@ -185,8 +217,29 @@ async function buildBackpackView(client, { userId, guildId, member, displayName 
 
     const luckUses = profile.luck_potion_uses || 0;
     const ticketCount = profile.cd_ticket_count || 0;
+    const inferiorCount = profile.whetstone_inferior_count || 0;
     const fragments = profile.legendary_fragments || 0;
     const reductionMin = Math.round((mining?.cdTicketReductionMs || 0) / 60000);
+
+    // 材料修復：計算所需材料（讓 UI 提示用）
+    const repairCost = getPickaxeRepairCost(profile);
+    const canRepair =
+      repairCost !== null &&
+      profile.pickaxe !== "wood" &&
+      typeof profile.pickaxe_durability === "number" &&
+      typeof profile.pickaxe_max_durability === "number" &&
+      profile.pickaxe_durability < profile.pickaxe_max_durability;
+
+    // 材料修復所需文字（iron×5、stone×20 …）
+    const formatCost = (cost) => {
+      if (!cost) return "";
+      return Object.entries(cost)
+        .map(([mat, qty]) => {
+          const oreDef = mining.ores?.[mat];
+          return oreDef ? `${oreDef.emoji} ${oreDef.name}×${qty}` : `${mat}×${qty}`;
+        })
+        .join("、");
+    };
 
     // ── 礦石 ──
     container.addSeparatorComponents(new SeparatorBuilder());
@@ -232,6 +285,60 @@ async function buildBackpackView(client, { userId, guildId, member, displayName 
             .setDisabled(!(ticketCount > 0 && inCooldown))
         )
     );
+    // 劣質磨刀石
+    {
+      const maxDur = profile.pickaxe_max_durability;
+      const inferiorCanUse =
+        inferiorCount > 0 &&
+        profile.pickaxe !== "wood" &&
+        typeof maxDur === "number" &&
+        maxDur >= 20;
+      const inferiorHint = inferiorCount > 0 && typeof maxDur === "number" && maxDur < 20
+        ? "\n-# ⚠️ 鎬子最大耐久不足 20，無法使用"
+        : `\n-# 補滿耐久，最大耐久 -10（目前上限 ${typeof maxDur === "number" ? maxDur : "—"}）`;
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `🪨 **劣質磨刀石** ×${inferiorCount}${inferiorHint}`
+            )
+          )
+          .setButtonAccessory(
+            new ButtonBuilder()
+              .setCustomId(`${USE_WHETSTONE_INFERIOR_PREFIX}${userId}`)
+              .setLabel("使用")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(!inferiorCanUse)
+          )
+      );
+    }
+    // 材料修復
+    {
+      const repairLabel = canRepair && repairCost
+        ? `🛠️ **材料修復**\n-# 消耗：${formatCost(repairCost)}，補滿鎬子耐久`
+        : `🛠️ **材料修復**\n-# ${
+            profile.pickaxe === "wood"
+              ? "需要非木鎬才能修復"
+              : !canRepair && typeof profile.pickaxe_durability === "number" &&
+                typeof profile.pickaxe_max_durability === "number" &&
+                profile.pickaxe_durability >= profile.pickaxe_max_durability
+              ? "耐久已滿，不需要修復"
+              : "裝備鎬子後可使用"
+          }`;
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(repairLabel)
+          )
+          .setButtonAccessory(
+            new ButtonBuilder()
+              .setCustomId(`${REPAIR_MATERIAL_PREFIX}${userId}`)
+              .setLabel("修復")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(!canRepair)
+          )
+      );
+    }
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `✨ **傳說素材碎片** ×${fragments}\n-# 合成傳說裝備材料`
@@ -342,5 +449,10 @@ module.exports = {
   buildBackpackView,
   USE_TICKET_PREFIX,
   parseUseTicketId,
+  USE_WHETSTONE_INFERIOR_PREFIX,
+  parseUseWhetstoneInferiorId,
+  REPAIR_MATERIAL_PREFIX,
+  REPAIR_MATERIAL_CONFIRM_PREFIX,
+  parseRepairMaterialId,
   UNIFIED_EQUIP_ID,
 };

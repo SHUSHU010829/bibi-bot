@@ -5,6 +5,13 @@
     "minReward": 80,
     "maxReward": 120,
     "dailyMaxClaims": 6,
+    "levels": [
+      { "level": 1, "name": "打工新手", "minCount": 0,   "minReward": 80,  "maxReward": 120 },
+      { "level": 2, "name": "兼職人員", "minCount": 60,  "minReward": 95,  "maxReward": 135 },
+      { "level": 3, "name": "正式員工", "minCount": 220, "minReward": 110, "maxReward": 155 },
+      { "level": 4, "name": "資深員工", "minCount": 480, "minReward": 125, "maxReward": 175 },
+      { "level": 5, "name": "王牌員工", "minCount": 900, "minReward": 140, "maxReward": 185 }
+    ],
     "jobs": [
       "幫人搬家，搬了三層樓的傢俱",
       "在便利商店站了一班收銀台",
