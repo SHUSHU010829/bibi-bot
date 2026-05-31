@@ -1,16 +1,10 @@
 # 逼逼機器人 — 挖礦生態系統開發規劃書（bibi-bot）
 
-> 本文件原規劃 bibi-bot 端完整「挖礦生態系統」。**Phase 0–7 已開發完成並上線**（核心挖礦、打工、裝備合成、地下城、決鬥、贈送、拍賣、成長 / 稱號、Twitch 訂閱者權益），相關段落已移除（指令與機制見 `README.md` §12.5–12.6、`docs/ECONOMY_AND_CASINO.md` §15.2）。本文件僅保留**尚未完成**的項目：Phase 8（抖內發放端）與 Phase 7 兩項待接的跨系統權益。
+> 本文件原規劃 bibi-bot 端完整「挖礦生態系統」。**Phase 0–8 全部已開發完成並上線**（核心挖礦、打工、裝備合成、地下城、決鬥、贈送、拍賣、成長 / 稱號、Twitch 訂閱者權益、抖內發放端），相關段落已移除（指令與機制見 `README.md` §12.5–12.6、`docs/ECONOMY_AND_CASINO.md` §15.2）。
 >
-> **重要架構決策**：抖內的付款流程（Discord OAuth、建立 session、導向綠界 / 歐付寶、接收與驗證 webhook）整段搬到 **bibi-website** 執行；bibi-bot 只負責「Discord 端效果」——加身分組、發金幣、發消耗品、DM、公告，並透過一支內部 API 被 website 呼叫。詳見 [Phase 8](#phase-8--抖內發放端bibi-bot) 與 [API 介接契約](#api-介接契約)。
+> **✅ 所有 Phase 皆已完成，本文件作為歷史參考留存。**
 >
-> 各階段皆為獨立可上線的完整功能，可依進度逐步推出。
->
-> **僅剩以下未完成：**
-> 1. **Phase 8 — 抖內發放端**（見下）。
-> 2. **Phase 7 兩項跨系統權益**（設定檔 `twitch_perks.json` 已就緒，尚未接子系統）：**訂閱限定卡面**（`exclusiveThemeId`，需在錢包卡渲染器實作 `theme_subscriber_t2/t3` 畫法並發到訂閱者背包）與**永久限定名字顏色**（`exclusiveColorRoleId`，需先建顏色身分組、填 ID，並用「給過不收回」邏輯授予 Tier3）。
->
-> 最後更新：2026-05-27（移除已完成的 Phase 6、7，僅留待辦）
+> 最後更新：2026-05-31（Phase 7 剩餘兩項 Twitch 權益、Phase 8 抖內發放端已完成，文件標記全數完工）
 
 ---
 
@@ -27,7 +21,7 @@
 9. [檔案索引](#檔案索引)
 10. [開發時程總覽](#開發時程總覽)
 
-> ✅ **Phase 0–7 已開發完成並上線**（核心挖礦、打工、裝備合成、地下城、決鬥、贈送、拍賣、成長 / 稱號、Twitch 訂閱者權益），相關段落已從本文件移除；指令與機制見 `README.md` §12.5–12.6、`docs/ECONOMY_AND_CASINO.md` §15.2。本文件僅保留尚未完成的 Phase 8 與 Phase 7 兩項待接權益。
+> ✅ **Phase 0–8 全部已開發完成並上線**（核心挖礦、打工、裝備合成、地下城、決鬥、贈送、拍賣、成長 / 稱號、Twitch 訂閱者權益、抖內發放端），相關段落已從本文件移除；指令與機制見 `README.md` §12.5–12.6、`docs/ECONOMY_AND_CASINO.md` §15.2。
 
 ---
 
@@ -138,27 +132,17 @@
 
 ---
 
-## Phase 7 — 剩餘 Twitch 訂閱者權益
+## Phase 7 — Twitch 訂閱者權益
 
-> Phase 7 的大部分權益已上線（挖礦 luck/CD、打工 CD、Tier3 每月免費稱號、地下城體力上限、定存單上限、拍賣手續費、樂透每期張數上限，皆讀 `twitch_perks.json` 透過 `src/features/mining/twitchPerks.js` 套用）。**以下兩項尚未接子系統**——設定欄位已在 `twitch_perks.json`，但需要額外資產與渲染器改動，非單純接線。
-
-### 7.1 訂閱限定卡面（`exclusiveThemeId`，T2 `theme_subscriber_t2` / T3 `theme_subscriber_t3`）
-
-- 在 `src/config/shop.json` 的 `themes` 新增兩個主題定義。
-- 在錢包卡渲染器（`src/features/profile/views/levelCard.js`、`src/features/profile/views/wallet.js` 的 render 路徑）實作對應畫法。
-- 自動把主題發到訂閱者背包供裝備（`UserInventory` `wallet_theme`），退訂後處理。
-
-### 7.2 永久限定名字顏色（`exclusiveColorRoleId`，T3）
-
-- 先在伺服器建立顏色身分組，把 ID 填入 `twitch_perks.json`。
-- 偵測到 T3 即授予該角色，且**退訂後不收回**（不可放進會隨訂閱增刪的同步流程，避免被自動拔除）。
+> ✅ **Phase 7 全部完成**（含訂閱限定卡面 T2/T3、T3 永久限定名字顏色，以及先前已上線的 luck/CD/打工CD/免費稱號/體力上限/拍賣手續費等項目）。
 
 ---
 
 ## Phase 8 — 抖內發放端（bibi-bot）
 
+> ✅ **Phase 8 已完成**。
+>
 > **目標**：只做「Discord 端效果」。付款 / OAuth / session / webhook 全在 **bibi-website**（見該 repo 的 `docs/DONATION_SYSTEM_PLAN.md`）。
-> **前置**：Phase 1（已完成）。**預估**：2–3 天（不含 website）。
 
 ### 職責邊界
 
@@ -374,30 +358,16 @@ website 對共用 MongoDB 只持有**唯讀**帳號；所有寫入一律經由 b
 
 ## 檔案索引
 
-> 僅列尚未完成的檔案。已完成的挖礦 / 打工 / 合成 / 地下城 / 拍賣 / 稱號 / Twitch 權益等檔案見 `README.md` §12.6、`docs/ECONOMY_AND_CASINO.md` §15.2 與 `src/features/mining`、`src/features/gameTitles`、`src/features/auction`。
-
-| 檔案 | 內容 | Phase |
-|---|---|---|
-| `src/config/shop.json`（themes）+ 錢包卡渲染器 | 訂閱限定卡面 `theme_subscriber_t2/t3`（待接，改既有檔案） | 7 |
-| `src/config/twitch_perks.json`（`exclusiveColorRoleId`）+ 授予邏輯 | 永久限定名字顏色（待接，需先建顏色身分組） | 7 |
-| `src/config/donation_tiers.json` | 抖內方案與回饋 | 8 |
-| `src/features/donation/grantDonationPerks.js` | 抖內回饋發放 | 8 |
-| `src/httpServer/donationSession.js` | `/api/donation/session` 建立 pending session | 8 |
-| `src/httpServer/donationGrant.js` | `/api/donation/grant`（仿 flushChatScore） | 8 |
-| `src/events/ready/donationReconcile.js` | 抖內對帳 cron | 8 |
+> ✅ 所有 Phase 已完成。完整檔案清單見 `README.md` §12.6、`docs/ECONOMY_AND_CASINO.md` §15.2 與 `src/features/mining`、`src/features/donation`、`src/features/gameTitles`、`src/features/auction`。
 
 ---
 
 ## 開發時程總覽
 
-> ✅ Phase 0–7 已開發完成並上線（不再列入待辦）。以下為剩餘工作。
+| Phase | 內容 | 狀態 |
+|---|---|---|
+| 0–6 | 核心挖礦、打工、裝備合成、地下城、決鬥、贈送、拍賣 | ✅ 完成 |
+| 7 | Twitch 訂閱者權益（含限定卡面、永久顏色） | ✅ 完成 |
+| 8 | 抖內發放端 | ✅ 完成 |
 
-| Phase | 內容 | 預估 | 前置 | 狀態 |
-|---|---|---|---|---|
-| 7（剩餘） | 訂閱限定卡面 + 永久限定名字顏色 | 1–2 天 | 需先備卡面設計 / 顏色身分組 | ⏳ 待接子系統 |
-| 8 | 抖內發放端 | 2–3 天 | website 端 | ⏳ 待開發 |
-
-> Phase 8 的付款 / 前端在 bibi-website，需另計入該 repo 工時與商家帳號申請（3–7 工作天）。
-> Phase 7 剩餘兩項的具體做法見上方 [Phase 7 — 剩餘 Twitch 訂閱者權益](#phase-7--剩餘-twitch-訂閱者權益)。
-
-_Last updated: 2026-05-27（移除已完成的 Phase 6、7，僅留 Phase 8 與 Phase 7 兩項待接權益）_
+_Last updated: 2026-05-31（Phase 7、8 完成，全系統上線）_
