@@ -169,7 +169,7 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}) {
     );
 
   // ── 篩選器 ──
-  container.addComponents(
+  container.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(FILTER_TYPE_ID)
@@ -183,7 +183,7 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}) {
         ])
     )
   );
-  container.addComponents(
+  container.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(FILTER_ITEM_ID)

@@ -119,7 +119,7 @@ module.exports = {
 
       // 快捷操作按鈕：立刻賣掉 + 查看魚袋
       const userId = interaction.user.id;
-      container.addComponents(
+      container.addActionRowComponents(
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`fish_sell_${userId}_${result.fish}`)
