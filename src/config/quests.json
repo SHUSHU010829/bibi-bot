@@ -144,9 +144,9 @@
       {
         "id": "weekly_dungeon",
         "name": "週週下城",
-        "description": "本週完成地下城探索 ≥ 15 次",
-        "reward": 1200,
-        "target": 15
+        "description": "本週完成地下城探索 ≥ 30 次",
+        "reward": 1500,
+        "target": 30
       },
       {
         "id": "weekly_dungeon_win",
