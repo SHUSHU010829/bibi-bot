@@ -9,6 +9,17 @@ function cfg() {
   return marketplace || {};
 }
 
+// 私訊通知使用者（對方關閉私訊時靜默失敗，不影響交易流程）
+async function dmUser(client, userId, content) {
+  if (!client || !userId) return;
+  try {
+    const user = await client.users.fetch(userId);
+    await user.send(content);
+  } catch (err) {
+    console.log(`[WARN] marketplace DM 失敗（${userId}）：${err?.message || err}`.yellow);
+  }
+}
+
 // 依賣家 Twitch tier 決定手續費率（仿 auctionService）
 async function resolveSellerFeeRate(client, listing, defaultRate) {
   try {
@@ -725,6 +736,19 @@ async function finalizeAuction(client, listing) {
     { listing_id: listing.listing_id, guild_id: listing.guild_id },
     { $set: { status: "sold", fee, proceeds, settled_at: new Date() } }
   );
+
+  // 通知賣家：競標已成交
+  const oreDef = mining?.ores?.[listing.ore] || {};
+  const oreText = `${oreDef.emoji || "⛏️"} ${oreDef.name || listing.ore} ×${listing.qty}`;
+  await dmUser(
+    client,
+    listing.seller_id,
+    `🏷️ 你的競標 **#${listing.listing_id}**（${oreText}）已成交！\n` +
+      `得標金額 **${listing.current_bid.toLocaleString()}** 🪙` +
+      `（手續費 ${fee.toLocaleString()}，實得 **${proceeds.toLocaleString()}** 🪙）\n` +
+      `金幣已存入你的帳戶。`
+  );
+
   return { outcome: "sold", listing, fee, proceeds };
 }
 
@@ -849,5 +873,6 @@ module.exports = {
   listActive,
   listByOwner,
   minNextBid,
+  dmUser,
   minAuctionStartPrice,
 };

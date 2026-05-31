@@ -197,6 +197,15 @@ module.exports = async (client, interaction) => {
         buyerName: interaction.member?.displayName || interaction.user.username,
         member: interaction.member,
       });
+      if (result.ok) {
+        const l = result.listing;
+        marketplaceService.dmUser(
+          client,
+          l.seller_id,
+          `💰 你的賣礦掛單 **#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty} 已售出！\n` +
+            `售價 **${l.price.toLocaleString()}** 🪙（手續費 ${result.fee || 0}），金幣已入帳。`
+        );
+      }
       return interaction.followUp({
         content: formatBuyResult(result),
         flags: MessageFlags.Ephemeral,
@@ -223,6 +232,15 @@ module.exports = async (client, interaction) => {
         guildId: interaction.guildId,
         acceptorName: interaction.member?.displayName || interaction.user.username,
       });
+      if (result.ok) {
+        const l = result.listing;
+        marketplaceService.dmUser(
+          client,
+          l.seller_id,
+          `🔄 你的換礦單 **#${l.listing_id}** 已成交！\n` +
+            `你付出 ${oreLabel(l.ore)} ×${l.qty}，得到 ${oreLabel(l.want_ore)} ×${l.want_qty}。`
+        );
+      }
       return interaction.followUp({
         content: formatBarterResult(result),
         flags: MessageFlags.Ephemeral,
@@ -250,6 +268,18 @@ module.exports = async (client, interaction) => {
         sellerName: interaction.member?.displayName || interaction.user.username,
         member: interaction.member,
       });
+      if (result.ok) {
+        const l = result.listing;
+        const paidStr = l.pay_kind === "coin"
+          ? `**${(l.pay_coin || 0).toLocaleString()}** 🪙`
+          : `${oreLabel(l.pay_ore)} ×${l.pay_qty}`;
+        marketplaceService.dmUser(
+          client,
+          l.seller_id,
+          `📋 你的徵求單 **#${l.listing_id}** 已被滿足！\n` +
+            `你收到 ${oreLabel(l.ore)} ×${l.qty}，付出 ${paidStr}。`
+        );
+      }
       return interaction.followUp({
         content: formatFulfillResult(result),
         flags: MessageFlags.Ephemeral,
