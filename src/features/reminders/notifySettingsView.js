@@ -25,7 +25,7 @@ const CUSTOM_ID_PREFIX = "notifyset";
 
 // 面板上會出現的「冷卻到點」類型（沿用 cooldownReminderService 的 type）。
 // dungeon 嚴格來說不是冷卻，而是體力補滿提醒；通知行為相同所以共用同一條鏈路。
-const COOLDOWN_ACTIONS = ["mining", "work", "crash", "dungeon"];
+const COOLDOWN_ACTIONS = ["mining", "work", "fish", "crash", "dungeon"];
 const ACTIONS = ["master", ...COOLDOWN_ACTIONS, "quest"];
 
 function buildCustomId(action, userId) {
@@ -59,6 +59,7 @@ async function buildContainer(client, userId, guildId) {
     masterEnabled,
     miningState,
     workState,
+    fishState,
     crashState,
     dungeonState,
     questEnabled,
@@ -66,6 +67,7 @@ async function buildContainer(client, userId, guildId) {
     notifyPrefs.isMasterEnabled(client, userId, guildId),
     reminder.getState(client, { userId, guildId, type: "mining" }),
     reminder.getState(client, { userId, guildId, type: "work" }),
+    reminder.getState(client, { userId, guildId, type: "fish" }),
     reminder.getState(client, { userId, guildId, type: "crash" }),
     reminder.getState(client, { userId, guildId, type: "dungeon" }),
     questNotifyPref.isDmEnabled(client, userId, guildId),
@@ -74,6 +76,7 @@ async function buildContainer(client, userId, guildId) {
   const states = {
     mining: !!miningState?.enabled,
     work: !!workState?.enabled,
+    fish: !!fishState?.enabled,
     crash: !!crashState?.enabled,
     dungeon: !!dungeonState?.enabled,
     quest: !!questEnabled,
@@ -102,6 +105,7 @@ async function buildContainer(client, userId, guildId) {
         `**⏰ 到點通知**（冷卻結束或體力補滿時私訊你）\n` +
           `${reminder.TYPE_META.mining.emoji} 挖礦：${onOff(states.mining)}\n` +
           `${reminder.TYPE_META.work.emoji} 打工：${onOff(states.work)}\n` +
+          `${reminder.TYPE_META.fish.emoji} 釣魚：${onOff(states.fish)}\n` +
           `${reminder.TYPE_META.crash.emoji} 火箭：${onOff(states.crash)}\n` +
           `${reminder.TYPE_META.dungeon.emoji} 地下城體力：${onOff(states.dungeon)}`
       )
@@ -135,6 +139,7 @@ async function buildContainer(client, userId, guildId) {
     new ActionRowBuilder().addComponents(
       toggleButton("mining", userId, states.mining, "挖礦到點"),
       toggleButton("work", userId, states.work, "打工到點"),
+      toggleButton("fish", userId, states.fish, "釣魚到點"),
       toggleButton("crash", userId, states.crash, "火箭到點"),
       toggleButton("dungeon", userId, states.dungeon, "地下城體力")
     )
