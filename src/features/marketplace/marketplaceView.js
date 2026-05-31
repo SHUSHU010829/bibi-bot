@@ -312,7 +312,7 @@ function buildBidModal(listingId, listing) {
     .setTitle(`對 #${listingId} 競標`);
   const input = new TextInputBuilder()
     .setCustomId("bid_amount")
-    .setLabel(`出價金額（${COIN_EMOJI}）`)
+    .setLabel("出價金額（🪙）")
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setMinLength(1)
