@@ -162,22 +162,15 @@ module.exports = async (client, interaction) => {
     }
 
     // ── 確認修復：實際執行 ──
+    // 注意：這個確認訊息是上一步 interaction.reply 建立的純文字 ephemeral
+    // （沒帶 IsComponentsV2 flag），所以這裡只能用同樣不帶 v2 flag 的方式
+    // editReply，不能塞 buildBackpackView 的 v2 容器，否則會被 Discord 拒收。
     await interaction.deferUpdate();
 
     const result = await mineService.repairPickaxeWithMaterials(client, {
       userId: interaction.user.id,
       guildId: interaction.guildId,
     });
-
-    const view = await buildBackpackView(client, {
-      userId: interaction.user.id,
-      guildId: interaction.guildId,
-      displayName:
-        interaction.member?.displayName ||
-        interaction.user.displayName ||
-        interaction.user.username,
-    });
-    await interaction.editReply(view);
 
     if (!result.ok) {
       const messages = {
@@ -192,10 +185,10 @@ module.exports = async (client, interaction) => {
         }`,
         retry: "⏳ 操作衝突，請再試一次。",
       };
-      await replyEphemeral(
-        interaction,
-        messages[result.reason] || "🔧 修復失敗，請稍後再試。"
-      );
+      await interaction.editReply({
+        content: messages[result.reason] || "🔧 修復失敗，請稍後再試。",
+        components: [],
+      });
       return;
     }
 
@@ -207,10 +200,10 @@ module.exports = async (client, interaction) => {
       })
       .join("　");
 
-    await replyEphemeral(
-      interaction,
-      `🛠️ 修復完成！鎬子耐久恢復至 **${result.durabilityAfter}**。\n消耗了：${costLines}`
-    );
+    await interaction.editReply({
+      content: `🛠️ 修復完成！鎬子耐久恢復至 **${result.durabilityAfter}**。\n消耗了：${costLines}\n\n-# 重新打開 /背包 可看到最新狀態。`,
+      components: [],
+    });
     trackSuccess("mining-repair-material");
   } catch (err) {
     logger.error(
