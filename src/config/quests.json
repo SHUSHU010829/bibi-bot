@@ -77,13 +77,6 @@
         "target": 1
       },
       {
-        "id": "daily_dungeon",
-        "name": "地城探險",
-        "description": "當日完成地下城探索 ≥ 1 次（不論勝負）",
-        "reward": 150,
-        "target": 1
-      },
-      {
         "id": "daily_dungeon_win",
         "name": "地城獵人",
         "description": "當日地下城戰鬥勝利 ≥ 2 次",

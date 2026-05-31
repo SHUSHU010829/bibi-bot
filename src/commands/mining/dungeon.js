@@ -157,7 +157,6 @@ module.exports = {
 
       // 地下城任務進度：完成一場探索（不論勝負）＋勝利再加計勝場
       const dungeonHooks = [
-        { questId: "daily_dungeon" },
         { questId: "daily_dungeon_10" },
         { questId: "weekly_dungeon" },
       ];
