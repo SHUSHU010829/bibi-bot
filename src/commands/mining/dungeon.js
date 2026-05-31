@@ -69,40 +69,84 @@ function appendCombatExtras(container, result) {
   }
 }
 
-// 體力補滿到點通知：刷新已訂閱者的 readyAt；沒訂閱就在訊息底部給個小提示。
-async function applyStaminaNotify(client, interaction, container) {
-  const fullAt = await dungeonService
-    .staminaFullAt(client, {
-      userId: interaction.user.id,
-      guildId: interaction.guildId,
-      member: interaction.member,
-    })
-    .catch(() => 0);
+// 體力補滿到點通知（pre-render）：只做兩件純讀取的事，並把要不要附底部提示
+// 的字串渲染進 container。整段包在 try/catch 裡——這條路徑要絕對不能把 /地下城
+// 的主回覆打掛，所以任何例外都靜默吃掉。
+async function applyStaminaNotifyPre(client, interaction, container) {
+  try {
+    const fullAt = await dungeonService
+      .staminaFullAt(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+      })
+      .catch(() => 0);
 
-  const state = await reminder
-    .getState(client, {
-      userId: interaction.user.id,
-      guildId: interaction.guildId,
-      type: "dungeon",
-    })
-    .catch(() => null);
-
-  if (state?.enabled) {
-    await reminder
-      .refreshIfEnabled(client, {
+    const state = await reminder
+      .getState(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
         type: "dungeon",
-        readyAt: fullAt,
       })
-      .catch(() => {});
-  } else if (fullAt > Date.now()) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "-# 🔔 想在體力補滿時收到提醒？用 `/通知設定` 開啟地下城體力通知。"
-      )
-    );
+      .catch(() => null);
+
+    // 未訂閱且體力沒滿才掛提示；訂閱了的話 readyAt 同步留到 editReply 之後做。
+    if (!state?.enabled && fullAt > Date.now()) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# 🔔 想在體力補滿時收到提醒？用 `/通知設定` 開啟地下城體力通知。"
+        )
+      );
+    }
+    return { fullAt, subscribed: !!state?.enabled };
+  } catch (_) {
+    return { fullAt: 0, subscribed: false };
   }
+}
+
+// editReply 後的背景補登：只更新已訂閱者的 readyAt。失敗一律靜默。
+async function applyStaminaNotifyPost(client, interaction, notifyInfo) {
+  if (!notifyInfo?.subscribed) return;
+  await reminder
+    .refreshIfEnabled(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      type: "dungeon",
+      readyAt: notifyInfo.fullAt,
+    })
+    .catch(() => {});
+}
+
+// editReply 之後再做的所有「事後補登」：任務進度、體力通知 readyAt 同步。
+// 這些工作即使失敗也不影響玩家剛看到的探索結果，故全部包進 try/catch 並 fire-and-forget。
+function runPostTasks(client, interaction, result, notifyInfo) {
+  (async () => {
+    try {
+      const dungeonHooks = [
+        { questId: "daily_dungeon_10" },
+        { questId: "weekly_dungeon" },
+      ];
+      if (result.won) {
+        dungeonHooks.push({ questId: "daily_dungeon_win" });
+        dungeonHooks.push({ questId: "weekly_dungeon_win" });
+      }
+      await applyQuestHooks(
+        client,
+        {
+          interaction,
+          user: interaction.user,
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+          username: interaction.user.username,
+        },
+        dungeonHooks,
+      );
+      await applyStaminaNotifyPost(client, interaction, notifyInfo);
+    } catch (e) {
+      console.log(`[WARN] /地下城 事後補登失敗：${e?.message || e}`.yellow);
+    }
+  })();
 }
 
 // 帶上玩家名稱，讓大量訊息中能快速分辨是誰的按鈕。
@@ -157,28 +201,6 @@ module.exports = {
         return interaction.editReply("🔧 進地下城失敗，請稍後再試。");
       }
 
-      // 地下城任務進度：完成一場探索（不論勝負）＋勝利再加計勝場
-      const dungeonHooks = [
-        { questId: "daily_dungeon_10" },
-        { questId: "weekly_dungeon" },
-      ];
-      if (result.won) {
-        dungeonHooks.push({ questId: "daily_dungeon_win" });
-        dungeonHooks.push({ questId: "weekly_dungeon_win" });
-      }
-      await applyQuestHooks(
-        client,
-        {
-          interaction,
-          user: interaction.user,
-          userId: interaction.user.id,
-          guildId: interaction.guildId,
-          member: interaction.member,
-          username: interaction.user.username,
-        },
-        dungeonHooks,
-      );
-
       const m = result.monster;
       const winPct = Math.round(result.winRate * 100);
       const subTag = result.staminaBonus > 0
@@ -215,11 +237,17 @@ module.exports = {
             "-# 合成更好的武器能提升戰鬥力，提高勝率！",
           ),
         );
-        await applyStaminaNotify(client, interaction, container);
-        return interaction.editReply({
+        const notifyInfo = await applyStaminaNotifyPre(
+          client,
+          interaction,
+          container,
+        );
+        await interaction.editReply({
           components: [container],
           flags: MessageFlags.IsComponentsV2,
         });
+        runPostTasks(client, interaction, result, notifyInfo);
+        return;
       }
 
       // 勝利戰利品描述
@@ -279,12 +307,17 @@ module.exports = {
 
       container.addActionRowComponents(continueRow);
       appendCombatExtras(container, result);
-      await applyStaminaNotify(client, interaction, container);
+      const notifyInfo = await applyStaminaNotifyPre(
+        client,
+        interaction,
+        container,
+      );
 
       await interaction.editReply({
         components: [container],
         flags: MessageFlags.IsComponentsV2,
       });
+      runPostTasks(client, interaction, result, notifyInfo);
     } catch (error) {
       console.log(`[ERROR] /地下城:\n${error}\n${error.stack}`.red);
       if (dungeonResult?.ok) {
