@@ -89,6 +89,13 @@
         "description": "當日地下城戰鬥勝利 ≥ 2 次",
         "reward": 250,
         "target": 2
+      },
+      {
+        "id": "daily_dungeon_10",
+        "name": "地城常客",
+        "description": "當日完成地下城探索 ≥ 10 次（不論勝負）",
+        "reward": 350,
+        "target": 10
       }
     ],
     "weekly": [
