@@ -22,6 +22,44 @@ function recipeChoices() {
   }));
 }
 
+// 顯示所有食譜一覽
+function buildRecipeListView() {
+  const fish = fishing.fish || {};
+  const recipes = fishing.recipes || {};
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x3498db)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("# 🍳 烹飪食譜一覽")
+    )
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  for (const [, recipe] of Object.entries(recipes)) {
+    const matLines = Object.entries(recipe.materials || {}).map(([key, qty]) => {
+      const def = fish[key] || {};
+      return `${def.emoji || "🐟"} ${def.name || key} ×${qty}`;
+    });
+    if (recipe.coalFuel > 0) {
+      matLines.push(`<:ore_coal:1509063448481366106> 煤炭 ×${recipe.coalFuel}（煤炭烤製，可選）`);
+    }
+
+    const normalLabel = recipe.buff?.label || "";
+    const coalLabel = recipe.coalBuff?.label || "";
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `## ${recipe.emoji} ${recipe.name}\n` +
+        `**材料**：${matLines.join("、")}\n` +
+        `**效果**：${normalLabel}\n` +
+        (coalLabel ? `**煤炭加強**：${coalLabel}\n` : "") +
+        `-# ${recipe.description || ""}`
+      )
+    );
+  }
+
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+}
+
 // 顯示食譜材料需求
 function recipeMaterialsText(recipe, fishBag, backpack) {
   const lines = [];
@@ -50,8 +88,8 @@ module.exports = {
     .addStringOption((o) =>
       o
         .setName("食物")
-        .setDescription("要製作的食物")
-        .setRequired(true)
+        .setDescription("要製作的食物（不填則顯示所有食譜）")
+        .setRequired(false)
         .addChoices(...recipeChoices())
     )
     .addBooleanOption((o) =>
@@ -62,14 +100,21 @@ module.exports = {
     ),
 
   run: async (client, interaction) => {
-    await interaction.deferReply();
-
     try {
       if (!fishing?.enabled || !client.miningProfilesCollection) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         return interaction.editReply("🔧 釣魚系統尚未啟動！");
       }
 
       const recipeId = interaction.options.getString("食物");
+
+      if (!recipeId) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        return interaction.editReply(buildRecipeListView());
+      }
+
+      await interaction.deferReply();
+
       const useCoal = interaction.options.getBoolean("煤炭烤製") ?? false;
 
       const recipe = fishing.recipes?.[recipeId];
