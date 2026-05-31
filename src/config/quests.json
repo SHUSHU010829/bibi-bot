@@ -75,6 +75,20 @@
         "description": "當日完成任意一次打工",
         "reward": 100,
         "target": 1
+      },
+      {
+        "id": "daily_dungeon",
+        "name": "地城探險",
+        "description": "當日完成地下城探索 ≥ 1 次（不論勝負）",
+        "reward": 150,
+        "target": 1
+      },
+      {
+        "id": "daily_dungeon_win",
+        "name": "地城獵人",
+        "description": "當日地下城戰鬥勝利 ≥ 2 次",
+        "reward": 250,
+        "target": 2
       }
     ],
     "weekly": [
@@ -126,6 +140,20 @@
         "description": "本週賣礦累積收入 ≥ 1,000 金幣",
         "reward": 1500,
         "target": 1000
+      },
+      {
+        "id": "weekly_dungeon",
+        "name": "週週下城",
+        "description": "本週完成地下城探索 ≥ 15 次",
+        "reward": 1200,
+        "target": 15
+      },
+      {
+        "id": "weekly_dungeon_win",
+        "name": "深淵征服者",
+        "description": "本週地下城戰鬥勝利 ≥ 10 次",
+        "reward": 1800,
+        "target": 10
       }
     ]
   }

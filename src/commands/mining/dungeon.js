@@ -13,6 +13,7 @@ const {
 
 const { mining, dungeon } = require("../../config");
 const dungeonService = require("../../features/mining/dungeonService");
+const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const { COIN_EMOJI } = require("../../constants/coin");
 
@@ -153,6 +154,28 @@ module.exports = {
         }
         return interaction.editReply("🔧 進地下城失敗，請稍後再試。");
       }
+
+      // 地下城任務進度：完成一場探索（不論勝負）＋勝利再加計勝場
+      const dungeonHooks = [
+        { questId: "daily_dungeon" },
+        { questId: "weekly_dungeon" },
+      ];
+      if (result.won) {
+        dungeonHooks.push({ questId: "daily_dungeon_win" });
+        dungeonHooks.push({ questId: "weekly_dungeon_win" });
+      }
+      await applyQuestHooks(
+        client,
+        {
+          interaction,
+          user: interaction.user,
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+          username: interaction.user.username,
+        },
+        dungeonHooks,
+      );
 
       const m = result.monster;
       const winPct = Math.round(result.winRate * 100);
