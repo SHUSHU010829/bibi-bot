@@ -18,6 +18,8 @@ function oreChoices() {
 }
 
 module.exports = {
+  channelBuckets: ["mining", "marketplace"],
+
   data: new SlashCommandBuilder()
     .setName("贈送")
     .setDescription("把背包裡的礦石送給其他玩家 🎁（每日次數有限、免手續費）")
