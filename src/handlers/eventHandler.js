@@ -14,7 +14,13 @@ module.exports = (client) => {
 
     eventName === "validations" ? (eventName = "interactionCreate") : eventName;
 
-    client.on(eventName, async (...args) => {
+    // discord.js 在新版會同時 emit 舊的 "ready" 跟 "clientReady"，所以這個
+    // listener 若用 client.on 會被觸發兩次，造成 connectDb 同時跑兩條連線、
+    // 而 suggestionScheduler 等後段 handler 可能在 connectDb 完成前先 race
+    // 進 loadPanels（client.suggestionPanelsCollection 仍是 undefined → 噴
+    // 警告）。ready 只要跑一次，所以改用 once。
+    const register = eventName === "ready" ? "once" : "on";
+    client[register](eventName, async (...args) => {
       for (const eventFile of eventFiles) {
         const eventFunction = require(eventFile);
         if (typeof eventFunction === "function") {

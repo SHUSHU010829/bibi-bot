@@ -3,6 +3,11 @@ require("colors");
 const { MongoClient } = require("mongodb");
 
 module.exports = async (client) => {
+  // Idempotent guard：ready 事件理論上只跑一次（handler 改用 once），
+  // 但若未來新增其他觸發點仍可能被重入，這裡防止重複建立 MongoClient
+  // 造成連線洩漏。
+  if (client.database) return;
+
   // 檢查環境變數
   if (!process.env.MONGO_PASSWORD) {
     console.log(`[ERROR] MONGO_PASSWORD environment variable is not set!`.red);
