@@ -339,8 +339,63 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
   return result;
 }
 
+// 失敗時回滾：把 enterDungeon 寫入的體力、武器耐久、戰利品、金幣全部退回。
+// 用於 /地下城 指令在 enterDungeon 之後出錯（rendering / editReply 等），
+// 讓玩家不會白白損失資源。突發事件的副作用不在這裡處理（範圍小且為盡力而為）。
+async function rollbackDungeon(client, { userId, guildId, username, member }, result) {
+  if (!result?.ok) return;
+  if (!client?.miningProfilesCollection) return;
+
+  const max = staminaMax(member);
+  const inc = {};
+  const set = { updatedAt: new Date() };
+
+  inc.dungeon_count = -1;
+
+  if (result.weaponBroke) {
+    set.weapon = result.weaponBefore;
+    set.weapon_durability = 1;
+  } else if (typeof result.weaponDurabilityAfter === "number") {
+    inc.weapon_durability = 1;
+  }
+
+  if (result.oreGained && !result.oreOverflowToCoins) {
+    inc[`backpack.${result.oreGained.ore}`] = -result.oreGained.qty;
+    inc[`lifetime_ore.${result.oreGained.ore}`] = -result.oreGained.qty;
+  }
+  if (result.legendaryGained > 0) inc.legendary_fragments = -result.legendaryGained;
+  if (result.potionGained > 0) inc.luck_potion_uses = -result.potionGained;
+  if (result.ticketGained > 0) inc.cd_ticket_count = -result.ticketGained;
+
+  // 體力 +1（夾在 max）。讀當前再寫，避免突發事件改過後的競態。
+  const cur = await client.miningProfilesCollection
+    .findOne({ userId, guildId })
+    .catch(() => null);
+  const curStamina = typeof cur?.stamina === "number" ? cur.stamina : max;
+  const refunded = Math.min(max, curStamina + 1);
+  set.stamina = refunded;
+  if (refunded >= max) set.stamina_updated_at = 0;
+
+  await client.miningProfilesCollection
+    .updateOne({ userId, guildId }, { $inc: inc, $set: set })
+    .catch((e) => console.log(`[ERROR] rollbackDungeon profile: ${e}`.red));
+
+  if (result.coinsGained > 0) {
+    await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      amount: -result.coinsGained,
+      source: "admin",
+      member,
+      meta: { reason: "dungeon_rollback", monster: result.monster?.name },
+    }).catch((e) => console.log(`[ERROR] rollbackDungeon coins: ${e}`.red));
+  }
+}
+
 module.exports = {
   enterDungeon,
+  rollbackDungeon,
   resolveStamina,
   restoreStamina,
   staminaMax,

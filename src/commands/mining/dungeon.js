@@ -132,13 +132,15 @@ module.exports = {
   run: async (client, interaction) => {
     await interaction.deferReply();
 
+    let dungeonResult = null;
     try {
-      const result = await dungeonService.enterDungeon(client, {
+      dungeonResult = await dungeonService.enterDungeon(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
         member: interaction.member,
         username: interaction.user.username,
       });
+      const result = dungeonResult;
 
       if (!result.ok) {
         if (result.reason === "disabled") {
@@ -285,7 +287,23 @@ module.exports = {
       });
     } catch (error) {
       console.log(`[ERROR] /地下城:\n${error}\n${error.stack}`.red);
-      await interaction.editReply("🔧 地下城探索失敗，請呼叫舒舒！").catch(() => {});
+      if (dungeonResult?.ok) {
+        await dungeonService
+          .rollbackDungeon(
+            client,
+            {
+              userId: interaction.user.id,
+              guildId: interaction.guildId,
+              username: interaction.user.username,
+              member: interaction.member,
+            },
+            dungeonResult,
+          )
+          .catch(() => {});
+      }
+      await interaction
+        .editReply("🔧 地下城探索失敗，請呼叫舒舒！體力與物品已退回。")
+        .catch(() => {});
     }
   },
 
