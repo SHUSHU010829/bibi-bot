@@ -182,6 +182,9 @@ module.exports = async (client) => {
     // Dashboard 稽核日誌：所有 admin API 寫入操作都會留一筆
     const dashboardAuditLogCollection = database.collection("DashboardAuditLog");
 
+    // Cron 任務執行紀錄（withCronLog 寫入）
+    const cronJobLogCollection = database.collection("CronJobLog");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -251,6 +254,7 @@ module.exports = async (client) => {
     client.donationRecordsCollection = donationRecordsCollection;
     client.unmatchedDonationsCollection = unmatchedDonationsCollection;
     client.dashboardAuditLogCollection = dashboardAuditLogCollection;
+    client.cronJobLogCollection = cronJobLogCollection;
 
     // 抖內系統索引
     // - code unique：用於 webhook 對應 session
@@ -354,6 +358,26 @@ module.exports = async (client) => {
       )
       .catch((e) =>
         console.log(`[WARN] DashboardAuditLog TTL 索引建立失敗：${e.message}`.yellow),
+      );
+
+    // Cron 任務紀錄索引：依任務名 + 時間倒序查、90 天 TTL 自動清
+    await cronJobLogCollection
+      .createIndex({ name: 1, startedAt: -1 }, { name: "cron_log_name_time" })
+      .catch((e) =>
+        console.log(`[WARN] CronJobLog name 索引建立失敗：${e.message}`.yellow),
+      );
+    await cronJobLogCollection
+      .createIndex({ startedAt: -1 }, { name: "cron_log_time_desc" })
+      .catch((e) =>
+        console.log(`[WARN] CronJobLog ts 索引建立失敗：${e.message}`.yellow),
+      );
+    await cronJobLogCollection
+      .createIndex(
+        { startedAt: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "cron_log_ttl_90d" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] CronJobLog TTL 索引建立失敗：${e.message}`.yellow),
       );
 
     await economySnapshotsCollection

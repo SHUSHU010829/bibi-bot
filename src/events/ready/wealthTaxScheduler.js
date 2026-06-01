@@ -1,6 +1,6 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 const {
   ContainerBuilder,
   TextDisplayBuilder,
@@ -55,10 +55,6 @@ async function fetchCasinoWeekly(client, guildId) {
 // 每週掃 totalCoins 高於最低級距的帳戶，依累進稅率分段課徵財富稅。
 // 預設：每週一 04:00 (Asia/Taipei)，最低門檻 50,000，最高邊際稅率 40%。
 // 連續錯誤 3 次自動關閉。
-
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 3;
-let task = null;
 
 function normalizeBrackets(brackets) {
   if (!Array.isArray(brackets) || brackets.length === 0) return null;
@@ -335,44 +331,17 @@ async function runSweep(client) {
 }
 
 module.exports = async (client) => {
-  if (task) return;
-
   const cfg = coinSystem?.wealthTax;
   if (!cfg?.enabled) {
     console.log(`[WTAX] 財富稅未啟用，跳過排程`.gray);
     return;
   }
 
-  const schedule = cfg.cronSchedule || "0 4 * * 1";
-  const tz = cfg.timezone || "Asia/Taipei";
-
-  task = cron.schedule(
-    schedule,
-    async () => {
-      try {
-        await runSweep(client);
-        consecutiveErrors = 0;
-      } catch (err) {
-        consecutiveErrors += 1;
-        console.log(
-          `[ERROR] wealthTaxScheduler failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err}`.red,
-        );
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log(`[ERROR] 連續錯誤過多，停止財富稅 cron`.red);
-          task.stop();
-        }
-      }
-    },
-    { timezone: tz },
-  );
-
-  const brackets = normalizeBrackets(cfg.brackets);
-  const summary = brackets
-    ? brackets
-        .map((b) => `${b.from.toLocaleString()}+→${(b.rate * 100).toFixed(0)}%`)
-        .join(", ")
-    : "(brackets 未設定)";
-  console.log(
-    `[WTAX] 累進財富稅排程已啟動：${schedule} (${tz})，級距 ${summary}`.cyan,
-  );
+  registerCron(client, {
+    name: "wealthTax.sweep",
+    label: "累進財富稅每週結算",
+    schedule: cfg.cronSchedule || "0 4 * * 1",
+    timezone: cfg.timezone || "Asia/Taipei",
+    runner: () => runSweep(client),
+  });
 };

@@ -1,6 +1,5 @@
 require("colors");
 
-const cron = require("node-cron");
 const {
   ContainerBuilder,
   TextDisplayBuilder,
@@ -10,10 +9,7 @@ const {
 
 const { mining } = require("../../config");
 const orePriceEngine = require("../../features/market/orePriceEngine");
-
-let task = null;
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 3;
+const { registerCron } = require("../../utils/cronRegistry");
 
 function fmtDate(dateStr) {
   if (!dateStr || dateStr.length !== 8) return dateStr || "";
@@ -60,42 +56,21 @@ async function announce(client, date, prices) {
 
 async function runDailyMarket(client) {
   const date = orePriceEngine.todayDate();
-  // freeze 當日價格（idempotent）
   const { prices } = await orePriceEngine.getDailyPrices(client, date);
-  // 清理超過保留天數的歷史
   const removed = await orePriceEngine.pruneOld(client);
-  if (removed) console.log(`[MARKET] 清掉 ${removed} 筆過期行情`.gray);
   await announce(client, date, prices);
-  console.log(`[MARKET] 今日礦石行情已更新 date=${date}`.cyan);
+  return { date, removed: removed || 0, ores: Object.keys(prices).length };
 }
 
 module.exports = async (client) => {
-  if (task) return;
   if (!mining?.enabled || !mining?.oreMarket?.enabled) return;
 
   const cfg = mining.oreMarket;
-  const schedule = cfg.cronSchedule || "0 0 * * *";
-  const tz = cfg.timezone || "Asia/Taipei";
-
-  task = cron.schedule(
-    schedule,
-    async () => {
-      try {
-        await runDailyMarket(client);
-        consecutiveErrors = 0;
-      } catch (err) {
-        consecutiveErrors += 1;
-        console.log(
-          `[ERROR] oreMarketScheduler failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err}`.red,
-        );
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log(`[ERROR] 連續錯誤過多，停止礦石行情 cron`.red);
-          task.stop();
-        }
-      }
-    },
-    { timezone: tz },
-  );
-
-  console.log(`[MARKET] 礦石每日行情排程已啟動：${schedule} (${tz})`.cyan);
+  registerCron(client, {
+    name: "oreMarket.freeze",
+    label: "礦石每日行情",
+    schedule: cfg.cronSchedule || "0 0 * * *",
+    timezone: cfg.timezone || "Asia/Taipei",
+    runner: () => runDailyMarket(client),
+  });
 };
