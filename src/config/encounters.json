@@ -102,11 +102,11 @@
       },
       {
         "id": "whetstone",
-        "name": "磨鎬石",
+        "name": "磨刀石",
         "emoji": "🪓",
         "weight": 5,
         "effect": { "type": "repair_weapon" },
-        "text": "你找到一塊上等磨鎬石，順手把武器磨利、耐久完全恢復！"
+        "text": "你找到一塊上等磨刀石，順手把武器磨利、耐久完全恢復！"
       },
       {
         "id": "trap",
