@@ -1,0 +1,44 @@
+{
+  "farming": {
+    "enabled": true,
+    "maxPlots": 8,
+    "plotTiers": [
+      { "count": 2, "cost": 0 },
+      { "count": 4, "cost": 3000 },
+      { "count": 6, "cost": 10000 },
+      { "count": 8, "cost": 30000 }
+    ],
+    "growthReductionCapPct": 0.6,
+    "crops": {
+      "carrot":     { "name": "紅蘿蔔", "emoji": "🥕", "plantCost": 20,  "growMs": 7200000,  "rotMs": 14400000, "payout": [50, 80] },
+      "corn":       { "name": "玉米",   "emoji": "🌽", "plantCost": 60,  "growMs": 21600000, "rotMs": 21600000, "payout": [150, 200] },
+      "strawberry": { "name": "草莓",   "emoji": "🍓", "plantCost": 150, "growMs": 43200000, "rotMs": 28800000, "payout": [400, 500] },
+      "black_rose": { "name": "黑玫瑰", "emoji": "🌹", "seedKey": "seed_black_rose", "plantCost": 500, "growMs": 86400000, "rotMs": 43200000, "payout": [1200, 1500],
+        "bonusDrops": [
+          { "kind": "fragment", "chance": 0.05, "amount": 1 },
+          { "kind": "rare_bait", "chance": 0.10, "amount": 1 }
+        ]
+      }
+    },
+    "fertilizers": {
+      "coal_ash":      { "source": "backpack", "key": "coal",          "qty": 2, "growReductionPct": 0.10, "emoji": "🪵", "name": "煤炭灰" },
+      "compost":       { "source": "backpack", "key": "compost",       "qty": 3, "growReductionPct": 0.15, "emoji": "🍂", "name": "廚餘堆肥" },
+      "fish_small":    { "source": "fish_bag", "key": "small_fish",    "qty": 5, "growReductionPct": 0.15, "emoji": "🐟", "name": "魚粉" },
+      "monster_slime": { "source": "backpack", "key": "monster_slime", "qty": 1, "growReductionPct": 0.25, "emoji": "💧", "name": "怪物黏液" },
+      "moonlight_dew": { "source": "backpack", "key": "moonlight_dew", "qty": 1, "growReductionPct": 0.40, "yieldBonusPct": 0.20, "emoji": "🌟", "name": "月光露水" },
+      "octopus":       { "source": "fish_bag", "key": "octopus",       "qty": 1, "yieldBonusPct": 0.30, "onlyCrops": ["strawberry", "black_rose"], "emoji": "🦑", "name": "章魚" }
+    },
+    "raid": {
+      "readyDelayPct": 0.30,
+      "rollChance": 0.15,
+      "winRewards": { "coins": [200, 600], "slime": [1, 2] },
+      "loseBehavior": "destroy_crop",
+      "monsters": [
+        { "name": "田鼠強盜", "emoji": "🐀", "hp": 80 },
+        { "name": "貪吃烏鴉", "emoji": "🐦‍⬛", "hp": 60 },
+        { "name": "夜行野豬", "emoji": "🐗", "hp": 140 }
+      ]
+    },
+    "sellPrices": { "carrot": 30, "corn": 90, "strawberry": 250, "black_rose": 900 }
+  }
+}

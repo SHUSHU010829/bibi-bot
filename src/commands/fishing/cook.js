@@ -39,6 +39,10 @@ function buildRecipeListView() {
       const def = fish[key] || {};
       return `${def.emoji || "🐟"} ${def.name || key} ×${qty}`;
     });
+    for (const [key, qty] of Object.entries(recipe.veggies || {})) {
+      const def = VEGGIE_LABELS[key] || {};
+      matLines.push(`${def.emoji || "🌱"} ${def.name || key} ×${qty}`);
+    }
     if (recipe.coalFuel > 0) {
       matLines.push(`<:ore_coal:1509063448481366106> 煤炭 ×${recipe.coalFuel}（煤炭烤製，可選）`);
     }
@@ -60,8 +64,15 @@ function buildRecipeListView() {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
+const VEGGIE_LABELS = {
+  carrot: { emoji: "🥕", name: "紅蘿蔔" },
+  corn: { emoji: "🌽", name: "玉米" },
+  strawberry: { emoji: "🍓", name: "草莓" },
+  black_rose: { emoji: "🌹", name: "黑玫瑰" },
+};
+
 // 顯示食譜材料需求
-function recipeMaterialsText(recipe, fishBag, backpack) {
+function recipeMaterialsText(recipe, fishBag, backpack, veggieBag) {
   const lines = [];
   const fish = fishing.fish || {};
   for (const [key, need] of Object.entries(recipe.materials || {})) {
@@ -69,6 +80,12 @@ function recipeMaterialsText(recipe, fishBag, backpack) {
     const def = fish[key] || {};
     const ok = have >= need ? "✅" : "❌";
     lines.push(`${ok} ${def.emoji || "🐟"} ${def.name || key} ×${need}（持有 ${have}）`);
+  }
+  for (const [key, need] of Object.entries(recipe.veggies || {})) {
+    const have = (veggieBag || {})[key] || 0;
+    const def = VEGGIE_LABELS[key] || {};
+    const ok = have >= need ? "✅" : "❌";
+    lines.push(`${ok} ${def.emoji || "🌱"} ${def.name || key} ×${need}（持有 ${have}）— 來自 /農場`);
   }
   if (recipe.coalFuel > 0) {
     const have = backpack.coal || 0;
@@ -130,6 +147,7 @@ module.exports = {
       );
       const fishBag = profile.fish_bag || {};
       const backpack = profile.backpack || {};
+      const veggieBag = profile.veggie_bag || {};
 
       const result = await cookService.cook(client, {
         userId: interaction.user.id,
@@ -139,8 +157,11 @@ module.exports = {
       });
 
       if (!result.ok) {
-        if (result.reason === "insufficient_fish") {
-          const materialsText = recipeMaterialsText(recipe, fishBag, backpack);
+        if (result.reason === "insufficient_fish" || result.reason === "insufficient_veggies") {
+          const materialsText = recipeMaterialsText(recipe, fishBag, backpack, veggieBag);
+          const hint = result.reason === "insufficient_veggies"
+            ? "前往 /農場 種植與 /收成 取得蔬菜！"
+            : "前往 /釣魚 蒐集更多魚吧！";
           const errContainer = new ContainerBuilder()
             .setAccentColor(0xe74c3c)
             .addTextDisplayComponents(
@@ -155,9 +176,7 @@ module.exports = {
               )
             )
             .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                "-# 前往 /釣魚 蒐集更多魚吧！"
-              )
+              new TextDisplayBuilder().setContent(`-# ${hint}`)
             );
           return interaction.editReply({
             components: [errContainer],
@@ -205,6 +224,8 @@ module.exports = {
         buffDesc = `全屬性 +${Math.round(newBuff.value * 100)}%`;
       } else if (newBuff.type === "fish_fortune") {
         buffDesc = `釣魚成功率 +${Math.round(newBuff.value * 100)}% ・ 稀有度提升`;
+      } else if (newBuff.type === "farm_yield") {
+        buffDesc = `農場收成 +${Math.round(newBuff.value * 100)}%`;
       }
 
       let durationDesc = "";

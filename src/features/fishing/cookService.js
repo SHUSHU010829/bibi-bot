@@ -62,6 +62,22 @@ function getFoodWorkBonus(profile) {
   return bonus;
 }
 
+// 取得食物 buff 對農場收成的倍率加成（farm_yield + all_boost）。
+// 回傳額外加成量（例如 0.25 代表 +25%）。
+function getFoodFarmYieldBonus(profile) {
+  let bonus = 0;
+  for (const b of getActiveFoodBuffs(profile)) {
+    if (b.type === "farm_yield") bonus += Number(b.value) || 0;
+    if (b.type === "all_boost") bonus += Number(b.value) || 0;
+  }
+  return bonus;
+}
+
+// 消耗一次 farm_yield 的使用次數（收成時呼叫）
+function consumeFarmYieldUse(client, userId, guildId, profile) {
+  return consumeFoodBuffUse(client, userId, guildId, profile, "farm_yield");
+}
+
 // 取得食物 buff 對釣魚的加成（fish_fortune + all_boost）。
 // fish_fortune.value 同時換算成「成功率加成」與「稀有度加成（×5 對齊釣竿 rareBonus 量級）」。
 // 回傳 { success, rare }。
@@ -132,6 +148,7 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
   const profile = await getOrCreate(client, userId, guildId);
   const fishBag = profile.fish_bag || {};
   const backpack = profile.backpack || {};
+  const veggieBag = profile.veggie_bag || {};
 
   // 檢查魚袋材料
   const missingFish = [];
@@ -141,6 +158,16 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
   }
   if (missingFish.length > 0) {
     return { ok: false, reason: "insufficient_fish", missingFish };
+  }
+
+  // 檢查蔬菜材料（農場聯動配方）
+  const missingVeggies = [];
+  for (const [veggieKey, need] of Object.entries(recipe.veggies || {})) {
+    const have = veggieBag[veggieKey] || 0;
+    if (have < need) missingVeggies.push({ veggie: veggieKey, need, have });
+  }
+  if (missingVeggies.length > 0) {
+    return { ok: false, reason: "insufficient_veggies", missingVeggies };
   }
 
   // 煤炭烤製：useCoal=true 且 recipe.coalFuel > 0 時才套強化 buff
@@ -176,13 +203,22 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
   const otherBuffs = existingBuffs.filter((b) => b.type !== newBuff.type);
   const updatedBuffs = [...otherBuffs, newBuff];
 
-  // 原子更新：扣材料 + 扣煤炭 + 寫入新 buff
+  // 原子更新：扣材料 + 扣煤炭 + 烹飪副產廚餘堆肥 + byproduct（如月光露水）+ 寫入新 buff
   const inc = {};
   for (const [fishKey, need] of Object.entries(recipe.materials || {})) {
     inc[`fish_bag.${fishKey}`] = -need;
   }
+  for (const [veggieKey, need] of Object.entries(recipe.veggies || {})) {
+    inc[`veggie_bag.${veggieKey}`] = -need;
+  }
   if (coalNeeded > 0) {
     inc["backpack.coal"] = -coalNeeded;
+  }
+  // 每次烹飪固定產出 1 份廚餘堆肥（接通農場肥料供應鏈）
+  inc["backpack.compost"] = (inc["backpack.compost"] || 0) + 1;
+  // 配方特定副產物（例如黑玫瑰精華煉出月光露水）
+  if (recipe.byproduct?.field && recipe.byproduct?.qty) {
+    inc[recipe.byproduct.field] = (inc[recipe.byproduct.field] || 0) + recipe.byproduct.qty;
   }
 
   await client.miningProfilesCollection.updateOne(
@@ -211,8 +247,10 @@ module.exports = {
   getFoodAtkBonus,
   getFoodWorkBonus,
   getFoodFishBonus,
+  getFoodFarmYieldBonus,
   consumeMineLuckUse,
   consumeWorkIncomeUse,
   consumeFishFortuneUse,
+  consumeFarmYieldUse,
   cook,
 };

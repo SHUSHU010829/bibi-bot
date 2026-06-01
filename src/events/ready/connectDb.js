@@ -150,6 +150,9 @@ module.exports = async (client) => {
     // 釣魚系統 collections（Phase S4）
     const fishLogsCollection = database.collection("FishLogs");
 
+    // 農場系統 collections（Phase D）
+    const farmPlotsCollection = database.collection("FarmPlots");
+
     // 打工系統 collection（記每位玩家的打工冷卻）
     const workProfilesCollection = database.collection("WorkProfiles");
 
@@ -245,6 +248,7 @@ module.exports = async (client) => {
     client.miningProfilesCollection = miningProfilesCollection;
     client.mineLogsCollection = mineLogsCollection;
     client.fishLogsCollection = fishLogsCollection;
+    client.farmPlotsCollection = farmPlotsCollection;
     client.workProfilesCollection = workProfilesCollection;
     client.duelGamesCollection = duelGamesCollection;
     client.auctionListingsCollection = auctionListingsCollection;
@@ -924,6 +928,20 @@ module.exports = async (client) => {
         { guild_id: 1, ts: -1 },
         { name: "fish_logs_guild_time" }
       ).catch((e) => console.log(`[WARN] FishLogs index: ${e.message}`.yellow));
+
+      // 農場系統索引（Phase D）：每位玩家每地塊唯一；cron 用 status + 時間索引掃過期
+      await farmPlotsCollection.createIndex(
+        { userId: 1, guildId: 1, plotIndex: 1 },
+        { unique: true, name: "uniq_farm_user_guild_plot" }
+      ).catch((e) => console.log(`[WARN] FarmPlots uniq index: ${e.message}`.yellow));
+      await farmPlotsCollection.createIndex(
+        { status: 1, ready_at: 1 },
+        { name: "farm_status_ready" }
+      ).catch((e) => console.log(`[WARN] FarmPlots ready 索引: ${e.message}`.yellow));
+      await farmPlotsCollection.createIndex(
+        { status: 1, expires_at: 1 },
+        { name: "farm_status_expiry" }
+      ).catch((e) => console.log(`[WARN] FarmPlots expiry 索引: ${e.message}`.yellow));
       await fishLogsCollection.createIndex(
         { ts: 1 },
         { expireAfterSeconds: 90 * 24 * 60 * 60, name: "fish_logs_ttl_90d" }

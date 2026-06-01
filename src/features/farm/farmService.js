@@ -1,0 +1,542 @@
+require("colors");
+const { farming } = require("../../config");
+const { getOrCreate } = require("../mining/miningProfile");
+const grantCoins = require("../economy/grantCoins");
+const {
+  getFoodFarmYieldBonus,
+  consumeFarmYieldUse,
+} = require("../fishing/cookService");
+
+// 農場核心服務。每塊地以 (userId, guildId, plotIndex) 唯一存於 FarmPlots。
+//
+// 狀態流：
+//   growing  → ready  → rotted              （未施肥或正常老化）
+//   ready    → raided                       （成熟未收成被怪物入侵）
+//   raided   → growing/null                 （玩家防禦勝/敗）
+//
+// 成長時間縮短累計上限：farming.growthReductionCapPct（預設 60%）。
+
+function randInt(min, max) {
+  const lo = Math.ceil(min ?? 0);
+  const hi = Math.floor(max ?? lo);
+  if (hi <= lo) return lo;
+  return Math.floor(Math.random() * (hi - lo + 1)) + lo;
+}
+
+function coll(client) {
+  return client?.farmPlotsCollection || null;
+}
+
+// 取得玩家目前的地塊上限（從 profile 讀取，預設 2）
+function getPlotCount(profile) {
+  return Math.max(1, Math.min(profile?.farm_plot_count || 2, farming?.maxPlots || 8));
+}
+
+// 取出所有地塊狀態（含空地塊）。回傳 plotIndex 對應的物件。
+async function getPlots(client, userId, guildId, plotCount) {
+  const c = coll(client);
+  if (!c) return [];
+  const docs = await c.find({ userId, guildId }).toArray().catch(() => []);
+  const map = new Map(docs.map((d) => [d.plotIndex, d]));
+  const out = [];
+  for (let i = 0; i < plotCount; i++) {
+    out.push(map.get(i) || { plotIndex: i, status: "empty", crop: null });
+  }
+  return out;
+}
+
+// 即時推算狀態（不寫庫）：若到了 ready_at / expires_at 應切換為 ready / rotted。
+// 用於 UI 顯示，避免依賴 cron 才生效。
+function resolveLiveStatus(plot, now = Date.now()) {
+  if (!plot || plot.status === "empty" || !plot.crop) return plot;
+  if (plot.status === "rotted" || plot.status === "raided") return plot;
+  if (plot.status === "growing" && plot.ready_at && now >= plot.ready_at) {
+    return { ...plot, status: "ready" };
+  }
+  if ((plot.status === "growing" || plot.status === "ready") && plot.expires_at && now >= plot.expires_at) {
+    return { ...plot, status: "rotted" };
+  }
+  return plot;
+}
+
+// 種植：扣 plantCost 幣（黑玫瑰額外扣 seed_bag.seed_black_rose），寫入 FarmPlots。
+async function plantCrop(client, { userId, guildId, username, member, cropKey, plotIndex }) {
+  if (!farming?.enabled) return { ok: false, reason: "disabled" };
+  if (!coll(client)) return { ok: false, reason: "disabled" };
+
+  const crop = farming.crops?.[cropKey];
+  if (!crop) return { ok: false, reason: "invalid_crop" };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const plotCount = getPlotCount(profile);
+  if (plotIndex < 0 || plotIndex >= plotCount) {
+    return { ok: false, reason: "invalid_plot", plotCount };
+  }
+
+  const existing = await coll(client).findOne({ userId, guildId, plotIndex }).catch(() => null);
+  if (existing && existing.status !== "empty" && existing.status !== "rotted") {
+    return { ok: false, reason: "plot_occupied", existing };
+  }
+
+  // 黑玫瑰需要種子
+  if (crop.seedKey) {
+    const seedQty = profile.seed_bag?.[crop.seedKey] || 0;
+    if (seedQty < 1) {
+      return { ok: false, reason: "missing_seed", seedKey: crop.seedKey };
+    }
+  }
+
+  // 檢查餘額
+  const coinDoc = await client.userCoinsCollection
+    ?.findOne({ userId, guildId })
+    .catch(() => null);
+  const have = coinDoc?.totalCoins || 0;
+  if (have < crop.plantCost) {
+    return { ok: false, reason: "insufficient_coins", need: crop.plantCost, have };
+  }
+
+  // 扣幣（sink）
+  await grantCoins(client, {
+    userId, guildId, username, member,
+    amount: -crop.plantCost,
+    source: "farm_plant",
+    meta: { crop: cropKey, plotIndex },
+  });
+
+  // 扣種子
+  if (crop.seedKey) {
+    await client.miningProfilesCollection.updateOne(
+      { userId, guildId },
+      { $inc: { [`seed_bag.${crop.seedKey}`]: -1 }, $set: { updatedAt: new Date() } },
+    );
+  }
+
+  // 寫入地塊
+  const now = Date.now();
+  const ready_at = now + crop.growMs;
+  const expires_at = ready_at + crop.rotMs;
+  const plotDoc = {
+    userId, guildId, plotIndex,
+    crop: cropKey,
+    planted_at: now,
+    ready_at,
+    expires_at,
+    fertilizers: [],
+    growth_reduction_ms: 0,
+    yield_bonus_pct: 0,
+    status: "growing",
+    raid: null,
+    updatedAt: new Date(),
+  };
+  await coll(client).updateOne(
+    { userId, guildId, plotIndex },
+    { $set: plotDoc },
+    { upsert: true },
+  );
+
+  // 累計種植次數
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: { farm_count_total: 1 } },
+  ).catch(() => {});
+
+  return { ok: true, plot: plotDoc, crop };
+}
+
+// 收成：依 yield_bonus_pct 計算金幣產出、寫入 veggie_bag，並依作物配置抽 bonusDrops。
+async function harvestCrop(client, { userId, guildId, username, member, plotIndex }) {
+  if (!farming?.enabled) return { ok: false, reason: "disabled" };
+  if (!coll(client)) return { ok: false, reason: "disabled" };
+
+  const plot = await coll(client).findOne({ userId, guildId, plotIndex }).catch(() => null);
+  if (!plot || plot.status === "empty" || !plot.crop) {
+    return { ok: false, reason: "empty_plot" };
+  }
+  const live = resolveLiveStatus(plot);
+  if (live.status === "rotted") {
+    // 直接清掉爛掉的地塊
+    await coll(client).deleteOne({ userId, guildId, plotIndex });
+    return { ok: false, reason: "rotted", crop: plot.crop };
+  }
+  if (live.status === "raided") {
+    return { ok: false, reason: "under_raid", plot: live };
+  }
+  if (live.status !== "ready") {
+    return { ok: false, reason: "not_ready", plot: live, readyAt: plot.ready_at };
+  }
+
+  const crop = farming.crops?.[plot.crop];
+  if (!crop) return { ok: false, reason: "invalid_crop" };
+
+  const [lo, hi] = crop.payout || [0, 0];
+  const baseCoins = randInt(lo, hi);
+  const profileForBuff = await getOrCreate(client, userId, guildId);
+  const fertBonus = plot.yield_bonus_pct || 0;
+  const foodBonus = getFoodFarmYieldBonus(profileForBuff);
+  const yieldBonus = fertBonus + foodBonus;
+  const coins = Math.round(baseCoins * (1 + yieldBonus));
+
+  // 寫入 veggie_bag
+  const inc = { [`veggie_bag.${plot.crop}`]: 1, farm_harvest_total: 1 };
+
+  // 額外掉落（黑玫瑰）
+  const bonusDropsResult = [];
+  for (const drop of crop.bonusDrops || []) {
+    if (Math.random() < (drop.chance || 0)) {
+      const amount = drop.amount || 1;
+      if (drop.kind === "fragment") {
+        inc.legendary_fragments = (inc.legendary_fragments || 0) + amount;
+        bonusDropsResult.push({ kind: "fragment", amount });
+      } else if (drop.kind === "rare_bait") {
+        inc.rare_bait = (inc.rare_bait || 0) + amount;
+        bonusDropsResult.push({ kind: "rare_bait", amount });
+      }
+    }
+  }
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: inc, $set: { updatedAt: new Date() } },
+  );
+
+  // 發幣
+  if (coins > 0) {
+    await grantCoins(client, {
+      userId, guildId, username, member,
+      amount: coins,
+      source: "farm_harvest",
+      meta: { crop: plot.crop, plotIndex, yieldBonus, fertilizers: plot.fertilizers },
+    });
+  }
+
+  // 清除地塊
+  await coll(client).deleteOne({ userId, guildId, plotIndex });
+
+  // 消耗一次 farm_yield buff（若有的話）
+  if (foodBonus > 0) {
+    consumeFarmYieldUse(client, userId, guildId, profileForBuff).catch(() => {});
+  }
+
+  return {
+    ok: true,
+    crop: plot.crop,
+    cropDef: crop,
+    coins,
+    baseCoins,
+    yieldBonus,
+    fertBonus,
+    foodBonus,
+    bonusDrops: bonusDropsResult,
+    fertilizers: plot.fertilizers || [],
+  };
+}
+
+// 施肥：扣材料、套用效果（縮短時間 / 提升收成上限）。
+async function fertilize(client, { userId, guildId, plotIndex, fertilizerKey, count = 1 }) {
+  if (!farming?.enabled) return { ok: false, reason: "disabled" };
+  if (!coll(client)) return { ok: false, reason: "disabled" };
+
+  const fert = farming.fertilizers?.[fertilizerKey];
+  if (!fert) return { ok: false, reason: "invalid_fertilizer" };
+
+  const plot = await coll(client).findOne({ userId, guildId, plotIndex }).catch(() => null);
+  if (!plot || plot.status === "empty" || !plot.crop) {
+    return { ok: false, reason: "empty_plot" };
+  }
+  if (plot.status === "rotted") {
+    return { ok: false, reason: "already_rotted" };
+  }
+  if (plot.status === "ready") {
+    return { ok: false, reason: "already_ready" };
+  }
+
+  // 部分肥料只對特定作物有效
+  if (Array.isArray(fert.onlyCrops) && !fert.onlyCrops.includes(plot.crop)) {
+    return { ok: false, reason: "fertilizer_not_applicable", crop: plot.crop };
+  }
+
+  const totalQty = (fert.qty || 1) * count;
+  const profile = await getOrCreate(client, userId, guildId);
+
+  // 檢查材料
+  const sourceField = fert.source === "fish_bag" ? "fish_bag" : "backpack";
+  const have = (profile[sourceField] || {})[fert.key] || 0;
+  if (have < totalQty) {
+    return { ok: false, reason: "insufficient_material", need: totalQty, have, source: sourceField, key: fert.key };
+  }
+
+  const crop = farming.crops?.[plot.crop];
+  const cap = farming.growthReductionCapPct ?? 0.6;
+  const maxReduction = Math.floor((crop?.growMs || 0) * cap);
+
+  // 計算縮短時間（按 count 累加，但封頂於剩餘可縮空間）
+  const perApply = Math.floor((crop?.growMs || 0) * (fert.growReductionPct || 0));
+  let appliedReductionMs = 0;
+  let appliedCount = 0;
+  let yieldAdd = 0;
+  for (let i = 0; i < count; i++) {
+    const newReduction = (plot.growth_reduction_ms || 0) + appliedReductionMs + perApply;
+    if (perApply > 0 && newReduction > maxReduction) {
+      // 超過上限，最後一次只補到上限
+      const room = maxReduction - (plot.growth_reduction_ms || 0) - appliedReductionMs;
+      if (room <= 0) break;
+      appliedReductionMs += room;
+      appliedCount += 1;
+      yieldAdd += fert.yieldBonusPct || 0;
+      break;
+    }
+    appliedReductionMs += perApply;
+    appliedCount += 1;
+    yieldAdd += fert.yieldBonusPct || 0;
+  }
+  if (appliedCount === 0) {
+    return { ok: false, reason: "growth_cap_reached" };
+  }
+  const consumed = (fert.qty || 1) * appliedCount;
+
+  // 更新地塊
+  const newReadyAt = Math.max(Date.now(), plot.ready_at - appliedReductionMs);
+  const newExpiresAt = newReadyAt + (crop?.rotMs || 0);
+  const newYieldBonus = Math.min(2, (plot.yield_bonus_pct || 0) + yieldAdd);
+
+  await coll(client).updateOne(
+    { userId, guildId, plotIndex },
+    {
+      $set: {
+        ready_at: newReadyAt,
+        expires_at: newExpiresAt,
+        growth_reduction_ms: (plot.growth_reduction_ms || 0) + appliedReductionMs,
+        yield_bonus_pct: newYieldBonus,
+        updatedAt: new Date(),
+      },
+      $push: { fertilizers: { $each: Array(appliedCount).fill(fertilizerKey) } },
+    },
+  );
+
+  // 扣材料
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    {
+      $inc: { [`${sourceField}.${fert.key}`]: -consumed },
+      $set: { updatedAt: new Date() },
+    },
+  );
+
+  return {
+    ok: true,
+    fert,
+    appliedCount,
+    consumed,
+    newReadyAt,
+    newExpiresAt,
+    newYieldBonus,
+    reductionMs: appliedReductionMs,
+  };
+}
+
+// 擴建：依下一個 plotTier 扣幣、提升 farm_plot_count。
+async function expandFarm(client, { userId, guildId, username, member }) {
+  if (!farming?.enabled) return { ok: false, reason: "disabled" };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const current = getPlotCount(profile);
+  const tiers = farming.plotTiers || [];
+  const nextTier = tiers.find((t) => t.count > current);
+  if (!nextTier) {
+    return { ok: false, reason: "max_reached", current };
+  }
+
+  const coinDoc = await client.userCoinsCollection
+    ?.findOne({ userId, guildId })
+    .catch(() => null);
+  const have = coinDoc?.totalCoins || 0;
+  if (have < nextTier.cost) {
+    return { ok: false, reason: "insufficient_coins", need: nextTier.cost, have, nextCount: nextTier.count };
+  }
+
+  await grantCoins(client, {
+    userId, guildId, username, member,
+    amount: -nextTier.cost,
+    source: "farm_expand",
+    meta: { from: current, to: nextTier.count },
+  });
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $set: { farm_plot_count: nextTier.count, updatedAt: new Date() } },
+  );
+
+  return { ok: true, from: current, to: nextTier.count, cost: nextTier.cost };
+}
+
+// Raid 觸發判定：成熟後超過 readyDelayPct% 爛掉窗口時，rollChance% 機率觸發。
+function shouldTriggerRaid(plot, now = Date.now()) {
+  if (!plot || plot.status !== "ready") return false;
+  if (plot.raid?.active) return true;
+  const raidCfg = farming?.raid;
+  if (!raidCfg) return false;
+  const rotWindow = (plot.expires_at || 0) - (plot.ready_at || 0);
+  if (rotWindow <= 0) return false;
+  const elapsed = now - (plot.ready_at || 0);
+  if (elapsed < rotWindow * (raidCfg.readyDelayPct || 0.3)) return false;
+  return Math.random() < (raidCfg.rollChance || 0.15);
+}
+
+// 標記地塊進入 raid 狀態。回傳怪物資訊。
+async function markRaid(client, { userId, guildId, plotIndex }) {
+  const raidCfg = farming?.raid;
+  if (!raidCfg) return null;
+  const list = raidCfg.monsters || [];
+  if (!list.length) return null;
+  const monster = list[Math.floor(Math.random() * list.length)];
+  const raid = {
+    active: true,
+    monsterName: monster.name,
+    monsterEmoji: monster.emoji,
+    monsterHp: monster.hp,
+    expires_at: Date.now() + 30 * 60 * 1000,
+  };
+  await coll(client).updateOne(
+    { userId, guildId, plotIndex },
+    { $set: { status: "raided", raid, updatedAt: new Date() } },
+  );
+  return raid;
+}
+
+// 防禦：耗 1 體力 + 武器耐久，依玩家 ATK 與怪物 HP 計算勝率；勝→獎金、敗→毀作物。
+async function defendRaid(client, { userId, guildId, username, member, plotIndex }) {
+  const dungeonService = require("../mining/dungeonService");
+  if (!farming?.enabled) return { ok: false, reason: "disabled" };
+  if (!coll(client)) return { ok: false, reason: "disabled" };
+
+  const plot = await coll(client).findOne({ userId, guildId, plotIndex }).catch(() => null);
+  if (!plot || plot.status !== "raided" || !plot.raid?.active) {
+    return { ok: false, reason: "no_raid" };
+  }
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const max = dungeonService.staminaMax(member);
+  const st = dungeonService.resolveStamina(profile, max);
+  if (st.stamina <= 0) {
+    return { ok: false, reason: "no_stamina", nextRegenAt: st.nextRegenAt };
+  }
+  if (!dungeonService.hasWeapon(profile)) {
+    return { ok: false, reason: "no_weapon" };
+  }
+
+  const now = Date.now();
+  const atk = dungeonService.playerAtk(profile);
+  const monsterHp = plot.raid.monsterHp || 100;
+  const winRate = Math.max(0.2, Math.min(0.9, atk / monsterHp));
+  const won = Math.random() < winRate;
+
+  // 扣體力
+  const newStamina = st.stamina - 1;
+  const wasFull = st.stamina >= max;
+  const newStamUpdatedAt = wasFull ? now : st.updatedAt;
+
+  // 扣武器耐久
+  const set = {
+    stamina: newStamina,
+    stamina_updated_at: newStamUpdatedAt,
+    updatedAt: new Date(),
+  };
+  const inc = {};
+  let weaponBroke = false;
+  let weaponDurabilityAfter = null;
+  if (profile.weapon !== "fist" && typeof profile.weapon_durability === "number") {
+    weaponDurabilityAfter = profile.weapon_durability - 1;
+    if (weaponDurabilityAfter <= 0) {
+      weaponBroke = true;
+      weaponDurabilityAfter = null;
+      set.weapon = "fist";
+      set.weapon_durability = null;
+      set.weapon_max_durability = null;
+    } else {
+      inc.weapon_durability = -1;
+    }
+  }
+
+  let coinsGained = 0;
+  let slimeGained = 0;
+  if (won) {
+    const [cLo, cHi] = farming.raid?.winRewards?.coins || [0, 0];
+    coinsGained = randInt(cLo, cHi);
+    const [sLo, sHi] = farming.raid?.winRewards?.slime || [0, 0];
+    slimeGained = randInt(sLo, sHi);
+    if (slimeGained > 0) inc["backpack.monster_slime"] = slimeGained;
+  }
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    Object.keys(inc).length ? { $inc: inc, $set: set } : { $set: set },
+  );
+
+  if (coinsGained > 0) {
+    await grantCoins(client, {
+      userId, guildId, username, member,
+      amount: coinsGained,
+      source: "farm_raid",
+      meta: { plotIndex, monster: plot.raid.monsterName },
+    });
+  }
+
+  if (won) {
+    // 恢復成 ready 讓玩家可收成
+    await coll(client).updateOne(
+      { userId, guildId, plotIndex },
+      { $set: { status: "ready", raid: null, updatedAt: new Date() } },
+    );
+  } else {
+    // 作物被毀
+    await coll(client).deleteOne({ userId, guildId, plotIndex });
+  }
+
+  return {
+    ok: true,
+    won,
+    atk,
+    monster: plot.raid,
+    coinsGained,
+    slimeGained,
+    weaponBroke,
+    weaponDurabilityAfter,
+    stamina: newStamina,
+    staminaMax: max,
+  };
+}
+
+// Cron 用：掃 growing→ready、ready→rotted。回傳更新數量供日誌使用。
+async function runDecaySweep(client) {
+  const c = coll(client);
+  if (!c) return { ready: 0, rotted: 0 };
+  const now = Date.now();
+
+  // growing → ready（不含 raided）
+  const readyResult = await c.updateMany(
+    { status: "growing", ready_at: { $lte: now } },
+    { $set: { status: "ready", updatedAt: new Date() } },
+  ).catch(() => ({ modifiedCount: 0 }));
+
+  // ready → rotted（已過 expires_at 又沒被收成）
+  const rottedResult = await c.updateMany(
+    { status: { $in: ["ready", "growing"] }, expires_at: { $lte: now } },
+    { $set: { status: "rotted", raid: null, updatedAt: new Date() } },
+  ).catch(() => ({ modifiedCount: 0 }));
+
+  return { ready: readyResult.modifiedCount || 0, rotted: rottedResult.modifiedCount || 0 };
+}
+
+module.exports = {
+  plantCrop,
+  harvestCrop,
+  fertilize,
+  expandFarm,
+  defendRaid,
+  shouldTriggerRaid,
+  markRaid,
+  runDecaySweep,
+  getPlots,
+  getPlotCount,
+  resolveLiveStatus,
+};

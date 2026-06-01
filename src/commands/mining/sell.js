@@ -8,7 +8,7 @@ const {
   InteractionContextType,
 } = require("discord.js");
 
-const { mining, fishing } = require("../../config");
+const { mining, fishing, farming } = require("../../config");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const orePriceEngine = require("../../features/market/orePriceEngine");
 const eventEngine = require("../../features/event/eventEngine");
@@ -16,7 +16,7 @@ const grantCoins = require("../../features/economy/grantCoins");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const { COIN_EMOJI } = require("../../constants/coin");
 
-// 統一選項：礦石 + 魚類，value 格式 "ore:<key>" / "fish:<key>"
+// 統一選項：礦石 + 魚類 + 蔬菜，value 格式 "ore:<key>" / "fish:<key>" / "veggie:<key>"
 function sellChoices() {
   const choices = [];
   for (const [key, def] of Object.entries(mining?.ores || {})) {
@@ -24,6 +24,11 @@ function sellChoices() {
   }
   for (const [key, def] of Object.entries(fishing?.fish || {})) {
     choices.push({ name: `${def.name}（魚類）`, value: `fish:${key}` });
+  }
+  for (const [key, def] of Object.entries(farming?.crops || {})) {
+    if (farming?.sellPrices?.[key] != null) {
+      choices.push({ name: `${def.name}（蔬菜）`, value: `veggie:${key}` });
+    }
   }
   return choices;
 }
@@ -75,6 +80,9 @@ module.exports = {
       }
       if (itemType === "fish") {
         return await handleSellFish(client, interaction, { userId, guildId, itemKey, qtyArg });
+      }
+      if (itemType === "veggie") {
+        return await handleSellVeggie(client, interaction, { userId, guildId, itemKey, qtyArg });
       }
       return interaction.editReply("❌ 未知物品類型。");
     } catch (error) {
@@ -219,4 +227,63 @@ async function handleSellFish(client, interaction, { userId, guildId, itemKey, q
   applyQuestHooks(client, {
     userId, guildId, type: "fish_sell_coins", value: total,
   }).catch(() => {});
+}
+
+// ─── 賣蔬菜 ──────────────────────────────────────────────────────────────────
+async function handleSellVeggie(client, interaction, { userId, guildId, itemKey, qtyArg }) {
+  if (!farming?.enabled) {
+    return interaction.editReply("🔧 農場系統尚未啟動！");
+  }
+
+  const def = farming.crops?.[itemKey];
+  const price = farming.sellPrices?.[itemKey];
+  if (!def || price == null) return interaction.editReply("❌ 這種蔬菜不收購。");
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const veggieBag = profile.veggie_bag || {};
+  const have = veggieBag[itemKey] || 0;
+
+  if (have <= 0) {
+    return interaction.editReply(`你的菜籃裡沒有 **${def.name}**。`);
+  }
+
+  const qty = qtyArg ? Math.min(qtyArg, have) : have;
+  if (qtyArg && qtyArg > have) {
+    return interaction.editReply(`你只有 **${have}** 個 ${def.name}，無法賣出 ${qtyArg} 個。`);
+  }
+
+  const total = price * qty;
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: { [`veggie_bag.${itemKey}`]: -qty }, $set: { updatedAt: new Date() } },
+  );
+
+  const grant = await grantCoins(client, {
+    userId, guildId,
+    username: interaction.user.username,
+    amount: total,
+    source: "farm_sell",
+    member: interaction.member,
+    meta: { veggie: itemKey, qty },
+  });
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ${COIN_EMOJI} 賣出成功\n` +
+        `${def.emoji} **${def.name}** ×${qty} ＠${price.toLocaleString()}\n` +
+        `→ **+${total.toLocaleString()} ${COIN_EMOJI}**`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**目前餘額**　${(grant?.doc?.totalCoins ?? 0).toLocaleString()} ${COIN_EMOJI}\n` +
+        `-# 💡 用 /烹飪 把蔬菜做成 buff 食物，可能比直接賣更值錢`
+      )
+    );
+
+  await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
 }

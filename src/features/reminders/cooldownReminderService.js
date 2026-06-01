@@ -35,6 +35,13 @@ const TYPE_META = {
     notifyText: "體力已補滿，快來大顯身手！",
     channelKey: "mining",
   },
+  farm: {
+    label: "農場",
+    emoji: "🌾",
+    command: "/農場",
+    notifyText: "作物成熟了，快來收成！",
+    channelKey: "mining",
+  },
 };
 
 // 依活動分類取出該頻道的 Discord 深連結，找不到時退回一般頻道。
@@ -120,6 +127,16 @@ async function currentCooldownAt(client, { userId, guildId, type }) {
     if (!lastSettled?.updatedAt) return 0;
     const readyAt = +lastSettled.updatedAt + cooldownSec * 1000;
     return readyAt > Date.now() ? readyAt : 0;
+  }
+  if (type === "farm") {
+    // 最早成熟的「成長中」地塊；沒有就回 0。
+    const plot = await client.farmPlotsCollection
+      ?.findOne(
+        { userId, guildId, status: "growing" },
+        { sort: { ready_at: 1 }, projection: { ready_at: 1 } },
+      )
+      .catch(() => null);
+    return plot?.ready_at || 0;
   }
   const p = await client.miningProfilesCollection
     ?.findOne({ userId, guildId })

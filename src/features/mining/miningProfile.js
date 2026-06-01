@@ -19,8 +19,14 @@ function defaultProfile(userId, guildId) {
     backpack_bonus_slots: 0,
     mine_count_total: 0,
     craft_count_total: 0,
-    backpack: { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0 },
+    backpack: { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0, compost: 0, monster_slime: 0, moonlight_dew: 0 },
     lifetime_ore: { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0 },
+    seed_bag: { seed_carrot: 0, seed_corn: 0, seed_strawberry: 0, seed_black_rose: 0 },
+    veggie_bag: { carrot: 0, corn: 0, strawberry: 0, black_rose: 0 },
+    rare_bait: 0,
+    farm_plot_count: 2,
+    farm_count_total: 0,
+    farm_harvest_total: 0,
     weekly_champion_count: 0,
     stamina: null,
     stamina_updated_at: 0,
@@ -43,8 +49,14 @@ function defaultProfile(userId, guildId) {
 // 補齊舊文件可能缺少的欄位（例如先前只由商店購買 upsert 出來的 doc）。
 function normalize(doc) {
   if (!doc) return doc;
-  doc.backpack = { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0, ...(doc.backpack || {}) };
+  doc.backpack = { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0, compost: 0, monster_slime: 0, moonlight_dew: 0, ...(doc.backpack || {}) };
   doc.lifetime_ore = { stone: 0, coal: 0, iron: 0, gold: 0, diamond: 0, ...(doc.lifetime_ore || {}) };
+  doc.seed_bag = { seed_carrot: 0, seed_corn: 0, seed_strawberry: 0, seed_black_rose: 0, ...(doc.seed_bag || {}) };
+  doc.veggie_bag = { carrot: 0, corn: 0, strawberry: 0, black_rose: 0, ...(doc.veggie_bag || {}) };
+  doc.rare_bait ??= 0;
+  doc.farm_plot_count ??= 2;
+  doc.farm_count_total ??= 0;
+  doc.farm_harvest_total ??= 0;
   doc.mine_cooldown_at ??= 0;
   doc.pickaxe ??= "wood";
   if (doc.pickaxe_durability === undefined) doc.pickaxe_durability = null;
@@ -117,10 +129,11 @@ function backpackCapacity(profile, mining) {
   return base + (profile?.backpack_bonus_slots || 0);
 }
 
-// 背包目前使用量（所有礦石數量加總）
+// 背包目前使用量（只計礦石，肥料類道具不占容量）
+const ORE_KEYS = ["stone", "coal", "iron", "gold", "diamond"];
 function backpackUsed(profile) {
   const bp = profile?.backpack || {};
-  return Object.values(bp).reduce((sum, n) => sum + (n || 0), 0);
+  return ORE_KEYS.reduce((sum, k) => sum + (bp[k] || 0), 0);
 }
 
 module.exports = {
