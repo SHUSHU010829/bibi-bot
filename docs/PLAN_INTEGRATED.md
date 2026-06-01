@@ -57,7 +57,7 @@
 | Phase S1 | 挖礦專屬任務 | ⚠️ 框架完整、任務未定義 | `PLAN_OPTIMIZATION.md` |
 | Phase S2 | 排行榜多維度 | ⚠️ 週榜已有、其餘待補 | `PLAN_OPTIMIZATION.md` |
 | Phase S3 | 技能樹 | ❌ 未實作 | 本文件 |
-| Phase S4 | 釣魚系統 | ❌ 未實作 | 本文件 |
+| Phase S4 | 釣魚系統 | ✅ 已實作（2026-05-31） | 本文件 |
 | Phase S5 | 限時活動框架 | ✅ 已實作 | 本文件 |
 
 ---
@@ -644,6 +644,14 @@ GET  /api/v1/admin/donation/stats
 
 ## Phase S4 — 釣魚系統
 
+> ✅ **已實作（2026-05-31）**
+> - 設定：`src/config/fishing.json`、`src/config/food.json`，合併進 `config/index.js`。
+> - 核心：`src/features/fishing/fishService.js`（地點解鎖、CD、weighted random 抽魚、
+>   魚袋寫入）、`src/features/food/cookService.js`（食材消耗 + buff 寫入 activeBuffs）。
+> - 指令：`/fish`（含地點選擇）、`/fish-bag`、`/cook`、`/sell-fish`、`/buff`，分別位於
+>   `src/commands/fishing/` 與 `src/commands/food/`。
+> - 接點：buff 由 `buffResolver` 讀 `activeBuffs`；魚類掉落表複用 weighted random 模式。
+>
 > **前置需求**：Phase 1（挖礦架構）✅、Opt-5（buffResolver）
 > **預估時間**：2–3 天
 > **定位**：第二條生產線
