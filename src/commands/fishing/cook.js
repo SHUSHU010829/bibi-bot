@@ -237,7 +237,7 @@ module.exports = {
             `-# ${recipe.description || ""}`
           )
         )
-        .addComponents(
+        .addActionRowComponents(
           new ActionRowBuilder().addComponents(
             new ButtonBuilder()
               .setCustomId(`fish_bag_${interaction.user.id}`)
