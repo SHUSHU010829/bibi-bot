@@ -27,15 +27,18 @@
       { "name": "暗影狼", "emoji": "🐺" }
     ],
     "loot": [
-      { "id": "ore_iron", "kind": "ore", "ore": "iron", "qty": 3, "weight": 27 },
-      { "id": "ore_coal", "kind": "ore", "ore": "coal", "qty": 4, "weight": 14 },
-      { "id": "ore_gold", "kind": "ore", "ore": "gold", "qty": 1, "weight": 9 },
-      { "id": "coins_small", "kind": "coins", "minCoins": 150, "maxCoins": 320, "weight": 22 },
-      { "id": "coins_big", "kind": "coins", "minCoins": 450, "maxCoins": 850, "weight": 7 },
-      { "id": "luck_potion", "kind": "luck_potion", "qty": 1, "weight": 7 },
-      { "id": "cd_ticket", "kind": "cd_ticket", "qty": 1, "weight": 7 },
+      { "id": "ore_iron", "kind": "ore", "ore": "iron", "qty": 3, "weight": 22 },
+      { "id": "ore_coal", "kind": "ore", "ore": "coal", "qty": 4, "weight": 12 },
+      { "id": "ore_gold", "kind": "ore", "ore": "gold", "qty": 1, "weight": 8 },
+      { "id": "coins_small", "kind": "coins", "minCoins": 150, "maxCoins": 320, "weight": 18 },
+      { "id": "coins_big", "kind": "coins", "minCoins": 450, "maxCoins": 850, "weight": 6 },
+      { "id": "luck_potion", "kind": "luck_potion", "qty": 1, "weight": 6 },
+      { "id": "cd_ticket", "kind": "cd_ticket", "qty": 1, "weight": 6 },
       { "id": "legendary_fragment", "kind": "fragment", "qty": 1, "weight": 3 },
-      { "id": "nothing", "kind": "nothing", "weight": 14 }
+      { "id": "monster_slime", "kind": "slime", "qty": 1, "weight": 12 },
+      { "id": "seed_strawberry", "kind": "seed", "seedKey": "seed_strawberry", "qty": 1, "weight": 2 },
+      { "id": "seed_black_rose", "kind": "seed", "seedKey": "seed_black_rose", "qty": 1, "weight": 1, "minDungeonClears": 30 },
+      { "id": "nothing", "kind": "nothing", "weight": 12 }
     ],
     "duel": {
       "enabled": true,

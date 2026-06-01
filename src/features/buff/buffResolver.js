@@ -18,6 +18,7 @@ const {
 const { getActiveBuffMultiplier } = require("../shop/activeBuff");
 const eventEngine = require("../event/eventEngine");
 const twitchPerks = require("../mining/twitchPerks");
+const { getFoodFarmYieldBonus } = require("../fishing/cookService");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { donation, levelSystem } = require("../../config");
 
@@ -82,6 +83,7 @@ async function summary(client, userId, guildId, member) {
       coinBoost: coinBuff,
     },
     xpBoost: xpBuff,
+    farmYieldBonus: getFoodFarmYieldBonus(profile),
     events: eventEngine.getActiveEvents().map((e) => ({
       id: e.id,
       name: e.name,

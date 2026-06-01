@@ -23,10 +23,15 @@ function randInt(min, max) {
   return Math.floor(Math.random() * (hi - lo + 1)) + lo;
 }
 
-function rollLoot() {
+function rollLoot(profile) {
   const table = dungeon?.loot || [];
+  const clears = profile?.dungeon_count || 0;
   const weights = {};
-  for (const l of table) weights[l.id] = l.weight;
+  for (const l of table) {
+    // 戰利品可設 minDungeonClears 門檻（例如黑玫瑰種子需 30 場通關）
+    if (l.minDungeonClears && clears < l.minDungeonClears) continue;
+    weights[l.id] = l.weight;
+  }
   const id = weightedRandom(weights);
   return table.find((l) => l.id === id) || { id: "nothing", kind: "nothing" };
 }
@@ -218,9 +223,11 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
   let potionGained = 0;
   let ticketGained = 0;
   let ticketOverflowToCoins = false;
+  let slimeGained = 0;
+  let seedGained = null; // { seedKey, qty }
 
   if (won) {
-    loot = rollLoot();
+    loot = rollLoot(profile);
     const kind = loot.kind || loot.id;
 
     if (kind === "ore" || loot.id === "ore_fragment") {
@@ -262,6 +269,16 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
       if (overflow > 0) {
         coinsGained += overflow * cdTicketCoinValue();
         ticketOverflowToCoins = true;
+      }
+    } else if (kind === "slime") {
+      slimeGained = loot.qty || 1;
+      inc["backpack.monster_slime"] = (inc["backpack.monster_slime"] || 0) + slimeGained;
+    } else if (kind === "seed") {
+      const seedKey = loot.seedKey;
+      const qty = loot.qty || 1;
+      if (seedKey) {
+        seedGained = { seedKey, qty };
+        inc[`seed_bag.${seedKey}`] = (inc[`seed_bag.${seedKey}`] || 0) + qty;
       }
     }
 
@@ -306,6 +323,8 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
     potionGained,
     ticketGained,
     ticketOverflowToCoins,
+    slimeGained,
+    seedGained,
     balance,
     stamina: newStamina,
     staminaMax: max,
@@ -368,6 +387,10 @@ async function rollbackDungeon(client, { userId, guildId, username, member }, re
   if (result.legendaryGained > 0) inc.legendary_fragments = -result.legendaryGained;
   if (result.potionGained > 0) inc.luck_potion_uses = -result.potionGained;
   if (result.ticketGained > 0) inc.cd_ticket_count = -result.ticketGained;
+  if (result.slimeGained > 0) inc["backpack.monster_slime"] = -result.slimeGained;
+  if (result.seedGained?.qty > 0) {
+    inc[`seed_bag.${result.seedGained.seedKey}`] = -result.seedGained.qty;
+  }
 
   // 體力 +1（夾在 max）。讀當前再寫，避免突發事件改過後的競態。
   const cur = await client.miningProfilesCollection

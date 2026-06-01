@@ -52,6 +52,11 @@
       "sea":       { "small_fish": 30, "crucian": 25, "shark": 25, "octopus": 15, "lava_fish": 5 },
       "lava_lake": { "small_fish": 10, "crucian": 15, "shark": 20, "octopus": 20, "lava_fish": 35 }
     },
+    "rareItemDrops": {
+      "lava_lake": [
+        { "item": "moonlight_dew", "field": "backpack.moonlight_dew", "chance": 0.05, "name": "月光露水", "emoji": "🌟" }
+      ]
+    },
     "recipes": {
       "fish_bento": {
         "name": "魚排便當",
@@ -146,6 +151,67 @@
           "value": 0.15,
           "durationMs": 5400000,
           "label": "全屬性 +15%（煤炭烤製）"
+        }
+      },
+      "veggie_fish_soup": {
+        "name": "蔬菜魚湯",
+        "emoji": "🥣",
+        "description": "紅蘿蔔燉鯽魚的暖心湯，吃了讓接下來幾次收成更豐厚",
+        "materials": { "crucian": 3 },
+        "veggies": { "carrot": 2 },
+        "coalFuel": 3,
+        "buff": {
+          "type": "farm_yield",
+          "value": 0.25,
+          "uses": 3,
+          "label": "接下來 3 次收成 +25%"
+        },
+        "coalBuff": {
+          "type": "farm_yield",
+          "value": 0.35,
+          "uses": 4,
+          "label": "接下來 4 次收成 +35%（煤炭烤製）"
+        }
+      },
+      "corn_chowder": {
+        "name": "玉米巧達濃湯",
+        "emoji": "🌽",
+        "description": "玉米與雜魚熬煮，地下城與挖礦同時受益",
+        "materials": { "small_fish": 4 },
+        "veggies": { "corn": 2 },
+        "coalFuel": 4,
+        "buff": {
+          "type": "all_boost",
+          "value": 0.10,
+          "durationMs": 5400000,
+          "label": "全屬性 +10%（90 分鐘）"
+        },
+        "coalBuff": {
+          "type": "all_boost",
+          "value": 0.15,
+          "durationMs": 7200000,
+          "label": "全屬性 +15%（120 分鐘，煤炭烤製）"
+        }
+      },
+      "rose_elixir": {
+        "name": "黑玫瑰精華",
+        "emoji": "🌹",
+        "description": "黑玫瑰煉成的稀有藥劑，殘餘的露水可再用於施肥",
+        "materials": {},
+        "veggies": { "black_rose": 1 },
+        "coalFuel": 6,
+        "byproduct": { "field": "backpack.moonlight_dew", "qty": 1, "name": "月光露水", "emoji": "🌟" },
+        "buff": {
+          "type": "all_boost",
+          "value": 0.25,
+          "durationMs": 3600000,
+          "label": "全屬性 +25%（60 分鐘）"
+        },
+        "coalBuff": {
+          "type": "all_boost",
+          "value": 0.30,
+          "durationMs": 5400000,
+          "label": "全屬性 +30%（90 分鐘，煤炭烤製）"
         }
       }
     }

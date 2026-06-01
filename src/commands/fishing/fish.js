@@ -169,6 +169,17 @@ module.exports = {
         );
       }
 
+      // 稀有副產物（例如熔岩湖撈到的月光露水）
+      if (Array.isArray(result.rareDrops) && result.rareDrops.length > 0) {
+        for (const drop of result.rareDrops) {
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `✨ **意外發現**：${drop.emoji || "🎁"} ${drop.name || drop.item} ×1（可用於 /施肥）`
+            )
+          );
+        }
+      }
+
       // 如果這種魚有對應食譜，提示可以烹飪
       const matchedRecipe = Object.entries(fishing.recipes || {}).find(
         ([, r]) => r.materials?.[result.fish] !== undefined

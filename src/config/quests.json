@@ -89,6 +89,20 @@
         "description": "當日完成地下城探索 ≥ 10 次（不論勝負）",
         "reward": 350,
         "target": 10
+      },
+      {
+        "id": "daily_farm_harvest",
+        "name": "今日豐收",
+        "description": "當日從農場收成 ≥ 2 次",
+        "reward": 200,
+        "target": 2
+      },
+      {
+        "id": "daily_farm_plant",
+        "name": "晨間耕作",
+        "description": "當日種植任意作物 ≥ 1 次",
+        "reward": 100,
+        "target": 1
       }
     ],
     "weekly": [
@@ -154,6 +168,20 @@
         "description": "本週地下城戰鬥勝利 ≥ 10 次",
         "reward": 1800,
         "target": 10
+      },
+      {
+        "id": "weekly_farm_harvest",
+        "name": "週末市集",
+        "description": "本週累積收成 ≥ 10 次",
+        "reward": 1500,
+        "target": 10
+      },
+      {
+        "id": "weekly_farm_rose",
+        "name": "黑玫瑰栽培家",
+        "description": "本週成功收成黑玫瑰 ≥ 1 次",
+        "reward": 2500,
+        "target": 1
       }
     ]
   }

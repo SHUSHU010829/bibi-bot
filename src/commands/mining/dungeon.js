@@ -272,6 +272,15 @@ module.exports = {
           result.ticketGained > 0
             ? `掉落 **🎫 CD 縮短券 ×${result.ticketGained}**！`
             : `🎫 CD 縮短券已達持有上限，折算成 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}`;
+      } else if (lootKind === "slime") {
+        rewardLine = `掉落 **💧 怪物黏液 ×${result.slimeGained}**！（農場高階肥料 -25% 成長時間）`;
+      } else if (lootKind === "seed" && result.seedGained) {
+        const seedName = result.seedGained.seedKey === "seed_black_rose"
+          ? "🌹 黑玫瑰種子"
+          : result.seedGained.seedKey === "seed_strawberry"
+          ? "🍓 草莓種子"
+          : `🌱 ${result.seedGained.seedKey}`;
+        rewardLine = `掉落 **${seedName} ×${result.seedGained.qty}**！（去 /農場 種下）`;
       } else {
         rewardLine = "雖然贏了，但這次什麼都沒掉落…運氣差了點。";
       }

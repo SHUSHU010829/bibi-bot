@@ -160,6 +160,15 @@ async function fish(client, { userId, guildId, location = "stream" }) {
     }
   }
 
+  // 稀有道具掉落（例如熔岩湖的月光露水）
+  const rareDrops = [];
+  for (const drop of fishing.rareItemDrops?.[location] || []) {
+    if (Math.random() < (drop.chance || 0)) {
+      inc[drop.field] = (inc[drop.field] || 0) + 1;
+      rareDrops.push(drop);
+    }
+  }
+
   await client.miningProfilesCollection.updateOne(
     { userId, guildId },
     { $inc: inc, $set: set }
@@ -187,6 +196,7 @@ async function fish(client, { userId, guildId, location = "stream" }) {
     rodDurabilityAfter,
     newCooldownAt,
     fishCountTotal: (profile.fish_count_total || 0) + 1,
+    rareDrops,
   };
 }
 

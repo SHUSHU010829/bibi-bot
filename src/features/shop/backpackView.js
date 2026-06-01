@@ -9,7 +9,7 @@ const {
   ButtonStyle,
   MessageFlags,
 } = require("discord.js");
-const { mining, shop, fishing } = require("../../config");
+const { mining, shop, fishing, farming } = require("../../config");
 const {
   getOrCreate,
   backpackCapacity,
@@ -155,6 +155,7 @@ const BACKPACK_CATEGORIES = [
   { value: "ore",  label: "⛏️ 礦石" },
   { value: "mine", label: "🪓 挖礦道具" },
   { value: "fish", label: "🎣 釣魚" },
+  { value: "farm", label: "🌾 農場" },
   { value: "shop", label: "🛍️ 商店道具" },
 ];
 
@@ -538,6 +539,128 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       } else {
         container.addTextDisplayComponents(
           new TextDisplayBuilder().setContent("-# 魚袋空空，快去 /釣魚 吧！")
+        );
+      }
+    }
+  }
+
+  // ── 農場區 ──
+  if ((category === "all" || category === "farm") && farming?.enabled && client.miningProfilesCollection) {
+    const farmProfile = await getOrCreate(client, userId, guildId);
+    const veggieBag = farmProfile.veggie_bag || {};
+    const seedBag = farmProfile.seed_bag || {};
+    const bp = farmProfile.backpack || {};
+    const plotCount = Math.max(1, Math.min(farmProfile.farm_plot_count || 2, farming.maxPlots || 8));
+
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### 🌾 農場\n地塊：**${plotCount} / ${farming.maxPlots || 8}** 格・累計收成 ${farmProfile.farm_harvest_total || 0} 次`,
+      ),
+    );
+
+    if (category === "farm") {
+      // 蔬菜（含賣全部按鈕）
+      const veggieEntries = Object.entries(farming.crops || {})
+        .filter(([k]) => (veggieBag[k] || 0) > 0);
+      if (veggieEntries.length > 0) {
+        for (const [key, def] of veggieEntries) {
+          const qty = veggieBag[key] || 0;
+          const price = (farming.sellPrices || {})[key] || 0;
+          const total = qty * price;
+          container.addSectionComponents(
+            new SectionBuilder()
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `${def.emoji} **${def.name}** ×${qty}・單價 ${price} ${COIN_EMOJI}`,
+                ),
+              )
+              .setButtonAccessory(
+                new ButtonBuilder()
+                  .setCustomId(`farm_sell_${userId}_${key}`)
+                  .setLabel(`賣全部 +${total.toLocaleString()}`)
+                  .setStyle(ButtonStyle.Secondary),
+              ),
+          );
+        }
+      } else {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 菜籃空空，去 /農場 種點蔬菜吧！"),
+        );
+      }
+
+      // 種子
+      const seedEntries = Object.entries(seedBag).filter(([, v]) => v > 0);
+      if (seedEntries.length > 0) {
+        const seedLines = seedEntries.map(([k, v]) => {
+          const cropKey = k.replace(/^seed_/, "");
+          const cropDef = farming.crops?.[cropKey] || {};
+          return `${cropDef.emoji || "🌱"} ${cropDef.name || k} 種子 ×${v}`;
+        }).join("・");
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`**🌱 種子**　${seedLines}`),
+        );
+      }
+
+      // 肥料道具（compost / slime / moonlight_dew）
+      const fertItems = [
+        { key: "compost", emoji: "🍂", name: "廚餘堆肥" },
+        { key: "monster_slime", emoji: "💧", name: "怪物黏液" },
+        { key: "moonlight_dew", emoji: "🌟", name: "月光露水" },
+      ];
+      const fertLines = fertItems
+        .filter((f) => (bp[f.key] || 0) > 0)
+        .map((f) => `${f.emoji} ${f.name} ×${bp[f.key]}`);
+      if (fertLines.length > 0) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**💧 肥料**　${fertLines.join("・")}\n-# 用 \`/施肥\` 加速作物成長`,
+          ),
+        );
+      }
+      if (farmProfile.rare_bait > 0) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**🎏 稀有魚餌** ×${farmProfile.rare_bait}\n-# 黑玫瑰收成額外掉落物`,
+          ),
+        );
+      }
+    } else {
+      // 全部分類：摘要顯示
+      const summary = [];
+      let bagValue = 0;
+      for (const [key, def] of Object.entries(farming.crops || {})) {
+        const qty = veggieBag[key] || 0;
+        if (qty <= 0) continue;
+        const price = (farming.sellPrices || {})[key] || 0;
+        bagValue += qty * price;
+        summary.push(`${def.emoji} **${def.name}** ×${qty}`);
+      }
+      const fertSummary = [];
+      if (bp.compost > 0) fertSummary.push(`🍂 堆肥 ×${bp.compost}`);
+      if (bp.monster_slime > 0) fertSummary.push(`💧 黏液 ×${bp.monster_slime}`);
+      if (bp.moonlight_dew > 0) fertSummary.push(`🌟 露水 ×${bp.moonlight_dew}`);
+      const seedSummary = Object.entries(seedBag)
+        .filter(([, v]) => v > 0)
+        .map(([k, v]) => {
+          const cropKey = k.replace(/^seed_/, "");
+          const def = farming.crops?.[cropKey] || {};
+          return `${def.emoji || "🌱"} ${def.name || cropKey}種子 ×${v}`;
+        });
+
+      const parts = [];
+      if (summary.length > 0) {
+        parts.push(`**菜籃**：${summary.join("・")}\n-# 💰 全部賣出可得 ${bagValue.toLocaleString()} ${COIN_EMOJI}`);
+      }
+      if (fertSummary.length > 0) parts.push(`**肥料**：${fertSummary.join("・")}`);
+      if (seedSummary.length > 0) parts.push(`**種子**：${seedSummary.join("・")}`);
+      if (parts.length === 0) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 農場尚未開張，去 /農場 看看吧！"),
+        );
+      } else {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(parts.join("\n") + `\n-# 切到「🌾 農場」分類可一鍵賣蔬菜`),
         );
       }
     }
