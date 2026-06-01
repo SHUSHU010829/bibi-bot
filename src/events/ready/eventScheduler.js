@@ -1,6 +1,6 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 const {
   ContainerBuilder,
   TextDisplayBuilder,
@@ -16,10 +16,6 @@ const eventEngine = require("../../features/event/eventEngine");
 // occurrence 取該次視窗的開始 / 結束 epoch，使同一活動明年再跑視為不同實例。
 // 結束公告設寬限窗（announceEndGraceMinutes），避免首次部署時把很久以前
 // 結束的歷史活動也補一則公告。
-
-let task = null;
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 3;
 
 const COLORS = { start: 0x9b59b6, end: 0x95a5a6 };
 
@@ -79,15 +75,17 @@ async function sendAnnouncement(client, event, phase) {
 
 async function announceOnce(client, event, phase, occurrence) {
   const claimed = await claimAnnouncement(client, event.id, phase, occurrence);
-  if (!claimed) return;
+  if (!claimed) return false;
   await sendAnnouncement(client, event, phase);
   console.log(`[EVENT] 已公告 ${event.id} ${phase}`.cyan);
+  return true;
 }
 
 async function scanOnce(client) {
-  if (!eventEngine.isSystemEnabled()) return;
+  if (!eventEngine.isSystemEnabled()) return { announced: 0 };
   const now = Date.now();
   const graceMs = (eventEngine.cfg().announceEndGraceMinutes || 360) * 60 * 1000;
+  let announced = 0;
 
   for (const event of eventEngine.allEvents()) {
     if (event.enabled === false) continue;
@@ -96,46 +94,29 @@ async function scanOnce(client) {
 
     // 開始公告：進入生效視窗即發（去重保證一次）
     if (now >= startMs && now < endMs) {
-      await announceOnce(client, event, "start", startMs);
+      if (await announceOnce(client, event, "start", startMs)) announced += 1;
     }
     // 結束公告：剛結束、且在寬限窗內才發（避免補發歷史活動）
     if (now >= endMs && now - endMs < graceMs) {
-      await announceOnce(client, event, "end", endMs);
+      if (await announceOnce(client, event, "end", endMs)) announced += 1;
     }
   }
+  return { announced };
 }
 
 module.exports = async (client) => {
-  if (task) return;
   if (!eventEngine.isSystemEnabled()) {
     console.log(`[EVENT] 限時活動系統未啟用，跳過排程`.gray);
     return;
   }
 
-  const schedule = eventEngine.cfg().scanCronSchedule || "* * * * *";
-  const tz = eventEngine.timezone();
-
-  task = cron.schedule(
-    schedule,
-    async () => {
-      try {
-        await scanOnce(client);
-        consecutiveErrors = 0;
-      } catch (err) {
-        consecutiveErrors += 1;
-        console.log(
-          `[ERROR] eventScheduler failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err?.stack || err}`.red,
-        );
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log(`[ERROR] 連續錯誤過多，停止限時活動 cron`.red);
-          task.stop();
-        }
-      }
-    },
-    { timezone: tz },
-  );
-
-  console.log(`[EVENT] 限時活動排程已啟動：${schedule} (${tz})`.cyan);
+  registerCron(client, {
+    name: "event.announcer",
+    label: "限時活動公告",
+    schedule: eventEngine.cfg().scanCronSchedule || "* * * * *",
+    timezone: eventEngine.timezone(),
+    runner: () => scanOnce(client),
+  });
 };
 
 module.exports.scanOnce = scanOnce;

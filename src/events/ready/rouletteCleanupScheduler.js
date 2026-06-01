@@ -1,20 +1,15 @@
 require('colors');
 
-const cron = require('node-cron');
+const { registerCron } = require('../../utils/cronRegistry');
 
 const { casino } = require('../../config');
 const grantCoins = require('../../features/economy/grantCoins');
 
 // 每分鐘掃 expiresAt 過期但 status 還是 'betting' 的局，
 // 視為玩家放棄 → 全額退回 totalBudget 並標記 abandoned。
-// 連續錯誤計數，超過 5 次自動關閉避免洗 log。
-
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 5;
-let task = null;
 
 async function sweepOnce(client) {
-  if (!client.rouletteGamesCollection) return;
+  if (!client.rouletteGamesCollection) return { refunded: 0 };
 
   const now = new Date();
   const cursor = client.rouletteGamesCollection.find({
@@ -22,6 +17,7 @@ async function sweepOnce(client) {
     expiresAt: { $lt: now },
   });
 
+  let refunded = 0;
   while (await cursor.hasNext()) {
     const g = await cursor.next();
 
@@ -53,33 +49,22 @@ async function sweepOnce(client) {
       },
     });
 
+    refunded += 1;
     console.log(
       `[ROULETTE] 退回逾時局 user=${g.userId} game=${g.gameId} refund=${g.totalBudget}`.gray
     );
   }
+  return { refunded };
 }
 
 module.exports = async (client) => {
-  if (task) return; // ready 可能多次觸發，避免重複註冊
-
   const cfg = casino?.roulette || {};
   if (cfg.enabled === false) return;
 
-  task = cron.schedule('* * * * *', async () => {
-    try {
-      await sweepOnce(client);
-      consecutiveErrors = 0;
-    } catch (err) {
-      consecutiveErrors += 1;
-      console.log(
-        `[ERROR] rouletteCleanupScheduler sweep failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err}`.red
-      );
-      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        console.log(`[ERROR] 連續錯誤過多，停止輪盤清理 cron`.red);
-        task.stop();
-      }
-    }
+  registerCron(client, {
+    name: 'casino.roulette.cleanup',
+    label: '輪盤放棄局清理',
+    schedule: '* * * * *',
+    runner: () => sweepOnce(client),
   });
-
-  console.log(`[ROULETTE] 輪盤放棄局清理排程已啟動 (每分鐘檢查)`.cyan);
 };

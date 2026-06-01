@@ -1,36 +1,16 @@
 require("colors");
+const { registerCron } = require("../../utils/cronRegistry");
 const {
   loadPanels,
   savePanels,
 } = require("../../utils/suggestionPanelsStore");
-
-module.exports = async (client) => {
-  // 啟動時先跑一次，把 stale 條目清掉，不必等 60 秒
-  try {
-    await processScheduledDeletions(client);
-  } catch (error) {
-    console.log(`[ERROR] 啟動時處理建議頻道刪除出錯：\n${error}`.red);
-  }
-
-  // 之後每分鐘檢查一次待刪除的建議頻道
-  const interval = setInterval(async () => {
-    try {
-      await processScheduledDeletions(client);
-    } catch (error) {
-      console.log(`[ERROR] 處理建議頻道刪除時出錯：\n${error}`.red);
-    }
-  }, 60000); // 每 60 秒檢查一次
-  interval.unref?.();
-
-  console.log(`[SYSTEM] 建議頻道自動刪除系統已啟動！`.green);
-};
 
 async function processScheduledDeletions(client) {
   // 對齊 activeBuffsCleanupScheduler 等其他 scheduler 的 pattern：
   // collection 還沒掛上來就直接 skip，避免在啟動 race 期間 fallback 到
   // 本地檔案並噴假警告。真正的 MONGO_URI 未設情境會在 connectDb 提早 return，
   // suggestionPanelsCollection 永遠是 undefined，這條 cron 就完全跳過。
-  if (!client.suggestionPanelsCollection) return;
+  if (!client.suggestionPanelsCollection) return { deleted: 0, orphans: 0 };
 
   try {
     const data = await loadPanels(client);
@@ -46,7 +26,7 @@ async function processScheduledDeletions(client) {
       }
     }
 
-    if (channelsToDelete.length === 0) return;
+    if (channelsToDelete.length === 0) return { deleted: 0, orphans: 0 };
 
     let deletedCount = 0;
     let cleanedOrphans = 0;
@@ -78,8 +58,10 @@ async function processScheduledDeletions(client) {
         `[SUGGESTION] 清理 ${cleanedOrphans} 個已不存在的建議頻道紀錄`.gray,
       );
     }
+    return { deleted: deletedCount, orphans: cleanedOrphans };
   } catch (error) {
     console.log(`[ERROR] 查詢待刪除建議頻道時出錯：\n${error}`.red);
+    throw error;
   }
 }
 
@@ -136,3 +118,19 @@ async function deleteSuggestionChannel(client, channelId, deletion) {
 
   return "deleting";
 }
+
+module.exports = async (client) => {
+  // 啟動時先跑一次，把 stale 條目清掉，不必等 60 秒
+  try {
+    await processScheduledDeletions(client);
+  } catch (error) {
+    console.log(`[ERROR] 啟動時處理建議頻道刪除出錯：\n${error}`.red);
+  }
+
+  registerCron(client, {
+    name: "suggestion.channelCleanup",
+    label: "建議頻道自動刪除",
+    schedule: "* * * * *",
+    runner: () => processScheduledDeletions(client),
+  });
+};

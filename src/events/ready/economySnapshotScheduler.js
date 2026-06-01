@@ -1,19 +1,14 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 const { DateTime } = require("luxon");
 
 // 每天 00:05 Asia/Taipei 對每個 guild 計算金幣總量、active 存款本金、active 玩家數，
 // 寫進 EconomySnapshots collection，作為通膨追蹤資料來源。
 // 使用 {guildId, date} unique index 防止同一天重複寫入。
-// 連續錯誤 5 次自動關閉避免洗 log。
 
 const TZ = "Asia/Taipei";
 const SCHEDULE = "5 0 * * *";
-
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 5;
-let task = null;
 
 async function snapshotGuild(client, guildId) {
   const date = DateTime.now().setZone(TZ).toISODate();
@@ -80,55 +75,41 @@ async function snapshotGuild(client, guildId) {
     console.log(
       `[ECON-SNAP] ${guildId} ${date}：流通 ${doc.totalCirculation.toLocaleString()}（錢包 ${doc.totalWalletCoins.toLocaleString()} + 存款 ${doc.totalDepositPrincipal.toLocaleString()}），active ${doc.activeUsers}/${doc.userCount} 人`.cyan,
     );
+    return doc;
   } catch (e) {
     if (e?.code === 11000) {
       // 同 guild 同日已有 snapshot（補跑或重複觸發）→ skip
       console.log(`[ECON-SNAP] ${guildId} ${date} 已存在，略過`.gray);
-      return;
+      return null;
     }
     throw e;
   }
 }
 
 async function runSweep(client) {
-  if (!client.economySnapshotsCollection || !client.userCoinsCollection) return;
+  if (!client.economySnapshotsCollection || !client.userCoinsCollection) return { snapshots: 0 };
   const guilds = client.guilds.cache;
-  if (!guilds || guilds.size === 0) return;
+  if (!guilds || guilds.size === 0) return { snapshots: 0 };
+  let snapshots = 0;
   for (const [guildId] of guilds) {
     try {
-      await snapshotGuild(client, guildId);
+      const doc = await snapshotGuild(client, guildId);
+      if (doc) snapshots += 1;
     } catch (e) {
       console.log(
         `[ECON-SNAP] guild=${guildId} snapshot 失敗：${e.message}`.red,
       );
     }
   }
+  return { snapshots };
 }
 
 module.exports = async (client) => {
-  if (task) return;
-
-  task = cron.schedule(
-    SCHEDULE,
-    async () => {
-      try {
-        await runSweep(client);
-        consecutiveErrors = 0;
-      } catch (err) {
-        consecutiveErrors += 1;
-        console.log(
-          `[ERROR] economySnapshotScheduler failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err}`.red,
-        );
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log(`[ERROR] 連續錯誤過多，停止經濟快照 cron`.red);
-          task.stop();
-        }
-      }
-    },
-    { timezone: TZ },
-  );
-
-  console.log(
-    `[ECON-SNAP] 經濟快照排程已啟動：${SCHEDULE} (${TZ})`.cyan,
-  );
+  registerCron(client, {
+    name: "economy.snapshot",
+    label: "經濟快照（流通量）",
+    schedule: SCHEDULE,
+    timezone: TZ,
+    runner: () => runSweep(client),
+  });
 };

@@ -1,19 +1,14 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
 
 // 尋寶（Keno）中途離場：expiresAt 過了還是 selecting → 退回本金。
-// 連續錯誤計數，超過 5 次自動關閉。
-
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 5;
-let task = null;
 
 async function sweepOnce(client) {
-  if (!client.kenoGamesCollection) return;
+  if (!client.kenoGamesCollection) return { refunded: 0 };
 
   const now = new Date();
   const cursor = client.kenoGamesCollection.find({
@@ -21,6 +16,7 @@ async function sweepOnce(client) {
     expiresAt: { $lt: now },
   });
 
+  let refunded = 0;
   while (await cursor.hasNext()) {
     const g = await cursor.next();
     const refund = g.bet || 0;
@@ -53,33 +49,22 @@ async function sweepOnce(client) {
       }
     );
 
+    refunded += 1;
     console.log(
       `[KENO] 退回未完成局 user=${g.userId} game=${g.gameId} refund=${refund}`.gray
     );
   }
+  return { refunded };
 }
 
 module.exports = async (client) => {
-  if (task) return;
-
   const cfg = casino?.keno || {};
   if (cfg.enabled === false) return;
 
-  task = cron.schedule("* * * * *", async () => {
-    try {
-      await sweepOnce(client);
-      consecutiveErrors = 0;
-    } catch (err) {
-      consecutiveErrors += 1;
-      console.log(
-        `[ERROR] kenoCleanupScheduler sweep failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err}`.red
-      );
-      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        console.log(`[ERROR] 連續錯誤過多，停止 尋寶 清理 cron`.red);
-        task.stop();
-      }
-    }
+  registerCron(client, {
+    name: "casino.keno.cleanup",
+    label: "尋寶放棄局清理",
+    schedule: "* * * * *",
+    runner: () => sweepOnce(client),
   });
-
-  console.log(`[KENO] 尋寶放棄局清理排程已啟動 (每分鐘檢查)`.cyan);
 };

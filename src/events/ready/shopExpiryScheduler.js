@@ -1,18 +1,13 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 
 // 每 10 分鐘掃過期 inventory：
 // - role_color: 拔掉 Discord 身份組 + 標記 inventory expired
 // - 其他 type: 標記 expired
-// 連續錯誤計數，超過 5 次自動關閉避免洗 log。
-
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 5;
-let task = null;
 
 async function sweepOnce(client) {
-  if (!client.userInventoryCollection) return;
+  if (!client.userInventoryCollection) return { expired: 0 };
 
   const now = new Date();
   const cursor = client.userInventoryCollection.find({
@@ -20,6 +15,7 @@ async function sweepOnce(client) {
     expired: { $ne: true },
   });
 
+  let expired = 0;
   while (await cursor.hasNext()) {
     const inv = await cursor.next();
     try {
@@ -59,6 +55,7 @@ async function sweepOnce(client) {
         },
       );
 
+      expired += 1;
       console.log(
         `[SHOP] 過期道具：user=${inv.userId} item=${inv.itemId} type=${inv.type}`.gray,
       );
@@ -66,26 +63,14 @@ async function sweepOnce(client) {
       console.log(`[ERROR] shop expiry handle inv ${inv._id}: ${e}`.red);
     }
   }
+  return { expired };
 }
 
 module.exports = async (client) => {
-  if (task) return;
-
-  task = cron.schedule("*/10 * * * *", async () => {
-    try {
-      await sweepOnce(client);
-      consecutiveErrors = 0;
-    } catch (err) {
-      consecutiveErrors += 1;
-      console.log(
-        `[ERROR] shopExpiryScheduler sweep failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err}`.red,
-      );
-      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        console.log(`[ERROR] 連續錯誤過多，停止商店過期掃描 cron`.red);
-        task.stop();
-      }
-    }
+  registerCron(client, {
+    name: "shop.expiry",
+    label: "商店道具過期清理",
+    schedule: "*/10 * * * *",
+    runner: () => sweepOnce(client),
   });
-
-  console.log(`[SHOP] 商店道具過期掃描排程已啟動（每 10 分鐘）`.cyan);
 };
