@@ -124,7 +124,24 @@ const removeInvite = async (client, invite) => {
   }
 };
 
-const findUsedInvite = async (client, guild) => {
+// 同 guild 的偵測必須序列化：短時間內多人加入時，前一個事件要先把
+// cache 推進完，後一個事件才能在正確的基準上算 delta。
+const guildLocks = new Map();
+
+const runExclusive = (guildId, fn) => {
+  const prev = guildLocks.get(guildId) || Promise.resolve();
+  const next = prev.then(fn, fn);
+  guildLocks.set(
+    guildId,
+    next.then(
+      () => {},
+      () => {}
+    )
+  );
+  return next;
+};
+
+const detectUsedInvite = async (client, guild) => {
   const guildMap = ensureGuildMap(guild.id);
   const before = new Map(guildMap);
 
@@ -138,24 +155,24 @@ const findUsedInvite = async (client, guild) => {
 
   const candidates = [];
   const seen = new Set();
+  const nextUses = new Map();
 
   for (const invite of invites.values()) {
     seen.add(invite.code);
     const prev = before.get(invite.code);
     const prevUses = prev?.uses ?? 0;
     const curUses = invite.uses ?? 0;
+    const inviterId = invite.inviter?.id || prev?.inviterId || null;
+    nextUses.set(invite.code, { uses: curUses, inviterId });
     if (curUses > prevUses) {
       candidates.push({
         code: invite.code,
-        inviterId: invite.inviter?.id || prev?.inviterId || null,
+        inviterId,
         inviter: invite.inviter || null,
         delta: curUses - prevUses,
+        prevUses,
       });
     }
-    guildMap.set(invite.code, {
-      uses: curUses,
-      inviterId: invite.inviter?.id || null,
-    });
   }
 
   // 已用完即時消失的單次邀請：cache 有、fetch 沒有 → 視為這張用掉了
@@ -169,7 +186,6 @@ const findUsedInvite = async (client, guild) => {
         delta: 1,
         vanished: true,
       });
-      guildMap.delete(code);
     }
   }
 
@@ -181,6 +197,7 @@ const findUsedInvite = async (client, guild) => {
       const prev = before.get(vKey);
       const prevUses = prev?.uses ?? 0;
       const curUses = vanity?.uses ?? 0;
+      nextUses.set(vKey, { uses: curUses, inviterId: null, vanity: true });
       if (curUses > prevUses) {
         candidates.push({
           code: guild.vanityURLCode,
@@ -188,12 +205,34 @@ const findUsedInvite = async (client, guild) => {
           inviter: null,
           vanity: true,
           delta: curUses - prevUses,
+          prevUses,
         });
       }
-      guildMap.set(vKey, { uses: curUses, inviterId: null, vanity: true });
     }
   } catch {
     // ignore
+  }
+
+  let winner = null;
+  if (candidates.length === 1) {
+    winner = candidates[0];
+  } else if (candidates.length > 1) {
+    console.log(
+      `[INVITE] ambiguous: ${candidates.length} invites changed for guild ${guild.id}, skipping reward`.yellow
+    );
+  }
+
+  // 重建 cache：勝出的邀請每次只「消耗」一次使用，把多出的 delta
+  // 留給後續排隊的入群事件各自歸因（同碼同時多人加入時不漏發）。
+  guildMap.clear();
+  for (const [code, info] of nextUses.entries()) {
+    let uses = info.uses;
+    if (winner && !winner.vanished && winner.code === code && winner.delta > 1) {
+      uses = winner.prevUses + 1;
+    }
+    const entry = { uses, inviterId: info.inviterId };
+    if (info.vanity) entry.vanity = true;
+    guildMap.set(code, entry);
   }
 
   if (client.inviteCacheCollection) {
@@ -221,17 +260,16 @@ const findUsedInvite = async (client, guild) => {
         .bulkWrite(ops, { ordered: false })
         .catch((e) => console.log(`[INVITE] cache persist failed: ${e.message}`.yellow));
     }
+    client.inviteCacheCollection
+      .deleteMany({ guildId: guild.id, code: { $nin: [...guildMap.keys()] } })
+      .catch((e) => console.log(`[INVITE] cache prune failed: ${e.message}`.yellow));
   }
 
-  if (candidates.length === 0) return null;
-  if (candidates.length > 1) {
-    console.log(
-      `[INVITE] ambiguous: ${candidates.length} invites changed for guild ${guild.id}, skipping reward`.yellow
-    );
-    return null;
-  }
-  return candidates[0];
+  return winner;
 };
+
+const findUsedInvite = (client, guild) =>
+  runExclusive(guild.id, () => detectUsedInvite(client, guild));
 
 module.exports = {
   primeCache,
