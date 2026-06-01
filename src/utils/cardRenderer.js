@@ -23,7 +23,10 @@ function getWorker() {
     if (!entry) return;
     pending.delete(msg.id);
     if (msg.ok) {
-      entry.resolve(msg.buf);
+      // 跨 worker postMessage 後 Node Buffer 會降級成 Uint8Array，
+      // discord.js 的 resolveFile 只認 Buffer / string / stream，要包回去。
+      const buf = Buffer.isBuffer(msg.buf) ? msg.buf : Buffer.from(msg.buf);
+      entry.resolve(buf);
     } else {
       const err = new Error(msg.error || "card render worker error");
       if (msg.stack) err.stack = msg.stack;
