@@ -98,6 +98,7 @@ function recipeMaterialsText(recipe, fishBag, backpack, veggieBag) {
 }
 
 module.exports = {
+  channelBuckets: ["fishing", "farm"],
   data: new SlashCommandBuilder()
     .setName("烹飪")
     .setDescription("用魚類食材製作 buff 食物，消耗煤炭可升級效果 🍳")

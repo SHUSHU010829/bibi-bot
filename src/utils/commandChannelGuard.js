@@ -12,6 +12,7 @@ const FOLDER_BUCKET = {
   stock: "stock",
   mining: "mining",
   fishing: "fishing",
+  farm: "farm",
   shop: "marketplace",
 };
 const DEFAULT_BUCKET = "general";

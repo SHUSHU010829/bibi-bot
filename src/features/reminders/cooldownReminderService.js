@@ -40,7 +40,7 @@ const TYPE_META = {
     emoji: "🌾",
     command: "/農場",
     notifyText: "作物成熟了，快來收成！",
-    channelKey: "mining",
+    channelKey: "farm",
   },
 };
 
