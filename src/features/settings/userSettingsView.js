@@ -51,10 +51,10 @@ async function buildContainer(client, userId, guildId) {
     `**目前：${isPublic ? "✅ 公開" : "🔒 私密"}**\n` +
     (isPublic
       ? "你的名稱、頭像、排行榜成績會顯示在 dashboard 的公開排行榜與個人卡片頁。\n" +
-        "-# 想隱身可隨時關閉。"
+        "-# 預設公開。想隱身可隨時關閉。"
       : "你不會出現在 dashboard 的公開排行榜（仍會佔名次，但顯示為「匿名玩家」），\n" +
         "公開卡片頁 `/u/<你的 ID>` 也會回 404。\n" +
-        "-# 想參與排名 / 分享成就可以打開。");
+        "-# 想恢復公開可以再次切換。");
 
   const toggleBtn = new ButtonBuilder()
     .setCustomId(buildCustomId(userId, "publicProfile"))
