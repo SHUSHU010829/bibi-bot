@@ -57,6 +57,9 @@ module.exports = async (client, member) => {
       invitee: member.user,
       inviter,
       welcomeAmount: result.welcomeAmount,
+      inviterReward: result.inviterReward,
+      activeCount: result.activeCount,
+      cappedByDaily: result.cappedByDaily,
     }).catch((e) =>
       console.log(`[INVITE] welcome notice error: ${e.message}`.red)
     );
