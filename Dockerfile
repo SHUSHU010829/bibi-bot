@@ -6,6 +6,7 @@ WORKDIR /app
 # 缺 fontconfig 會在繪字時噴 "Fontconfig error: Cannot load default config file"
 RUN apt-get update && apt-get install -y --no-install-recommends \
       fontconfig \
+      fonts-noto-cjk \
       libcairo2 \
       libpango-1.0-0 \
       libpangocairo-1.0-0 \
