@@ -34,7 +34,7 @@ function parseUseTicketId(customId) {
   return ownerId ? { ownerId } : null;
 }
 
-// 劣質磨刀石「使用」按鈕：mining_use_whetstone_inferior_<ownerId>
+// 劣質磨鎬石「使用」按鈕：mining_use_whetstone_inferior_<ownerId>
 // 注意：_inferior_ 是 _whetstone_ 的超集，handler 內先比長的 prefix。
 const USE_WHETSTONE_INFERIOR_PREFIX = "mining_use_whetstone_inferior_";
 
@@ -301,7 +301,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `### 🎁 挖礦道具\n` +
-            `🍀 幸運藥水 ×${luckUses}　🎫 CD 縮短券 ×${ticketCount}　🪨 劣質磨刀石 ×${inferiorCount}　✨ 傳說素材碎片 ×${fragments}\n` +
+            `🍀 幸運藥水 ×${luckUses}　🎫 CD 縮短券 ×${ticketCount}　🪨 劣質磨鎬石 ×${inferiorCount}　✨ 傳說素材碎片 ×${fragments}\n` +
             `-# 切到上方「🪓 挖礦道具」分類可使用道具／修復鎬子`
         )
       );
@@ -328,7 +328,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
             .setDisabled(!(ticketCount > 0 && inCooldown))
         )
     );
-    // 劣質磨刀石
+    // 劣質磨鎬石
     {
       const maxDur = profile.pickaxe_max_durability;
       const inferiorCanUse =
@@ -343,7 +343,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         new SectionBuilder()
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              `🪨 **劣質磨刀石** ×${inferiorCount}${inferiorHint}`
+              `🪨 **劣質磨鎬石** ×${inferiorCount}${inferiorHint}`
             )
           )
           .setButtonAccessory(

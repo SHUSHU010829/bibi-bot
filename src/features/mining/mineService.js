@@ -218,7 +218,7 @@ function getPickaxeRepairCost(profile) {
   return cost;
 }
 
-// 使用一個劣質磨刀石：補滿鎬子耐久到目前 pickaxe_max_durability，然後 max -10。
+// 使用一個劣質磨鎬石：補滿鎬子耐久到目前 pickaxe_max_durability，然後 max -10。
 // max < 20 時拒用（避免降至 10 以下，讓玩家知道是最終次數）。
 async function useInferiorWhetstone(client, { userId, guildId }) {
   if (!mining?.enabled || !client.miningProfilesCollection) {
@@ -240,7 +240,7 @@ async function useInferiorWhetstone(client, { userId, guildId }) {
     return { ok: false, reason: "max_too_low", maxDurability: profile.pickaxe_max_durability };
   }
 
-  // 原子更新：補滿耐久到新 max（舊 max - 10），扣一顆磨刀石
+  // 原子更新：補滿耐久到新 max（舊 max - 10），扣一顆磨鎬石
   // pipeline $set 內所有運算式都參照「更新前」的文件值。
   //
   // 舊存檔玩家 DB 文件可能沒有 pickaxe_max_durability 欄位（miningProfile.normalize

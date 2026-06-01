@@ -102,11 +102,11 @@
       },
       {
         "id": "whetstone",
-        "name": "磨刀石",
+        "name": "磨鎬石",
         "emoji": "🪓",
         "weight": 5,
         "effect": { "type": "repair_weapon" },
-        "text": "你找到一塊上等磨刀石，順手把武器磨利、耐久完全恢復！"
+        "text": "你找到一塊上等磨鎬石，順手把武器磨利、耐久完全恢復！"
       },
       {
         "id": "trap",
@@ -161,7 +161,7 @@
         "emoji": "🛠️",
         "weight": 8,
         "effect": { "type": "gift_whetstone_inferior", "qty": 1 },
-        "text": "牆角有座廢棄的鍛爐，灰塵底下還留著一塊劣質磨刀石，你收進背包。"
+        "text": "牆角有座廢棄的鍛爐，灰塵底下還留著一塊劣質磨鎬石，你收進背包。"
       }
     ]
   }
