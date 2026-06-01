@@ -62,11 +62,11 @@ async function appraise(client, { userId, guildId, member, username, ts }) {
     return { ok: false, reason: "expired" };
   }
 
-  const count = Math.max(0, Math.floor(pending.qty || 0));
-  if (count <= 0) return { ok: false, reason: "no_stone" };
-
+  const pendingQty = Math.max(0, Math.floor(pending.qty || 0));
   const haveStone = profile.backpack?.stone || 0;
-  if (haveStone < count) return { ok: false, reason: "no_stone" };
+  // 挖到後若被事件扣掉，照實際剩下的石頭數量賭（有幾顆賭幾顆）
+  const count = Math.min(pendingQty, haveStone);
+  if (count <= 0) return { ok: false, reason: "no_stone" };
 
   const feePerStone = Math.max(0, Math.floor(c.feePerStone || 0));
   const fee = feePerStone * count;
