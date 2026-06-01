@@ -6,10 +6,12 @@ const logger = require("../../utils/logger");
  *
  * 認證模式：website 是受信任的呼叫端（與 donation API 同模式）。
  *   - `Authorization: Bearer <DASHBOARD_ADMIN_SECRET>` 驗 server-to-server 身分
- *   - Body / Query 帶 `userId`（website session 的 Discord 使用者 ID）
- *   - 本 middleware 拿 userId 到 PRIMARY_GUILD_ID 查 member，檢查 ManageGuild
+ *   - Header `X-Admin-User-Id` / body.userId / query.userId 帶 Discord 使用者 ID
+ *   - Header `X-Admin-Guild-Id` / body.guildId / query.guildId 帶要檢查權限的 guild
+ *     （由 website 端的 PRIMARY_GUILD_ID 提供；本 bot 也接受退回 GUILD_ID env）
+ *   - 本 middleware 查 guild member，檢查 ManageGuild
  *
- * 通過後在 req.admin 掛：{ userId, isOwner, member }
+ * 通過後在 req.admin 掛：{ userId, guildId, isOwner, member }
  */
 module.exports = function requireAdmin(client) {
   return async function (req, res, next) {
@@ -35,9 +37,17 @@ module.exports = function requireAdmin(client) {
       return res.status(400).json({ error: "missing userId" });
     }
 
-    const guildId = process.env.PRIMARY_GUILD_ID;
+    const guildId =
+      (typeof req.headers["x-admin-guild-id"] === "string" &&
+        req.headers["x-admin-guild-id"].trim()) ||
+      (typeof req.body?.guildId === "string" && req.body.guildId.trim()) ||
+      (typeof req.query?.guildId === "string" && req.query.guildId.trim()) ||
+      process.env.GUILD_ID ||
+      process.env.PRIMARY_GUILD_ID ||
+      "";
+
     if (!guildId) {
-      return res.status(503).json({ error: "PRIMARY_GUILD_ID not configured" });
+      return res.status(503).json({ error: "guildId not provided" });
     }
 
     const guild = client.guilds.cache.get(guildId);
@@ -66,7 +76,7 @@ module.exports = function requireAdmin(client) {
       return res.status(403).json({ error: "forbidden" });
     }
 
-    req.admin = { userId, isOwner, member };
+    req.admin = { userId, guildId, isOwner, member };
     next();
   };
 };
