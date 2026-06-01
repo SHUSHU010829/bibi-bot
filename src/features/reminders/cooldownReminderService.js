@@ -13,7 +13,7 @@ const {
   ButtonStyle,
 } = require("discord.js");
 
-const { casino } = require("../../config");
+const { casino, commandChannels, normalChannelId } = require("../../config");
 const notifyPrefs = require("./notifyPrefs");
 
 const CUSTOM_ID_PREFIX = "cdnotify";
@@ -21,18 +21,28 @@ const CUSTOM_ID_PREFIX = "cdnotify";
 // 各活動的呈現與 DM 文案。type 同時用於 customId 與 DB 欄位。
 // notifyText：若有指定，scanAndNotify 會用它取代預設「冷卻結束囉」的文案；
 // 用於語意不是「冷卻結束」的提醒（例如地下城體力補滿）。
+// channelKey：對應 server.json commandChannels 的分類，DM 用來附上前往該頻道的連結。
 const TYPE_META = {
-  work: { label: "打工", emoji: "💼", command: "/打工" },
-  mining: { label: "挖礦", emoji: "⛏️", command: "/挖礦" },
-  fish: { label: "釣魚", emoji: "🎣", command: "/釣魚" },
-  crash: { label: "火箭", emoji: "🚀", command: "/火箭" },
+  work: { label: "打工", emoji: "💼", command: "/打工", channelKey: "mining" },
+  mining: { label: "挖礦", emoji: "⛏️", command: "/挖礦", channelKey: "mining" },
+  fish: { label: "釣魚", emoji: "🎣", command: "/釣魚", channelKey: "fishing" },
+  crash: { label: "火箭", emoji: "🚀", command: "/火箭", channelKey: "casino" },
   dungeon: {
     label: "地下城",
     emoji: "🔋",
     command: "/地下城",
     notifyText: "體力已補滿，快來大顯身手！",
+    channelKey: "mining",
   },
 };
+
+// 依活動分類取出該頻道的 Discord 深連結，找不到時退回一般頻道。
+function channelLink(guildId, channelKey) {
+  const channelId =
+    (commandChannels && commandChannels[channelKey]?.[0]) || normalChannelId;
+  if (!channelId) return null;
+  return `https://discord.com/channels/${guildId}/${channelId}`;
+}
 
 function coll(client) {
   return client.cooldownRemindersCollection || null;
@@ -207,9 +217,11 @@ async function scanAndNotify(client) {
     const body = meta.notifyText
       ? `${meta.emoji} 你在 **${guildName}** 的${meta.label}${meta.notifyText}快來 \`${meta.command}\`！`
       : `${meta.emoji} 你在 **${guildName}** 的${meta.label}冷卻結束囉，快來 \`${meta.command}\`！`;
-    await user
-      .send(`${body}\n（不想再收到提醒？用 \`/通知設定\` 即可關閉）`)
-      .catch(() => {});
+    const link = channelLink(r.guildId, meta.channelKey);
+    const cta = link
+      ? `\n👉 前往 ${link} 使用 \`${meta.command}\``
+      : "";
+    await user.send(`${body}${cta}`).catch(() => {});
   }
 }
 
