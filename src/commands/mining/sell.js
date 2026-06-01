@@ -35,7 +35,7 @@ function trendLabel(price, base) {
 }
 
 module.exports = {
-  channelBuckets: ["mining", "fishing"],
+  channelBuckets: ["mining", "fishing", "marketplace"],
   data: new SlashCommandBuilder()
     .setName("賣出")
     .setDescription("把礦石或魚賣給系統換金幣，依當日行情計價 🪙")
