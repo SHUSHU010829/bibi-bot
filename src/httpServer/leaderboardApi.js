@@ -43,7 +43,7 @@ module.exports = function createLeaderboardRouter(client) {
         ok: true,
         type,
         period,
-        rows: enrichLeaderboardRows(client, guildId, rows),
+        rows: await enrichLeaderboardRows(client, guildId, rows),
       });
     } catch (err) {
       next(err);
@@ -59,7 +59,7 @@ module.exports = function createLeaderboardRouter(client) {
       const rows = await titleLeaderboard.topByTitleCount(client, guildId, limit);
       res.json({
         ok: true,
-        rows: enrichLeaderboardRows(client, guildId, rows),
+        rows: await enrichLeaderboardRows(client, guildId, rows),
       });
     } catch (err) {
       next(err);
@@ -73,11 +73,16 @@ module.exports = function createLeaderboardRouter(client) {
       if (!guildId) return;
       const top = Math.min(Number(req.query.top) || 3, 25);
       const data = await weeklySummary.data(client, guildId, top);
+      const [mining, value, titles] = await Promise.all([
+        enrichLeaderboardRows(client, guildId, data.mining),
+        enrichLeaderboardRows(client, guildId, data.value),
+        enrichLeaderboardRows(client, guildId, data.titles),
+      ]);
       res.json({
         ok: true,
-        mining: enrichLeaderboardRows(client, guildId, data.mining),
-        value: enrichLeaderboardRows(client, guildId, data.value),
-        titles: enrichLeaderboardRows(client, guildId, data.titles),
+        mining,
+        value,
+        titles,
         resetEpoch: data.resetEpoch,
       });
     } catch (err) {

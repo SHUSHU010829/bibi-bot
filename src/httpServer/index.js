@@ -7,6 +7,7 @@ const createAdminMeHandler = require("./adminMe");
 const createAdminDonationRouter = require("./adminDonationApi");
 const createAdminUsersRouter = require("./adminUsersApi");
 const createAdminCronRouter = require("./adminCronApi");
+const createPublicProfileHandler = require("./publicProfileApi");
 const requireAdmin = require("./middleware/requireAdmin");
 const logger = require("../utils/logger");
 const { snapshot } = require("../utils/errorTracker");
@@ -58,6 +59,9 @@ module.exports = function startHttpServer(client) {
 
   // 排行榜 API（Dashboard 讀取）
   app.use("/api/v1/leaderboard", createLeaderboardRouter(client));
+
+  // 公開玩家卡片 API（無 auth，但會檢查 UserSettings.publicProfile）
+  app.get("/api/v1/u/:userId", createPublicProfileHandler(client));
 
   // Admin API（Dashboard 後台，需 DASHBOARD_ADMIN_SECRET + 使用者具 ManageGuild）
   app.get("/api/v1/admin/me", requireAdmin(client), createAdminMeHandler());
