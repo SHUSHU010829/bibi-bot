@@ -120,10 +120,7 @@ module.exports = function createAdminDonationRouter(client) {
           return res.status(400).json({ error: "reason too short (>= 5 chars)" });
         }
 
-        const guildId = process.env.PRIMARY_GUILD_ID;
-        if (!guildId) {
-          return res.status(503).json({ error: "PRIMARY_GUILD_ID not configured" });
-        }
+        const guildId = req.admin.guildId;
 
         let unmatchedDoc;
         try {
