@@ -103,16 +103,31 @@ function addRecipeSection(container, recipes, profile, type) {
   }
 }
 
+const CATEGORY_CHOICES = [
+  { name: "鎬子", value: "pickaxe" },
+  { name: "武器", value: "weapon" },
+  { name: "釣竿", value: "rod" },
+];
+
 module.exports = {
+  ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("裝備")
     .setDescription("查看目前的鎬子、武器與可合成清單 🔧")
-    .setContexts(InteractionContextType.Guild),
+    .setContexts(InteractionContextType.Guild)
+    .addStringOption((o) =>
+      o
+        .setName("種類")
+        .setDescription("只顯示某類合成清單；不選則只看目前裝備")
+        .setRequired(false)
+        .addChoices(...CATEGORY_CHOICES),
+    ),
 
   run: async (client, interaction) => {
-    await interaction.deferReply();
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
+      const category = interaction.options.getString("種類");
       if (!mining?.enabled || !client.miningProfilesCollection) {
         return interaction.editReply("🔧 挖礦系統尚未啟動！");
       }
@@ -181,7 +196,7 @@ module.exports = {
       const weaponRecipes = recipes.filter((r) => r.result?.type === "weapon");
       const rodRecipes = recipes.filter((r) => r.result?.type === "rod");
 
-      if (pickaxeRecipes.length) {
+      if (category === "pickaxe" && pickaxeRecipes.length) {
         container
           .addSeparatorComponents(new SeparatorBuilder())
           .addTextDisplayComponents(
@@ -190,7 +205,7 @@ module.exports = {
         addRecipeSection(container, pickaxeRecipes, profile, "pickaxe");
       }
 
-      if (weaponRecipes.length) {
+      if (category === "weapon" && weaponRecipes.length) {
         container
           .addSeparatorComponents(new SeparatorBuilder())
           .addTextDisplayComponents(
@@ -199,7 +214,7 @@ module.exports = {
         addRecipeSection(container, weaponRecipes, profile, "weapon");
       }
 
-      if (rodRecipes.length) {
+      if (category === "rod" && rodRecipes.length) {
         container
           .addSeparatorComponents(new SeparatorBuilder())
           .addTextDisplayComponents(
@@ -208,10 +223,11 @@ module.exports = {
         addRecipeSection(container, rodRecipes, profile, "rod");
       }
 
+      const footer = category
+        ? "-# 用 /合成 打造；礦石來自 /挖礦，魚來自 /釣魚，傳說素材碎片來自 /地下城"
+        : "-# 想看合成清單請選「種類」參數：鎬子 / 武器 / 釣竿";
       container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          "-# 用 /合成 打造；礦石來自 /挖礦，魚來自 /釣魚，傳說素材碎片來自 /地下城",
-        ),
+        new TextDisplayBuilder().setContent(footer),
       );
 
       await interaction.editReply({
