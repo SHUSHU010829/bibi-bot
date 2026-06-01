@@ -1,31 +1,7 @@
-const fs = require("fs/promises");
-const path = require("path");
-const satori = require("satori").default || require("satori");
-const { html } = require("satori-html");
-const { Resvg } = require("@resvg/resvg-js");
-
-const { loadAdditionalAsset } = require("./satoriEmoji");
 const LruCache = require("./lruCache");
+const { renderCard } = require("./cardRenderer");
 
 const sicboCardCache = new LruCache(64);
-
-const FONT_DIR = path.join(__dirname, "../../fonts");
-let fontsCache = null;
-
-async function loadFonts() {
-  if (fontsCache) return fontsCache;
-  const [tcBlack, tcMedium, mono] = await Promise.all([
-    fs.readFile(path.join(FONT_DIR, "NotoSansTC-Black.woff")),
-    fs.readFile(path.join(FONT_DIR, "NotoSansTC-Medium.woff")),
-    fs.readFile(path.join(FONT_DIR, "SpaceMono-Regular.woff")),
-  ]);
-  fontsCache = [
-    { name: "SpaceMono", data: mono, weight: 400, style: "normal" },
-    { name: "NotoSansTC", data: tcMedium, weight: 500, style: "normal" },
-    { name: "NotoSansTC", data: tcBlack, weight: 900, style: "normal" },
-  ];
-  return fontsCache;
-}
 
 // 骰面點點位置（0-1 比例座標），200×200 之骰子可直接乘出實際 px。
 function pipPositions(rank) {
@@ -187,24 +163,8 @@ async function generateSicboCard(data) {
   const cached = sicboCardCache.get(cacheKey);
   if (cached) return cached;
 
-  const fonts = await loadFonts();
   const markup = buildMarkup(data);
-  const element = html(markup);
-
-  const svg = await satori(element, {
-    width: 1080,
-    height: 680,
-    fonts,
-    loadAdditionalAsset,
-  });
-
-  const png = new Resvg(svg, {
-    fitTo: { mode: "width", value: 1080 },
-  })
-    .render()
-    .asPng();
-
-  const buf = Buffer.from(png);
+  const buf = await renderCard({ markup, width: 1080, height: 680 });
   sicboCardCache.set(cacheKey, buf);
   return buf;
 }

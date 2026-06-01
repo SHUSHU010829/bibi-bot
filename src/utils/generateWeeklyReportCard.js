@@ -1,27 +1,4 @@
-const fs = require("fs/promises");
-const path = require("path");
-const satori = require("satori").default || require("satori");
-const { html } = require("satori-html");
-const { Resvg } = require("@resvg/resvg-js");
-const { loadAdditionalAsset } = require("./satoriEmoji");
-
-const FONT_DIR = path.join(__dirname, "../../fonts");
-let fontsCache = null;
-
-async function loadFonts() {
-  if (fontsCache) return fontsCache;
-  const [tcBlack, tcMedium, mono] = await Promise.all([
-    fs.readFile(path.join(FONT_DIR, "NotoSansTC-Black.woff")),
-    fs.readFile(path.join(FONT_DIR, "NotoSansTC-Medium.woff")),
-    fs.readFile(path.join(FONT_DIR, "SpaceMono-Regular.woff")),
-  ]);
-  fontsCache = [
-    { name: "SpaceMono", data: mono, weight: 400, style: "normal" },
-    { name: "NotoSansTC", data: tcMedium, weight: 500, style: "normal" },
-    { name: "NotoSansTC", data: tcBlack, weight: 900, style: "normal" },
-  ];
-  return fontsCache;
-}
+const { renderCard } = require("./cardRenderer");
 
 function buildMarkup(data) {
   const { topXp, totalXp, levelUpCount, checkinCount, weekRangeLabel } = data;
@@ -95,22 +72,6 @@ function buildMarkup(data) {
 }
 
 module.exports = async function generateWeeklyReportCard(data) {
-  const fonts = await loadFonts();
   const markup = buildMarkup(data);
-  const element = html(markup);
-
-  const svg = await satori(element, {
-    width: 1080,
-    height: 1350,
-    fonts,
-    loadAdditionalAsset,
-  });
-
-  const png = new Resvg(svg, {
-    fitTo: { mode: "width", value: 1080 },
-  })
-    .render()
-    .asPng();
-
-  return Buffer.from(png);
+  return renderCard({ markup, width: 1080, height: 1350 });
 };

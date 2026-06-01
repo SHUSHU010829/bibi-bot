@@ -1,6 +1,11 @@
-// Worker thread: 跑 satori + resvg 把 markup render 成 PNG buffer。
-// 由 generateLevelUpCard 主檔透過 worker_threads 啟動，
-// 用 id 對應 request/response，主執行緒不會被 CPU 阻塞。
+// 共用 render worker：所有 satori + resvg 卡片都跑在這支 worker 裡，
+// 避免在主執行緒做大量 CPU 工作（會阻塞 Discord interaction 處理）。
+//
+// 訊息格式：{ id, payload: { markup, width, height } }
+// 回覆格式：{ id, ok: true, buf } 或 { id, ok: false, error, stack }
+//
+// 字體一次載入全集（TC Black/Medium、JP Black/Medium、SpaceMono 400/700），
+// 所有卡片都共用同一份 fontsCache，省記憶體也省 IO。
 const { parentPort } = require("worker_threads");
 const fs = require("fs/promises");
 const path = require("path");
@@ -23,6 +28,7 @@ async function loadFonts() {
   ]);
   fontsCache = [
     { name: "SpaceMono", data: mono, weight: 400, style: "normal" },
+    { name: "SpaceMono", data: mono, weight: 700, style: "normal" },
     { name: "NotoSansTC", data: tcMedium, weight: 500, style: "normal" },
     { name: "NotoSansTC", data: tcBlack, weight: 900, style: "normal" },
     { name: "NotoSansJP", data: jpMedium, weight: 500, style: "normal" },
@@ -40,20 +46,21 @@ async function renderOne({ markup, width, height }) {
     fonts,
     loadAdditionalAsset,
   });
-  const png = new Resvg(svg, {
+  const resvg = new Resvg(svg, {
     fitTo: { mode: "width", value: width },
-  })
-    .render()
-    .asPng();
-  return Buffer.from(png);
+  });
+  // renderAsync 可讓 worker 內 IO 不獨佔執行緒；對主執行緒沒差，
+  // 但對 worker 自己跑多個 task 時較友善。
+  const rendered = typeof resvg.renderAsync === "function"
+    ? await resvg.renderAsync()
+    : resvg.render();
+  return Buffer.from(rendered.asPng());
 }
 
 parentPort.on("message", async (msg) => {
   const { id, payload } = msg;
   try {
     const buf = await renderOne(payload);
-    // 不用 transferList：Node Buffer 通常從 pool 借用同一個 ArrayBuffer，
-    // 轉移所有權會破壞其他 Buffer。少量資料用結構化複製就好。
     parentPort.postMessage({ id, ok: true, buf });
   } catch (e) {
     parentPort.postMessage({

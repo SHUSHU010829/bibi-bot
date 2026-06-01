@@ -1,33 +1,9 @@
 // 德州撲克桌面圖卡（公牌 + 玩家列）。
 // 取材自 generateBlackjackCard 的 satori 風格，保持與 21 點圖卡相近的視覺。
 
-const fs = require("fs/promises");
-const path = require("path");
-const satori = require("satori").default || require("satori");
-const { html } = require("satori-html");
-const { Resvg } = require("@resvg/resvg-js");
-
-const { loadAdditionalAsset } = require("./satoriEmoji");
 const { totalPot } = require("../features/casino/poker/engine");
 const { categoryLabel } = require("../features/casino/poker/hand");
-
-const FONT_DIR = path.join(__dirname, "../../fonts");
-let fontsCache = null;
-
-async function loadFonts() {
-  if (fontsCache) return fontsCache;
-  const [tcBlack, tcMedium, mono] = await Promise.all([
-    fs.readFile(path.join(FONT_DIR, "NotoSansTC-Black.woff")),
-    fs.readFile(path.join(FONT_DIR, "NotoSansTC-Medium.woff")),
-    fs.readFile(path.join(FONT_DIR, "SpaceMono-Regular.woff")),
-  ]);
-  fontsCache = [
-    { name: "SpaceMono", data: mono, weight: 400, style: "normal" },
-    { name: "NotoSansTC", data: tcMedium, weight: 500, style: "normal" },
-    { name: "NotoSansTC", data: tcBlack, weight: 900, style: "normal" },
-  ];
-  return fontsCache;
-}
+const { renderCard: renderCardToPng } = require("./cardRenderer");
 
 const PALETTE = {
   card: "#F4ECD8",
@@ -258,24 +234,8 @@ function buildMarkup(state) {
 }
 
 async function generatePokerCard(state) {
-  const fonts = await loadFonts();
   const markup = buildMarkup(state);
-  const element = html(markup);
-
-  const svg = await satori(element, {
-    width: 1080,
-    height: 880,
-    fonts,
-    loadAdditionalAsset,
-  });
-
-  const png = new Resvg(svg, {
-    fitTo: { mode: "width", value: 1080 },
-  })
-    .render()
-    .asPng();
-
-  return Buffer.from(png);
+  return renderCardToPng({ markup, width: 1080, height: 880 });
 }
 
 module.exports = generatePokerCard;
