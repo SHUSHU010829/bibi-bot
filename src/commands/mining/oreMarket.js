@@ -178,6 +178,7 @@ async function renderToday(client) {
 }
 
 module.exports = {
+  channelBuckets: ["mining", "marketplace"],
   data: new SlashCommandBuilder()
     .setName("行情")
     .setDescription("查看今日礦石與魚類收購價，或查看近 7 天走勢 📊")
