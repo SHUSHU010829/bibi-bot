@@ -8,17 +8,23 @@
 //
 //   因為漏掉的 invitee 沒有任何 InviteRecord，腳本無法自動探勘是誰，必須由
 //   操作者明確指定 guild / 邀請人 / 被邀請者清單。每位 invitee 會：
-//     1. 若 InviteRecords 已有紀錄 → 跳過（冪等，對齊 (guildId,inviteeId) unique）
+//     1. 若 InviteRecords 已有紀錄 → 跳過（冪等，對齊 (guildId,inviteeId) unique），
+//        並印出該紀錄的 rewardGranted / cappedByDaily 方便診斷
 //     2. 依 rewardFormula 重算金額（含級距遞增、每日上限），與 live 流程一致
 //     3. grantCoins(source=invite_reward) 給邀請人
 //     4. 補一筆 status="active" 的 InviteRecord（之後離開可正常回收）
 //     5. 預設一併補發被邀請者歡迎金（--no-welcome 可關閉）
 //
+//   若紀錄已存在、但當初 rewardGranted=0（例如當天達每日上限、或 grantCoins
+//   當下失敗），加 --repay 會針對 active 且 rewardGranted<=0 的紀錄補發邀請人
+//   獎勵並回寫紀錄（不重發歡迎金，避免重複）。--repay 預設仍尊重每日上限，
+//   要強制超發需再加 --ignore-daily-cap。
+//
 // 用法:
 //   node src/scripts/backfillMissedInviteReward.js \
 //     --guild=<guildId> --inviter=<inviterId> --invitees=<id1>,<id2> \
 //     [--code=<inviteCode>] [--joinedAt=2026-06-01T03:43:00+08:00] \
-//     [--no-welcome] [--ignore-daily-cap] [--apply]
+//     [--no-welcome] [--ignore-daily-cap] [--repay] [--apply]
 //
 //   不加 --apply 為 dry-run（只印不寫）。
 
@@ -41,6 +47,7 @@ function parseArgs(argv) {
     apply: false,
     welcome: true,
     ignoreDailyCap: false,
+    repay: false,
     guildId: null,
     inviterId: null,
     invitees: [],
@@ -51,6 +58,7 @@ function parseArgs(argv) {
     if (a === "--apply") args.apply = true;
     else if (a === "--no-welcome") args.welcome = false;
     else if (a === "--ignore-daily-cap") args.ignoreDailyCap = true;
+    else if (a === "--repay") args.repay = true;
     else if (a.startsWith("--guild=")) args.guildId = a.slice(8);
     else if (a.startsWith("--inviter=")) args.inviterId = a.slice(10);
     else if (a.startsWith("--invitees="))
@@ -144,10 +152,75 @@ async function main() {
       .findOne({ guildId: args.guildId, inviteeId })
       .catch(() => null);
     if (existing) {
+      const already = existing.rewardGranted || 0;
+      const detail =
+        `status=${existing.status}・rewardGranted=${already}` +
+        `${existing.cappedByDaily ? "・cappedByDaily" : ""}` +
+        `・activeCountBefore=${existing.activeCountBefore ?? "?"}`;
+      const repayable =
+        args.repay && existing.status === "active" && already <= 0;
+
+      if (!repayable) {
+        const hint =
+          already <= 0 && existing.status === "active"
+            ? "，可加 --repay 補回".yellow
+            : "";
+        console.log(`  - ${inviteeId} 已有紀錄（${detail}）${hint}，跳過。`.gray);
+        skipped += 1;
+        continue;
+      }
+
+      // 補回：紀錄已存在但當初沒入帳（rewardGranted=0，多半是當天達每日上限）。
+      // 用紀錄存的 activeCountBefore 重算，金額與當初應發的一致。
+      const activeCount = existing.activeCountBefore ?? 0;
+      const baseAmount = computeReward(activeCount);
+      let cappedByDaily = false;
+      if (!args.ignoreDailyCap && dailyCap > 0) {
+        if (dbTodayRewarded + addedTodayRewarded >= dailyCap) cappedByDaily = true;
+      }
+      const amount = cappedByDaily ? 0 : baseAmount;
+
       console.log(
-        `  - ${inviteeId} 已有紀錄（status=${existing.status}），跳過。`.gray
+        `  ↻ ${inviteeId} 補回（原 ${detail}）→ 邀請人 +${amount}${
+          cappedByDaily ? "（今日仍達上限，維持 0，需 --ignore-daily-cap 才強發）" : ""
+        }`.green
       );
-      skipped += 1;
+
+      if (args.apply) {
+        let rewardGranted = 0;
+        if (amount > 0) {
+          const res = await grantCoins(client, {
+            userId: args.inviterId,
+            guildId: args.guildId,
+            amount,
+            source: "invite_reward",
+            meta: {
+              inviteeId,
+              inviteCode: args.code || existing.inviteCode || null,
+              backfill: true,
+              repay: true,
+            },
+          }).catch((e) => {
+            console.log(`    [ERROR] grantCoins 失敗：${e.message}`.red);
+            return null;
+          });
+          rewardGranted = res?.granted || 0;
+        }
+        await client.inviteRecordsCollection
+          .updateOne(
+            { _id: existing._id },
+            { $set: { rewardGranted, cappedByDaily, backfilledAt: new Date() } }
+          )
+          .catch((e) =>
+            console.log(`    [ERROR] 更新 InviteRecord 失敗：${e.message}`.red)
+          );
+        totalReward += rewardGranted;
+        if (rewardGranted > 0) addedTodayRewarded += 1;
+      } else {
+        totalReward += amount;
+        if (amount > 0) addedTodayRewarded += 1;
+      }
+      granted += 1;
       continue;
     }
 
