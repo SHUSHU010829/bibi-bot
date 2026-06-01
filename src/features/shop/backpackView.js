@@ -35,13 +35,22 @@ function parseUseTicketId(customId) {
 }
 
 // 劣質磨鎬石「使用」按鈕：mining_use_whetstone_inferior_<ownerId>
+// 確認按鈕：mining_use_whetstone_inferior_confirm_<ownerId>
 // 注意：_inferior_ 是 _whetstone_ 的超集，handler 內先比長的 prefix。
 const USE_WHETSTONE_INFERIOR_PREFIX = "mining_use_whetstone_inferior_";
+const USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX = "mining_use_whetstone_inferior_confirm_";
 
 function parseUseWhetstoneInferiorId(customId) {
-  if (!customId || !customId.startsWith(USE_WHETSTONE_INFERIOR_PREFIX)) return null;
-  const ownerId = customId.slice(USE_WHETSTONE_INFERIOR_PREFIX.length);
-  return ownerId ? { ownerId } : null;
+  if (!customId) return null;
+  if (customId.startsWith(USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX)) {
+    const ownerId = customId.slice(USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX.length);
+    return ownerId ? { ownerId, confirm: true } : null;
+  }
+  if (customId.startsWith(USE_WHETSTONE_INFERIOR_PREFIX)) {
+    const ownerId = customId.slice(USE_WHETSTONE_INFERIOR_PREFIX.length);
+    return ownerId ? { ownerId, confirm: false } : null;
+  }
+  return null;
 }
 
 // 材料修復預覽按鈕：mining_repair_material_<ownerId>
@@ -257,13 +266,16 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       typeof profile.pickaxe_max_durability === "number" &&
       profile.pickaxe_durability < profile.pickaxe_max_durability;
 
-    // 材料修復所需文字（iron×5、stone×20 …）
+    // 材料修復所需文字（iron×5、stone×20 …），帶 have/need 標記讓使用者一眼看出夠不夠
     const formatCost = (cost) => {
       if (!cost) return "";
       return Object.entries(cost)
         .map(([mat, qty]) => {
           const oreDef = mining.ores?.[mat];
-          return oreDef ? `${oreDef.emoji} ${oreDef.name}×${qty}` : `${mat}×${qty}`;
+          const have = profile.backpack?.[mat] || 0;
+          const mark = have >= qty ? "✅" : "❌";
+          const name = oreDef ? `${oreDef.emoji} ${oreDef.name}` : mat;
+          return `${name}×${qty}（有 ${have}）${mark}`;
         })
         .join("、");
     };
@@ -283,12 +295,28 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     // ── 挖礦狀態 ──
     if (category === "all" || category === "mine") {
       container.addSeparatorComponents(new SeparatorBuilder());
+      // 在「挖礦道具」分類同時顯示礦石庫存，方便對照修復所需材料
+      const oreInvLine =
+        category === "mine"
+          ? (() => {
+              const lines = [];
+              for (const [key, def] of Object.entries(mining.ores)) {
+                const qty = profile.backpack?.[key] || 0;
+                if (qty <= 0) continue;
+                lines.push(`${def.emoji || "⛏️"} ${def.name}×${qty}`);
+              }
+              return lines.length > 0
+                ? `\n🪙 礦石庫存：${lines.join("・")}`
+                : `\n🪙 礦石庫存：（空）`;
+            })()
+          : "";
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `### 🪓 挖礦狀態\n` +
             `⛏️ 目前鎬子：${pdef.emoji || "⛏️"} ${pdef.name}（${durabilityText}）\n` +
             `📦 背包容量：${used} / ${cap}\n` +
-            `⏳ 挖礦冷卻：${cdText}`
+            `⏳ 挖礦冷卻：${cdText}` +
+            oreInvLine
         )
       );
     }
@@ -297,12 +325,16 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     // 「全部」分類只顯示純文字摘要（避免超過 Discord Components V2 40 個元件上限），
     // 切到「🪓 挖礦道具」分類才看到互動 Section + 按鈕。
     if (category === "all") {
+      const repairHint = canRepair && repairCost
+        ? `\n🛠️ 修復鎬子需要：${formatCost(repairCost)}`
+        : "";
       container.addSeparatorComponents(new SeparatorBuilder());
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `### 🎁 挖礦道具\n` +
-            `🍀 幸運藥水 ×${luckUses}　🎫 CD 縮短券 ×${ticketCount}　🪨 劣質磨鎬石 ×${inferiorCount}　✨ 傳說素材碎片 ×${fragments}\n` +
-            `-# 切到上方「🪓 挖礦道具」分類可使用道具／修復鎬子`
+            `🍀 幸運藥水 ×${luckUses}　🎫 CD 縮短券 ×${ticketCount}　🪨 劣質磨鎬石 ×${inferiorCount}　✨ 傳說素材碎片 ×${fragments}` +
+            repairHint +
+            `\n-# 切到上方「🪓 挖礦道具」分類可使用道具／修復鎬子`
         )
       );
     } else if (category === "mine") {
@@ -619,6 +651,7 @@ module.exports = {
   USE_TICKET_PREFIX,
   parseUseTicketId,
   USE_WHETSTONE_INFERIOR_PREFIX,
+  USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX,
   parseUseWhetstoneInferiorId,
   REPAIR_MATERIAL_PREFIX,
   REPAIR_MATERIAL_CONFIRM_PREFIX,

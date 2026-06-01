@@ -18,6 +18,7 @@ const {
   parseUseWhetstoneInferiorId,
   parseRepairMaterialId,
   REPAIR_MATERIAL_CONFIRM_PREFIX,
+  USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX,
 } = require("../../features/shop/backpackView");
 const mineService = require("../../features/mining/mineService");
 const { getOrCreate } = require("../../features/mining/miningProfile");
@@ -41,10 +42,10 @@ module.exports = async (client, interaction) => {
 
     const customId = interaction.customId || "";
 
-    // ── 劣質磨鎬石 ──────────────────────────────────────────────────────────
+    // ── 劣質磨鎬石（預覽 → 確認）─────────────────────────────────────────────
     const parsedInferior = parseUseWhetstoneInferiorId(customId);
     if (parsedInferior) {
-      const { ownerId } = parsedInferior;
+      const { ownerId, confirm } = parsedInferior;
 
       const rl = consume(interaction.user.id, "btn:miningUseWhetstoneInferior", {
         windowMs: 2000,
@@ -60,22 +61,51 @@ module.exports = async (client, interaction) => {
         return;
       }
 
+      if (!confirm) {
+        // ── 預覽：用 ephemeral 純文字提示後果 + 確認鈕 ──
+        const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
+        const maxDur = profile.pickaxe_max_durability;
+        if ((profile.whetstone_inferior_count || 0) <= 0) {
+          await replyEphemeral(interaction, "🪨 你沒有劣質磨鎬石，可到 /商店 購買。");
+          return;
+        }
+        if (profile.pickaxe === "wood") {
+          await replyEphemeral(interaction, "⛏️ 你目前沒有可修復的鎬子（木鎬不需修復）。");
+          return;
+        }
+        if (typeof maxDur !== "number" || maxDur < 20) {
+          await replyEphemeral(
+            interaction,
+            `⛏️ 鎬子最大耐久只剩 ${maxDur ?? "—"}，不足 20 無法使用劣質磨鎬石。`
+          );
+          return;
+        }
+        const pickDef = mining?.pickaxes?.[profile.pickaxe] || {};
+        const confirmBtn = new ButtonBuilder()
+          .setCustomId(`${USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX}${interaction.user.id}`)
+          .setLabel("確認使用")
+          .setStyle(ButtonStyle.Danger);
+
+        await interaction.reply({
+          content:
+            `🪨 確認要對 **${pickDef.name || profile.pickaxe}** 使用劣質磨鎬石？\n` +
+            `・耐久：${profile.pickaxe_durability} → ${maxDur}（補滿）\n` +
+            `・最大耐久上限：${maxDur} → **${maxDur - 10}**（-10）\n\n` +
+            `-# 此操作無法撤回，最大耐久下降後無法回復。`,
+          components: [new ActionRowBuilder().addComponents(confirmBtn)],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      // ── 確認使用：實際執行 ──
+      // 同材料修復：確認訊息是上一步 ephemeral 純文字 reply，這裡用同樣方式 editReply。
       await interaction.deferUpdate();
 
       const result = await mineService.useInferiorWhetstone(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
       });
-
-      const view = await buildBackpackView(client, {
-        userId: interaction.user.id,
-        guildId: interaction.guildId,
-        displayName:
-          interaction.member?.displayName ||
-          interaction.user.displayName ||
-          interaction.user.username,
-      });
-      await interaction.editReply(view);
 
       if (!result.ok) {
         const messages = {
@@ -85,17 +115,17 @@ module.exports = async (client, interaction) => {
           max_too_low: `⛏️ 鎬子最大耐久只剩 ${result.maxDurability}，不足 20 無法再使用劣質磨鎬石。快去 /合成 一把新的吧！`,
           retry: "⏳ 操作衝突，請再試一次。",
         };
-        await replyEphemeral(
-          interaction,
-          messages[result.reason] || "🔧 使用失敗，請稍後再試。"
-        );
+        await interaction.editReply({
+          content: messages[result.reason] || "🔧 使用失敗，請稍後再試。",
+          components: [],
+        });
         return;
       }
 
-      await replyEphemeral(
-        interaction,
-        `🪨 使用劣質磨鎬石！鎬子耐久補滿至 **${result.durabilityAfter}**，最大耐久上限降至 ${result.maxAfter}。（剩餘 ×${result.inferiorLeft}）`
-      );
+      await interaction.editReply({
+        content: `🪨 已使用劣質磨鎬石！鎬子耐久補滿至 **${result.durabilityAfter}**，最大耐久上限降至 ${result.maxAfter}。（剩餘 ×${result.inferiorLeft}）\n\n-# 重新打開 /背包 可看到最新狀態。`,
+        components: [],
+      });
       trackSuccess("mining-use-whetstone-inferior");
       return;
     }
