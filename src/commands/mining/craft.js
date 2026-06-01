@@ -43,6 +43,7 @@ function gearLabel(type, id) {
 }
 
 module.exports = {
+  channelBuckets: ["mining", "fishing"],
   data: new SlashCommandBuilder()
     .setName("合成")
     .setDescription("用礦石與魚合成更好的鎬子、武器或釣竿 🔨")
