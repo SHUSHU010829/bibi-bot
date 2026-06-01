@@ -3,6 +3,8 @@ const createFlushChatScoreHandler = require("./flushChatScore");
 const createDonationSessionHandler = require("./donationSession");
 const createDonationGrantHandler = require("./donationGrant");
 const createLeaderboardRouter = require("./leaderboardApi");
+const createAdminMeHandler = require("./adminMe");
+const requireAdmin = require("./middleware/requireAdmin");
 const logger = require("../utils/logger");
 const { snapshot } = require("../utils/errorTracker");
 
@@ -53,6 +55,9 @@ module.exports = function startHttpServer(client) {
 
   // 排行榜 API（Dashboard 讀取）
   app.use("/api/v1/leaderboard", createLeaderboardRouter(client));
+
+  // Admin API（Dashboard 後台，需 DASHBOARD_ADMIN_SECRET + 使用者具 ManageGuild）
+  app.get("/api/v1/admin/me", requireAdmin(client), createAdminMeHandler());
 
   app.use((err, _req, res, _next) => {
     logger.error({ source: "http", err: err.message, stack: err.stack }, "HTTP unhandled error");

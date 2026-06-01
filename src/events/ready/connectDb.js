@@ -179,6 +179,9 @@ module.exports = async (client) => {
     const donationRecordsCollection = database.collection("DonationRecords");
     const unmatchedDonationsCollection = database.collection("UnmatchedDonations");
 
+    // Dashboard 稽核日誌：所有 admin API 寫入操作都會留一筆
+    const dashboardAuditLogCollection = database.collection("DashboardAuditLog");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -247,6 +250,7 @@ module.exports = async (client) => {
     client.donationSessionsCollection = donationSessionsCollection;
     client.donationRecordsCollection = donationRecordsCollection;
     client.unmatchedDonationsCollection = unmatchedDonationsCollection;
+    client.dashboardAuditLogCollection = dashboardAuditLogCollection;
 
     // 抖內系統索引
     // - code unique：用於 webhook 對應 session
@@ -325,6 +329,31 @@ module.exports = async (client) => {
       )
       .catch((e) =>
         console.log(`[WARN] UnmatchedDonations resolved 索引建立失敗：${e.message}`.yellow),
+      );
+
+    // Dashboard 稽核日誌索引：依時間倒序查、依 admin / action 篩、90 天 TTL 自動清
+    await dashboardAuditLogCollection
+      .createIndex({ ts: -1 }, { name: "audit_ts_desc" })
+      .catch((e) =>
+        console.log(`[WARN] DashboardAuditLog ts 索引建立失敗：${e.message}`.yellow),
+      );
+    await dashboardAuditLogCollection
+      .createIndex({ adminId: 1, ts: -1 }, { name: "audit_admin_time" })
+      .catch((e) =>
+        console.log(`[WARN] DashboardAuditLog admin 索引建立失敗：${e.message}`.yellow),
+      );
+    await dashboardAuditLogCollection
+      .createIndex({ action: 1, ts: -1 }, { name: "audit_action_time" })
+      .catch((e) =>
+        console.log(`[WARN] DashboardAuditLog action 索引建立失敗：${e.message}`.yellow),
+      );
+    await dashboardAuditLogCollection
+      .createIndex(
+        { ts: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "audit_ttl_90d" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] DashboardAuditLog TTL 索引建立失敗：${e.message}`.yellow),
       );
 
     await economySnapshotsCollection
