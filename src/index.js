@@ -1,4 +1,6 @@
 require("dotenv/config");
+require("dns").setDefaultResultOrder("ipv4first");
+
 const { Client, GatewayIntentBits, Partials } = require("discord.js");
 
 const eventHandlers = require("./handlers/eventHandler.js");
@@ -16,6 +18,7 @@ const client = new Client({
     GatewayIntentBits.GuildInvites,
   ],
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+  rest: { timeout: 30_000 },
 });
 
 eventHandlers(client);
