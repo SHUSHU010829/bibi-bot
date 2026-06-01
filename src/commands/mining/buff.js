@@ -48,6 +48,10 @@ module.exports = {
       }
       if (!incomeLines.length) incomeLines.push("• 無金幣加成");
 
+      const farmLine = s.farmYieldBonus > 0
+        ? `**🌾 農場收成**：+${Math.round(s.farmYieldBonus * 100)}%\n`
+        : "";
+
       const container = new ContainerBuilder()
         .setAccentColor(0x1abc9c)
         .addTextDisplayComponents(
@@ -61,7 +65,8 @@ module.exports = {
             `**⚔️ 攻擊力**：${s.atk}\n` +
               `**🍀 挖礦幸運**：+${Math.round(s.luckBonus * 100)}%\n` +
               `**⛏️ 挖礦數量加成**：+${s.qtyBonus}\n` +
-              (cdMin != null ? `**⏱️ 挖礦冷卻**：${cdMin} 分鐘\n` : "")
+              (cdMin != null ? `**⏱️ 挖礦冷卻**：${cdMin} 分鐘\n` : "") +
+              farmLine
           )
         )
         .addSeparatorComponents(new SeparatorBuilder())
@@ -111,6 +116,7 @@ module.exports = {
               else if (b.type === "mine_luck") desc = `挖礦幸運 +${Math.round(b.value * 100)}%`;
               else if (b.type === "all_boost") desc = `全屬性 +${Math.round(b.value * 100)}%`;
               else if (b.type === "fish_fortune") desc = `釣魚成功率 +${Math.round(b.value * 100)}% ・ 稀有度提升`;
+              else if (b.type === "farm_yield") desc = `農場收成 +${Math.round(b.value * 100)}%`;
               else desc = `${b.type}`;
               let expire = "";
               if (b.uses_left !== null && b.uses_left !== undefined) {

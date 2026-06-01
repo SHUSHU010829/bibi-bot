@@ -14,6 +14,7 @@ const {
 const { farming } = require("../../config");
 const farmService = require("../../features/farm/farmService");
 const reminder = require("../../features/reminders/cooldownReminderService");
+const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 
 function cropChoices() {
   return Object.entries(farming?.crops || {}).map(([key, def]) => ({
@@ -159,6 +160,18 @@ module.exports = {
       reminder.refreshIfEnabled(client, {
         userId, guildId, type: "farm", readyAt: plot.ready_at,
       }).catch(() => {});
+
+      await applyQuestHooks(
+        client,
+        {
+          interaction,
+          user: interaction.user,
+          userId, guildId,
+          member: interaction.member,
+          username: interaction.user.username,
+        },
+        [{ questId: "daily_farm_plant" }],
+      ).catch(() => {});
     } catch (error) {
       console.log(`[ERROR] /種植:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 種植失敗，請呼叫舒舒！").catch(() => {});

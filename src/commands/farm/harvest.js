@@ -13,6 +13,7 @@ const {
 
 const { farming } = require("../../config");
 const farmService = require("../../features/farm/farmService");
+const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 
 function errorContainer(title, body, hint) {
   return new ContainerBuilder()
@@ -144,6 +145,26 @@ module.exports = {
         components: [container],
         flags: MessageFlags.IsComponentsV2,
       });
+
+      const hooks = [
+        { questId: "daily_farm_harvest" },
+        { questId: "weekly_farm_harvest" },
+      ];
+      if (result.crop === "black_rose") {
+        hooks.push({ questId: "weekly_farm_rose" });
+      }
+      await applyQuestHooks(
+        client,
+        {
+          interaction,
+          user: interaction.user,
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+          username: interaction.user.username,
+        },
+        hooks,
+      ).catch(() => {});
     } catch (error) {
       console.log(`[ERROR] /收成:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 收成失敗，請呼叫舒舒！").catch(() => {});

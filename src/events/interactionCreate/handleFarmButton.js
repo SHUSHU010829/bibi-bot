@@ -20,8 +20,9 @@ const { farming } = require("../../config");
 const farmService = require("../../features/farm/farmService");
 const { buildFarmContainer } = require("../../features/farm/farmView");
 const { getOrCreate } = require("../../features/mining/miningProfile");
+const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 
-const PREFIXES = ["farm_plant_", "farm_harvest_", "farm_fert_", "farm_defend_", "farm_expand_", "farm_view_"];
+const PREFIXES = ["farm_plant_", "farm_harvest_", "farm_fert_", "farm_defend_", "farm_expand_", "farm_view_", "farm_sell_"];
 
 function parseCustomId(customId) {
   for (const p of PREFIXES) {
@@ -29,11 +30,11 @@ function parseCustomId(customId) {
     const action = p.slice(5, -1);
     const rest = customId.slice(p.length);
     const sepIdx = rest.indexOf("_");
-    if (sepIdx < 0) return { action, ownerId: rest, plotIndex: null };
+    if (sepIdx < 0) return { action, ownerId: rest, payload: null };
     return {
       action,
       ownerId: rest.slice(0, sepIdx),
-      plotIndex: Number.parseInt(rest.slice(sepIdx + 1), 10),
+      payload: rest.slice(sepIdx + 1),
     };
   }
   return null;
@@ -78,7 +79,8 @@ module.exports = async (client, interaction) => {
     });
   }
 
-  const { action, plotIndex } = parsed;
+  const { action, payload } = parsed;
+  const plotIndex = payload != null ? Number.parseInt(payload, 10) : null;
 
   try {
     if (action === "view") {
@@ -118,6 +120,27 @@ module.exports = async (client, interaction) => {
       const bonusText = result.bonusDrops
         .map((d) => d.kind === "fragment" ? `✨ 傳說碎片 ×${d.amount}` : `✨ 稀有魚餌 ×${d.amount}`)
         .join("、");
+
+      const hooks = [
+        { questId: "daily_farm_harvest" },
+        { questId: "weekly_farm_harvest" },
+      ];
+      if (result.crop === "black_rose") {
+        hooks.push({ questId: "weekly_farm_rose" });
+      }
+      applyQuestHooks(
+        client,
+        {
+          interaction,
+          user: interaction.user,
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+          username: interaction.user.username,
+        },
+        hooks,
+      ).catch(() => {});
+
       return interaction.editReply({
         content: `🌟 收成 **${def.emoji} ${def.name}** ×1 → **+${result.coins} 幣** ${yieldText}${bonusText ? "\n" + bonusText : ""}`,
         flags: MessageFlags.Ephemeral,
@@ -180,6 +203,47 @@ module.exports = async (client, interaction) => {
     if (action === "expand") {
       return interaction.reply({
         content: "🏗️ 請使用指令 `/農場擴建` 來擴建",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    if (action === "sell") {
+      // farm_sell_<ownerId>_<cropKey>
+      const cropKey = payload;
+      const def = farming.crops?.[cropKey];
+      const price = (farming.sellPrices || {})[cropKey];
+      if (!def || price == null) {
+        return interaction.reply({ content: "❌ 這種蔬菜不收購。", flags: MessageFlags.Ephemeral });
+      }
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
+      const have = (profile.veggie_bag || {})[cropKey] || 0;
+      if (have <= 0) {
+        return interaction.editReply({
+          content: `❌ 菜籃裡已經沒有 ${def.emoji} **${def.name}** 了！`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const total = have * price;
+      const grantCoins = require("../../features/economy/grantCoins");
+      await client.miningProfilesCollection.updateOne(
+        { userId: interaction.user.id, guildId: interaction.guildId },
+        { $inc: { [`veggie_bag.${cropKey}`]: -have }, $set: { updatedAt: new Date() } },
+      );
+      const grant = await grantCoins(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        username: interaction.user.username,
+        member: interaction.member,
+        amount: total,
+        source: "farm_sell",
+        meta: { veggie: cropKey, qty: have },
+      });
+
+      return interaction.editReply({
+        content: `${def.emoji} **${def.name}** ×${have} → **+${total.toLocaleString()} 幣**\n餘額：${(grant?.doc?.totalCoins ?? 0).toLocaleString()}`,
         flags: MessageFlags.Ephemeral,
       });
     }
