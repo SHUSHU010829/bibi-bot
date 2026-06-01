@@ -2,6 +2,7 @@ const express = require("express");
 const miningLeaderboard = require("../features/leaderboard/miningLeaderboard");
 const titleLeaderboard = require("../features/leaderboard/titleLeaderboard");
 const weeklySummary = require("../features/leaderboard/weeklySummary");
+const { enrichLeaderboardRows } = require("../features/leaderboard/enrich");
 
 const VALID_PERIODS = ["today", "week", "month", "all"];
 
@@ -38,7 +39,12 @@ module.exports = function createLeaderboardRouter(client) {
       } else {
         rows = await miningLeaderboard.byCount(client, guildId, period, limit);
       }
-      res.json({ ok: true, type, period, rows });
+      res.json({
+        ok: true,
+        type,
+        period,
+        rows: enrichLeaderboardRows(client, guildId, rows),
+      });
     } catch (err) {
       next(err);
     }
@@ -51,7 +57,10 @@ module.exports = function createLeaderboardRouter(client) {
       if (!guildId) return;
       const limit = Math.min(Number(req.query.limit) || 10, 100);
       const rows = await titleLeaderboard.topByTitleCount(client, guildId, limit);
-      res.json({ ok: true, rows });
+      res.json({
+        ok: true,
+        rows: enrichLeaderboardRows(client, guildId, rows),
+      });
     } catch (err) {
       next(err);
     }
@@ -64,7 +73,13 @@ module.exports = function createLeaderboardRouter(client) {
       if (!guildId) return;
       const top = Math.min(Number(req.query.top) || 3, 25);
       const data = await weeklySummary.data(client, guildId, top);
-      res.json({ ok: true, ...data });
+      res.json({
+        ok: true,
+        mining: enrichLeaderboardRows(client, guildId, data.mining),
+        value: enrichLeaderboardRows(client, guildId, data.value),
+        titles: enrichLeaderboardRows(client, guildId, data.titles),
+        resetEpoch: data.resetEpoch,
+      });
     } catch (err) {
       next(err);
     }
