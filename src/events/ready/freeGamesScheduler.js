@@ -1,6 +1,6 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 
 const config = require("../../config");
 const { runFreeGamesJob, ensureIndexes } = require("../../features/freeGames");
@@ -47,16 +47,11 @@ module.exports = async (client) => {
     process.env.FREE_GAMES_CRON || cfg.cronSchedule || "30 */6 * * *";
   const timezone = cfg.timezone || "Asia/Taipei";
 
-  console.log(
-    `[INFO] 喜加一推播已排程：${cronSchedule} (${timezone}) → channel ${channelId} (平台:${platforms
-      .map((p) => p.platform)
-      .join(",")})`.cyan
-  );
-
   const runOnce = async () => {
+    const results = [];
     for (const p of platforms) {
       try {
-        await runFreeGamesJob({
+        const r = await runFreeGamesJob({
           client,
           channelId,
           config: cfg,
@@ -64,21 +59,27 @@ module.exports = async (client) => {
           apiUrl: p.apiUrl,
           dryRun: process.env.FREE_GAMES_DRY_RUN === "true",
         });
+        results.push({ platform: p.platform, ok: true, result: r ?? null });
       } catch (error) {
         console.log(
           `[ERROR] 喜加一 job 例外 [${p.platform}]:\n${error.stack || error.message}`
             .red
         );
+        results.push({ platform: p.platform, ok: false, error: String(error.message || error) });
       }
     }
+    return { platforms: results };
   };
 
   if (process.env.FREE_GAMES_RUN_ON_START === "true") {
     runOnce();
   }
 
-  cron.schedule(cronSchedule, () => runOnce(), {
-    scheduled: true,
+  registerCron(client, {
+    name: "freeGames.push",
+    label: "Epic / Steam 免費遊戲推送",
+    schedule: cronSchedule,
     timezone,
+    runner: runOnce,
   });
 };

@@ -8,15 +8,11 @@
 // 3. 永久記錄（VIP）視為「永遠最新」，會擋住同 role 的所有過期移除
 
 require("colors");
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 const { donation } = require("../../config");
 
-let task = null;
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 5;
-
 async function sweepOnce(client) {
-  if (!client.donationRecordsCollection) return 0;
+  if (!client.donationRecordsCollection) return { processed: 0 };
   const now = new Date();
 
   // 拿出所有過期、未處理的記錄
@@ -28,7 +24,7 @@ async function sweepOnce(client) {
     })
     .toArray();
 
-  if (!expired.length) return 0;
+  if (!expired.length) return { processed: 0 };
 
   let processed = 0;
   for (const record of expired) {
@@ -87,31 +83,18 @@ async function sweepOnce(client) {
       );
     }
   }
-  return processed;
+  if (processed > 0) {
+    console.log(`[DONATION] 身分組過期掃描：處理 ${processed} 筆`.gray);
+  }
+  return { processed };
 }
 
 module.exports = async (client) => {
   if (!donation?.enabled) return;
-  if (task) return;
-
-  task = cron.schedule("*/10 * * * *", async () => {
-    try {
-      const processed = await sweepOnce(client);
-      if (processed > 0) {
-        console.log(`[DONATION] 身分組過期掃描：處理 ${processed} 筆`.gray);
-      }
-      consecutiveErrors = 0;
-    } catch (err) {
-      consecutiveErrors += 1;
-      console.log(
-        `[ERROR] donationRoleExpiryScheduler failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err}`.red,
-      );
-      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        console.log(`[ERROR] 連續錯誤過多，停止抖內身分組過期掃描 cron`.red);
-        task.stop();
-      }
-    }
+  registerCron(client, {
+    name: "donation.roleExpiry",
+    label: "抖內身分組到期清理",
+    schedule: "*/10 * * * *",
+    runner: () => sweepOnce(client),
   });
-
-  console.log(`[DONATION] 身分組過期掃描排程已啟動（每 10 分鐘）`.cyan);
 };

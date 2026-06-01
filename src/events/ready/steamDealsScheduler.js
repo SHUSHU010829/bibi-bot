@@ -1,6 +1,6 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 
 const config = require("../../config");
 const { runSteamDealsJob, ensureIndexes } = require("../../features/steamDeals");
@@ -41,34 +41,34 @@ module.exports = async (client) => {
     process.env.STEAM_DEALS_CRON || cfg.cronSchedule || "0 */2 * * *";
   const timezone = cfg.timezone || "Asia/Taipei";
 
-  console.log(
-    `[INFO] Steam特價推播已排程：${cronSchedule} (${timezone}) → channel ${channelId}`
-      .cyan
-  );
-
   const runOnce = async () => {
     try {
-      await runSteamDealsJob({
+      const r = await runSteamDealsJob({
         client,
         channelId,
         config: cfg,
         dryRun: process.env.STEAM_DEALS_DRY_RUN === "true",
       });
+      return r ?? null;
     } catch (error) {
       console.log(
         `[ERROR] Steam特價推播 job 例外:\n${error.stack || error.message}`
           .red
       );
+      throw error;
     }
   };
 
   if (process.env.STEAM_DEALS_RUN_ON_START === "true") {
     // 故意不 await,讓 ready 流程繼續跑
-    runOnce();
+    runOnce().catch(() => {});
   }
 
-  cron.schedule(cronSchedule, () => runOnce(), {
-    scheduled: true,
+  registerCron(client, {
+    name: "steam.deals",
+    label: "Steam 特價推送",
+    schedule: cronSchedule,
     timezone,
+    runner: runOnce,
   });
 };

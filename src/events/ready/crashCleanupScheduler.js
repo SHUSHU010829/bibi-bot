@@ -1,6 +1,6 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
@@ -12,10 +12,6 @@ const { buildSettledPayload } = require("../../features/casino/crash/renderer");
 //   否則 → 視為爆炸，bet 已扣不退
 //
 // 同時補上訊息 edit（拿得到 channelId / messageId 才嘗試）。
-
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 5;
-let task = null;
 
 async function tryEditFinal(client, doc) {
   if (!doc.channelId || !doc.messageId) return;
@@ -46,7 +42,7 @@ async function tryEditFinal(client, doc) {
 }
 
 async function sweepOnce(client) {
-  if (!client.crashGamesCollection) return;
+  if (!client.crashGamesCollection) return { recovered: 0 };
 
   const now = new Date();
   const cursor = client.crashGamesCollection.find({
@@ -54,6 +50,7 @@ async function sweepOnce(client) {
     bustAt: { $lt: now },
   });
 
+  let recovered = 0;
   while (await cursor.hasNext()) {
     const g = await cursor.next();
 
@@ -106,38 +103,27 @@ async function sweepOnce(client) {
 
     await tryEditFinal(client, finalDoc);
 
+    recovered += 1;
     console.log(
       `[CR] 修復未完成局 user=${g.userId} game=${g.gameId} result=${settled.result} payout=${settled.payout}`.gray,
     );
   }
+  return { recovered };
 }
 
 module.exports = async (client) => {
-  if (task) return;
-
   const cfg = casino?.crash || {};
   if (cfg.enabled === false) return;
-
-  task = cron.schedule("* * * * *", async () => {
-    try {
-      await sweepOnce(client);
-      consecutiveErrors = 0;
-    } catch (err) {
-      consecutiveErrors += 1;
-      console.log(
-        `[ERROR] crashCleanupScheduler sweep failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err}`.red,
-      );
-      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        console.log(`[ERROR] 連續錯誤過多，停止火箭清理 cron`.red);
-        task.stop();
-      }
-    }
-  });
 
   // 啟動時先掃一次，把重啟前留下的局收尾
   sweepOnce(client).catch((err) => {
     console.log(`[CR] 初次清理失敗：${err.message}`.yellow);
   });
 
-  console.log(`[CR] 火箭遺失局清理排程已啟動 (每分鐘檢查)`.cyan);
+  registerCron(client, {
+    name: "casino.crash.cleanup",
+    label: "火箭遺失局清理",
+    schedule: "* * * * *",
+    runner: () => sweepOnce(client),
+  });
 };

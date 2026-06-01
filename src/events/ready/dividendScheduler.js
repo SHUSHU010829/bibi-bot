@@ -1,12 +1,8 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 const { stockSystem } = require("../../config");
 const { payoutAll, announce, sendDmNotifications } = require("../../features/stock/dividendService");
-
-let task = null;
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 3;
 
 async function listGuildIdsWithMarket(client) {
   if (!client.stockMarketCollection) return [];
@@ -15,6 +11,8 @@ async function listGuildIdsWithMarket(client) {
 
 async function runPayout(client) {
   const guildIds = await listGuildIdsWithMarket(client);
+  let totalPaid = 0;
+  let totalRecipients = 0;
   for (const guildId of guildIds) {
     try {
       const summaries = await payoutAll(client, guildId);
@@ -24,6 +22,8 @@ async function runPayout(client) {
       }
       const total = summaries.reduce((a, b) => a + b.totalPaid, 0);
       const hits = summaries.reduce((a, b) => a + b.recipients, 0);
+      totalPaid += total;
+      totalRecipients += hits;
       console.log(`[DIV] guild=${guildId} 本週配息完成：${total.toLocaleString()} credits, ${hits} 筆派息, ${summaries.length} 支股票`.cyan);
       await announce(client, guildId, summaries);
       await sendDmNotifications(client, summaries);
@@ -32,10 +32,10 @@ async function runPayout(client) {
       throw e;
     }
   }
+  return { guilds: guildIds.length, totalPaid, totalRecipients };
 }
 
 module.exports = async (client) => {
-  if (task) return;
   if (!stockSystem?.enabled) {
     console.log(`[DIV] 股市系統未啟用，跳過配息排程`.gray);
     return;
@@ -50,30 +50,13 @@ module.exports = async (client) => {
     return;
   }
 
-  const schedule = cfg.cronSchedule || "0 9 * * 1";
-  const tz = cfg.timezone || stockSystem.timezone || "Asia/Taipei";
-
-  task = cron.schedule(
-    schedule,
-    async () => {
-      try {
-        await runPayout(client);
-        consecutiveErrors = 0;
-      } catch (err) {
-        consecutiveErrors += 1;
-        console.log(
-          `[ERROR] dividendScheduler failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err?.stack || err}`.red
-        );
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log(`[ERROR] 連續錯誤過多，停止配息 cron`.red);
-          task.stop();
-        }
-      }
-    },
-    { timezone: tz }
-  );
-
-  console.log(`[DIV] 配息排程已啟動：${schedule} (${tz})`.cyan);
+  registerCron(client, {
+    name: "stock.dividend",
+    label: "股票每週配息",
+    schedule: cfg.cronSchedule || "0 9 * * 1",
+    timezone: cfg.timezone || stockSystem.timezone || "Asia/Taipei",
+    runner: () => runPayout(client),
+  });
 };
 
 module.exports.runPayout = runPayout;

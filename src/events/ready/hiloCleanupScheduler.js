@@ -1,6 +1,6 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
@@ -8,14 +8,9 @@ const grantCoins = require("../../features/economy/grantCoins");
 // HI-LO 中途離場：expiresAt 過了還是 playing → 視玩家狀態退錢
 //   - 還沒贏過任何一把：退回原始 bet
 //   - 至少贏過 1 把：直接幫他 cash out（拿走累積派彩）
-// 連續錯誤計數，超過 5 次自動關閉。
-
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 5;
-let task = null;
 
 async function sweepOnce(client) {
-  if (!client.hiloGamesCollection) return;
+  if (!client.hiloGamesCollection) return { refunded: 0 };
 
   const now = new Date();
   const cursor = client.hiloGamesCollection.find({
@@ -23,6 +18,7 @@ async function sweepOnce(client) {
     expiresAt: { $lt: now },
   });
 
+  let refunded = 0;
   while (await cursor.hasNext()) {
     const g = await cursor.next();
     const wins = g.wins || 0;
@@ -61,33 +57,22 @@ async function sweepOnce(client) {
       }
     );
 
+    refunded += 1;
     console.log(
       `[HL] 退回未完成局 user=${g.userId} game=${g.gameId} wins=${wins} refund=${refund}`.gray
     );
   }
+  return { refunded };
 }
 
 module.exports = async (client) => {
-  if (task) return;
-
   const cfg = casino?.hilo || {};
   if (cfg.enabled === false) return;
 
-  task = cron.schedule("* * * * *", async () => {
-    try {
-      await sweepOnce(client);
-      consecutiveErrors = 0;
-    } catch (err) {
-      consecutiveErrors += 1;
-      console.log(
-        `[ERROR] hiloCleanupScheduler sweep failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err}`.red
-      );
-      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        console.log(`[ERROR] 連續錯誤過多，停止 HI-LO 清理 cron`.red);
-        task.stop();
-      }
-    }
+  registerCron(client, {
+    name: "casino.hilo.cleanup",
+    label: "HI-LO 放棄局清理",
+    schedule: "* * * * *",
+    runner: () => sweepOnce(client),
   });
-
-  console.log(`[HL] HI-LO 放棄局清理排程已啟動 (每分鐘檢查)`.cyan);
 };

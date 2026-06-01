@@ -1,6 +1,6 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 
 const config = require("../../config");
 const { runTwitchLiveJob, ensureIndexes } = require("../../features/twitch");
@@ -56,32 +56,32 @@ module.exports = async (client) => {
     process.env.TWITCH_LIVE_CRON || cfg.cronSchedule || "*/1 * * * *";
   const timezone = cfg.timezone || "Asia/Taipei";
 
-  console.log(
-    `[INFO] Twitch 開台通知已排程：${cronSchedule} (${timezone}) → channel ${channelId} (streamers: ${streamers.join(",")})`
-      .cyan
-  );
-
   const runOnce = async () => {
     try {
-      await runTwitchLiveJob({
+      const r = await runTwitchLiveJob({
         client,
         channelId,
         config: { ...cfg, streamers },
         dryRun: process.env.TWITCH_LIVE_DRY_RUN === "true",
       });
+      return r ?? null;
     } catch (error) {
       console.log(
         `[ERROR] Twitch 開台通知例外:\n${error.stack || error.message}`.red
       );
+      throw error;
     }
   };
 
   if (process.env.TWITCH_LIVE_RUN_ON_START === "true") {
-    runOnce();
+    runOnce().catch(() => {});
   }
 
-  cron.schedule(cronSchedule, () => runOnce(), {
-    scheduled: true,
+  registerCron(client, {
+    name: "twitch.liveCheck",
+    label: "Twitch 上線檢查",
+    schedule: cronSchedule,
     timezone,
+    runner: runOnce,
   });
 };

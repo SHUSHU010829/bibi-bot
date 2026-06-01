@@ -1,5 +1,5 @@
 require("colors");
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 const {
   lockQuiz,
   settleQuiz,
@@ -10,26 +10,8 @@ const {
 // 預測主辦人沒回來公布答案時的保險：鎖住超過這麼久就自動取消退款，避免獎金永遠卡住
 const AUTO_HANDLE_AFTER_LOCK_MS = 24 * 60 * 60 * 1000;
 
-module.exports = async (client) => {
-  cron.schedule("* * * * *", async () => {
-    try {
-      await processExpiredQuizzes(client);
-    } catch (error) {
-      console.log(`[ERROR] 處理過期問答/預測時出錯：\n${error}`.red);
-    }
-  });
-
-  console.log(`[SYSTEM] 問答/預測自動結算系統已啟動！`.green);
-
-  setTimeout(() => {
-    processExpiredQuizzes(client).catch((err) => {
-      console.log(`[ERROR] 啟動時問答/預測結算掃描失敗：${err}`.red);
-    });
-  }, 15 * 1000);
-};
-
 async function processExpiredQuizzes(client) {
-  if (!client.quizGamesCollection) return;
+  if (!client.quizGamesCollection) return { handled: 0, stuck: 0 };
 
   // 1) 作答時間到的 ACTIVE：
   //    - 問答 (kind=quiz 或舊資料): 直接結算
@@ -80,4 +62,21 @@ async function processExpiredQuizzes(client) {
       }
     }
   }
+  return { handled: toHandle.length, stuck: stuck.length };
 }
+
+module.exports = async (client) => {
+  registerCron(client, {
+    name: "quiz.expiry",
+    label: "問答/預測自動結算",
+    schedule: "* * * * *",
+    runner: () => processExpiredQuizzes(client),
+  });
+
+  // 啟動 15 秒後補跑一次，把剛重啟前累積的到期任務先處理掉
+  setTimeout(() => {
+    processExpiredQuizzes(client).catch((err) => {
+      console.log(`[ERROR] 啟動時問答/預測結算掃描失敗：${err}`.red);
+    });
+  }, 15 * 1000);
+};
