@@ -79,13 +79,16 @@ module.exports = async (client, interaction) => {
     }
 
     // 不論成敗都用最新狀態刷新背包卡片（修正可能已過期的冷卻顯示）
+    // 鎖在「挖礦道具」分類：使用 CD 縮短券時玩家正在這個分類，不要彈回「全部」。
     const view = await buildBackpackView(client, {
       userId: interaction.user.id,
       guildId: interaction.guildId,
+      member: interaction.member,
       displayName:
         interaction.member?.displayName ||
         interaction.user.displayName ||
         interaction.user.username,
+      category: "mine",
     });
     await interaction.editReply(view);
 
