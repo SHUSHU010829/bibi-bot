@@ -2,6 +2,11 @@
   "donation": {
     "enabled": true,
     "sessionTtlMinutes": 30,
+    "announceChannelId": "1199579576699985940",
+    "roleIds": {
+      "donor": "1509577270040461342",
+      "vipDonor": "1509576114811703436"
+    },
     "themes": {
       "donor": "theme_donor"
     },

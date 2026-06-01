@@ -17,7 +17,7 @@ const grantCoins = require("../economy/grantCoins");
 const { computeRefundFee } = require("../economy/refundFee");
 const { hostedEvents: hostedEventsConfig } = require("../../config");
 
-const EVENT_CHANNEL_ID = hostedEventsConfig?.publishChannelId;
+const EVENT_CHANNEL_ID = hostedEventsConfig?.publishChannelId || "1174352640210124877";
 const MAX_RANK_COUNT = hostedEventsConfig?.maxRankCount || 5;
 const EMBED_COLOR_ACTIVE = 0x57f287;
 const EMBED_COLOR_SETTLED = 0xfee75c;

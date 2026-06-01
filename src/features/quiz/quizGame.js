@@ -13,7 +13,7 @@ const grantCoins = require("../economy/grantCoins");
 const { computeRefundFee } = require("../economy/refundFee");
 const { hostedEvents: hostedEventsConfig } = require("../../config");
 
-const QUIZ_CHANNEL_ID = hostedEventsConfig?.publishChannelId;
+const QUIZ_CHANNEL_ID = hostedEventsConfig?.publishChannelId || "1174352640210124877";
 const MIN_MINUTES = 1;
 const MAX_MINUTES = 1440;
 const MAX_QUESTION_LEN = 250;

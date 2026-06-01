@@ -1,6 +1,7 @@
 {
   "welcomeSystem": {
     "enabled": true,
+    "announceChannelId": "1199579576699985940",
     "accentColor": 5763719,
     "dm": true
   }
