@@ -119,10 +119,11 @@ function formatTimestamp(row) {
 function formatRow(row) {
   const amount = row.amount || 0;
   const isIn = amount > 0;
-  const sign = isIn ? "+" : "";
+  const sign = isIn ? "+" : "-";
   const arrow = isIn ? "🟢" : "🔴";
+  const formatted = `${sign}${Math.abs(amount).toLocaleString()}`.padStart(9);
   const label = getSourceLabel(row.source);
-  return `${arrow} \`${sign}${amount.toLocaleString().padStart(8)}\` ・ ${label} ・ ${formatTimestamp(row)}`;
+  return `${arrow} \`${formatted}\` ・ ${label} ・ ${formatTimestamp(row)}`;
 }
 
 function buildPagerCustomId({ ownerId, direction, category, period, page }) {
