@@ -203,6 +203,8 @@ module.exports = {
         buffDesc = `挖礦幸運 +${Math.round(newBuff.value * 100)}%`;
       } else if (newBuff.type === "all_boost") {
         buffDesc = `全屬性 +${Math.round(newBuff.value * 100)}%`;
+      } else if (newBuff.type === "fish_fortune") {
+        buffDesc = `釣魚成功率 +${Math.round(newBuff.value * 100)}% ・ 稀有度提升`;
       }
 
       let durationDesc = "";

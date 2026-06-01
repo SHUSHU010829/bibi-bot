@@ -110,6 +110,7 @@ module.exports = {
               else if (b.type === "dungeon_atk") desc = `地下城 ATK +${b.value}`;
               else if (b.type === "mine_luck") desc = `挖礦幸運 +${Math.round(b.value * 100)}%`;
               else if (b.type === "all_boost") desc = `全屬性 +${Math.round(b.value * 100)}%`;
+              else if (b.type === "fish_fortune") desc = `釣魚成功率 +${Math.round(b.value * 100)}% ・ 稀有度提升`;
               else desc = `${b.type}`;
               let expire = "";
               if (b.uses_left !== null && b.uses_left !== undefined) {

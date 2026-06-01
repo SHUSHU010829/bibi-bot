@@ -1,8 +1,8 @@
 require("colors");
-const { mining, craft, dungeon } = require("../../config");
+const { mining, craft, dungeon, fishing } = require("../../config");
 const { getOrCreate } = require("./miningProfile");
 
-// 鎬子 / 武器階級（用於判定升級 / 同級 / 降級）
+// 鎬子 / 武器 / 釣竿階級（用於判定升級 / 同級 / 降級）
 const PICKAXE_TIER = { wood: 0, iron: 1, gold: 2, diamond: 3 };
 const WEAPON_TIER = {
   fist: 0,
@@ -12,6 +12,7 @@ const WEAPON_TIER = {
   diamond_sword: 4,
   legendary_sword: 5,
 };
+const ROD_TIER = { bamboo: 0, carbon: 1, gold: 2, mythril: 3 };
 
 // 特殊材料：傳說素材碎片存在 profile.legendary_fragments，不在 backpack 內。
 const FRAGMENT_KEY = "legendary_fragment";
@@ -28,7 +29,18 @@ function resolveSlot(type) {
       tiers: WEAPON_TIER,
       equippedField: "weapon",
       durabilityField: "weapon_durability",
+      maxDurabilityField: null,
       defaultId: "fist",
+    };
+  }
+  if (type === "rod") {
+    return {
+      defs: fishing?.rods || {},
+      tiers: ROD_TIER,
+      equippedField: "fishing_rod",
+      durabilityField: "rod_durability",
+      maxDurabilityField: "rod_max_durability",
+      defaultId: "bamboo",
     };
   }
   // 預設視為鎬子
@@ -37,13 +49,20 @@ function resolveSlot(type) {
     tiers: PICKAXE_TIER,
     equippedField: "pickaxe",
     durabilityField: "pickaxe_durability",
+    maxDurabilityField: "pickaxe_max_durability",
     defaultId: "wood",
   };
 }
 
-// 玩家目前持有某材料的數量（傳說碎片走獨立欄位）。
+// 某材料是否為魚（魚走 fish_bag，不在礦石 backpack 內）。
+function isFishMaterial(mat) {
+  return !!(fishing?.fish && fishing.fish[mat]);
+}
+
+// 玩家目前持有某材料的數量（傳說碎片走獨立欄位、魚走 fish_bag）。
 function ownedMaterial(profile, mat) {
   if (mat === FRAGMENT_KEY) return profile.legendary_fragments || 0;
+  if (isFishMaterial(mat)) return (profile.fish_bag || {})[mat] || 0;
   return (profile.backpack || {})[mat] || 0;
 }
 
@@ -96,11 +115,13 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
     };
   }
 
-  // 扣材料（傳說碎片走獨立欄位）+ 換裝備 + craft_count_total
+  // 扣材料（傳說碎片走獨立欄位、魚走 fish_bag）+ 換裝備 + craft_count_total
   const inc = { craft_count_total: 1 };
   for (const [mat, need] of Object.entries(recipe.materials)) {
     if (mat === FRAGMENT_KEY) {
       inc.legendary_fragments = (inc.legendary_fragments || 0) - need;
+    } else if (isFishMaterial(mat)) {
+      inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
     } else {
       inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
     }
@@ -112,8 +133,8 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
       $set: {
         [slot.equippedField]: resultId,
         [slot.durabilityField]: targetDef.durability ?? null,
-        // 合成鎬子時同步設定最大耐久上限（武器無此欄位）
-        ...(type !== "weapon" ? { pickaxe_max_durability: targetDef.durability ?? null } : {}),
+        // 鎬子 / 釣竿同步設定最大耐久上限（武器無此欄位）
+        ...(slot.maxDurabilityField ? { [slot.maxDurabilityField]: targetDef.durability ?? null } : {}),
         updatedAt: new Date(),
       },
     }
@@ -131,4 +152,4 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
   };
 }
 
-module.exports = { craftItem, getRecipe, PICKAXE_TIER, WEAPON_TIER, FRAGMENT_KEY };
+module.exports = { craftItem, getRecipe, PICKAXE_TIER, WEAPON_TIER, ROD_TIER, FRAGMENT_KEY };

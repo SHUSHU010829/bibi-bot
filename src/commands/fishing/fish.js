@@ -74,6 +74,52 @@ module.exports = {
         return interaction.editReply("🔧 釣魚失敗，請稍後再試。");
       }
 
+      const rodDef = result.rodDef || {};
+      const rodLabel = `${rodDef.emoji || "🎣"} ${rodDef.name || "竹釣竿"}`;
+      const successPct = Math.round((result.successRate || 0) * 100);
+
+      // ── 沒上鉤：魚跑了 ──
+      if (!result.caught) {
+        const failEpoch = Math.floor(result.newCooldownAt / 1000);
+        const failContainer = new ContainerBuilder()
+          .setAccentColor(0x95a5a6)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("# 🎣 魚跑掉了…")
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `${result.locDef?.emoji || "🎣"} 釣魚地點：**${result.locDef?.name || location}**\n` +
+                `🪝 使用釣竿：**${rodLabel}**\n` +
+                `🎯 本次成功率：**${successPct}%**`
+            )
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `⏱️ 下次可釣：<t:${failEpoch}:R>（<t:${failEpoch}:t>）`
+            )
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              "-# 💡 用更好的釣竿（/合成・/商店）或先吃 🍤 海鮮拼盤（/烹飪）能提升成功率與稀有度"
+            )
+          );
+
+        await interaction.editReply({
+          components: [failContainer],
+          flags: MessageFlags.IsComponentsV2,
+        });
+
+        reminder.refreshIfEnabled(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          type: "fish",
+          readyAt: result.newCooldownAt,
+        }).catch(() => {});
+        return;
+      }
+
       const { fishDef, locDef, newCooldownAt } = result;
       const readyEpoch = Math.floor(newCooldownAt / 1000);
 
@@ -83,19 +129,27 @@ module.exports = {
         傳說: 0xff6b6b,
       }[fishDef.rarity || "普通"] ?? 0x7fb2d8;
 
+      const qty = result.qty || 1;
+      const rodDuraText =
+        result.rodKey !== "bamboo" && typeof result.rodDurabilityAfter === "number"
+          ? `（耐久剩 ${result.rodDurabilityAfter}）`
+          : "";
+
       const container = new ContainerBuilder()
         .setAccentColor(rarityColor)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `# ${fishDef.emoji || "🐟"} 釣到了！**${fishDef.name || result.fish}**`
+            `# ${fishDef.emoji || "🐟"} 釣到了！**${fishDef.name || result.fish}**${qty > 1 ? ` ×${qty}` : ""}`
           )
         )
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `${locDef.emoji || "🎣"} 釣魚地點：**${locDef.name}**\n` +
+              `🪝 使用釣竿：**${rodLabel}**${rodDuraText}\n` +
+              `🎯 本次成功率：**${successPct}%**\n` +
               `✨ 稀有度：**${fishDef.rarity || "普通"}**\n` +
-              `💰 收購價：**${fishDef.price || 0} 幣**`
+              `💰 收購價：**${fishDef.price || 0} 幣**${qty > 1 ? `（共 ${(fishDef.price || 0) * qty} 幣）` : ""}`
           )
         )
         .addSeparatorComponents(new SeparatorBuilder())
@@ -104,6 +158,14 @@ module.exports = {
             `⏱️ 下次可釣：<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）`
           )
         );
+
+      if (result.rodBroke) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "-# 🪝 你的釣竿斷了，已換回竹釣竿，快去 /合成 打造新的！"
+          )
+        );
+      }
 
       // 如果這種魚有對應食譜，提示可以烹飪
       const matchedRecipe = Object.entries(fishing.recipes || {}).find(

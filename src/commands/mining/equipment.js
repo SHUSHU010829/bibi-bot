@@ -8,7 +8,7 @@ const {
   InteractionContextType,
 } = require("discord.js");
 
-const { mining, craft, dungeon } = require("../../config");
+const { mining, craft, dungeon, fishing } = require("../../config");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const { playerAtk } = require("../../features/mining/dungeonService");
 
@@ -22,14 +22,28 @@ function weaponLabel(key) {
   return `${def.emoji || "👊"} ${def.name || key}`;
 }
 
-// 玩家持有某材料數量（傳說碎片走獨立欄位）。
+function rodLabel(key) {
+  const def = (fishing?.rods || {})[key] || {};
+  return `${def.emoji || "🎣"} ${def.name || key}`;
+}
+
+function isFishMaterial(mat) {
+  return !!(fishing?.fish && fishing.fish[mat]);
+}
+
+// 玩家持有某材料數量（傳說碎片走獨立欄位、魚走 fish_bag）。
 function ownedMaterial(profile, mat) {
   if (mat === "legendary_fragment") return profile.legendary_fragments || 0;
+  if (isFishMaterial(mat)) return (profile.fish_bag || {})[mat] || 0;
   return (profile.backpack || {})[mat] || 0;
 }
 
 function materialLabel(mat) {
   if (mat === "legendary_fragment") return "✨ 傳說素材碎片";
+  if (isFishMaterial(mat)) {
+    const f = fishing.fish[mat] || {};
+    return `${f.emoji || "🐟"} ${f.name || mat}`;
+  }
   const def = mining?.ores?.[mat] || {};
   return `${def.emoji || "⛏️"} ${def.name || mat}`;
 }
@@ -58,6 +72,19 @@ function addRecipeSection(container, recipes, profile, type) {
             `\n屬性：⚔️ 戰鬥力 ${totalAtk}` +
             (critPct > 0 ? ` ・ ⚡ 暴擊 ${critPct}%` : "") +
             ` ・ 耐久 ${wdef.durability ?? "永久"}`,
+        ),
+      );
+    } else if (type === "rod") {
+      const rdef = (fishing?.rods || {})[resultId] || {};
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**${recipe.name}${craftable ? "（可合成）" : ""}**\n` +
+            `${rodLabel(resultId)}\n` +
+            matParts.join("\n") +
+            `\n屬性：成功率 +${Math.round((rdef.successBonus || 0) * 100)}% ・ ` +
+            `稀有度 +${rdef.rareBonus || 0} ・ ` +
+            `CD -${Math.round((rdef.cdReductionMs || 0) / 60000)} 分 ・ ` +
+            `數量 +${rdef.qtyBonus || 0} ・ 耐久 ${rdef.durability ?? "永久"}`,
         ),
       );
     } else {
@@ -119,11 +146,23 @@ module.exports = {
           ? "（赤手也能打怪但勝率極低，先去合成一把劍！）"
           : "";
 
+      // ── 目前釣竿 ──
+      const rodKey = profile.fishing_rod || "bamboo";
+      const rdef = (fishing?.rods || {})[rodKey] || {};
+      const rodDurability =
+        rodKey === "bamboo" || profile.rod_durability == null
+          ? "永久"
+          : `${profile.rod_durability} 次`;
+      const rodSuccessPct = Math.round((rdef.successBonus || 0) * 100);
+      const rodCdReduceMin = Math.round((rdef.cdReductionMs || 0) / 60000);
+
       const statLines = [
         `⛏️ 目前鎬子：**${pickaxeLabel(profile.pickaxe)}**（耐久 ${pickDurability}）`,
         `　屬性：luck +${luckPct}% ・ CD -${cdReduceMin} 分 ・ 數量 +${pdef.qtyBonus || 0}`,
         `⚔️ 目前武器：**${weaponLabel(wKey)}**（耐久 ${weaponDurability}）${weaponNote}`,
         `　戰鬥力：**${atk}**` + (critPct > 0 ? ` ・ ⚡ 暴擊 ${critPct}%` : ""),
+        `🪝 目前釣竿：**${rodLabel(rodKey)}**（耐久 ${rodDurability}）`,
+        `　屬性：成功率 +${rodSuccessPct}% ・ 稀有度 +${rdef.rareBonus || 0} ・ CD -${rodCdReduceMin} 分 ・ 數量 +${rdef.qtyBonus || 0}`,
         `✨ 傳說素材碎片：**${profile.legendary_fragments || 0}**`,
       ];
 
@@ -140,6 +179,7 @@ module.exports = {
         (r) => (r.result?.type || "pickaxe") === "pickaxe"
       );
       const weaponRecipes = recipes.filter((r) => r.result?.type === "weapon");
+      const rodRecipes = recipes.filter((r) => r.result?.type === "rod");
 
       if (pickaxeRecipes.length) {
         container
@@ -159,9 +199,18 @@ module.exports = {
         addRecipeSection(container, weaponRecipes, profile, "weapon");
       }
 
+      if (rodRecipes.length) {
+        container
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("### 🎣 釣竿（釣魚）"),
+          );
+        addRecipeSection(container, rodRecipes, profile, "rod");
+      }
+
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          "-# 用 /合成 打造；礦石來自 /挖礦，傳說素材碎片來自 /地下城",
+          "-# 用 /合成 打造；礦石來自 /挖礦，魚來自 /釣魚，傳說素材碎片來自 /地下城",
         ),
       );
 
