@@ -1,6 +1,6 @@
 // 統一 config 入口：合併拆檔後的 JSON 區塊。
 // 各區塊請改 src/config/<區塊>.json，merge conflict 才會局部化。
-const server = require("./server.json");
+const server = require("./server");
 const voting = require("./voting.json");
 const suggestion = require("./suggestion.json");
 const level = require("./level.json");

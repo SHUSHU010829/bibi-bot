@@ -76,8 +76,8 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv);
 
-  if (!process.env.MONGO_PASSWORD) {
-    console.log("[ERROR] MONGO_PASSWORD 未設定，無法連線。".red);
+  if (!process.env.MONGO_URI) {
+    console.log("[ERROR] MONGO_URI 未設定，無法連線。".red);
     process.exit(1);
   }
   if (!args.guildId || !args.inviterId || args.invitees.length === 0) {
@@ -110,8 +110,7 @@ async function main() {
     `guild=${args.guildId} inviter=${args.inviterId} 共 ${args.invitees.length} 位被邀請者\n`.gray
   );
 
-  const uri = `mongodb+srv://SHUSHU:${process.env.MONGO_PASSWORD}@morningbot.ar55cbn.mongodb.net/?retryWrites=true&w=majority`;
-  const mongo = new MongoClient(uri);
+  const mongo = new MongoClient(process.env.MONGO_URI);
   await mongo.connect();
   const db = mongo.db("MorningBot");
 

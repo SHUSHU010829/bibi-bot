@@ -28,7 +28,7 @@ module.exports = async (client) => {
 async function processScheduledDeletions(client) {
   // 對齊 activeBuffsCleanupScheduler 等其他 scheduler 的 pattern：
   // collection 還沒掛上來就直接 skip，避免在啟動 race 期間 fallback 到
-  // 本地檔案並噴假警告。真正的 MONGO_PASSWORD 未設情境會在 connectDb 提早 return，
+  // 本地檔案並噴假警告。真正的 MONGO_URI 未設情境會在 connectDb 提早 return，
   // suggestionPanelsCollection 永遠是 undefined，這條 cron 就完全跳過。
   if (!client.suggestionPanelsCollection) return;
 

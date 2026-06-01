@@ -8,16 +8,14 @@ module.exports = async (client) => {
   // 造成連線洩漏。
   if (client.database) return;
 
-  // 檢查環境變數
-  if (!process.env.MONGO_PASSWORD) {
-    console.log(`[ERROR] MONGO_PASSWORD environment variable is not set!`.red);
-    console.log(`[ERROR] Please create a .env file with MONGO_PASSWORD variable`.red);
+  if (!process.env.MONGO_URI) {
+    console.log(`[ERROR] MONGO_URI environment variable is not set!`.red);
+    console.log(`[ERROR] Please set MONGO_URI in your .env (see .env.example)`.red);
     console.log(`[WARNING] Database features will be disabled until this is fixed`.yellow);
     return;
   }
 
-  const uri = `mongodb+srv://SHUSHU:${process.env.MONGO_PASSWORD}@morningbot.ar55cbn.mongodb.net/?retryWrites=true&w=majority`;
-  const mongoClient = new MongoClient(uri);
+  const mongoClient = new MongoClient(process.env.MONGO_URI);
 
   try {
     console.log(`[DATA] Connecting to MongoDB...`.cyan);
@@ -1048,7 +1046,7 @@ module.exports = async (client) => {
       `[ERROR] Failed to connect to MongoDB:\n${error}`.red
     );
     console.log(
-      `[WARNING] Database features will be disabled. Please check your MONGO_PASSWORD and network connection`.yellow
+      `[WARNING] Database features will be disabled. Please check your MONGO_URI and network connection`.yellow
     );
   }
 };
