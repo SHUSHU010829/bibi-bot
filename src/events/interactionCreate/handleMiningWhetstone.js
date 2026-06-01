@@ -1,7 +1,7 @@
-// 鎬子修復按鈕處理器：劣質磨刀石（使用）+ 材料修復（預覽→確認）。
+// 鎬子修復按鈕處理器：劣質磨鎬石（使用）+ 材料修復（預覽→確認）。
 //
 // 按鈕 customId：
-//   mining_use_whetstone_inferior_<ownerId>   — 劣質磨刀石一鍵使用
+//   mining_use_whetstone_inferior_<ownerId>   — 劣質磨鎬石一鍵使用
 //   mining_repair_material_<ownerId>           — 材料修復：顯示消耗預覽並附確認鈕
 //   mining_repair_material_confirm_<ownerId>   — 材料修復確認，實際執行扣料
 //
@@ -41,7 +41,7 @@ module.exports = async (client, interaction) => {
 
     const customId = interaction.customId || "";
 
-    // ── 劣質磨刀石 ──────────────────────────────────────────────────────────
+    // ── 劣質磨鎬石 ──────────────────────────────────────────────────────────
     const parsedInferior = parseUseWhetstoneInferiorId(customId);
     if (parsedInferior) {
       const { ownerId } = parsedInferior;
@@ -80,9 +80,9 @@ module.exports = async (client, interaction) => {
       if (!result.ok) {
         const messages = {
           disabled: "🔧 挖礦系統尚未啟動！",
-          no_whetstone: "🪨 你沒有劣質磨刀石，可到 /商店 購買。",
+          no_whetstone: "🪨 你沒有劣質磨鎬石，可到 /商店 購買。",
           no_pickaxe: "⛏️ 你目前沒有可修復的鎬子（木鎬不需修復）。",
-          max_too_low: `⛏️ 鎬子最大耐久只剩 ${result.maxDurability}，不足 20 無法再使用劣質磨刀石。快去 /合成 一把新的吧！`,
+          max_too_low: `⛏️ 鎬子最大耐久只剩 ${result.maxDurability}，不足 20 無法再使用劣質磨鎬石。快去 /合成 一把新的吧！`,
           retry: "⏳ 操作衝突，請再試一次。",
         };
         await replyEphemeral(
@@ -94,7 +94,7 @@ module.exports = async (client, interaction) => {
 
       await replyEphemeral(
         interaction,
-        `🪨 使用劣質磨刀石！鎬子耐久補滿至 **${result.durabilityAfter}**，最大耐久上限降至 ${result.maxAfter}。（剩餘 ×${result.inferiorLeft}）`
+        `🪨 使用劣質磨鎬石！鎬子耐久補滿至 **${result.durabilityAfter}**，最大耐久上限降至 ${result.maxAfter}。（剩餘 ×${result.inferiorLeft}）`
       );
       trackSuccess("mining-use-whetstone-inferior");
       return;
