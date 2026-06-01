@@ -294,7 +294,18 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     }
 
     // ── 挖礦道具 ──
-    if (category === "all" || category === "mine") {
+    // 「全部」分類只顯示純文字摘要（避免超過 Discord Components V2 40 個元件上限），
+    // 切到「🪓 挖礦道具」分類才看到互動 Section + 按鈕。
+    if (category === "all") {
+      container.addSeparatorComponents(new SeparatorBuilder());
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🎁 挖礦道具\n` +
+            `🍀 幸運藥水 ×${luckUses}　🎫 CD 縮短券 ×${ticketCount}　🪨 劣質磨刀石 ×${inferiorCount}　✨ 傳說素材碎片 ×${fragments}\n` +
+            `-# 切到上方「🪓 挖礦道具」分類可使用道具／修復鎬子`
+        )
+      );
+    } else if (category === "mine") {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -415,47 +426,76 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       )
     );
 
-    // 每種有魚的魚種：顯示數量 + 賣全部按鈕
+    // 每種有魚的魚種：在「釣魚」分類顯示數量 + 賣全部按鈕；
+    // 在「全部」分類只用純文字摘要，避免超過 Discord Components V2 40 個元件上限。
     const hasFish = Object.entries(fishing.fish || {}).some(([k]) => (fishBag[k] || 0) > 0);
-    if (hasFish) {
-      for (const [key, def] of Object.entries(fishing.fish || {})) {
-        const qty = fishBag[key] || 0;
-        if (qty <= 0) continue;
-        const total = qty * def.price;
-        const matchedRecipe = Object.entries(fishing.recipes || {}).find(
-          ([, r]) => r.materials?.[key] !== undefined
-        );
-        const recipeHint = matchedRecipe ? `・可烹飪成 ${matchedRecipe[1].emoji} ${matchedRecipe[1].name}` : "";
-        container.addSectionComponents(
-          new SectionBuilder()
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                `${def.emoji} **${def.name}**（${def.rarity}）×${qty}${recipeHint}`
+    if (category === "fish") {
+      if (hasFish) {
+        for (const [key, def] of Object.entries(fishing.fish || {})) {
+          const qty = fishBag[key] || 0;
+          if (qty <= 0) continue;
+          const total = qty * def.price;
+          const matchedRecipe = Object.entries(fishing.recipes || {}).find(
+            ([, r]) => r.materials?.[key] !== undefined
+          );
+          const recipeHint = matchedRecipe ? `・可烹飪成 ${matchedRecipe[1].emoji} ${matchedRecipe[1].name}` : "";
+          container.addSectionComponents(
+            new SectionBuilder()
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `${def.emoji} **${def.name}**（${def.rarity}）×${qty}${recipeHint}`
+                )
               )
-            )
-            .setButtonAccessory(
-              new ButtonBuilder()
-                .setCustomId(`fish_sell_${userId}_${key}`)
-                .setLabel(`賣全部 +${total.toLocaleString()}`)
-                .setStyle(ButtonStyle.Secondary)
-            )
+              .setButtonAccessory(
+                new ButtonBuilder()
+                  .setCustomId(`fish_sell_${userId}_${key}`)
+                  .setLabel(`賣全部 +${total.toLocaleString()}`)
+                  .setStyle(ButtonStyle.Secondary)
+              )
+          );
+        }
+      } else {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 魚袋空空，快去 /釣魚 吧！")
+        );
+      }
+
+      // 0 條的魚種低調收到底部
+      const emptyFish = Object.entries(fishing.fish || {})
+        .filter(([k]) => (fishBag[k] || 0) === 0)
+        .map(([, def]) => def.name)
+        .join("・");
+      if (emptyFish) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`-# 尚無：${emptyFish}`)
         );
       }
     } else {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("-# 魚袋空空，快去 /釣魚 吧！")
-      );
-    }
-
-    // 0 條的魚種低調收到底部
-    const emptyFish = Object.entries(fishing.fish || {})
-      .filter(([k]) => (fishBag[k] || 0) === 0)
-      .map(([, def]) => def.name)
-      .join("・");
-    if (emptyFish) {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`-# 尚無：${emptyFish}`)
-      );
+      // category === "all"：純文字摘要
+      if (hasFish) {
+        let bagTotalValue = 0;
+        const fishLines = [];
+        for (const [key, def] of Object.entries(fishing.fish || {})) {
+          const qty = fishBag[key] || 0;
+          if (qty <= 0) continue;
+          const total = qty * def.price;
+          bagTotalValue += total;
+          fishLines.push(`${def.emoji} **${def.name}** ×${qty} ・ ${total.toLocaleString()} ${COIN_EMOJI}`);
+        }
+        const emptyFish = Object.entries(fishing.fish || {})
+          .filter(([k]) => (fishBag[k] || 0) === 0)
+          .map(([, def]) => def.name)
+          .join("・");
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**魚袋**\n${fishLines.join("\n")}\n-# 💰 全部賣出可得 ${bagTotalValue.toLocaleString()} ${COIN_EMOJI}・切到「🎣 釣魚」分類可一鍵賣出${emptyFish ? `\n-# 尚無：${emptyFish}` : ""}`
+          )
+        );
+      } else {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 魚袋空空，快去 /釣魚 吧！")
+        );
+      }
     }
   }
 
@@ -523,23 +563,26 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       );
     }
 
-    // 四種可裝備道具併成單一下拉，徹底避免動作列爆量導致選單被截掉
-    const unifiedMenu = buildUnifiedEquipMenu(grouped);
-    if (unifiedMenu) equipRows.push(unifiedMenu);
+    // 四種可裝備道具併成單一下拉，徹底避免動作列爆量導致選單被截掉。
+    // 只在「🛍️ 商店道具」分類顯示，避免「全部」分類元件總數超過 40。
+    if (category === "shop") {
+      const unifiedMenu = buildUnifiedEquipMenu(grouped);
+      if (unifiedMenu) equipRows.push(unifiedMenu);
 
-    // 贊助限定卡面持有者：提供「設定卡號」按鈕（自訂浮雕卡號）
-    const ownsDonorCard = (grouped.get("wallet_theme") || []).some(
-      (it) => it.itemId === DONOR_THEME_ITEM_ID && isUsable(it)
-    );
-    if (ownsDonorCard) {
-      equipRows.push(
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(CARDNO_OPEN_ID)
-            .setLabel("💳 設定卡號")
-            .setStyle(ButtonStyle.Secondary)
-        )
+      // 贊助限定卡面持有者：提供「設定卡號」按鈕（自訂浮雕卡號）
+      const ownsDonorCard = (grouped.get("wallet_theme") || []).some(
+        (it) => it.itemId === DONOR_THEME_ITEM_ID && isUsable(it)
       );
+      if (ownsDonorCard) {
+        equipRows.push(
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(CARDNO_OPEN_ID)
+              .setLabel("💳 設定卡號")
+              .setStyle(ButtonStyle.Secondary)
+          )
+        );
+      }
     }
   }
 
