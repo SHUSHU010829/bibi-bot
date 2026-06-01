@@ -5,7 +5,8 @@ const userSettings = require("../settings/userSettings");
  *
  * 規則：
  *   1. 用 Discord guild member cache 取 displayName / avatar（不主動 fetch）
- *   2. 查 UserSettings.publicProfile，沒開啟的人匿名化（顯示「匿名玩家」+ null avatar）
+ *   2. 查 UserSettings.publicProfile，**預設公開**；只有明確關閉（false）
+ *      的玩家會匿名化（顯示「匿名玩家」+ null avatar）
  *   3. cache 找不到的 member 也顯示「未知玩家」
  *
  * 數值欄位（total / value / count / titleCount...）一律保留，
@@ -15,15 +16,14 @@ async function enrichLeaderboardRows(client, guildId, rows) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
   const guild = client.guilds.cache.get(guildId);
   const userIds = rows.map((r) => r.userId);
-  const publicSet = await userSettings.getPublicUserIds(
+  const hiddenSet = await userSettings.getHiddenUserIds(
     client,
     guildId,
     userIds,
   );
 
   return rows.map((r) => {
-    const isPublic = publicSet.has(r.userId);
-    if (!isPublic) {
+    if (hiddenSet.has(r.userId)) {
       return {
         ...r,
         userId: r.userId,
