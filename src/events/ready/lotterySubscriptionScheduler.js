@@ -1,7 +1,7 @@
 // 樂透訂閱扣款排程:每個玩法在自己開獎前 30 分鐘各自觸發。
 
 require("colors");
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const { processAllSubscriptions } = require("../../features/casino/lottery/subscriptions");
@@ -17,20 +17,13 @@ module.exports = (client) => {
   for (const t of listLotteryTypes()) {
     const typeCfg = cfg.types?.[t];
     if (!typeCfg?.enabled) continue;
-    const subCron = buildSubscriptionCron(t);
 
-    cron.schedule(
-      subCron,
-      async () => {
-        try {
-          await processAllSubscriptions(client, { lotteryType: t });
-        } catch (err) {
-          console.log(`[ERROR] lottery subscription scheduler (${t}):\n${err}\n${err.stack}`.red);
-        }
-      },
-      { timezone: tz }
-    );
-
-    console.log(`[SYSTEM] 樂透訂閱排程啟動 [${t}]:${subCron} (${tz})`.green);
+    registerCron(client, {
+      name: `lottery.subscription.${t}`,
+      label: `樂透訂閱扣款 [${t}]`,
+      schedule: buildSubscriptionCron(t),
+      timezone: tz,
+      runner: () => processAllSubscriptions(client, { lotteryType: t }),
+    });
   }
 };

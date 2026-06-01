@@ -1,6 +1,6 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 const { DateTime } = require("luxon");
 
 const { coinSystem } = require("../../config");
@@ -47,10 +47,6 @@ const CASINO_GAME_LABEL = {
   lottery: "Lott",
   horseRacing: "Horse",
 };
-
-let task = null;
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 5;
 
 const fmt = (n) => Math.round(n).toLocaleString();
 
@@ -315,17 +311,17 @@ async function buildSuspiciousSection(client, guildId, opts) {
 // ===== 主流程 =====
 async function runReport(client) {
   const cfg = coinSystem?.dailyEconomyReport;
-  if (!cfg?.enabled) return;
-  if (!client.coinTransactionsCollection) return;
+  if (!cfg?.enabled) return { sent: 0 };
+  if (!client.coinTransactionsCollection) return { sent: 0 };
   const channelId = cfg.channelId;
   if (!channelId) {
     console.log(`[ECON-REPORT] 未設定 channelId，跳過`.yellow);
-    return;
+    return { sent: 0 };
   }
   const channel = await client.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased?.()) {
     console.log(`[ECON-REPORT] 找不到頻道 ${channelId}`.red);
-    return;
+    return { sent: 0 };
   }
 
   const opts = {
@@ -336,10 +332,11 @@ async function runReport(client) {
   };
 
   const guilds = client.guilds.cache;
-  if (!guilds || guilds.size === 0) return;
+  if (!guilds || guilds.size === 0) return { sent: 0 };
 
   const today = DateTime.now().setZone(opts.timezone).toFormat("yyyy-MM-dd");
 
+  let sent = 0;
   for (const [guildId, guild] of guilds) {
     try {
       const sections = [];
@@ -363,6 +360,7 @@ async function runReport(client) {
           });
         }
       }
+      sent += 1;
       console.log(`[ECON-REPORT] ${guild.name} 日報已送出`.cyan);
     } catch (e) {
       console.log(
@@ -370,39 +368,23 @@ async function runReport(client) {
       );
     }
   }
+  return { sent };
 }
 
 module.exports = async (client) => {
-  if (task) return;
   const cfg = coinSystem?.dailyEconomyReport;
   if (!cfg?.enabled) {
     console.log(`[ECON-REPORT] 未啟用，略過排程`.gray);
     return;
   }
-  const schedule = cfg.cronSchedule || "0 8 * * *";
-  const timezone = cfg.timezone || "Asia/Taipei";
 
-  task = cron.schedule(
-    schedule,
-    async () => {
-      try {
-        await runReport(client);
-        consecutiveErrors = 0;
-      } catch (err) {
-        consecutiveErrors += 1;
-        console.log(
-          `[ERROR] economyDailyReportScheduler failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err?.stack || err}`.red
-        );
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log(`[ERROR] 連續錯誤過多，停止經濟日報 cron`.red);
-          task.stop();
-        }
-      }
-    },
-    { timezone }
-  );
-
-  console.log(`[ECON-REPORT] 經濟日報排程已啟動：${schedule} (${timezone}) → 頻道 ${cfg.channelId}`.cyan);
+  registerCron(client, {
+    name: "economy.dailyReport",
+    label: "經濟日報",
+    schedule: cfg.cronSchedule || "0 8 * * *",
+    timezone: cfg.timezone || "Asia/Taipei",
+    runner: () => runReport(client),
+  });
 };
 
 module.exports.runReport = runReport;

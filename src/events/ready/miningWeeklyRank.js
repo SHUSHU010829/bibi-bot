@@ -1,6 +1,6 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 const {
   ContainerBuilder,
   TextDisplayBuilder,
@@ -14,10 +14,6 @@ const gameTitleService = require("../../features/gameTitles/gameTitleService");
 
 const KING_TITLE = "mine_king";
 const MEDALS = ["🥇", "🥈", "🥉"];
-
-let task = null;
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 3;
 
 async function guildsWithLogs(client, window) {
   if (!client.mineLogsCollection) return [];
@@ -108,7 +104,7 @@ async function announceKing(client, winnerId, ranking, championCount, dethroned 
 async function processGuild(client, guildId) {
   const window = rankService.previousWeekWindow();
   const ranking = await rankService.rankByWindow(client, guildId, { ...window, limit: 10 });
-  if (!ranking.length) return;
+  if (!ranking.length) return null;
 
   const winnerId = ranking[0].userId;
 
@@ -155,6 +151,7 @@ async function processGuild(client, guildId) {
     .catch(() => {});
 
   console.log(`[MINING] 週冠結算 guild=${guildId} winner=${winnerId}（第 ${championCount} 次）`.cyan);
+  return { guildId, winnerId, championCount };
 }
 
 async function runWeeklyRank(client) {
@@ -162,42 +159,29 @@ async function runWeeklyRank(client) {
   const guildIds = await guildsWithLogs(client, window);
   if (!guildIds.length) {
     console.log(`[MINING] 上週無挖礦紀錄，跳過週冠結算`.gray);
-    return;
+    return { processed: 0 };
   }
+  let processed = 0;
   for (const guildId of guildIds) {
-    await processGuild(client, guildId).catch((e) =>
-      console.log(`[MINING] 週冠結算失敗 guild=${guildId}: ${e.message}`.yellow)
-    );
+    try {
+      const r = await processGuild(client, guildId);
+      if (r) processed += 1;
+    } catch (e) {
+      console.log(`[MINING] 週冠結算失敗 guild=${guildId}: ${e.message}`.yellow);
+    }
   }
+  return { processed };
 }
 
 module.exports = async (client) => {
-  if (task) return;
   if (!mining?.enabled) return;
 
   const cfg = mining?.weeklyRank || {};
-  const schedule = cfg.cronSchedule || "1 0 * * 1";
-  const tz = cfg.timezone || "Asia/Taipei";
-
-  task = cron.schedule(
-    schedule,
-    async () => {
-      try {
-        await runWeeklyRank(client);
-        consecutiveErrors = 0;
-      } catch (err) {
-        consecutiveErrors += 1;
-        console.log(
-          `[ERROR] miningWeeklyRank failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err}`.red
-        );
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log(`[ERROR] 連續錯誤過多，停止週冠 cron`.red);
-          task.stop();
-        }
-      }
-    },
-    { timezone: tz }
-  );
-
-  console.log(`[MINING] 挖礦週冠排程已啟動：${schedule} (${tz})`.cyan);
+  registerCron(client, {
+    name: "mining.weeklyRank",
+    label: "挖礦週冠結算",
+    schedule: cfg.cronSchedule || "1 0 * * 1",
+    timezone: cfg.timezone || "Asia/Taipei",
+    runner: () => runWeeklyRank(client),
+  });
 };

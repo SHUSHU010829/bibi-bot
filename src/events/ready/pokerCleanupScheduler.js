@@ -1,6 +1,6 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const {
@@ -9,18 +9,14 @@ const {
   postThreadAnnouncement,
 } = require("../../features/casino/poker/service");
 
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 5;
-let tableTask = null;
-let actionTask = null;
-
 async function sweepTables(client) {
-  if (!client.pokerGamesCollection) return;
+  if (!client.pokerGamesCollection) return { closed: 0 };
   const now = new Date();
   const cursor = client.pokerGamesCollection.find({
     status: { $in: ["waiting", "playing", "settled"] },
     expiresAt: { $lt: now },
   });
+  let closed = 0;
   while (await cursor.hasNext()) {
     const doc = await cursor.next();
     console.log(
@@ -28,14 +24,16 @@ async function sweepTables(client) {
     );
     try {
       await closeTable(client, doc, { reason: "abandoned_timeout" });
+      closed += 1;
     } catch (e) {
       console.log(`[POKER] closeTable 失敗 gameId=${doc.gameId}: ${e.message}`.red);
     }
   }
+  return { closed };
 }
 
 async function sweepActions(client) {
-  if (!client.pokerGamesCollection) return;
+  if (!client.pokerGamesCollection) return { warned: 0, autoActed: 0 };
   const now = new Date();
 
   // 1) 倒數剩 ≤15 秒 → 發提醒（每位玩家每回合只發一次）
@@ -45,6 +43,7 @@ async function sweepActions(client) {
     actionWarningFired: { $ne: true },
     actionDeadline: { $lt: warnAt, $gt: now },
   });
+  let warned = 0;
   while (await warnCursor.hasNext()) {
     const doc = await warnCursor.next();
     try {
@@ -64,6 +63,7 @@ async function sweepActions(client) {
         { _id: doc._id },
         { $set: { actionWarningFired: true } }
       );
+      warned += 1;
     } catch (e) {
       console.log(`[POKER] 倒數提醒失敗 gameId=${doc.gameId}: ${e.message}`.red);
     }
@@ -74,47 +74,35 @@ async function sweepActions(client) {
     status: "playing",
     actionDeadline: { $lt: now, $ne: null },
   });
+  let autoActed = 0;
   while (await cursor.hasNext()) {
     const doc = await cursor.next();
     try {
       await autoActOnTimeout(client, doc);
+      autoActed += 1;
     } catch (e) {
       console.log(`[POKER] auto-fold 失敗 gameId=${doc.gameId}: ${e.message}`.red);
     }
   }
+  return { warned, autoActed };
 }
 
 module.exports = async (client) => {
-  if (tableTask) return;
   const cfg = casino?.poker || {};
   if (cfg.enabled === false) return;
 
-  tableTask = cron.schedule("* * * * *", async () => {
-    try {
-      await sweepTables(client);
-      consecutiveErrors = 0;
-    } catch (err) {
-      consecutiveErrors += 1;
-      console.log(
-        `[ERROR] pokerCleanupScheduler table sweep failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err}`.red
-      );
-      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        console.log(`[ERROR] 連續錯誤過多，停止撲克牌桌清理 cron`.red);
-        tableTask.stop();
-      }
-    }
+  registerCron(client, {
+    name: "casino.poker.tableSweep",
+    label: "撲克牌桌逾時清理",
+    schedule: "* * * * *",
+    runner: () => sweepTables(client),
   });
 
   // 每 10 秒掃一次行動倒數，逾時自動 fold/check
-  actionTask = cron.schedule("*/10 * * * * *", async () => {
-    try {
-      await sweepActions(client);
-    } catch (err) {
-      console.log(`[ERROR] pokerCleanupScheduler action sweep failed:\n${err}`.red);
-    }
+  registerCron(client, {
+    name: "casino.poker.actionSweep",
+    label: "撲克行動倒數掃描",
+    schedule: "*/10 * * * * *",
+    runner: () => sweepActions(client),
   });
-
-  console.log(
-    `[POKER] 撲克排程已啟動：牌桌逾時每分鐘、行動倒數每 10 秒`.cyan
-  );
 };

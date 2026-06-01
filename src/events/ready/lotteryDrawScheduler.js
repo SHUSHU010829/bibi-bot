@@ -2,13 +2,21 @@
 // 啟動時補建當期 open draw,確保玩家可以買票。
 
 require("colors");
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const { runDraw, ensureNextDraw } = require("../../features/casino/lottery/runDraw");
 const { announceDrawResult } = require("../../features/casino/lottery/announceResult");
 const { listLotteryTypes } = require("../../features/casino/lottery/numbers");
 const { buildDrawCron } = require("../../features/casino/lottery/schedule");
+
+async function runOneDraw(client, lotteryType) {
+  const result = await runDraw(client, lotteryType);
+  if (result) {
+    await announceDrawResult(client, result);
+  }
+  return { lotteryType, drawn: !!result };
+}
 
 module.exports = (client) => {
   const cfg = casino?.lottery;
@@ -34,21 +42,12 @@ module.exports = (client) => {
     if (!typeCfg?.enabled) continue;
     const drawCron = buildDrawCron(t);
 
-    cron.schedule(
-      drawCron,
-      async () => {
-        try {
-          const result = await runDraw(client, t);
-          if (result) {
-            await announceDrawResult(client, result);
-          }
-        } catch (err) {
-          console.log(`[ERROR] lottery draw scheduler (${t}):\n${err}\n${err.stack}`.red);
-        }
-      },
-      { timezone: tz }
-    );
-
-    console.log(`[SYSTEM] 樂透開獎排程啟動 [${t}]:${drawCron} (${tz})`.green);
+    registerCron(client, {
+      name: `lottery.draw.${t}`,
+      label: `樂透開獎 [${t}]`,
+      schedule: drawCron,
+      timezone: tz,
+      runner: () => runOneDraw(client, t),
+    });
   }
 };

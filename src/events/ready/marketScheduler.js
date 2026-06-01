@@ -1,6 +1,6 @@
 require("colors");
 
-const cron = require("node-cron");
+const { registerCron } = require("../../utils/cronRegistry");
 const {
   AttachmentBuilder,
   ContainerBuilder,
@@ -24,13 +24,6 @@ const SENTIMENT_LABEL = {
   sideways: "🦀 震盪",
 };
 
-let tickTask = null;
-let openTask = null;
-let closeTask = null;
-let sentimentTask = null;
-let consecutiveErrors = 0;
-const MAX_CONSECUTIVE_ERRORS = 3;
-
 function pickWeightedSentiment(weights) {
   const entries = Object.entries(weights || {}).filter(([, w]) => Number(w) > 0);
   if (entries.length === 0) return "sideways";
@@ -45,8 +38,9 @@ function pickWeightedSentiment(weights) {
 
 async function rotateSentimentOnce(client) {
   const cfg = stockSystem?.sentimentRotation;
-  if (!cfg?.enabled) return;
+  if (!cfg?.enabled) return { rotated: 0 };
   const guildIds = await listGuildIdsWithMarket(client);
+  let rotated = 0;
   for (const guildId of guildIds) {
     const stocks = await client.stockMarketCollection
       .find({ guildId, enabled: { $ne: false } })
@@ -63,7 +57,9 @@ async function rotateSentimentOnce(client) {
         console.log(`[STOCK] sentiment announce failed guild=${guildId}: ${e?.message || e}`.yellow)
       );
     }
+    if (prev !== next) rotated += 1;
   }
+  return { rotated };
 }
 
 async function announceSentimentChange(client, prev, next) {
@@ -97,9 +93,10 @@ async function listGuildIdsWithMarket(client) {
 
 async function tickOnce(client) {
   if (!isMarketOpen()) {
-    return;
+    return { ticked: 0, skipped: "market_closed" };
   }
   const guildIds = await listGuildIdsWithMarket(client);
+  let ticked = 0;
   for (const guildId of guildIds) {
     const stocks = await client.stockMarketCollection
       .find({ guildId, enabled: { $ne: false } })
@@ -118,6 +115,7 @@ async function tickOnce(client) {
         timestamp: new Date(),
         source: "tick",
       }).catch(() => {});
+      ticked += 1;
     }
     // 每個 guild 5% 機率觸發隨機事件
     await rollRandomEvent(client, guildId).catch((e) =>
@@ -127,6 +125,7 @@ async function tickOnce(client) {
       console.log(`[STOCK] broadcast failed guild=${guildId}: ${e?.message || e}`.yellow)
     );
   }
+  return { ticked, guilds: guildIds.length };
 }
 
 async function postMarketBroadcast(client, guildId) {
@@ -242,6 +241,7 @@ async function runOpen(client) {
     }
     await postOpenReport(client, guildId, stocks).catch(() => {});
   }
+  return { guilds: guildIds.length };
 }
 
 async function postOpenReport(client, guildId, stocks) {
@@ -276,6 +276,7 @@ async function runClose(client) {
       console.log(`[STOCK] close report failed guild=${guildId}: ${e?.message || e}`.yellow)
     );
   }
+  return { guilds: guildIds.length };
 }
 
 async function postCloseReport(client, guildId) {
@@ -381,7 +382,6 @@ async function postCloseReport(client, guildId) {
 }
 
 module.exports = async (client) => {
-  if (tickTask) return;
   if (!stockSystem?.enabled) {
     console.log(`[STOCK] 股市系統未啟用，跳過排程`.gray);
     return;
@@ -392,90 +392,42 @@ module.exports = async (client) => {
   }
 
   const tz = stockSystem.timezone || "Asia/Taipei";
-  const tickSchedule = stockSystem.tickCronSchedule || "*/5 * * * *";
-  const openSchedule = stockSystem.openCronSchedule || "0 9 * * *";
-  const closeSchedule = stockSystem.closeCronSchedule || "0 21 * * *";
 
-  tickTask = cron.schedule(
-    tickSchedule,
-    async () => {
-      try {
-        await tickOnce(client);
-        consecutiveErrors = 0;
-      } catch (err) {
-        consecutiveErrors += 1;
-        console.log(
-          `[ERROR] marketScheduler tick failed (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):\n${err?.stack || err}`.red
-        );
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          console.log(`[ERROR] 連續錯誤過多，停止股市 tick cron`.red);
-          tickTask.stop();
-          await alertSchedulerStopped(client).catch(() => {});
-        }
-      }
-    },
-    { timezone: tz }
-  );
+  registerCron(client, {
+    name: "stock.tick",
+    label: "股市價格 tick",
+    schedule: stockSystem.tickCronSchedule || "*/5 * * * *",
+    timezone: tz,
+    runner: () => tickOnce(client),
+  });
 
-  openTask = cron.schedule(
-    openSchedule,
-    async () => {
-      try {
-        await runOpen(client);
-      } catch (err) {
-        console.log(`[ERROR] marketScheduler open failed:\n${err?.stack || err}`.red);
-      }
-    },
-    { timezone: tz }
-  );
+  registerCron(client, {
+    name: "stock.open",
+    label: "股市開盤",
+    schedule: stockSystem.openCronSchedule || "0 9 * * *",
+    timezone: tz,
+    runner: () => runOpen(client),
+  });
 
-  closeTask = cron.schedule(
-    closeSchedule,
-    async () => {
-      try {
-        await runClose(client);
-      } catch (err) {
-        console.log(`[ERROR] marketScheduler close failed:\n${err?.stack || err}`.red);
-      }
-    },
-    { timezone: tz }
-  );
+  registerCron(client, {
+    name: "stock.close",
+    label: "股市收盤",
+    schedule: stockSystem.closeCronSchedule || "0 21 * * *",
+    timezone: tz,
+    runner: () => runClose(client),
+  });
 
   const sentimentCfg = stockSystem.sentimentRotation;
   if (sentimentCfg?.enabled) {
-    const sentimentSchedule = sentimentCfg.cronSchedule || "0 9 * * *";
-    sentimentTask = cron.schedule(
-      sentimentSchedule,
-      async () => {
-        try {
-          await rotateSentimentOnce(client);
-        } catch (err) {
-          console.log(`[ERROR] marketScheduler sentiment failed:\n${err?.stack || err}`.red);
-        }
-      },
-      { timezone: tz }
-    );
-    console.log(
-      `[STOCK] 股市排程已啟動：tick=${tickSchedule}, open=${openSchedule}, close=${closeSchedule}, sentiment=${sentimentSchedule} (${tz})`.cyan
-    );
-  } else {
-    console.log(
-      `[STOCK] 股市排程已啟動：tick=${tickSchedule}, open=${openSchedule}, close=${closeSchedule} (${tz})`.cyan
-    );
+    registerCron(client, {
+      name: "stock.sentimentRotation",
+      label: "股市情緒輪換",
+      schedule: sentimentCfg.cronSchedule || "0 9 * * *",
+      timezone: tz,
+      runner: () => rotateSentimentOnce(client),
+    });
   }
 };
-
-async function alertSchedulerStopped(client) {
-  const channelId = stockSystem?.reportChannelId;
-  if (!channelId) return;
-  const channel = await client.channels.fetch(channelId).catch(() => null);
-  if (!channel?.isTextBased?.()) return;
-  await channel
-    .send({
-      content: `🚨 股市 tick 連續 ${MAX_CONSECUTIVE_ERRORS} 次失敗，已自動停止。請聯絡舒舒檢查。`,
-    })
-    .catch(() => {});
-}
 
 module.exports.tickOnce = tickOnce;
 module.exports.runOpen = runOpen;
