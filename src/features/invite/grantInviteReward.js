@@ -95,10 +95,11 @@ module.exports = async (client, { guild, inviter, invitee, inviteCode }) => {
     );
   }
 
+  let welcomeGranted = 0;
   const welcomeAmount = Math.max(0, Math.floor(inviteSystem.inviteeWelcomeBonus || 0));
   if (welcomeAmount > 0) {
     const inviteeMember = guild.members?.cache?.get(inviteeId) || null;
-    await grantCoins(client, {
+    const w = await grantCoins(client, {
       userId: inviteeId,
       guildId,
       amount: welcomeAmount,
@@ -109,11 +110,18 @@ module.exports = async (client, { guild, inviter, invitee, inviteCode }) => {
       meta: { inviterId, inviteCode },
     }).catch((e) => {
       console.log(`[INVITE] invitee welcome grantCoins failed: ${e.message}`.yellow);
+      return null;
     });
+    welcomeGranted = w?.granted || 0;
     console.log(
-      `[INVITE] 被邀請者 ${invitee.username || inviteeId} 獲得歡迎金 +${welcomeAmount}`.cyan
+      `[INVITE] 被邀請者 ${invitee.username || inviteeId} 獲得歡迎金 +${welcomeGranted}`.cyan
     );
   }
 
-  return granted;
+  return {
+    inviterReward: granted?.granted || 0,
+    activeCount,
+    cappedByDaily,
+    welcomeAmount: welcomeGranted,
+  };
 };
