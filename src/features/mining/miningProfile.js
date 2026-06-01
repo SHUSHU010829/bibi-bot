@@ -1,5 +1,5 @@
 // 集中管理 MiningProfiles 的預設欄位與讀取，避免 schema 預設散落各處。
-const { mining } = require("../../config");
+const { mining, fishing } = require("../../config");
 
 function defaultProfile(userId, guildId) {
   return {
@@ -32,6 +32,9 @@ function defaultProfile(userId, guildId) {
     fish_cooldown_at: 0,
     fish_count_total: 0,
     fish_bag: { small_fish: 0, crucian: 0, shark: 0, octopus: 0, lava_fish: 0 },
+    fishing_rod: "bamboo",
+    rod_durability: null,
+    rod_max_durability: null,
     active_food_buffs: [],
     createdAt: new Date(),
   };
@@ -78,6 +81,19 @@ function normalize(doc) {
   doc.fish_cooldown_at ??= 0;
   doc.fish_count_total ??= 0;
   doc.fish_bag = { small_fish: 0, crucian: 0, shark: 0, octopus: 0, lava_fish: 0, ...(doc.fish_bag || {}) };
+  doc.fishing_rod ??= "bamboo";
+  if (doc.rod_durability === undefined) doc.rod_durability = null;
+  // 回填 rod_max_durability：舊文件若持有非竹竿但缺此欄位，從設定補齊（比照鎬子）
+  if (doc.rod_max_durability === undefined || doc.rod_max_durability === null) {
+    if (doc.fishing_rod && doc.fishing_rod !== "bamboo" && typeof doc.rod_durability === "number") {
+      const configMax = fishing?.rods?.[doc.fishing_rod]?.durability ?? null;
+      doc.rod_max_durability = configMax != null
+        ? Math.max(doc.rod_durability, configMax)
+        : null;
+    } else {
+      doc.rod_max_durability = null;
+    }
+  }
   if (!Array.isArray(doc.active_food_buffs)) doc.active_food_buffs = [];
   return doc;
 }

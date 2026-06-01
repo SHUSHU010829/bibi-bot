@@ -23,6 +23,27 @@
         "result": { "type": "pickaxe", "id": "diamond" }
       },
       {
+        "id": "rod_carbon",
+        "name": "碳纖釣竿",
+        "emoji": "🎏",
+        "materials": { "iron": 8, "coal": 5 },
+        "result": { "type": "rod", "id": "carbon" }
+      },
+      {
+        "id": "rod_gold",
+        "name": "黃金釣竿",
+        "emoji": "🥇",
+        "materials": { "gold": 5, "iron": 12, "shark": 2 },
+        "result": { "type": "rod", "id": "gold" }
+      },
+      {
+        "id": "rod_mythril",
+        "name": "秘銀釣竿",
+        "emoji": "🔱",
+        "materials": { "diamond": 5, "gold": 10, "lava_fish": 2 },
+        "result": { "type": "rod", "id": "mythril" }
+      },
+      {
         "id": "sword_iron",
         "name": "鐵劍",
         "emoji": "🗡️",

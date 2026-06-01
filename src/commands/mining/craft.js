@@ -8,7 +8,7 @@ const {
   InteractionContextType,
 } = require("discord.js");
 
-const { mining, craft, dungeon } = require("../../config");
+const { mining, craft, dungeon, fishing } = require("../../config");
 const craftService = require("../../features/mining/craftService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
@@ -17,18 +17,26 @@ function recipeChoices() {
   return (craft?.recipes || []).map((r) => ({ name: r.name, value: r.id }));
 }
 
-// 材料標籤：礦石走 mining.ores，傳說碎片走獨立顯示。
+// 材料標籤：礦石走 mining.ores，魚走 fishing.fish，傳說碎片走獨立顯示。
 function materialLabel(mat, qty) {
   if (mat === "legendary_fragment") return `✨ 傳說素材碎片 ×${qty}`;
+  if (fishing?.fish?.[mat]) {
+    const f = fishing.fish[mat];
+    return `${f.emoji || "🐟"} ${f.name || mat} ×${qty}`;
+  }
   const def = mining?.ores?.[mat] || {};
   return `${def.emoji || "⛏️"} ${def.name || mat} ×${qty}`;
 }
 
-// 裝備標籤：依類型取鎬子 / 武器定義。
+// 裝備標籤：依類型取鎬子 / 武器 / 釣竿定義。
 function gearLabel(type, id) {
   if (type === "weapon") {
     const d = (dungeon?.weapons || {})[id] || {};
     return `${d.emoji || "👊"} ${d.name || id}`;
+  }
+  if (type === "rod") {
+    const d = (fishing?.rods || {})[id] || {};
+    return `${d.emoji || "🎣"} ${d.name || id}`;
   }
   const d = (mining?.pickaxes || {})[id] || {};
   return `${d.emoji || "⛏️"} ${d.name || id}`;
@@ -37,7 +45,7 @@ function gearLabel(type, id) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("合成")
-    .setDescription("用礦石合成更好的鎬子，或打造武器去地下城打怪 🔨")
+    .setDescription("用礦石與魚合成更好的鎬子、武器或釣竿 🔨")
     .setContexts(InteractionContextType.Guild)
     .addStringOption((o) =>
       o
@@ -105,12 +113,16 @@ module.exports = {
       );
       const resultLabel = `${result.resultEmoji || ""} ${result.resultName}`.trim();
       const isWeapon = result.type === "weapon";
+      const isRod = result.type === "rod";
       const tail = isWeapon
         ? "-# 帶著武器去 /地下城 打怪吧！用 /裝備 查看裝備"
-        : "-# 用 /裝備 查看裝備，/挖礦 開挖！";
+        : isRod
+          ? "-# 帶著新釣竿去 /釣魚 吧！用 /裝備 查看裝備"
+          : "-# 用 /裝備 查看裝備，/挖礦 開挖！";
+      const accent = isWeapon ? 0xe67e22 : isRod ? 0x16a085 : 0x9b59b6;
 
       const container = new ContainerBuilder()
-        .setAccentColor(isWeapon ? 0xe67e22 : 0x9b59b6)
+        .setAccentColor(accent)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `# 🔨 合成成功\n你打造出了 **${resultLabel}**！`,

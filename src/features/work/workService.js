@@ -3,7 +3,7 @@ const { DateTime } = require("luxon");
 const { work } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 const twitchPerks = require("../mining/twitchPerks");
-const { getFoodWorkBonus, getActiveFoodBuffs } = require("../fishing/cookService");
+const { getFoodWorkBonus, getActiveFoodBuffs, consumeWorkIncomeUse } = require("../fishing/cookService");
 const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
 
 const TZ = "Asia/Taipei";
@@ -86,8 +86,9 @@ async function doWork(client, { userId, guildId, member, username }) {
 
   // 食物 buff：work_income / all_boost 類型加成
   let foodWorkBonus = 0;
+  let miningProfile = null;
   try {
-    const miningProfile = await getMiningProfile(client, userId, guildId).catch(() => null);
+    miningProfile = await getMiningProfile(client, userId, guildId).catch(() => null);
     if (miningProfile) {
       foodWorkBonus = getFoodWorkBonus(miningProfile);
     }
@@ -107,6 +108,11 @@ async function doWork(client, { userId, guildId, member, username }) {
     meta: { job },
   });
   if (!grant) return { ok: false, reason: "grant_failed" };
+
+  // 次數型「魚排便當」buff：本次打工套用後消耗一次（非阻塞；只扣 work_income 型）
+  if (miningProfile) {
+    consumeWorkIncomeUse(client, userId, guildId, miningProfile).catch(() => {});
+  }
 
   let cooldownMs = work.cooldownMs ?? 14400000;
   // Twitch 訂閱者權益：縮短打工 CD

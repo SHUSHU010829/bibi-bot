@@ -407,10 +407,11 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       );
       const emoji = recipe?.emoji || "🍽️";
       const name = recipe?.name || b.type;
-      let desc = b.type === "work_income" ? `打工 +${Math.round(b.value * 100)}%`
-               : b.type === "dungeon_atk" ? `地城 ATK +${b.value}`
-               : b.type === "mine_luck"   ? `幸運 +${Math.round(b.value * 100)}%`
-               : b.type === "all_boost"   ? `全屬性 +${Math.round(b.value * 100)}%`
+      let desc = b.type === "work_income"  ? `打工 +${Math.round(b.value * 100)}%`
+               : b.type === "dungeon_atk"  ? `地城 ATK +${b.value}`
+               : b.type === "mine_luck"    ? `幸運 +${Math.round(b.value * 100)}%`
+               : b.type === "all_boost"    ? `全屬性 +${Math.round(b.value * 100)}%`
+               : b.type === "fish_fortune" ? `釣魚 +${Math.round(b.value * 100)}%`
                : b.type;
       const expire = b.uses_left != null
         ? `（剩 ${b.uses_left} 次）`
@@ -418,10 +419,21 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       return `・${emoji} **${name}**：${desc}${expire}`;
     });
 
+    // 目前釣竿 + 耐久
+    const rodKey = fishProfile.fishing_rod || "bamboo";
+    const rodDef = (fishing.rods || {})[rodKey] || (fishing.rods || {}).bamboo || {};
+    const rodDuraText =
+      rodKey === "bamboo" || fishProfile.rod_durability == null
+        ? "永久"
+        : typeof fishProfile.rod_max_durability === "number"
+          ? `耐久 ${fishProfile.rod_durability} / ${fishProfile.rod_max_durability}`
+          : `耐久 ${fishProfile.rod_durability}`;
+    const rodLine = `🪝 目前釣竿：**${rodDef.emoji || "🎣"} ${rodDef.name || "竹釣竿"}**（${rodDuraText}）`;
+
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `### 🎣 釣魚\n⏳ 釣魚冷卻：${fishCdText}` +
+        `### 🎣 釣魚\n⏳ 釣魚冷卻：${fishCdText}\n${rodLine}` +
         (buffLines.length > 0 ? `\n**食物 Buff**\n${buffLines.join("\n")}` : "\n-# 目前無食物 buff・用 /烹飪 製作")
       )
     );

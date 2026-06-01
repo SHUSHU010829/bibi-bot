@@ -2,6 +2,24 @@
   "fishing": {
     "enabled": true,
     "cooldownMs": 9000000,
+    "baseSuccessRate": 0.6,
+    "successCap": 0.95,
+    "failCooldownMs": 1800000,
+    "failMessages": [
+      "魚吃完餌就溜走了…",
+      "才剛咬餌就掙脫，魚跑了…",
+      "浮標動了一下，魚卻沒上鉤…",
+      "餌被啃得精光，魚影都沒留下…",
+      "線一拉，魚竟然脫鉤跑了…",
+      "感覺有東西咬，拉起來只剩空鉤…",
+      "魚試探了一下餌，轉頭就游走了…"
+    ],
+    "rods": {
+      "bamboo":  { "name": "竹釣竿",   "emoji": "🎣", "successBonus": 0,    "rareBonus": 0,   "cdReductionMs": 0,       "qtyBonus": 0, "durability": null },
+      "carbon":  { "name": "碳纖釣竿", "emoji": "🎏", "successBonus": 0.12, "rareBonus": 0.5, "cdReductionMs": 1800000, "qtyBonus": 0, "durability": 50 },
+      "gold":    { "name": "黃金釣竿", "emoji": "🥇", "successBonus": 0.20, "rareBonus": 1.0, "cdReductionMs": 2700000, "qtyBonus": 0, "durability": 50 },
+      "mythril": { "name": "秘銀釣竿", "emoji": "🔱", "successBonus": 0.28, "rareBonus": 1.5, "cdReductionMs": 3600000, "qtyBonus": 1, "durability": 50 }
+    },
     "locations": {
       "stream": {
         "name": "溪流",
@@ -23,11 +41,11 @@
       }
     },
     "fish": {
-      "small_fish": { "name": "小雜魚", "emoji": "🐟", "rarity": "普通", "price": 5 },
-      "crucian":    { "name": "鯽魚",   "emoji": "🎣", "rarity": "普通", "price": 15 },
-      "shark":      { "name": "鯊魚",   "emoji": "🦈", "rarity": "稀有", "price": 60 },
-      "octopus":    { "name": "章魚",   "emoji": "🐙", "rarity": "稀有", "price": 150 },
-      "lava_fish":  { "name": "熔岩魚", "emoji": "🐉", "rarity": "傳說", "price": 600 }
+      "small_fish": { "name": "小雜魚", "emoji": "🐟", "rarity": "普通", "price": 5,   "rareFactor": 0 },
+      "crucian":    { "name": "鯽魚",   "emoji": "🎣", "rarity": "普通", "price": 15,  "rareFactor": 0 },
+      "shark":      { "name": "鯊魚",   "emoji": "🦈", "rarity": "稀有", "price": 60,  "rareFactor": 1 },
+      "octopus":    { "name": "章魚",   "emoji": "🐙", "rarity": "稀有", "price": 150, "rareFactor": 1.5 },
+      "lava_fish":  { "name": "熔岩魚", "emoji": "🐉", "rarity": "傳說", "price": 600, "rareFactor": 2 }
     },
     "dropTable": {
       "stream":    { "small_fish": 50, "crucian": 30, "shark": 12, "octopus": 6,  "lava_fish": 2 },
@@ -38,20 +56,39 @@
       "fish_bento": {
         "name": "魚排便當",
         "emoji": "🍱",
-        "description": "鯽魚製成的便當，打工時格外有精神",
+        "description": "鯽魚製成的便當，接下來幾次打工都格外有精神",
         "materials": { "crucian": 3 },
         "coalFuel": 3,
         "buff": {
           "type": "work_income",
-          "value": 0.20,
-          "durationMs": 7200000,
-          "label": "打工收入 +20%"
+          "value": 0.25,
+          "uses": 3,
+          "label": "接下來 3 次打工收入 +25%"
         },
         "coalBuff": {
           "type": "work_income",
-          "value": 0.30,
-          "durationMs": 10800000,
-          "label": "打工收入 +30%（煤炭烤製）"
+          "value": 0.35,
+          "uses": 4,
+          "label": "接下來 4 次打工收入 +35%（煤炭烤製）"
+        }
+      },
+      "seafood_feast": {
+        "name": "海鮮拼盤",
+        "emoji": "🍤",
+        "description": "章魚與小雜魚的豪華拼盤，吃了手感超好，接下來幾竿都旺",
+        "materials": { "octopus": 1, "small_fish": 4 },
+        "coalFuel": 4,
+        "buff": {
+          "type": "fish_fortune",
+          "value": 0.10,
+          "uses": 3,
+          "label": "接下來 3 次釣魚 成功率/稀有度提升"
+        },
+        "coalBuff": {
+          "type": "fish_fortune",
+          "value": 0.15,
+          "uses": 4,
+          "label": "接下來 4 次釣魚 成功率/稀有度提升（煤炭烤製）"
         }
       },
       "shark_noodle": {

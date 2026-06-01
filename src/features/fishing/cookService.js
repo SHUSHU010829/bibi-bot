@@ -6,7 +6,7 @@ const { getOrCreate } = require("../mining/miningProfile");
 //
 // 食物 buff 結構（存於 miningProfiles.active_food_buffs）：
 //   { type, value, expires_at, uses_left }
-//   - type:       "work_income" | "dungeon_atk" | "mine_luck" | "all_boost"
+//   - type:       "work_income" | "dungeon_atk" | "mine_luck" | "all_boost" | "fish_fortune"
 //   - value:      數值（倍率或加成量）
 //   - expires_at: ms timestamp；null = 不過期（依 uses_left）
 //   - uses_left:  null = 依時間；>0 = 使用次數
@@ -62,13 +62,33 @@ function getFoodWorkBonus(profile) {
   return bonus;
 }
 
-// 消耗一次 mine_luck 的使用次數（挖礦時呼叫）
-// 回傳更新後的 active_food_buffs 陣列，並同步寫入 DB
-async function consumeMineLuckUse(client, userId, guildId, profile) {
+// 取得食物 buff 對釣魚的加成（fish_fortune + all_boost）。
+// fish_fortune.value 同時換算成「成功率加成」與「稀有度加成（×5 對齊釣竿 rareBonus 量級）」。
+// 回傳 { success, rare }。
+function getFoodFishBonus(profile) {
+  let success = 0;
+  let rare = 0;
+  for (const b of getActiveFoodBuffs(profile)) {
+    const v = Number(b.value) || 0;
+    if (b.type === "fish_fortune") {
+      success += v;
+      rare += v * 5;
+    } else if (b.type === "all_boost") {
+      success += v;
+      rare += v * 5;
+    }
+  }
+  return { success, rare };
+}
+
+// 消耗一次指定 type 的次數型食物 buff（uses_left > 0）。
+// 找到第一個符合的就扣 1 次，清掉用完 / 過期的後同步寫回 DB。
+// 回傳更新後的 active_food_buffs 陣列；沒有可消耗的就回傳 undefined。
+async function consumeFoodBuffUse(client, userId, guildId, profile, type) {
   const buffs = getActiveFoodBuffs(profile);
   let consumed = false;
   const updated = buffs.map((b) => {
-    if (!consumed && b.type === "mine_luck" && b.uses_left > 0) {
+    if (!consumed && b.type === type && b.uses_left > 0) {
       consumed = true;
       return { ...b, uses_left: b.uses_left - 1 };
     }
@@ -81,8 +101,23 @@ async function consumeMineLuckUse(client, userId, guildId, profile) {
       { userId, guildId },
       { $set: { active_food_buffs: cleaned, updatedAt: new Date() } }
     )
-    .catch((e) => console.log(`[ERROR] consumeMineLuckUse: ${e}`.red));
+    .catch((e) => console.log(`[ERROR] consumeFoodBuffUse(${type}): ${e}`.red));
   return cleaned;
+}
+
+// 消耗一次 mine_luck 的使用次數（挖礦時呼叫）
+function consumeMineLuckUse(client, userId, guildId, profile) {
+  return consumeFoodBuffUse(client, userId, guildId, profile, "mine_luck");
+}
+
+// 消耗一次 work_income 的使用次數（打工時呼叫）
+function consumeWorkIncomeUse(client, userId, guildId, profile) {
+  return consumeFoodBuffUse(client, userId, guildId, profile, "work_income");
+}
+
+// 消耗一次 fish_fortune 的使用次數（釣魚時呼叫）
+function consumeFishFortuneUse(client, userId, guildId, profile) {
+  return consumeFoodBuffUse(client, userId, guildId, profile, "fish_fortune");
 }
 
 // 執行一次烹飪。回傳結果物件。
@@ -175,6 +210,9 @@ module.exports = {
   getFoodLuckBonus,
   getFoodAtkBonus,
   getFoodWorkBonus,
+  getFoodFishBonus,
   consumeMineLuckUse,
+  consumeWorkIncomeUse,
+  consumeFishFortuneUse,
   cook,
 };

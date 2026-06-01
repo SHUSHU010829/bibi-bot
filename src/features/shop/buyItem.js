@@ -1,9 +1,11 @@
 require("colors");
 const { DateTime } = require("luxon");
+const { fishing } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 const { getItem, isStackable, stackMax } = require("./catalog");
 const { addBuff } = require("./activeBuff");
 const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
+const { ROD_TIER } = require("../mining/craftService");
 const {
   restoreStamina,
   resolveStamina,
@@ -55,7 +57,7 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     return { ok: false, error: "商店系統尚未就緒" };
   }
 
-  if (MINING_ITEM_TYPES.includes(item.type) && !client.miningProfilesCollection) {
+  if ((MINING_ITEM_TYPES.includes(item.type) || item.type === "fishing_rod") && !client.miningProfilesCollection) {
     return { ok: false, error: "挖礦系統尚未就緒" };
   }
 
@@ -105,6 +107,25 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     const st = resolveStamina(prof, max);
     if (st.stamina >= max) {
       return { ok: false, error: `你的體力已滿（${st.stamina}/${max}），不需要購買體力藥水。` };
+    }
+  }
+
+  // 釣竿：已持有同級或更高階釣竿時拒絕購買（避免降級／浪費），在扣款前檢查
+  if (item.type === "fishing_rod") {
+    const targetId = item.payload?.rodId;
+    if (!targetId || !(fishing?.rods || {})[targetId]) {
+      return { ok: false, error: "這個釣竿商品設定有誤，請呼叫舒舒！" };
+    }
+    const prof = await getMiningProfile(client, userId, guildId);
+    const curId = prof?.fishing_rod || "bamboo";
+    const curTier = ROD_TIER[curId] ?? 0;
+    const targetTier = ROD_TIER[targetId] ?? 0;
+    if (curTier >= targetTier) {
+      const curName = fishing.rods[curId]?.name || curId;
+      return {
+        ok: false,
+        error: `你目前的釣竿（${curName}）已是同級或更高階，不需要購買。更高階釣竿請用 /合成 打造。`,
+      };
     }
   }
 
@@ -216,6 +237,22 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
       member,
       amount: item.payload?.restore || 0,
     });
+  } else if (item.type === "fishing_rod") {
+    // 釣竿：直接裝備到 MiningProfiles（含耐久），不進 UserInventory
+    await getMiningProfile(client, userId, guildId);
+    const rodId = item.payload.rodId;
+    const dura = (fishing.rods[rodId]?.durability) ?? null;
+    await client.miningProfilesCollection.updateOne(
+      { userId, guildId },
+      {
+        $set: {
+          fishing_rod: rodId,
+          rod_durability: dura,
+          rod_max_durability: dura,
+          updatedAt: now,
+        },
+      },
+    );
   } else if (MINING_ITEM_TYPES.includes(item.type)) {
     // 挖礦道具：寫入 MiningProfiles，不進 UserInventory
     await getMiningProfile(client, userId, guildId);
