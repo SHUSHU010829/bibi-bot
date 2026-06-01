@@ -81,10 +81,12 @@ module.exports = {
       // ── 沒上鉤：魚跑了 ──
       if (!result.caught) {
         const failEpoch = Math.floor(result.newCooldownAt / 1000);
+        const failMsgs = fishing.failMessages || ["魚跑掉了…"];
+        const failMsg = failMsgs[Math.floor(Math.random() * failMsgs.length)];
         const failContainer = new ContainerBuilder()
           .setAccentColor(0x95a5a6)
           .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent("# 🎣 魚跑掉了…")
+            new TextDisplayBuilder().setContent(`# 🎣 ${failMsg}`)
           )
           .addSeparatorComponents(new SeparatorBuilder())
           .addTextDisplayComponents(
