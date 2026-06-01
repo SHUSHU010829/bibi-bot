@@ -71,16 +71,15 @@ const COIN_MOVE_FIELDS = ["totalCoins", "lifetimeCoins", "lifetimeSpent"];
 async function main() {
   const args = parseArgs(process.argv);
 
-  if (!process.env.MONGO_PASSWORD) {
-    console.log("[ERROR] MONGO_PASSWORD 未設定，無法連線。".red);
+  if (!process.env.MONGO_URI) {
+    console.log("[ERROR] MONGO_URI 未設定，無法連線。".red);
     process.exit(1);
   }
 
   const mode = args.apply ? "APPLY（會寫入）".red : "DRY-RUN（不寫入）".green;
   console.log(`\n=== 抖內 guildId 空白修補 — ${mode} ===\n`.cyan);
 
-  const uri = `mongodb+srv://SHUSHU:${process.env.MONGO_PASSWORD}@morningbot.ar55cbn.mongodb.net/?retryWrites=true&w=majority`;
-  const mongo = new MongoClient(uri);
+  const mongo = new MongoClient(process.env.MONGO_URI);
   await mongo.connect();
   const db = mongo.db("MorningBot");
 

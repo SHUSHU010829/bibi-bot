@@ -25,13 +25,12 @@ async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const limit = parseLimit();
 
-  if (!process.env.MONGO_PASSWORD) {
-    console.log("[ERROR] MONGO_PASSWORD 環境變數沒設".red);
+  if (!process.env.MONGO_URI) {
+    console.log("[ERROR] MONGO_URI 環境變數沒設".red);
     process.exit(1);
   }
 
-  const uri = `mongodb+srv://SHUSHU:${process.env.MONGO_PASSWORD}@morningbot.ar55cbn.mongodb.net/?retryWrites=true&w=majority`;
-  const client = new MongoClient(uri);
+  const client = new MongoClient(process.env.MONGO_URI);
 
   try {
     await client.connect();

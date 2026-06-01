@@ -77,11 +77,10 @@ function printHelp() {
 }
 
 async function connectMongo() {
-  if (!process.env.MONGO_PASSWORD) {
-    throw new Error("缺少 MONGO_PASSWORD 環境變數");
+  if (!process.env.MONGO_URI) {
+    throw new Error("缺少 MONGO_URI 環境變數");
   }
-  const uri = `mongodb+srv://SHUSHU:${process.env.MONGO_PASSWORD}@morningbot.ar55cbn.mongodb.net/?retryWrites=true&w=majority`;
-  const mongoClient = new MongoClient(uri);
+  const mongoClient = new MongoClient(process.env.MONGO_URI);
   await mongoClient.connect();
   const collection = mongoClient.db("MorningBot").collection("Recommendations");
   return { mongoClient, collection };

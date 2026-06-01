@@ -1,21 +1,4 @@
 {
-  "serverId": "1174352637295067157",
-  "developersId": ["585377773099417600"],
-
-  "normalChannelId": "1174352640210124877",
-  "createVoiceChannelId": "1444946665541861406",
-  "memberCountChannelId": "1232546673448849500",
-  "roleMessageChannelId": "1286145970693869568",
-
-  "commandChannels": {
-    "general": ["1192888968748994700"],
-    "casino": ["1500783461831671858", "1504806019610574878"],
-    "stock": ["1505808023933816893"],
-    "mining": ["1509074828206936126"],
-    "marketplace": ["1510657349944344737"],
-    "fishing": ["1510655421302571159"]
-  },
-
   "memberCountFormat": "😧│很舒禮人數：{count}",
 
   "morningMessage": {
@@ -28,7 +11,6 @@
 
   "weeklyReport": {
     "enabled": true,
-    "channelId": "1174352640210124877",
     "cronSchedule": "0 21 * * 0",
     "timezone": "Asia/Taipei"
   },
@@ -39,14 +21,11 @@
   },
 
   "hostedEvents": {
-    "publishChannelId": "1506339475867832330",
     "maxRankCount": 5,
     "refundFeeRate": 0.3
   },
 
   "ticket": {
-    "categoryId": "1445041268114587779",
-    "supportRoleId": "1174352637295067164",
     "panelTitle": "🎫 票務系統",
     "panelDescription": "需要幫助嗎？點擊下方按鈕創建一個票務頻道！\n\n我們的支援團隊將會盡快回覆您。",
     "buttonLabel": "創建票務",

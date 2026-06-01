@@ -8,7 +8,7 @@
 //     op:      "matches" | "not_matches"           (regex,大小寫不敏感)
 //     pattern: 正則字串,用 | 串多個關鍵字
 
-const DEFAULT_CHANNEL_ID = "1174352640210124877";
+const DEFAULT_CHANNEL_ID = process.env.RSS_DEFAULT_CHANNEL_ID;
 
 const RSS_FEEDS = [
   {
