@@ -27,6 +27,21 @@ startHttpServer(client);
 client.on("error", (err) => {
   console.error("[Client error]", err);
 });
+
+client.rest.on("restDebug", (msg) => {
+  console.log(`[RestDebug] ${msg}`);
+});
+client.rest.on("rateLimited", (info) => {
+  console.log(`[RateLimited] ${JSON.stringify(info)}`);
+});
+client.rest.on("response", (req, res) => {
+  console.log(
+    `[RestResponse] ${req.method} ${req.path} -> ${res.status} (took ${res.headers?.get?.("x-runtime") || "?"})`
+  );
+});
+client.rest.on("invalidRequestWarning", (info) => {
+  console.log(`[InvalidRequestWarning] ${JSON.stringify(info)}`);
+});
 process.on("unhandledRejection", (reason) => {
   console.error("[unhandledRejection]", reason);
 });
