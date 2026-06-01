@@ -11,6 +11,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  EmbedBuilder,
 } = require("discord.js");
 
 const { casino, commandChannels, normalChannelId } = require("../../config");
@@ -214,14 +215,28 @@ async function scanAndNotify(client) {
     if (!user) continue;
 
     const guildName = client.guilds.cache.get(r.guildId)?.name || "伺服器";
-    const body = meta.notifyText
-      ? `${meta.emoji} 你在 **${guildName}** 的${meta.label}${meta.notifyText}快來 \`${meta.command}\`！`
-      : `${meta.emoji} 你在 **${guildName}** 的${meta.label}冷卻結束囉，快來 \`${meta.command}\`！`;
+    const desc = meta.notifyText
+      ? `你在 **${guildName}** 的${meta.label}${meta.notifyText}`
+      : `你在 **${guildName}** 的${meta.label}冷卻結束囉，快來大顯身手！`;
+
+    const embed = new EmbedBuilder()
+      .setColor(0x57f287)
+      .setTitle(`${meta.emoji} ${meta.label}提醒`)
+      .setDescription(desc);
+
+    const components = [];
     const link = channelLink(r.guildId, meta.channelKey);
-    const cta = link
-      ? `\n👉 前往 ${link} 使用 \`${meta.command}\``
-      : "";
-    await user.send(`${body}${cta}`).catch(() => {});
+    if (link) {
+      components.push(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setStyle(ButtonStyle.Link)
+            .setLabel(`前往頻道使用 ${meta.command}`)
+            .setURL(link)
+        )
+      );
+    }
+    await user.send({ embeds: [embed], components }).catch(() => {});
   }
 }
 
