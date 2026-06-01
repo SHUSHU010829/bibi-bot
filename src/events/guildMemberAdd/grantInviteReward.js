@@ -2,6 +2,7 @@ require("colors");
 const { inviteSystem } = require("../../config");
 const { findUsedInvite } = require("../../features/invite/inviteCache");
 const grantInviteReward = require("../../features/invite/grantInviteReward");
+const sendWelcomeNotice = require("../../features/invite/sendWelcome");
 
 module.exports = async (client, member) => {
   if (!inviteSystem?.enabled) return;
@@ -42,10 +43,22 @@ module.exports = async (client, member) => {
   }
   if (!inviter) return;
 
-  await grantInviteReward(client, {
+  const result = await grantInviteReward(client, {
     guild: member.guild,
     inviter,
     invitee: member.user,
     inviteCode: used.code,
   });
+
+  if (result) {
+    await sendWelcomeNotice(client, {
+      guild: member.guild,
+      member,
+      invitee: member.user,
+      inviter,
+      welcomeAmount: result.welcomeAmount,
+    }).catch((e) =>
+      console.log(`[INVITE] welcome notice error: ${e.message}`.red)
+    );
+  }
 };
