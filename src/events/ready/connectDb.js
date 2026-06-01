@@ -185,6 +185,9 @@ module.exports = async (client) => {
     // Cron 任務執行紀錄（withCronLog 寫入）
     const cronJobLogCollection = database.collection("CronJobLog");
 
+    // 使用者個人偏好（公開資料 opt-in 等）
+    const userSettingsCollection = database.collection("UserSettings");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -255,6 +258,7 @@ module.exports = async (client) => {
     client.unmatchedDonationsCollection = unmatchedDonationsCollection;
     client.dashboardAuditLogCollection = dashboardAuditLogCollection;
     client.cronJobLogCollection = cronJobLogCollection;
+    client.userSettingsCollection = userSettingsCollection;
 
     // 抖內系統索引
     // - code unique：用於 webhook 對應 session
@@ -378,6 +382,16 @@ module.exports = async (client) => {
       )
       .catch((e) =>
         console.log(`[WARN] CronJobLog TTL 索引建立失敗：${e.message}`.yellow),
+      );
+
+    // UserSettings：(userId, guildId) 唯一
+    await userSettingsCollection
+      .createIndex(
+        { userId: 1, guildId: 1 },
+        { unique: true, name: "uniq_user_settings" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] UserSettings 唯一索引建立失敗：${e.message}`.yellow),
       );
 
     await economySnapshotsCollection
