@@ -11,6 +11,7 @@ const createPublicProfileHandler = require("./publicProfileApi");
 const requireAdmin = require("./middleware/requireAdmin");
 const logger = require("../utils/logger");
 const { snapshot } = require("../utils/errorTracker");
+const eventLoopMonitor = require("../utils/eventLoopMonitor");
 
 module.exports = function startHttpServer(client) {
   const app = express();
@@ -48,6 +49,7 @@ module.exports = function startHttpServer(client) {
       ready: client.isReady(),
       windowMs: snap.windowMs,
       sources: sortedSources,
+      eventLoopDelayMs: eventLoopMonitor.snapshot(),
     });
   });
 

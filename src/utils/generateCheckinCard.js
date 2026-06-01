@@ -1,73 +1,9 @@
-const fs = require("fs/promises");
-const path = require("path");
-const satori = require("satori").default || require("satori");
-const { html } = require("satori-html");
-const { Resvg } = require("@resvg/resvg-js");
 const { DateTime } = require("luxon");
-const axios = require("axios");
 
-const { loadAdditionalAsset } = require("./satoriEmoji");
 const LruCache = require("./lruCache");
+const { renderCard, fetchAvatarDataUri } = require("./cardRenderer");
 
 const checkinCardCache = new LruCache(256);
-
-const FONT_DIR = path.join(__dirname, "../../fonts");
-let fontsCache = null;
-
-async function loadFonts() {
-  if (fontsCache) return fontsCache;
-  const [tcBlack, tcMedium, mono] = await Promise.all([
-    fs.readFile(path.join(FONT_DIR, "NotoSansTC-Black.woff")),
-    fs.readFile(path.join(FONT_DIR, "NotoSansTC-Medium.woff")),
-    fs.readFile(path.join(FONT_DIR, "SpaceMono-Regular.woff")),
-  ]);
-  fontsCache = [
-    { name: "SpaceMono", data: mono, weight: 400, style: "normal" },
-    { name: "NotoSansTC", data: tcMedium, weight: 500, style: "normal" },
-    { name: "NotoSansTC", data: tcBlack, weight: 900, style: "normal" },
-  ];
-  return fontsCache;
-}
-
-function detectImageMime(buffer, contentType) {
-  if (buffer && buffer.length >= 4) {
-    if (
-      buffer[0] === 0x89 &&
-      buffer[1] === 0x50 &&
-      buffer[2] === 0x4e &&
-      buffer[3] === 0x47
-    ) {
-      return "image/png";
-    }
-    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-      return "image/jpeg";
-    }
-  }
-  if (contentType) {
-    const ct = contentType.toLowerCase();
-    if (ct.includes("image/png")) return "image/png";
-    if (ct.includes("image/jpeg") || ct.includes("image/jpg")) {
-      return "image/jpeg";
-    }
-  }
-  return null;
-}
-
-async function fetchAvatarDataUri(url) {
-  if (!url) return null;
-  try {
-    const res = await axios.get(url, {
-      responseType: "arraybuffer",
-      timeout: 8000,
-    });
-    const buffer = Buffer.from(res.data);
-    const mime = detectImageMime(buffer, res.headers?.["content-type"]);
-    if (!mime) return null;
-    return `data:${mime};base64,${buffer.toString("base64")}`;
-  } catch (e) {
-    return null;
-  }
-}
 
 function buildCalendar(today, timezone, checkinDates) {
   const cells = [];
@@ -227,25 +163,10 @@ async function generateCheckinCard(data) {
   const cached = checkinCardCache.get(cacheKey);
   if (cached) return cached;
 
-  const fonts = await loadFonts();
   const avatarDataUri = await fetchAvatarDataUri(data.avatarUrl);
   const markup = buildMarkup({ ...data, avatarDataUri });
-  const element = html(markup);
 
-  const svg = await satori(element, {
-    width: 1080,
-    height: 900,
-    fonts,
-    loadAdditionalAsset,
-  });
-
-  const png = new Resvg(svg, {
-    fitTo: { mode: "width", value: 1080 },
-  })
-    .render()
-    .asPng();
-
-  const buf = Buffer.from(png);
+  const buf = await renderCard({ markup, width: 1080, height: 900 });
   checkinCardCache.set(cacheKey, buf);
   return buf;
 }

@@ -3,6 +3,7 @@ const { Client, GatewayIntentBits, Partials } = require("discord.js");
 
 const eventHandlers = require("./handlers/eventHandler.js");
 const startHttpServer = require("./httpServer");
+require("./utils/eventLoopMonitor");
 
 const client = new Client({
   intents: [
