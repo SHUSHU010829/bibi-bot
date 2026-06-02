@@ -32,14 +32,14 @@ const PAGE_NEXT       = "market_page_next_";
 
 function oreLabel(oreKey) {
   const def = mining?.ores?.[oreKey] || {};
-  return `${def.emoji || "⛏️"} ${def.name || oreKey}`;
+  return `${def.emoji || "⛏️"} ${def.name || oreKey || "未知物品"}`;
 }
 
-// 統一 item 顯示：根據 item_type 決定顯示礦石或魚
+// 統一 item 顯示：根據 item_type / fish_key 決定顯示礦石或魚
 function itemLabel(listing) {
-  if (listing.item_type === "fish") {
+  if (listing.item_type === "fish" || listing.fish_key) {
     const def = fishing?.fish?.[listing.fish_key] || {};
-    return `${def.emoji || "🐟"} ${def.name || listing.fish_key}`;
+    return `${def.emoji || "🐟"} ${def.name || listing.fish_key || "未知魚種"}`;
   }
   return oreLabel(listing.ore);
 }
