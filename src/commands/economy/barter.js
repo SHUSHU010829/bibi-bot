@@ -110,6 +110,7 @@ module.exports = {
       }
     }
   },
+  channelBuckets: ["marketplace"],
 };
 
 async function runCreate(client, interaction) {
