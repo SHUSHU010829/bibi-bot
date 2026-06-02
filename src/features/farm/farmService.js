@@ -334,6 +334,33 @@ async function fertilize(client, { userId, guildId, plotIndex, fertilizerKey, co
   };
 }
 
+// 擴建預覽：只回傳下一階資訊與目前金幣，不執行扣費。
+async function previewExpand(client, { userId, guildId }) {
+  if (!farming?.enabled) return { ok: false, reason: "disabled" };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const current = getPlotCount(profile);
+  const tiers = farming.plotTiers || [];
+  const nextTier = tiers.find((t) => t.count > current);
+  if (!nextTier) {
+    return { ok: false, reason: "max_reached", current };
+  }
+
+  const coinDoc = await client.userCoinsCollection
+    ?.findOne({ userId, guildId })
+    .catch(() => null);
+  const have = coinDoc?.totalCoins || 0;
+
+  return {
+    ok: true,
+    current,
+    nextCount: nextTier.count,
+    cost: nextTier.cost,
+    have,
+    canAfford: have >= nextTier.cost,
+  };
+}
+
 // 擴建：依下一個 plotTier 扣幣、提升 farm_plot_count。
 async function expandFarm(client, { userId, guildId, username, member }) {
   if (!farming?.enabled) return { ok: false, reason: "disabled" };
@@ -535,6 +562,7 @@ module.exports = {
   plantCrop,
   harvestCrop,
   fertilize,
+  previewExpand,
   expandFarm,
   defendRaid,
   shouldTriggerRaid,
