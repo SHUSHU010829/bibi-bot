@@ -60,6 +60,14 @@ module.exports = async (client, interaction) => {
 };
 
 async function handleAccept(client, interaction, listingId) {
+  const existing = await barterService.getListing(client, interaction.guildId, listingId);
+  if (existing && existing.seller_id === interaction.user.id) {
+    return interaction.reply({
+      components: [errorContainer("❌ 不能接自己的單", "這是你自己上架的交易。", "")],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+
   await interaction.deferReply();
   const result = await barterService.acceptListing(client, {
     listingId,
