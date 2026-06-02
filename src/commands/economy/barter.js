@@ -203,7 +203,7 @@ function createErrorOf(result) {
 }
 
 async function runList(client, interaction) {
-  await interaction.deferReply();
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const c = barterService.cfg();
   const page = Math.max(1, interaction.options.getInteger("頁碼") || 1);
   const pageSize = c.pageSize ?? 5;
@@ -220,7 +220,7 @@ async function runList(client, interaction) {
   });
   await interaction.editReply({
     components: [container],
-    flags: MessageFlags.IsComponentsV2,
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
   });
 }
 
