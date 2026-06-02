@@ -47,20 +47,31 @@ async function buildWalletView(client, { target, member, guildId }) {
   }
 
   const displayName = member?.displayName || target.username;
-  const buf = await generateWalletCard({
-    userId,
-    guildId,
-    username: displayName,
-    totalCoins: doc.totalCoins || 0,
-    lifetimeCoins: lifetime,
-    cardNo: userId.slice(-4),
-    tier,
-    styleId,
-    cardNumber: customCardNumber,
-  });
 
-  const fileName = `wallet-${userId}.png`;
-  const attachment = new AttachmentBuilder(buf, { name: fileName });
+  let attachment = null;
+  let fileName = null;
+  try {
+    const buf = await generateWalletCard({
+      userId,
+      guildId,
+      username: displayName,
+      totalCoins: doc.totalCoins || 0,
+      lifetimeCoins: lifetime,
+      cardNo: userId.slice(-4),
+      tier,
+      styleId,
+      cardNumber: customCardNumber,
+    });
+    fileName = `wallet-${userId}.png`;
+    attachment = new AttachmentBuilder(buf, { name: fileName });
+  } catch (cardErr) {
+    console.log(
+      `[WARN] wallet card render failed, falling back to text: ${cardErr.message}`.yellow
+    );
+  }
+
+  const tierLabel =
+    tier === "platinum" ? "🌟 Platinum" : tier === "premium" ? "✨ Premium" : "Standard";
 
   const container = new ContainerBuilder()
     .setAccentColor(0xffd166)
@@ -69,17 +80,26 @@ async function buildWalletView(client, { target, member, guildId }) {
         `## ${MONEY_EMOJI} ${displayName} 的錢包\n-# 目前金幣 **${(doc.totalCoins || 0).toLocaleString()}** ・ 累積 **${lifetime.toLocaleString()}**`
       )
     )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addMediaGalleryComponents(
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  if (attachment) {
+    container.addMediaGalleryComponents(
       new MediaGalleryBuilder().addItems(
         new MediaGalleryItemBuilder().setURL(`attachment://${fileName}`)
       )
     );
+  } else {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**卡號**　•••• ${userId.slice(-4)}\n**等級**　${tierLabel}`
+      )
+    );
+  }
 
   return {
     useV2: true,
     components: [container],
-    files: [attachment],
+    files: attachment ? [attachment] : [],
   };
 }
 

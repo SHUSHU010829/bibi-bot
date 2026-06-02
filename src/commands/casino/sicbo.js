@@ -215,25 +215,31 @@ module.exports = {
         return best;
       }, null);
 
-      const buf = await generateSicboCard({
-        userId,
-        username,
-        dice,
-        sum,
-        betLabel: bets.length === 1
-          ? describeBet(primary.bet.type, primary.bet.value)
-          : `${bets.length} 注合押`,
-        betAmount: totalBet,
-        won: round.totalPayout > 0,
-        isTriple,
-        payout: round.totalPayout,
-        multiplier: primary?.multiplier ?? 0,
-        balance: balanceAfter,
-      });
-
-      const attachment = new AttachmentBuilder(buf, {
-        name: `sicbo-${roundId}.png`,
-      });
+      let attachment = null;
+      try {
+        const buf = await generateSicboCard({
+          userId,
+          username,
+          dice,
+          sum,
+          betLabel: bets.length === 1
+            ? describeBet(primary.bet.type, primary.bet.value)
+            : `${bets.length} 注合押`,
+          betAmount: totalBet,
+          won: round.totalPayout > 0,
+          isTriple,
+          payout: round.totalPayout,
+          multiplier: primary?.multiplier ?? 0,
+          balance: balanceAfter,
+        });
+        attachment = new AttachmentBuilder(buf, {
+          name: `sicbo-${roundId}.png`,
+        });
+      } catch (cardErr) {
+        console.log(
+          `[WARN] sicbo card render failed, falling back to text: ${cardErr.message}`.yellow
+        );
+      }
 
       const lines = round.results.map((r, i) => {
         const label = describeBet(r.bet.type, r.bet.value);
@@ -291,13 +297,13 @@ module.exports = {
         bet: totalBet,
         net,
         balance: balanceAfter,
-        imageName: attachment.name,
+        imageName: attachment?.name,
       });
 
       await interaction.editReply({
         content: "",
         embeds: [embed],
-        files: [attachment],
+        files: attachment ? [attachment] : [],
         components: [buildReplayRow("sicbo", userId, { name: username })],
       });
     } catch (error) {

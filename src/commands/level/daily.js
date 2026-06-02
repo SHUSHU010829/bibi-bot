@@ -313,24 +313,31 @@ async function runCheckin(client, interaction) {
         .toArray();
       const checkinDates = new Set(recentCheckins.map((c) => c.date));
 
-      const buf = await generateCheckinCard({
-        username: interaction.member?.displayName || interaction.user.username,
-        avatarUrl: interaction.user.displayAvatarURL({
-          extension: "png",
-          size: 256,
-        }),
-        streak,
-        totalCheckins: (userDoc?.totalCheckins || 0) + 1,
-        xpEarned: xp,
-        multiplier,
-        afterLevel: grantResult?.after,
-        checkinDates,
-        today,
-        timezone: tz,
-      });
-
-      const fileName = `checkin-${today}.png`;
-      const attachment = new AttachmentBuilder(buf, { name: fileName });
+      let attachment = null;
+      let fileName = null;
+      try {
+        const buf = await generateCheckinCard({
+          username: interaction.member?.displayName || interaction.user.username,
+          avatarUrl: interaction.user.displayAvatarURL({
+            extension: "png",
+            size: 256,
+          }),
+          streak,
+          totalCheckins: (userDoc?.totalCheckins || 0) + 1,
+          xpEarned: xp,
+          multiplier,
+          afterLevel: grantResult?.after,
+          checkinDates,
+          today,
+          timezone: tz,
+        });
+        fileName = `checkin-${today}.png`;
+        attachment = new AttachmentBuilder(buf, { name: fileName });
+      } catch (cardErr) {
+        console.log(
+          `[WARN] checkin card render failed, falling back to text: ${cardErr.message}`.yellow
+        );
+      }
 
       const container = new ContainerBuilder()
         .setAccentColor(0xc9302c)
@@ -343,14 +350,17 @@ async function runCheckin(client, interaction) {
             } ・ 連續 **${streak}** 天`
           )
         )
-        .addSeparatorComponents(new SeparatorBuilder())
-        .addMediaGalleryComponents(
+        .addSeparatorComponents(new SeparatorBuilder());
+
+      if (attachment) {
+        container.addMediaGalleryComponents(
           new MediaGalleryBuilder().addItems(
             new MediaGalleryItemBuilder()
               .setURL(`attachment://${fileName}`)
               .setDescription(`簽到・${today}`)
           )
         );
+      }
 
       const noteLines = [];
       if (pledgeForfeited) {
@@ -417,7 +427,7 @@ async function runCheckin(client, interaction) {
 
       await interaction.editReply({
         components: [container],
-        files: [attachment],
+        files: attachment ? [attachment] : [],
         flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
 
