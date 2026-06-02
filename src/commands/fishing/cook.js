@@ -4,9 +4,6 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -14,6 +11,14 @@ const {
 const { fishing } = require("../../config");
 const cookService = require("../../features/fishing/cookService");
 const { getFishingProfile } = require("../../features/fishing/fishService");
+const cookView = require("../../features/fishing/cookView");
+
+const VEGGIE_LABELS = {
+  carrot: { emoji: "🥕", name: "紅蘿蔔" },
+  corn: { emoji: "🌽", name: "玉米" },
+  strawberry: { emoji: "🍓", name: "草莓" },
+  black_rose: { emoji: "🌹", name: "黑玫瑰" },
+};
 
 function recipeChoices() {
   return Object.entries(fishing?.recipes || {}).map(([key, def]) => ({
@@ -64,39 +69,6 @@ function buildRecipeListView() {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-const VEGGIE_LABELS = {
-  carrot: { emoji: "🥕", name: "紅蘿蔔" },
-  corn: { emoji: "🌽", name: "玉米" },
-  strawberry: { emoji: "🍓", name: "草莓" },
-  black_rose: { emoji: "🌹", name: "黑玫瑰" },
-};
-
-// 顯示食譜材料需求
-function recipeMaterialsText(recipe, fishBag, backpack, veggieBag) {
-  const lines = [];
-  const fish = fishing.fish || {};
-  for (const [key, need] of Object.entries(recipe.materials || {})) {
-    const have = fishBag[key] || 0;
-    const def = fish[key] || {};
-    const ok = have >= need ? "✅" : "❌";
-    lines.push(`${ok} ${def.emoji || "🐟"} ${def.name || key} ×${need}（持有 ${have}）`);
-  }
-  for (const [key, need] of Object.entries(recipe.veggies || {})) {
-    const have = (veggieBag || {})[key] || 0;
-    const def = VEGGIE_LABELS[key] || {};
-    const ok = have >= need ? "✅" : "❌";
-    lines.push(`${ok} ${def.emoji || "🌱"} ${def.name || key} ×${need}（持有 ${have}）— 來自 /農場`);
-  }
-  if (recipe.coalFuel > 0) {
-    const have = backpack.coal || 0;
-    const ok = have >= recipe.coalFuel ? "✅" : "⚠️";
-    lines.push(
-      `${ok} <:ore_coal:1509063448481366106> 煤炭 ×${recipe.coalFuel}（持有 ${have}）— *煤炭烤製可選*`
-    );
-  }
-  return lines.join("\n");
-}
-
 module.exports = {
   channelBuckets: ["fishing", "farm"],
   data: new SlashCommandBuilder()
@@ -140,140 +112,47 @@ module.exports = {
         return interaction.editReply("❌ 找不到這個食譜！");
       }
 
-      // 先顯示材料確認（若沒足夠材料提早告知）
-      const profile = await getFishingProfile(
-        client,
-        interaction.user.id,
-        interaction.guildId
-      );
-      const fishBag = profile.fish_bag || {};
-      const backpack = profile.backpack || {};
-      const veggieBag = profile.veggie_bag || {};
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId;
+      const profile = await getFishingProfile(client, userId, guildId);
+
+      // 覆蓋防呆：若已有相同 type 的有效食物 buff → 先請玩家確認
+      const targetType = cookView.previewBuffType(recipe, useCoal);
+      const activeBuffs = cookService.getActiveFoodBuffs(profile);
+      const existingBuff = targetType
+        ? activeBuffs.find((b) => b.type === targetType)
+        : null;
+
+      if (existingBuff) {
+        const view = cookView.buildOverwriteConfirmView({
+          recipe,
+          recipeId,
+          useCoal,
+          existingBuff,
+          userId,
+        });
+        return interaction.editReply(view);
+      }
 
       const result = await cookService.cook(client, {
-        userId: interaction.user.id,
-        guildId: interaction.guildId,
+        userId,
+        guildId,
         recipeId,
         useCoal,
       });
 
       if (!result.ok) {
-        if (result.reason === "insufficient_fish" || result.reason === "insufficient_veggies") {
-          const materialsText = recipeMaterialsText(recipe, fishBag, backpack, veggieBag);
-          const hint = result.reason === "insufficient_veggies"
-            ? "前往 /農場 種植與 /收成 取得蔬菜！"
-            : "前往 /釣魚 蒐集更多魚吧！";
-          const errContainer = new ContainerBuilder()
-            .setAccentColor(0xe74c3c)
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                `# ❌ 材料不足\n無法烹飪 ${recipe.emoji} **${recipe.name}**`
-              )
-            )
-            .addSeparatorComponents(new SeparatorBuilder())
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                `**所需材料**\n${materialsText}`
-              )
-            )
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(`-# ${hint}`)
-            );
-          return interaction.editReply({
-            components: [errContainer],
-            flags: MessageFlags.IsComponentsV2,
-          });
-        }
-        if (result.reason === "insufficient_coal") {
-          const errContainer = new ContainerBuilder()
-            .setAccentColor(0xe74c3c)
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                `# ❌ 煤炭不足\n煤炭烤製 **${recipe.name}** 需要 ×${result.coalNeeded} 煤炭`
-              )
-            )
-            .addSeparatorComponents(new SeparatorBuilder())
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                `持有煤炭：${result.coalHave} 個　需要：${result.coalNeeded} 個`
-              )
-            )
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                "-# 💡 不勾選「煤炭烤製」可用普通版本，效果稍弱但無需煤炭。"
-              )
-            );
-          return interaction.editReply({
-            components: [errContainer],
-            flags: MessageFlags.IsComponentsV2,
-          });
-        }
-        return interaction.editReply("🔧 烹飪失敗，請稍後再試。");
+        const view = cookView.buildErrorView({
+          recipe,
+          result,
+          fishBag: profile.fish_bag || {},
+          backpack: profile.backpack || {},
+          veggieBag: profile.veggie_bag || {},
+        });
+        return interaction.editReply(view);
       }
 
-      const { buffDef, isCoalEnhanced, coalUsed, newBuff } = result;
-      const accentColor = isCoalEnhanced ? 0xff6b35 : 0x2ecc71;
-
-      let buffDesc = "";
-      if (newBuff.type === "work_income") {
-        buffDesc = `打工收入 +${Math.round(newBuff.value * 100)}%`;
-      } else if (newBuff.type === "dungeon_atk") {
-        buffDesc = `地下城 ATK +${newBuff.value}`;
-      } else if (newBuff.type === "mine_luck") {
-        buffDesc = `挖礦幸運 +${Math.round(newBuff.value * 100)}%`;
-      } else if (newBuff.type === "all_boost") {
-        buffDesc = `全屬性 +${Math.round(newBuff.value * 100)}%`;
-      } else if (newBuff.type === "fish_fortune") {
-        buffDesc = `釣魚成功率 +${Math.round(newBuff.value * 100)}% ・ 稀有度提升`;
-      } else if (newBuff.type === "farm_yield") {
-        buffDesc = `農場收成 +${Math.round(newBuff.value * 100)}%`;
-      }
-
-      let durationDesc = "";
-      if (newBuff.uses_left !== null && newBuff.uses_left !== undefined) {
-        durationDesc = `持續 ${newBuff.uses_left} 次使用`;
-      } else if (newBuff.expires_at) {
-        durationDesc = `持續至 <t:${Math.floor(newBuff.expires_at / 1000)}:R>`;
-      }
-
-      const coalLine = isCoalEnhanced
-        ? `\n🪨 消耗煤炭 ×${coalUsed}，獲得**強化版**效果！`
-        : recipe.coalFuel > 0
-        ? `\n-# 💡 加入 ${recipe.coalFuel} 個煤炭可升級效果（勾選「煤炭烤製」選項）`
-        : "";
-
-      const container = new ContainerBuilder()
-        .setAccentColor(accentColor)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `# ${recipe.emoji} ${recipe.name} 烹飪完成！${isCoalEnhanced ? " 🔥" : ""}`
-          )
-        )
-        .addSeparatorComponents(new SeparatorBuilder())
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `✨ **獲得 Buff**：${buffDesc}\n` +
-              `⏱️ ${durationDesc}${coalLine}`
-          )
-        )
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `-# ${recipe.description || ""}`
-          )
-        )
-        .addActionRowComponents(
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`fish_bag_${interaction.user.id}`)
-              .setLabel("查看背包")
-              .setStyle(ButtonStyle.Secondary)
-          )
-        );
-
-      await interaction.editReply({
-        components: [container],
-        flags: MessageFlags.IsComponentsV2,
-      });
+      await interaction.editReply(cookView.buildSuccessView({ recipe, result, userId }));
     } catch (error) {
       console.log(`[ERROR] /烹飪:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 烹飪失敗，請呼叫舒舒！").catch(() => {});
