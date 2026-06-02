@@ -31,6 +31,11 @@ const { buildFarmContainer } = require("../../features/farm/farmView");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const grantCoins = require("../../features/economy/grantCoins");
+const {
+  sendFarmAnnouncement,
+  buildHarvestAnnouncement,
+  buildDefendAnnouncement,
+} = require("../../features/farm/farmAnnouncer");
 
 const BTN_PREFIXES = [
   "farm_plant_", "farm_harvest_", "farm_fert_", "farm_defend_",
@@ -382,6 +387,11 @@ module.exports = async (client, interaction) => {
       if (result.crop === "black_rose") hooks.push({ questId: "weekly_farm_rose" });
       applyQuestHooks(client, ctxOf(interaction), hooks).catch(() => {});
 
+      const harvestNote = buildHarvestAnnouncement({ user: interaction.user, result });
+      if (harvestNote) {
+        sendFarmAnnouncement(client, interaction.channel, harvestNote).catch(() => {});
+      }
+
       return interaction.editReply({
         components: [c],
         flags: MessageFlags.IsComponentsV2,
@@ -428,6 +438,12 @@ module.exports = async (client, interaction) => {
         interaction.user.id,
         result.won ? 0x2ecc71 : 0xe74c3c,
       );
+
+      const defendNote = buildDefendAnnouncement({ user: interaction.user, result });
+      if (defendNote) {
+        sendFarmAnnouncement(client, interaction.channel, defendNote).catch(() => {});
+      }
+
       return interaction.editReply({
         components: [c],
         flags: MessageFlags.IsComponentsV2,
