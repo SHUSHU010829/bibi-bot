@@ -30,6 +30,7 @@ const { getLevelProgress } = require("../../utils/levelMath");
 const { spin } = require("../../features/casino/slot/slotMachine");
 const { SYMBOL_BY_ID } = require("../../features/casino/slot/paytable");
 const generateSlotGif = require("../../utils/generateSlotGif");
+const { rawFollowUpWithImage } = require("../../utils/rawWebhookUpload");
 
 const SLOT_PREVIEW_CHOICES = [
   { name: "JACKPOT (七七七)", value: "jackpot" },
@@ -171,6 +172,16 @@ module.exports = {
             )
         )
     )
+    .addSubcommandGroup((g) =>
+      g
+        .setName("upload")
+        .setDescription("圖卡上傳路徑診斷（discord.js vs raw undici）")
+        .addSubcommand((sub) =>
+          sub
+            .setName("test")
+            .setDescription("用同一張 PNG buffer 並排測試兩條上傳路徑")
+        )
+    )
     .toJSON(),
 
   run: async (client, interaction) => {
@@ -190,8 +201,77 @@ module.exports = {
       if (sub === "spin") return runSlotSpin(interaction);
       if (sub === "preview") return runSlotPreview(interaction);
     }
+    if (group === "upload") {
+      if (sub === "test") return runUploadTest(interaction);
+    }
   },
 };
+
+async function runUploadTest(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const renderStart = Date.now();
+    const buf = await generateLevelUpCard({
+      username: interaction.member?.displayName || interaction.user.username,
+      avatarUrl: interaction.user.displayAvatarURL({ extension: "png", size: 256 }),
+      beforeLevel: 10,
+      afterLevel: 11,
+      totalXp: 9999,
+    });
+    const renderMs = Date.now() - renderStart;
+
+    const sig = buf.subarray(0, 8).toString("hex");
+    const tail = buf.subarray(-12).toString("hex");
+    const isPng = sig === "89504e470d0a1a0a";
+
+    const lines = [
+      `🧪 上傳路徑診斷`,
+      `渲染：${renderMs}ms`,
+      `buffer：${buf.length} bytes, isBuffer=${Buffer.isBuffer(buf)}`,
+      `PNG 開頭：${sig} ${isPng ? "✅" : "❌"}`,
+      `結尾 12 bytes：${tail}`,
+      ``,
+    ];
+
+    let aLine = "Path A (discord.js followUp): ";
+    const aStart = Date.now();
+    try {
+      await interaction.followUp({
+        content: "🅰️ discord.js path",
+        files: [new AttachmentBuilder(buf, { name: "test-a.png" })],
+        flags: MessageFlags.Ephemeral,
+      });
+      aLine += `✅ ${Date.now() - aStart}ms`;
+    } catch (e) {
+      aLine += `❌ ${Date.now() - aStart}ms — ${e?.code || ""} ${e?.message || e}`.trim();
+    }
+    lines.push(aLine);
+
+    let bLine = "Path B (raw undici): ";
+    try {
+      const r = await rawFollowUpWithImage(interaction, {
+        content: "🅱️ raw undici path",
+        buffer: buf,
+        filename: "test-b.png",
+        ephemeral: true,
+      });
+      bLine +=
+        r.status >= 200 && r.status < 300
+          ? `✅ ${r.took}ms (HTTP ${r.status}, body=${r.bodySize}b)`
+          : `❌ ${r.took}ms (HTTP ${r.status}, body=${r.bodySize}b)\n${r.text.slice(0, 300)}`;
+    } catch (e) {
+      bLine += `❌ ${e?.code || ""} ${e?.message || e}`.trim();
+    }
+    lines.push(bLine);
+
+    await interaction.editReply(lines.join("\n"));
+  } catch (error) {
+    console.log(`[ERROR] /dev upload test:\n${error}\n${error.stack}`.red);
+    await interaction
+      .editReply(`🔧 上傳測試失敗：${error?.message || error}`)
+      .catch(() => {});
+  }
+}
 
 // ─────────────────────────── /dev level ───────────────────────────
 async function runGrantXp(client, interaction) {
