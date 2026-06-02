@@ -4,6 +4,7 @@ const { mining, marketplace } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("../mining/miningProfile");
 const grantCoins = require("../economy/grantCoins");
 const twitchPerks = require("../mining/twitchPerks");
+const mailbox = require("./marketplaceMailbox");
 
 function cfg() {
   return marketplace || {};
@@ -829,16 +830,22 @@ async function settleListing(client, listing) {
 async function _refundEscrow(client, listing) {
   const guildId = listing.guild_id;
   const sellerId = listing.seller_id;
+  let mailedSummary = [];
 
-  // 退礦（sell / barter / auction）
+  // 退礦（sell / barter / auction）— 背包放不下的進信箱
   if (listing.escrow_ore) {
-    await client.miningProfilesCollection.updateOne(
-      { userId: sellerId, guildId },
-      { $inc: { [`backpack.${listing.escrow_ore.ore}`]: listing.escrow_ore.qty }, $set: { updatedAt: new Date() } }
-    ).catch((e) => console.log(`[ERROR] market refund ore: ${e}`.red));
+    const res = await mailbox.refundOreWithOverflow(client, {
+      userId: sellerId, guildId,
+      ore: listing.escrow_ore.ore, qty: listing.escrow_ore.qty,
+      source: "marketplace",
+      listingId: listing.listing_id,
+      listingType: listing.listing_type,
+      reason: listing.status === "settling" ? "expired_or_cancelled" : "refund",
+    }).catch((e) => { console.log(`[ERROR] market refund ore: ${e}`.red); return null; });
+    if (res?.mailed) mailedSummary.push({ ore: listing.escrow_ore.ore, qty: res.mailed });
   }
 
-  // 退魚（fish sell）
+  // 退魚（fish sell）— 魚袋無容量上限，直接寫回
   if (listing.escrow_fish) {
     await client.miningProfilesCollection.updateOne(
       { userId: sellerId, guildId },
@@ -859,12 +866,29 @@ async function _refundEscrow(client, listing) {
     }).catch((e) => console.log(`[ERROR] market refund coin: ${e}`.red));
   }
 
-  // 退付的礦（want 付礦）
+  // 退付的礦（want 付礦）— 背包放不下的進信箱
   if (listing.escrow_pay_ore) {
-    await client.miningProfilesCollection.updateOne(
-      { userId: sellerId, guildId },
-      { $inc: { [`backpack.${listing.escrow_pay_ore.ore}`]: listing.escrow_pay_ore.qty }, $set: { updatedAt: new Date() } }
-    ).catch((e) => console.log(`[ERROR] market refund pay_ore: ${e}`.red));
+    const res = await mailbox.refundOreWithOverflow(client, {
+      userId: sellerId, guildId,
+      ore: listing.escrow_pay_ore.ore, qty: listing.escrow_pay_ore.qty,
+      source: "marketplace",
+      listingId: listing.listing_id,
+      listingType: listing.listing_type,
+      reason: listing.status === "settling" ? "expired_or_cancelled" : "refund",
+    }).catch((e) => { console.log(`[ERROR] market refund pay_ore: ${e}`.red); return null; });
+    if (res?.mailed) mailedSummary.push({ ore: listing.escrow_pay_ore.ore, qty: res.mailed });
+  }
+
+  if (mailedSummary.length > 0) {
+    const lines = mailedSummary
+      .map((s) => `・${mining?.ores?.[s.ore]?.name || s.ore} ×${s.qty}`)
+      .join("\n");
+    dmUser(
+      client,
+      sellerId,
+      `📬 你在市集的掛單 **#${listing.listing_id}** 退款時背包放不下，以下物品已暫存到信箱：\n${lines}\n` +
+        `請用 \`/信箱\` 領取（騰出背包空間後再領）。`
+    ).catch(() => {});
   }
 }
 
