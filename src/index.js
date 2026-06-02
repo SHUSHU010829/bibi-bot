@@ -47,33 +47,6 @@ client.on("error", (err) => {
   console.error("[Client error]", err);
 });
 
-// discord.js 內建 shouldRetry 只認 ECONNRESET / AbortError，沒涵蓋
-// undici "SocketError: other side closed" 跟 body/headers timeout。包一
-// 層 makeRequest 自己 retry，避免帶圖片的互動因為單次 socket race 就拋
-// AbortError 給使用者。
-const _origMakeRequest = client.rest.options.makeRequest;
-client.rest.options.makeRequest = async function patchedMakeRequest(url, init) {
-  const MAX_RETRIES = 2;
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      return await _origMakeRequest(url, init);
-    } catch (err) {
-      const msg = err?.message || "";
-      const transient =
-        err?.code === "UND_ERR_SOCKET" ||
-        err?.code === "UND_ERR_CONNECT_TIMEOUT" ||
-        err?.code === "UND_ERR_HEADERS_TIMEOUT" ||
-        err?.code === "UND_ERR_BODY_TIMEOUT" ||
-        /other side closed|socket hang up|ECONNRESET|headers timeout|body timeout/i.test(
-          msg
-        );
-      if (!transient || attempt === MAX_RETRIES) throw err;
-      console.log(
-        `[RestRetry] ${init?.method || "?"} ${url} attempt ${attempt + 1} after: ${msg}`
-      );
-    }
-  }
-};
 
 client.rest.on("restDebug", (msg) => {
   console.log(`[RestDebug] ${msg}`);
