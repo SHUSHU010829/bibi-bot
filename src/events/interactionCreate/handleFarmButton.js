@@ -41,7 +41,7 @@ const {
 const reminder = require("../../features/reminders/cooldownReminderService");
 
 const BTN_PREFIXES = [
-  "farm_plant_", "farm_harvest_", "farm_fert_", "farm_defend_",
+  "farm_plant_", "farm_harvestall_", "farm_harvest_", "farm_fert_", "farm_defend_",
   "farm_expandconfirm_", "farm_expandcancel_", "farm_expand_",
   "farm_view_", "farm_sell_",
 ];
@@ -419,6 +419,93 @@ module.exports = async (client, interaction) => {
         readyAt: earliest?.ready_at || 0,
       }).catch(() => {});
       return;
+    }
+
+    // ── harvestall：一鍵收成所有成熟地塊 ──
+    if (action === "harvestall") {
+      await interaction.deferReply();
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId;
+      const profile = await getOrCreate(client, userId, guildId);
+      const plotCount = farmService.getPlotCount(profile);
+      const plots = await farmService.getPlots(client, userId, guildId, plotCount);
+      const readyPlots = plots
+        .map((p) => farmService.resolveLiveStatus(p))
+        .filter((p) => p.status === "ready");
+
+      if (readyPlots.length === 0) {
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("🌱 沒有可收成的地塊", "目前沒有任何成熟的作物。", "等成熟後再回來"),
+        );
+      }
+
+      const results = [];
+      for (const p of readyPlots) {
+        const r = await farmService.harvestCrop(client, {
+          userId, guildId,
+          username: interaction.user.username,
+          member: interaction.member,
+          plotIndex: p.plotIndex,
+        });
+        if (r.ok) results.push(r);
+      }
+
+      if (results.length === 0) {
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("🔧 收成失敗", "所有可收成的地塊都收成失敗了。", "請呼叫舒舒！"),
+        );
+      }
+
+      const cropAgg = new Map();
+      let totalCoins = 0;
+      const bonusAgg = new Map();
+      for (const r of results) {
+        totalCoins += r.coins || 0;
+        const entry = cropAgg.get(r.crop) || { def: r.cropDef, count: 0, coins: 0 };
+        entry.count += 1;
+        entry.coins += r.coins || 0;
+        cropAgg.set(r.crop, entry);
+        for (const d of r.bonusDrops || []) {
+          bonusAgg.set(d.kind, (bonusAgg.get(d.kind) || 0) + d.amount);
+        }
+      }
+
+      const cropLines = [...cropAgg.values()].map(
+        (e) => `${e.def.emoji} **${e.def.name}** ×${e.count}（+${e.coins.toLocaleString()} 幣）`,
+      );
+      const bonusLines = [];
+      if (bonusAgg.get("fragment")) bonusLines.push(`✨ 傳說碎片 ×${bonusAgg.get("fragment")}`);
+      if (bonusAgg.get("rare_bait")) bonusLines.push(`✨ 稀有魚餌 ×${bonusAgg.get("rare_bait")}`);
+
+      const body = [
+        `🌾 收成 **${results.length}** 塊地`,
+        ...cropLines,
+        `💰 總收益：**+${totalCoins.toLocaleString()} 幣**`,
+        ...bonusLines,
+      ].join("\n");
+      const c = buildSuccessContainer("🌟 一鍵收成完成", body, userId);
+
+      const hooks = [];
+      for (const r of results) {
+        hooks.push({ questId: "daily_farm_harvest" });
+        hooks.push({ questId: "weekly_farm_harvest" });
+        if (r.crop === "black_rose") hooks.push({ questId: "weekly_farm_rose" });
+      }
+      applyQuestHooks(client, ctxOf(interaction), hooks).catch(() => {});
+
+      for (const r of results) {
+        const note = buildHarvestAnnouncement({ user: interaction.user, result: r });
+        if (note) {
+          sendFarmAnnouncement(client, interaction.channel, note).catch(() => {});
+        }
+      }
+
+      return interaction.editReply({
+        components: [c],
+        flags: MessageFlags.IsComponentsV2,
+      });
     }
 
     // ── harvest：直接收成 ──

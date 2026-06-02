@@ -105,6 +105,19 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots }) {
     )
     .addSeparatorComponents(new SeparatorBuilder());
 
+  if (readyCount >= 2) {
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`farm_harvestall_${userId}`)
+          .setLabel(`一鍵收成全部（${readyCount} 塊）`)
+          .setEmoji("🌟")
+          .setStyle(ButtonStyle.Success),
+      ),
+    );
+    container.addSeparatorComponents(new SeparatorBuilder());
+  }
+
   for (const p of resolvedPlots) {
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(plotLine(p)));
     container.addActionRowComponents(plotButtonRow(p, userId));
