@@ -15,14 +15,13 @@ const { mining, dungeon } = require("../../config");
 const dungeonService = require("../../features/mining/dungeonService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
+const { buildOverflowConfirmView } = require("../../features/mining/overflowConfirm");
 const { COIN_EMOJI } = require("../../constants/coin");
 
-// 「繼續探索」按鈕 customId 格式：dungeon_continue_<ownerId>
-// ownerId 為純數字 snowflake，放最後一個底線後，方便切分。
-// 重複探索流程由 events/interactionCreate/handleDungeonContinue.js 處理。
 const CONTINUE_PREFIX = "dungeon_continue_";
+const DUNGEON_OVERFLOW_CONFIRM_PREFIX = "dungeon_overflow_confirm_";
+const DUNGEON_OVERFLOW_CANCEL_PREFIX = "dungeon_overflow_cancel_";
 
-// Discord 按鈕文字上限 80 字
 const MAX_LABEL_LEN = 80;
 
 function oreLabel(oreKey) {
@@ -35,7 +34,6 @@ function weaponLabel(key) {
   return `${def.emoji || "👊"} ${def.name || key}`;
 }
 
-// 武器耐久提示 + 突發事件，兩種戰鬥結果共用，append 進 container。
 function appendCombatExtras(container, result) {
   if (result.usingFist) {
     container.addTextDisplayComponents(
@@ -69,9 +67,6 @@ function appendCombatExtras(container, result) {
   }
 }
 
-// 體力補滿到點通知（pre-render）：只做兩件純讀取的事，並把要不要附底部提示
-// 的字串渲染進 container。整段包在 try/catch 裡——這條路徑要絕對不能把 /地下城
-// 的主回覆打掛，所以任何例外都靜默吃掉。
 async function applyStaminaNotifyPre(client, interaction, container) {
   try {
     const fullAt = await dungeonService
@@ -90,7 +85,6 @@ async function applyStaminaNotifyPre(client, interaction, container) {
       })
       .catch(() => null);
 
-    // 未訂閱且體力沒滿才掛提示；訂閱了的話 readyAt 同步留到 editReply 之後做。
     if (!state?.enabled && fullAt > Date.now()) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
@@ -104,7 +98,6 @@ async function applyStaminaNotifyPre(client, interaction, container) {
   }
 }
 
-// editReply 後的背景補登：只更新已訂閱者的 readyAt。失敗一律靜默。
 async function applyStaminaNotifyPost(client, interaction, notifyInfo) {
   if (!notifyInfo?.subscribed) return;
   await reminder
@@ -117,8 +110,6 @@ async function applyStaminaNotifyPost(client, interaction, notifyInfo) {
     .catch(() => {});
 }
 
-// editReply 之後再做的所有「事後補登」：任務進度、體力通知 readyAt 同步。
-// 這些工作即使失敗也不影響玩家剛看到的探索結果，故全部包進 try/catch 並 fire-and-forget。
 function runPostTasks(client, interaction, result, notifyInfo) {
   (async () => {
     try {
@@ -149,7 +140,6 @@ function runPostTasks(client, interaction, result, notifyInfo) {
   })();
 }
 
-// 帶上玩家名稱，讓大量訊息中能快速分辨是誰的按鈕。
 function buildContinueRow(ownerId, name) {
   let label = name ? `🔄 繼續探索・${name}` : "🔄 繼續探索";
   if (label.length > MAX_LABEL_LEN) label = label.slice(0, MAX_LABEL_LEN);
@@ -167,133 +157,67 @@ function parseContinueId(customId) {
   return ownerId ? { ownerId } : null;
 }
 
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName("地下城")
-    .setDescription("消耗體力深入地下城戰鬥，勝利可獲得礦石、金幣或傳說素材 ⚔️")
-    .setContexts(InteractionContextType.Guild),
+// 統一的地下城執行流程；/地下城、「繼續探索」、「繼續（折金幣）」共用。
+async function executeDungeon(client, interaction, { allowOverflow = false } = {}) {
+  let dungeonResult = null;
+  try {
+    dungeonResult = await dungeonService.enterDungeon(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      member: interaction.member,
+      username: interaction.user.username,
+      allowOverflow,
+    });
+    const result = dungeonResult;
 
-  run: async (client, interaction) => {
-    await interaction.deferReply();
-
-    let dungeonResult = null;
-    try {
-      dungeonResult = await dungeonService.enterDungeon(client, {
-        userId: interaction.user.id,
-        guildId: interaction.guildId,
-        member: interaction.member,
-        username: interaction.user.username,
-      });
-      const result = dungeonResult;
-
-      if (!result.ok) {
-        if (result.reason === "disabled") {
-          return interaction.editReply("🔧 地下城系統尚未啟動！");
-        }
-        if (result.reason === "no_stamina") {
-          const tail = result.nextRegenAt
-            ? `\n下一點體力：<t:${Math.floor(result.nextRegenAt / 1000)}:R>`
-            : "";
-          return interaction.editReply(
-            `😮‍💨 體力耗盡了（0/${result.max}）！每小時回復 1 點，休息一下再來。${tail}`
-          );
-        }
-        return interaction.editReply("🔧 進地下城失敗，請稍後再試。");
+    if (!result.ok) {
+      if (result.reason === "disabled") {
+        return interaction.editReply("🔧 地下城系統尚未啟動！");
       }
-
-      const m = result.monster;
-      const winPct = Math.round(result.winRate * 100);
-      const subTag = result.staminaBonus > 0
-        ? `（含 Twitch 訂閱加乘 +${result.staminaBonus}）`
-        : "";
-      const staminaLine = `🔋 體力：${result.stamina}/${result.staminaMax}${subTag}`;
-      const name =
-        interaction.member?.displayName || interaction.user.username;
-      const continueRow = buildContinueRow(interaction.user.id, name);
-
-      if (!result.won) {
-        const container = new ContainerBuilder()
-          .setAccentColor(0xe74c3c)
-          .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              `# 💀 戰鬥失敗\n` +
-                `你遭遇了 **${m.emoji} ${m.name}**（HP ${m.hp}）！\n` +
-                `你的攻擊力 **${result.atk}**，勝率 **${winPct}%**…可惜這次落敗了，空手而歸。`,
-            ),
-          )
-          .addSeparatorComponents(new SeparatorBuilder())
-          .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(`**狀態**\n${staminaLine}`),
-          )
-          .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              `**累積探索**\n${result.dungeonCount.toLocaleString()} 次`,
-            ),
-          )
-          .addActionRowComponents(continueRow);
-        appendCombatExtras(container, result);
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            "-# 合成更好的武器能提升戰鬥力，提高勝率！",
-          ),
+      if (result.reason === "no_stamina") {
+        const tail = result.nextRegenAt
+          ? `\n下一點體力：<t:${Math.floor(result.nextRegenAt / 1000)}:R>`
+          : "";
+        return interaction.editReply(
+          `😮‍💨 體力耗盡了（0/${result.max}）！每小時回復 1 點，休息一下再來。${tail}`
         );
-        const notifyInfo = await applyStaminaNotifyPre(
-          client,
-          interaction,
-          container,
-        );
-        await interaction.editReply({
-          components: [container],
+      }
+      if (result.reason === "backpack_full") {
+        const confirm = buildOverflowConfirmView({
+          title: "背包已滿，無法收下戰利品礦石",
+          body: "繼續探索的話，戰利品掉到礦會直接折成金幣入帳，其他類型獎勵不受影響。",
+          used: result.used,
+          cap: result.cap,
+          confirmCustomId: `${DUNGEON_OVERFLOW_CONFIRM_PREFIX}${interaction.user.id}`,
+          cancelCustomId: `${DUNGEON_OVERFLOW_CANCEL_PREFIX}${interaction.user.id}`,
+          confirmLabel: "繼續探索（礦折金幣）",
+        });
+        return interaction.editReply({
+          components: [confirm],
           flags: MessageFlags.IsComponentsV2,
         });
-        runPostTasks(client, interaction, result, notifyInfo);
-        return;
       }
+      return interaction.editReply("🔧 進地下城失敗，請稍後再試。");
+    }
 
-      // 勝利戰利品描述
-      const lootKind = result.loot.kind || result.loot.id;
-      let rewardLine;
-      if ((lootKind === "ore" || result.loot.id === "ore_fragment") && result.oreGained) {
-        if (result.oreOverflowToCoins) {
-          rewardLine =
-            `🎒 背包已滿！戰利品 ${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty} ` +
-            `折算成 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}`;
-        } else {
-          rewardLine = `掉落 **${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty}**！`;
-        }
-      } else if (lootKind === "coins") {
-        rewardLine = `掉落 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}！`;
-      } else if (lootKind === "fragment" || result.loot.id === "legendary_fragment") {
-        rewardLine = `掉落 **✨ 傳說素材碎片 ×${result.legendaryGained}**！（合成 🔥 傳說之劍的材料）`;
-      } else if (lootKind === "luck_potion") {
-        rewardLine = `掉落 **🍀 幸運藥水 ×${result.potionGained}**！（挖礦時自動生效）`;
-      } else if (lootKind === "cd_ticket") {
-        rewardLine =
-          result.ticketGained > 0
-            ? `掉落 **🎫 CD 縮短券 ×${result.ticketGained}**！`
-            : `🎫 CD 縮短券已達持有上限，折算成 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}`;
-      } else if (lootKind === "slime") {
-        rewardLine = `掉落 **💧 怪物黏液 ×${result.slimeGained}**！（農場高階肥料 -25% 成長時間）`;
-      } else if (lootKind === "seed" && result.seedGained) {
-        const seedName = result.seedGained.seedKey === "seed_black_rose"
-          ? "🌹 黑玫瑰種子"
-          : result.seedGained.seedKey === "seed_strawberry"
-          ? "🍓 草莓種子"
-          : `🌱 ${result.seedGained.seedKey}`;
-        rewardLine = `掉落 **${seedName} ×${result.seedGained.qty}**！（去 /農場 種下）`;
-      } else {
-        rewardLine = "雖然贏了，但這次什麼都沒掉落…運氣差了點。";
-      }
+    const m = result.monster;
+    const winPct = Math.round(result.winRate * 100);
+    const subTag = result.staminaBonus > 0
+      ? `（含 Twitch 訂閱加乘 +${result.staminaBonus}）`
+      : "";
+    const staminaLine = `🔋 體力：${result.stamina}/${result.staminaMax}${subTag}`;
+    const name =
+      interaction.member?.displayName || interaction.user.username;
+    const continueRow = buildContinueRow(interaction.user.id, name);
 
-      const winTitle = result.crit ? "⚡ 暴擊命中！戰鬥勝利！" : "⚔️ 戰鬥勝利！";
-
+    if (!result.won) {
       const container = new ContainerBuilder()
-        .setAccentColor(result.crit ? 0xf1c40f : 0x2ecc71)
+        .setAccentColor(0xe74c3c)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `# ${winTitle}\n` +
-              `你擊敗了 **${m.emoji} ${m.name}**（HP ${m.hp}）！\n` +
-              `戰鬥力 **${result.atk}** ・ 勝率 **${winPct}%**\n\n${rewardLine}`,
+            `# 💀 戰鬥失敗\n` +
+              `你遭遇了 **${m.emoji} ${m.name}**（HP ${m.hp}）！\n` +
+              `你的攻擊力 **${result.atk}**，勝率 **${winPct}%**…可惜這次落敗了，空手而歸。`,
           ),
         )
         .addSeparatorComponents(new SeparatorBuilder())
@@ -304,52 +228,140 @@ module.exports = {
           new TextDisplayBuilder().setContent(
             `**累積探索**\n${result.dungeonCount.toLocaleString()} 次`,
           ),
-        );
-
-      if (result.balance != null) {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `**目前餘額**\n${result.balance.toLocaleString()} ${COIN_EMOJI}`,
-          ),
-        );
-      }
-
-      container.addActionRowComponents(continueRow);
+        )
+        .addActionRowComponents(continueRow);
       appendCombatExtras(container, result);
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# 合成更好的武器能提升戰鬥力，提高勝率！",
+        ),
+      );
       const notifyInfo = await applyStaminaNotifyPre(
         client,
         interaction,
         container,
       );
-
       await interaction.editReply({
         components: [container],
         flags: MessageFlags.IsComponentsV2,
       });
       runPostTasks(client, interaction, result, notifyInfo);
-    } catch (error) {
-      console.log(`[ERROR] /地下城:\n${error}\n${error.stack}`.red);
-      if (dungeonResult?.ok) {
-        await dungeonService
-          .rollbackDungeon(
-            client,
-            {
-              userId: interaction.user.id,
-              guildId: interaction.guildId,
-              username: interaction.user.username,
-              member: interaction.member,
-            },
-            dungeonResult,
-          )
-          .catch(() => {});
+      return;
+    }
+
+    const lootKind = result.loot.kind || result.loot.id;
+    let rewardLine;
+    if ((lootKind === "ore" || result.loot.id === "ore_fragment") && result.oreGained) {
+      if (result.oreOverflowToCoins) {
+        rewardLine =
+          `🎒 背包已滿！戰利品 ${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty} ` +
+          `折算成 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}`;
+      } else {
+        rewardLine = `掉落 **${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty}**！`;
       }
-      await interaction
-        .editReply("🔧 地下城探索失敗，請呼叫舒舒！體力與物品已退回。")
+    } else if (lootKind === "coins") {
+      rewardLine = `掉落 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}！`;
+    } else if (lootKind === "fragment" || result.loot.id === "legendary_fragment") {
+      rewardLine = `掉落 **✨ 傳說素材碎片 ×${result.legendaryGained}**！（合成 🔥 傳說之劍的材料）`;
+    } else if (lootKind === "luck_potion") {
+      rewardLine = `掉落 **🍀 幸運藥水 ×${result.potionGained}**！（挖礦時自動生效）`;
+    } else if (lootKind === "cd_ticket") {
+      rewardLine =
+        result.ticketGained > 0
+          ? `掉落 **🎫 CD 縮短券 ×${result.ticketGained}**！`
+          : `🎫 CD 縮短券已達持有上限，折算成 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}`;
+    } else if (lootKind === "slime") {
+      rewardLine = `掉落 **💧 怪物黏液 ×${result.slimeGained}**！（農場高階肥料 -25% 成長時間）`;
+    } else if (lootKind === "seed" && result.seedGained) {
+      const seedName = result.seedGained.seedKey === "seed_black_rose"
+        ? "🌹 黑玫瑰種子"
+        : result.seedGained.seedKey === "seed_strawberry"
+        ? "🍓 草莓種子"
+        : `🌱 ${result.seedGained.seedKey}`;
+      rewardLine = `掉落 **${seedName} ×${result.seedGained.qty}**！（去 /農場 種下）`;
+    } else {
+      rewardLine = "雖然贏了，但這次什麼都沒掉落…運氣差了點。";
+    }
+
+    const winTitle = result.crit ? "⚡ 暴擊命中！戰鬥勝利！" : "⚔️ 戰鬥勝利！";
+
+    const container = new ContainerBuilder()
+      .setAccentColor(result.crit ? 0xf1c40f : 0x2ecc71)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# ${winTitle}\n` +
+            `你擊敗了 **${m.emoji} ${m.name}**（HP ${m.hp}）！\n` +
+            `戰鬥力 **${result.atk}** ・ 勝率 **${winPct}%**\n\n${rewardLine}`,
+        ),
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`**狀態**\n${staminaLine}`),
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**累積探索**\n${result.dungeonCount.toLocaleString()} 次`,
+        ),
+      );
+
+    if (result.balance != null) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**目前餘額**\n${result.balance.toLocaleString()} ${COIN_EMOJI}`,
+        ),
+      );
+    }
+
+    container.addActionRowComponents(continueRow);
+    appendCombatExtras(container, result);
+    const notifyInfo = await applyStaminaNotifyPre(
+      client,
+      interaction,
+      container,
+    );
+
+    await interaction.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+    runPostTasks(client, interaction, result, notifyInfo);
+  } catch (error) {
+    console.log(`[ERROR] /地下城:\n${error}\n${error.stack}`.red);
+    if (dungeonResult?.ok) {
+      await dungeonService
+        .rollbackDungeon(
+          client,
+          {
+            userId: interaction.user.id,
+            guildId: interaction.guildId,
+            username: interaction.user.username,
+            member: interaction.member,
+          },
+          dungeonResult,
+        )
         .catch(() => {});
     }
+    await interaction
+      .editReply("🔧 地下城探索失敗，請呼叫舒舒！體力與物品已退回。")
+      .catch(() => {});
+  }
+}
+
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName("地下城")
+    .setDescription("消耗體力深入地下城戰鬥，勝利可獲得礦石、金幣或傳說素材 ⚔️")
+    .setContexts(InteractionContextType.Guild),
+
+  run: async (client, interaction) => {
+    await interaction.deferReply();
+    return executeDungeon(client, interaction, { allowOverflow: false });
   },
 
   CONTINUE_PREFIX,
   buildContinueRow,
   parseContinueId,
+  executeDungeon,
+  DUNGEON_OVERFLOW_CONFIRM_PREFIX,
+  DUNGEON_OVERFLOW_CANCEL_PREFIX,
 };

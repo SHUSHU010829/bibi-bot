@@ -168,6 +168,9 @@ module.exports = async (client) => {
     // 交易所掛單（玩家對玩家物物交換）
     const barterListingsCollection = database.collection("BarterListings");
 
+    // 市集 / 交易所退款信箱：背包滿時退回的礦石暫存在此
+    const marketplaceMailboxCollection = database.collection("MarketplaceMailbox");
+
     // 打工 / 挖礦到點通知訂閱
     const cooldownRemindersCollection = database.collection("CooldownReminders");
 
@@ -257,6 +260,7 @@ module.exports = async (client) => {
     client.auctionListingsCollection = auctionListingsCollection;
     client.marketListingsCollection = marketListingsCollection;
     client.barterListingsCollection = barterListingsCollection;
+    client.marketplaceMailboxCollection = marketplaceMailboxCollection;
     client.cooldownRemindersCollection = cooldownRemindersCollection;
     client.notifySettingsCollection = notifySettingsCollection;
     client.oreMarketPricesCollection = oreMarketPricesCollection;
@@ -1045,6 +1049,16 @@ module.exports = async (client) => {
         { settled_at: 1 },
         { expireAfterSeconds: 7 * 24 * 60 * 60, name: "barter_ttl_7d", sparse: true }
       ).catch((e) => console.log(`[WARN] BarterListings TTL 索引：${e.message}`.yellow));
+
+      // 退款信箱：mail_id 唯一；玩家查信靠 (user, guild) 索引；不設 TTL（玩家未領就一直留著）
+      await marketplaceMailboxCollection.createIndex(
+        { mail_id: 1 },
+        { unique: true, name: "uniq_mailbox_id" }
+      ).catch((e) => console.log(`[WARN] MarketplaceMailbox uniq 索引：${e.message}`.yellow));
+      await marketplaceMailboxCollection.createIndex(
+        { user_id: 1, guild_id: 1, created_at: 1 },
+        { name: "mailbox_user_guild_time" }
+      ).catch((e) => console.log(`[WARN] MarketplaceMailbox user 索引：${e.message}`.yellow));
     } catch (indexError) {
       console.log(
         `[WARNING] Failed to create LevelSystem indexes:\n${indexError.message}`.yellow

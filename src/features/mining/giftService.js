@@ -2,6 +2,8 @@ require("colors");
 const { DateTime } = require("luxon");
 const { mining, auction } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
+const { priceOf } = require("./overflowConfirm");
+const grantCoins = require("../economy/grantCoins");
 
 const TZ = "Asia/Taipei";
 
@@ -10,9 +12,10 @@ function giveCfg() {
 }
 
 // 贈送礦石給其他玩家（無手續費、每日有次數上限、不能送自己）。
+// allowOverflow=true：對方背包放不下時，能放多少放多少，溢出折成金幣存入對方錢包。
 async function giveOre(
   client,
-  { giverId, guildId, recipientId, recipientName, ore, qty }
+  { giverId, guildId, recipientId, recipientName, ore, qty, allowOverflow = false }
 ) {
   const c = giveCfg();
   if (!mining?.enabled || !c.enabled) return { ok: false, reason: "disabled" };
@@ -48,9 +51,17 @@ async function giveOre(
   const recipient = await getOrCreate(client, recipientId, guildId);
   const cap = backpackCapacity(recipient, mining);
   const used = backpackUsed(recipient);
+  const space = Math.max(0, cap - used);
+  let deliveredQty = qty;
+  let overflowQty = 0;
   if (used + qty > cap) {
-    return { ok: false, reason: "recipient_full", cap, used };
+    if (!allowOverflow) {
+      return { ok: false, reason: "recipient_full", cap, used };
+    }
+    deliveredQty = space;
+    overflowQty = qty - space;
   }
+  const overflowCoins = overflowQty > 0 ? priceOf(ore) * overflowQty : 0;
 
   // 扣送禮者背包 + 累加每日次數
   await client.miningProfilesCollection.updateOne(
@@ -61,17 +72,34 @@ async function giveOre(
     }
   );
 
-  // 加收禮者背包
-  await client.miningProfilesCollection.updateOne(
-    { userId: recipientId, guildId },
-    { $inc: { [`backpack.${ore}`]: qty }, $set: { updatedAt: new Date() } }
-  );
+  // 加收禮者背包（能塞多少塞多少）
+  if (deliveredQty > 0) {
+    await client.miningProfilesCollection.updateOne(
+      { userId: recipientId, guildId },
+      { $inc: { [`backpack.${ore}`]: deliveredQty }, $set: { updatedAt: new Date() } }
+    );
+  }
+
+  // 溢出折金幣給「收禮人」
+  if (overflowCoins > 0) {
+    await grantCoins(client, {
+      userId: recipientId,
+      guildId,
+      username: recipientName,
+      amount: overflowCoins,
+      source: "gift_overflow",
+      meta: { giverId, ore, overflowQty },
+    }).catch((e) => console.log(`[ERROR] gift overflow grantCoins: ${e}`.red));
+  }
 
   return {
     ok: true,
     ore,
     oreDef,
     qty,
+    deliveredQty,
+    overflowQty,
+    overflowCoins,
     recipientName,
     usedToday: usedToday + 1,
     dailyMax,

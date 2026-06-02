@@ -3,6 +3,35 @@ const { getItemDef } = require("./itemCatalog");
 const inventory = require("./inventoryAdapter");
 const { getOrCreate } = require("../mining/miningProfile");
 const grantCoins = require("../economy/grantCoins");
+const mailbox = require("../marketplace/marketplaceMailbox");
+
+// 把託管物品退回賣家：礦石走信箱溢出，其他類型沒有容量上限直接寫回。
+async function _refundOffer(client, listing, reason) {
+  const { type, key, qty } = listing.offer;
+  if (type === "ore") {
+    const res = await mailbox.refundOreWithOverflow(client, {
+      userId: listing.seller_id,
+      guildId: listing.guild_id,
+      ore: key,
+      qty,
+      source: "barter",
+      listingId: listing.listing_id,
+      listingType: "barter",
+      reason,
+    }).catch((e) => { console.log(`[ERROR] barter refund ore: ${e}`.red); return null; });
+    if (res?.mailed && client.users) {
+      const oreDef = getItemDef("ore", key);
+      client.users.fetch(listing.seller_id)
+        .then((u) => u.send(
+          `📬 你在交易所的掛單 **#${listing.listing_id}** ${reason === "cancelled" ? "下架" : "到期"}退款時背包放不下，` +
+          `已將 ${oreDef?.name || key} ×${res.mailed} 暫存到信箱。\n請用 \`/信箱\` 領取（騰出背包空間後再領）。`
+        ))
+        .catch(() => {});
+    }
+    return;
+  }
+  await inventory.add(client, listing.seller_id, listing.guild_id, type, key, qty).catch(() => {});
+}
 
 function cfg() {
   return barter || {};
@@ -130,7 +159,7 @@ async function cancelListing(client, { listingId, guildId, userId }) {
   );
   if (!(locked?.value || locked)) return { ok: false, reason: "race" };
 
-  await inventory.add(client, listing.seller_id, guildId, listing.offer.type, listing.offer.key, listing.offer.qty);
+  await _refundOffer(client, listing, "cancelled");
   return { ok: true, listing };
 }
 
@@ -231,7 +260,7 @@ async function sweepExpired(client) {
       { returnDocument: "after" },
     );
     if (!(locked?.value || locked)) continue;
-    await inventory.add(client, l.seller_id, l.guild_id, l.offer.type, l.offer.key, l.offer.qty).catch(() => {});
+    await _refundOffer(client, l, "expired");
   }
   return { expired: expired.length };
 }

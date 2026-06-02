@@ -26,7 +26,31 @@ async function replyEphemeral(interaction, content) {
 module.exports = async (client, interaction) => {
   try {
     if (!interaction.isButton()) return;
-    const parsed = dungeonCmd.parseContinueId(interaction.customId);
+
+    const cid = interaction.customId;
+    // 分支：背包滿確認按鈕（dungeon_overflow_confirm_<userId> / _cancel_<userId>）
+    const overflowConfirm = cid.startsWith(dungeonCmd.DUNGEON_OVERFLOW_CONFIRM_PREFIX);
+    const overflowCancel = cid.startsWith(dungeonCmd.DUNGEON_OVERFLOW_CANCEL_PREFIX);
+    if (overflowConfirm || overflowCancel) {
+      const prefix = overflowConfirm
+        ? dungeonCmd.DUNGEON_OVERFLOW_CONFIRM_PREFIX
+        : dungeonCmd.DUNGEON_OVERFLOW_CANCEL_PREFIX;
+      const ownerId = cid.slice(prefix.length);
+      if (interaction.user.id !== ownerId) {
+        return replyEphemeral(interaction, "🚫 這不是你的地下城。");
+      }
+      if (overflowCancel) {
+        return interaction
+          .update({ components: [], content: "已取消這次探索。" })
+          .catch(() => {});
+      }
+      await interaction.deferUpdate();
+      return await dungeonCmd.executeDungeon(client, interaction, {
+        allowOverflow: true,
+      });
+    }
+
+    const parsed = dungeonCmd.parseContinueId(cid);
     if (!parsed) return;
     const { ownerId } = parsed;
 

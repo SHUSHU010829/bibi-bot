@@ -6,9 +6,12 @@ const dropTable = require("./dropTable");
 const buffResolver = require("./buffResolver");
 const encounterService = require("./encounterService");
 const { consumeMineLuckUse } = require("../fishing/cookService");
+const grantCoins = require("../economy/grantCoins");
+const { priceOf } = require("./overflowConfirm");
 
 // 執行一次挖礦。回傳結果物件交由指令層呈現（含彩虹石公告與耐久 DM 所需資料）。
-async function mine(client, { userId, guildId, member, username }) {
+// allowOverflow=true：背包滿時不擋；roll 出的礦能放多少放多少，溢出折成系統收購價金幣。
+async function mine(client, { userId, guildId, member, username, allowOverflow = false }) {
   if (!mining?.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
@@ -26,7 +29,7 @@ async function mine(client, { userId, guildId, member, username }) {
 
   const cap = backpackCapacity(profile, mining);
   const used = backpackUsed(profile);
-  if (used >= cap) {
+  if (used >= cap && !allowOverflow) {
     return { ok: false, reason: "backpack_full", used, cap };
   }
 
@@ -34,17 +37,28 @@ async function mine(client, { userId, guildId, member, username }) {
   const ore = dropTable.roll(buff.luckBonus);
   let qty = dropTable.randQty(ore, buff.qtyBonus);
 
-  // 不讓單次掉落超出背包剩餘空間
-  const space = cap - used;
-  if (qty > space) qty = space;
+  // 背包空間配置：能塞多少塞多少，溢出依模式決定（folder/丟棄）
+  const space = Math.max(0, cap - used);
+  let overflowQty = 0;
+  if (qty > space) {
+    if (allowOverflow) {
+      overflowQty = qty - space;
+      qty = space;
+    } else {
+      qty = space;
+    }
+  }
+  const overflowCoins = overflowQty > 0 ? priceOf(ore) * overflowQty : 0;
 
   const newCooldownAt = now + buff.actualCdMs;
 
   const inc = {
-    [`backpack.${ore}`]: qty,
-    [`lifetime_ore.${ore}`]: qty,
     mine_count_total: 1,
   };
+  if (qty > 0) {
+    inc[`backpack.${ore}`] = qty;
+    inc[`lifetime_ore.${ore}`] = qty;
+  }
   if (buff.consume.usePotion) inc.luck_potion_uses = -1;
 
   const set = { mine_cooldown_at: newCooldownAt, updatedAt: new Date() };
@@ -52,7 +66,7 @@ async function mine(client, { userId, guildId, member, username }) {
   // 賭石（鑑定師）：只有「剛挖到石頭那一次」能賭。每次挖礦都覆寫 pending_appraisal——
   // 挖到石頭就記下本次數量與時間戳，挖到別的礦則清為 null，確保只認最新一次挖礦。
   const sa = mining?.stoneAppraisal;
-  const appraisalEligible = !!(sa?.enabled && ore === "stone");
+  const appraisalEligible = !!(sa?.enabled && ore === "stone" && qty > 0);
   set.pending_appraisal = appraisalEligible ? { qty, ts: now } : null;
 
   // 耐久：非木鎬且有耐久值才消耗；歸 0 退回木鎬
@@ -78,8 +92,18 @@ async function mine(client, { userId, guildId, member, username }) {
     { $inc: inc, $set: set }
   );
 
+  if (overflowCoins > 0) {
+    await grantCoins(client, {
+      userId, guildId, username,
+      amount: overflowCoins,
+      source: "mine_overflow",
+      member,
+      meta: { ore, overflowQty, deliveredQty: qty },
+    }).catch((e) => console.log(`[ERROR] mine overflow grantCoins: ${e}`.red));
+  }
+
   client.mineLogsCollection
-    ?.insertOne({ user_id: userId, guild_id: guildId, ore, qty, ts: new Date() })
+    ?.insertOne({ user_id: userId, guild_id: guildId, ore, qty: qty + overflowQty, ts: new Date() })
     .catch((e) => console.log(`[ERROR] insert mine log: ${e}`.red));
 
   // 食物 buff：若 mine_luck uses 型 buff 生效，異步消耗一次使用次數
@@ -91,6 +115,8 @@ async function mine(client, { userId, guildId, member, username }) {
     ok: true,
     ore,
     qty,
+    overflowQty,
+    overflowCoins,
     buff,
     newCooldownAt,
     pickaxeBefore: profile.pickaxe,
