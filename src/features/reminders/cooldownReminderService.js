@@ -22,6 +22,8 @@ const CUSTOM_ID_PREFIX = "cdnotify";
 // 各活動的呈現與 DM 文案。type 同時用於 customId 與 DB 欄位。
 // notifyText：若有指定，scanAndNotify 會用它取代預設「冷卻結束囉」的文案；
 // 用於語意不是「冷卻結束」的提醒（例如地下城體力補滿）。
+// triggerWord：/通知設定 開啟時面板回覆會用「目前/下次{triggerWord}時會私訊提醒你」，
+// 未指定時預設為「冷卻結束」。
 // channelKey：對應 server.json commandChannels 的分類，DM 用來附上前往該頻道的連結。
 const TYPE_META = {
   work: { label: "打工", emoji: "💼", command: "/打工", channelKey: "mining" },
@@ -33,6 +35,7 @@ const TYPE_META = {
     emoji: "🔋",
     command: "/地下城",
     notifyText: "體力已補滿，快來大顯身手！",
+    triggerWord: "體力補滿",
     channelKey: "mining",
   },
   farm: {
@@ -40,6 +43,7 @@ const TYPE_META = {
     emoji: "🌾",
     command: "/農場",
     notifyText: "作物成熟了，快來收成！",
+    triggerWord: "作物成熟",
     channelKey: "farm",
   },
 };
