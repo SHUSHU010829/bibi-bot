@@ -165,6 +165,9 @@ module.exports = async (client) => {
     // 市集掛單（擺攤/換礦/徵求/競標）
     const marketListingsCollection = database.collection("MarketListings");
 
+    // 交易所掛單（玩家對玩家物物交換）
+    const barterListingsCollection = database.collection("BarterListings");
+
     // 打工 / 挖礦到點通知訂閱
     const cooldownRemindersCollection = database.collection("CooldownReminders");
 
@@ -253,6 +256,7 @@ module.exports = async (client) => {
     client.duelGamesCollection = duelGamesCollection;
     client.auctionListingsCollection = auctionListingsCollection;
     client.marketListingsCollection = marketListingsCollection;
+    client.barterListingsCollection = barterListingsCollection;
     client.cooldownRemindersCollection = cooldownRemindersCollection;
     client.notifySettingsCollection = notifySettingsCollection;
     client.oreMarketPricesCollection = oreMarketPricesCollection;
@@ -1023,6 +1027,24 @@ module.exports = async (client) => {
         { settled_at: 1 },
         { expireAfterSeconds: 7 * 24 * 60 * 60, name: "market_ttl_7d", sparse: true }
       ).catch((e) => console.log(`[WARN] MarketListings TTL 索引：${e.message}`.yellow));
+
+      // 交易所掛單索引
+      await barterListingsCollection.createIndex(
+        { guild_id: 1, listing_id: 1 },
+        { unique: true, name: "uniq_barter_guild_listing" }
+      ).catch((e) => console.log(`[WARN] BarterListings uniq 索引：${e.message}`.yellow));
+      await barterListingsCollection.createIndex(
+        { guild_id: 1, status: 1, created_at: -1 },
+        { name: "barter_guild_status_created" }
+      ).catch((e) => console.log(`[WARN] BarterListings status 索引：${e.message}`.yellow));
+      await barterListingsCollection.createIndex(
+        { guild_id: 1, seller_id: 1, status: 1 },
+        { name: "barter_guild_seller_status" }
+      ).catch((e) => console.log(`[WARN] BarterListings seller 索引：${e.message}`.yellow));
+      await barterListingsCollection.createIndex(
+        { settled_at: 1 },
+        { expireAfterSeconds: 7 * 24 * 60 * 60, name: "barter_ttl_7d", sparse: true }
+      ).catch((e) => console.log(`[WARN] BarterListings TTL 索引：${e.message}`.yellow));
     } catch (indexError) {
       console.log(
         `[WARNING] Failed to create LevelSystem indexes:\n${indexError.message}`.yellow

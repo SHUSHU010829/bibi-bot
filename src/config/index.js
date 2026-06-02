@@ -29,6 +29,7 @@ const encounters = require("./encounters.json");
 const marketplace = require("./marketplace.json");
 const fishing = require("./fishing.json");
 const farming = require("./farming.json");
+const barter = require("./barter.json");
 const coinHistory = require("./coinHistory.json");
 
 module.exports = {
@@ -61,5 +62,6 @@ module.exports = {
   ...marketplace,
   ...fishing,
   ...farming,
+  ...barter,
   ...coinHistory,
 };
