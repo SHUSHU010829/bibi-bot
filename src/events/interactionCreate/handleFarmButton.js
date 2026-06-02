@@ -36,6 +36,7 @@ const {
   buildHarvestAnnouncement,
   buildDefendAnnouncement,
 } = require("../../features/farm/farmAnnouncer");
+const reminder = require("../../features/reminders/cooldownReminderService");
 
 const BTN_PREFIXES = [
   "farm_plant_", "farm_harvest_", "farm_fert_", "farm_defend_",
@@ -88,7 +89,7 @@ async function renderFarm(interaction, client) {
   for (const p of plots) {
     if (farmService.shouldTriggerRaid(p) && !p.raid?.active) {
       const raid = await farmService.markRaid(client, {
-        userId, guildId, plotIndex: p.plotIndex,
+        userId, guildId, plotIndex: p.plotIndex, fromStatus: p.status,
       });
       if (raid) {
         p.status = "raided";
@@ -268,6 +269,13 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.IsComponentsV2,
       });
 
+      reminder.refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "farm",
+        readyAt: result.plot.ready_at,
+      }).catch(() => {});
+
       applyQuestHooks(client, ctxOf(interaction), [{ questId: "daily_farm_plant" }]).catch(() => {});
       return;
     }
@@ -342,10 +350,24 @@ module.exports = async (client, interaction) => {
         result.newYieldBonus > 0 ? `🌟 累計收成 +${Math.round(result.newYieldBonus * 100)}%` : null,
       ].filter(Boolean).join("\n");
       const c = buildSuccessContainer("💧 施肥成功", body, interaction.user.id, 0x4a90a4);
-      return interaction.editReply({
+      await interaction.editReply({
         components: [c],
         flags: MessageFlags.IsComponentsV2,
       });
+
+      const earliest = await client.farmPlotsCollection
+        ?.findOne(
+          { userId: interaction.user.id, guildId: interaction.guildId, status: "growing" },
+          { sort: { ready_at: 1 }, projection: { ready_at: 1 } },
+        )
+        .catch(() => null);
+      reminder.refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "farm",
+        readyAt: earliest?.ready_at || 0,
+      }).catch(() => {});
+      return;
     }
 
     // ── harvest：直接收成 ──

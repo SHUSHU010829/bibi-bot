@@ -10,6 +10,7 @@ const {
 
 const { farming } = require("../../config");
 const farmService = require("../../features/farm/farmService");
+const reminder = require("../../features/reminders/cooldownReminderService");
 
 function fertChoices() {
   return Object.entries(farming?.fertilizers || {}).map(([key, def]) => {
@@ -167,6 +168,20 @@ module.exports = {
         components: [container],
         flags: MessageFlags.IsComponentsV2,
       });
+
+      // 施肥後重新對齊「最早成熟」的到點通知；scope 於此玩家即可。
+      const earliest = await client.farmPlotsCollection
+        ?.findOne(
+          { userId: interaction.user.id, guildId: interaction.guildId, status: "growing" },
+          { sort: { ready_at: 1 }, projection: { ready_at: 1 } },
+        )
+        .catch(() => null);
+      reminder.refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "farm",
+        readyAt: earliest?.ready_at || 0,
+      }).catch(() => {});
     } catch (error) {
       console.log(`[ERROR] /施肥:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 施肥失敗，請呼叫舒舒！").catch(() => {});

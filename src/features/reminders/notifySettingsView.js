@@ -6,7 +6,7 @@
 //   - 任務完成 DM 通知（被動任務）
 //
 // 按鈕 customId 格式：notifyset_<action>_<userId>
-//   action ∈ { master, mining, work, crash, quest }
+//   action ∈ { master, mining, work, fish, crash, dungeon, farm, quest }
 
 const {
   ContainerBuilder,
@@ -25,7 +25,7 @@ const CUSTOM_ID_PREFIX = "notifyset";
 
 // 面板上會出現的「冷卻到點」類型（沿用 cooldownReminderService 的 type）。
 // dungeon 嚴格來說不是冷卻，而是體力補滿提醒；通知行為相同所以共用同一條鏈路。
-const COOLDOWN_ACTIONS = ["mining", "work", "fish", "crash", "dungeon"];
+const COOLDOWN_ACTIONS = ["mining", "work", "fish", "crash", "dungeon", "farm"];
 const ACTIONS = ["master", ...COOLDOWN_ACTIONS, "quest"];
 
 function buildCustomId(action, userId) {
@@ -62,6 +62,7 @@ async function buildContainer(client, userId, guildId) {
     fishState,
     crashState,
     dungeonState,
+    farmState,
     questEnabled,
   ] = await Promise.all([
     notifyPrefs.isMasterEnabled(client, userId, guildId),
@@ -70,6 +71,7 @@ async function buildContainer(client, userId, guildId) {
     reminder.getState(client, { userId, guildId, type: "fish" }),
     reminder.getState(client, { userId, guildId, type: "crash" }),
     reminder.getState(client, { userId, guildId, type: "dungeon" }),
+    reminder.getState(client, { userId, guildId, type: "farm" }),
     questNotifyPref.isDmEnabled(client, userId, guildId),
   ]);
 
@@ -79,6 +81,7 @@ async function buildContainer(client, userId, guildId) {
     fish: !!fishState?.enabled,
     crash: !!crashState?.enabled,
     dungeon: !!dungeonState?.enabled,
+    farm: !!farmState?.enabled,
     quest: !!questEnabled,
   };
 
@@ -107,7 +110,8 @@ async function buildContainer(client, userId, guildId) {
           `${reminder.TYPE_META.work.emoji} 打工：${onOff(states.work)}\n` +
           `${reminder.TYPE_META.fish.emoji} 釣魚：${onOff(states.fish)}\n` +
           `${reminder.TYPE_META.crash.emoji} 火箭：${onOff(states.crash)}\n` +
-          `${reminder.TYPE_META.dungeon.emoji} 地下城體力：${onOff(states.dungeon)}`
+          `${reminder.TYPE_META.dungeon.emoji} 地下城體力：${onOff(states.dungeon)}\n` +
+          `${reminder.TYPE_META.farm.emoji} 農場成熟：${onOff(states.farm)}`
       )
     )
     .addTextDisplayComponents(
@@ -146,6 +150,7 @@ async function buildContainer(client, userId, guildId) {
   );
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(
+      toggleButton("farm", userId, states.farm, "農場成熟"),
       toggleButton("quest", userId, states.quest, "任務完成 DM")
     )
   );
