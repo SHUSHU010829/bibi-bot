@@ -70,29 +70,36 @@ async function buildLevelCardView(client, { target, member, guildId }) {
     styleId = themeMeta?.styleId || doc.walletTheme;
   }
 
-  const buf = await generateProfileCard({
-    username: displayName,
-    avatarUrl: target.displayAvatarURL({ extension: "png", size: 256 }),
-    level: progress.level,
-    currentLevelXp: progress.currentLevelXp,
-    xpToNextLevel: progress.xpToNextLevel,
-    progress: progress.progress,
-    totalXp: doc.totalXp,
-    rank,
-    totalUsers,
-    tier,
-    title: titleLine,
-    streak: doc.streak || 0,
-    streakFreezes: doc.streakFreezes || 0,
-    totalMessages: doc.totalMessages || 0,
-    totalVoiceMinutes: doc.totalVoiceMinutes || 0,
-    badges: badgeDocs,
-    cardAccent,
-    styleId,
-  });
-
-  const fileName = `profile-${target.id}.png`;
-  const attachment = new AttachmentBuilder(buf, { name: fileName });
+  let attachment = null;
+  let fileName = null;
+  try {
+    const buf = await generateProfileCard({
+      username: displayName,
+      avatarUrl: target.displayAvatarURL({ extension: "png", size: 256 }),
+      level: progress.level,
+      currentLevelXp: progress.currentLevelXp,
+      xpToNextLevel: progress.xpToNextLevel,
+      progress: progress.progress,
+      totalXp: doc.totalXp,
+      rank,
+      totalUsers,
+      tier,
+      title: titleLine,
+      streak: doc.streak || 0,
+      streakFreezes: doc.streakFreezes || 0,
+      totalMessages: doc.totalMessages || 0,
+      totalVoiceMinutes: doc.totalVoiceMinutes || 0,
+      badges: badgeDocs,
+      cardAccent,
+      styleId,
+    });
+    fileName = `profile-${target.id}.png`;
+    attachment = new AttachmentBuilder(buf, { name: fileName });
+  } catch (cardErr) {
+    console.log(
+      `[WARN] profile card render failed, falling back to text: ${cardErr.message}`.yellow
+    );
+  }
 
   const twitchSub = getTwitchSubBonus(member);
   const subLine =
@@ -108,19 +115,43 @@ async function buildLevelCardView(client, { target, member, guildId }) {
         `## ${tier.emoji} ${displayName} 的等級卡\n-# Lv.${progress.level} ・ ${tier.label} ・ #${rank} / ${totalUsers}${subLine}`
       )
     )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addMediaGalleryComponents(
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  if (attachment) {
+    container.addMediaGalleryComponents(
       new MediaGalleryBuilder().addItems(
         new MediaGalleryItemBuilder()
           .setURL(`attachment://${fileName}`)
           .setDescription(`Lv.${progress.level} · ${tier.label}`)
       )
     );
+  } else {
+    const pct = Math.round((progress.progress || 0) * 100);
+    const barLen = 12;
+    const filled = Math.max(0, Math.min(barLen, Math.round((pct / 100) * barLen)));
+    const bar = "█".repeat(filled) + "░".repeat(barLen - filled);
+    const badgeLine =
+      badgeDocs.length > 0
+        ? badgeDocs.map((b) => `${b.emoji} ${b.name}`).join(" ・ ")
+        : "尚無徽章";
+    container
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**稱號**　${titleLine}\n**進度**　\`${bar}\` ${pct}%（${progress.currentLevelXp.toLocaleString()} / ${progress.xpToNextLevel.toLocaleString()} XP）\n**總 XP**　${doc.totalXp.toLocaleString()}　**排名**　#${rank} / ${totalUsers}`
+        )
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**🗓️ 連續簽到**　${doc.streak || 0} 天（🛡️ ${doc.streakFreezes || 0}）\n**💬 訊息**　${(doc.totalMessages || 0).toLocaleString()}　**🎙️ 語音**　${(doc.totalVoiceMinutes || 0).toLocaleString()} 分\n**🎖️ 徽章**　${badgeLine}`
+        )
+      );
+  }
 
   return {
     useV2: true,
     components: [container],
-    files: [attachment],
+    files: attachment ? [attachment] : [],
   };
 }
 

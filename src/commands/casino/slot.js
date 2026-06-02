@@ -178,24 +178,30 @@ module.exports = {
         jackpotPool = poolDoc?.amount ?? null;
       }
 
-      // 出圖（GIF 一鏡到底，含轉軸動畫）
-      const buf = await generateSlotGif({
-        userId,
-        username,
-        reels: result.reels,
-        matchType: result.matchType,
-        matchedSymbol: result.matchedSymbol,
-        bet,
-        payout: totalPayout,
-        multiplier: result.multiplier,
-        balance: balanceAfter,
-        jackpotPool,
-        jackpotBust,
-      });
-
-      const attachment = new AttachmentBuilder(buf, {
-        name: `slot-${roundId}.gif`,
-      });
+      // 出圖（GIF 一鏡到底，含轉軸動畫）— 失敗就降級成純文字 embed
+      let attachment = null;
+      try {
+        const buf = await generateSlotGif({
+          userId,
+          username,
+          reels: result.reels,
+          matchType: result.matchType,
+          matchedSymbol: result.matchedSymbol,
+          bet,
+          payout: totalPayout,
+          multiplier: result.multiplier,
+          balance: balanceAfter,
+          jackpotPool,
+          jackpotBust,
+        });
+        attachment = new AttachmentBuilder(buf, {
+          name: `slot-${roundId}.gif`,
+        });
+      } catch (gifErr) {
+        console.log(
+          `[WARN] slot gif render failed, falling back to text: ${gifErr.message}`.yellow
+        );
+      }
 
       const jackpotLine =
         result.matchType === "jackpot" && jackpotBust > 0
@@ -237,7 +243,11 @@ module.exports = {
           : "neutral";
 
       // 保留原本 content 內的額外資訊（爆池、彩池、破產提示）。
-      const extraLines = [jackpotLine, poolLine, bankruptLine].filter(Boolean);
+      // 若圖片生成失敗，把轉軸結果以文字呈現作為 fallback。
+      const reelsLine = attachment
+        ? null
+        : `🎰 轉出：${result.reels.map((s) => s.emoji).join(" ｜ ")}`;
+      const extraLines = [reelsLine, jackpotLine, poolLine, bankruptLine].filter(Boolean);
 
       const embed = buildCasinoEmbed({
         game: "🎰 拉霸",
@@ -252,13 +262,13 @@ module.exports = {
         bet,
         net,
         balance: balanceAfter,
-        imageName: attachment.name,
+        imageName: attachment?.name,
       });
 
       await interaction.editReply({
         content: "",
         embeds: [embed],
-        files: [attachment],
+        files: attachment ? [attachment] : [],
         components: [buildReplayRow("slot", userId, { name: username })],
       });
 

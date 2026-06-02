@@ -54,18 +54,25 @@ module.exports = {
       const dateStr = `${now.toFormat("yyyy.MM.dd")} ${WEEKDAY_EN[now.weekday] || ""}`.trim();
       const serialNo = "0829";
 
-      const pngBuffer = await generateFortuneCard({
-        fortuneText,
-        question,
-        poemContent,
-        poemOrigin,
-        poemAuthor,
-        dateStr,
-        serialNo,
-      });
-
-      const fileName = `fortune-${serialNo}.png`;
-      const attachment = new AttachmentBuilder(pngBuffer, { name: fileName });
+      let attachment = null;
+      let fileName = null;
+      try {
+        const pngBuffer = await generateFortuneCard({
+          fortuneText,
+          question,
+          poemContent,
+          poemOrigin,
+          poemAuthor,
+          dateStr,
+          serialNo,
+        });
+        fileName = `fortune-${serialNo}.png`;
+        attachment = new AttachmentBuilder(pngBuffer, { name: fileName });
+      } catch (cardErr) {
+        console.log(
+          `[WARN] fortune card render failed, falling back to text: ${cardErr.message}`.yellow
+        );
+      }
 
       const container = new ContainerBuilder()
         .setAccentColor(0xc8553d)
@@ -74,23 +81,39 @@ module.exports = {
             `## 🧧 籤詩\n諮詢方向：**${question}**`
           )
         )
-        .addSeparatorComponents(new SeparatorBuilder())
-        .addMediaGalleryComponents(
+        .addSeparatorComponents(new SeparatorBuilder());
+
+      if (attachment) {
+        container.addMediaGalleryComponents(
           new MediaGalleryBuilder().addItems(
             new MediaGalleryItemBuilder()
               .setURL(`attachment://${fileName}`)
               .setDescription(`籤詩 No.${serialNo}・${dateStr}`)
           )
-        )
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `-# 🍀 抽自逼逼機器人廟口籤筒・No.${serialNo}`
-          )
         );
+      } else {
+        const poemBlock =
+          poemContent && poemOrigin
+            ? `\n\n*${poemContent}*\n-# ── ${poemAuthor ? `${poemAuthor}・` : ""}《${poemOrigin}》`
+            : "";
+        container
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `### ${strawResult}${poemBlock}`
+            )
+          )
+          .addSeparatorComponents(new SeparatorBuilder());
+      }
+
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 🍀 抽自逼逼機器人廟口籤筒・No.${serialNo}・${dateStr}`
+        )
+      );
 
       await interaction.editReply({
         components: [container],
-        files: [attachment],
+        files: attachment ? [attachment] : [],
         flags: MessageFlags.IsComponentsV2,
       });
     } catch (error) {

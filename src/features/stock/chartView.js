@@ -49,11 +49,19 @@ async function buildChartContainer(client, { guildId, symbol, period }) {
     }
   }
 
-  const buf = renderSingleLine(symbol, market.name, sampled, {
-    title: `${symbol} ${market.name} ｜ ${period} 走勢(${sampled.length} 點)`,
-  });
-  const fileName = `stock_${symbol}_${period}.png`;
-  const attachment = new AttachmentBuilder(buf, { name: fileName });
+  let attachment = null;
+  let fileName = null;
+  try {
+    const buf = renderSingleLine(symbol, market.name, sampled, {
+      title: `${symbol} ${market.name} ｜ ${period} 走勢(${sampled.length} 點)`,
+    });
+    fileName = `stock_${symbol}_${period}.png`;
+    attachment = new AttachmentBuilder(buf, { name: fileName });
+  } catch (chartErr) {
+    console.log(
+      `[WARN] stock chart render failed, falling back to text: ${chartErr.message}`
+    );
+  }
 
   const prices = sampled.map((p) => p.price);
   const high = Math.max(...prices);
@@ -83,21 +91,56 @@ async function buildChartContainer(client, { guildId, symbol, period }) {
       new TextDisplayBuilder().setContent(
         `**高 / 低**\n${high.toFixed(1)} / ${low.toFixed(1)}`
       )
-    )
-    .addMediaGalleryComponents(
+    );
+
+  if (attachment) {
+    container.addMediaGalleryComponents(
       new MediaGalleryBuilder().addItems(
         new MediaGalleryItemBuilder()
           .setURL(`attachment://${fileName}`)
           .setDescription(`${symbol} ${market.name} 走勢圖`)
       )
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# <t:${Math.floor(Date.now() / 1000)}:R>`
-      )
     );
+  } else {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `\`\`\`\n${buildAsciiSparkline(prices)}\n\`\`\``
+        )
+      );
+  }
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# <t:${Math.floor(Date.now() / 1000)}:R>`
+    )
+  );
 
   return { container, attachment };
+}
+
+// 走勢圖生成失敗時用的 ASCII sparkline，把點壓縮到一行 8 格高度。
+function buildAsciiSparkline(prices) {
+  if (!prices.length) return "(無資料)";
+  const blocks = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+  const WIDTH = 40;
+  let sampled = prices;
+  if (prices.length > WIDTH) {
+    const step = prices.length / WIDTH;
+    sampled = Array.from({ length: WIDTH }, (_, i) =>
+      prices[Math.min(prices.length - 1, Math.floor(i * step))]
+    );
+  }
+  return sampled
+    .map((p) => {
+      const idx = Math.round(((p - min) / range) * (blocks.length - 1));
+      return blocks[Math.max(0, Math.min(blocks.length - 1, idx))];
+    })
+    .join("");
 }
 
 module.exports = { buildChartContainer, PERIOD_MS, PERIOD_LABEL };
