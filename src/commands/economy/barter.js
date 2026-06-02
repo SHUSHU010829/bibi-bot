@@ -4,6 +4,9 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -152,6 +155,15 @@ async function runCreate(client, interaction) {
           `🎁 給出：${offerDef.emoji} **${offerDef.name}** ×${listing.offer.qty}\n` +
           `🎯 想要：${wantDef.emoji} **${wantDef.name}** ×${listing.want.qty}\n` +
           `-# 接受方需付手續費 **${fee}** 🪙 ・ 截止：<t:${expiresEpoch}:R>`,
+      ),
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`barter_accept_${listing.seller_id}_${listing.listing_id}`)
+          .setLabel(`接受交易（-${fee} 🪙）`)
+          .setStyle(ButtonStyle.Success)
+          .setEmoji("🤝"),
       ),
     );
   return interaction.editReply({

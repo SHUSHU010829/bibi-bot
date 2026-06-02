@@ -262,13 +262,13 @@ module.exports = async (client, interaction) => {
         marketplaceService.dmUser(
           client,
           l.seller_id,
-          `💰 你的賣礦掛單 **#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty} 已售出！\n` +
+          `💰 你的賣礦掛單 **#${l.listing_id}** ${itemLabel(l)} ×${l.qty} 已售出！\n` +
             `售價 **${l.price.toLocaleString()}** 🪙（手續費 ${result.fee || 0}），金幣已入帳。`
         );
       }
-      return interaction.followUp({
-        content: formatBuyResult(result),
-        flags: MessageFlags.Ephemeral,
+      return interaction.editReply({
+        components: [statusPanel(formatBuyResult(result))],
+        flags: MessageFlags.IsComponentsV2,
       });
     }
 
@@ -301,9 +301,9 @@ module.exports = async (client, interaction) => {
             `你付出 ${oreLabel(l.ore)} ×${l.qty}，得到 ${oreLabel(l.want_ore)} ×${l.want_qty}。`
         );
       }
-      return interaction.followUp({
-        content: formatBarterResult(result),
-        flags: MessageFlags.Ephemeral,
+      return interaction.editReply({
+        components: [statusPanel(formatBarterResult(result))],
+        flags: MessageFlags.IsComponentsV2,
       });
     }
 
@@ -340,9 +340,9 @@ module.exports = async (client, interaction) => {
             `你收到 ${oreLabel(l.ore)} ×${l.qty}，付出 ${paidStr}。`
         );
       }
-      return interaction.followUp({
-        content: formatFulfillResult(result),
-        flags: MessageFlags.Ephemeral,
+      return interaction.editReply({
+        components: [statusPanel(formatFulfillResult(result))],
+        flags: MessageFlags.IsComponentsV2,
       });
     }
 
@@ -371,14 +371,14 @@ module.exports = async (client, interaction) => {
           not_owner: "❌ 你沒有權限下架此掛單。",
           race: "⚡ 操作衝突，請重試。",
         };
-        return interaction.followUp({
-          content: msgs[result.reason] || "🔧 下架失敗，請稍後再試。",
-          flags: MessageFlags.Ephemeral,
+        return interaction.editReply({
+          components: [statusPanel(msgs[result.reason] || "🔧 下架失敗，請稍後再試。")],
+          flags: MessageFlags.IsComponentsV2,
         });
       }
-      return interaction.followUp({
-        content: `✅ **#${result.listing.listing_id}** 已下架，託管的礦石／金幣已退回你的帳戶。`,
-        flags: MessageFlags.Ephemeral,
+      return interaction.editReply({
+        components: [statusPanel(`✅ **#${result.listing.listing_id}** 已下架，託管的礦石／金幣已退回你的帳戶。`)],
+        flags: MessageFlags.IsComponentsV2,
       });
     }
 
@@ -428,11 +428,14 @@ function formatBuyResult(result) {
     return msgs[result.reason] || "🔧 購買失敗，請稍後再試。";
   }
   const l = result.listing;
+  const deliveredLine = l.item_type === "fish"
+    ? "魚已放進你的魚袋 🎣"
+    : "礦石已放進你的背包 🎒";
   return (
     `✅ **購買成功！**\n` +
-    `**#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty}\n` +
+    `**#${l.listing_id}** ${itemLabel(l)} ×${l.qty}\n` +
     `花費 **${l.price.toLocaleString()}** ${COIN_EMOJI}（手續費 ${result.fee || 0}）\n` +
-    `礦石已放進你的背包 🎒`
+    `${deliveredLine}`
   );
 }
 

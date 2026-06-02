@@ -1,6 +1,8 @@
 // 交易所按鈕：
-//   barter_accept_<viewerId>_<listingId>  — 接受交易
-//   barter_cancel_<viewerId>_<listingId>  — 下架自己的掛單
+//   barter_accept_<viewerId>_<listingId>          — 點擊「接受交易」→ 顯示二次確認面板
+//   barter_confirmAccept_<listingId>              — 二次確認後真正成交
+//   barter_abort                                  — 二次確認中止
+//   barter_cancel_<viewerId>_<listingId>          — 下架自己的掛單
 //
 // 注意：customId 裡的 viewerId 是「點擊者」的鎖定 owner（在某些 ephemeral 視圖才有意義）。
 // 對於公開列表的「接受」按鈕，我們不檢查 viewerId（任何人都能接受別人的單），
@@ -10,23 +12,27 @@ require("colors");
 const {
   ContainerBuilder,
   TextDisplayBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
 } = require("discord.js");
 
 const { barter } = require("../../config");
 const barterService = require("../../features/barter/barterService");
+const { computeFee } = require("../../features/barter/barterService");
 const { errorContainer } = require("../../features/barter/barterView");
 const { getItemDef } = require("../../features/barter/itemCatalog");
+
+function statusPanel(text) {
+  return new ContainerBuilder()
+    .setAccentColor(0x95a5a6)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text));
+}
 
 module.exports = async (client, interaction) => {
   if (!interaction.isButton?.()) return;
   if (!interaction.customId?.startsWith("barter_")) return;
-
-  const parts = interaction.customId.split("_");
-  if (parts.length < 4) return;
-  const action = parts[1];
-  const listingId = Number.parseInt(parts[parts.length - 1], 10);
-  if (!Number.isFinite(listingId)) return;
 
   // 頻道守門
   if (barter?.allowedChannelId && interaction.channelId !== barter.allowedChannelId) {
@@ -43,10 +49,34 @@ module.exports = async (client, interaction) => {
   }
 
   try {
+    // 二次確認：中止
+    if (interaction.customId === "barter_abort") {
+      return interaction.update({
+        components: [statusPanel("✖️ 已取消操作。")],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+
+    // 二次確認：確定接受
+    if (interaction.customId.startsWith("barter_confirmAccept_")) {
+      const listingId = Number.parseInt(
+        interaction.customId.slice("barter_confirmAccept_".length),
+        10,
+      );
+      if (!Number.isFinite(listingId)) return;
+      return handleConfirmAccept(client, interaction, listingId);
+    }
+
+    const parts = interaction.customId.split("_");
+    if (parts.length < 4) return;
+    const action = parts[1];
+    const listingId = Number.parseInt(parts[parts.length - 1], 10);
+    if (!Number.isFinite(listingId)) return;
+
     if (action === "accept") return handleAccept(client, interaction, listingId);
     if (action === "cancel") return handleCancel(client, interaction, listingId);
   } catch (error) {
-    console.log(`[ERROR] handleBarterButton ${action}:\n${error}\n${error.stack}`.red);
+    console.log(`[ERROR] handleBarterButton:\n${error}\n${error.stack}`.red);
     const reply = {
       components: [errorContainer("🔧 操作失敗", "發生未預期錯誤。", "請呼叫舒舒！")],
       flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
@@ -61,14 +91,65 @@ module.exports = async (client, interaction) => {
 
 async function handleAccept(client, interaction, listingId) {
   const existing = await barterService.getListing(client, interaction.guildId, listingId);
-  if (existing && existing.seller_id === interaction.user.id) {
+  if (!existing) {
+    return interaction.reply({
+      components: [errorContainer("❌ 找不到掛單", `編號 #${listingId} 不存在或已下架。`, "用 `/交易所 列表` 重新整理")],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+  if (existing.seller_id === interaction.user.id) {
     return interaction.reply({
       components: [errorContainer("❌ 不能接自己的單", "這是你自己上架的交易。", "")],
       flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
     });
   }
 
-  await interaction.deferReply();
+  const offerDef = getItemDef(existing.offer.type, existing.offer.key);
+  const wantDef = getItemDef(existing.want.type, existing.want.key);
+  if (!offerDef || !wantDef) {
+    return interaction.reply({
+      components: [errorContainer("❌ 物品異常", "找不到掛單上的物品定義。", "請呼叫舒舒！")],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+  const fee = computeFee(offerDef, existing.offer.qty, wantDef, existing.want.qty);
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0xe67e22)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `## 確認接受交易？\n` +
+          `**#${listingId}**\n` +
+          `你付出 ${wantDef.emoji} **${wantDef.name}** ×${existing.want.qty}\n` +
+          `換到 ${offerDef.emoji} **${offerDef.name}** ×${existing.offer.qty}\n` +
+          `-# 手續費 **${fee}** 🪙（成交時從你的金幣扣除）`,
+      ),
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`barter_confirmAccept_${listingId}`)
+          .setLabel("✅ 確定")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId("barter_abort")
+          .setLabel("❌ 取消")
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    );
+
+  return interaction.reply({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+  });
+}
+
+async function handleConfirmAccept(client, interaction, listingId) {
+  await interaction.update({
+    components: [statusPanel("⏳ 處理中…")],
+    flags: MessageFlags.IsComponentsV2,
+  });
+
   const result = await barterService.acceptListing(client, {
     listingId,
     guildId: interaction.guildId,
@@ -90,7 +171,7 @@ async function handleAccept(client, interaction, listingId) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# 🤝 交易成功 #${listingId}\n` +
-          `<@${interaction.user.id}> 用 ${wantDef.emoji} **${wantDef.name}** ×${listing.want.qty} ` +
+          `你用 ${wantDef.emoji} **${wantDef.name}** ×${listing.want.qty} ` +
           `從 <@${listing.seller_id}> 換到 ${offerDef.emoji} **${offerDef.name}** ×${listing.offer.qty}\n` +
           `-# 手續費：**${fee}** 🪙`,
       ),
@@ -98,7 +179,7 @@ async function handleAccept(client, interaction, listingId) {
   await interaction.editReply({
     components: [c],
     flags: MessageFlags.IsComponentsV2,
-    allowedMentions: { users: [interaction.user.id, listing.seller_id] },
+    allowedMentions: { users: [listing.seller_id] },
   });
 }
 
