@@ -189,7 +189,7 @@ async function handleSell(client, interaction) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 成交將收取 ${Math.round((auction.feeRate ?? 0.05) * 100)}% 手續費；無人出價會自動退回礦石。`,
+        `-# 得標者加收 ${Math.round((auction.feeRate ?? 0.05) * 100)}% 手續費，賣方拿全額；無人出價會自動退回礦石。`,
       ),
     );
 

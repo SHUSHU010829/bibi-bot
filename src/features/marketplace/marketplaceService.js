@@ -221,24 +221,29 @@ async function createWantListing(client, {
   const expiresAt = new Date(now.getTime() + (c.durationMs ?? 86400000));
 
   let escrowCoin = null;
+  let escrowFee = 0;
   let escrowPayOre = null;
 
   if (payKind === "coin") {
+    // 手續費由買方（徵求發起人）支付：託管金額 = coinAmount + fee
+    const wantFeeRate = c.wantCoinFeeRate ?? 0.05;
+    escrowFee = Math.floor(coinAmount * wantFeeRate);
+    const totalEscrow = coinAmount + escrowFee;
     // 先託管金幣，防掛單後金幣被花掉
     const balanceDoc = await client.userCoinsCollection
       .findOne({ userId: sellerId, guildId })
       .catch(() => null);
-    if ((balanceDoc?.totalCoins || 0) < coinAmount) {
-      return { ok: false, reason: "insufficient_coins", balance: balanceDoc?.totalCoins || 0 };
+    if ((balanceDoc?.totalCoins || 0) < totalEscrow) {
+      return { ok: false, reason: "insufficient_coins", balance: balanceDoc?.totalCoins || 0, need: totalEscrow };
     }
     const debit = await grantCoins(client, {
       userId: sellerId,
       guildId,
       username: sellerName,
-      amount: -coinAmount,
+      amount: -totalEscrow,
       source: "market_escrow",
       member,
-      meta: { listingId, type: "want" },
+      meta: { listingId, type: "want", fee: escrowFee, gross: coinAmount },
     });
     if (!debit) return { ok: false, reason: "grant_failed" };
     escrowCoin = coinAmount;
@@ -270,6 +275,7 @@ async function createWantListing(client, {
     pay_qty: payKind === "ore" ? payQty : null,
     status: "active",
     escrow_coin: escrowCoin,
+    escrow_fee: escrowFee,
     escrow_pay_ore: escrowPayOre,
     created_at: now,
     expires_at: expiresAt,
@@ -359,10 +365,16 @@ async function buyNow(client, { listingId, buyerId, guildId, buyerName, member }
     return { ok: false, reason: "backpack_full", cap, used };
   }
 
+  // 手續費由買方支付：買家總付 = price + fee，賣家實得 = full price
+  const c = cfg();
+  const feeRate = await resolveSellerFeeRate(client, listing, c.sellFeeRate ?? 0.05);
+  const fee = Math.floor(listing.price * feeRate);
+  const totalCharge = listing.price + fee;
+
   // 查買家餘額
   const balanceDoc = await client.userCoinsCollection.findOne({ userId: buyerId, guildId }).catch(() => null);
-  if ((balanceDoc?.totalCoins || 0) < listing.price) {
-    return { ok: false, reason: "insufficient_coins", balance: balanceDoc?.totalCoins || 0 };
+  if ((balanceDoc?.totalCoins || 0) < totalCharge) {
+    return { ok: false, reason: "insufficient_coins", balance: balanceDoc?.totalCoins || 0, need: totalCharge };
   }
 
   // 樂觀鎖 active → settling
@@ -374,15 +386,15 @@ async function buyNow(client, { listingId, buyerId, guildId, buyerName, member }
   const lockedDoc = locked?.value || locked;
   if (!lockedDoc) return { ok: false, reason: "race" };
 
-  // 扣買家金幣
+  // 扣買家金幣（含手續費）
   const debit = await grantCoins(client, {
     userId: buyerId,
     guildId,
     username: buyerName,
-    amount: -listing.price,
+    amount: -totalCharge,
     source: "market_buy",
     member,
-    meta: { listingId },
+    meta: { listingId, fee, gross: listing.price },
   });
   if (!debit) {
     // 扣款失敗，退回 active
@@ -393,19 +405,16 @@ async function buyNow(client, { listingId, buyerId, guildId, buyerName, member }
     return { ok: false, reason: "grant_failed" };
   }
 
-  const c = cfg();
-  const feeRate = await resolveSellerFeeRate(client, listing, c.sellFeeRate ?? 0.05);
-  const fee = Math.floor(listing.price * feeRate);
-  const proceeds = listing.price - fee;
+  const proceeds = listing.price;
 
-  // 撥款給賣家
+  // 撥款給賣家（全額，無扣手續費）
   await grantCoins(client, {
     userId: listing.seller_id,
     guildId,
     username: listing.seller_name,
     amount: proceeds,
     source: "market_payout",
-    meta: { listingId, fee, gross: listing.price },
+    meta: { listingId, fee, gross: listing.price, feePaidBy: "buyer" },
   }).catch((e) => console.log(`[ERROR] market buyNow payout: ${e}`.red));
 
   // 交貨給買家（魚 → fish_bag；礦石 → backpack）
@@ -578,10 +587,9 @@ async function fulfillWant(client, { listingId, sellerId, guildId, sellerName, m
   let proceeds = 0;
 
   if (listing.pay_kind === "coin") {
-    const feeRate = c.wantCoinFeeRate ?? 0.05;
-    fee = Math.floor(listing.pay_coin * feeRate);
-    proceeds = listing.pay_coin - fee;
-    // 從託管放出，撥給賣方
+    // 手續費已在建單時由買方（徵求發起人）預付託管，賣方拿全額 pay_coin
+    fee = listing.escrow_fee || 0;
+    proceeds = listing.pay_coin;
     await grantCoins(client, {
       userId: sellerId,
       guildId,
@@ -589,7 +597,7 @@ async function fulfillWant(client, { listingId, sellerId, guildId, sellerName, m
       amount: proceeds,
       source: "market_payout",
       member,
-      meta: { listingId, fee, gross: listing.pay_coin },
+      meta: { listingId, fee, gross: listing.pay_coin, feePaidBy: "buyer" },
     }).catch((e) => console.log(`[ERROR] want payout seller: ${e}`.red));
   } else {
     // 付礦：從託管交給賣方
@@ -838,15 +846,16 @@ async function _refundEscrow(client, listing) {
     ).catch((e) => console.log(`[ERROR] market refund fish: ${e}`.red));
   }
 
-  // 退金幣（want 付金幣）
+  // 退金幣（want 付金幣）— 含建單時預付的手續費
   if (listing.escrow_coin) {
+    const refundAmount = listing.escrow_coin + (listing.escrow_fee || 0);
     await grantCoins(client, {
       userId: sellerId,
       guildId,
       username: listing.seller_name,
-      amount: listing.escrow_coin,
+      amount: refundAmount,
       source: "market_refund",
-      meta: { listingId: listing.listing_id, reason: "cancelled_or_expired" },
+      meta: { listingId: listing.listing_id, reason: "cancelled_or_expired", fee: listing.escrow_fee || 0 },
     }).catch((e) => console.log(`[ERROR] market refund coin: ${e}`.red));
   }
 

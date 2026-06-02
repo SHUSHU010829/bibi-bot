@@ -254,7 +254,7 @@ async function handleSell(client, interaction) {
           `**#${l.listing_id}** ・ ${oreLabel(l.ore)} ×${l.qty}\n` +
           `一口價：**${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
-          `-# 成交將收取 ${feeRate}% 手續費；無人購買將自動退回礦石。`
+          `-# 買方成交時加收 ${feeRate}% 手續費，賣方拿全額；無人購買將自動退回礦石。`
       )
     );
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
@@ -430,7 +430,7 @@ async function handleAuction(client, interaction) {
           `**#${l.listing_id}** ・ ${oreLabel(l.ore)} ×${l.qty}\n` +
           `起標價：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}${buyoutLine}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
-          `-# 成交將收取 ${feeRate}% 手續費；無人出價會自動退回礦石。`
+          `-# 得標者加收 ${feeRate}% 手續費，賣方拿全額；無人出價會自動退回礦石。`
       )
     );
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
@@ -481,7 +481,7 @@ async function handleFishSell(client, interaction) {
           `**#${l.listing_id}** ・ ${fishDef.emoji} ${fishDef.name} ×${l.qty}\n` +
           `一口價：**${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
-          `-# 成交將收取 ${feeRate}% 手續費；無人購買將自動退回魚袋。`
+          `-# 買方成交時加收 ${feeRate}% 手續費，賣方拿全額；無人購買將自動退回魚袋。`
       )
     );
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
