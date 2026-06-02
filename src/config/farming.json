@@ -31,8 +31,8 @@
       "octopus":       { "source": "fish_bag", "key": "octopus",       "qty": 1, "yieldBonusPct": 0.30, "onlyCrops": ["strawberry", "black_rose"], "emoji": "🦑", "name": "章魚" }
     },
     "raid": {
-      "readyDelayPct": 0.30,
-      "rollChance": 0.15,
+      "minElapsedMs": 1800000,
+      "rollChance": 0.08,
       "winRewards": { "coins": [200, 600], "slime": [1, 2] },
       "loseBehavior": "destroy_crop",
       "monsters": [

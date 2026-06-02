@@ -11,8 +11,8 @@ const {
 //
 // 狀態流：
 //   growing  → ready  → rotted              （未施肥或正常老化）
-//   ready    → raided                       （成熟未收成被怪物入侵）
-//   raided   → growing/null                 （玩家防禦勝/敗）
+//   growing/ready → raided                  （隨機被怪物偷襲，最少種下 minElapsedMs 後）
+//   raided   → growing/ready/null           （防禦勝→回原狀態；敗→作物毀）
 //
 // 成長時間縮短累計上限：farming.growthReductionCapPct（預設 60%）。
 
@@ -369,21 +369,23 @@ async function expandFarm(client, { userId, guildId, username, member }) {
   return { ok: true, from: current, to: nextTier.count, cost: nextTier.cost };
 }
 
-// Raid 觸發判定：成熟後超過 readyDelayPct% 爛掉窗口時，rollChance% 機率觸發。
+// Raid 觸發判定：種下後超過 minElapsedMs 即可能被偷襲；不再綁成熟時間。
+// 採每次開 /農場 時擲骰，rollChance% 機率觸發；同時涵蓋 growing 與 ready。
 function shouldTriggerRaid(plot, now = Date.now()) {
-  if (!plot || plot.status !== "ready") return false;
+  if (!plot || plot.status === "empty" || !plot.crop) return false;
+  if (plot.status !== "growing" && plot.status !== "ready") return false;
   if (plot.raid?.active) return true;
   const raidCfg = farming?.raid;
   if (!raidCfg) return false;
-  const rotWindow = (plot.expires_at || 0) - (plot.ready_at || 0);
-  if (rotWindow <= 0) return false;
-  const elapsed = now - (plot.ready_at || 0);
-  if (elapsed < rotWindow * (raidCfg.readyDelayPct || 0.3)) return false;
-  return Math.random() < (raidCfg.rollChance || 0.15);
+  const minElapsed = raidCfg.minElapsedMs ?? 30 * 60 * 1000;
+  const elapsed = now - (plot.planted_at || 0);
+  if (elapsed < minElapsed) return false;
+  return Math.random() < (raidCfg.rollChance || 0.1);
 }
 
 // 標記地塊進入 raid 狀態。回傳怪物資訊。
-async function markRaid(client, { userId, guildId, plotIndex }) {
+// 紀錄 pre_status，讓防禦成功後能恢復到原本是 growing 還是 ready。
+async function markRaid(client, { userId, guildId, plotIndex, fromStatus }) {
   const raidCfg = farming?.raid;
   if (!raidCfg) return null;
   const list = raidCfg.monsters || [];
@@ -395,6 +397,7 @@ async function markRaid(client, { userId, guildId, plotIndex }) {
     monsterEmoji: monster.emoji,
     monsterHp: monster.hp,
     expires_at: Date.now() + 30 * 60 * 1000,
+    pre_status: fromStatus === "growing" ? "growing" : "ready",
   };
   await coll(client).updateOne(
     { userId, guildId, plotIndex },
@@ -482,10 +485,11 @@ async function defendRaid(client, { userId, guildId, username, member, plotIndex
   }
 
   if (won) {
-    // 恢復成 ready 讓玩家可收成
+    // 恢復到 raid 前的狀態（growing 繼續長、ready 可立即收成）
+    const restoreStatus = plot.raid?.pre_status === "growing" ? "growing" : "ready";
     await coll(client).updateOne(
       { userId, guildId, plotIndex },
-      { $set: { status: "ready", raid: null, updatedAt: new Date() } },
+      { $set: { status: restoreStatus, raid: null, updatedAt: new Date() } },
     );
   } else {
     // 作物被毀

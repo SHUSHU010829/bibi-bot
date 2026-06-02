@@ -28,11 +28,11 @@ module.exports = {
       const plotCount = farmService.getPlotCount(profile);
       let plots = await farmService.getPlots(client, userId, guildId, plotCount);
 
-      // 嘗試觸發 raid（成熟未收成超過 30% 爛掉窗口）
+      // 隨機觸發 raid（種下後超過 minElapsedMs 即可能，無論成熟與否）
       for (const p of plots) {
         if (farmService.shouldTriggerRaid(p) && !p.raid?.active) {
           const raid = await farmService.markRaid(client, {
-            userId, guildId, plotIndex: p.plotIndex,
+            userId, guildId, plotIndex: p.plotIndex, fromStatus: p.status,
           });
           if (raid) {
             p.status = "raided";
