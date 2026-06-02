@@ -100,8 +100,8 @@ module.exports = async (client, interaction) => {
         return;
       }
       const meta = reminder.TYPE_META[action];
-      // dungeon 是「體力補滿」語意，跟一般冷卻文案要分開講。
-      const triggerWord = meta.notifyText ? "體力補滿" : "冷卻結束";
+      // 不同活動的觸發語意不同：地下城＝體力補滿、農場＝作物成熟，其餘預設冷卻結束。
+      const triggerWord = meta.triggerWord || "冷卻結束";
       if (result.enabled) {
         const tail =
           readyAt > Date.now()
