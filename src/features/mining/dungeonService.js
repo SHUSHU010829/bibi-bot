@@ -151,7 +151,7 @@ function clamp(v, lo, hi) {
 }
 
 // 進地下城戰鬥一次。回傳結果交由指令層呈現。
-async function enterDungeon(client, { userId, guildId, member, username }) {
+async function enterDungeon(client, { userId, guildId, member, username, allowOverflow = false }) {
   if (!dungeon?.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
@@ -163,6 +163,13 @@ async function enterDungeon(client, { userId, guildId, member, username }) {
 
   if (st.stamina <= 0) {
     return { ok: false, reason: "no_stamina", nextRegenAt: st.nextRegenAt, max, staminaBonus: bonus };
+  }
+
+  // 背包完全滿 → 先讓玩家確認（戰利品掉到礦的話會直接折金幣，不會佔背包）
+  const cap = backpackCapacity(profile, mining);
+  const used = backpackUsed(profile);
+  if (used >= cap && !allowOverflow) {
+    return { ok: false, reason: "backpack_full", used, cap };
   }
 
   // 消耗 1 點體力；若原本是滿的，從現在開始起算回復計時。

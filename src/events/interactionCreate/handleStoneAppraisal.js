@@ -17,7 +17,26 @@ const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const mineCmd = require("../../commands/mining/mine");
 const appraisalService = require("../../features/mining/stoneAppraisalService");
+const { buildOverflowConfirmView } = require("../../features/mining/overflowConfirm");
 const { COIN_EMOJI } = require("../../constants/coin");
+
+const APPRAISE_OVERFLOW_CONFIRM_PREFIX = "appraise_overflow_confirm_";
+const APPRAISE_OVERFLOW_CANCEL_PREFIX = "appraise_overflow_cancel_";
+
+function parseOverflowId(customId) {
+  for (const prefix of [APPRAISE_OVERFLOW_CONFIRM_PREFIX, APPRAISE_OVERFLOW_CANCEL_PREFIX]) {
+    if (customId.startsWith(prefix)) {
+      const rest = customId.slice(prefix.length);
+      const us = rest.lastIndexOf("_");
+      if (us <= 0) return null;
+      const ownerId = rest.slice(0, us);
+      const ts = Number(rest.slice(us + 1));
+      if (!ownerId || !Number.isFinite(ts)) return null;
+      return { prefix, ownerId, ts };
+    }
+  }
+  return null;
+}
 
 function oreLabel(oreKey) {
   const def = mining?.ores?.[oreKey] || {};
@@ -60,6 +79,26 @@ async function announceDiamond(client, interaction) {
 module.exports = async (client, interaction) => {
   try {
     if (!interaction.isButton()) return;
+
+    // 分支 1：賭石溢出折金幣的確認 / 取消
+    const overflow = parseOverflowId(interaction.customId);
+    if (overflow) {
+      if (interaction.user.id !== overflow.ownerId) {
+        return replyEphemeral(interaction, "🚫 這不是你的賭石。");
+      }
+      if (overflow.prefix === APPRAISE_OVERFLOW_CANCEL_PREFIX) {
+        return interaction
+          .update({ components: [], content: "已取消賭石。" })
+          .catch(() => {});
+      }
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      return await runAppraisal(client, interaction, {
+        ts: overflow.ts,
+        allowOverflow: true,
+      });
+    }
+
+    // 分支 2：原本的賭石按鈕
     const parsed = mineCmd.parseAppraiseId?.(interaction.customId);
     if (!parsed) return;
     const { ownerId, ts } = parsed;
@@ -85,18 +124,51 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    // 結果以私人訊息呈現，避免洗頻道（開出鑽石另發全服公告）
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await runAppraisal(client, interaction, { ts, allowOverflow: false });
+  } catch (err) {
+    logger.error(
+      {
+        source: "stone-appraise",
+        customId: interaction?.customId,
+        err: err.message,
+        stack: err.stack,
+      },
+      "賭石處理失敗"
+    );
+    trackError("stone-appraise", err, { customId: interaction?.customId });
+    await replyEphemeral(interaction, "🔧 賭石失敗，請呼叫舒舒！");
+  }
+};
 
+async function runAppraisal(client, interaction, { ts, allowOverflow }) {
+  try {
     const result = await appraisalService.appraise(client, {
       userId: interaction.user.id,
       guildId: interaction.guildId,
       member: interaction.member,
       username: interaction.user.username,
       ts,
+      allowOverflow,
     });
 
     if (!result.ok) {
+      if (result.reason === "backpack_full") {
+        const confirm = buildOverflowConfirmView({
+          title: "背包快滿，無法完整收下開出的礦",
+          body: "繼續的話，會優先把高價的礦放進背包，放不下的低價礦改折成金幣入帳。",
+          used: result.used,
+          cap: result.cap,
+          confirmCustomId: `${APPRAISE_OVERFLOW_CONFIRM_PREFIX}${interaction.user.id}_${ts}`,
+          cancelCustomId: `${APPRAISE_OVERFLOW_CANCEL_PREFIX}${interaction.user.id}_${ts}`,
+          confirmLabel: "繼續賭石（溢出折金幣）",
+        });
+        await interaction.editReply({
+          components: [confirm],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
+        return;
+      }
       const messages = {
         disabled: "🔧 賭石系統尚未啟動！",
         no_pending:
@@ -106,7 +178,6 @@ module.exports = async (client, interaction) => {
         expired: "⌛ 鑑定師等不及先走了，下次剛挖到石頭時手腳快一點！",
         no_stone: "🪨 你的背包沒有足夠的石頭可以賭了。",
         no_coins: `${COIN_EMOJI} 金幣不足！這次鑑定要 ${(result.fee || 0).toLocaleString()}，你只有 ${(result.balance || 0).toLocaleString()}。`,
-        backpack_full: `🎒 背包快滿了（${result.used}/${result.cap}），先 /賣出 清一點再來賭。`,
         charge_failed: "🔧 扣款失敗，已取消這次賭石，請稍後再試。",
       };
       await replyEphemeral(
@@ -155,12 +226,24 @@ module.exports = async (client, interaction) => {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(`**開出**\n${gainSummary}`),
-      )
-      .addTextDisplayComponents(
+      );
+
+    if (result.overflowCoins > 0) {
+      const foldedSummary = Object.entries(result.foldedWinnings || {})
+        .map(([ore, q]) => `${oreLabel(ore)} ×${q}`)
+        .join("、");
+      container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**目前餘額**\n${(result.balanceAfter || 0).toLocaleString()} ${COIN_EMOJI}`,
+          `🎒 背包放不下：${foldedSummary} → 折成 **+${result.overflowCoins.toLocaleString()}** ${COIN_EMOJI}`,
         ),
       );
+    }
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**目前餘額**\n${(result.balanceAfter || 0).toLocaleString()} ${COIN_EMOJI}`,
+      ),
+    );
 
     await interaction.editReply({
       components: [container],

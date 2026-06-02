@@ -6,6 +6,7 @@ const {
   backpackUsed,
 } = require("./miningProfile");
 const { weightedRandom } = require("./weightedRandom");
+const { priceOf } = require("./overflowConfirm");
 const grantCoins = require("../economy/grantCoins");
 
 function cfg() {
@@ -40,7 +41,8 @@ function rollOutcomes(count) {
 
 // 賭石：把「剛挖到那一次」的石頭付費逐顆開出，有機率變成別種礦。
 // ts 為按鈕帶上的挖礦時間戳，必須與 DB 中 pending_appraisal.ts 相符（單次性 + 只認最新一次挖礦）。
-async function appraise(client, { userId, guildId, member, username, ts }) {
+// allowOverflow=true：開出的礦背包放不下時，依系統收購價依序折最低價礦為金幣（保留高價礦）。
+async function appraise(client, { userId, guildId, member, username, ts, allowOverflow = false }) {
   const c = cfg();
   if (!mining?.enabled || !c.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection || !client.userCoinsCollection) {
@@ -84,14 +86,37 @@ async function appraise(client, { userId, guildId, member, username, ts }) {
   const gained = Object.values(winnings).reduce((s, n) => s + n, 0);
   const cap = backpackCapacity(profile, mining);
   const used = backpackUsed(profile);
-  if (used - count + gained > cap) {
-    return { ok: false, reason: "backpack_full", used, cap };
+  const freeAfterConsume = cap - (used - count);
+
+  // 算出哪些 winnings 進背包、哪些折金幣
+  const acceptedWinnings = { ...winnings };
+  const foldedWinnings = {};
+  let overflowCoins = 0;
+  if (gained > freeAfterConsume) {
+    if (!allowOverflow) {
+      return { ok: false, reason: "backpack_full", used, cap };
+    }
+    let needToFold = gained - freeAfterConsume;
+    const sortedOres = Object.keys(acceptedWinnings).sort(
+      (a, b) => priceOf(a) - priceOf(b)
+    );
+    for (const ore of sortedOres) {
+      if (needToFold <= 0) break;
+      const have = acceptedWinnings[ore] || 0;
+      const fold = Math.min(have, needToFold);
+      if (fold > 0) {
+        acceptedWinnings[ore] = have - fold;
+        foldedWinnings[ore] = (foldedWinnings[ore] || 0) + fold;
+        overflowCoins += priceOf(ore) * fold;
+        needToFold -= fold;
+      }
+    }
   }
 
   // 原子更新：條件鎖 pending_appraisal.ts（保證單次）與石頭庫存，扣石頭 + 加礦 + 清 pending
   const inc = { "backpack.stone": -count };
-  for (const [ore, q] of Object.entries(winnings)) {
-    inc[`backpack.${ore}`] = (inc[`backpack.${ore}`] || 0) + q;
+  for (const [ore, q] of Object.entries(acceptedWinnings)) {
+    if (q > 0) inc[`backpack.${ore}`] = (inc[`backpack.${ore}`] || 0) + q;
   }
   const res = await client.miningProfilesCollection.updateOne(
     {
@@ -117,8 +142,8 @@ async function appraise(client, { userId, guildId, member, username, ts }) {
   });
   if (!grant) {
     const rollback = { "backpack.stone": count };
-    for (const [ore, q] of Object.entries(winnings)) {
-      rollback[`backpack.${ore}`] = -q;
+    for (const [ore, q] of Object.entries(acceptedWinnings)) {
+      if (q > 0) rollback[`backpack.${ore}`] = -q;
     }
     await client.miningProfilesCollection
       .updateOne(
@@ -129,14 +154,30 @@ async function appraise(client, { userId, guildId, member, username, ts }) {
     return { ok: false, reason: "charge_failed" };
   }
 
+  // 折金幣入帳（不影響 fee 扣款）
+  let balanceAfter = grant.doc?.totalCoins ?? totalCoins - fee;
+  if (overflowCoins > 0) {
+    const ofGrant = await grantCoins(client, {
+      userId, guildId, username,
+      amount: overflowCoins,
+      source: "stone_appraisal_overflow",
+      member,
+      meta: { count, foldedWinnings },
+    }).catch(() => null);
+    if (ofGrant?.doc?.totalCoins != null) balanceAfter = ofGrant.doc.totalCoins;
+  }
+
   return {
     ok: true,
     count,
     fee,
     winnings,
+    acceptedWinnings,
+    foldedWinnings,
+    overflowCoins,
     rolls,
     gainedDiamond: (winnings.diamond || 0) > 0,
-    balanceAfter: grant.doc?.totalCoins ?? totalCoins - fee,
+    balanceAfter,
   };
 }
 
