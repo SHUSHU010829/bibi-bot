@@ -213,7 +213,7 @@ module.exports = async (client, interaction) => {
     if (action === "plantsel" && isSelect) {
       const cropKey = interaction.values?.[0];
       if (!cropKey) return;
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await interaction.deferReply();
 
       const result = await farmService.plantCrop(client, {
         userId: interaction.user.id,
@@ -260,7 +260,7 @@ module.exports = async (client, interaction) => {
       );
       await interaction.editReply({
         components: [c],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        flags: MessageFlags.IsComponentsV2,
       });
 
       applyQuestHooks(client, ctxOf(interaction), [{ questId: "daily_farm_plant" }]).catch(() => {});
@@ -289,7 +289,7 @@ module.exports = async (client, interaction) => {
       const fertilizerKey = interaction.values?.[0];
       if (!fertilizerKey) return;
       const fertDef = farming.fertilizers?.[fertilizerKey] || {};
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await interaction.deferReply();
 
       const result = await farmService.fertilize(client, {
         userId: interaction.user.id,
@@ -339,13 +339,13 @@ module.exports = async (client, interaction) => {
       const c = buildSuccessContainer("💧 施肥成功", body, interaction.user.id, 0x4a90a4);
       return interaction.editReply({
         components: [c],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        flags: MessageFlags.IsComponentsV2,
       });
     }
 
     // ── harvest：直接收成 ──
     if (action === "harvest") {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await interaction.deferReply();
       const result = await farmService.harvestCrop(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -384,13 +384,13 @@ module.exports = async (client, interaction) => {
 
       return interaction.editReply({
         components: [c],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        flags: MessageFlags.IsComponentsV2,
       });
     }
 
     // ── defend：戰鬥防禦 ──
     if (action === "defend") {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await interaction.deferReply();
       const result = await farmService.defendRaid(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -430,13 +430,13 @@ module.exports = async (client, interaction) => {
       );
       return interaction.editReply({
         components: [c],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        flags: MessageFlags.IsComponentsV2,
       });
     }
 
     // ── expand：直接執行擴建 ──
     if (action === "expand") {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await interaction.deferReply();
       const result = await farmService.expandFarm(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -468,7 +468,7 @@ module.exports = async (client, interaction) => {
       );
       return interaction.editReply({
         components: [c],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        flags: MessageFlags.IsComponentsV2,
       });
     }
 
@@ -483,7 +483,7 @@ module.exports = async (client, interaction) => {
           errContainer("❌ 無法賣出", "這種蔬菜不收購。", ""),
         );
       }
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await interaction.deferReply();
       const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
       const have = (profile.veggie_bag || {})[cropKey] || 0;
       if (have <= 0) {
@@ -513,7 +513,7 @@ module.exports = async (client, interaction) => {
       );
       return interaction.editReply({
         components: [c],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        flags: MessageFlags.IsComponentsV2,
       });
     }
   } catch (error) {
