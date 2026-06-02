@@ -15,6 +15,26 @@ let worker = null;
 let nextId = 1;
 const pending = new Map();
 
+// Worker hang 時不能讓上層永遠等。超過這個時間直接拒絕，並且把整個 worker
+// terminate 掉重來，避免後續呼叫排在已死的 worker 後面繼續累積。
+const RENDER_TIMEOUT_MS = 4000;
+
+function killWorker(reason) {
+  if (!worker) return;
+  const dead = worker;
+  worker = null;
+  try {
+    dead.removeAllListeners();
+    dead.terminate();
+  } catch (_) { /* noop */ }
+  if (reason) {
+    for (const entry of pending.values()) {
+      entry.reject(new Error(reason));
+    }
+    pending.clear();
+  }
+}
+
 function getWorker() {
   if (worker) return worker;
   worker = new Worker(path.join(__dirname, "cardRenderWorker.js"));
@@ -22,6 +42,7 @@ function getWorker() {
     const entry = pending.get(msg.id);
     if (!entry) return;
     pending.delete(msg.id);
+    if (entry.timer) clearTimeout(entry.timer);
     if (msg.ok) {
       // 跨 worker postMessage 後 Node Buffer 會降級成 Uint8Array，
       // discord.js 的 resolveFile 只認 Buffer / string / stream，要包回去。
@@ -34,14 +55,20 @@ function getWorker() {
     }
   });
   worker.on("error", (err) => {
-    for (const entry of pending.values()) entry.reject(err);
+    for (const entry of pending.values()) {
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.reject(err);
+    }
     pending.clear();
     worker = null;
   });
   worker.on("exit", (code) => {
     if (code !== 0) {
       const err = new Error(`card render worker exited with code ${code}`);
-      for (const entry of pending.values()) entry.reject(err);
+      for (const entry of pending.values()) {
+        if (entry.timer) clearTimeout(entry.timer);
+        entry.reject(err);
+      }
       pending.clear();
     }
     worker = null;
@@ -53,7 +80,15 @@ function renderCard({ markup, width, height }) {
   const w = getWorker();
   const id = nextId++;
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
+    const entry = { resolve, reject, timer: null };
+    pending.set(id, entry);
+    entry.timer = setTimeout(() => {
+      if (!pending.has(id)) return;
+      pending.delete(id);
+      reject(new Error("card render timeout"));
+      // worker 卡住的話留著只會繼續吃資源，直接 terminate 並讓下一次重啟。
+      killWorker(`card render timeout, worker terminated`);
+    }, RENDER_TIMEOUT_MS);
     w.postMessage({ id, payload: { markup, width, height } });
   });
 }
