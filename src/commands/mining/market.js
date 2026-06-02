@@ -3,6 +3,9 @@ const {
   SlashCommandBuilder,
   ContainerBuilder,
   TextDisplayBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -12,6 +15,7 @@ const {
   buildBrowseView,
   buildMyStallView,
   oreLabel,
+  BUY_PREFIX,
 } = require("../../features/marketplace/marketplaceView");
 const { COIN_EMOJI } = require("../../constants/coin");
 
@@ -237,6 +241,15 @@ async function handleSell(client, interaction) {
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
           `-# 買方成交時加收 ${feeRate}% 手續費，賣方拿全額；無人購買將自動退回礦石。`
       )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${BUY_PREFIX}${l.listing_id}`)
+          .setLabel("立即購買")
+          .setEmoji("💰")
+          .setStyle(ButtonStyle.Success)
+      )
     );
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
 }
@@ -416,6 +429,15 @@ async function handleFishSell(client, interaction) {
           `一口價：**${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
           `-# 買方成交時加收 ${feeRate}% 手續費，賣方拿全額；無人購買將自動退回魚袋。`
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${BUY_PREFIX}${l.listing_id}`)
+          .setLabel("立即購買")
+          .setEmoji("💰")
+          .setStyle(ButtonStyle.Success)
       )
     );
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });

@@ -302,7 +302,7 @@ function buildConfirmView(listing, action) {
   if (action === "buy") {
     content =
       `## 確認購買？\n` +
-      `**#${listing.listing_id}** ${oreLabel(listing.ore)} ×${listing.qty}\n` +
+      `**#${listing.listing_id}** ${itemLabel(listing)} ×${listing.qty}\n` +
       `💰 **${listing.price.toLocaleString()}** ${COIN_EMOJI} 將從你的帳戶扣除（成交後不退）`;
   } else if (action === "accept") {
     content =
