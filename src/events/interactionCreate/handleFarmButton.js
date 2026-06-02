@@ -5,7 +5,9 @@
 //   farm_harvest_<ownerId>_<plotIndex>  — 直接收成該地塊
 //   farm_fert_<ownerId>_<plotIndex>     — 開啟肥料選單（StringSelect）
 //   farm_defend_<ownerId>_<plotIndex>   — 戰鬥防禦
-//   farm_expand_<ownerId>               — 直接走擴建流程
+//   farm_expand_<ownerId>               — 顯示擴建確認預覽
+//   farm_expandconfirm_<ownerId>        — 確認後實際扣款並擴建
+//   farm_expandcancel_<ownerId>         — 取消擴建確認
 //   farm_view_<ownerId>                 — 重新顯示農場（從收成後跳回）
 //   farm_sell_<ownerId>_<cropKey>       — 一鍵賣出整袋蔬菜
 //
@@ -40,7 +42,8 @@ const reminder = require("../../features/reminders/cooldownReminderService");
 
 const BTN_PREFIXES = [
   "farm_plant_", "farm_harvest_", "farm_fert_", "farm_defend_",
-  "farm_expand_", "farm_view_", "farm_sell_",
+  "farm_expandconfirm_", "farm_expandcancel_", "farm_expand_",
+  "farm_view_", "farm_sell_",
 ];
 const SELECT_PREFIXES = ["farm_plantsel_", "farm_fertsel_"];
 
@@ -106,13 +109,19 @@ async function renderFarm(interaction, client) {
 }
 
 // 提供「種植作物」select menu（按鈕觸發後的後續流程）
-function buildPlantSelector(userId, plotIndex) {
+function buildPlantSelector(userId, plotIndex, { profile, coins } = {}) {
   const options = Object.entries(farming.crops || {}).map(([key, def]) => {
     const hours = Math.round((def.growMs || 0) / 3600000);
+    const parts = [`${def.plantCost}幣`, `${hours}h 成熟`];
+    if (def.seedKey) {
+      const seedQty = profile?.seed_bag?.[def.seedKey] || 0;
+      parts.push(`種子${seedQty >= 1 ? "✅" : "❌"}${seedQty}`);
+    }
+    if (typeof coins === "number" && coins < def.plantCost) parts.push("幣不足");
     return {
-      label: `${def.name}`,
+      label: def.name,
       value: key,
-      description: `${def.plantCost} 幣・${hours}h 成熟${def.seedKey ? "・需稀有種子" : ""}`,
+      description: parts.join("・").slice(0, 100),
       emoji: def.emoji,
     };
   });
@@ -125,12 +134,17 @@ function buildPlantSelector(userId, plotIndex) {
 }
 
 // 提供「施肥」select menu（每次施 1 份；想要批量請用 /施肥 次數）
-function buildFertilizerSelector(userId, plotIndex) {
+function buildFertilizerSelector(userId, plotIndex, { profile } = {}) {
   const options = Object.entries(farming.fertilizers || {}).map(([key, def]) => {
     const effects = [];
-    if (def.growReductionPct) effects.push(`-${Math.round(def.growReductionPct * 100)}% 成長`);
-    if (def.yieldBonusPct) effects.push(`+${Math.round(def.yieldBonusPct * 100)}% 收成`);
-    const desc = `${def.source === "fish_bag" ? "魚袋" : "背包"} ×${def.qty}・${effects.join("／")}`;
+    if (def.growReductionPct) effects.push(`-${Math.round(def.growReductionPct * 100)}%成長`);
+    if (def.yieldBonusPct) effects.push(`+${Math.round(def.yieldBonusPct * 100)}%收成`);
+    const sourceField = def.source === "fish_bag" ? "fish_bag" : "backpack";
+    const sourceLabel = def.source === "fish_bag" ? "魚袋" : "背包";
+    const have = (profile?.[sourceField] || {})[def.key] || 0;
+    const enough = have >= (def.qty || 1);
+    const haveLabel = `你有${have}${enough ? "✅" : "❌"}`;
+    const desc = `${sourceLabel}×${def.qty}・${haveLabel}・${effects.join("／")}`;
     return {
       label: def.name,
       value: key,
@@ -144,6 +158,24 @@ function buildFertilizerSelector(userId, plotIndex) {
       .setPlaceholder("選擇要使用的肥料（每次施一份）…")
       .addOptions(options),
   );
+}
+
+// 把玩家目前所有「肥料原料」彙整成一行；source 來自 farming.fertilizers
+function fertilizerInventoryLine(profile) {
+  const parts = [];
+  for (const def of Object.values(farming.fertilizers || {})) {
+    const sourceField = def.source === "fish_bag" ? "fish_bag" : "backpack";
+    const have = (profile?.[sourceField] || {})[def.key] || 0;
+    parts.push(`${def.emoji} ${def.name} ×${have}`);
+  }
+  return parts.join("　");
+}
+
+async function fetchUserCoins(client, userId, guildId) {
+  const doc = await client.userCoinsCollection
+    ?.findOne({ userId, guildId })
+    .catch(() => null);
+  return doc?.totalCoins || 0;
 }
 
 // 成功訊息（ephemeral Container），附「回到農場」按鈕
@@ -200,13 +232,27 @@ module.exports = async (client, interaction) => {
 
     // ── plant 按鈕：彈出作物選單 ──
     if (action === "plant" && isBtn) {
+      const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
+      const coins = await fetchUserCoins(client, interaction.user.id, interaction.guildId);
+      const seedParts = [];
+      for (const def of Object.values(farming.crops || {})) {
+        if (!def.seedKey) continue;
+        const qty = profile?.seed_bag?.[def.seedKey] || 0;
+        seedParts.push(`${def.emoji} ${def.name}種子 ×${qty}`);
+      }
+      const summary = [
+        `💰 你有 **${coins.toLocaleString()}** 幣`,
+        seedParts.length ? `🌱 ${seedParts.join("　")}` : null,
+      ].filter(Boolean).join("\n");
+
       const c = new ContainerBuilder()
         .setAccentColor(0x4a90a4)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(`# 🌱 選擇要在地塊 ${plotIndex + 1} 種的作物`),
         )
         .addSeparatorComponents(new SeparatorBuilder())
-        .addActionRowComponents(buildPlantSelector(interaction.user.id, plotIndex))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(summary))
+        .addActionRowComponents(buildPlantSelector(interaction.user.id, plotIndex, { profile, coins }))
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             "-# 黑玫瑰需要先從地下城（Lv 30+）掉落種子才能種",
@@ -282,13 +328,18 @@ module.exports = async (client, interaction) => {
 
     // ── fert 按鈕：彈出肥料選單 ──
     if (action === "fert" && isBtn) {
+      const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
+      const inv = fertilizerInventoryLine(profile);
       const c = new ContainerBuilder()
         .setAccentColor(0x4a90a4)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(`# 💧 選擇要施在地塊 ${plotIndex + 1} 的肥料`),
         )
         .addSeparatorComponents(new SeparatorBuilder())
-        .addActionRowComponents(buildFertilizerSelector(interaction.user.id, plotIndex))
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`你目前的材料：\n${inv}`),
+        )
+        .addActionRowComponents(buildFertilizerSelector(interaction.user.id, plotIndex, { profile }))
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             "-# 此處每次施一份。要批量施肥請用 `/施肥 次數:<N>`",
@@ -472,8 +523,85 @@ module.exports = async (client, interaction) => {
       });
     }
 
-    // ── expand：直接執行擴建 ──
+    // ── expand：先顯示擴建預覽與確認按鈕（不直接扣款）──
     if (action === "expand") {
+      const preview = await farmService.previewExpand(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+      });
+      if (!preview.ok) {
+        if (preview.reason === "max_reached") {
+          return replyEphemeralContainer(
+            interaction,
+            errContainer("🏆 已達上限", `農場已擴建到 **${preview.current}** 格，無法再擴展。`, ""),
+          );
+        }
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("🔧 擴建失敗", `原因：\`${preview.reason}\``, "請稍後再試"),
+        );
+      }
+      if (!preview.canAfford) {
+        return replyEphemeralContainer(
+          interaction,
+          errContainer(
+            "❌ 金幣不足",
+            `擴建 **${preview.current} → ${preview.nextCount}** 格需要 **${preview.cost.toLocaleString()}** 幣，目前 **${preview.have.toLocaleString()}** 幣（還差 ${(preview.cost - preview.have).toLocaleString()}）。`,
+            "去賺點本錢再回來",
+          ),
+        );
+      }
+      const confirmContainer = new ContainerBuilder()
+        .setAccentColor(0xf1c40f)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("# 🏗️ 確認擴建農場？"),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `📈 地塊：**${preview.current} → ${preview.nextCount}** 格\n` +
+              `💸 花費：**${preview.cost.toLocaleString()}** 幣\n` +
+              `💰 餘額：${preview.have.toLocaleString()} → ${(preview.have - preview.cost).toLocaleString()} 幣`,
+          ),
+        )
+        .addActionRowComponents(
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`farm_expandconfirm_${interaction.user.id}`)
+              .setLabel("確認擴建")
+              .setEmoji("🏗️")
+              .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+              .setCustomId(`farm_expandcancel_${interaction.user.id}`)
+              .setLabel("取消")
+              .setStyle(ButtonStyle.Secondary),
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 按下「確認擴建」後才會扣款"),
+        );
+      return replyEphemeralContainer(interaction, confirmContainer);
+    }
+
+    // ── expandcancel：取消擴建確認 ──
+    if (action === "expandcancel") {
+      const c = new ContainerBuilder()
+        .setAccentColor(0x95a5a6)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("# 已取消擴建"),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("沒有扣款，農場保持原狀。"),
+        );
+      return interaction.update({
+        components: [c],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+
+    // ── expandconfirm：實際執行擴建 ──
+    if (action === "expandconfirm") {
       await interaction.deferReply();
       const result = await farmService.expandFarm(client, {
         userId: interaction.user.id,
@@ -491,7 +619,7 @@ module.exports = async (client, interaction) => {
         if (result.reason === "insufficient_coins") {
           return replyEphemeralContainer(
             interaction,
-            errContainer("❌ 金幣不足", `擴建到 **${result.nextCount}** 格需要 **${result.need}** 幣，目前 **${result.have}** 幣。`, "去賺點本錢再回來"),
+            errContainer("❌ 金幣不足", `擴建到 **${result.nextCount}** 格需要 **${result.need.toLocaleString()}** 幣，目前 **${result.have.toLocaleString()}** 幣。`, "去賺點本錢再回來"),
           );
         }
         return replyEphemeralContainer(
@@ -501,7 +629,7 @@ module.exports = async (client, interaction) => {
       }
       const c = buildSuccessContainer(
         "🏗️ 農場擴建成功",
-        `📈 地塊 **${result.from} → ${result.to}** 格\n💸 花費：${result.cost} 幣`,
+        `📈 地塊 **${result.from} → ${result.to}** 格\n💸 花費：${result.cost.toLocaleString()} 幣`,
         interaction.user.id,
       );
       return interaction.editReply({
