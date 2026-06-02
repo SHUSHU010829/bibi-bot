@@ -14,6 +14,10 @@ const {
 const { farming } = require("../../config");
 const farmService = require("../../features/farm/farmService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
+const {
+  sendFarmAnnouncement,
+  buildHarvestAnnouncement,
+} = require("../../features/farm/farmAnnouncer");
 
 function errorContainer(title, body, hint) {
   return new ContainerBuilder()
@@ -145,6 +149,11 @@ module.exports = {
         components: [container],
         flags: MessageFlags.IsComponentsV2,
       });
+
+      const harvestNote = buildHarvestAnnouncement({ user: interaction.user, result });
+      if (harvestNote) {
+        sendFarmAnnouncement(client, interaction.channel, harvestNote).catch(() => {});
+      }
 
       const hooks = [
         { questId: "daily_farm_harvest" },

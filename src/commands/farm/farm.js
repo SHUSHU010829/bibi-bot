@@ -17,7 +17,7 @@ module.exports = {
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply();
     try {
       if (!farming?.enabled) return interaction.editReply("🔧 農場系統尚未啟動！");
 
@@ -50,7 +50,7 @@ module.exports = {
 
       await interaction.editReply({
         components: [container],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        flags: MessageFlags.IsComponentsV2,
       });
     } catch (error) {
       console.log(`[ERROR] /農場:\n${error}\n${error.stack}`.red);

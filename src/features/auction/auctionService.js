@@ -161,22 +161,27 @@ async function placeBid(
     return { ok: false, reason: "too_low", required, listing };
   }
 
+  // 手續費由買方（出價者）支付：託管金額 = bid + fee
+  const bidFeeRate = c.feeRate ?? 0.05;
+  const bidFee = Math.floor(charge * bidFeeRate);
+  const totalCharge = charge + bidFee;
+
   const balanceDoc = await client.userCoinsCollection
     .findOne({ userId: bidderId, guildId })
     .catch(() => null);
-  if ((balanceDoc?.totalCoins || 0) < charge) {
-    return { ok: false, reason: "insufficient", balance: balanceDoc?.totalCoins || 0 };
+  if ((balanceDoc?.totalCoins || 0) < totalCharge) {
+    return { ok: false, reason: "insufficient", balance: balanceDoc?.totalCoins || 0, need: totalCharge };
   }
 
-  // 託管出價金額（一口價時為封頂後的金額）
+  // 託管出價金額 + 手續費（一口價時為封頂後的金額 + 對應手續費）
   const debit = await grantCoins(client, {
     userId: bidderId,
     guildId,
     username: bidderName,
-    amount: -charge,
+    amount: -totalCharge,
     source: "auction_bid",
     member,
-    meta: { listingId, buyout: isBuyout },
+    meta: { listingId, buyout: isBuyout, fee: bidFee, gross: charge },
   });
   if (!debit) return { ok: false, reason: "grant_failed" };
 
@@ -205,28 +210,29 @@ async function placeBid(
   );
   const doc = updated?.value || updated;
   if (!doc) {
-    // 同時間有人捷足先登 → 退回剛託管的金額
+    // 同時間有人捷足先登 → 退回剛託管的金額 + 手續費
     await grantCoins(client, {
       userId: bidderId,
       guildId,
       username: bidderName,
-      amount: charge,
+      amount: totalCharge,
       source: "auction_refund",
       member,
-      meta: { listingId, reason: "race" },
+      meta: { listingId, reason: "race", fee: bidFee },
     }).catch(() => {});
     return { ok: false, reason: "race" };
   }
 
-  // 退回前一位出價者
+  // 退回前一位出價者（含當時預付的手續費）
   if (prevBidder && prevBid) {
+    const prevFee = Math.floor(prevBid * bidFeeRate);
     await grantCoins(client, {
       userId: prevBidder,
       guildId,
       username: listing.bidder_name,
-      amount: prevBid,
+      amount: prevBid + prevFee,
       source: "auction_refund",
-      meta: { listingId, reason: "outbid" },
+      meta: { listingId, reason: "outbid", fee: prevFee },
     }).catch(() => {});
   }
 
@@ -247,23 +253,23 @@ async function placeBid(
   return { ok: true, listing: doc, prevBidderId: prevBidder, oreDef: mining?.ores?.[doc.ore] };
 }
 
-// 成交收尾：賣家收款（扣手續費）+ 礦石交貨給得標者 + 標記 sold。
+// 成交收尾：賣家收款（全額，手續費已由出價者於出價時預付）+ 礦石交貨給得標者 + 標記 sold。
 // 前提：listing 已被鎖為 settling、且有 bidder_id / current_bid。
 // 供 cron 結算與一口價即時成交共用，避免兩套邏輯漂移。
 async function finalizeSale(client, listing) {
   const c = cfg();
   const feeRate = await resolveSellerFeeRate(client, listing, c.feeRate ?? 0.05);
   const fee = Math.floor(listing.current_bid * feeRate);
-  const proceeds = listing.current_bid - fee;
+  const proceeds = listing.current_bid;
 
-  // 賣家收款（已扣手續費）
+  // 賣家收款（全額，手續費已在出價時由買方預付託管）
   await grantCoins(client, {
     userId: listing.seller_id,
     guildId: listing.guild_id,
     username: listing.seller_name,
     amount: proceeds,
     source: "auction_payout",
-    meta: { listingId: listing.listing_id, fee, gross: listing.current_bid },
+    meta: { listingId: listing.listing_id, fee, gross: listing.current_bid, feePaidBy: "buyer" },
   }).catch(() => {});
 
   // 礦石撥給得標者

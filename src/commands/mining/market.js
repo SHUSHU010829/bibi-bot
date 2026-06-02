@@ -33,7 +33,7 @@ module.exports = {
   channelBuckets: ["marketplace"],
   data: new SlashCommandBuilder()
     .setName("市集")
-    .setDescription("礦石市集：賣礦、換礦、徵求、競標 🏪")
+    .setDescription("礦石市集：賣礦、徵求、競標 🏪")
     .setContexts(InteractionContextType.Guild)
     // 逛攤
     .addSubcommand((s) =>
@@ -56,24 +56,6 @@ module.exports = {
         )
         .addIntegerOption((o) =>
           o.setName("總價").setDescription("你要賣多少金幣（一口價總額）").setRequired(true).setMinValue(1)
-        )
-    )
-    // 換礦
-    .addSubcommand((s) =>
-      s
-        .setName("換礦")
-        .setDescription("以物易物：給出某礦，換取另一種礦")
-        .addStringOption((o) =>
-          o.setName("給的礦石").setDescription("你要給出的礦石").setRequired(true).addChoices(...oreChoices())
-        )
-        .addIntegerOption((o) =>
-          o.setName("給的數量").setDescription("你給出的數量").setRequired(true).setMinValue(1)
-        )
-        .addStringOption((o) =>
-          o.setName("想要礦石").setDescription("你想換到的礦石").setRequired(true).addChoices(...oreChoices())
-        )
-        .addIntegerOption((o) =>
-          o.setName("想要數量").setDescription("你想換到的數量").setRequired(true).setMinValue(1)
         )
     )
     // 徵求
@@ -170,7 +152,6 @@ module.exports = {
       if (sub === "逛攤") return await handleBrowse(client, interaction);
       if (sub === "我的攤位") return await handleMyStall(client, interaction);
       if (sub === "賣礦") return await handleSell(client, interaction);
-      if (sub === "換礦") return await handleBarter(client, interaction);
       if (sub === "徵求") return await handleWant(client, interaction);
       if (sub === "競標") return await handleAuction(client, interaction);
       if (sub === "賣魚") return await handleFishSell(client, interaction);
@@ -254,54 +235,7 @@ async function handleSell(client, interaction) {
           `**#${l.listing_id}** ・ ${oreLabel(l.ore)} ×${l.qty}\n` +
           `一口價：**${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
-          `-# 成交將收取 ${feeRate}% 手續費；無人購買將自動退回礦石。`
-      )
-    );
-  await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
-}
-
-// ─── 換礦 ───────────────────────────────────────────────────────────────────
-async function handleBarter(client, interaction) {
-  const giveOre = interaction.options.getString("給的礦石");
-  const giveQty = interaction.options.getInteger("給的數量");
-  const wantOre = interaction.options.getString("想要礦石");
-  const wantQty = interaction.options.getInteger("想要數量");
-
-  const result = await marketplaceService.createBarterListing(client, {
-    sellerId: interaction.user.id,
-    guildId: interaction.guildId,
-    sellerName: interaction.member?.displayName || interaction.user.username,
-    giveOre,
-    giveQty,
-    wantOre,
-    wantQty,
-  });
-
-  if (!result.ok) {
-    if (result.reason === "no_give_ore" || result.reason === "no_want_ore")
-      return interaction.editReply("❌ 找不到這種礦石。");
-    if (result.reason === "same_ore")
-      return interaction.editReply("❌ 給出和想要的礦石不能相同！");
-    if (result.reason === "too_many")
-      return interaction.editReply(`📦 你同時最多只能掛 **${result.max}** 件掛單。`);
-    if (result.reason === "insufficient")
-      return interaction.editReply(
-        `🎒 你只有 **${result.have}** 顆 ${result.oreDef.name}，無法掛 ${giveQty} 顆。`
-      );
-    return interaction.editReply("🔧 掛牌失敗，請稍後再試。");
-  }
-
-  const l = result.listing;
-  const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
-  const container = new ContainerBuilder()
-    .setAccentColor(0x3498db)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `# 🔄 換礦掛牌成功\n` +
-          `**#${l.listing_id}**\n` +
-          `你給出 ${oreLabel(l.ore)} ×${l.qty}，換取 ${oreLabel(l.want_ore)} ×${l.want_qty}\n` +
-          `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
-          `-# 無人接受將自動退回礦石。`
+          `-# 買方成交時加收 ${feeRate}% 手續費，賣方拿全額；無人購買將自動退回礦石。`
       )
     );
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
@@ -430,7 +364,7 @@ async function handleAuction(client, interaction) {
           `**#${l.listing_id}** ・ ${oreLabel(l.ore)} ×${l.qty}\n` +
           `起標價：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}${buyoutLine}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
-          `-# 成交將收取 ${feeRate}% 手續費；無人出價會自動退回礦石。`
+          `-# 得標者加收 ${feeRate}% 手續費，賣方拿全額；無人出價會自動退回礦石。`
       )
     );
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
@@ -481,7 +415,7 @@ async function handleFishSell(client, interaction) {
           `**#${l.listing_id}** ・ ${fishDef.emoji} ${fishDef.name} ×${l.qty}\n` +
           `一口價：**${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
-          `-# 成交將收取 ${feeRate}% 手續費；無人購買將自動退回魚袋。`
+          `-# 買方成交時加收 ${feeRate}% 手續費，賣方拿全額；無人購買將自動退回魚袋。`
       )
     );
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });

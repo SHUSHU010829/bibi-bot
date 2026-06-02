@@ -1,6 +1,8 @@
 {
   "farming": {
     "enabled": true,
+    "announceChannelId": "1511018291026460754",
+    "bigHarvestYieldBonusPct": 0.5,
     "maxPlots": 8,
     "plotTiers": [
       { "count": 2, "cost": 0 },

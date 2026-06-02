@@ -1,0 +1,11 @@
+{
+  "barter": {
+    "enabled": true,
+    "allowedChannelId": "1510657349944344737",
+    "feeRate": 0.01,
+    "expiresMs": 604800000,
+    "maxActivePerUser": 3,
+    "minItemPrice": 1,
+    "pageSize": 5
+  }
+}
