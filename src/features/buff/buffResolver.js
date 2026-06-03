@@ -120,6 +120,8 @@ async function summary(client, userId, guildId, member) {
   const guildQty = gc.buffsByType.mining_qty_bonus || 0;
   const guildWork = gc.buffsByType.work_income_multiplier || 0;
   const guildStaminaMax = gc.buffsByType.dungeon_stamina_max || 0;
+  const guildBossAtk = gc.buffsByType.boss_atk_pct || 0;
+  const guildBossAttackLimitBonus = gc.buffsByType.boss_attack_limit_bonus || 0;
   return {
     atk: atkFromProfile(profile),
     luckBonus: m.luckBonus + guildLuck,
@@ -148,6 +150,8 @@ async function summary(client, userId, guildId, member) {
           miningQtyBonus: guildQty,
           workIncomeBonus: guildWork,
           dungeonStaminaMax: guildStaminaMax,
+          bossAtkBonus: guildBossAtk,
+          bossAttackLimitBonus: guildBossAttackLimitBonus,
         }
       : null,
   };

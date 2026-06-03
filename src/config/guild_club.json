@@ -37,7 +37,8 @@
         "buffs": [
           { "type": "mining_qty_bonus", "value": 1 },
           { "type": "work_income_multiplier", "value": 0.1 },
-          { "type": "dungeon_stamina_max", "value": 1 }
+          { "type": "dungeon_stamina_max", "value": 1 },
+          { "type": "boss_atk_pct", "value": 0.05 }
         ]
       },
       {
@@ -48,7 +49,9 @@
           { "type": "mining_qty_bonus", "value": 1 },
           { "type": "work_income_multiplier", "value": 0.1 },
           { "type": "dungeon_stamina_max", "value": 1 },
-          { "type": "mining_luck_pct", "value": 0.05 }
+          { "type": "mining_luck_pct", "value": 0.05 },
+          { "type": "boss_atk_pct", "value": 0.1 },
+          { "type": "boss_attack_limit_bonus", "value": 1 }
         ]
       }
     ],

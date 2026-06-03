@@ -45,6 +45,14 @@
       "baseRandMax": 50,
       "luckBonusMult": 20
     },
+    "guildSync": {
+      "enabled": true,
+      "damageContributionRatio": 0.1,
+      "damageTreasuryRatio": 0.05,
+      "killerTreasuryRatio": 0.1,
+      "mvpTreasuryRatio": 0.1,
+      "treasuryLockHours": 168
+    },
     "counterMessages": [
       "{name} 一巴掌把你打飛！這次攻擊沒造成任何傷害。",
       "你揮空了！{name} 還順便嗆了你一句。",

@@ -140,6 +140,10 @@ module.exports = {
           lines.push(`• 💼 打工收入 +${Math.round(s.guildClub.workIncomeBonus * 100)}%`);
         if (s.guildClub.dungeonStaminaMax > 0)
           lines.push(`• 🔋 地下城體力上限 +${s.guildClub.dungeonStaminaMax}`);
+        if (s.guildClub.bossAtkBonus > 0)
+          lines.push(`• 🐉 BOSS 戰攻擊力 +${Math.round(s.guildClub.bossAtkBonus * 100)}%`);
+        if (s.guildClub.bossAttackLimitBonus > 0)
+          lines.push(`• ⚔️ BOSS 戰每場攻擊次數 +${s.guildClub.bossAttackLimitBonus}`);
         if (lines.length === 0)
           lines.push(`-# 公會升到 Lv.2 起逐步解鎖共享 buff`);
         container

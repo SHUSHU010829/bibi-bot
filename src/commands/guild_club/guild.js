@@ -12,6 +12,7 @@ const guildClubMembership = require("../../features/guild_club/guildClubMembersh
 const guildClubQuest = require("../../features/guild_club/guildClubQuest");
 const guildClubView = require("../../features/guild_club/guildClubView");
 const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
+const guildClubContribution = require("../../features/guild_club/guildClubContribution");
 
 // 公會指令類別白名單。Thread 走 parent channel 的 parentId（祖父類別）。
 // 空 / 未設定 → 不限制。
@@ -359,6 +360,9 @@ async function runInfo(client, interaction) {
   const isMember =
     !!viewerMembership && viewerMembership.guild_club_id === club.guild_club_id;
   const isLeader = isMember && viewerMembership.role === "leader";
+  const bossContributions = await guildClubContribution
+    .getWeeklyTop(client, club.guild_club_id, 5)
+    .catch(() => []);
 
   return interaction.editReply({
     components: [
@@ -368,6 +372,7 @@ async function runInfo(client, interaction) {
         members,
         isMember,
         isLeader,
+        bossContributions,
       }),
     ],
     flags: MessageFlags.IsComponentsV2,
