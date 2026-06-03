@@ -2,6 +2,7 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  SectionBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -63,14 +64,20 @@ function buildInfoContainer({
 
   if (def.buffs.length === 0) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**共享 Buff**\n-# 尚未解鎖，達成 Lv.2 後開始解鎖`
-      )
+      new TextDisplayBuilder().setContent(`**共享 Buff**\n-# 尚未解鎖`)
     );
   } else {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `**共享 Buff**\n${def.buffs.map((b) => `・${formatBuff(b)}`).join("\n")}`
+      )
+    );
+  }
+  const lockedBuffs = collectLockedBuffs(club.level);
+  if (lockedBuffs.length > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 未解鎖：${lockedBuffs.join("・")}`
       )
     );
   }
@@ -81,14 +88,32 @@ function buildInfoContainer({
       new TextDisplayBuilder().setContent(`**成員**\n-# 尚無成員`)
     );
   } else {
-    const lines = members.map((m) => {
-      const role = m.role === "leader" ? "👑" : "・";
-      const donated = (m.total_donated || 0).toLocaleString();
-      return `${role} <@${m.userId}>　捐款 ${donated} ${COIN_EMOJI}`;
-    });
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`**成員**\n${lines.join("\n")}`)
+      new TextDisplayBuilder().setContent(`**成員**`)
     );
+    members.forEach((m) => {
+      const roleEmoji = m.role === "leader" ? "👑" : "・";
+      const donated = (m.total_donated || 0).toLocaleString();
+      const line = `${roleEmoji} <@${m.userId}>　捐款 ${donated} ${COIN_EMOJI}`;
+      // 會長視角：對其他成員顯示踢出按鈕
+      if (isLeader && m.userId !== viewerId) {
+        container.addSectionComponents(
+          new SectionBuilder()
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(line))
+            .setButtonAccessory(
+              new ButtonBuilder()
+                .setCustomId(`gc_kick_${viewerId}_${m.userId}`)
+                .setLabel("踢出")
+                .setEmoji("🚪")
+                .setStyle(ButtonStyle.Danger)
+            )
+        );
+      } else {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(line)
+        );
+      }
+    });
   }
 
   if (isLeader) {
@@ -110,6 +135,25 @@ function buildInfoContainer({
   return container;
 }
 
+// 列出當前等級之後才解鎖的新增 buff，做為 -# 未解鎖：A（Lv.4）・B（Lv.5）。
+function collectLockedBuffs(currentLevel) {
+  const out = [];
+  const seen = new Set();
+  for (const b of (guildClub?.levels || []).find((l) => l.level === currentLevel)?.buffs || []) {
+    seen.add(`${b.type}:${b.value}`);
+  }
+  for (const lvDef of guildClub?.levels || []) {
+    if (lvDef.level <= currentLevel) continue;
+    for (const b of lvDef.buffs || []) {
+      const key = `${b.type}:${b.value}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(`${formatBuff(b)}（Lv.${lvDef.level}）`);
+    }
+  }
+  return out;
+}
+
 function buildCreateSuccessContainer({ userId, club, cost }) {
   const container = new ContainerBuilder()
     .setAccentColor(COLOR_SUCCESS)
@@ -127,6 +171,15 @@ function buildCreateSuccessContainer({ userId, club, cost }) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `-# 下一步：用 /公會 邀請 @user 邀請成員，累積金庫升級解鎖 Buff。`
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`gc_view_${userId}`)
+          .setLabel("查看公會")
+          .setEmoji("🏰")
+          .setStyle(ButtonStyle.Secondary)
       )
     );
   return container;
@@ -463,7 +516,7 @@ function buildQuestListContainer({ viewerId, club, period, items, isLeader }) {
   return container;
 }
 
-function buildQuestClaimSuccessContainer({ club, claimed, totalReward, levelUp }) {
+function buildQuestClaimSuccessContainer({ club, claimed, totalReward, levelUp, leaderId }) {
   const container = new ContainerBuilder()
     .setAccentColor(COLOR_SUCCESS)
     .addTextDisplayComponents(
@@ -491,10 +544,26 @@ function buildQuestClaimSuccessContainer({ club, claimed, totalReward, levelUp }
         )
       );
   }
+  if (leaderId) {
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`gc_view_${leaderId}`)
+          .setLabel("查看公會")
+          .setEmoji("🏰")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`gc_rank_${leaderId}`)
+          .setLabel("查看排行")
+          .setEmoji("🏆")
+          .setStyle(ButtonStyle.Secondary)
+      )
+    );
+  }
   return container;
 }
 
-function buildLeaderboardContainer({ clubs, viewerClubId }) {
+function buildLeaderboardContainer({ viewerId, clubs, viewerClubId }) {
   const container = new ContainerBuilder().setAccentColor(COLOR_GOLD);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -515,10 +584,17 @@ function buildLeaderboardContainer({ clubs, viewerClubId }) {
     container.addSeparatorComponents(new SeparatorBuilder());
     const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
     const me = c.guild_club_id === viewerClubId ? "👉 " : "";
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `${me}${medal} **${c.name}**　Lv.${c.level}　${(c.treasury || 0).toLocaleString()} ${COIN_EMOJI}\n-# 餘額 ${(c.treasury_current || 0).toLocaleString()}　成員 ${c.member_count}/${c.max_members}`
-      )
+    const line = `${me}${medal} **${c.name}**　Lv.${c.level}　${(c.treasury || 0).toLocaleString()} ${COIN_EMOJI}\n-# 餘額 ${(c.treasury_current || 0).toLocaleString()}　成員 ${c.member_count}/${c.max_members}`;
+    container.addSectionComponents(
+      new SectionBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(line))
+        .setButtonAccessory(
+          new ButtonBuilder()
+            .setCustomId(`gc_view_club_${viewerId}_${c.guild_club_id}`)
+            .setLabel("查看")
+            .setEmoji("🏰")
+            .setStyle(ButtonStyle.Secondary)
+        )
     );
   });
   return container;

@@ -8,8 +8,11 @@
 //   gc_app_approve_<leaderId>_<applicationId>        — 批准申請
 //   gc_app_reject_<leaderId>_<applicationId>         — 拒絕申請
 //   gc_donate_<userId>_<amount>                      — 快捷再捐款
-//   gc_view_<userId>                                 — 開啟資訊 ephemeral
+//   gc_view_<userId>                                 — 開啟資訊 ephemeral（自己公會）
+//   gc_view_club_<userId>_<guildClubId>              — 從排行榜開啟指定公會 ephemeral
+//   gc_rank_<userId>                                 — 開啟排行榜 ephemeral
 //   gc_quest_claim_<leaderId>                        — 一鍵領取週任務獎勵
+//   gc_kick_<leaderId>_<targetId>                    — 從資訊頁面踢人
 
 require("colors");
 const { MessageFlags } = require("discord.js");
@@ -19,6 +22,13 @@ const guildClubMembership = require("../../features/guild_club/guildClubMembersh
 const guildClubQuest = require("../../features/guild_club/guildClubQuest");
 const guildClubView = require("../../features/guild_club/guildClubView");
 const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
+
+async function loadClubAndMembers(client, guild_club_id) {
+  const club = await guildClubService.getClubById(client, guild_club_id);
+  if (!club) return null;
+  const members = await guildClubService.listMembers(client, guild_club_id);
+  return { club, members };
+}
 
 module.exports = async (client, interaction) => {
   if (!interaction.isButton()) return;
@@ -40,11 +50,20 @@ module.exports = async (client, interaction) => {
   if (id.startsWith("gc_donate_")) {
     return handleQuickDonate(client, interaction);
   }
+  if (id.startsWith("gc_view_club_")) {
+    return handleViewClub(client, interaction);
+  }
   if (id.startsWith("gc_view_")) {
     return handleQuickView(client, interaction);
   }
+  if (id.startsWith("gc_rank_")) {
+    return handleQuickRank(client, interaction);
+  }
   if (id.startsWith("gc_quest_claim_")) {
     return handleQuestClaim(client, interaction);
+  }
+  if (id.startsWith("gc_kick_")) {
+    return handleQuickKick(client, interaction);
   }
 };
 
@@ -523,6 +542,138 @@ async function handleQuestClaim(client, interaction) {
       ],
       flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
     }).catch(() => {});
+  }
+}
+
+async function handleViewClub(client, interaction) {
+  const rest = interaction.customId.slice("gc_view_club_".length);
+  const sepIdx = rest.indexOf("_");
+  if (sepIdx <= 0) return;
+  const ownerId = rest.slice(0, sepIdx);
+  const guildClubId = rest.slice(sepIdx + 1);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的查看按鈕！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const loaded = await loadClubAndMembers(client, guildClubId);
+  if (!loaded) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 公會已解散",
+          body: "找不到這個公會。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  const myMembership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  const isMember =
+    !!myMembership && myMembership.guild_club_id === loaded.club.guild_club_id;
+  const isLeader = isMember && myMembership.role === "leader";
+  return interaction.editReply({
+    components: [
+      guildClubView.buildInfoContainer({
+        viewerId: interaction.user.id,
+        club: loaded.club,
+        members: loaded.members,
+        isMember,
+        isLeader,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+async function handleQuickRank(client, interaction) {
+  const ownerId = interaction.customId.slice("gc_rank_".length);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的查看按鈕！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const clubs = await guildClubQuest.getLeaderboard(client, {
+    guildId: interaction.guildId,
+    limit: 10,
+  });
+  const myMembership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  return interaction.editReply({
+    components: [
+      guildClubView.buildLeaderboardContainer({
+        viewerId: interaction.user.id,
+        clubs,
+        viewerClubId: myMembership?.guild_club_id || null,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+async function handleQuickKick(client, interaction) {
+  const rest = interaction.customId.slice("gc_kick_".length);
+  const sepIdx = rest.indexOf("_");
+  if (sepIdx <= 0) return;
+  const leaderId = rest.slice(0, sepIdx);
+  const targetId = rest.slice(sepIdx + 1);
+  if (interaction.user.id !== leaderId) {
+    return interaction.reply({
+      content: "🚫 這不是你的踢人按鈕！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const result = await guildClubMembership.kick(client, {
+      leaderId: interaction.user.id,
+      guildId: interaction.guildId,
+      targetId,
+    });
+    if (!result.ok) {
+      return interaction.editReply({
+        components: [
+          guildClubView.buildErrorContainer({
+            title: "❌ 踢人失敗",
+            body:
+              result.reason === "target_not_in_your_club"
+                ? `<@${targetId}> 已不在你的公會（可能已退會）。`
+                : result.reason === "cannot_kick_self"
+                  ? "不能踢自己。"
+                  : `原因：${result.reason}`,
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+    // 從 ephemeral 觸發的按鈕踢人不公開廣播（要公開請用 /公會 踢人）
+    const loaded = await loadClubAndMembers(client, result.club.guild_club_id);
+    if (!loaded) return;
+    return interaction.editReply({
+      components: [
+        guildClubView.buildInfoContainer({
+          viewerId: interaction.user.id,
+          club: loaded.club,
+          members: loaded.members,
+          isMember: true,
+          isLeader: true,
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (e) {
+    console.log(`[GUILD_CLUB] quick kick 失敗：${e.stack || e.message}`.red);
   }
 }
 

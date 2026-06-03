@@ -754,6 +754,7 @@ async function runClaim(client, interaction) {
         claimed: result.claimed,
         totalReward: result.totalReward,
         levelUp: result.levelUp,
+        leaderId: interaction.user.id,
       }),
     ],
     flags: MessageFlags.IsComponentsV2,
@@ -779,6 +780,7 @@ async function runRank(client, interaction) {
   return interaction.editReply({
     components: [
       guildClubView.buildLeaderboardContainer({
+        viewerId: interaction.user.id,
         clubs,
         viewerClubId: myMembership?.guild_club_id || null,
       }),
