@@ -135,12 +135,14 @@ async function doWork(client, { userId, guildId, member, username }) {
   const newCount = workCount + 1;
   const nextLevelInfo = resolveWorkLevel(newCount);
 
+  const guildWorkBonus = (grant.guildWorkMultiplier || 1) - 1;
   return {
     ok: true,
     job,
-    amount,
+    amount: grant.granted,
     baseAmount,
     foodWorkBonus,
+    guildWorkBonus,
     balance: grant.doc?.totalCoins ?? 0,
     newCooldownAt,
     claimsToday: claimsToday + 1,
