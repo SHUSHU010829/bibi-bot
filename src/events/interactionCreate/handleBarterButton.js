@@ -21,7 +21,7 @@ const {
 const { barter } = require("../../config");
 const barterService = require("../../features/barter/barterService");
 const { computeFee } = require("../../features/barter/barterService");
-const { errorContainer } = require("../../features/barter/barterView");
+const { buildBoardContainer, errorContainer } = require("../../features/barter/barterView");
 const { getItemDef } = require("../../features/barter/itemCatalog");
 
 function statusPanel(text) {
@@ -55,6 +55,11 @@ module.exports = async (client, interaction) => {
         components: [statusPanel("✖️ 已取消操作。")],
         flags: MessageFlags.IsComponentsV2,
       });
+    }
+
+    // 列表翻頁：barter_page_<viewerId>_<page>
+    if (interaction.customId.startsWith("barter_page_")) {
+      return handlePage(client, interaction);
     }
 
     // 二次確認：確定接受
@@ -252,6 +257,40 @@ async function handleCancel(client, interaction, listingId) {
     );
   await interaction.editReply({
     components: [c],
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+  });
+}
+
+async function handlePage(client, interaction) {
+  const parts = interaction.customId.split("_");
+  const viewerId = parts[2];
+  const page = Number.parseInt(parts[3], 10);
+  if (interaction.user.id !== viewerId) {
+    return interaction.reply({
+      components: [
+        errorContainer("❌ 不是你的列表", "這個列表是別人開的。", "用 `/交易所 列表` 自己開一份"),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+  if (!Number.isFinite(page) || page < 1) return;
+
+  await interaction.deferUpdate();
+  const cfg = barterService.cfg();
+  const pageSize = cfg.pageSize ?? 5;
+  const { listings, total } = await barterService.listActive(client, interaction.guildId, {
+    limit: pageSize,
+    skip: (page - 1) * pageSize,
+  });
+  const container = buildBoardContainer({
+    listings,
+    viewerId: interaction.user.id,
+    total,
+    page,
+    pageSize,
+  });
+  await interaction.editReply({
+    components: [container],
     flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
   });
 }
