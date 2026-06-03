@@ -338,7 +338,7 @@ function buildJoinAnnouncementContainer({ userId, club, via }) {
     .setAccentColor(COLOR_SUCCESS)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# 🎉 <@${userId}> 加入了「${club.name}」${tag}`
+        `🎉 <@${userId}> 加入了「${club.name}」${tag}`
       )
     );
 }
