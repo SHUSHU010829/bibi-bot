@@ -244,6 +244,7 @@ function buildSettlementContainer(settlement) {
       const extras = [];
       if (p.rareReward) extras.push("✨ ×1");
       if (p.killBonus) extras.push(`擊殺 +${p.killBonus}`);
+      if (p.guildClubName) extras.push(`🏰 ${p.guildClubName}`);
       return `**#${i + 1}** <@${p.userId}> — ${p.damage.toLocaleString()} 傷害　→ ${p.share.toLocaleString()} ${COIN_EMOJI}${extras.length ? "（" + extras.join("、") + "）" : ""}`;
     });
     container
@@ -251,6 +252,32 @@ function buildSettlementContainer(settlement) {
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(`**Top 5 戰報**\n${lines.join("\n")}`),
       );
+  }
+
+  // 公會傷害榜 + 公庫入帳（Module B/C 連動結果）
+  const gAgg = (settlement.guildAggregates || []).filter((g) => g.damage > 0);
+  if (gAgg.length > 0) {
+    const top3 = gAgg.slice(0, 3);
+    const medals = ["🥇", "🥈", "🥉"];
+    const lines = top3.map((g, i) => {
+      const treasury = g.treasuryAdded > 0
+        ? `　→ 公庫 +${g.treasuryAdded.toLocaleString()} ${COIN_EMOJI}${g.treasuryLocked > 0 ? `（含鎖定 ${g.treasuryLocked.toLocaleString()}）` : ""}`
+        : "";
+      return `${medals[i]} **${g.name}**　Lv.${g.level}　${g.damage.toLocaleString()} 傷害（${g.contributors} 人）${treasury}`;
+    });
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`**🏰 公會戰績**\n${lines.join("\n")}`),
+      );
+    const lockHours = settlement.guildSync?.treasuryLockHours || 0;
+    if (lockHours > 0 && top3.some((g) => g.treasuryLocked > 0)) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 含擊殺者 / MVP 分潤的鎖定金將於 ${lockHours} 小時後解鎖到可分配餘額。`,
+        ),
+      );
+    }
   }
 
   if (!killed) {

@@ -22,6 +22,8 @@ const BUFF_LABELS = {
   mining_luck_pct: (v) => `挖礦 luck +${Math.round(v * 100)}%（吃 luckCap）`,
   work_income_multiplier: (v) => `打工收入 +${Math.round(v * 100)}%`,
   dungeon_stamina_max: (v) => `地下城體力上限 +${v}`,
+  boss_atk_pct: (v) => `BOSS 戰攻擊力 +${Math.round(v * 100)}%`,
+  boss_attack_limit_bonus: (v) => `BOSS 戰每場攻擊次數 +${v}`,
 };
 
 const formatBuff = (b) => {
@@ -35,6 +37,7 @@ function buildInfoContainer({
   members,
   isMember,
   isLeader,
+  bossContributions,
 }) {
   const def = levelDef(club.level);
   const next = nextLevelDef(club.level);
@@ -115,6 +118,24 @@ function buildInfoContainer({
     });
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`**成員**（${members.length}）\n${lines.join("\n")}`)
+    );
+  }
+
+  if (bossContributions && bossContributions.length > 0) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    const lines = bossContributions.slice(0, 5).map((c, i) => {
+      const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
+      return `${medal} <@${c.userId}>　${(c.weeklyContribution || 0).toLocaleString()} 點`;
+    });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**🐉 本週 BOSS 貢獻 Top 5**\n${lines.join("\n")}`
+      )
+    );
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 每場 BOSS 結算時，依造成傷害換算成貢獻點。`
+      )
     );
   }
 

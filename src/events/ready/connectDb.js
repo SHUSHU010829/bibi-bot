@@ -165,6 +165,7 @@ module.exports = async (client) => {
     const guildClubInvitationsCollection = database.collection("GuildClubInvitations");
     const guildClubApplicationsCollection = database.collection("GuildClubApplications");
     const guildClubQuestClaimsCollection = database.collection("GuildClubQuestClaims");
+    const guildClubContributionsCollection = database.collection("GuildClubContributions");
 
     // 打工系統 collection（記每位玩家的打工冷卻）
     const workProfilesCollection = database.collection("WorkProfiles");
@@ -277,6 +278,7 @@ module.exports = async (client) => {
     client.guildClubInvitationsCollection = guildClubInvitationsCollection;
     client.guildClubApplicationsCollection = guildClubApplicationsCollection;
     client.guildClubQuestClaimsCollection = guildClubQuestClaimsCollection;
+    client.guildClubContributionsCollection = guildClubContributionsCollection;
     client.workProfilesCollection = workProfilesCollection;
     client.duelGamesCollection = duelGamesCollection;
     client.auctionListingsCollection = auctionListingsCollection;
@@ -1072,6 +1074,20 @@ module.exports = async (client) => {
         { guild_club_id: 1, questId: 1, period: 1 },
         { unique: true, name: "uniq_gcqc_club_quest_period" }
       ).catch((e) => console.log(`[WARN] GuildClubQuestClaims uniq: ${e.message}`.yellow));
+
+      // BOSS 公會貢獻：(userId, guildId) 唯一，累計 + 週度
+      await guildClubContributionsCollection.createIndex(
+        { userId: 1, guildId: 1 },
+        { unique: true, name: "uniq_gcc_user_guild" }
+      ).catch((e) => console.log(`[WARN] GuildClubContributions uniq: ${e.message}`.yellow));
+      await guildClubContributionsCollection.createIndex(
+        { guild_club_id: 1, weekKey: 1, weeklyContribution: -1 },
+        { name: "gcc_club_week_rank" }
+      ).catch((e) => console.log(`[WARN] GuildClubContributions rank: ${e.message}`.yellow));
+      await guildClubContributionsCollection.createIndex(
+        { guild_club_id: 1, totalContribution: -1 },
+        { name: "gcc_club_total_rank" }
+      ).catch((e) => console.log(`[WARN] GuildClubContributions total: ${e.message}`.yellow));
       await fishLogsCollection.createIndex(
         { ts: 1 },
         { expireAfterSeconds: 90 * 24 * 60 * 60, name: "fish_logs_ttl_90d" }

@@ -119,16 +119,20 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   const now = Date.now();
   if (now >= bossDoc.ends_at) return { ok: false, reason: "expired" };
 
-  const attackLimit = cfg().attackLimitPerPlayer ?? 5;
+  const profile = await getOrCreate(client, userId, guildId);
+  const club = await getMemberClub(client, userId, guildId);
+  const max = staminaMax(member, club);
+
+  // 公會 buff 預讀（攻擊上限會吃 boss_attack_limit_bonus）
+  const sum = await buffResolver.summary(client, userId, guildId, member).catch(() => null);
+  const guildBossAtkPct = sum?.guildClub?.bossAtkBonus || 0;
+  const guildAttackLimitBonus = sum?.guildClub?.bossAttackLimitBonus || 0;
+
+  const attackLimit = (cfg().attackLimitPerPlayer ?? 5) + guildAttackLimitBonus;
   const used = (bossDoc.attack_counts || {})[userId] || 0;
   if (used >= attackLimit) {
     return { ok: false, reason: "attack_limit", used, limit: attackLimit };
   }
-
-  // 體力檢查（與地下城共用）
-  const profile = await getOrCreate(client, userId, guildId);
-  const club = await getMemberClub(client, userId, guildId);
-  const max = staminaMax(member, club);
   const st = resolveStamina(profile, max);
   if (st.stamina <= 0) {
     return {
@@ -179,7 +183,6 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   // 傷害計算
   let damage = 0;
   if (!isCounter) {
-    const sum = await buffResolver.summary(client, userId, guildId, member).catch(() => null);
     const atk = sum?.atk ?? (await buffResolver.getEffectiveAtk(client, userId, guildId));
     const luck = sum?.luckBonus ?? 0;
     const dmgCfg = cfg().damage || {};
@@ -192,7 +195,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     );
     const comboActive = now < comboActiveUntil;
     const comboMult = comboActive ? (comboCfgVal.bonusMult ?? 1.3) : 1;
-    damage = Math.max(1, Math.floor(base * (phase.damageMult ?? 1) * streakMult * comboMult));
+    const guildMult = 1 + guildBossAtkPct;
+    damage = Math.max(1, Math.floor(base * (phase.damageMult ?? 1) * streakMult * comboMult * guildMult));
   }
 
   // 體力扣除
