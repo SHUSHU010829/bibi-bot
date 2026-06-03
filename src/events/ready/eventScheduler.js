@@ -63,7 +63,7 @@ async function sendAnnouncement(client, event, phase) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(body))
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# <t:${Math.floor(Date.now() / 1000)}:R>　用 /加成 查看生效中的加成`,
+        `-# <t:${Math.floor(Date.now() / 1000)}:R>　用 /狀態 查看生效中的加成`,
       ),
     );
 

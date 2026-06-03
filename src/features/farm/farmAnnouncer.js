@@ -52,8 +52,21 @@ function buildDefendAnnouncement({ user, result }) {
     (result.weaponBroke ? "（武器也斷了 💥）" : "");
 }
 
+function buildTrapAnnouncement({ user, result }) {
+  if (!result?.ok) return null;
+  const m = result.monster || {};
+  const mTag = `${m.monsterEmoji || "👾"} ${m.monsterName || "怪物"}`;
+  if (result.won) {
+    return `🪤 **${user}** 體力耗盡只能擺陷阱…結果還真把 **${mTag}** 逼退了！` +
+      (result.coinsGained > 0 ? `（撿到 +${result.coinsGained} 幣）` : "");
+  }
+  const flavor = result.flavor ? `\n-# ${result.flavor}` : "";
+  return `🪤 **${user}** 沒體力只好擺陷阱…可惜沒派上用場，作物全毀了 🥲${flavor}`;
+}
+
 module.exports = {
   sendFarmAnnouncement,
   buildHarvestAnnouncement,
   buildDefendAnnouncement,
+  buildTrapAnnouncement,
 };

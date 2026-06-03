@@ -11,7 +11,8 @@ const {
 const buffResolver = require("../../features/buff/buffResolver");
 const { getActiveFoodBuffs } = require("../../features/fishing/cookService");
 const { getOrCreate: getMiningProfile } = require("../../features/mining/miningProfile");
-const { fishing } = require("../../config");
+const { resolveStamina, staminaMax, staminaBonus } = require("../../features/mining/dungeonService");
+const { fishing, dungeon } = require("../../config");
 
 function pct(mult) {
   return `${Math.round((mult - 1) * 100)}%`;
@@ -19,8 +20,8 @@ function pct(mult) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("加成")
-    .setDescription("查看你目前生效中的各種加成（攻擊 / 幸運 / 金幣 / 經驗）✨")
+    .setName("狀態")
+    .setDescription("查看目前體力、加成（攻擊 / 幸運 / 金幣 / 經驗）與生效中的 buff ✨")
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {
@@ -52,12 +53,35 @@ module.exports = {
         ? `**🌾 農場收成**：+${Math.round(s.farmYieldBonus * 100)}%\n`
         : "";
 
+      const miningProfileForStamina = await getMiningProfile(
+        client, interaction.user.id, interaction.guildId
+      ).catch(() => null);
+      const sMax = staminaMax(interaction.member);
+      const sBonus = staminaBonus(interaction.member);
+      const sBase = sMax - sBonus;
+      const st = resolveStamina(miningProfileForStamina || {}, sMax);
+      const bonusTag = sBonus > 0 ? `（${sBase} + Twitch +${sBonus}）` : "";
+      const staminaLines = [`**🔋 體力**：${st.stamina}/${sMax}${bonusTag}`];
+      if (st.nextRegenAt) {
+        const regenMs = dungeon?.staminaRegenMs ?? 3600000;
+        const fullAt = st.updatedAt + (sMax - st.stamina) * regenMs;
+        staminaLines.push(
+          `-# 下一點 <t:${Math.floor(st.nextRegenAt / 1000)}:R>・回滿 <t:${Math.floor(fullAt / 1000)}:R>`
+        );
+      } else {
+        staminaLines.push("-# 體力已滿，隨時可進地下城");
+      }
+
       const container = new ContainerBuilder()
         .setAccentColor(0x1abc9c)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `# ✨ ${interaction.member?.displayName || interaction.user.username} 的加成總覽`
+            `# ✨ ${interaction.member?.displayName || interaction.user.username} 的狀態總覽`
           )
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(staminaLines.join("\n"))
         )
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
@@ -97,11 +121,8 @@ module.exports = {
 
       // 食物 buff（Phase S4）
       try {
-        const miningProfile = await getMiningProfile(
-          client, interaction.user.id, interaction.guildId
-        ).catch(() => null);
-        if (miningProfile) {
-          const foodBuffs = getActiveFoodBuffs(miningProfile);
+        if (miningProfileForStamina) {
+          const foodBuffs = getActiveFoodBuffs(miningProfileForStamina);
           if (foodBuffs.length > 0) {
             const recipes = fishing?.recipes || {};
             const foodLines = foodBuffs.map((b) => {
@@ -148,8 +169,8 @@ module.exports = {
         flags: MessageFlags.IsComponentsV2,
       });
     } catch (error) {
-      console.log(`[ERROR] /加成:\n${error}\n${error.stack}`.red);
-      await interaction.editReply("🔧 查詢加成失敗，請呼叫舒舒！").catch(() => {});
+      console.log(`[ERROR] /狀態:\n${error}\n${error.stack}`.red);
+      await interaction.editReply("🔧 查詢狀態失敗，請呼叫舒舒！").catch(() => {});
     }
   },
 };
