@@ -1033,6 +1033,11 @@ module.exports = async (client) => {
         { guild_club_id: 1, createdAt: -1 },
         { name: "gcl_club_time" }
       ).catch((e) => console.log(`[WARN] GuildClubLogs idx: ${e.message}`.yellow));
+      // 防洗錢冷卻查詢：(user_id, source, createdAt -1) 取最後一筆 leave / kicked / disbanded
+      await guildClubLogsCollection.createIndex(
+        { user_id: 1, source: 1, createdAt: -1 },
+        { name: "gcl_user_source_time", sparse: true }
+      ).catch((e) => console.log(`[WARN] GuildClubLogs user_source idx: ${e.message}`.yellow));
       await guildClubLogsCollection.createIndex(
         { createdAt: 1 },
         { expireAfterSeconds: 90 * 24 * 60 * 60, name: "gcl_ttl_90d" }

@@ -252,6 +252,13 @@ function createErrorView(result) {
       hint: "再去打工、挖礦或賣礦累積一下吧。",
     });
   }
+  if (reason === "recreate_cooldown") {
+    return guildClubView.buildErrorContainer({
+      title: "🧊 解散冷卻中，暫不能再建公會",
+      body: `你最近才解散過公會，請在 <t:${Math.floor(result.readyAt / 1000)}:R> 後再嘗試。`,
+      hint: "此冷卻是為了防止「拉人→解散→分錢」的洗錢循環。",
+    });
+  }
   return guildClubView.buildErrorContainer({
     title: "❌ 建立失敗",
     body: `原因：${reason}`,
@@ -398,7 +405,7 @@ async function runDisband(client, interaction) {
     });
   }
 
-  const club = await guildClubService.getClubById(
+  let club = await guildClubService.getClubById(
     client,
     membership.guild_club_id
   );
@@ -414,14 +421,41 @@ async function runDisband(client, interaction) {
     });
   }
 
+  // 解散冷靜期：未過就直接擋下，不顯示確認 UI
+  const graceMs = guildClubService.hoursToMs(
+    guildClubService.antiLaunderingCfg().newClubGracePeriodHours
+  );
+  if (graceMs > 0 && club.created_at) {
+    const readyAt = new Date(club.created_at).getTime() + graceMs;
+    if (Date.now() < readyAt) {
+      return interaction.editReply({
+        components: [
+          guildClubView.buildErrorContainer({
+            title: "🧊 公會冷靜期中",
+            body: `公會剛成立還在冷靜期，<t:${Math.floor(readyAt / 1000)}:R> 後才能解散。`,
+            hint: "此冷靜期防止「建立→拉人→解散」的洗錢循環。",
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+  }
+
+  club = await guildClubService.settleLockedTreasury(client, club);
+
   const members = await guildClubService.listMembers(
     client,
     club.guild_club_id
   );
-  const memberCount = members.length;
+  const tenureMs = guildClubService.hoursToMs(
+    guildClubService.antiLaunderingCfg().memberPayoutMinTenureHours
+  );
+  const eligibleMembers = guildClubService.eligibleForPayout(members, tenureMs);
+  const eligibleCount = eligibleMembers.length;
+  const ineligibleCount = members.length - eligibleCount;
   const payoutPerMember =
-    memberCount > 0
-      ? Math.floor((club.treasury_current || 0) / memberCount)
+    eligibleCount > 0
+      ? Math.floor((club.treasury_current || 0) / eligibleCount)
       : 0;
 
   return interaction.editReply({
@@ -430,6 +464,8 @@ async function runDisband(client, interaction) {
         leaderId: interaction.user.id,
         club,
         members,
+        eligibleCount,
+        ineligibleCount,
         payoutPerMember,
       }),
     ],
@@ -942,6 +978,12 @@ function inviteErrorView(result) {
       title: "❌ 已有 pending 邀請",
       body: "請等對方先回覆上一張邀請。",
     });
+  if (reason === "invitee_rejoin_cooldown")
+    return guildClubView.buildErrorContainer({
+      title: "🧊 對方仍在退會冷卻",
+      body: `對方最近才${result.source === "kicked_from_club" ? "被踢出" : "退出"}公會，需等到 <t:${Math.floor(result.readyAt / 1000)}:R> 才能加入新公會。`,
+      hint: "此冷卻防止短期換會洗錢。",
+    });
   return guildClubView.buildErrorContainer({
     title: "❌ 邀請失敗",
     body: `原因：${reason}`,
@@ -980,6 +1022,13 @@ function applyErrorView(result, name) {
     return guildClubView.buildErrorContainer({
       title: "❌ 冷卻中",
       body: `你最近被「${name}」拒絕過，請再等 ${remainTxt}。`,
+    });
+  }
+  if (reason === "rejoin_cooldown") {
+    return guildClubView.buildErrorContainer({
+      title: "🧊 退會冷卻中，暫不能申請新公會",
+      body: `你最近才${result.source === "kicked_from_club" ? "被踢出" : "退出"}公會，請在 <t:${Math.floor(result.readyAt / 1000)}:R> 後再申請。`,
+      hint: "此冷卻防止短期換會洗錢。",
     });
   }
   return guildClubView.buildErrorContainer({

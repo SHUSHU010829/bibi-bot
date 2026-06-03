@@ -17,6 +17,52 @@ const computeMaxMembers = (lv) => levelDef(lv).maxMembers;
 const nextLevelDef = (currentLv) =>
   guildClub.levels.find((l) => l.level === currentLv + 1) || null;
 
+const antiLaunderingCfg = () => guildClub?.antiLaundering || {};
+
+const hoursToMs = (h) => (h || 0) * 3600 * 1000;
+
+// 防洗錢冷卻：由 user_id + source 在 logs 中查最後一筆事件時間
+const findLastCooldownLog = async (client, { userId, source }) =>
+  client.guildClubLogsCollection.findOne(
+    { user_id: userId, source },
+    { sort: { createdAt: -1 } }
+  );
+
+// 在金庫操作前呼叫：把過期的鎖定條目搬回可分配池
+const settleLockedTreasury = async (client, club) => {
+  if (!club) return club;
+  const entries = Array.isArray(club.locked_entries) ? club.locked_entries : [];
+  if (entries.length === 0) return club;
+  const now = Date.now();
+  const expired = entries.filter((e) => new Date(e.unlocksAt).getTime() <= now);
+  if (expired.length === 0) return club;
+  const remaining = entries.filter(
+    (e) => new Date(e.unlocksAt).getTime() > now
+  );
+  const releasedAmount = expired.reduce((s, e) => s + (e.amount || 0), 0);
+  if (releasedAmount <= 0) return club;
+  const updated = await client.guildsClubCollection.findOneAndUpdate(
+    { guild_club_id: club.guild_club_id, disbanded_at: null },
+    {
+      $set: { locked_entries: remaining, updated_at: new Date() },
+      $inc: { treasury_locked: -releasedAmount, treasury_current: releasedAmount },
+    },
+    { returnDocument: "after" }
+  );
+  const updDoc = updated?.value || updated;
+  if (updDoc) {
+    await client.guildClubLogsCollection.insertOne({
+      guild_club_id: club.guild_club_id,
+      user_id: null,
+      amount: releasedAmount,
+      source: "quest_reward_unlock",
+      meta: { entries: expired.length },
+      createdAt: new Date(),
+    });
+  }
+  return updDoc || club;
+};
+
 const validateName = (raw) => {
   const trimmed = (raw || "").trim();
   const { minLength = 1, maxLength = 12, forbiddenChars = [] } =
@@ -55,6 +101,21 @@ const create = async (client, { userId, guildId, name, member }) => {
   const existing = await getMembership(client, userId, guildId);
   if (existing) return { ok: false, reason: "already_in_club", membership: existing };
 
+  // 解散後重建冷卻：避免反覆「建立 → 拉人頭 → 解散 → 分錢」洗錢循環
+  const recreateMs = hoursToMs(antiLaunderingCfg().recreateCooldownHours);
+  if (recreateMs > 0) {
+    const lastDisband = await findLastCooldownLog(client, {
+      userId,
+      source: "disbanded_as_leader",
+    });
+    if (lastDisband) {
+      const readyAt = new Date(lastDisband.createdAt).getTime() + recreateMs;
+      if (Date.now() < readyAt) {
+        return { ok: false, reason: "recreate_cooldown", readyAt };
+      }
+    }
+  }
+
   const dup = await getClubByName(client, guildId, nameCheck.name);
   if (dup) return { ok: false, reason: "name_taken" };
 
@@ -84,6 +145,8 @@ const create = async (client, { userId, guildId, name, member }) => {
     leader_id: userId,
     treasury: 0,
     treasury_current: 0,
+    treasury_locked: 0,
+    locked_entries: [],
     level: 1,
     max_members: lv1.maxMembers,
     created_at: now,
@@ -143,6 +206,16 @@ const create = async (client, { userId, guildId, name, member }) => {
   return { ok: true, club: doc, cost };
 };
 
+// 解散時，過濾出符合「入會時間門檻」的成員（防拉人頭分錢）
+const eligibleForPayout = (members, minTenureMs) => {
+  if (!minTenureMs || minTenureMs <= 0) return members;
+  const cutoff = Date.now() - minTenureMs;
+  return members.filter((m) => {
+    const joined = m.joined_at ? new Date(m.joined_at).getTime() : 0;
+    return joined > 0 && joined <= cutoff;
+  });
+};
+
 const disband = async (client, { userId, guildId, member }) => {
   if (!guildClub?.enabled) return { ok: false, reason: "disabled" };
 
@@ -150,29 +223,47 @@ const disband = async (client, { userId, guildId, member }) => {
   if (!m) return { ok: false, reason: "not_in_club" };
   if (m.role !== "leader") return { ok: false, reason: "not_leader" };
 
-  const club = await getClubById(client, m.guild_club_id);
+  let club = await getClubById(client, m.guild_club_id);
   if (!club) return { ok: false, reason: "club_missing" };
 
+  // 新建公會冷靜期：公會剛成立 N 小時內不能解散，避免快速建→拉人→解散洗錢
+  const graceMs = hoursToMs(antiLaunderingCfg().newClubGracePeriodHours);
+  if (graceMs > 0 && club.created_at) {
+    const readyAt = new Date(club.created_at).getTime() + graceMs;
+    if (Date.now() < readyAt) {
+      return { ok: false, reason: "grace_period", readyAt };
+    }
+  }
+
+  // 先把已過期的鎖定條目搬到 current，剩下的 locked 會被沒收
+  club = await settleLockedTreasury(client, club);
+
   const now = new Date();
-  // 原子標記解散，並發呼叫只會有一個贏家
   const before = await client.guildsClubCollection.findOneAndUpdate(
     { guild_club_id: club.guild_club_id, disbanded_at: null },
     { $set: { disbanded_at: now, updated_at: now } },
     { returnDocument: "before" }
   );
-  const beforeDoc = before?.value || before; // driver 版本相容
+  const beforeDoc = before?.value || before;
   if (!beforeDoc) return { ok: false, reason: "already_disbanded" };
 
-  const members = await listMembers(client, club.guild_club_id);
-  const memberCount = members.length;
+  const allMembers = await listMembers(client, club.guild_club_id);
+  const memberCount = allMembers.length;
+  const tenureMs = hoursToMs(antiLaunderingCfg().memberPayoutMinTenureHours);
+  const eligibleMembers = eligibleForPayout(allMembers, tenureMs);
+  const ineligibleMembers = allMembers.filter(
+    (mem) => !eligibleMembers.includes(mem)
+  );
+  const eligibleCount = eligibleMembers.length;
   const treasury = beforeDoc.treasury_current || 0;
+  const lockedForfeit = beforeDoc.treasury_locked || 0;
   const payoutPerMember =
-    memberCount > 0 ? Math.floor(treasury / memberCount) : 0;
-  const totalPaid = payoutPerMember * memberCount;
+    eligibleCount > 0 ? Math.floor(treasury / eligibleCount) : 0;
+  const totalPaid = payoutPerMember * eligibleCount;
 
   const payouts = [];
   if (payoutPerMember > 0) {
-    for (const mem of members) {
+    for (const mem of eligibleMembers) {
       const memberEntity = mem.userId === userId ? member : null;
       const granted = await grantCoins(client, {
         userId: mem.userId,
@@ -192,14 +283,41 @@ const disband = async (client, { userId, guildId, member }) => {
       user_id: null,
       amount: -totalPaid,
       source: "disband_payout",
-      meta: { payoutPerMember, memberCount },
+      meta: { payoutPerMember, eligibleCount, totalMembers: memberCount },
       createdAt: now,
     });
   }
 
+  if (lockedForfeit > 0) {
+    await client.guildClubLogsCollection.insertOne({
+      guild_club_id: club.guild_club_id,
+      user_id: null,
+      amount: -lockedForfeit,
+      source: "quest_reward_forfeit",
+      meta: { reason: "disband_before_unlock" },
+      createdAt: now,
+    });
+  }
+
+  // 寫入冷卻標記 log（重建冷卻會查這筆）
+  await client.guildClubLogsCollection.insertOne({
+    guild_club_id: club.guild_club_id,
+    user_id: userId,
+    amount: 0,
+    source: "disbanded_as_leader",
+    meta: { name: club.name },
+    createdAt: now,
+  });
+
   await client.guildsClubCollection.updateOne(
     { guild_club_id: club.guild_club_id },
-    { $set: { treasury_current: Math.max(0, treasury - totalPaid) } }
+    {
+      $set: {
+        treasury_current: Math.max(0, treasury - totalPaid),
+        treasury_locked: 0,
+        locked_entries: [],
+      },
+    }
   );
   await client.guildClubMembersCollection.deleteMany({
     guild_club_id: club.guild_club_id,
@@ -210,8 +328,11 @@ const disband = async (client, { userId, guildId, member }) => {
     club: beforeDoc,
     payoutPerMember,
     memberCount,
+    eligibleCount,
+    ineligibleCount: ineligibleMembers.length,
     payouts,
     remainder: Math.max(0, treasury - totalPaid),
+    lockedForfeit,
   };
 };
 
@@ -251,6 +372,10 @@ const donate = async (client, { userId, guildId, member, amount }) => {
 
   const m = await getMembership(client, userId, guildId);
   if (!m) return { ok: false, reason: "not_in_club" };
+
+  // 進金庫前先把過期鎖定條目搬到 current，讓 levelUp 判斷與顯示一致
+  const preClub = await getClubById(client, m.guild_club_id);
+  if (preClub) await settleLockedTreasury(client, preClub);
 
   const coinDoc = await client.userCoinsCollection.findOne({ userId, guildId });
   const balance = coinDoc?.totalCoins || 0;
@@ -340,4 +465,9 @@ module.exports = {
   disband,
   donate,
   checkLevelUp,
+  settleLockedTreasury,
+  findLastCooldownLog,
+  eligibleForPayout,
+  hoursToMs,
+  antiLaunderingCfg,
 };

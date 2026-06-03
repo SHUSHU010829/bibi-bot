@@ -18,6 +18,24 @@ const applicationCooldownMs = () =>
 const applicationMessageMax = () =>
   guildClub?.application?.messageMaxLength || 100;
 
+// 退會/被踢後再加入冷卻：防止「主帳退會 → alt 加入 → 解散分錢 → 主帳再回鍋」
+const checkRejoinCooldown = async (client, userId) => {
+  const ms = service.hoursToMs(service.antiLaunderingCfg().rejoinCooldownHours);
+  if (!ms || ms <= 0) return null;
+  const [leftLog, kickLog] = await Promise.all([
+    service.findLastCooldownLog(client, { userId, source: "left_club" }),
+    service.findLastCooldownLog(client, { userId, source: "kicked_from_club" }),
+  ]);
+  const candidates = [leftLog, kickLog].filter(Boolean);
+  if (candidates.length === 0) return null;
+  const latest = candidates.reduce((a, b) =>
+    new Date(a.createdAt) > new Date(b.createdAt) ? a : b
+  );
+  const readyAt = new Date(latest.createdAt).getTime() + ms;
+  if (Date.now() >= readyAt) return null;
+  return { readyAt, source: latest.source };
+};
+
 // ─── 邀請（會長 → 玩家）────────────────────────────────────
 
 const invite = async (client, { leaderId, guildId, inviteeId }) => {
@@ -38,6 +56,15 @@ const invite = async (client, { leaderId, guildId, inviteeId }) => {
       ? { ok: false, reason: "invitee_already_in_this_club" }
       : { ok: false, reason: "invitee_in_other_club" };
   }
+
+  const cd = await checkRejoinCooldown(client, inviteeId);
+  if (cd)
+    return {
+      ok: false,
+      reason: "invitee_rejoin_cooldown",
+      readyAt: cd.readyAt,
+      source: cd.source,
+    };
 
   const members = await service.listMembers(client, club.guild_club_id);
   if (members.length >= club.max_members)
@@ -98,6 +125,15 @@ const respondInvitation = async (
   const existing = await service.getMembership(client, userId, guildId);
   if (existing) return { ok: false, reason: "already_in_club" };
 
+  const cd = await checkRejoinCooldown(client, userId);
+  if (cd)
+    return {
+      ok: false,
+      reason: "rejoin_cooldown",
+      readyAt: cd.readyAt,
+      source: cd.source,
+    };
+
   const members = await service.listMembers(client, club.guild_club_id);
   if (members.length >= club.max_members)
     return { ok: false, reason: "club_full" };
@@ -133,6 +169,15 @@ const apply = async (client, { applicantId, guildId, clubName, message }) => {
 
   const existing = await service.getMembership(client, applicantId, guildId);
   if (existing) return { ok: false, reason: "already_in_club" };
+
+  const cd = await checkRejoinCooldown(client, applicantId);
+  if (cd)
+    return {
+      ok: false,
+      reason: "rejoin_cooldown",
+      readyAt: cd.readyAt,
+      source: cd.source,
+    };
 
   const club = await service.getClubByName(client, guildId, (clubName || "").trim());
   if (!club) return { ok: false, reason: "club_not_found" };
@@ -247,6 +292,15 @@ const respondApplication = async (
   if (applicantMembership)
     return { ok: false, reason: "applicant_already_in_club" };
 
+  const cd = await checkRejoinCooldown(client, app.applicant_id);
+  if (cd)
+    return {
+      ok: false,
+      reason: "applicant_rejoin_cooldown",
+      readyAt: cd.readyAt,
+      source: cd.source,
+    };
+
   const members = await service.listMembers(client, club.guild_club_id);
   if (members.length >= club.max_members)
     return { ok: false, reason: "club_full" };
@@ -308,6 +362,15 @@ const leave = async (client, { userId, guildId }) => {
     guild_club_id: m.guild_club_id,
   });
 
+  await client.guildClubLogsCollection.insertOne({
+    guild_club_id: m.guild_club_id,
+    user_id: userId,
+    amount: 0,
+    source: "left_club",
+    meta: {},
+    createdAt: new Date(),
+  });
+
   return { ok: true, club };
 };
 
@@ -329,6 +392,15 @@ const kick = async (client, { leaderId, guildId, targetId }) => {
     userId: targetId,
     guildId,
     guild_club_id: leaderM.guild_club_id,
+  });
+
+  await client.guildClubLogsCollection.insertOne({
+    guild_club_id: leaderM.guild_club_id,
+    user_id: targetId,
+    amount: 0,
+    source: "kicked_from_club",
+    meta: { by: leaderId },
+    createdAt: new Date(),
   });
 
   return { ok: true, club, targetId };
