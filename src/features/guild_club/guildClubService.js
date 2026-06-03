@@ -215,6 +215,116 @@ const disband = async (client, { userId, guildId, member }) => {
   };
 };
 
+// 嘗試升一級（一次只升一級）。在跨越多個門檻時，回傳 crossedThresholds 給呼叫端
+// 做廣播文案；剩餘金額已寫入 treasury，下次任何金庫變動會再次觸發。
+const checkLevelUp = async (client, currentDoc, opts = {}) => {
+  const next = nextLevelDef(currentDoc.level);
+  if (!next) return null;
+  if ((currentDoc.treasury || 0) < next.threshold) return null;
+
+  const upd = await client.guildsClubCollection.findOneAndUpdate(
+    { guild_club_id: currentDoc.guild_club_id, level: currentDoc.level },
+    {
+      $set: {
+        level: next.level,
+        max_members: next.maxMembers,
+        updated_at: new Date(),
+      },
+    },
+    { returnDocument: "after" }
+  );
+  const updDoc = upd?.value || upd;
+  if (!updDoc) return null;
+
+  return {
+    club: updDoc,
+    fromLevel: currentDoc.level,
+    toLevel: next.level,
+    crossedThresholds: opts.crossedThresholds || 1,
+  };
+};
+
+const donate = async (client, { userId, guildId, member, amount }) => {
+  if (!guildClub?.enabled) return { ok: false, reason: "disabled" };
+  if (!Number.isInteger(amount) || amount <= 0)
+    return { ok: false, reason: "invalid_amount" };
+
+  const m = await getMembership(client, userId, guildId);
+  if (!m) return { ok: false, reason: "not_in_club" };
+
+  const coinDoc = await client.userCoinsCollection.findOne({ userId, guildId });
+  const balance = coinDoc?.totalCoins || 0;
+  if (balance < amount)
+    return { ok: false, reason: "insufficient_funds", need: amount, have: balance };
+
+  const charge = await grantCoins(client, {
+    userId,
+    guildId,
+    member,
+    amount: -amount,
+    source: "guild_donate",
+    meta: { guild_club_id: m.guild_club_id },
+  });
+  if (!charge) return { ok: false, reason: "charge_failed" };
+
+  const now = new Date();
+  const updated = await client.guildsClubCollection.findOneAndUpdate(
+    { guild_club_id: m.guild_club_id, disbanded_at: null },
+    {
+      $inc: { treasury: amount, treasury_current: amount },
+      $set: { updated_at: now },
+    },
+    { returnDocument: "after" }
+  );
+  const updatedDoc = updated?.value || updated;
+  if (!updatedDoc) {
+    // 公會在扣費後解散：退款
+    await grantCoins(client, {
+      userId,
+      guildId,
+      member,
+      amount,
+      source: "guild_donate_refund",
+      meta: { guild_club_id: m.guild_club_id },
+    });
+    return { ok: false, reason: "club_missing" };
+  }
+
+  await client.guildClubMembersCollection.updateOne(
+    { userId, guildId, guild_club_id: m.guild_club_id },
+    { $inc: { total_donated: amount } }
+  );
+  await client.guildClubLogsCollection.insertOne({
+    guild_club_id: m.guild_club_id,
+    user_id: userId,
+    amount,
+    source: "donate",
+    meta: {},
+    createdAt: now,
+  });
+
+  const oldTreasury = (updatedDoc.treasury || 0) - amount;
+  const oldLevel = updatedDoc.level;
+  const crossedThresholds = guildClub.levels.filter(
+    (l) =>
+      l.level > oldLevel &&
+      l.threshold > oldTreasury &&
+      l.threshold <= (updatedDoc.treasury || 0)
+  ).length;
+
+  const levelUp = await checkLevelUp(client, updatedDoc, { crossedThresholds });
+
+  const memberAfter = await getMembership(client, userId, guildId);
+
+  return {
+    ok: true,
+    club: levelUp?.club || updatedDoc,
+    donated: amount,
+    totalDonated: memberAfter?.total_donated || amount,
+    levelUp,
+  };
+};
+
 module.exports = {
   validateName,
   newGuildClubId,
@@ -228,4 +338,6 @@ module.exports = {
   listMembers,
   create,
   disband,
+  donate,
+  checkLevelUp,
 };

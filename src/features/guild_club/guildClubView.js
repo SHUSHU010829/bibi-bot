@@ -293,6 +293,98 @@ function buildApplicationListContainer({ leaderId, club, applications }) {
   return container;
 }
 
+function buildDonateSuccessContainer({
+  userId,
+  club,
+  donated,
+  totalDonated,
+  levelUp,
+}) {
+  const def = levelDef(club.level);
+  const next = nextLevelDef(club.level);
+  const container = new ContainerBuilder()
+    .setAccentColor(levelUp ? COLOR_GOLD : COLOR_SUCCESS)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 💰 <@${userId}> 捐了 ${donated.toLocaleString()} ${COIN_EMOJI} 給「${club.name}」`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  const treasuryLine = next
+    ? `金庫累積：${(club.treasury || 0).toLocaleString()} / ${next.threshold.toLocaleString()}\n餘額：${(club.treasury_current || 0).toLocaleString()} ${COIN_EMOJI}`
+    : `金庫累積：${(club.treasury || 0).toLocaleString()} ${COIN_EMOJI}（已滿級）\n餘額：${(club.treasury_current || 0).toLocaleString()} ${COIN_EMOJI}`;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(treasuryLine)
+  );
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# 你的累積捐款：${totalDonated.toLocaleString()} ${COIN_EMOJI}`
+    )
+  );
+
+  if (levelUp) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🎉 **公會升級到 Lv.${levelUp.toLevel}！** 人數上限 ${club.max_members} 人`
+        )
+      );
+  }
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`gc_donate_${userId}_1000`)
+      .setLabel("再捐 1000")
+      .setEmoji("💰")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`gc_view_${userId}`)
+      .setLabel("查看公會")
+      .setEmoji("🏰")
+      .setStyle(ButtonStyle.Secondary)
+  );
+  container.addActionRowComponents(row);
+
+  return container;
+}
+
+function buildLevelUpAnnouncementContainer({ club, fromLevel, toLevel, crossedThresholds }) {
+  const def = levelDef(toLevel);
+  const oldDef = levelDef(fromLevel);
+  const newBuffs = def.buffs.filter(
+    (b) => !oldDef.buffs.some((o) => o.type === b.type && o.value === b.value)
+  );
+  const title =
+    crossedThresholds >= 2
+      ? `# ⚡ 「${club.name}」一口氣跨越 ${crossedThresholds} 個門檻！`
+      : `# ⬆️ 「${club.name}」升級到 Lv.${toLevel}！`;
+  const subtitle =
+    crossedThresholds >= 2
+      ? `本次升到 Lv.${toLevel}（剩餘金額將繼續累計升等）`
+      : `Lv.${fromLevel} → Lv.${toLevel}`;
+
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_GOLD)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(title))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${subtitle}\n人數上限：${oldDef.maxMembers} → ${def.maxMembers} 人`
+      )
+    );
+
+  if (newBuffs.length > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**新解鎖 Buff**\n${newBuffs.map((b) => `・${formatBuff(b)}`).join("\n")}`
+      )
+    );
+  }
+  return container;
+}
+
 function buildLeaveSuccessContainer({ club, userId }) {
   return new ContainerBuilder()
     .setAccentColor(COLOR_WARN)
@@ -356,6 +448,8 @@ module.exports = {
   buildJoinAnnouncementContainer,
   buildApplicationSentContainer,
   buildApplicationListContainer,
+  buildDonateSuccessContainer,
+  buildLevelUpAnnouncementContainer,
   buildLeaveSuccessContainer,
   buildKickSuccessContainer,
   buildTransferSuccessContainer,

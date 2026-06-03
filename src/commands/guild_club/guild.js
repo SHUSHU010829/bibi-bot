@@ -10,6 +10,7 @@ const { COIN_EMOJI } = require("../../constants/coin");
 const guildClubService = require("../../features/guild_club/guildClubService");
 const guildClubMembership = require("../../features/guild_club/guildClubMembership");
 const guildClubView = require("../../features/guild_club/guildClubView");
+const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
 
 const SUB_CREATE = "建立";
 const SUB_INFO = "資訊";
@@ -20,6 +21,7 @@ const SUB_APPLICATIONS = "申請列表";
 const SUB_LEAVE = "退會";
 const SUB_KICK = "踢人";
 const SUB_TRANSFER = "轉讓";
+const SUB_DONATE = "捐款";
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -102,6 +104,18 @@ module.exports = {
         .addUserOption((opt) =>
           opt.setName("使用者").setDescription("新的會長").setRequired(true)
         )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName(SUB_DONATE)
+        .setDescription("捐款進公會金庫")
+        .addIntegerOption((opt) =>
+          opt
+            .setName("金額")
+            .setDescription("要捐多少幣（正整數）")
+            .setRequired(true)
+            .setMinValue(1)
+        )
     ),
 
   run: async (client, interaction) => {
@@ -129,6 +143,7 @@ module.exports = {
       if (sub === SUB_LEAVE) return runLeave(client, interaction);
       if (sub === SUB_KICK) return runKick(client, interaction);
       if (sub === SUB_TRANSFER) return runTransfer(client, interaction);
+      if (sub === SUB_DONATE) return runDonate(client, interaction);
     } catch (e) {
       console.log(`[GUILD_CLUB] /公會 ${sub} 失敗：${e.stack || e.message}`.red);
       const reply = {
@@ -617,7 +632,75 @@ async function runTransfer(client, interaction) {
   });
 }
 
+// ───────── 捐款 ─────────
+
+async function runDonate(client, interaction) {
+  await interaction.deferReply();
+  const amount = interaction.options.getInteger("金額", true);
+
+  const result = await guildClubService.donate(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    member: interaction.member,
+    amount,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [donateErrorView(result)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  if (result.levelUp) {
+    guildClubAnnouncer.announceLevelUp(client, result.levelUp).catch(() => {});
+  }
+
+  return interaction.editReply({
+    components: [
+      guildClubView.buildDonateSuccessContainer({
+        userId: interaction.user.id,
+        club: result.club,
+        donated: result.donated,
+        totalDonated: result.totalDonated,
+        levelUp: result.levelUp,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
 // ───────── 錯誤 view helpers ─────────
+
+function donateErrorView(result) {
+  const { reason } = result;
+  if (reason === "not_in_club")
+    return guildClubView.buildErrorContainer({
+      title: "🏰 你還沒加入公會",
+      body: "請先加入公會才能捐款。",
+      hint: "/公會 申請 [名稱] 或等會長邀請。",
+    });
+  if (reason === "invalid_amount")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 金額無效",
+      body: "請輸入正整數。",
+    });
+  if (reason === "insufficient_funds")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 餘額不足",
+      body: `需要 ${result.need.toLocaleString()} ${COIN_EMOJI}，你目前有 ${result.have.toLocaleString()} ${COIN_EMOJI}。`,
+      hint: "再去打工、挖礦或賣礦累積一下吧。",
+    });
+  if (reason === "club_missing")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 公會已解散",
+      body: "捐款已退回。",
+    });
+  return guildClubView.buildErrorContainer({
+    title: "❌ 捐款失敗",
+    body: `原因：${reason}`,
+  });
+}
 
 function inviteErrorView(result) {
   const { reason } = result;

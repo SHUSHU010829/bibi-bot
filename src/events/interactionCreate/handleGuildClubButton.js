@@ -7,6 +7,8 @@
 //   gc_invite_decline_<inviteeId>_<invitationId>     — 婉拒邀請
 //   gc_app_approve_<leaderId>_<applicationId>        — 批准申請
 //   gc_app_reject_<leaderId>_<applicationId>         — 拒絕申請
+//   gc_donate_<userId>_<amount>                      — 快捷再捐款
+//   gc_view_<userId>                                 — 開啟資訊 ephemeral
 
 require("colors");
 const { MessageFlags } = require("discord.js");
@@ -14,6 +16,7 @@ const { MessageFlags } = require("discord.js");
 const guildClubService = require("../../features/guild_club/guildClubService");
 const guildClubMembership = require("../../features/guild_club/guildClubMembership");
 const guildClubView = require("../../features/guild_club/guildClubView");
+const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
 
 module.exports = async (client, interaction) => {
   if (!interaction.isButton()) return;
@@ -31,6 +34,12 @@ module.exports = async (client, interaction) => {
   }
   if (id.startsWith("gc_app_approve_") || id.startsWith("gc_app_reject_")) {
     return handleApplicationResponse(client, interaction);
+  }
+  if (id.startsWith("gc_donate_")) {
+    return handleQuickDonate(client, interaction);
+  }
+  if (id.startsWith("gc_view_")) {
+    return handleQuickView(client, interaction);
   }
 };
 
@@ -292,6 +301,147 @@ async function handleApplicationResponse(client, interaction) {
       flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
     }).catch(() => {});
   }
+}
+
+async function handleQuickDonate(client, interaction) {
+  const rest = interaction.customId.slice("gc_donate_".length);
+  const sepIdx = rest.indexOf("_");
+  if (sepIdx <= 0) return;
+  const ownerId = rest.slice(0, sepIdx);
+  const amountStr = rest.slice(sepIdx + 1);
+  const amount = parseInt(amountStr, 10);
+
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的捐款按鈕！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  await interaction.deferUpdate();
+
+  try {
+    const result = await guildClubService.donate(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      member: interaction.member,
+      amount,
+    });
+
+    if (!result.ok) {
+      return interaction.followUp({
+        components: [
+          guildClubView.buildErrorContainer({
+            title: "❌ 捐款失敗",
+            body: donateFailureBody(result),
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
+
+    if (result.levelUp) {
+      guildClubAnnouncer
+        .announceLevelUp(client, result.levelUp)
+        .catch(() => {});
+    }
+
+    return interaction.editReply({
+      components: [
+        guildClubView.buildDonateSuccessContainer({
+          userId: interaction.user.id,
+          club: result.club,
+          donated: result.donated,
+          totalDonated: result.totalDonated,
+          levelUp: result.levelUp,
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (e) {
+    console.log(
+      `[GUILD_CLUB] quick donate 失敗：${e.stack || e.message}`.red
+    );
+    return interaction.followUp({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 捐款失敗",
+          body: "出了點狀況，請稍後再試。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    }).catch(() => {});
+  }
+}
+
+function donateFailureBody(result) {
+  const { reason } = result;
+  if (reason === "not_in_club") return "你已不在公會。";
+  if (reason === "invalid_amount") return "金額無效。";
+  if (reason === "insufficient_funds")
+    return `需要 ${result.need.toLocaleString()}，你目前有 ${result.have.toLocaleString()}。`;
+  if (reason === "club_missing") return "公會已解散，捐款已退回。";
+  return `原因：${reason}`;
+}
+
+async function handleQuickView(client, interaction) {
+  const ownerId = interaction.customId.slice("gc_view_".length);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的查看按鈕！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const membership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  if (!membership) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "🏰 你還沒加入公會",
+          body: "可以等會長邀請、或用 /公會 申請。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  const club = await guildClubService.getClubById(
+    client,
+    membership.guild_club_id
+  );
+  if (!club) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 公會資料異常",
+          body: "你所屬的公會已不存在。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  const members = await guildClubService.listMembers(client, club.guild_club_id);
+
+  return interaction.editReply({
+    components: [
+      guildClubView.buildInfoContainer({
+        viewerId: interaction.user.id,
+        club,
+        members,
+        isMember: true,
+        isLeader: membership.role === "leader",
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }
 
 function applicationFailureBody(reason) {
