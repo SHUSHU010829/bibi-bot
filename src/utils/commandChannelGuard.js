@@ -64,6 +64,7 @@ function isAdminCommand(commandObject) {
 function allowedChannelsFor(commandObject, restrictions) {
   if (!commandObject?.data?.name || !restrictions) return null;
   if (commandObject.ephemeral === true) return null;
+  if (commandObject.skipChannelGuard === true) return null;
   if (commandObject.devOnly || isAdminCommand(commandObject)) return null;
 
   const explicit = commandObject.channelBuckets;
