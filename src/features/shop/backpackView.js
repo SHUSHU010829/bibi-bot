@@ -23,6 +23,13 @@ const {
 } = require("../donation/customCardNumber");
 const { roleBuffSummary } = require("../buff/buffResolver");
 const { getPickaxeRepairCost } = require("../mining/mineService");
+const orePriceEngine = require("../market/orePriceEngine");
+
+function trendLabel(price, base) {
+  if (!base) return "";
+  const pct = Math.round((price / base - 1) * 100);
+  return pct > 0 ? ` ▲+${pct}%` : pct < 0 ? ` ▼${pct}%` : " ▬";
+}
 
 // CD 縮短券「使用」按鈕 customId 格式：mining_use_cd_ticket_<ownerId>
 // 由 events/interactionCreate/handleMiningTicket.js 處理。
@@ -225,16 +232,20 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     const cap = backpackCapacity(profile, mining);
     const used = backpackUsed(profile);
 
-    // 礦石：只列出有庫存的，數量為 0 的隱藏
+    // 礦石：只列出有庫存的，數量為 0 的隱藏；依今日行情計價
+    const oreMarket = await orePriceEngine.getDailyPrices(client).catch(() => ({ prices: {} }));
+    const orePriceMap = oreMarket?.prices || {};
     const oreLines = [];
     let totalValue = 0;
     for (const [key, def] of Object.entries(mining.ores)) {
       const qty = profile.backpack?.[key] || 0;
       if (qty <= 0) continue;
-      const value = qty * (def.price || 0);
+      const base = def.price || 0;
+      const unit = typeof orePriceMap[key] === "number" ? orePriceMap[key] : base;
+      const value = qty * unit;
       totalValue += value;
       oreLines.push(
-        `${def.emoji || "⛏️"} **${def.name}** ×${qty} ・ ${value.toLocaleString()} ${COIN_EMOJI}`
+        `${def.emoji || "⛏️"} **${def.name}** ×${qty} ・ ${value.toLocaleString()} ${COIN_EMOJI}（@${unit.toLocaleString()}${trendLabel(unit, base)}）`
       );
     }
 
@@ -287,7 +298,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           oreLines.length > 0
-            ? `### ⛏️ 礦石\n${oreLines.join("\n")}\n-# 💰 全部賣出可得 ${totalValue.toLocaleString()} ${COIN_EMOJI}`
+            ? `### ⛏️ 礦石\n${oreLines.join("\n")}\n-# 💰 全部賣出可得 ${totalValue.toLocaleString()} ${COIN_EMOJI}・依今日行情計價，每日 00:00 變動`
             : "### ⛏️ 礦石\n-# 背包裡還沒有礦石，快去 /挖礦 吧！"
         )
       );
@@ -473,13 +484,17 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
 
     // 每種有魚的魚種：在「釣魚」分類顯示數量 + 賣全部按鈕；
     // 在「全部」分類只用純文字摘要，避免超過 Discord Components V2 40 個元件上限。
+    const fishMarket = await orePriceEngine.getDailyFishPrices(client).catch(() => ({ prices: {} }));
+    const fishPriceMap = fishMarket?.prices || {};
     const hasFish = Object.entries(fishing.fish || {}).some(([k]) => (fishBag[k] || 0) > 0);
     if (category === "fish") {
       if (hasFish) {
         for (const [key, def] of Object.entries(fishing.fish || {})) {
           const qty = fishBag[key] || 0;
           if (qty <= 0) continue;
-          const total = qty * def.price;
+          const base = def.price || 0;
+          const unit = typeof fishPriceMap[key] === "number" ? fishPriceMap[key] : base;
+          const total = qty * unit;
           const matchedRecipe = Object.entries(fishing.recipes || {}).find(
             ([, r]) => r.materials?.[key] !== undefined
           );
@@ -488,7 +503,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
             new SectionBuilder()
               .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                  `${def.emoji} **${def.name}**（${def.rarity}）×${qty}${recipeHint}`
+                  `${def.emoji} **${def.name}**（${def.rarity}）×${qty}・@${unit.toLocaleString()}${trendLabel(unit, base)}${recipeHint}`
                 )
               )
               .setButtonAccessory(
@@ -515,6 +530,9 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           new TextDisplayBuilder().setContent(`-# 尚無：${emptyFish}`)
         );
       }
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("-# 依今日行情計價，每日 00:00 變動")
+      );
     } else {
       // category === "all"：純文字摘要
       if (hasFish) {
@@ -523,9 +541,11 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         for (const [key, def] of Object.entries(fishing.fish || {})) {
           const qty = fishBag[key] || 0;
           if (qty <= 0) continue;
-          const total = qty * def.price;
+          const base = def.price || 0;
+          const unit = typeof fishPriceMap[key] === "number" ? fishPriceMap[key] : base;
+          const total = qty * unit;
           bagTotalValue += total;
-          fishLines.push(`${def.emoji} **${def.name}** ×${qty} ・ ${total.toLocaleString()} ${COIN_EMOJI}`);
+          fishLines.push(`${def.emoji} **${def.name}** ×${qty} ・ ${total.toLocaleString()} ${COIN_EMOJI}（@${unit.toLocaleString()}${trendLabel(unit, base)}）`);
         }
         const emptyFish = Object.entries(fishing.fish || {})
           .filter(([k]) => (fishBag[k] || 0) === 0)
@@ -533,7 +553,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           .join("・");
         container.addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `**魚袋**\n${fishLines.join("\n")}\n-# 💰 全部賣出可得 ${bagTotalValue.toLocaleString()} ${COIN_EMOJI}・切到「🎣 釣魚」分類可一鍵賣出${emptyFish ? `\n-# 尚無：${emptyFish}` : ""}`
+            `**魚袋**\n${fishLines.join("\n")}\n-# 💰 全部賣出可得 ${bagTotalValue.toLocaleString()} ${COIN_EMOJI}・依今日行情計價・切到「🎣 釣魚」分類可一鍵賣出${emptyFish ? `\n-# 尚無：${emptyFish}` : ""}`
           )
         );
       } else {
