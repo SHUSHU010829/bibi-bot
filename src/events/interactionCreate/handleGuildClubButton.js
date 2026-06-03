@@ -93,8 +93,8 @@ async function handleDisbandConfirm(client, interaction) {
       return interaction.editReply({
         components: [
           guildClubView.buildErrorContainer({
-            title: "❌ 解散失敗",
-            body: disbandFailureBody(result.reason),
+            title: result.reason === "grace_period" ? "🧊 公會冷靜期中" : "❌ 解散失敗",
+            body: disbandFailureBody(result.reason, result),
           }),
         ],
         flags: MessageFlags.IsComponentsV2,
@@ -106,7 +106,10 @@ async function handleDisbandConfirm(client, interaction) {
         guildClubView.buildDisbandSuccessContainer({
           club: result.club,
           memberCount: result.memberCount,
+          eligibleCount: result.eligibleCount,
+          ineligibleCount: result.ineligibleCount,
           payoutPerMember: result.payoutPerMember,
+          lockedForfeit: result.lockedForfeit,
         }),
       ],
       flags: MessageFlags.IsComponentsV2,
@@ -145,11 +148,13 @@ async function handleDisbandCancel(client, interaction) {
   });
 }
 
-function disbandFailureBody(reason) {
+function disbandFailureBody(reason, result) {
   if (reason === "not_in_club") return "你已不在任何公會。";
   if (reason === "not_leader") return "你不是會長，無法解散公會。";
   if (reason === "club_missing") return "公會已不存在。";
   if (reason === "already_disbanded") return "公會已被解散。";
+  if (reason === "grace_period")
+    return `公會剛成立還在冷靜期，<t:${Math.floor(result.readyAt / 1000)}:R> 後才能解散。此冷靜期防止「建立→拉人→解散」洗錢循環。`;
   return `原因：${reason}`;
 }
 
@@ -185,7 +190,7 @@ async function handleInviteResponse(client, interaction) {
         components: [
           guildClubView.buildErrorContainer({
             title: accept ? "❌ 無法加入" : "❌ 婉拒失敗",
-            body: inviteFailureBody(result.reason),
+            body: inviteFailureBody(result.reason, result),
           }),
         ],
         flags: MessageFlags.IsComponentsV2,
@@ -230,7 +235,7 @@ async function handleInviteResponse(client, interaction) {
   }
 }
 
-function inviteFailureBody(reason) {
+function inviteFailureBody(reason, result) {
   if (reason === "invitation_missing") return "邀請已不存在。";
   if (reason === "not_invitee") return "這不是寫給你的邀請。";
   if (reason === "invitation_not_pending") return "邀請已被處理過。";
@@ -238,6 +243,8 @@ function inviteFailureBody(reason) {
   if (reason === "club_missing") return "公會已解散。";
   if (reason === "already_in_club") return "你已經屬於另一個公會。";
   if (reason === "club_full") return "公會已滿員。";
+  if (reason === "rejoin_cooldown")
+    return `你最近才${result?.source === "kicked_from_club" ? "被踢出" : "退出"}公會，<t:${Math.floor(result.readyAt / 1000)}:R> 後才能加入新公會（防洗錢冷卻）。`;
   return `原因：${reason}`;
 }
 
@@ -273,7 +280,7 @@ async function handleApplicationResponse(client, interaction) {
         components: [
           guildClubView.buildErrorContainer({
             title: approve ? "❌ 批准失敗" : "❌ 拒絕失敗",
-            body: applicationFailureBody(result.reason),
+            body: applicationFailureBody(result.reason, result),
           }),
         ],
         flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
@@ -685,7 +692,7 @@ function questClaimFailureBody(result) {
   return `原因：${result.reason}`;
 }
 
-function applicationFailureBody(reason) {
+function applicationFailureBody(reason, result) {
   if (reason === "application_missing") return "申請已不存在。";
   if (reason === "not_your_club_application") return "這不是你公會的申請。";
   if (reason === "application_not_pending") return "申請已被處理過。";
@@ -694,5 +701,7 @@ function applicationFailureBody(reason) {
   if (reason === "club_full") return "公會已滿員。";
   if (reason === "not_in_club") return "你不在任何公會。";
   if (reason === "not_leader") return "你不是會長。";
+  if (reason === "applicant_rejoin_cooldown")
+    return `申請者最近才${result?.source === "kicked_from_club" ? "被踢出" : "退出"}公會，<t:${Math.floor(result.readyAt / 1000)}:R> 後才能加入新公會（防洗錢冷卻）。`;
   return `原因：${reason}`;
 }

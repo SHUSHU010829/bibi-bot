@@ -93,6 +93,13 @@
     },
     "disband": {
       "treasuryDistribution": "even_split"
+    },
+    "antiLaundering": {
+      "newClubGracePeriodHours": 72,
+      "recreateCooldownHours": 168,
+      "rejoinCooldownHours": 48,
+      "memberPayoutMinTenureHours": 72,
+      "questRewardLockHours": 168
     }
   }
 }

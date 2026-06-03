@@ -53,12 +53,27 @@ function buildInfoContainer({
     )
   );
 
+  const lockedAmount = club.treasury_locked || 0;
   const treasuryLine = next
     ? `金庫（累積）：${(club.treasury || 0).toLocaleString()} / ${next.threshold.toLocaleString()} ${COIN_EMOJI}\n餘額（可分配）：${(club.treasury_current || 0).toLocaleString()} ${COIN_EMOJI}`
     : `金庫（累積）：${(club.treasury || 0).toLocaleString()} ${COIN_EMOJI}\n餘額（可分配）：${(club.treasury_current || 0).toLocaleString()} ${COIN_EMOJI}`;
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(treasuryLine)
   );
+  if (lockedAmount > 0) {
+    const entries = Array.isArray(club.locked_entries) ? club.locked_entries : [];
+    const nextUnlock = entries
+      .slice()
+      .sort((a, b) => new Date(a.unlocksAt) - new Date(b.unlocksAt))[0];
+    const tail = nextUnlock
+      ? `（最早 <t:${Math.floor(new Date(nextUnlock.unlocksAt).getTime() / 1000)}:R> 解鎖）`
+      : "";
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 鎖定中（任務獎勵）：${lockedAmount.toLocaleString()} ${COIN_EMOJI} ${tail}`
+      )
+    );
+  }
 
   container.addSeparatorComponents(new SeparatorBuilder());
 
@@ -185,7 +200,17 @@ function buildCreateSuccessContainer({ userId, club, cost }) {
   return container;
 }
 
-function buildDisbandConfirmContainer({ leaderId, club, members, payoutPerMember }) {
+function buildDisbandConfirmContainer({
+  leaderId,
+  club,
+  members,
+  eligibleCount,
+  ineligibleCount,
+  payoutPerMember,
+}) {
+  const elig = eligibleCount ?? members.length;
+  const inelig = ineligibleCount ?? 0;
+  const lockedAmount = club.treasury_locked || 0;
   const container = new ContainerBuilder()
     .setAccentColor(COLOR_WARN)
     .addTextDisplayComponents(
@@ -196,12 +221,29 @@ function buildDisbandConfirmContainer({ leaderId, club, members, payoutPerMember
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `成員 ${members.length} 人　餘額 ${(club.treasury_current || 0).toLocaleString()} ${COIN_EMOJI}\n→ 每人可分得 **${payoutPerMember.toLocaleString()} ${COIN_EMOJI}**`
+        `成員 ${members.length} 人　可分配餘額 ${(club.treasury_current || 0).toLocaleString()} ${COIN_EMOJI}\n→ 符合分配資格 ${elig} 人，每人分得 **${payoutPerMember.toLocaleString()} ${COIN_EMOJI}**`
       )
-    )
+    );
+
+  if (inelig > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ${inelig} 名新加入成員（未滿入會時間門檻）不分配，防拉人頭分錢。`
+      )
+    );
+  }
+  if (lockedAmount > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ⚠️ 鎖定中的任務獎勵 ${lockedAmount.toLocaleString()} ${COIN_EMOJI} 將被沒收（解散時尚未解鎖的任務金不分配）。`
+      )
+    );
+  }
+
+  container
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 此操作不可逆，公會資料會被歸檔。`
+        `-# 此操作不可逆，公會資料會被歸檔。解散後你將進入重建冷卻。`
       )
     )
     .addActionRowComponents(
@@ -219,8 +261,17 @@ function buildDisbandConfirmContainer({ leaderId, club, members, payoutPerMember
   return container;
 }
 
-function buildDisbandSuccessContainer({ club, memberCount, payoutPerMember }) {
-  const totalPaid = payoutPerMember * memberCount;
+function buildDisbandSuccessContainer({
+  club,
+  memberCount,
+  eligibleCount,
+  ineligibleCount,
+  payoutPerMember,
+  lockedForfeit,
+}) {
+  const elig = eligibleCount ?? memberCount;
+  const inelig = ineligibleCount ?? 0;
+  const totalPaid = payoutPerMember * elig;
   const container = new ContainerBuilder()
     .setAccentColor(COLOR_WARN)
     .addTextDisplayComponents(
@@ -231,9 +282,23 @@ function buildDisbandSuccessContainer({ club, memberCount, payoutPerMember }) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `${memberCount} 名成員平分 ${totalPaid.toLocaleString()} ${COIN_EMOJI}\n每人分得 ${payoutPerMember.toLocaleString()} ${COIN_EMOJI}`
+        `${elig} 名符合資格成員平分 ${totalPaid.toLocaleString()} ${COIN_EMOJI}\n每人分得 ${payoutPerMember.toLocaleString()} ${COIN_EMOJI}`
       )
     );
+  if (inelig > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ${inelig} 名未滿入會時間門檻的成員未分配。`
+      )
+    );
+  }
+  if (lockedForfeit && lockedForfeit > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 沒收鎖定中任務獎勵 ${lockedForfeit.toLocaleString()} ${COIN_EMOJI}（尚未解鎖）。`
+      )
+    );
+  }
   return container;
 }
 
@@ -487,10 +552,20 @@ function buildQuestListContainer({ viewerId, club, period, items, isLeader }) {
           : `${q.progress.toLocaleString()}/${q.target.toLocaleString()}`;
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `${stateEmoji} **${q.name}**　${stateLabel}\n${q.description}\n獎勵：${q.reward.toLocaleString()} ${COIN_EMOJI}（入金庫）`
+        `${stateEmoji} **${q.name}**　${stateLabel}\n${q.description}\n獎勵：${q.reward.toLocaleString()} ${COIN_EMOJI}（入金庫，先鎖定）`
       )
     );
   });
+
+  const lockHours = guildClub?.antiLaundering?.questRewardLockHours || 0;
+  if (lockHours > 0) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 任務金鎖定 ${lockHours} 小時才解鎖到可分配餘額。期間解散公會，鎖定部分將被沒收（防止任務金被當天分掉洗錢）。`
+      )
+    );
+  }
 
   const anyReady = items.some((i) => i.state === "ready");
   if (anyReady) {
@@ -517,6 +592,7 @@ function buildQuestListContainer({ viewerId, club, period, items, isLeader }) {
 }
 
 function buildQuestClaimSuccessContainer({ club, claimed, totalReward, levelUp, leaderId }) {
+  const lockHours = guildClub?.antiLaundering?.questRewardLockHours || 0;
   const container = new ContainerBuilder()
     .setAccentColor(COLOR_SUCCESS)
     .addTextDisplayComponents(
@@ -532,9 +608,16 @@ function buildQuestClaimSuccessContainer({ club, claimed, totalReward, levelUp, 
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `金庫累計入帳：**+${totalReward.toLocaleString()} ${COIN_EMOJI}**`
+        `金庫累計入帳：**+${totalReward.toLocaleString()} ${COIN_EMOJI}**（已計入升級進度）`
       )
     );
+  if (lockHours > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 防洗錢機制：此筆獎勵將在 ${lockHours} 小時後解鎖到可分配餘額，期間解散公會這筆會被沒收。`
+      )
+    );
+  }
   if (levelUp) {
     container
       .addSeparatorComponents(new SeparatorBuilder())

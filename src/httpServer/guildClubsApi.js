@@ -33,6 +33,7 @@ module.exports = function createGuildClubsRouter(client) {
           level: c.level,
           treasury: c.treasury || 0,
           treasuryCurrent: c.treasury_current || 0,
+          treasuryLocked: c.treasury_locked || 0,
           memberCount: c.member_count,
           maxMembers: c.max_members,
           createdAt: c.created_at,

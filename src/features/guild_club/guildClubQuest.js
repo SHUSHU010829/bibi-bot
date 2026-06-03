@@ -48,8 +48,9 @@ const aggregateProgress = async (
 const getQuestStatus = async (client, { userId, guildId }) => {
   const m = await service.getMembership(client, userId, guildId);
   if (!m) return { ok: false, reason: "not_in_club" };
-  const club = await service.getClubById(client, m.guild_club_id);
+  let club = await service.getClubById(client, m.guild_club_id);
   if (!club) return { ok: false, reason: "club_missing" };
+  club = await service.settleLockedTreasury(client, club);
 
   const members = await service.listMembers(client, club.guild_club_id);
   const memberIds = members.map((x) => x.userId);
@@ -128,11 +129,26 @@ const claimAllReady = async (client, { userId, guildId }) => {
   if (claimed.length === 0)
     return { ok: false, reason: "all_claimed_by_other" };
 
+  // 任務獎勵進「鎖定金庫」：累積（升級判定）馬上入帳，但解散可分配池要等
+  // questRewardLockHours 後才解鎖，避免任務金被即時 disband 洗走。
   const totalReward = claimed.reduce((s, q) => s + q.reward, 0);
+  const lockMs = service.hoursToMs(
+    service.antiLaunderingCfg().questRewardLockHours
+  );
+  const unlocksAt = new Date(now.getTime() + (lockMs || 0));
+  const lockEntry = {
+    amount: totalReward,
+    unlocksAt,
+    source: "quest_reward",
+    period,
+    questIds: claimed.map((q) => q.id),
+  };
+
   const updated = await client.guildsClubCollection.findOneAndUpdate(
     { guild_club_id: status.club.guild_club_id, disbanded_at: null },
     {
-      $inc: { treasury: totalReward, treasury_current: totalReward },
+      $inc: { treasury: totalReward, treasury_locked: totalReward },
+      $push: { locked_entries: lockEntry },
       $set: { updated_at: now },
     },
     { returnDocument: "after" }
@@ -144,7 +160,12 @@ const claimAllReady = async (client, { userId, guildId }) => {
     user_id: null,
     amount: totalReward,
     source: "quest_reward",
-    meta: { questIds: claimed.map((q) => q.id), period },
+    meta: {
+      questIds: claimed.map((q) => q.id),
+      period,
+      unlocksAt,
+      lockHours: service.antiLaunderingCfg().questRewardLockHours || 0,
+    },
     createdAt: now,
   });
 
