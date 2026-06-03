@@ -89,7 +89,7 @@
     "resetTimezone": "Asia/Taipei",
     "announce": {
       "useBossChannel": true,
-      "channelIdOverride": null
+      "channelIdOverride": "1511655301953228800"
     },
     "disband": {
       "treasuryDistribution": "even_split"
