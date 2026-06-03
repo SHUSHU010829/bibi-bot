@@ -1,0 +1,97 @@
+{
+  "guildClub": {
+    "enabled": true,
+    "createCost": 5000,
+    "name": {
+      "minLength": 1,
+      "maxLength": 12,
+      "forbiddenChars": ["@", "#", "<", ">", "`"]
+    },
+    "levels": [
+      {
+        "level": 1,
+        "threshold": 0,
+        "maxMembers": 10,
+        "buffs": []
+      },
+      {
+        "level": 2,
+        "threshold": 10000,
+        "maxMembers": 12,
+        "buffs": [{ "type": "mining_qty_bonus", "value": 1 }]
+      },
+      {
+        "level": 3,
+        "threshold": 50000,
+        "maxMembers": 15,
+        "buffs": [
+          { "type": "mining_qty_bonus", "value": 1 },
+          { "type": "work_income_multiplier", "value": 0.1 }
+        ]
+      },
+      {
+        "level": 4,
+        "threshold": 150000,
+        "maxMembers": 18,
+        "buffs": [
+          { "type": "mining_qty_bonus", "value": 1 },
+          { "type": "work_income_multiplier", "value": 0.1 },
+          { "type": "dungeon_stamina_max", "value": 1 }
+        ]
+      },
+      {
+        "level": 5,
+        "threshold": 500000,
+        "maxMembers": 20,
+        "buffs": [
+          { "type": "mining_qty_bonus", "value": 1 },
+          { "type": "work_income_multiplier", "value": 0.1 },
+          { "type": "dungeon_stamina_max", "value": 1 },
+          { "type": "mining_luck_pct", "value": 0.05 }
+        ]
+      }
+    ],
+    "invitation": {
+      "expireHours": 168
+    },
+    "application": {
+      "expireHours": 168,
+      "rejectCooldownHours": 24,
+      "messageMaxLength": 100
+    },
+    "weeklyQuests": [
+      {
+        "id": "guild_mining_squad",
+        "name": "礦業大隊",
+        "description": "公會成員本週合計挖礦 ≥ 100 次",
+        "source": "mineLogs",
+        "target": 100,
+        "reward": 5000
+      },
+      {
+        "id": "guild_dungeon_team",
+        "name": "地下探索隊",
+        "description": "公會成員本週合計通關地下城 ≥ 30 次",
+        "source": "dungeonLogs",
+        "target": 30,
+        "reward": 8000
+      },
+      {
+        "id": "guild_casino_league",
+        "name": "賭場聯盟",
+        "description": "公會成員本週合計賭場 ≥ 50 局",
+        "source": "casinoLogs",
+        "target": 50,
+        "reward": 6000
+      }
+    ],
+    "resetTimezone": "Asia/Taipei",
+    "announce": {
+      "useBossChannel": true,
+      "channelIdOverride": null
+    },
+    "disband": {
+      "treasuryDistribution": "even_split"
+    }
+  }
+}

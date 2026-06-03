@@ -1,0 +1,207 @@
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require("discord.js");
+
+const { guildClub } = require("../../config");
+const { COIN_EMOJI } = require("../../constants/coin");
+const { levelDef, nextLevelDef, maxLevel } = require("./guildClubService");
+
+const COLOR_GOLD = 0xf1c40f;
+const COLOR_ERROR = 0xe74c3c;
+const COLOR_WARN = 0xe67e22;
+const COLOR_SUCCESS = 0x2ecc71;
+
+const BUFF_LABELS = {
+  mining_qty_bonus: (v) => `挖礦每次數量 +${v}`,
+  mining_luck_pct: (v) => `挖礦 luck +${Math.round(v * 100)}%（吃 luckCap）`,
+  work_income_multiplier: (v) => `打工收入 +${Math.round(v * 100)}%`,
+  dungeon_stamina_max: (v) => `地下城體力上限 +${v}`,
+};
+
+const formatBuff = (b) => {
+  const fn = BUFF_LABELS[b.type];
+  return fn ? fn(b.value) : `${b.type}: ${b.value}`;
+};
+
+function buildInfoContainer({
+  viewerId,
+  club,
+  members,
+  isMember,
+  isLeader,
+}) {
+  const def = levelDef(club.level);
+  const next = nextLevelDef(club.level);
+  const container = new ContainerBuilder().setAccentColor(COLOR_GOLD);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `# 🏰 ${club.name}　Lv.${club.level}${club.level >= maxLevel() ? "（已滿級）" : ""}`
+    )
+  );
+  container.addSeparatorComponents(new SeparatorBuilder());
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `會長：<@${club.leader_id}>　成員：${members.length}/${club.max_members}`
+    )
+  );
+
+  const treasuryLine = next
+    ? `金庫（累積）：${(club.treasury || 0).toLocaleString()} / ${next.threshold.toLocaleString()} ${COIN_EMOJI}\n餘額（可分配）：${(club.treasury_current || 0).toLocaleString()} ${COIN_EMOJI}`
+    : `金庫（累積）：${(club.treasury || 0).toLocaleString()} ${COIN_EMOJI}\n餘額（可分配）：${(club.treasury_current || 0).toLocaleString()} ${COIN_EMOJI}`;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(treasuryLine)
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+
+  if (def.buffs.length === 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**共享 Buff**\n-# 尚未解鎖，達成 Lv.2 後開始解鎖`
+      )
+    );
+  } else {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**共享 Buff**\n${def.buffs.map((b) => `・${formatBuff(b)}`).join("\n")}`
+      )
+    );
+  }
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+  if (members.length === 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**成員**\n-# 尚無成員`)
+    );
+  } else {
+    const lines = members.map((m) => {
+      const role = m.role === "leader" ? "👑" : "・";
+      const donated = (m.total_donated || 0).toLocaleString();
+      return `${role} <@${m.userId}>　捐款 ${donated} ${COIN_EMOJI}`;
+    });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**成員**\n${lines.join("\n")}`)
+    );
+  }
+
+  if (isLeader) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 你是會長。可使用 /公會 邀請、/公會 申請列表、/公會 解散 等指令。`
+      )
+    );
+  } else if (!isMember) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 想加入？等會長邀請，或使用 /公會 申請 ${club.name}`
+      )
+    );
+  }
+
+  return container;
+}
+
+function buildCreateSuccessContainer({ userId, club, cost }) {
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_SUCCESS)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ✅ 公會「${club.name}」成立！`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `<@${userId}> 花費 ${cost.toLocaleString()} ${COIN_EMOJI} 創立了公會。\n等級 Lv.1　人數上限 ${club.max_members} 人`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 下一步：用 /公會 邀請 @user 邀請成員，累積金庫升級解鎖 Buff。`
+      )
+    );
+  return container;
+}
+
+function buildDisbandConfirmContainer({ leaderId, club, members, payoutPerMember }) {
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_WARN)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ⚠️ 確定要解散「${club.name}」？`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `成員 ${members.length} 人　餘額 ${(club.treasury_current || 0).toLocaleString()} ${COIN_EMOJI}\n→ 每人可分得 **${payoutPerMember.toLocaleString()} ${COIN_EMOJI}**`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 此操作不可逆，公會資料會被歸檔。`
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`gc_disband_confirm_${leaderId}_${club.guild_club_id}`)
+          .setLabel("確定解散")
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId(`gc_disband_cancel_${leaderId}`)
+          .setLabel("取消")
+          .setStyle(ButtonStyle.Secondary)
+      )
+    );
+  return container;
+}
+
+function buildDisbandSuccessContainer({ club, memberCount, payoutPerMember }) {
+  const totalPaid = payoutPerMember * memberCount;
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_WARN)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 💔 公會「${club.name}」已解散`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${memberCount} 名成員平分 ${totalPaid.toLocaleString()} ${COIN_EMOJI}\n每人分得 ${payoutPerMember.toLocaleString()} ${COIN_EMOJI}`
+      )
+    );
+  return container;
+}
+
+function buildErrorContainer({ title, body, hint }) {
+  const c = new ContainerBuilder()
+    .setAccentColor(COLOR_ERROR)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${title}`))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+  if (hint)
+    c.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# ${hint}`)
+    );
+  return c;
+}
+
+module.exports = {
+  buildInfoContainer,
+  buildCreateSuccessContainer,
+  buildDisbandConfirmContainer,
+  buildDisbandSuccessContainer,
+  buildErrorContainer,
+  formatBuff,
+};
