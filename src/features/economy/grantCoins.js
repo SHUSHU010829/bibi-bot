@@ -248,6 +248,7 @@ module.exports = async (client, opts) => {
     twitchSubMultiplier: twitchInfo.multiplier,
     boostBonusName: boostInfo.name,
     boostBonusMultiplier: boostInfo.multiplier,
+    guildWorkMultiplier,
     doc: after,
   };
 };

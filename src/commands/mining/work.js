@@ -67,7 +67,8 @@ module.exports = {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `# 💼 打工完成\n你${result.job}，獲得了 **+${result.amount.toLocaleString()}** ${COIN_EMOJI}` +
-            (result.foodWorkBonus > 0 ? ` （食物加成 +${Math.round(result.foodWorkBonus * 100)}%）` : ""),
+            (result.foodWorkBonus > 0 ? ` （食物加成 +${Math.round(result.foodWorkBonus * 100)}%）` : "") +
+            (result.guildWorkBonus > 0 ? ` （公會加成 +${Math.round(result.guildWorkBonus * 100)}%）` : ""),
           ),
         )
         .addSeparatorComponents(new SeparatorBuilder())
