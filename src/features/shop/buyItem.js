@@ -10,6 +10,7 @@ const {
   restoreStamina,
   resolveStamina,
   staminaMax,
+  getMemberClub,
 } = require("../mining/dungeonService");
 
 const MINING_ITEM_TYPES = [
@@ -102,7 +103,8 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
 
   // 體力藥水：體力已滿時拒絕購買（避免浪費），在扣款前檢查
   if (item.type === "mining_stamina_potion") {
-    const max = staminaMax(member);
+    const club = await getMemberClub(client, userId, guildId);
+    const max = staminaMax(member, club);
     const prof = await getMiningProfile(client, userId, guildId);
     const st = resolveStamina(prof, max);
     if (st.stamina >= max) {

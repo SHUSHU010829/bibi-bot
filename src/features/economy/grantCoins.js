@@ -7,12 +7,29 @@ const {
 } = require("./coinMultiplier");
 const { getTodayCoinsBySources } = require("./dailyCoinCap");
 const { getActiveBuffMultiplier } = require("../shop/activeBuff");
+const { guildClub } = require("../../config");
+
+async function getGuildWorkMultiplier(client, userId, guildId) {
+  if (!guildClub?.enabled) return 1;
+  if (!client.guildClubMembersCollection || !client.guildsClubCollection) return 1;
+  const m = await client.guildClubMembersCollection
+    .findOne({ userId, guildId })
+    .catch(() => null);
+  if (!m) return 1;
+  const c = await client.guildsClubCollection
+    .findOne({ guild_club_id: m.guild_club_id, disbanded_at: null })
+    .catch(() => null);
+  if (!c) return 1;
+  const def = guildClub.levels.find((l) => l.level === c.level);
+  const buff = (def?.buffs || []).find((b) => b.type === "work_income_multiplier");
+  return buff?.value > 0 ? 1 + buff.value : 1;
+}
 
 const MSG_VOICE_SOURCES = ["message", "voice"];
 const CASINO_SOURCES = ["bet", "payout"];
-const SINK_SOURCES = ["shop_buy", "auction_bid", "wealth_tax", "transfer_out", "deposit_lock", "stock_buy", "stock_fee", "event_host_lock", "invite_clawback", "duel_stake", "stone_appraisal", "market_buy", "market_escrow", "market_bid", "farm_plant", "farm_expand", "barter_fee"];
+const SINK_SOURCES = ["shop_buy", "auction_bid", "wealth_tax", "transfer_out", "deposit_lock", "stock_buy", "stock_fee", "event_host_lock", "invite_clawback", "duel_stake", "stone_appraisal", "market_buy", "market_escrow", "market_bid", "farm_plant", "farm_expand", "barter_fee", "guild_create", "guild_donate"];
 const PEER_SOURCES = ["transfer_in", "transfer_out", "deposit_lock", "deposit_release", "event_prize", "event_refund", "auction_payout", "auction_refund", "duel_payout", "duel_refund", "market_payout", "market_refund"];
-const FLAT_REWARD_SOURCES = ["welfare", "quest_daily", "quest_weekly", "quest_event", "stock_sell", "stock_dividend", "invite_reward", "invite_welcome", "mining_sell", "work", "dungeon", "donation", "encounter", "farm_harvest", "farm_raid", "farm_sell", "boss_loot", "boss_killer", "boss_kill_bonus"];
+const FLAT_REWARD_SOURCES = ["welfare", "quest_daily", "quest_weekly", "quest_event", "stock_sell", "stock_dividend", "invite_reward", "invite_welcome", "mining_sell", "work", "dungeon", "donation", "encounter", "farm_harvest", "farm_raid", "farm_sell", "boss_loot", "boss_killer", "boss_kill_bonus", "guild_create_refund", "guild_donate_refund", "guild_disband_payout"];
 // source → 遊戲區稱號分類（金流出入口觸發解鎖檢查）
 const GAME_TITLE_SOURCE_MAP = {
   bet: ["casino", "lottery"],
@@ -68,7 +85,12 @@ module.exports = async (client, opts) => {
   const buffMultiplier = skipMultipliers || amount <= 0 || opts.source === "shop_buy"
     ? 1
     : await getActiveBuffMultiplier(client, opts.userId, opts.guildId, "coin_boost").catch(() => 1);
-  const totalMultiplier = baseMultiplier * buffMultiplier;
+  // 公會打工加成（只在 source === "work" 時生效，與其他倍率累乘）
+  const guildWorkMultiplier =
+    opts.source === "work" && amount > 0
+      ? await getGuildWorkMultiplier(client, opts.userId, opts.guildId).catch(() => 1)
+      : 1;
+  const totalMultiplier = baseMultiplier * buffMultiplier * guildWorkMultiplier;
   if (totalMultiplier > 1 && amount > 0) {
     amount = Math.floor(amount * totalMultiplier);
   }

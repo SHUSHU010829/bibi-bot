@@ -3,6 +3,7 @@ const createFlushChatScoreHandler = require("./flushChatScore");
 const createDonationSessionHandler = require("./donationSession");
 const createDonationGrantHandler = require("./donationGrant");
 const createLeaderboardRouter = require("./leaderboardApi");
+const createGuildClubsRouter = require("./guildClubsApi");
 const createAdminMeHandler = require("./adminMe");
 const createAdminDonationRouter = require("./adminDonationApi");
 const createAdminUsersRouter = require("./adminUsersApi");
@@ -61,6 +62,9 @@ module.exports = function startHttpServer(client) {
 
   // 排行榜 API（Dashboard 讀取）
   app.use("/api/v1/leaderboard", createLeaderboardRouter(client));
+
+  // 公會排行 API（公開，Phase A）
+  app.use("/api/v1/guild_clubs", createGuildClubsRouter(client));
 
   // 公開玩家卡片 API（無 auth，但會檢查 UserSettings.publicProfile）
   app.get("/api/v1/u/:userId", createPublicProfileHandler(client));

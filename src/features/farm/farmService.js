@@ -445,7 +445,8 @@ async function defendRaid(client, { userId, guildId, username, member, plotIndex
   }
 
   const profile = await getOrCreate(client, userId, guildId);
-  const max = dungeonService.staminaMax(member);
+  const club = await dungeonService.getMemberClub(client, userId, guildId);
+  const max = dungeonService.staminaMax(member, club);
   const st = dungeonService.resolveStamina(profile, max);
   if (st.stamina <= 0) {
     return { ok: false, reason: "no_stamina", nextRegenAt: st.nextRegenAt };

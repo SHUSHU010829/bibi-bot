@@ -158,6 +158,14 @@ module.exports = async (client) => {
     const bossDamageLogsCollection = database.collection("BossDamageLogs");
     const bossKillsCollection = database.collection("BossKills");
 
+    // 公會系統 collections（Phase A）
+    const guildsClubCollection = database.collection("GuildsClub");
+    const guildClubMembersCollection = database.collection("GuildClubMembers");
+    const guildClubLogsCollection = database.collection("GuildClubLogs");
+    const guildClubInvitationsCollection = database.collection("GuildClubInvitations");
+    const guildClubApplicationsCollection = database.collection("GuildClubApplications");
+    const guildClubQuestClaimsCollection = database.collection("GuildClubQuestClaims");
+
     // 打工系統 collection（記每位玩家的打工冷卻）
     const workProfilesCollection = database.collection("WorkProfiles");
 
@@ -263,6 +271,12 @@ module.exports = async (client) => {
     client.bossEventsCollection = bossEventsCollection;
     client.bossDamageLogsCollection = bossDamageLogsCollection;
     client.bossKillsCollection = bossKillsCollection;
+    client.guildsClubCollection = guildsClubCollection;
+    client.guildClubMembersCollection = guildClubMembersCollection;
+    client.guildClubLogsCollection = guildClubLogsCollection;
+    client.guildClubInvitationsCollection = guildClubInvitationsCollection;
+    client.guildClubApplicationsCollection = guildClubApplicationsCollection;
+    client.guildClubQuestClaimsCollection = guildClubQuestClaimsCollection;
     client.workProfilesCollection = workProfilesCollection;
     client.duelGamesCollection = duelGamesCollection;
     client.auctionListingsCollection = auctionListingsCollection;
@@ -984,6 +998,75 @@ module.exports = async (client) => {
         { user_id: 1, guild_id: 1 },
         { unique: true, name: "uniq_boss_kills_user_guild" }
       ).catch((e) => console.log(`[WARN] BossKills uniq: ${e.message}`.yellow));
+
+      // 公會系統索引（Phase A）
+      await guildsClubCollection.createIndex(
+        { guild_club_id: 1 },
+        { unique: true, name: "uniq_gc_id" }
+      ).catch((e) => console.log(`[WARN] GuildsClub id: ${e.message}`.yellow));
+      // 同伺服器、未解散公會的名稱不可重複；已解散的允許同名（歷史保留）
+      await guildsClubCollection.createIndex(
+        { guildId: 1, name: 1 },
+        {
+          unique: true,
+          partialFilterExpression: { disbanded_at: null },
+          name: "uniq_gc_guild_name_active",
+        }
+      ).catch((e) => console.log(`[WARN] GuildsClub name: ${e.message}`.yellow));
+      await guildsClubCollection.createIndex(
+        { guildId: 1, disbanded_at: 1, treasury: -1 },
+        { name: "gc_guild_disbanded_treasury" }
+      ).catch((e) => console.log(`[WARN] GuildsClub rank: ${e.message}`.yellow));
+
+      // 成員：一個玩家在同伺服器最多屬於一個公會
+      await guildClubMembersCollection.createIndex(
+        { userId: 1, guildId: 1 },
+        { unique: true, name: "uniq_gcm_user_guild" }
+      ).catch((e) => console.log(`[WARN] GuildClubMembers uniq: ${e.message}`.yellow));
+      await guildClubMembersCollection.createIndex(
+        { guild_club_id: 1 },
+        { name: "gcm_club" }
+      ).catch((e) => console.log(`[WARN] GuildClubMembers club: ${e.message}`.yellow));
+
+      // 金庫流水：90 天 TTL
+      await guildClubLogsCollection.createIndex(
+        { guild_club_id: 1, createdAt: -1 },
+        { name: "gcl_club_time" }
+      ).catch((e) => console.log(`[WARN] GuildClubLogs idx: ${e.message}`.yellow));
+      await guildClubLogsCollection.createIndex(
+        { createdAt: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "gcl_ttl_90d" }
+      ).catch((e) => console.log(`[WARN] GuildClubLogs TTL: ${e.message}`.yellow));
+
+      // 邀請：pending 查詢 + 過期自動清
+      await guildClubInvitationsCollection.createIndex(
+        { invitee_id: 1, guildId: 1, status: 1 },
+        { name: "gci_invitee_status" }
+      ).catch((e) => console.log(`[WARN] GuildClubInvitations idx: ${e.message}`.yellow));
+      await guildClubInvitationsCollection.createIndex(
+        { expiresAt: 1 },
+        { expireAfterSeconds: 0, name: "gci_ttl" }
+      ).catch((e) => console.log(`[WARN] GuildClubInvitations TTL: ${e.message}`.yellow));
+
+      // 申請：會長列出 pending + 防同玩家重複申請同公會
+      await guildClubApplicationsCollection.createIndex(
+        { guild_club_id: 1, status: 1, createdAt: -1 },
+        { name: "gca_club_status" }
+      ).catch((e) => console.log(`[WARN] GuildClubApplications idx: ${e.message}`.yellow));
+      await guildClubApplicationsCollection.createIndex(
+        { applicant_id: 1, guildId: 1, status: 1 },
+        { name: "gca_applicant_status" }
+      ).catch((e) => console.log(`[WARN] GuildClubApplications applicant: ${e.message}`.yellow));
+      await guildClubApplicationsCollection.createIndex(
+        { expiresAt: 1 },
+        { expireAfterSeconds: 0, name: "gca_ttl" }
+      ).catch((e) => console.log(`[WARN] GuildClubApplications TTL: ${e.message}`.yellow));
+
+      // 週任務領取：(公會、任務、週期) 唯一防重複領取
+      await guildClubQuestClaimsCollection.createIndex(
+        { guild_club_id: 1, questId: 1, period: 1 },
+        { unique: true, name: "uniq_gcqc_club_quest_period" }
+      ).catch((e) => console.log(`[WARN] GuildClubQuestClaims uniq: ${e.message}`.yellow));
       await fishLogsCollection.createIndex(
         { ts: 1 },
         { expireAfterSeconds: 90 * 24 * 60 * 60, name: "fish_logs_ttl_90d" }

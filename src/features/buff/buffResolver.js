@@ -20,7 +20,31 @@ const eventEngine = require("../event/eventEngine");
 const twitchPerks = require("../mining/twitchPerks");
 const { getFoodFarmYieldBonus } = require("../fishing/cookService");
 const { MONEY_EMOJI } = require("../../constants/coin");
-const { donation, levelSystem } = require("../../config");
+const { donation, levelSystem, guildClub } = require("../../config");
+
+// ── 公會共享 buff ────────────────────────────────────
+// 讀取使用者所屬公會 + 等級對應的 buff 清單，回傳結構化資料。
+// 失敗或無公會 → 回傳空 buffs，呼叫端統一處理。
+async function getGuildClubBuffs(client, userId, guildId) {
+  const empty = { club: null, level: 0, buffs: [], buffsByType: {} };
+  if (!guildClub?.enabled) return empty;
+  if (!client.guildClubMembersCollection || !client.guildsClubCollection) return empty;
+  const member = await client.guildClubMembersCollection
+    .findOne({ userId, guildId })
+    .catch(() => null);
+  if (!member) return empty;
+  const club = await client.guildsClubCollection
+    .findOne({ guild_club_id: member.guild_club_id, disbanded_at: null })
+    .catch(() => null);
+  if (!club) return empty;
+  const def = guildClub.levels.find((l) => l.level === club.level);
+  const buffs = def?.buffs || [];
+  const buffsByType = {};
+  for (const b of buffs) {
+    buffsByType[b.type] = (buffsByType[b.type] || 0) + (b.value || 0);
+  }
+  return { club, level: club.level, buffs, buffsByType };
+}
 
 // ── ATK ───────────────────────────────────────────────
 // 目前 = baseAtk + 鎬子加成；未來食物 / 技能 / 活動 buff 在此加分支。
@@ -35,9 +59,21 @@ async function getEffectiveAtk(client, userId, guildId) {
 
 // ── LUCK / 挖礦數量 / CD ──────────────────────────────
 // 沿用 mining/buffResolver.resolve（鎬子 + 藥水 + Twitch + 抖內，已套 luckCap）。
+// 公會 luck / qty 加成在這層加總，與 donation / event / food 同列為「luckCap 外」追加。
 async function getMiningResolve(client, userId, guildId, member) {
   const profile = await getOrCreate(client, userId, guildId);
-  return miningResolve.resolve(profile, member);
+  const base = miningResolve.resolve(profile, member);
+  const gc = await getGuildClubBuffs(client, userId, guildId);
+  const guildLuck = gc.buffsByType.mining_luck_pct || 0;
+  const guildQty = gc.buffsByType.mining_qty_bonus || 0;
+  if (guildLuck > 0) base.luckBonus += guildLuck;
+  if (guildQty > 0) base.qtyBonus += guildQty;
+  base.guildClubLuckBonus = guildLuck;
+  base.guildClubQtyBonus = guildQty;
+  base.guildClub = gc.club
+    ? { id: gc.club.guild_club_id, name: gc.club.name, level: gc.level }
+    : null;
+  return base;
 }
 
 async function getEffectiveLuck(client, userId, guildId, member) {
@@ -52,6 +88,7 @@ async function getEffectiveCdMs(client, userId, guildId, member, source = "mine"
 }
 
 // ── INCOME 倍率（查詢用，套用仍在 grantCoins）────────────
+// 公會 work_income_multiplier 只在 source === "work" 時生效，與其他倍率累乘。
 async function getEffectiveIncomeMultiplier(client, userId, guildId, member, source) {
   const tw = getCoinTwitchSubBonus(member, source)?.multiplier || 1;
   const boost = getCoinServerBoostBonus(member, source)?.multiplier || 1;
@@ -61,21 +98,32 @@ async function getEffectiveIncomeMultiplier(client, userId, guildId, member, sou
     guildId,
     "coin_boost"
   ).catch(() => 1);
-  return tw * boost * coinBuff;
+  let guildWork = 1;
+  if (source === "work") {
+    const gc = await getGuildClubBuffs(client, userId, guildId);
+    const v = gc.buffsByType.work_income_multiplier || 0;
+    if (v > 0) guildWork = 1 + v;
+  }
+  return tw * boost * coinBuff * guildWork;
 }
 
 // ── SUMMARY（/buff 指令用：列所有來源）──────────────────
 async function summary(client, userId, guildId, member) {
   const profile = await getOrCreate(client, userId, guildId);
   const m = miningResolve.resolve(profile, member);
-  const [coinBuff, xpBuff] = await Promise.all([
+  const [coinBuff, xpBuff, gc] = await Promise.all([
     getActiveBuffMultiplier(client, userId, guildId, "coin_boost").catch(() => 1),
     getActiveBuffMultiplier(client, userId, guildId, "xp_boost").catch(() => 1),
+    getGuildClubBuffs(client, userId, guildId),
   ]);
+  const guildLuck = gc.buffsByType.mining_luck_pct || 0;
+  const guildQty = gc.buffsByType.mining_qty_bonus || 0;
+  const guildWork = gc.buffsByType.work_income_multiplier || 0;
+  const guildStaminaMax = gc.buffsByType.dungeon_stamina_max || 0;
   return {
     atk: atkFromProfile(profile),
-    luckBonus: m.luckBonus,
-    qtyBonus: m.qtyBonus,
+    luckBonus: m.luckBonus + guildLuck,
+    qtyBonus: m.qtyBonus + guildQty,
     miningCdMs: m.actualCdMs,
     income: {
       twitch: getCoinTwitchSubBonus(member, "mining_sell"),
@@ -90,6 +138,18 @@ async function summary(client, userId, guildId, member) {
       luck: Number(e.effects?.miningLuckBonus) || 0,
       qty: Number(e.effects?.miningQtyBonus) || 0,
     })),
+    guildClub: gc.club
+      ? {
+          id: gc.club.guild_club_id,
+          name: gc.club.name,
+          level: gc.level,
+          buffs: gc.buffs,
+          miningLuckBonus: guildLuck,
+          miningQtyBonus: guildQty,
+          workIncomeBonus: guildWork,
+          dungeonStaminaMax: guildStaminaMax,
+        }
+      : null,
   };
 }
 
@@ -190,6 +250,7 @@ module.exports = {
   getEffectiveLuck,
   getEffectiveCdMs,
   getEffectiveIncomeMultiplier,
+  getGuildClubBuffs,
   summary,
   roleBuffSummary,
 };
