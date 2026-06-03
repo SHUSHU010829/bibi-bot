@@ -80,7 +80,23 @@ function buildBoardContainer({ listings, viewerId, total, page = 1, pageSize }) 
   if (totalPages > 1) {
     c.addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`-# 第 ${page} / ${totalPages} 頁（用 \`/交易所 列表 頁碼:\` 翻頁）`),
+        new TextDisplayBuilder().setContent(`-# 第 ${page} / ${totalPages} 頁`),
+      )
+      .addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`barter_page_${viewerId}_${page - 1}`)
+            .setLabel("上一頁")
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji("⬅️")
+            .setDisabled(page <= 1),
+          new ButtonBuilder()
+            .setCustomId(`barter_page_${viewerId}_${page + 1}`)
+            .setLabel("下一頁")
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji("➡️")
+            .setDisabled(page >= totalPages),
+        ),
       );
   }
   return c;

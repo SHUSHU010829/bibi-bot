@@ -66,14 +66,7 @@ module.exports = {
           o.setName("想要數量").setDescription("想要的數量").setRequired(true).setMinValue(1),
         ),
     )
-    .addSubcommand((s) =>
-      s
-        .setName("列表")
-        .setDescription("瀏覽所有掛單")
-        .addIntegerOption((o) =>
-          o.setName("頁碼").setDescription("從 1 開始").setMinValue(1).setRequired(false),
-        ),
-    )
+    .addSubcommand((s) => s.setName("列表").setDescription("瀏覽所有掛單"))
     .addSubcommand((s) => s.setName("我的").setDescription("查看 / 下架自己的掛單"))
     .addSubcommand((s) =>
       s
@@ -205,7 +198,7 @@ function createErrorOf(result) {
 async function runList(client, interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const c = barterService.cfg();
-  const page = Math.max(1, interaction.options.getInteger("頁碼") || 1);
+  const page = 1;
   const pageSize = c.pageSize ?? 5;
   const { listings, total } = await barterService.listActive(client, interaction.guildId, {
     limit: pageSize,
