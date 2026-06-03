@@ -4,7 +4,7 @@
 > 並依據 `bibi-bot` 程式碼盤點結果，**僅保留尚未實作的 Phase**。
 > 已部分實作、僅需擴充或補強的 Phase（B / E / S1 / S2）已移至 `PLAN_OPTIMIZATION.md`。
 >
-> 最後更新：2026-05-28
+> 最後更新：2026-06-03
 
 ---
 
@@ -49,7 +49,7 @@
 | Phase 8 | 抖內發放 | ❌ 未實作 | 本文件 |
 | Phase A | 公會系統 | ❌ 未實作 | 本文件 |
 | Phase B | PVP 決鬥 | ⚠️ 已實作（公式不同、缺限制） | `PLAN_OPTIMIZATION.md` |
-| Phase C | 頻道共鬥 BOSS | ❌ 未實作 | 本文件 |
+| Phase C | 頻道共鬥 BOSS | ✅ 已實作（2026-06-03） | 本文件 |
 | Phase D | 農場/種植 | ❌ 未實作 | 本文件 |
 | Phase E | 稱號進階管理 | ⚠️ 週冠換王已有，其餘待補 | `PLAN_OPTIMIZATION.md` |
 | Phase F | 每日市價波動 | ✅ 已實作 | 本文件 |
@@ -1017,7 +1017,7 @@ for (const event of activeEvents) {
 | Phase S5 | 限時活動框架 | 3–4 天 | Phase 1–3、Opt-5 | ✅ 已完成（2026-05-29） |
 | Phase S4 | 釣魚系統 | 2–3 天 | Phase 1、Opt-5 | ✅ 已完成（2026-05-31） |
 | Phase D | 農場 / 種植 | 3–4 天 | Phase 1, 3、Opt-5 | ⬜ 待開發 |
-| Phase C | 頻道共鬥 BOSS | 3–4 天 | Phase 4 | ⬜ 待開發 |
+| Phase C | 頻道共鬥 BOSS | 3–4 天 | Phase 4 | ✅ 已完成（2026-06-03） |
 | Phase S3 | 技能樹 | 4–6 天 | Phase 1–4、Opt-5 | ⬜ 待開發 |
 | Phase A | 公會系統 | 5–7 天 | Phase 5、Opt-5 | ⬜ 待開發 |
 | **合計** | | **27–38 天** | | |
