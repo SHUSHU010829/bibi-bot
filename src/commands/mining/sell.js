@@ -4,6 +4,9 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -16,7 +19,11 @@ const grantCoins = require("../../features/economy/grantCoins");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const { COIN_EMOJI } = require("../../constants/coin");
 
-// 統一選項：礦石 + 魚類 + 蔬菜，value 格式 "ore:<key>" / "fish:<key>" / "veggie:<key>"
+const SELL_CONFIRM_PREFIX = "sellc_ok_";
+const SELL_CANCEL_PREFIX = "sellc_no_";
+
+const TYPE_UNIT = { ore: "顆", fish: "條", veggie: "個" };
+
 function sellChoices() {
   const choices = [];
   for (const [key, def] of Object.entries(mining?.ores || {})) {
@@ -39,86 +46,209 @@ function trendLabel(price, base) {
   return pct > 0 ? ` ▲+${pct}%` : pct < 0 ? ` ▼${pct}%` : " ▬";
 }
 
-module.exports = {
-  channelBuckets: ["mining", "fishing", "marketplace", "farm"],
-  data: new SlashCommandBuilder()
-    .setName("賣出")
-    .setDescription("把礦石或魚賣給系統換金幣，依當日行情計價 🪙")
-    .setContexts(InteractionContextType.Guild)
-    .addStringOption((o) =>
-      o
-        .setName("物品")
-        .setDescription("要賣的礦石或魚種")
-        .setRequired(true)
-        .addChoices(...sellChoices())
-    )
-    .addIntegerOption((o) =>
-      o
-        .setName("數量")
-        .setDescription("要賣的數量（不填則賣出全部）")
-        .setRequired(false)
-        .setMinValue(1)
-    ),
+function errorContainer(title, detail, hint) {
+  const c = new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${title}`));
+  if (detail) {
+    c.addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(detail));
+  }
+  if (hint) {
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${hint}`));
+  }
+  return c;
+}
 
-  run: async (client, interaction) => {
-    await interaction.deferReply();
-
-    try {
-      if (!client.miningProfilesCollection) {
-        return interaction.editReply("🔧 系統尚未啟動！");
-      }
-
-      const userId = interaction.user.id;
-      const guildId = interaction.guildId;
-      const itemArg = interaction.options.getString("物品");
-      const qtyArg = interaction.options.getInteger("數量");
-
-      const [itemType, itemKey] = itemArg.split(":");
-
-      if (itemType === "ore") {
-        return await handleSellOre(client, interaction, { userId, guildId, itemKey, qtyArg });
-      }
-      if (itemType === "fish") {
-        return await handleSellFish(client, interaction, { userId, guildId, itemKey, qtyArg });
-      }
-      if (itemType === "veggie") {
-        return await handleSellVeggie(client, interaction, { userId, guildId, itemKey, qtyArg });
-      }
-      return interaction.editReply("❌ 未知物品類型。");
-    } catch (error) {
-      console.log(`[ERROR] /賣出:\n${error}\n${error.stack}`.red);
-      await interaction.editReply("🔧 賣出失敗，請呼叫舒舒！").catch(() => {});
+async function previewSell(client, { userId, guildId, itemType, itemKey, qtyArg }) {
+  if (itemType === "ore") {
+    if (!mining?.enabled) {
+      return { ok: false, error: errorContainer("🔧 挖礦系統尚未啟動", null, "請稍後再試或聯絡管理員") };
     }
-  },
-};
-
-// ─── 賣礦 ────────────────────────────────────────────────────────────────────
-async function handleSellOre(client, interaction, { userId, guildId, itemKey, qtyArg }) {
-  if (!mining?.enabled) {
-    return interaction.editReply("🔧 挖礦系統尚未啟動！");
+    const def = eventEngine.resolveOreDef(itemKey) || mining.ores[itemKey];
+    if (!def) {
+      return { ok: false, error: errorContainer("❌ 找不到這種礦石", `key=${itemKey}`, "請從選單重新選擇") };
+    }
+    const profile = await getOrCreate(client, userId, guildId);
+    const have = (profile.backpack || {})[itemKey] || 0;
+    if (have <= 0) {
+      return {
+        ok: false,
+        error: errorContainer(
+          `📭 背包裡沒有 ${def.name}`,
+          `目前持有：**0** ${TYPE_UNIT.ore}`,
+          "用 /挖礦 取得礦石後再來"
+        ),
+      };
+    }
+    if (qtyArg && qtyArg > have) {
+      return {
+        ok: false,
+        error: errorContainer(
+          `❌ 數量不足`,
+          `想賣：**${qtyArg}** ${TYPE_UNIT.ore}\n持有：**${have}** ${TYPE_UNIT.ore} ${def.name}`,
+          "不填數量即可賣出全部"
+        ),
+      };
+    }
+    const qty = qtyArg ? Math.min(qtyArg, have) : have;
+    const market = await orePriceEngine.getDailyPrices(client);
+    const price = typeof market.prices?.[itemKey] === "number" ? market.prices[itemKey] : def.price;
+    return {
+      ok: true,
+      def, qty, have, price,
+      total: price * qty,
+      trend: trendLabel(price, def.price),
+      emoji: def.emoji || "⛏️",
+      unit: TYPE_UNIT.ore,
+    };
   }
 
-  const profile = await getOrCreate(client, userId, guildId);
-  const backpack = profile.backpack || {};
-
-  const def = eventEngine.resolveOreDef(itemKey) || mining.ores[itemKey];
-  if (!def) return interaction.editReply("❌ 找不到這種礦石。");
-
-  const have = backpack[itemKey] || 0;
-  if (have <= 0) {
-    return interaction.editReply(`你的背包裡沒有 **${def.name}**。`);
+  if (itemType === "fish") {
+    if (!fishing?.enabled) {
+      return { ok: false, error: errorContainer("🔧 釣魚系統尚未啟動", null, "請稍後再試或聯絡管理員") };
+    }
+    const def = fishing.fish?.[itemKey];
+    if (!def) {
+      return { ok: false, error: errorContainer("❌ 找不到這種魚", `key=${itemKey}`, "請從選單重新選擇") };
+    }
+    const profile = await getOrCreate(client, userId, guildId);
+    const have = (profile.fish_bag || {})[itemKey] || 0;
+    if (have <= 0) {
+      return {
+        ok: false,
+        error: errorContainer(
+          `📭 魚袋裡沒有 ${def.name}`,
+          `目前持有：**0** ${TYPE_UNIT.fish}`,
+          "用 /釣魚 取得魚類後再來"
+        ),
+      };
+    }
+    if (qtyArg && qtyArg > have) {
+      return {
+        ok: false,
+        error: errorContainer(
+          `❌ 數量不足`,
+          `想賣：**${qtyArg}** ${TYPE_UNIT.fish}\n持有：**${have}** ${TYPE_UNIT.fish} ${def.name}`,
+          "不填數量即可賣出全部"
+        ),
+      };
+    }
+    const qty = qtyArg ? Math.min(qtyArg, have) : have;
+    const market = await orePriceEngine.getDailyFishPrices(client);
+    const price = typeof market.prices?.[itemKey] === "number" ? market.prices[itemKey] : def.price;
+    return {
+      ok: true,
+      def, qty, have, price,
+      total: price * qty,
+      trend: trendLabel(price, def.price),
+      emoji: def.emoji || "🐟",
+      unit: TYPE_UNIT.fish,
+    };
   }
 
-  const qty = qtyArg ? Math.min(qtyArg, have) : have;
-  if (qtyArg && qtyArg > have) {
-    return interaction.editReply(`你只有 **${have}** 顆 ${def.name}，無法賣出 ${qtyArg} 顆。`);
+  if (itemType === "veggie") {
+    if (!farming?.enabled) {
+      return { ok: false, error: errorContainer("🔧 農場系統尚未啟動", null, "請稍後再試或聯絡管理員") };
+    }
+    const def = farming.crops?.[itemKey];
+    const price = farming.sellPrices?.[itemKey];
+    if (!def || price == null) {
+      return { ok: false, error: errorContainer("❌ 這種蔬菜不收購", `key=${itemKey}`, "改用 /烹飪 做成 buff 食物試試") };
+    }
+    const profile = await getOrCreate(client, userId, guildId);
+    const have = (profile.veggie_bag || {})[itemKey] || 0;
+    if (have <= 0) {
+      return {
+        ok: false,
+        error: errorContainer(
+          `📭 菜籃裡沒有 ${def.name}`,
+          `目前持有：**0** ${TYPE_UNIT.veggie}`,
+          "用 /採收 取得蔬菜後再來"
+        ),
+      };
+    }
+    if (qtyArg && qtyArg > have) {
+      return {
+        ok: false,
+        error: errorContainer(
+          `❌ 數量不足`,
+          `想賣：**${qtyArg}** ${TYPE_UNIT.veggie}\n持有：**${have}** ${TYPE_UNIT.veggie} ${def.name}`,
+          "不填數量即可賣出全部"
+        ),
+      };
+    }
+    const qty = qtyArg ? Math.min(qtyArg, have) : have;
+    return {
+      ok: true,
+      def, qty, have, price,
+      total: price * qty,
+      trend: "",
+      emoji: def.emoji || "🥕",
+      unit: TYPE_UNIT.veggie,
+    };
   }
 
-  const market = await orePriceEngine.getDailyPrices(client);
-  const priceMap = market.prices || {};
-  const price = typeof priceMap[itemKey] === "number" ? priceMap[itemKey] : def.price;
-  const total = price * qty;
-  const trend = trendLabel(price, def.price);
+  return { ok: false, error: errorContainer("❌ 未知物品類型", `itemType=${itemType}`, "請從選單重新選擇") };
+}
+
+function buildConfirmContainer({ userId, itemType, itemKey, preview, qtyArg }) {
+  const { def, qty, have, price, total, trend, emoji, unit } = preview;
+  const qtyToken = qtyArg ? String(qty) : "all";
+
+  const intentLine = qtyArg
+    ? `-# 你指定賣出 **${qty}** ${unit}（共持有 ${have} ${unit}）`
+    : `-# 未指定數量 → 將賣出**全部 ${qty}** ${unit}`;
+
+  return new ContainerBuilder()
+    .setAccentColor(0xf1c40f)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🤔 確認賣出？\n` +
+        `${emoji} **${def.name}** ×${qty} ＠${price.toLocaleString()}${trend}\n` +
+        `→ 預估收益 **${total.toLocaleString()} ${COIN_EMOJI}**`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${intentLine}\n` +
+        `-# 點下方按鈕確認，否則本次不會扣物品也不會給錢`
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${SELL_CONFIRM_PREFIX}${userId}_${itemType}_${qtyToken}_${itemKey}`)
+          .setLabel(`確認賣出 ×${qty}（+${total.toLocaleString()}）`)
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`${SELL_CANCEL_PREFIX}${userId}`)
+          .setLabel("取消")
+          .setStyle(ButtonStyle.Secondary)
+      )
+    );
+}
+
+async function executeSell(client, interaction, { userId, guildId, itemType, itemKey, qtyArg }) {
+  const preview = await previewSell(client, { userId, guildId, itemType, itemKey, qtyArg });
+  if (!preview.ok) {
+    return interaction.editReply({ components: [preview.error], flags: MessageFlags.IsComponentsV2 });
+  }
+
+  if (itemType === "ore") {
+    return finalizeOreSell(client, interaction, { userId, guildId, itemKey, preview });
+  }
+  if (itemType === "fish") {
+    return finalizeFishSell(client, interaction, { userId, guildId, itemKey, preview });
+  }
+  if (itemType === "veggie") {
+    return finalizeVeggieSell(client, interaction, { userId, guildId, itemKey, preview });
+  }
+}
+
+async function finalizeOreSell(client, interaction, { userId, guildId, itemKey, preview }) {
+  const { def, qty, price, total, trend } = preview;
 
   await client.miningProfilesCollection.updateOne(
     { userId, guildId },
@@ -163,33 +293,8 @@ async function handleSellOre(client, interaction, { userId, guildId, itemKey, qt
   );
 }
 
-// ─── 賣魚 ────────────────────────────────────────────────────────────────────
-async function handleSellFish(client, interaction, { userId, guildId, itemKey, qtyArg }) {
-  if (!fishing?.enabled) {
-    return interaction.editReply("🔧 釣魚系統尚未啟動！");
-  }
-
-  const def = fishing.fish?.[itemKey];
-  if (!def) return interaction.editReply("❌ 找不到這種魚。");
-
-  const profile = await getOrCreate(client, userId, guildId);
-  const fishBag = profile.fish_bag || {};
-  const have = fishBag[itemKey] || 0;
-
-  if (have <= 0) {
-    return interaction.editReply(`你的魚袋裡沒有 **${def.name}**。`);
-  }
-
-  const qty = qtyArg ? Math.min(qtyArg, have) : have;
-  if (qtyArg && qtyArg > have) {
-    return interaction.editReply(`你只有 **${have}** 條 ${def.name}，無法賣出 ${qtyArg} 條。`);
-  }
-
-  const market = await orePriceEngine.getDailyFishPrices(client);
-  const priceMap = market.prices || {};
-  const price = typeof priceMap[itemKey] === "number" ? priceMap[itemKey] : def.price;
-  const total = price * qty;
-  const trend = trendLabel(price, def.price);
+async function finalizeFishSell(client, interaction, { userId, guildId, itemKey, preview }) {
+  const { def, qty, price, total, trend } = preview;
 
   await client.miningProfilesCollection.updateOne(
     { userId, guildId },
@@ -229,30 +334,8 @@ async function handleSellFish(client, interaction, { userId, guildId, itemKey, q
   }).catch(() => {});
 }
 
-// ─── 賣蔬菜 ──────────────────────────────────────────────────────────────────
-async function handleSellVeggie(client, interaction, { userId, guildId, itemKey, qtyArg }) {
-  if (!farming?.enabled) {
-    return interaction.editReply("🔧 農場系統尚未啟動！");
-  }
-
-  const def = farming.crops?.[itemKey];
-  const price = farming.sellPrices?.[itemKey];
-  if (!def || price == null) return interaction.editReply("❌ 這種蔬菜不收購。");
-
-  const profile = await getOrCreate(client, userId, guildId);
-  const veggieBag = profile.veggie_bag || {};
-  const have = veggieBag[itemKey] || 0;
-
-  if (have <= 0) {
-    return interaction.editReply(`你的菜籃裡沒有 **${def.name}**。`);
-  }
-
-  const qty = qtyArg ? Math.min(qtyArg, have) : have;
-  if (qtyArg && qtyArg > have) {
-    return interaction.editReply(`你只有 **${have}** 個 ${def.name}，無法賣出 ${qtyArg} 個。`);
-  }
-
-  const total = price * qty;
+async function finalizeVeggieSell(client, interaction, { userId, guildId, itemKey, preview }) {
+  const { def, qty, price, total } = preview;
 
   await client.miningProfilesCollection.updateOne(
     { userId, guildId },
@@ -287,3 +370,60 @@ async function handleSellVeggie(client, interaction, { userId, guildId, itemKey,
 
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
 }
+
+module.exports = {
+  channelBuckets: ["mining", "fishing", "marketplace", "farm"],
+  data: new SlashCommandBuilder()
+    .setName("賣出")
+    .setDescription("把礦石或魚賣給系統換金幣，依當日行情計價 🪙")
+    .setContexts(InteractionContextType.Guild)
+    .addStringOption((o) =>
+      o
+        .setName("物品")
+        .setDescription("要賣的礦石或魚種")
+        .setRequired(true)
+        .addChoices(...sellChoices())
+    )
+    .addIntegerOption((o) =>
+      o
+        .setName("數量")
+        .setDescription("要賣的數量（不填則賣出全部）")
+        .setRequired(false)
+        .setMinValue(1)
+    ),
+
+  SELL_CONFIRM_PREFIX,
+  SELL_CANCEL_PREFIX,
+  executeSell,
+
+  run: async (client, interaction) => {
+    await interaction.deferReply();
+
+    try {
+      if (!client.miningProfilesCollection) {
+        return interaction.editReply({
+          components: [errorContainer("🔧 系統尚未啟動", null, "請稍後再試或聯絡管理員")],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId;
+      const itemArg = interaction.options.getString("物品");
+      const qtyArg = interaction.options.getInteger("數量");
+
+      const [itemType, itemKey] = itemArg.split(":");
+
+      const preview = await previewSell(client, { userId, guildId, itemType, itemKey, qtyArg });
+      if (!preview.ok) {
+        return interaction.editReply({ components: [preview.error], flags: MessageFlags.IsComponentsV2 });
+      }
+
+      const container = buildConfirmContainer({ userId, itemType, itemKey, preview, qtyArg });
+      await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    } catch (error) {
+      console.log(`[ERROR] /賣出:\n${error}\n${error.stack}`.red);
+      await interaction.editReply("🔧 賣出失敗，請呼叫舒舒！").catch(() => {});
+    }
+  },
+};
