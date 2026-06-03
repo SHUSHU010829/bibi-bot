@@ -1,0 +1,55 @@
+{
+  "boss": {
+    "enabled": true,
+    "announceChannelId": "",
+    "chronicleChannelId": "",
+    "hpPerPlayer": 500,
+    "minHp": 3000,
+    "durationMinutes": 30,
+    "attackLimitPerPlayer": 5,
+    "rareMaterial": "legendary_fragment",
+    "saturdaySpawn": {
+      "schedule": "0 21 * * 6",
+      "timezone": "Asia/Taipei",
+      "name": "週六巨龍",
+      "emoji": "🐉"
+    },
+    "phases": {
+      "normal":  { "hpThreshold": 1.0, "damageMult": 1.0, "counterRate": 0.10, "label": "正常" },
+      "broken":  { "hpThreshold": 0.5, "damageMult": 1.5, "counterRate": 0.10, "label": "破防" },
+      "enraged": { "hpThreshold": 0.2, "damageMult": 1.8, "counterRate": 0.20, "label": "狂暴" }
+    },
+    "phaseAnnouncements": {
+      "broken":  "💥 **{name}** 護甲破損！全員傷害提升 ×1.5！",
+      "enraged": "🔥 **{name}** 進入狂暴狀態！傷害再提升，但小心被反擊！"
+    },
+    "combo": {
+      "windowSec": 10,
+      "triggerCount": 5,
+      "durationSec": 120,
+      "bonusMult": 1.3,
+      "sameUserDecay": 0.1,
+      "sameUserMinMult": 0.5
+    },
+    "comboAnnouncement": "⚡ Combo 滿格！全場傷害 ×1.3 持續 120 秒！（由 <@{user}> 接力觸發）",
+    "rewards": {
+      "poolRatio": 0.5,
+      "killBonus": 100,
+      "killerBonusRatio": 0.05,
+      "killerRareReward": 1,
+      "topRareRewards": 3,
+      "dragonHeirThreshold": 10
+    },
+    "damage": {
+      "baseRandMin": 10,
+      "baseRandMax": 50,
+      "luckBonusMult": 20
+    },
+    "counterMessages": [
+      "{name} 一巴掌把你打飛！這次攻擊沒造成任何傷害。",
+      "你揮空了！{name} 還順便嗆了你一句。",
+      "{name} 用尾巴掃過來，你連武器都差點沒抓住。",
+      "你的劍卡在 {name} 的鱗片上，這次傷害無效。"
+    ]
+  }
+}
