@@ -116,16 +116,28 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina }) {
     )
     .addSeparatorComponents(new SeparatorBuilder());
 
-  if (readyCount >= 2) {
-    container.addActionRowComponents(
-      new ActionRowBuilder().addComponents(
+  const emptyCount = resolvedPlots.filter((p) => !p.crop || p.status === "rotted").length;
+  if (readyCount >= 2 || emptyCount >= 2) {
+    const bulkRow = new ActionRowBuilder();
+    if (readyCount >= 2) {
+      bulkRow.addComponents(
         new ButtonBuilder()
           .setCustomId(`farm_harvestall_${userId}`)
           .setLabel(`一鍵收成全部（${readyCount} 塊）`)
           .setEmoji("🌟")
           .setStyle(ButtonStyle.Success),
-      ),
-    );
+      );
+    }
+    if (emptyCount >= 2) {
+      bulkRow.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`farm_plantall_${userId}`)
+          .setLabel(`一鍵種植全部（${emptyCount} 塊）`)
+          .setEmoji("🌱")
+          .setStyle(ButtonStyle.Primary),
+      );
+    }
+    container.addActionRowComponents(bulkRow);
     container.addSeparatorComponents(new SeparatorBuilder());
   }
 

@@ -43,11 +43,11 @@ const { resolveStamina, staminaMax, getMemberClub } = require("../../features/mi
 const reminder = require("../../features/reminders/cooldownReminderService");
 
 const BTN_PREFIXES = [
-  "farm_plant_", "farm_harvestall_", "farm_harvest_", "farm_fert_", "farm_defend_", "farm_trap_",
+  "farm_plantall_", "farm_plant_", "farm_harvestall_", "farm_harvest_", "farm_fert_", "farm_defend_", "farm_trap_",
   "farm_expandconfirm_", "farm_expandcancel_", "farm_expand_",
   "farm_view_", "farm_sell_",
 ];
-const SELECT_PREFIXES = ["farm_plantsel_", "farm_fertsel_"];
+const SELECT_PREFIXES = ["farm_plantallsel_", "farm_plantsel_", "farm_fertsel_"];
 
 function parseId(customId, prefixes) {
   for (const p of prefixes) {
@@ -329,6 +329,149 @@ module.exports = async (client, interaction) => {
       }).catch(() => {});
 
       applyQuestHooks(client, ctxOf(interaction), [{ questId: "daily_farm_plant" }]).catch(() => {});
+      return;
+    }
+
+    // ── plantall 按鈕：算出空地數，彈出作物選單 ──
+    if (action === "plantall" && isBtn) {
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId;
+      const profile = await getOrCreate(client, userId, guildId);
+      const coins = await fetchUserCoins(client, userId, guildId);
+      const plotCount = farmService.getPlotCount(profile);
+      const plots = await farmService.getPlots(client, userId, guildId, plotCount);
+      const emptyCount = plots.filter((p) => !p.crop || p.status === "rotted").length;
+
+      if (emptyCount === 0) {
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("🌾 沒有空地", "目前所有地塊都已種植或被入侵。", "等收成後再來"),
+        );
+      }
+
+      const seedParts = [];
+      for (const def of Object.values(farming.crops || {})) {
+        if (!def.seedKey) continue;
+        const qty = profile?.seed_bag?.[def.seedKey] || 0;
+        seedParts.push(`${def.emoji} ${def.name}種子 ×${qty}`);
+      }
+      const summary = [
+        `🌾 將為 **${emptyCount}** 塊空地種上同一種作物`,
+        `💰 你有 **${coins.toLocaleString()}** 幣`,
+        seedParts.length ? `🌱 ${seedParts.join("　")}` : null,
+      ].filter(Boolean).join("\n");
+
+      const options = Object.entries(farming.crops || {}).map(([key, def]) => {
+        const hours = Math.round((def.growMs || 0) / 3600000);
+        const totalCost = (def.plantCost || 0) * emptyCount;
+        const parts = [`${def.plantCost}幣/塊・共${totalCost.toLocaleString()}幣`, `${hours}h成熟`];
+        if (def.seedKey) {
+          const seedQty = profile?.seed_bag?.[def.seedKey] || 0;
+          parts.push(`種子${seedQty >= emptyCount ? "✅" : "⚠️"}${seedQty}`);
+        }
+        if (coins < totalCost) parts.push("幣不足全部");
+        return {
+          label: def.name,
+          value: key,
+          description: parts.join("・").slice(0, 100),
+          emoji: def.emoji,
+        };
+      });
+
+      const c = new ContainerBuilder()
+        .setAccentColor(0x4a90a4)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`# 🌱 一鍵種植 ${emptyCount} 塊空地`),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(summary))
+        .addActionRowComponents(
+          new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`farm_plantallsel_${userId}`)
+              .setPlaceholder("選擇要種植的作物…")
+              .addOptions(options),
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 金幣或種子不夠時，會盡量種到不夠為止"),
+        );
+      return replyEphemeralContainer(interaction, c);
+    }
+
+    // ── plantallsel：實際在所有空地種下選定作物 ──
+    if (action === "plantallsel" && isSelect) {
+      const cropKey = interaction.values?.[0];
+      if (!cropKey) return;
+      await interaction.deferReply();
+
+      const result = await farmService.plantAllCrops(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        username: interaction.user.username,
+        member: interaction.member,
+        cropKey,
+      });
+
+      if (!result.ok) {
+        if (result.reason === "no_empty_plot") {
+          return replyEphemeralContainer(
+            interaction,
+            errContainer("🌾 沒有空地", "目前所有地塊都已種植或被入侵。", "等收成後再來"),
+          );
+        }
+        if (result.reason === "missing_seed") {
+          const seedKey = result.stopReason?.seedKey;
+          return replyEphemeralContainer(
+            interaction,
+            errContainer("❌ 需要稀有種子", `種植 **黑玫瑰** 需要 \`${seedKey}\` ×1。`, "黑玫瑰種子只能從地下城（Lv 30+）掉落"),
+          );
+        }
+        if (result.reason === "insufficient_coins") {
+          const need = result.stopReason?.need;
+          const have = result.stopReason?.have;
+          return replyEphemeralContainer(
+            interaction,
+            errContainer("❌ 金幣不足", `第一塊地就種不起：需要 **${need}** 幣，目前 **${have}** 幣。`, "去 /打工、/挖礦 賺點本錢"),
+          );
+        }
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("🔧 種植失敗", `原因：\`${result.reason}\``, "請稍後再試"),
+        );
+      }
+
+      const cropDef = result.crop;
+      const earliestReady = Math.min(...result.planted.map((p) => p.ready_at));
+      const totalCost = (cropDef.plantCost || 0) * result.planted.length;
+      const lines = [
+        `🌾 ${cropDef.emoji} **${cropDef.name}** ×${result.planted.length}`,
+        `💸 總花費：${totalCost.toLocaleString()} 幣`,
+        `🌟 最早成熟：<t:${Math.floor(earliestReady / 1000)}:R>`,
+      ];
+      if (result.stopReason) {
+        const remain = result.totalTargets - result.planted.length;
+        if (result.stopReason.reason === "insufficient_coins") {
+          lines.push(`-# ⚠️ 金幣不夠，剩 ${remain} 塊地未種`);
+        } else if (result.stopReason.reason === "missing_seed") {
+          lines.push(`-# ⚠️ 種子不夠，剩 ${remain} 塊地未種`);
+        }
+      }
+      const c = buildSuccessContainer("🌱 一鍵種植完成", lines.join("\n"), interaction.user.id, 0x4a90a4);
+      await interaction.editReply({
+        components: [c],
+        flags: MessageFlags.IsComponentsV2,
+      });
+
+      reminder.refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "farm",
+        readyAt: earliestReady,
+      }).catch(() => {});
+
+      const hooks = result.planted.map(() => ({ questId: "daily_farm_plant" }));
+      applyQuestHooks(client, ctxOf(interaction), hooks).catch(() => {});
       return;
     }
 

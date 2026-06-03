@@ -143,6 +143,49 @@ async function plantCrop(client, { userId, guildId, username, member, cropKey, p
   return { ok: true, plot: plotDoc, crop };
 }
 
+// 一鍵種植：把同一種作物種在所有空地（含已枯萎），扣不夠時自然停止。
+async function plantAllCrops(client, { userId, guildId, username, member, cropKey }) {
+  if (!farming?.enabled) return { ok: false, reason: "disabled" };
+  if (!coll(client)) return { ok: false, reason: "disabled" };
+
+  const crop = farming.crops?.[cropKey];
+  if (!crop) return { ok: false, reason: "invalid_crop" };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const plotCount = getPlotCount(profile);
+  const plots = await getPlots(client, userId, guildId, plotCount);
+  const targets = plots
+    .filter((p) => !p.crop || p.status === "empty" || p.status === "rotted")
+    .map((p) => p.plotIndex);
+
+  if (targets.length === 0) {
+    return { ok: false, reason: "no_empty_plot" };
+  }
+
+  const planted = [];
+  let stopReason = null;
+  for (const plotIndex of targets) {
+    const r = await plantCrop(client, { userId, guildId, username, member, cropKey, plotIndex });
+    if (r.ok) {
+      planted.push(r.plot);
+      continue;
+    }
+    if (r.reason === "insufficient_coins" || r.reason === "missing_seed") {
+      stopReason = r;
+      break;
+    }
+  }
+
+  return {
+    ok: planted.length > 0,
+    reason: planted.length > 0 ? null : (stopReason?.reason || "plant_failed"),
+    planted,
+    crop,
+    stopReason,
+    totalTargets: targets.length,
+  };
+}
+
 // 收成：依 yield_bonus_pct 計算金幣產出、寫入 veggie_bag，並依作物配置抽 bonusDrops。
 async function harvestCrop(client, { userId, guildId, username, member, plotIndex }) {
   if (!farming?.enabled) return { ok: false, reason: "disabled" };
@@ -616,6 +659,7 @@ async function runDecaySweep(client) {
 
 module.exports = {
   plantCrop,
+  plantAllCrops,
   harvestCrop,
   fertilize,
   previewExpand,
