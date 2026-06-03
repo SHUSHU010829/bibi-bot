@@ -46,18 +46,18 @@
 | Discord scope | 每個 Discord 伺服器獨立公會池（`guildId` 為 hard 隔離） | — |
 | 公會名稱 | 1–12 字、伺服器內唯一、不可含 `@` `#` `<` `>` ` `` ` | 允許改名（收費） |
 | 建立費 | 5,000 幣（從 `UserCoins` 扣，記 `source=guild_create`） | 可改 |
-| 人數上限 | ⚠️ **隨等級擴張**：Lv1=10 → Lv2=12 → Lv3=15 → Lv4=18 → Lv5=20 | 全程固定 20 |
-| 加入流程 | ⚠️ **邀請式**：會長執行 `/公會 邀請 @user`，玩家收到按鈕點擊加入 | 申請式（額外審批 UI） |
+| 人數上限 | **隨等級擴張**：Lv1=10 → Lv2=12 → Lv3=15 → Lv4=18 → Lv5=20 | — |
+| 加入流程 | **雙軌制**：A) 會長 `/公會 邀請 @user` 玩家點按鈕接受；B) 玩家 `/公會 申請 [名稱]` 會長從 `/公會 申請列表` 批准 | — |
 | 退出 | 普通成員直接退；會長必須先 `/公會 轉讓` 或 `/公會 解散` | — |
 | 會長缺席 | 連續 14 天未上線可由副會長 `/公會 接管`（v2，MVP 不做） | — |
-| 解散處理 | ⚠️ Treasury 平分給所有現任成員，公會 doc 標 `disbanded_at`（軟刪除，保留 logs） | 銷毀 / 進系統 |
+| 解散處理 | Treasury 平分給所有現任成員，公會 doc 標 `disbanded_at`（軟刪除，保留 logs） | — |
 | 共享 buff 計算 | 由 `buffResolver` 動態讀取使用者的 `guild_club_members` → `guilds_club.level` 即時加成 | 推到 `UserCoins.activeBuffs` |
-| Buff 與既有疊加 | ⚠️ **加總**：例如挖礦 luck +5% 與既有 luck 同加成池；qty +1 與 pickaxe qty 累加 | 取最大值 |
-| LuckCap | 公會 buff 也吃 `luckCap`（與其他 buff 公平） | 不吃 |
-| 任務領取 | ⚠️ **達成自動入帳到金庫**（不需手動 claim），廣播到公告頻道 | 由會長手動 claim |
+| Buff 與既有疊加 | **加總疊加**：luck 與其他來源同池加總後吃 luckCap、qty 直接加、收入倍率累乘 | — |
+| LuckCap | 公會 luck buff 與其他來源加總後一起吃 `luckCap` | — |
+| 任務領取 | **會長手動 `/公會 領獎`**：達標後不會自動入帳，需會長執行領獎指令 | — |
 | 任務統計來源 | 直接 aggregate 既有 logs（`mineLogs`、`dungeonLogs`、`casinoLogs`），不重複寫表 | 新增 `guild_club_quest_progress` |
 | 金庫提領 | **不可提領**（防退坑套現） | 可由會長提領 |
-| 升級觸發 | 在 donate / quest_reward 等增加金庫的點，原子檢查是否跨門檻，跨越則寫入並廣播 | 排程定期掃描 |
+| 升級觸發 | **一次只升一級**：捐款後檢查單一門檻，跨多門檻則只升一級、剩餘金額繼續累計；廣播時附「一口氣跨越 N 個門檻」紅利文案 | 一次升到底 |
 | 公告頻道 | 沿用 BOSS 公告頻道（`guild_club.announceChannelId`，可改） | 各公會自選 |
 
 ---
@@ -124,14 +124,14 @@
 - `{ guild_club_id: 1, createdAt: -1 }`
 - TTL：`{ createdAt: 1 }` expireAfterSeconds 90 天
 
-### 3.4 `guild_club_invitations` — 邀請（邀請式加入）
+### 3.4 `guild_club_invitations` — 邀請（會長 → 玩家）
 
 ```js
 {
   guild_club_id:  String,
   guildId:        String,
   invitee_id:     String,
-  inviter_id:     String,
+  inviter_id:     String,       // 會長 userId
   status:         String,       // 'pending' | 'accepted' | 'declined' | 'expired'
   expiresAt:      Date,         // 7 天後過期
   createdAt:      Date,
@@ -142,6 +142,29 @@
 **索引**：
 - `{ invitee_id: 1, guildId: 1, status: 1 }`
 - TTL：`{ expiresAt: 1 }` expireAfterSeconds 0（pending 過期自動清）
+
+### 3.4b `guild_club_applications` — 申請（玩家 → 會長）
+
+```js
+{
+  guild_club_id:  String,
+  guildId:        String,
+  applicant_id:   String,       // 申請者 userId
+  message:        String|null,  // 可選的申請理由（指令參數）
+  status:         String,       // 'pending' | 'approved' | 'rejected' | 'expired'
+  expiresAt:      Date,         // 7 天後過期
+  createdAt:      Date,
+  respondedAt:    Date|null,
+  responded_by:   String|null,  // 處理的會長 userId
+}
+```
+
+**索引**：
+- `{ guild_club_id: 1, status: 1, createdAt: -1 }`（會長列出 pending 申請用）
+- `{ applicant_id: 1, guildId: 1, status: 1 }`（防止同人重複申請同公會）
+- TTL：`{ expiresAt: 1 }` expireAfterSeconds 0
+
+> **防濫申請**：同一玩家對同一公會在 7 天內只能有一筆 pending 申請。被拒絕後 24 小時內不能對同公會再申請（applicant 端 cooldown，service 層檢查）。
 
 ### 3.5 `guild_club_quest_claims` — 週任務領取記錄
 
@@ -221,6 +244,11 @@
     "invitation": {
       "expireHours": 168
     },
+    "application": {
+      "expireHours": 168,
+      "rejectCooldownHours": 24,
+      "messageMaxLength": 100
+    },
     "weeklyQuests": [
       {
         "id": "guild_mining_squad",
@@ -289,12 +317,14 @@ module.exports = { ...existing, ...guildClub };
 
 > **原子性**：MongoDB 不開 transaction（社群版可能無 replica set）。改用「先扣幣 → 失敗則退費」的補償邏輯：扣幣成功後 insert，失敗則 grantCoins(+5000, source="guild_create_refund")。
 
-### 5.2 邀請與加入
+### 5.2 加入流程（雙軌）
+
+#### A. 邀請式（會長主動）
 
 ```
 /公會 邀請 @user
   ↓ (僅會長可用)
-驗證：被邀請人未屬其他公會 / 公會未滿員 / 沒有 pending 邀請
+驗證：被邀請人未屬其他公會 / 公會未滿員 / 沒有對該人 pending 邀請
   ↓
 insert guild_club_invitations (status="pending", expiresAt=now+7d)
   ↓
@@ -307,6 +337,51 @@ insert guild_club_invitations (status="pending", expiresAt=now+7d)
   insert guild_club_members
   公告：「🎉 @user 加入了 XXX 公會！」
 ```
+
+#### B. 申請式（玩家主動）
+
+```
+/公會 申請 [名稱] [理由?]
+  ↓
+驗證：玩家未屬其他公會 / 公會存在且未滿員 / 申請者非 24h 內被該公會拒絕過 /
+      無 pending 申請對該公會
+  ↓
+insert guild_club_applications (status="pending", expiresAt=now+7d)
+  ↓
+ephemeral 回覆申請者：「✅ 已送出申請。會長批准後會通知你」
+  ↓
+若公會有 announce 頻道（或預設用 boss 公告頻道）→ 發送會長提示：
+  「📬 XXX 公會收到新申請：@user」「使用 /公會 申請列表 處理」
+  （此訊息為公開、所有會長若不只一人都看得到——MVP 階段公會只有單一會長）
+
+/公會 申請列表  （僅會長可用）
+  ↓
+ephemeral Container：
+  TextDisplay「📬 待處理申請（N 筆）」
+  for each pending application (排序 createdAt asc)：
+    Section
+      accessory: Button「✅ 批准」customId=gc_app_approve_<leaderId>_<applicationId>
+      text: 「@user · 申請於 X 小時前\n> 理由：申請訊息（若有）」
+    Section
+      accessory: Button「❌ 拒絕」customId=gc_app_reject_<leaderId>_<applicationId>
+      text: -# 「拒絕後 24 小時內該玩家不能再申請」
+  若無 pending：TextDisplay「目前沒有待處理申請」
+  ↓
+會長按「批准」：
+  原子：findOneAndUpdate application status="approved" WHERE status="pending"
+        + 再次檢查公會未滿員、申請者未加入其他公會
+  insert guild_club_members
+  ephemeral 更新申請列表（移除該筆）
+  公告：「🎉 @user 通過申請加入 XXX 公會！」
+  （MVP 不主動 DM 申請者；申請者下次 /公會 資訊 即可看到所屬公會）
+  
+會長按「拒絕」：
+  findOneAndUpdate application status="rejected", respondedAt=now, responded_by=leaderId
+  ephemeral 更新申請列表（移除該筆）
+  不發送公告（保留申請者面子）
+```
+
+> **單一會長假設**：MVP 階段公會只有一名會長（無副會長），所以「會長」=「leader_id」。`/公會 申請列表` 直接 `leader_id === userId` 驗證即可。
 
 ### 5.3 捐款與升級檢查
 
@@ -321,38 +396,68 @@ findOneAndUpdate guilds_club $inc { treasury: N, treasury_current: N }, return n
 insert guild_club_logs (source="donate")
   ↓
 checkLevelUp(newDoc):
-  if newDoc.treasury crosses next threshold:
-    findOneAndUpdate guilds_club { level: oldLv } $set { level: newLv, max_members: newMax }
-    若成功 → 廣播升級（沿用 BOSS announceChannel）
+  currentLv = newDoc.level
+  nextLvDef = levels.find(l => l.level === currentLv + 1)
+  if nextLvDef AND newDoc.treasury >= nextLvDef.threshold:
+    // 一次只升一級
+    findOneAndUpdate guilds_club { _id, level: currentLv } $set { level: currentLv+1, max_members: nextLvDef.maxMembers }
+    若成功：
+      // 統計這次捐款一口氣跨越幾個門檻（純文案用，不影響實際等級）
+      crossedThresholds = levels.filter(l => l.level > currentLv && l.threshold <= newDoc.treasury).length
+      廣播升級（沿用 BOSS announceChannel）：
+        若 crossedThresholds == 1: 「⬆️ 公會「XXX」升級到 Lv.N！」
+        若 crossedThresholds >= 2: 「⚡ 公會「XXX」一口氣跨越 {N} 個門檻！本次升到 Lv.M（剩餘金額將繼續累計升等）」
   ↓
 回覆：成功 Container + 快捷按鈕「再捐 1000」「查看公會」
 ```
 
 > **升級原子性**：用 findOneAndUpdate 並 match 舊 level，確保並發捐款只觸發一次升級廣播。
+> **多級門檻策略**：剩餘金額不會「消耗」掉——`treasury` 是累積值，下次任何金庫變動（再捐款、任務領獎）都會再次觸發 `checkLevelUp`，自然升到下一級。等於把多級升等拆成多次廣播事件，每一級都有獨立的儀式感。
 
-### 5.4 每週任務
+### 5.4 每週任務（會長手動領獎）
 
 ```
-/公會 任務（查詢）
+/公會 任務（查詢，任一成員可用）
   ↓
 ephemeral Container:
   weekStart = luxon week start (resetTimezone)
   對每個 weeklyQuests 任務：
     progress = aggregate( source collection, filter: { createdAt >= weekStart, userId IN members } )
-    已領取 = guild_club_quest_claims.findOne({ guild_club_id, questId, period })
-  顯示 [✅ 已完成 / 🔄 進度 X/Y / 🎁 已領取]
+    claim = guild_club_quest_claims.findOne({ guild_club_id, questId, period })
+    狀態判定：
+      claim 存在 → 🎁 已領取（X/Y）
+      progress >= target → 🏆 可領取（會長執行 /公會 領獎）
+      else → 🔄 進度 X/Y
+  顯示每個任務一個 Section + （若可領取且使用者是會長）accessory Button「領取 +N 幣」
   ↓
-自動領取（每次查詢時順手檢查）：
-  for each quest with progress >= target AND no claim record:
-    insertOne guild_club_quest_claims (unique → 競態 safe)
+非會長看到「🏆 可領取」 → 附 -# 小字「請會長執行 /公會 領獎」
+會長看到「🏆 可領取」 → 直接顯示按鈕（也可走 /公會 領獎 指令）
+
+/公會 領獎  （僅會長可用）
+  ↓
+驗證：使用者為會長 / 屬於某公會
+週次 period = ISO week
+ready = []
+for each weeklyQuests 任務：
+  progress = aggregate(...)
+  if progress >= target:
+    try insertOne guild_club_quest_claims { guild_club_id, questId, period, claimedAt: now, amount: reward }
     若 insert 成功（非 duplicate-key error）：
-      $inc treasury + treasury_current
-      insert guild_club_logs (source="quest_reward")
-      checkLevelUp
-      公告：「🏆 公會「XXX」完成週任務「礦業大隊」，金庫 +5000」
+      $inc guilds_club.treasury + treasury_current by reward
+      insert guild_club_logs (source="quest_reward", amount=reward)
+      ready.push(questDef)
+
+if ready.length == 0:
+  錯誤 Container：「目前沒有可領取的任務」+ 列出各任務進度
+else:
+  總額 = sum(ready.reward)
+  checkLevelUp(updatedDoc)  // 連續升級可能觸發
+  公告：「🏆 公會「XXX」完成 {N} 項週任務：礦業大隊、地下探索隊…，金庫 +{總額}」
+  ephemeral 成功 Container + 快捷按鈕「查看公會」
 ```
 
-> **自動領取時機**：MVP 階段「成員查詢任務時順手結算」就夠。後續可加 cron。
+> **競態 safe**：`guild_club_quest_claims` 的 unique index `{guild_club_id, questId, period}` 確保同一週同任務只能領一次。
+> **進度查詢成本**：MVP 階段每次 `/公會 任務` 即時 aggregate。若實測太慢（>500ms）再加 5 min 快取（in-memory `Map<guildClubId, {ts, data}>`）。
 
 ### 5.5 退會 / 解散
 
@@ -422,15 +527,17 @@ const getGuildClubBuffs = async (client, userId, guildId) => {
 | 指令 | Ephemeral | 描述 |
 |---|---|---|
 | `/公會 建立 [名稱]` | ❌ 公開 | 建立公會，扣 5000 幣 |
-| `/公會 邀請 [使用者]` | ❌ 公開 | 會長邀請玩家（含按鈕） |
-| `/公會 加入 [名稱]` | ❌ 公開 | 直接加入（**若採申請式**才需要） |
+| `/公會 邀請 [使用者]` | ❌ 公開 | 會長邀請玩家（含接受/婉拒按鈕） |
+| `/公會 申請 [名稱] [理由?]` | ✅ Ephemeral | 玩家申請加入指定公會 |
+| `/公會 申請列表` | ✅ Ephemeral | 會長查看待處理申請、批准/拒絕 |
 | `/公會 退會` | ❌ 公開 | 退出公會 |
 | `/公會 解散` | ❌ 公開 | 會長解散（雙確認） |
 | `/公會 轉讓 [使用者]` | ❌ 公開 | 轉讓會長 |
 | `/公會 踢人 [使用者]` | ❌ 公開 | 會長踢人 |
 | `/公會 捐款 [金額]` | ❌ 公開 | 捐款進金庫 |
 | `/公會 資訊 [名稱?]` | ✅ Ephemeral | 查看公會詳情（無參數＝查自己的） |
-| `/公會 任務` | ✅ Ephemeral | 查看本週任務進度（順手自動結算） |
+| `/公會 任務` | ✅ Ephemeral | 查看本週任務進度 |
+| `/公會 領獎` | ❌ 公開 | 會長一次領取所有達標任務獎勵入金庫 |
 | `/公會 排行` | ✅ Ephemeral | 全伺服器公會金庫排行 |
 
 > 對 UX 檢查 #7：查詢類 ephemeral、行動類公開。✅
@@ -476,13 +583,16 @@ ContainerBuilder (accent=金色)
 
 | customId 格式 | 觸發 | Owner 驗證 |
 |---|---|---|
-| `gc_invite_accept_<inviteId>_<inviteeId>` | 接受邀請 | `interaction.user.id === inviteeId` |
-| `gc_invite_decline_<inviteId>_<inviteeId>` | 婉拒邀請 | 同上 |
-| `gc_donate_<userId>_<amount>` | 快捷捐款（資訊頁按鈕） | 同上 |
+| `gc_invite_accept_<inviteeId>_<inviteId>` | 接受邀請 | `interaction.user.id === inviteeId` |
+| `gc_invite_decline_<inviteeId>_<inviteId>` | 婉拒邀請 | 同上 |
+| `gc_app_approve_<leaderId>_<applicationId>` | 批准申請（會長） | `interaction.user.id === leaderId` |
+| `gc_app_reject_<leaderId>_<applicationId>` | 拒絕申請（會長） | 同上 |
+| `gc_donate_<userId>_<amount>` | 快捷捐款（資訊頁按鈕） | `interaction.user.id === userId` |
+| `gc_quest_claim_<leaderId>` | 從任務頁直接領獎 | `interaction.user.id === leaderId` |
 | `gc_disband_confirm_<leaderId>_<guildClubId>` | 解散二次確認 | `interaction.user.id === leaderId` |
 | `gc_disband_cancel_<leaderId>` | 取消解散 | 同上 |
 | `gc_kick_<leaderId>_<targetId>` | 踢人 | 同上 |
-| `gc_view_<userId>_<guildClubId>` | 從排行進入詳情 | userId（避免 ephemeral 串流給他人） |
+| `gc_view_<userId>_<guildClubId>` | 從排行進入詳情 | `interaction.user.id === userId`（避免 ephemeral 串流給他人） |
 
 > 對 UX 檢查 #4：每個按鈕都做 owner 驗證。✅
 
@@ -544,7 +654,7 @@ client.guildClubQuestClaimsCollection = guildClubQuestClaimsCollection;
 |---|---|
 | `src/config/guild_club.json` | 等級、buff、任務、名稱規則 |
 | `src/features/guild_club/guildClubService.js` | 建立 / 解散 / 升級檢查 |
-| `src/features/guild_club/guildClubMembership.js` | 邀請 / 加入 / 退會 / 踢人 / 轉讓 |
+| `src/features/guild_club/guildClubMembership.js` | 邀請 / 申請 / 加入 / 退會 / 踢人 / 轉讓 |
 | `src/features/guild_club/guildClubDonation.js` | 捐款邏輯 + 升級觸發 |
 | `src/features/guild_club/guildClubQuest.js` | 週任務 aggregate + 自動領取 |
 | `src/features/guild_club/guildClubBuff.js` | 提供給 buffResolver 的 helper |
@@ -558,7 +668,7 @@ client.guildClubQuestClaimsCollection = guildClubQuestClaimsCollection;
 | 檔案 | 修改內容 |
 |---|---|
 | `src/config/index.js` | spread `guild_club.json` |
-| `src/events/ready/connectDb.js` | 宣告 5 個 collection + 索引 |
+| `src/events/ready/connectDb.js` | 宣告 6 個 collection + 索引 |
 | `src/features/buff/buffResolver.js` | 整合公會 buff（4 處） |
 | `src/commands/mining/buff.js` | `/加成` 顯示公會 buff |
 | `src/commands/profile/profile.js`（若存在） | 顯示所屬公會 |
@@ -571,10 +681,10 @@ client.guildClubQuestClaimsCollection = guildClubQuestClaimsCollection;
 | Day | 任務 | 驗收 |
 |---|---|---|
 | **D1** | DB 層 + config + service skeleton（建立 / 解散 / 查詢） | 可建立公會、寫進 DB、`/公會 資訊` 看得到 |
-| **D2** | 成員管理（邀請、加入、退會、踢人、轉讓） | 完整加入退出 flow，邀請過期可工作 |
+| **D2** | 成員管理（邀請、申請、申請列表、退會、踢人、轉讓） | 雙軌加入完整可走、邀請/申請過期 TTL 生效、24h cooldown 生效 |
 | **D3** | 捐款 + 升級觸發 + 廣播 | 跨等級會廣播，並發捐款只觸發一次升級 |
 | **D4** | buffResolver 整合 + `/加成` 更新 | 公會 buff 實際影響挖礦/打工結果 |
-| **D5** | 週任務 aggregate + 自動領取 + 排行榜 | 任務達標自動入帳，排行正確 |
+| **D5** | 週任務 aggregate + 會長手動 `/公會 領獎` + 排行榜 | 達標需會長領、unique index 防重複領、排行正確 |
 | **D6** | UX 打磨（錯誤 Container、按鈕、快捷後續、零值收底） | 對照 §9 全綠 |
 | **D7** | 測試 + 文件更新 + PLAN_INTEGRATED.md 標完成 | §12 全過 |
 
@@ -586,19 +696,21 @@ client.guildClubQuestClaimsCollection = guildClubQuestClaimsCollection;
 
 - [ ] 建立公會：餘額不足、名稱重複、名稱超長、含禁字、成功
 - [ ] 邀請：被邀請者已屬公會、公會已滿、邀請過期、接受、婉拒
+- [ ] 申請：玩家已屬公會、公會已滿、24h 內被同公會拒絕過、重複申請同公會、批准、拒絕、過期
 - [ ] 退會：普通成員、會長（有成員/單人）、不在公會
 - [ ] 解散：treasury 平分整除 / 有餘數的處理、log 寫入
 - [ ] 轉讓：對象不在公會、自己轉讓給自己
 - [ ] 捐款：金額為 0、負數、超過餘額
-- [ ] 升級：跨單一門檻、跨兩個門檻（一次捐 60 萬從 Lv1 → Lv5？預設拒絕？或全升）
-- [ ] 任務：剛好達標、超標、跨週重置、同週重複領取（應失敗）
+- [ ] 升級：跨單一門檻廣播一次升一級、一次跨多門檻廣播附「跨越 N 個門檻」紅利文案、後續事件繼續升下一級
+- [ ] 任務：剛好達標、超標、跨週重置、會長 /公會 領獎、非會長無法領、同週重複領取（應失敗）、無任何任務達標時的錯誤訊息
 - [ ] Buff：mining qty +1 確實生效、luck cap 不超過、打工 +10% 累乘正確
 
 ### 12.2 並發測試
 
 - [ ] 兩人同時捐款跨同一門檻：只觸發一次升級廣播
 - [ ] 邀請同一人兩次：第二次應拒絕（pending 已存在）
-- [ ] 任務剛好達標時兩人同時查詢：只有一筆 quest_claim 插入成功
+- [ ] 兩名會員同時送出對同公會的申請：兩筆都成立（不同 applicant），但同 applicant 二次申請應失敗
+- [ ] 會長同時點兩次「批准」：只有一筆 application 從 pending → approved，member 不重複插入
 
 ### 12.3 UX 測試
 
@@ -610,17 +722,18 @@ client.guildClubQuestClaimsCollection = guildClubQuestClaimsCollection;
 
 ---
 
-## 13. 未決議題
+## 13. 已確認決策摘要（2026-06-03）
 
-開發前需確認以下決策：
-
-1. **加入流程**：邀請式（推薦，UX 簡潔）vs 申請式（PLAN_INTEGRATED.md 原文）vs 雙軌都做？
-2. **人數上限**：隨等級擴張（推薦，給升級多一個誘因）vs 全程 20？
-3. **共享 buff 與既有 buff**：加總疊加（推薦，符合「努力越多越強」）vs 取最大值？
-4. **任務獎勵**：達標自動入金庫（推薦）vs 由會長手動 claim？
-5. **解散金庫**：平分給成員（推薦）vs 銷毀 vs 進系統？
-6. 跨多個門檻一次升級：允許（推薦）vs 一次只升一級？
+| 決策 | 結論 |
+|---|---|
+| 加入流程 | **雙軌制**：邀請（會長主動）+ 申請（玩家主動，會長批准） |
+| 人數上限 | 隨等級擴張 Lv1=10 → Lv5=20 |
+| 解散金庫 | 平分給現任成員 |
+| 共享 buff 疊加 | 加總疊加，luck 與其他來源同池吃 luckCap |
+| 任務獎勵 | 會長手動 `/公會 領獎`（達標不自動入帳） |
+| 跨多級升等 | 一次升一級；廣播時若一口氣跨多門檻附「跨越 N 個門檻」紅利文案 |
 
 ---
 
-> 確認以上議題後即可進入 D1 開發。
+> 進入 D1 開發。
+
