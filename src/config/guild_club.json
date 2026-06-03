@@ -1,6 +1,7 @@
 {
   "guildClub": {
     "enabled": true,
+    "allowedCategoryIds": ["1325700784746270730"],
     "createCost": 5000,
     "name": {
       "minLength": 1,
