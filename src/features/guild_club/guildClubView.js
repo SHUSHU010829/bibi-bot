@@ -184,6 +184,156 @@ function buildDisbandSuccessContainer({ club, memberCount, payoutPerMember }) {
   return container;
 }
 
+function buildInvitationContainer({ inviterId, inviteeId, club, invitationId }) {
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_GOLD)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 📨 公會邀請\n<@${inviterId}> 邀請 <@${inviteeId}> 加入「${club.name}」（Lv.${club.level}）`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 7 天內未回覆將自動失效。`
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`gc_invite_accept_${inviteeId}_${invitationId}`)
+          .setLabel("加入")
+          .setEmoji("✅")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`gc_invite_decline_${inviteeId}_${invitationId}`)
+          .setLabel("婉拒")
+          .setEmoji("❌")
+          .setStyle(ButtonStyle.Secondary)
+      )
+    );
+}
+
+function buildJoinAnnouncementContainer({ userId, club, via }) {
+  const tag = via === "invite" ? "（接受邀請）" : via === "application" ? "（申請通過）" : "";
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_SUCCESS)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🎉 <@${userId}> 加入了「${club.name}」${tag}`
+      )
+    );
+}
+
+function buildApplicationSentContainer({ club }) {
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_SUCCESS)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# ✅ 申請已送出`)
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `已送出加入「${club.name}」的申請，請等候會長批准。`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 7 天內未審批將自動過期。若被拒絕，24 小時後才能再申請同公會。`
+      )
+    );
+}
+
+function buildApplicationListContainer({ leaderId, club, applications }) {
+  const container = new ContainerBuilder().setAccentColor(COLOR_GOLD);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `# 📬 「${club.name}」待處理申請（${applications.length} 筆）`
+    )
+  );
+  if (applications.length === 0) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`-# 目前沒有待處理申請。`)
+      );
+    return container;
+  }
+  applications.forEach((app) => {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    const elapsed = formatElapsed(app.createdAt);
+    const msgLine = app.message ? `\n> ${app.message}` : "";
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `<@${app.applicant_id}>　${elapsed}前申請${msgLine}`
+      )
+    );
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`gc_app_approve_${leaderId}_${app.application_id}`)
+          .setLabel("批准")
+          .setEmoji("✅")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`gc_app_reject_${leaderId}_${app.application_id}`)
+          .setLabel("拒絕")
+          .setEmoji("❌")
+          .setStyle(ButtonStyle.Danger)
+      )
+    );
+  });
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 拒絕後 24 小時內該玩家不能再申請。`
+      )
+    );
+  return container;
+}
+
+function buildLeaveSuccessContainer({ club, userId }) {
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_WARN)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 👋 <@${userId}> 退出了「${club.name}」`
+      )
+    );
+}
+
+function buildKickSuccessContainer({ club, targetId, leaderId }) {
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_WARN)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🚪 <@${targetId}> 被會長 <@${leaderId}> 踢出「${club.name}」`
+      )
+    );
+}
+
+function buildTransferSuccessContainer({ club, oldLeaderId, newLeaderId }) {
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_GOLD)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 👑 「${club.name}」會長已轉讓\n<@${oldLeaderId}> → <@${newLeaderId}>`
+      )
+    );
+}
+
+function formatElapsed(date) {
+  if (!date) return "";
+  const ms = Date.now() - date.getTime();
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "剛剛";
+  if (min < 60) return `${min} 分鐘`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} 小時`;
+  return `${Math.floor(hr / 24)} 天`;
+}
+
 function buildErrorContainer({ title, body, hint }) {
   const c = new ContainerBuilder()
     .setAccentColor(COLOR_ERROR)
@@ -202,6 +352,13 @@ module.exports = {
   buildCreateSuccessContainer,
   buildDisbandConfirmContainer,
   buildDisbandSuccessContainer,
+  buildInvitationContainer,
+  buildJoinAnnouncementContainer,
+  buildApplicationSentContainer,
+  buildApplicationListContainer,
+  buildLeaveSuccessContainer,
+  buildKickSuccessContainer,
+  buildTransferSuccessContainer,
   buildErrorContainer,
   formatBuff,
 };

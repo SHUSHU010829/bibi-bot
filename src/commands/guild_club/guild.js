@@ -8,11 +8,18 @@ const {
 const { guildClub } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const guildClubService = require("../../features/guild_club/guildClubService");
+const guildClubMembership = require("../../features/guild_club/guildClubMembership");
 const guildClubView = require("../../features/guild_club/guildClubView");
 
 const SUB_CREATE = "建立";
 const SUB_INFO = "資訊";
 const SUB_DISBAND = "解散";
+const SUB_INVITE = "邀請";
+const SUB_APPLY = "申請";
+const SUB_APPLICATIONS = "申請列表";
+const SUB_LEAVE = "退會";
+const SUB_KICK = "踢人";
+const SUB_TRANSFER = "轉讓";
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -47,6 +54,54 @@ module.exports = {
       sub
         .setName(SUB_DISBAND)
         .setDescription("解散公會（僅會長可用，金庫平分給成員）")
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName(SUB_INVITE)
+        .setDescription("邀請玩家加入公會（僅會長）")
+        .addUserOption((opt) =>
+          opt.setName("使用者").setDescription("要邀請的玩家").setRequired(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName(SUB_APPLY)
+        .setDescription("申請加入指定公會（會長批准後生效）")
+        .addStringOption((opt) =>
+          opt.setName("名稱").setDescription("公會名稱").setRequired(true)
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("理由")
+            .setDescription(
+              `想跟會長說的話（最多 ${guildClub?.application?.messageMaxLength || 100} 字，可省略）`
+            )
+            .setRequired(false)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName(SUB_APPLICATIONS)
+        .setDescription("查看 / 處理待審申請（僅會長）")
+    )
+    .addSubcommand((sub) =>
+      sub.setName(SUB_LEAVE).setDescription("退出目前所屬公會")
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName(SUB_KICK)
+        .setDescription("踢出公會成員（僅會長）")
+        .addUserOption((opt) =>
+          opt.setName("使用者").setDescription("要踢出的成員").setRequired(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName(SUB_TRANSFER)
+        .setDescription("把會長身分轉讓給其他成員")
+        .addUserOption((opt) =>
+          opt.setName("使用者").setDescription("新的會長").setRequired(true)
+        )
     ),
 
   run: async (client, interaction) => {
@@ -68,6 +123,12 @@ module.exports = {
       if (sub === SUB_CREATE) return runCreate(client, interaction);
       if (sub === SUB_INFO) return runInfo(client, interaction);
       if (sub === SUB_DISBAND) return runDisband(client, interaction);
+      if (sub === SUB_INVITE) return runInvite(client, interaction);
+      if (sub === SUB_APPLY) return runApply(client, interaction);
+      if (sub === SUB_APPLICATIONS) return runApplications(client, interaction);
+      if (sub === SUB_LEAVE) return runLeave(client, interaction);
+      if (sub === SUB_KICK) return runKick(client, interaction);
+      if (sub === SUB_TRANSFER) return runTransfer(client, interaction);
     } catch (e) {
       console.log(`[GUILD_CLUB] /公會 ${sub} 失敗：${e.stack || e.message}`.red);
       const reply = {
@@ -311,5 +372,357 @@ async function runDisband(client, interaction) {
       }),
     ],
     flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+// ───────── 邀請 ─────────
+
+async function runInvite(client, interaction) {
+  await interaction.deferReply();
+  const invitee = interaction.options.getUser("使用者", true);
+
+  if (invitee.bot) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 不能邀請機器人",
+          body: "請選擇真人玩家。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  const result = await guildClubMembership.invite(client, {
+    leaderId: interaction.user.id,
+    guildId: interaction.guildId,
+    inviteeId: invitee.id,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [inviteErrorView(result)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  return interaction.editReply({
+    content: `<@${invitee.id}>`,
+    components: [
+      guildClubView.buildInvitationContainer({
+        inviterId: interaction.user.id,
+        inviteeId: invitee.id,
+        club: result.club,
+        invitationId: result.invitation_id,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { users: [invitee.id] },
+  });
+}
+
+// ───────── 申請 ─────────
+
+async function runApply(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const name = interaction.options.getString("名稱", true);
+  const message = interaction.options.getString("理由") || null;
+
+  const result = await guildClubMembership.apply(client, {
+    applicantId: interaction.user.id,
+    guildId: interaction.guildId,
+    clubName: name,
+    message,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [applyErrorView(result, name)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  return interaction.editReply({
+    components: [guildClubView.buildApplicationSentContainer({ club: result.club })],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+// ───────── 申請列表 ─────────
+
+async function runApplications(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const result = await guildClubMembership.listPendingApplications(client, {
+    leaderId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: result.reason === "not_leader" ? "🚫 只有會長可以查看" : "❌ 無法查看",
+          body:
+            result.reason === "not_in_club"
+              ? "你還沒加入公會。"
+              : result.reason === "not_leader"
+                ? "請會長使用此指令處理申請。"
+                : `原因：${result.reason}`,
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  return interaction.editReply({
+    components: [
+      guildClubView.buildApplicationListContainer({
+        leaderId: interaction.user.id,
+        club: result.club,
+        applications: result.applications,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+// ───────── 退會 ─────────
+
+async function runLeave(client, interaction) {
+  await interaction.deferReply();
+
+  const result = await guildClubMembership.leave(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [leaveErrorView(result)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  return interaction.editReply({
+    components: [
+      guildClubView.buildLeaveSuccessContainer({
+        club: result.club,
+        userId: interaction.user.id,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+// ───────── 踢人 ─────────
+
+async function runKick(client, interaction) {
+  await interaction.deferReply();
+  const target = interaction.options.getUser("使用者", true);
+
+  const result = await guildClubMembership.kick(client, {
+    leaderId: interaction.user.id,
+    guildId: interaction.guildId,
+    targetId: target.id,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 無法踢人",
+          body:
+            result.reason === "not_in_club"
+              ? "你還沒加入公會。"
+              : result.reason === "not_leader"
+                ? "只有會長能踢人。"
+                : result.reason === "cannot_kick_self"
+                  ? "不能踢自己（要退會請用 /公會 退會）。"
+                  : result.reason === "target_not_in_your_club"
+                    ? `<@${target.id}> 不在你的公會。`
+                    : `原因：${result.reason}`,
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  return interaction.editReply({
+    components: [
+      guildClubView.buildKickSuccessContainer({
+        club: result.club,
+        targetId: target.id,
+        leaderId: interaction.user.id,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+// ───────── 轉讓 ─────────
+
+async function runTransfer(client, interaction) {
+  await interaction.deferReply();
+  const target = interaction.options.getUser("使用者", true);
+
+  if (target.bot) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 不能轉讓給機器人",
+          body: "請選擇真人成員。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  const result = await guildClubMembership.transfer(client, {
+    leaderId: interaction.user.id,
+    guildId: interaction.guildId,
+    newLeaderId: target.id,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 無法轉讓",
+          body:
+            result.reason === "not_in_club"
+              ? "你還沒加入公會。"
+              : result.reason === "not_leader"
+                ? "只有會長能轉讓。"
+                : result.reason === "cannot_transfer_to_self"
+                  ? "不能轉讓給自己。"
+                  : result.reason === "target_not_in_your_club"
+                    ? `<@${target.id}> 不在你的公會。`
+                    : `原因：${result.reason}`,
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  return interaction.editReply({
+    components: [
+      guildClubView.buildTransferSuccessContainer({
+        club: result.club,
+        oldLeaderId: interaction.user.id,
+        newLeaderId: target.id,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+// ───────── 錯誤 view helpers ─────────
+
+function inviteErrorView(result) {
+  const { reason } = result;
+  if (reason === "leader_not_in_club" || reason === "not_in_club")
+    return guildClubView.buildErrorContainer({
+      title: "🏰 你還沒加入公會",
+      body: "請先 /公會 建立 一個公會。",
+    });
+  if (reason === "not_leader")
+    return guildClubView.buildErrorContainer({
+      title: "🚫 只有會長能邀請",
+      body: "請會長使用此指令。",
+    });
+  if (reason === "cannot_invite_self")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 不能邀請自己",
+      body: "你已經是會長了。",
+    });
+  if (reason === "invitee_already_in_this_club")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 對方已在你的公會",
+      body: "不需重複邀請。",
+    });
+  if (reason === "invitee_in_other_club")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 對方已屬其他公會",
+      body: "請對方先退會再來。",
+    });
+  if (reason === "club_full")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 公會已滿員",
+      body: `目前 ${result.current}/${result.max}。`,
+      hint: "升級公會可擴張人數上限。",
+    });
+  if (reason === "already_invited")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 已有 pending 邀請",
+      body: "請等對方先回覆上一張邀請。",
+    });
+  return guildClubView.buildErrorContainer({
+    title: "❌ 邀請失敗",
+    body: `原因：${reason}`,
+  });
+}
+
+function applyErrorView(result, name) {
+  const { reason } = result;
+  if (reason === "already_in_club")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 你已在公會中",
+      body: "請先 /公會 退會 後再申請其他公會。",
+    });
+  if (reason === "club_not_found")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 找不到公會",
+      body: `本伺服器沒有「${name}」這個公會。`,
+      hint: "可用 /公會 排行 看看有哪些公會。",
+    });
+  if (reason === "club_full")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 公會已滿員",
+      body: `目前 ${result.current}/${result.max}。`,
+      hint: "等公會升級擴張人數，或挑別家。",
+    });
+  if (reason === "already_pending")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 已有申請待審",
+      body: "請等會長處理上一筆申請。",
+    });
+  if (reason === "rejected_cooldown") {
+    const remainMs = Math.max(0, result.readyAt - Date.now());
+    const remainMin = Math.ceil(remainMs / 60000);
+    const remainHr = Math.floor(remainMin / 60);
+    const remainTxt = remainHr >= 1 ? `${remainHr} 小時` : `${remainMin} 分鐘`;
+    return guildClubView.buildErrorContainer({
+      title: "❌ 冷卻中",
+      body: `你最近被「${name}」拒絕過，請再等 ${remainTxt}。`,
+    });
+  }
+  return guildClubView.buildErrorContainer({
+    title: "❌ 申請失敗",
+    body: `原因：${reason}`,
+  });
+}
+
+function leaveErrorView(result) {
+  const { reason } = result;
+  if (reason === "not_in_club")
+    return guildClubView.buildErrorContainer({
+      title: "🏰 你不在任何公會",
+      body: "沒有公會可退。",
+    });
+  if (reason === "leader_with_members")
+    return guildClubView.buildErrorContainer({
+      title: "👑 會長不能直接退會",
+      body: `公會還有 ${result.memberCount - 1} 名其他成員。`,
+      hint: "請先 /公會 轉讓 給其他成員，或 /公會 解散 公會。",
+    });
+  if (reason === "leader_must_disband")
+    return guildClubView.buildErrorContainer({
+      title: "👑 你是唯一的成員",
+      body: "請使用 /公會 解散 結束公會。",
+    });
+  return guildClubView.buildErrorContainer({
+    title: "❌ 退會失敗",
+    body: `原因：${reason}`,
   });
 }
