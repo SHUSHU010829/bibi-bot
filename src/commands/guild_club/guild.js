@@ -40,6 +40,8 @@ const SUB_CLAIM = "領獎";
 const SUB_RANK = "排行";
 
 module.exports = {
+  // /公會 自己會檢查 allowedCategoryIds，跳過全域桶分流以免兩層互打。
+  skipChannelGuard: true,
   data: new SlashCommandBuilder()
     .setName("公會")
     .setDescription("公會系統 🏰")

@@ -20,7 +20,12 @@ function errorContainer(text) {
     .setAccentColor(parseColor(mConfig.embedColorError))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(text));
 }
-const { developersId, serverId, commandChannels } = require("../../config");
+const {
+  developersId,
+  serverId,
+  commandChannels,
+  commandChannelsHidden,
+} = require("../../config");
 const mConfig = require("../../messageConfig.json");
 const getLocalCommands = require("../../utils/getLocalCommands");
 const { consume } = require("../../utils/rateLimiter");
@@ -74,7 +79,11 @@ module.exports = async (client, interaction) => {
     if (interaction.guildId === serverId) {
       const allowed = allowedChannelsFor(commandObject, commandChannels);
       if (allowed && !allowed.includes(interaction.channelId)) {
-        const mentions = allowed.map((id) => `<#${id}>`).join("、");
+        const hidden = new Set(commandChannelsHidden || []);
+        const visible = allowed.filter((id) => !hidden.has(id));
+        const mentions = (visible.length ? visible : allowed)
+          .map((id) => `<#${id}>`)
+          .join("、");
         await safeReply(interaction, {
           content: `🚫 \`/${commandObject.data.name}\` 不能在這裡使用喔！請到 ${mentions} 使用這個指令。`,
         });

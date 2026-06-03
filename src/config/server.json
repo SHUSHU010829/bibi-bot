@@ -14,6 +14,8 @@
     "farm": ["1511018291026460754", "1192666043571773580"]
   },
 
+  "commandChannelsHidden": ["1192666043571773580"],
+
   "memberCountFormat": "😧│很舒禮人數：{count}",
 
   "morningMessage": {
