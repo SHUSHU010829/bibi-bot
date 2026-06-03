@@ -50,14 +50,17 @@ function buildChannelContainer({ invitee, inviter, welcomeAmount }) {
   }
   container.addSectionComponents(header);
 
-  container.addSeparatorComponents(new SeparatorBuilder());
-  const lines = [`🔗 牽線人：<@${inviter.id}>，記得回頭謝謝他 🙏`];
+  const lines = [];
+  if (inviter) lines.push(`🔗 邀請人：<@${inviter.id}>，記得回頭謝謝他 🙏`);
   if (welcomeAmount > 0) {
     lines.push(`${COIN_EMOJI} 入坑禮金 **+${welcomeAmount.toLocaleString()}** 已直接入帳`);
   }
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(lines.join("\n"))
-  );
+  if (lines.length) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(lines.join("\n"))
+    );
+  }
 
   container.addSeparatorComponents(new SeparatorBuilder());
   container.addTextDisplayComponents(
@@ -150,7 +153,7 @@ module.exports = async (
   { guild, member, invitee, inviter, welcomeAmount, inviterReward, activeCount, cappedByDaily }
 ) => {
   if (!welcomeSystem?.enabled) return;
-  if (!guild || !invitee || !inviter) return;
+  if (!guild || !invitee) return;
   const amount = Math.max(0, Math.floor(welcomeAmount || 0));
   const dmOn = welcomeSystem.dm !== false;
 
@@ -160,13 +163,15 @@ module.exports = async (
       client.channels.cache.get(channelId) ||
       (await client.channels.fetch(channelId).catch(() => null));
     if (channel?.isTextBased?.()) {
+      const mentions = [invitee.id];
+      if (inviter) mentions.push(inviter.id);
       await channel
         .send({
           components: [
             buildChannelContainer({ invitee, inviter, welcomeAmount: amount }),
           ],
           flags: MessageFlags.IsComponentsV2,
-          allowedMentions: { users: [invitee.id, inviter.id] },
+          allowedMentions: { users: mentions },
         })
         .catch((e) =>
           console.log(`[INVITE] welcome announce failed: ${e.message}`.yellow)
@@ -175,6 +180,7 @@ module.exports = async (
   }
 
   if (!dmOn) return;
+  if (!inviter) return;
 
   // 私訊新成員
   const inviteeMasterOn = await notifyPrefs

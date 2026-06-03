@@ -26,7 +26,7 @@ const COMMANDS_ROOT = path.join(__dirname, "..");
 // 想顯示「隱私權聲明 / 服務條款」連結時，把網址填進來即可（null = 不顯示）
 const PRIVACY_URL = null;
 const TERMS_URL = null;
-const WEBSITE_URL = "https://bibi-website.zeabur.app/";
+const WEBSITE_URL = "https://bibi.shushu.tw/";
 
 // 少數幾個「大分類」。每個分類聚合多個原始指令資料夾（folders）。
 // 管理員 / 開發者指令會自動歸到 admin 分類，不受 folders 影響。
