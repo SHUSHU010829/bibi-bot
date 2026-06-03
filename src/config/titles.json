@@ -6,7 +6,8 @@
       "casino": "賭場",
       "stock": "股市",
       "lottery": "樂透",
-      "auction": "拍賣"
+      "auction": "拍賣",
+      "boss": "BOSS 戰"
     },
     "order": [
       "coal_collector",
@@ -21,7 +22,12 @@
       "stock_god",
       "lottery_fan",
       "lottery_jackpot",
-      "auction_merchant"
+      "auction_merchant",
+      "dragon_slayer",
+      "dragon_heir",
+      "boss_mvp",
+      "combo_starter",
+      "punching_bag"
     ],
     "defs": {
       "coal_collector": { "name": "煤炭採集者", "emoji": "🪵", "category": "mining", "desc": "累積挖礦 50 次且持有 ≥ 500 幣", "req": { "mineCount": 50, "coins": 500 } },
@@ -36,7 +42,12 @@
       "stock_god": { "name": "股神", "emoji": "💹", "category": "stock", "desc": "累積賣股 + 股利收入 ≥ 50,000 幣", "req": { "income": 50000 } },
       "lottery_fan": { "name": "樂透愛好者", "emoji": "🎟️", "category": "lottery", "desc": "累積購買 50 張樂透", "req": { "ticketCount": 50 } },
       "lottery_jackpot": { "name": "頭獎得主", "emoji": "🏆", "category": "lottery", "desc": "中過一次樂透頭獎" },
-      "auction_merchant": { "name": "拍賣商人", "emoji": "🏷️", "category": "auction", "desc": "拍賣成交 20 件", "req": { "soldCount": 20 } }
+      "auction_merchant": { "name": "拍賣商人", "emoji": "🏷️", "category": "auction", "desc": "拍賣成交 20 件", "req": { "soldCount": 20 } },
+      "dragon_slayer": { "name": "屠龍者", "emoji": "🗡️", "category": "boss", "desc": "對 BOSS 造成最後一擊" },
+      "dragon_heir": { "name": "龍裔", "emoji": "🐲", "category": "boss", "desc": "累積擊殺 BOSS 達 10 次", "req": { "bossKills": 10 } },
+      "boss_mvp": { "name": "萬人敵", "emoji": "⚔️", "category": "boss", "desc": "單場 BOSS 戰傷害第一（每月輪替）", "monthly": true },
+      "combo_starter": { "name": "開團王", "emoji": "🎯", "category": "boss", "desc": "觸發 Combo 滿格的最後一棒（每月輪替）", "monthly": true },
+      "punching_bag": { "name": "被龍揍王", "emoji": "🤡", "category": "boss", "desc": "單場 BOSS 戰被反擊次數最多且 ≥ 3 次（每月輪替）", "monthly": true }
     }
   }
 }

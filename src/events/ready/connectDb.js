@@ -153,6 +153,11 @@ module.exports = async (client) => {
     // 農場系統 collections（Phase D）
     const farmPlotsCollection = database.collection("FarmPlots");
 
+    // BOSS 共鬥系統 collections（Phase C）
+    const bossEventsCollection = database.collection("BossEvents");
+    const bossDamageLogsCollection = database.collection("BossDamageLogs");
+    const bossKillsCollection = database.collection("BossKills");
+
     // 打工系統 collection（記每位玩家的打工冷卻）
     const workProfilesCollection = database.collection("WorkProfiles");
 
@@ -255,6 +260,9 @@ module.exports = async (client) => {
     client.mineLogsCollection = mineLogsCollection;
     client.fishLogsCollection = fishLogsCollection;
     client.farmPlotsCollection = farmPlotsCollection;
+    client.bossEventsCollection = bossEventsCollection;
+    client.bossDamageLogsCollection = bossDamageLogsCollection;
+    client.bossKillsCollection = bossKillsCollection;
     client.workProfilesCollection = workProfilesCollection;
     client.duelGamesCollection = duelGamesCollection;
     client.auctionListingsCollection = auctionListingsCollection;
@@ -950,6 +958,32 @@ module.exports = async (client) => {
         { status: 1, expires_at: 1 },
         { name: "farm_status_expiry" }
       ).catch((e) => console.log(`[WARN] FarmPlots expiry 索引: ${e.message}`.yellow));
+
+      // BOSS 共鬥索引（Phase C）
+      await bossEventsCollection.createIndex(
+        { guild_id: 1, status: 1 },
+        { name: "boss_guild_status" }
+      ).catch((e) => console.log(`[WARN] BossEvents guild_status: ${e.message}`.yellow));
+      await bossEventsCollection.createIndex(
+        { status: 1, ends_at: 1 },
+        { name: "boss_status_ends" }
+      ).catch((e) => console.log(`[WARN] BossEvents status_ends: ${e.message}`.yellow));
+      await bossDamageLogsCollection.createIndex(
+        { boss_id: 1, user_id: 1 },
+        { name: "boss_dmg_boss_user" }
+      ).catch((e) => console.log(`[WARN] BossDamageLogs boss_user: ${e.message}`.yellow));
+      await bossDamageLogsCollection.createIndex(
+        { boss_id: 1, ts: -1 },
+        { name: "boss_dmg_boss_ts" }
+      ).catch((e) => console.log(`[WARN] BossDamageLogs boss_ts: ${e.message}`.yellow));
+      await bossDamageLogsCollection.createIndex(
+        { ts: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "boss_dmg_ttl_90d" }
+      ).catch((e) => console.log(`[WARN] BossDamageLogs TTL: ${e.message}`.yellow));
+      await bossKillsCollection.createIndex(
+        { user_id: 1, guild_id: 1 },
+        { unique: true, name: "uniq_boss_kills_user_guild" }
+      ).catch((e) => console.log(`[WARN] BossKills uniq: ${e.message}`.yellow));
       await fishLogsCollection.createIndex(
         { ts: 1 },
         { expireAfterSeconds: 90 * 24 * 60 * 60, name: "fish_logs_ttl_90d" }
