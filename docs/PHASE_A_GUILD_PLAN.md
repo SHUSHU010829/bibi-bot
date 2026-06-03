@@ -4,7 +4,10 @@
 > 原 Phase A 條目（PLAN_INTEGRATED.md L204–275）為 outline，本文件為 spec。
 >
 > 建立日期：2026-06-03
-> 預估開發時間：5–7 天
+> 完成日期：2026-06-03（D1–D6 全數實作完成）
+> 實際開發時間：< 1 天（D1 至 D6 連續開發）
+>
+> **狀態：✅ 已上線**
 
 ---
 
@@ -735,5 +738,79 @@ client.guildClubQuestClaimsCollection = guildClubQuestClaimsCollection;
 
 ---
 
-> 進入 D1 開發。
+## 14. 實作交付摘要（2026-06-03）
+
+### 14.1 新增檔案
+
+| 檔案 | 用途 |
+|---|---|
+| `src/config/guild_club.json` | 等級表、buff 清單、邀請/申請、週任務、廣播頻道設定 |
+| `src/features/guild_club/guildClubService.js` | 建立、解散、捐款、升級檢查（含原子並發保護） |
+| `src/features/guild_club/guildClubMembership.js` | 邀請、申請、批准/拒絕、退會、踢人、轉讓 |
+| `src/features/guild_club/guildClubQuest.js` | 週任務 aggregate / 領獎 / 排行榜 |
+| `src/features/guild_club/guildClubAnnouncer.js` | 升級 / 任務 / 解散廣播 |
+| `src/features/guild_club/guildClubView.js` | 14 個 Container builder |
+| `src/commands/guild_club/guild.js` | `/公會` 13 個 subcommand |
+| `src/events/interactionCreate/handleGuildClubButton.js` | 11 個按鈕分支 |
+
+### 14.2 修改檔案
+
+| 檔案 | 變更 |
+|---|---|
+| `src/config/index.js` | spread `guild_club.json` |
+| `src/events/ready/connectDb.js` | 6 個 collection 宣告 + 11 條索引（含 partial unique、TTL） |
+| `src/features/economy/grantCoins.js` | 新增 4 個 source、`source === "work"` 時套用公會打工加成 |
+| `src/features/buff/buffResolver.js` | `getGuildClubBuffs` helper + 整合進 `getMiningResolve` / `getEffectiveIncomeMultiplier` / `summary` |
+| `src/commands/mining/buff.js` | `/狀態` 新增公會 buff 區塊 |
+
+### 14.3 完整指令清單
+
+| 指令 | 範圍 | 說明 |
+|---|---|---|
+| `/公會 建立 [名稱]` | 公開 | 扣 5000 幣建立公會 |
+| `/公會 邀請 [使用者]` | 公開 | 會長邀請玩家（含接受/婉拒按鈕） |
+| `/公會 申請 [名稱] [理由?]` | Ephemeral | 玩家主動申請加入（24h 拒絕冷卻） |
+| `/公會 申請列表` | Ephemeral | 會長查看 pending 申請，inline 批准/拒絕 |
+| `/公會 退會` | 公開 | 退出公會（會長須先轉讓或解散） |
+| `/公會 解散` | 公開 | 會長解散（雙確認，金庫平分給成員） |
+| `/公會 轉讓 [使用者]` | 公開 | 會長身分轉移 |
+| `/公會 踢人 [使用者]` | 公開 | 會長踢出成員 |
+| `/公會 捐款 [金額]` | 公開 | 捐款進金庫，附「再捐 1000」/「查看公會」按鈕 |
+| `/公會 資訊 [名稱?]` | Ephemeral | 公會詳情；會長視角每位成員配「踢出」按鈕 |
+| `/公會 任務` | Ephemeral | 週任務進度，會長可從這裡一鍵領獎 |
+| `/公會 領獎` | 公開 | 一鍵領取所有達標任務獎勵入金庫 |
+| `/公會 排行` | Ephemeral | 排行榜，每筆配「查看」按鈕 |
+
+### 14.4 完整按鈕清單
+
+| customId 格式 | 觸發 | Owner |
+|---|---|---|
+| `gc_disband_confirm_<leaderId>_<guildClubId>` | 確定解散 | leader |
+| `gc_disband_cancel_<leaderId>` | 取消解散 | leader |
+| `gc_invite_accept_<inviteeId>_<invitationId>` | 接受邀請 | invitee |
+| `gc_invite_decline_<inviteeId>_<invitationId>` | 婉拒邀請 | invitee |
+| `gc_app_approve_<leaderId>_<applicationId>` | 批准申請 | leader |
+| `gc_app_reject_<leaderId>_<applicationId>` | 拒絕申請 | leader |
+| `gc_donate_<userId>_<amount>` | 快捷再捐款 | user |
+| `gc_view_<userId>` | 查看自己的公會 | user |
+| `gc_view_club_<userId>_<guildClubId>` | 從排行榜查看任一公會 | user |
+| `gc_rank_<userId>` | 從領獎成功跳到排行榜 | user |
+| `gc_quest_claim_<leaderId>` | 一鍵領取週任務獎勵 | leader |
+| `gc_kick_<leaderId>_<targetId>` | 從資訊面板踢人（ephemeral 靜默） | leader |
+
+### 14.5 共享 Buff 實際生效情況
+
+| Buff 類型 | 整合位置 | 生效 |
+|---|---|---|
+| `mining_qty_bonus` | `buffResolver.getMiningResolve()` → 加到 `qtyBonus` | ✅ 即時生效於挖礦 |
+| `mining_luck_pct` | `buffResolver.getMiningResolve()` → 加到 `luckBonus`（luckCap 外） | ✅ 即時生效於挖礦 |
+| `work_income_multiplier` | `grantCoins.js` source=`work` 時累乘 | ✅ 即時生效於打工 |
+| `dungeon_stamina_max` | `summary()` 曝露於 `/狀態` 顯示 | ⚠️ 顯示但未整合進 `dungeonService.staminaMax()`（sync 介面要 async 化、影響多處呼叫端） |
+
+### 14.6 後續工作（v2）
+
+- `dungeon_stamina_max` 整合進 `dungeonService.staminaMax()`：要把 sync 函式改 async 並修改 boss / farm / encounter / shop 多處呼叫端
+- 會長缺席接管機制（連續 14 天未上線可由副會長接管）
+- 改名功能（收費）
+- 副會長 / 成員角色細分
 
