@@ -13,6 +13,18 @@ const guildClubQuest = require("../../features/guild_club/guildClubQuest");
 const guildClubView = require("../../features/guild_club/guildClubView");
 const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
 
+// 公會指令類別白名單。Thread 走 parent channel 的 parentId（祖父類別）。
+// 空 / 未設定 → 不限制。
+function isChannelInAllowedCategory(channel) {
+  const ids = guildClub?.allowedCategoryIds || [];
+  if (ids.length === 0) return true;
+  if (!channel) return false;
+  const categoryId = channel.isThread?.()
+    ? channel.parent?.parentId
+    : channel.parentId;
+  return !!categoryId && ids.includes(categoryId);
+}
+
 const SUB_CREATE = "建立";
 const SUB_INFO = "資訊";
 const SUB_DISBAND = "解散";
@@ -142,6 +154,21 @@ module.exports = {
           guildClubView.buildErrorContainer({
             title: "🔧 公會系統未啟用",
             body: "目前無法使用公會功能。",
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
+
+    if (!isChannelInAllowedCategory(interaction.channel)) {
+      const ids = guildClub?.allowedCategoryIds || [];
+      const links = ids.map((id) => `<#${id}>`).join("、");
+      return interaction.reply({
+        components: [
+          guildClubView.buildErrorContainer({
+            title: "🔒 此頻道不能使用公會指令",
+            body: `請至 ${links} 類別下的頻道使用 /公會。`,
+            hint: "此限制適用於所有 /公會 subcommand。",
           }),
         ],
         flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
