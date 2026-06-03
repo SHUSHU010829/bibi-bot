@@ -31,7 +31,23 @@ async function announceLevelUp(client, levelUp) {
     );
 }
 
+async function announceQuestReward(client, payload) {
+  const ch = await resolveAnnounceChannel(client);
+  if (!ch) return;
+  const container = guildClubView.buildQuestRewardAnnouncementContainer(payload);
+  await ch
+    .send({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { parse: [] },
+    })
+    .catch((e) =>
+      console.log(`[GUILD_CLUB] announceQuestReward 失敗：${e.message}`.yellow)
+    );
+}
+
 module.exports = {
   resolveAnnounceChannel,
   announceLevelUp,
+  announceQuestReward,
 };

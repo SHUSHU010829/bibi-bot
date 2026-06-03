@@ -9,12 +9,14 @@
 //   gc_app_reject_<leaderId>_<applicationId>         — 拒絕申請
 //   gc_donate_<userId>_<amount>                      — 快捷再捐款
 //   gc_view_<userId>                                 — 開啟資訊 ephemeral
+//   gc_quest_claim_<leaderId>                        — 一鍵領取週任務獎勵
 
 require("colors");
 const { MessageFlags } = require("discord.js");
 
 const guildClubService = require("../../features/guild_club/guildClubService");
 const guildClubMembership = require("../../features/guild_club/guildClubMembership");
+const guildClubQuest = require("../../features/guild_club/guildClubQuest");
 const guildClubView = require("../../features/guild_club/guildClubView");
 const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
 
@@ -40,6 +42,9 @@ module.exports = async (client, interaction) => {
   }
   if (id.startsWith("gc_view_")) {
     return handleQuickView(client, interaction);
+  }
+  if (id.startsWith("gc_quest_claim_")) {
+    return handleQuestClaim(client, interaction);
   }
 };
 
@@ -442,6 +447,91 @@ async function handleQuickView(client, interaction) {
     ],
     flags: MessageFlags.IsComponentsV2,
   });
+}
+
+async function handleQuestClaim(client, interaction) {
+  const leaderId = interaction.customId.slice("gc_quest_claim_".length);
+  if (interaction.user.id !== leaderId) {
+    return interaction.reply({
+      content: "🚫 這不是你的領獎按鈕！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  await interaction.deferUpdate();
+
+  try {
+    const result = await guildClubQuest.claimAllReady(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+    });
+
+    if (!result.ok) {
+      return interaction.followUp({
+        components: [
+          guildClubView.buildErrorContainer({
+            title: "❌ 領獎失敗",
+            body: questClaimFailureBody(result),
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
+
+    if (result.levelUp) {
+      guildClubAnnouncer
+        .announceLevelUp(client, result.levelUp)
+        .catch(() => {});
+    }
+    guildClubAnnouncer
+      .announceQuestReward(client, {
+        club: result.club,
+        claimed: result.claimed,
+        totalReward: result.totalReward,
+        leaderId: interaction.user.id,
+      })
+      .catch(() => {});
+
+    const refreshed = await guildClubQuest.getQuestStatus(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+    });
+    if (refreshed.ok) {
+      return interaction.editReply({
+        components: [
+          guildClubView.buildQuestListContainer({
+            viewerId: interaction.user.id,
+            club: refreshed.club,
+            period: refreshed.period,
+            items: refreshed.items,
+            isLeader: refreshed.isLeader,
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+  } catch (e) {
+    console.log(
+      `[GUILD_CLUB] quest claim 失敗：${e.stack || e.message}`.red
+    );
+    return interaction.followUp({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 領獎失敗",
+          body: "出了點狀況，請稍後再試。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    }).catch(() => {});
+  }
+}
+
+function questClaimFailureBody(result) {
+  if (result.reason === "not_leader") return "只有會長能領獎。";
+  if (result.reason === "nothing_to_claim") return "目前沒有可領取的任務。";
+  if (result.reason === "all_claimed_by_other") return "別的途徑剛剛領完了。";
+  if (result.reason === "club_missing") return "公會已解散。";
+  return `原因：${result.reason}`;
 }
 
 function applicationFailureBody(reason) {

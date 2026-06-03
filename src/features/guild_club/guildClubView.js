@@ -415,6 +415,131 @@ function buildTransferSuccessContainer({ club, oldLeaderId, newLeaderId }) {
     );
 }
 
+function buildQuestListContainer({ viewerId, club, period, items, isLeader }) {
+  const container = new ContainerBuilder().setAccentColor(COLOR_GOLD);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `# 🏆 「${club.name}」週任務（${period}）`
+    )
+  );
+  items.forEach((q) => {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    const stateEmoji =
+      q.state === "claimed" ? "🎁" : q.state === "ready" ? "🏆" : "🔄";
+    const stateLabel =
+      q.state === "claimed"
+        ? "已領取"
+        : q.state === "ready"
+          ? "可領取"
+          : `${q.progress.toLocaleString()}/${q.target.toLocaleString()}`;
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${stateEmoji} **${q.name}**　${stateLabel}\n${q.description}\n獎勵：${q.reward.toLocaleString()} ${COIN_EMOJI}（入金庫）`
+      )
+    );
+  });
+
+  const anyReady = items.some((i) => i.state === "ready");
+  if (anyReady) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    if (isLeader) {
+      container.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`gc_quest_claim_${viewerId}`)
+            .setLabel("一鍵領取入金庫")
+            .setEmoji("🎁")
+            .setStyle(ButtonStyle.Success)
+        )
+      );
+    } else {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 有任務可領取，請會長執行 /公會 領獎`
+        )
+      );
+    }
+  }
+  return container;
+}
+
+function buildQuestClaimSuccessContainer({ club, claimed, totalReward, levelUp }) {
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_SUCCESS)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🏆 「${club.name}」領取週任務獎勵`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `完成 ${claimed.length} 項任務：\n${claimed.map((q) => `・${q.name}　+${q.reward.toLocaleString()} ${COIN_EMOJI}`).join("\n")}`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `金庫累計入帳：**+${totalReward.toLocaleString()} ${COIN_EMOJI}**`
+      )
+    );
+  if (levelUp) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🎉 公會升級到 Lv.${levelUp.toLevel}！`
+        )
+      );
+  }
+  return container;
+}
+
+function buildLeaderboardContainer({ clubs, viewerClubId }) {
+  const container = new ContainerBuilder().setAccentColor(COLOR_GOLD);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `# 🏆 公會排行榜（依累積金庫）`
+    )
+  );
+  if (!clubs.length) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 本伺服器尚無公會，當第一個建立吧！`
+        )
+      );
+    return container;
+  }
+  clubs.forEach((c, i) => {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
+    const me = c.guild_club_id === viewerClubId ? "👉 " : "";
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${me}${medal} **${c.name}**　Lv.${c.level}　${(c.treasury || 0).toLocaleString()} ${COIN_EMOJI}\n-# 餘額 ${(c.treasury_current || 0).toLocaleString()}　成員 ${c.member_count}/${c.max_members}`
+      )
+    );
+  });
+  return container;
+}
+
+function buildQuestRewardAnnouncementContainer({ club, claimed, totalReward, leaderId }) {
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_GOLD)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🏆 「${club.name}」完成週任務`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `會長 <@${leaderId}> 領取 ${claimed.length} 項任務：\n${claimed.map((q) => `・${q.name}`).join("\n")}\n金庫 +${totalReward.toLocaleString()} ${COIN_EMOJI}`
+      )
+    );
+}
+
 function formatElapsed(date) {
   if (!date) return "";
   const ms = Date.now() - date.getTime();
@@ -453,6 +578,10 @@ module.exports = {
   buildLeaveSuccessContainer,
   buildKickSuccessContainer,
   buildTransferSuccessContainer,
+  buildQuestListContainer,
+  buildQuestClaimSuccessContainer,
+  buildLeaderboardContainer,
+  buildQuestRewardAnnouncementContainer,
   buildErrorContainer,
   formatBuff,
 };

@@ -9,6 +9,7 @@ const { guildClub } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const guildClubService = require("../../features/guild_club/guildClubService");
 const guildClubMembership = require("../../features/guild_club/guildClubMembership");
+const guildClubQuest = require("../../features/guild_club/guildClubQuest");
 const guildClubView = require("../../features/guild_club/guildClubView");
 const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
 
@@ -22,6 +23,9 @@ const SUB_LEAVE = "退會";
 const SUB_KICK = "踢人";
 const SUB_TRANSFER = "轉讓";
 const SUB_DONATE = "捐款";
+const SUB_QUEST = "任務";
+const SUB_CLAIM = "領獎";
+const SUB_RANK = "排行";
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -116,6 +120,17 @@ module.exports = {
             .setRequired(true)
             .setMinValue(1)
         )
+    )
+    .addSubcommand((sub) =>
+      sub.setName(SUB_QUEST).setDescription("查看本週公會任務進度")
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName(SUB_CLAIM)
+        .setDescription("一鍵領取所有達標的週任務獎勵（僅會長）")
+    )
+    .addSubcommand((sub) =>
+      sub.setName(SUB_RANK).setDescription("查看伺服器公會排行榜")
     ),
 
   run: async (client, interaction) => {
@@ -144,6 +159,9 @@ module.exports = {
       if (sub === SUB_KICK) return runKick(client, interaction);
       if (sub === SUB_TRANSFER) return runTransfer(client, interaction);
       if (sub === SUB_DONATE) return runDonate(client, interaction);
+      if (sub === SUB_QUEST) return runQuest(client, interaction);
+      if (sub === SUB_CLAIM) return runClaim(client, interaction);
+      if (sub === SUB_RANK) return runRank(client, interaction);
     } catch (e) {
       console.log(`[GUILD_CLUB] /公會 ${sub} 失敗：${e.stack || e.message}`.red);
       const reply = {
@@ -670,7 +688,160 @@ async function runDonate(client, interaction) {
   });
 }
 
+// ───────── 任務 ─────────
+
+async function runQuest(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const status = await guildClubQuest.getQuestStatus(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
+  if (!status.ok) {
+    return interaction.editReply({
+      components: [questStatusErrorView(status)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  return interaction.editReply({
+    components: [
+      guildClubView.buildQuestListContainer({
+        viewerId: interaction.user.id,
+        club: status.club,
+        period: status.period,
+        items: status.items,
+        isLeader: status.isLeader,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+// ───────── 領獎 ─────────
+
+async function runClaim(client, interaction) {
+  await interaction.deferReply();
+
+  const result = await guildClubQuest.claimAllReady(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [questClaimErrorView(result)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  if (result.levelUp) {
+    guildClubAnnouncer.announceLevelUp(client, result.levelUp).catch(() => {});
+  }
+  guildClubAnnouncer
+    .announceQuestReward(client, {
+      club: result.club,
+      claimed: result.claimed,
+      totalReward: result.totalReward,
+      leaderId: interaction.user.id,
+    })
+    .catch(() => {});
+
+  return interaction.editReply({
+    components: [
+      guildClubView.buildQuestClaimSuccessContainer({
+        club: result.club,
+        claimed: result.claimed,
+        totalReward: result.totalReward,
+        levelUp: result.levelUp,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+// ───────── 排行 ─────────
+
+async function runRank(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const clubs = await guildClubQuest.getLeaderboard(client, {
+    guildId: interaction.guildId,
+    limit: 10,
+  });
+
+  const myMembership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+
+  return interaction.editReply({
+    components: [
+      guildClubView.buildLeaderboardContainer({
+        clubs,
+        viewerClubId: myMembership?.guild_club_id || null,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
 // ───────── 錯誤 view helpers ─────────
+
+function questStatusErrorView(result) {
+  if (result.reason === "not_in_club")
+    return guildClubView.buildErrorContainer({
+      title: "🏰 你還沒加入公會",
+      body: "先加入公會才能查任務。",
+    });
+  if (result.reason === "club_missing")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 公會資料異常",
+      body: "公會已不存在。",
+    });
+  return guildClubView.buildErrorContainer({
+    title: "❌ 查詢失敗",
+    body: `原因：${result.reason}`,
+  });
+}
+
+function questClaimErrorView(result) {
+  if (result.reason === "not_in_club")
+    return guildClubView.buildErrorContainer({
+      title: "🏰 你還沒加入公會",
+      body: "沒有公會可領獎。",
+    });
+  if (result.reason === "not_leader")
+    return guildClubView.buildErrorContainer({
+      title: "🚫 只有會長可以領獎",
+      body: "請會長執行 /公會 領獎。",
+    });
+  if (result.reason === "nothing_to_claim") {
+    const lines = (result.items || []).map((q) => {
+      const tag =
+        q.state === "claimed" ? "🎁 已領取" : `🔄 ${q.progress}/${q.target}`;
+      return `・${q.name}：${tag}`;
+    });
+    return guildClubView.buildErrorContainer({
+      title: "🏆 目前沒有可領取的任務",
+      body:
+        lines.length > 0
+          ? `本週任務狀態：\n${lines.join("\n")}`
+          : "本週尚未設定任務。",
+      hint: "繼續挖礦、打地下城、賭場玩起來，達標就能領。",
+    });
+  }
+  if (result.reason === "all_claimed_by_other")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 已被搶先領取",
+      body: "別的途徑剛剛領完了。",
+    });
+  return guildClubView.buildErrorContainer({
+    title: "❌ 領獎失敗",
+    body: `原因：${result.reason}`,
+  });
+}
 
 function donateErrorView(result) {
   const { reason } = result;
