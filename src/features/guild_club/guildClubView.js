@@ -103,39 +103,26 @@ function buildInfoContainer({
       new TextDisplayBuilder().setContent(`**成員**\n-# 尚無成員`)
     );
   } else {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`**成員**`)
-    );
-    members.forEach((m) => {
+    const sorted = [...members].sort((a, b) => {
+      if (a.role === "leader") return -1;
+      if (b.role === "leader") return 1;
+      return (b.total_donated || 0) - (a.total_donated || 0);
+    });
+    const lines = sorted.map((m) => {
       const roleEmoji = m.role === "leader" ? "👑" : "・";
       const donated = (m.total_donated || 0).toLocaleString();
-      const line = `${roleEmoji} <@${m.userId}>　捐款 ${donated} ${COIN_EMOJI}`;
-      // 會長視角：對其他成員顯示踢出按鈕
-      if (isLeader && m.userId !== viewerId) {
-        container.addSectionComponents(
-          new SectionBuilder()
-            .addTextDisplayComponents(new TextDisplayBuilder().setContent(line))
-            .setButtonAccessory(
-              new ButtonBuilder()
-                .setCustomId(`gc_kick_${viewerId}_${m.userId}`)
-                .setLabel("踢出")
-                .setEmoji("🚪")
-                .setStyle(ButtonStyle.Danger)
-            )
-        );
-      } else {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(line)
-        );
-      }
+      return `${roleEmoji} <@${m.userId}>　捐款 ${donated} ${COIN_EMOJI}`;
     });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**成員**（${members.length}）\n${lines.join("\n")}`)
+    );
   }
 
   if (isLeader) {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 你是會長。可使用 /公會 邀請、/公會 申請列表、/公會 解散 等指令。`
+        `-# 你是會長。可使用 /公會 邀請、/公會 申請列表、/公會 踢人、/公會 解散。`
       )
     );
   } else if (!isMember) {

@@ -505,7 +505,6 @@ async function runInvite(client, interaction) {
   }
 
   return interaction.editReply({
-    content: `<@${invitee.id}>`,
     components: [
       guildClubView.buildInvitationContainer({
         inviterId: interaction.user.id,

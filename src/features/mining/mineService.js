@@ -3,7 +3,7 @@ const { DateTime } = require("luxon");
 const { mining } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
 const dropTable = require("./dropTable");
-const buffResolver = require("./buffResolver");
+const unifiedBuffResolver = require("../buff/buffResolver");
 const encounterService = require("./encounterService");
 const { consumeMineLuckUse } = require("../fishing/cookService");
 const grantCoins = require("../economy/grantCoins");
@@ -33,7 +33,12 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     return { ok: false, reason: "backpack_full", used, cap };
   }
 
-  const buff = buffResolver.resolve(profile, member);
+  const buff = await unifiedBuffResolver.getMiningResolve(
+    client,
+    userId,
+    guildId,
+    member
+  );
   const ore = dropTable.roll(buff.luckBonus);
   let qty = dropTable.randQty(ore, buff.qtyBonus);
 
