@@ -2,6 +2,7 @@ require("colors");
 const crypto = require("crypto");
 const { guildClub } = require("../../config");
 const service = require("./guildClubService");
+const guildClubDm = require("./guildClubDm");
 
 const shortId = (prefix) =>
   `${prefix}_${crypto.randomBytes(4).toString("hex")}`;
@@ -226,6 +227,16 @@ const apply = async (client, { applicantId, guildId, clubName, message }) => {
     respondedAt: null,
     responded_by: null,
   });
+
+  guildClubDm
+    .notifyNewApplication(client, {
+      leaderId: club.leader_id,
+      guildId,
+      applicantId,
+      clubName: club.name,
+      message: trimmedMsg,
+    })
+    .catch(() => {});
 
   return { ok: true, club, application_id };
 };
