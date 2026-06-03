@@ -14,6 +14,14 @@ const FOLDER_BUCKET = {
   fishing: "fishing",
   farm: "farm",
   shop: "marketplace",
+  ask: "citizen",
+  draw: "citizen",
+  food: "citizen",
+  post: "citizen",
+  recommendation: "citizen",
+  roles: "citizen",
+  ticket: "citizen",
+  weather: "citizen",
 };
 const DEFAULT_BUCKET = "general";
 
