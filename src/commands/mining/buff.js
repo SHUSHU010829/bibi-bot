@@ -119,6 +119,28 @@ module.exports = {
           );
       }
 
+      // 公會共享 buff（Phase A）
+      if (s.guildClub) {
+        const lines = [];
+        if (s.guildClub.miningQtyBonus > 0)
+          lines.push(`• ⛏️ 挖礦數量 +${s.guildClub.miningQtyBonus}`);
+        if (s.guildClub.miningLuckBonus > 0)
+          lines.push(`• 🍀 挖礦幸運 +${Math.round(s.guildClub.miningLuckBonus * 100)}%`);
+        if (s.guildClub.workIncomeBonus > 0)
+          lines.push(`• 💼 打工收入 +${Math.round(s.guildClub.workIncomeBonus * 100)}%`);
+        if (s.guildClub.dungeonStaminaMax > 0)
+          lines.push(`• 🔋 地下城體力上限 +${s.guildClub.dungeonStaminaMax}　-# 即將生效`);
+        if (lines.length === 0)
+          lines.push(`-# 公會升到 Lv.2 起逐步解鎖共享 buff`);
+        container
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**🏰 公會「${s.guildClub.name}」(Lv.${s.guildClub.level})**\n${lines.join("\n")}`
+            )
+          );
+      }
+
       // 食物 buff（Phase S4）
       try {
         if (miningProfileForStamina) {
@@ -160,7 +182,7 @@ module.exports = {
 
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          "-# 加成來源：鎬子 / 幸運藥水 / Twitch 訂閱 / 伺服器加成 / 抖內 / 商店 buff / 限時活動 / 食物"
+          "-# 加成來源：鎬子 / 幸運藥水 / Twitch 訂閱 / 伺服器加成 / 抖內 / 商店 buff / 限時活動 / 食物 / 公會"
         )
       );
 

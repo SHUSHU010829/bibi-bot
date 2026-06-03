@@ -7,6 +7,23 @@ const {
 } = require("./coinMultiplier");
 const { getTodayCoinsBySources } = require("./dailyCoinCap");
 const { getActiveBuffMultiplier } = require("../shop/activeBuff");
+const { guildClub } = require("../../config");
+
+async function getGuildWorkMultiplier(client, userId, guildId) {
+  if (!guildClub?.enabled) return 1;
+  if (!client.guildClubMembersCollection || !client.guildsClubCollection) return 1;
+  const m = await client.guildClubMembersCollection
+    .findOne({ userId, guildId })
+    .catch(() => null);
+  if (!m) return 1;
+  const c = await client.guildsClubCollection
+    .findOne({ guild_club_id: m.guild_club_id, disbanded_at: null })
+    .catch(() => null);
+  if (!c) return 1;
+  const def = guildClub.levels.find((l) => l.level === c.level);
+  const buff = (def?.buffs || []).find((b) => b.type === "work_income_multiplier");
+  return buff?.value > 0 ? 1 + buff.value : 1;
+}
 
 const MSG_VOICE_SOURCES = ["message", "voice"];
 const CASINO_SOURCES = ["bet", "payout"];
@@ -68,7 +85,12 @@ module.exports = async (client, opts) => {
   const buffMultiplier = skipMultipliers || amount <= 0 || opts.source === "shop_buy"
     ? 1
     : await getActiveBuffMultiplier(client, opts.userId, opts.guildId, "coin_boost").catch(() => 1);
-  const totalMultiplier = baseMultiplier * buffMultiplier;
+  // 公會打工加成（只在 source === "work" 時生效，與其他倍率累乘）
+  const guildWorkMultiplier =
+    opts.source === "work" && amount > 0
+      ? await getGuildWorkMultiplier(client, opts.userId, opts.guildId).catch(() => 1)
+      : 1;
+  const totalMultiplier = baseMultiplier * buffMultiplier * guildWorkMultiplier;
   if (totalMultiplier > 1 && amount > 0) {
     amount = Math.floor(amount * totalMultiplier);
   }
