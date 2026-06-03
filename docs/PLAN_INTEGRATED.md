@@ -314,10 +314,50 @@ GET  /api/v1/donation/my?user_id=...   個人贊助紀錄
 ### 傷害計算
 
 ```
-damage = baseAtk(pickaxe) + rand(10, 50) + luckBonus × 20
+baseDamage = baseAtk(pickaxe) + rand(10, 50) + luckBonus × 20
+phaseMult  = 1.0 (normal) | 1.5 (broken) | 1.8 (enraged)
+comboMult  = 1.3 if comboActive else 1.0
+damage     = floor(baseDamage × phaseMult × comboMult)
+
 // 攻擊消耗 1 點體力（與地下城共用體力池）
 // 每位玩家每場 BOSS 最多攻擊 5 次
+// 觸發反擊 → damage = 0，且額外扣 1 點體力（見「反擊機制」）
 ```
+
+### 階段轉換（破防 / 狂暴）
+
+| 階段 | 觸發條件 | 效果 | 頻道公告 |
+|---|---|---|---|
+| **Normal** | HP > 50% | 基準傷害 | — |
+| **Broken（破防）** | HP ≤ 50% | 全員傷害 ×1.5 | 「💥 BOSS 護甲破損！全員傷害提升！」 |
+| **Enraged（狂暴）** | HP ≤ 20% | 全員傷害 ×1.8、反擊率 +10% | 「🔥 BOSS 進入狂暴！小心反擊！」 |
+
+- 階段轉換在 `bossEngine.applyDamage()` 內判定，跨越門檻時觸發一次公告
+- 階段狀態存在 `boss_events.phase`，避免重啟丟失
+
+### 反擊機制
+
+- 每次攻擊有基礎 **10%** 機率被反擊
+  - 狂暴階段反擊率提升至 **20%**
+- 反擊結果：本次傷害計為 0、額外扣 1 點體力
+- 反擊文案隨機池（config 驅動），讓訊息有變化
+- 反擊不消耗 5 次/場上限（避免懲罰過重）
+
+### 連擊 / Combo
+
+```
+// 同一玩家連續攻擊衰減
+sameUserStreak: 第 N 次連續攻擊 → damage ×(1 - 0.1 × (N-1))，下限 0.5
+
+// 接力 Combo（全場共用）
+不同玩家在 10 秒內接力攻擊 → comboCount += 1
+comboCount ≥ 5 → 全場進入 Combo 狀態 120 秒
+Combo 狀態下所有玩家傷害 ×1.3
+Combo bar 滿後重置，10 秒內無接力則歸零
+```
+
+- 鼓勵分散參與、避免「一人從頭打到尾」
+- 觸發 Combo 滿格的「最後一棒」玩家記入稱號 `開團王` 候選
 
 ### 獎勵分配
 
@@ -327,14 +367,41 @@ playerShare = floor(myDamage / totalDamage × totalPool)
 
 // 額外：傷害 Top 3 各得稀有素材一份
 // 額外：BOSS 被擊殺，全員額外 +100 幣
+// 額外：擊殺最後一擊的玩家額外 +200 幣（屠龍者加成）
 ```
+
+### MVP 公告
+
+BOSS 結算（擊殺或時間到）後，自動在公告頻道發送 Container 訊息：
+
+- **本場 MVP**（傷害 Top 1）：頭像 + 傷害數 + 攻擊次數
+- **最後一擊**：擊殺者標註（若有擊殺）
+- **Top 3 排行榜**：含各自傷害與獎勵
+- **全員結算**：總傷害、參與人數、平均獎勵
+- 結果同步寫入「逼逼特報站」頻道，做為長期戰績紀錄
+
+> Container 設計參考 UX 檢查 #2 / #3：用 accent 色強調 MVP，附「查看我的傷害」快捷按鈕。
+
+### 稱號掛勾（串 Phase E）
+
+每場 BOSS 結算後候選稱號：
+
+| 稱號 | 條件 | 性質 |
+|---|---|---|
+| **屠龍者** | 對 BOSS 造成最後一擊 | 永久（可累積擊殺數） |
+| **萬人敵** | 單場傷害 Top 1 | 月榜輪替 |
+| **開團王** | 觸發 Combo bar 滿格的「最後一棒」 | 月榜輪替 |
+| **被龍揍王** | 單場被反擊次數最多（且 ≥ 3 次） | 月榜輪替（搞笑性質） |
+
+- 結算時呼叫 `titleService` 寫入候選紀錄
+- 月榜輪替類稱號由 Phase E 的稱號管理機制接手實際授予
 
 ### 指令
 
 | 指令 | 說明 |
 |---|---|
 | `/攻擊` | 攻擊當前 BOSS |
-| `/boss 資訊` | 查看 BOSS 血量、剩餘時間、我的傷害排名 |
+| `/boss 資訊` | 查看 BOSS 血量、階段、剩餘時間、Combo 狀態、我的傷害排名 |
 | `/boss-admin spawn [名稱] [血量]` 🔒 | 手動召喚 BOSS |
 
 ### DB 新增
@@ -342,31 +409,78 @@ playerShare = floor(myDamage / totalDamage × totalPool)
 ```js
 // boss_events
 {
-  boss_id:    String,
-  guild_id:   String,
-  name:       String,
-  max_hp:     Number,
-  current_hp: Number,
-  status:     String,   // 'active' | 'defeated' | 'expired'
-  started_at: Number,
-  ends_at:    Number,
+  boss_id:        String,
+  guild_id:       String,
+  name:           String,
+  max_hp:         Number,
+  current_hp:     Number,
+  phase:          String,   // 'normal' | 'broken' | 'enraged'
+  status:         String,   // 'active' | 'defeated' | 'expired'
+  started_at:     Number,
+  ends_at:        Number,
+  killer_user_id: String,   // 最後一擊（擊殺時寫入）
+  combo: {
+    count:        Number,   // 當前累積數
+    last_user:    String,   // 最後攻擊者
+    last_ts:      Number,   // 最後攻擊時間
+    active_until: Number,   // Combo 狀態結束時間（0 = 未啟動）
+    mvp_user:     String,   // 觸發 Combo 滿格的玩家
+  },
 }
 
 // boss_damage_logs
 {
-  boss_id: String,
-  user_id: String,
-  damage:  Number,
-  ts:      Number,
+  boss_id:      String,
+  user_id:      String,
+  damage:       Number,
+  is_counter:   Boolean,    // 是否被反擊
+  combo_active: Boolean,    // 攻擊當下是否在 Combo 狀態
+  phase:        String,     // 攻擊當下 BOSS 階段
+  ts:           Number,
 }
 ```
+
+索引：
+- `boss_events`：`{ guild_id: 1, status: 1 }`、`{ ends_at: 1 }`
+- `boss_damage_logs`：`{ boss_id: 1, user_id: 1 }`、TTL 90 天
 
 ### 與現有系統的接點
 
 - **體力消耗**：直接扣 `MiningProfiles.stamina`（與地下城共用）
 - **ATK 計算**：透過 `buffResolver.getEffectiveAtk()`
-- **公告頻道**：對應頻道命名 `怪物出沒中`
+- **稱號授予**：透過 `titleService`（Phase E）
+- **公告頻道**：對應頻道命名 `怪物出沒中` + 結算同步至 `逼逼特報站`
 - **自動排程**：新增 `src/events/ready/bossScheduler.js`
+
+### Config 驅動項目（`src/config/boss.json`）
+
+```json
+{
+  "phases": {
+    "normal":  { "hpThreshold": 1.0, "damageMult": 1.0, "counterRate": 0.10 },
+    "broken":  { "hpThreshold": 0.5, "damageMult": 1.5, "counterRate": 0.10 },
+    "enraged": { "hpThreshold": 0.2, "damageMult": 1.8, "counterRate": 0.20 }
+  },
+  "combo": {
+    "windowSec": 10,
+    "triggerCount": 5,
+    "durationSec": 120,
+    "bonusMult": 1.3,
+    "sameUserDecay": 0.1,
+    "sameUserMinMult": 0.5
+  },
+  "rewards": {
+    "poolRatio": 0.5,
+    "killBonus": 100,
+    "killerBonus": 200,
+    "topRareRewards": 3
+  },
+  "counterMessages": [
+    "BOSS 一巴掌把你打飛！",
+    "你揮空了，BOSS 還順便嗆了你一句。"
+  ]
+}
+```
 
 ---
 
