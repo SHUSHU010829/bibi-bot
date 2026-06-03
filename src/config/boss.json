@@ -1,8 +1,8 @@
 {
   "boss": {
     "enabled": true,
-    "announceChannelId": "",
-    "chronicleChannelId": "",
+    "announceChannelId": "1511617684532367440",
+    "chronicleChannelId": "1511610220856475701",
     "hpPerPlayer": 500,
     "minHp": 3000,
     "durationMinutes": 30,
