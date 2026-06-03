@@ -805,11 +805,10 @@ client.guildClubQuestClaimsCollection = guildClubQuestClaimsCollection;
 | `mining_qty_bonus` | `buffResolver.getMiningResolve()` → 加到 `qtyBonus` | ✅ 即時生效於挖礦 |
 | `mining_luck_pct` | `buffResolver.getMiningResolve()` → 加到 `luckBonus`（luckCap 外） | ✅ 即時生效於挖礦 |
 | `work_income_multiplier` | `grantCoins.js` source=`work` 時累乘 | ✅ 即時生效於打工 |
-| `dungeon_stamina_max` | `summary()` 曝露於 `/狀態` 顯示 | ⚠️ 顯示但未整合進 `dungeonService.staminaMax()`（sync 介面要 async 化、影響多處呼叫端） |
+| `dungeon_stamina_max` | `staminaMax(member, club)` 接受公會 doc + 各 async 呼叫端先 `getMemberClub` 再 pass | ✅ 即時生效於地下城 / BOSS / 農場防禦 / 體力藥水購買 |
 
 ### 14.6 後續工作（v2）
 
-- `dungeon_stamina_max` 整合進 `dungeonService.staminaMax()`：要把 sync 函式改 async 並修改 boss / farm / encounter / shop 多處呼叫端
 - 會長缺席接管機制（連續 14 天未上線可由副會長接管）
 - 改名功能（收費）
 - 副會長 / 成員角色細分

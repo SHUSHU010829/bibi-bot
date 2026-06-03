@@ -9,7 +9,7 @@ const { farming } = require("../../config");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const farmService = require("../../features/farm/farmService");
 const { buildFarmContainer } = require("../../features/farm/farmView");
-const { resolveStamina, staminaMax } = require("../../features/mining/dungeonService");
+const { resolveStamina, staminaMax, getMemberClub } = require("../../features/mining/dungeonService");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -42,7 +42,8 @@ module.exports = {
         }
       }
 
-      const sMax = staminaMax(interaction.member);
+      const club = await getMemberClub(client, interaction.user.id, interaction.guildId);
+      const sMax = staminaMax(interaction.member, club);
       const stamina = resolveStamina(profile, sMax).stamina;
 
       const container = buildFarmContainer({

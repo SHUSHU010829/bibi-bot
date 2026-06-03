@@ -1,5 +1,5 @@
 require("colors");
-const { mining, dungeon, shop } = require("../../config");
+const { mining, dungeon, shop, guildClub } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
 const { weightedRandom } = require("./weightedRandom");
 const grantCoins = require("../economy/grantCoins");
@@ -40,9 +40,31 @@ function staminaBonus(member) {
   return twitchPerks.resolvePerks(member)?.staminaBonus || 0;
 }
 
-function staminaMax(member) {
+// 讀取玩家所屬公會的 doc；無公會或 collection 未掛載皆回 null（不報錯）。
+async function getMemberClub(client, userId, guildId) {
+  if (!guildClub?.enabled) return null;
+  if (!client?.guildClubMembersCollection || !client?.guildsClubCollection) return null;
+  const m = await client.guildClubMembersCollection
+    .findOne({ userId, guildId })
+    .catch(() => null);
+  if (!m) return null;
+  return client.guildsClubCollection
+    .findOne({ guild_club_id: m.guild_club_id, disbanded_at: null })
+    .catch(() => null);
+}
+
+// 公會等級提供的 dungeon_stamina_max 加成總和。
+function staminaGuildBonus(club) {
+  if (!club) return 0;
+  const def = (guildClub?.levels || []).find((l) => l.level === club.level);
+  return (def?.buffs || [])
+    .filter((b) => b.type === "dungeon_stamina_max")
+    .reduce((s, b) => s + (b.value || 0), 0);
+}
+
+function staminaMax(member, club = null) {
   const base = dungeon?.staminaMax ?? 10;
-  return base + staminaBonus(member);
+  return base + staminaBonus(member) + staminaGuildBonus(club);
 }
 
 // 惰性回復：依離線時間補體力。回傳 { stamina, updatedAt, nextRegenAt }。
@@ -73,7 +95,8 @@ function resolveStamina(profile, max = staminaMax()) {
 // 立即恢復體力（體力藥水用）。回傳恢復前後數值；已滿時 full=true 不寫庫。
 async function restoreStamina(client, { userId, guildId, member, amount }) {
   if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
-  const max = staminaMax(member);
+  const club = await getMemberClub(client, userId, guildId);
+  const max = staminaMax(member, club);
   const profile = await getOrCreate(client, userId, guildId);
   const st = resolveStamina(profile, max);
 
@@ -109,7 +132,8 @@ async function restoreStamina(client, { userId, guildId, member, amount }) {
 // member 可選，用於把 Twitch 訂閱的體力上限加乘算進去。
 async function staminaFullAt(client, { userId, guildId, member }) {
   if (!client?.miningProfilesCollection) return 0;
-  const max = staminaMax(member);
+  const club = await getMemberClub(client, userId, guildId);
+  const max = staminaMax(member, club);
   const profile = await client.miningProfilesCollection
     .findOne({ userId, guildId })
     .catch(() => null);
@@ -155,7 +179,8 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
   if (!dungeon?.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
-  const max = staminaMax(member);
+  const club = await getMemberClub(client, userId, guildId);
+  const max = staminaMax(member, club);
   const bonus = staminaBonus(member);
   const profile = await getOrCreate(client, userId, guildId);
 
@@ -374,7 +399,8 @@ async function rollbackDungeon(client, { userId, guildId, username, member }, re
   if (!result?.ok) return;
   if (!client?.miningProfilesCollection) return;
 
-  const max = staminaMax(member);
+  const club = await getMemberClub(client, userId, guildId);
+  const max = staminaMax(member, club);
   const inc = {};
   const set = { updatedAt: new Date() };
 
@@ -432,6 +458,8 @@ module.exports = {
   restoreStamina,
   staminaMax,
   staminaBonus,
+  staminaGuildBonus,
+  getMemberClub,
   staminaFullAt,
   playerAtk,
   hasWeapon,

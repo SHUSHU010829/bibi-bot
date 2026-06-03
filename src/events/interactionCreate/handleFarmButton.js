@@ -39,7 +39,7 @@ const {
   buildDefendAnnouncement,
   buildTrapAnnouncement,
 } = require("../../features/farm/farmAnnouncer");
-const { resolveStamina, staminaMax } = require("../../features/mining/dungeonService");
+const { resolveStamina, staminaMax, getMemberClub } = require("../../features/mining/dungeonService");
 const reminder = require("../../features/reminders/cooldownReminderService");
 
 const BTN_PREFIXES = [
@@ -102,7 +102,8 @@ async function renderFarm(interaction, client) {
       }
     }
   }
-  const sMax = staminaMax(interaction.member);
+  const club = await getMemberClub(client, interaction.user.id, interaction.guildId);
+  const sMax = staminaMax(interaction.member, club);
   const stamina = resolveStamina(profile, sMax).stamina;
   return buildFarmContainer({
     plots,

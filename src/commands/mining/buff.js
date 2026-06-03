@@ -11,7 +11,7 @@ const {
 const buffResolver = require("../../features/buff/buffResolver");
 const { getActiveFoodBuffs } = require("../../features/fishing/cookService");
 const { getOrCreate: getMiningProfile } = require("../../features/mining/miningProfile");
-const { resolveStamina, staminaMax, staminaBonus } = require("../../features/mining/dungeonService");
+const { resolveStamina, staminaMax, staminaBonus, staminaGuildBonus, getMemberClub } = require("../../features/mining/dungeonService");
 const { fishing, dungeon } = require("../../config");
 
 function pct(mult) {
@@ -56,11 +56,20 @@ module.exports = {
       const miningProfileForStamina = await getMiningProfile(
         client, interaction.user.id, interaction.guildId
       ).catch(() => null);
-      const sMax = staminaMax(interaction.member);
+      const club = await getMemberClub(
+        client, interaction.user.id, interaction.guildId
+      ).catch(() => null);
+      const sMax = staminaMax(interaction.member, club);
       const sBonus = staminaBonus(interaction.member);
-      const sBase = sMax - sBonus;
+      const sGuild = staminaGuildBonus(club);
+      const sBase = sMax - sBonus - sGuild;
       const st = resolveStamina(miningProfileForStamina || {}, sMax);
-      const bonusTag = sBonus > 0 ? `（${sBase} + Twitch +${sBonus}）` : "";
+      const bonusParts = [];
+      if (sBonus > 0) bonusParts.push(`Twitch +${sBonus}`);
+      if (sGuild > 0) bonusParts.push(`公會 +${sGuild}`);
+      const bonusTag = bonusParts.length
+        ? `（${sBase} + ${bonusParts.join(" + ")}）`
+        : "";
       const staminaLines = [`**🔋 體力**：${st.stamina}/${sMax}${bonusTag}`];
       if (st.nextRegenAt) {
         const regenMs = dungeon?.staminaRegenMs ?? 3600000;
@@ -129,7 +138,7 @@ module.exports = {
         if (s.guildClub.workIncomeBonus > 0)
           lines.push(`• 💼 打工收入 +${Math.round(s.guildClub.workIncomeBonus * 100)}%`);
         if (s.guildClub.dungeonStaminaMax > 0)
-          lines.push(`• 🔋 地下城體力上限 +${s.guildClub.dungeonStaminaMax}　-# 即將生效`);
+          lines.push(`• 🔋 地下城體力上限 +${s.guildClub.dungeonStaminaMax}`);
         if (lines.length === 0)
           lines.push(`-# 公會升到 Lv.2 起逐步解鎖共享 buff`);
         container

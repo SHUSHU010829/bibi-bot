@@ -2,7 +2,7 @@ require("colors");
 const { boss, serverId } = require("../../config");
 const buffResolver = require("../buff/buffResolver");
 const { getOrCreate } = require("../mining/miningProfile");
-const { resolveStamina, staminaMax } = require("../mining/dungeonService");
+const { resolveStamina, staminaMax, getMemberClub } = require("../mining/dungeonService");
 
 function cfg() {
   return boss || {};
@@ -127,7 +127,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
 
   // 體力檢查（與地下城共用）
   const profile = await getOrCreate(client, userId, guildId);
-  const max = staminaMax(member);
+  const club = await getMemberClub(client, userId, guildId);
+  const max = staminaMax(member, club);
   const st = resolveStamina(profile, max);
   if (st.stamina <= 0) {
     return {
