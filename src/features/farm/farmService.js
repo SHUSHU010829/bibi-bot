@@ -537,6 +537,61 @@ async function defendRaid(client, { userId, guildId, username, member, plotIndex
   };
 }
 
+// 零體力備案：擺個陷阱賭機率。不消耗體力 / 武器，成功率低、獎勵小，
+// 失敗一樣毀作物。設計目的：玩家在體力被地下城耗光時還有事可做，
+// 不用乾等。每場 raid 自然一次性（成功 raid 結束、失敗作物消失）。
+async function setTrap(client, { userId, guildId, username, member, plotIndex }) {
+  if (!farming?.enabled) return { ok: false, reason: "disabled" };
+  if (!coll(client)) return { ok: false, reason: "disabled" };
+
+  const plot = await coll(client).findOne({ userId, guildId, plotIndex }).catch(() => null);
+  if (!plot || plot.status !== "raided" || !plot.raid?.active) {
+    return { ok: false, reason: "no_raid" };
+  }
+
+  const trapCfg = farming.raid?.trap || {};
+  const successRate = trapCfg.successRate ?? 0.3;
+  const won = Math.random() < successRate;
+
+  let coinsGained = 0;
+  let flavor = null;
+  if (won) {
+    const [cLo, cHi] = trapCfg.winCoins || [0, 0];
+    coinsGained = randInt(cLo, cHi);
+  } else {
+    const flavors = trapCfg.failFlavors || [];
+    if (flavors.length) flavor = flavors[Math.floor(Math.random() * flavors.length)];
+  }
+
+  if (coinsGained > 0) {
+    await grantCoins(client, {
+      userId, guildId, username, member,
+      amount: coinsGained,
+      source: "farm_raid_trap",
+      meta: { plotIndex, monster: plot.raid.monsterName },
+    });
+  }
+
+  if (won) {
+    const restoreStatus = plot.raid?.pre_status === "growing" ? "growing" : "ready";
+    await coll(client).updateOne(
+      { userId, guildId, plotIndex },
+      { $set: { status: restoreStatus, raid: null, updatedAt: new Date() } },
+    );
+  } else {
+    await coll(client).deleteOne({ userId, guildId, plotIndex });
+  }
+
+  return {
+    ok: true,
+    won,
+    monster: plot.raid,
+    coinsGained,
+    flavor,
+    successRate,
+  };
+}
+
 // Cron 用：掃 growing→ready、ready→rotted。回傳更新數量供日誌使用。
 async function runDecaySweep(client) {
   const c = coll(client);
@@ -565,6 +620,7 @@ module.exports = {
   previewExpand,
   expandFarm,
   defendRaid,
+  setTrap,
   shouldTriggerRaid,
   markRaid,
   runDecaySweep,

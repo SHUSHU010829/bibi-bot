@@ -49,7 +49,8 @@ function plotLine(plot) {
 }
 
 // 依地塊狀態決定底下要顯示哪些按鈕（成熟 → 收成；空 → 種植；成長中 → 施肥）
-function plotButtonRow(plot, userId) {
+// stamina=0 + 被入侵時，把防禦按鈕替換成「設陷阱」備案（30% 救回作物）。
+function plotButtonRow(plot, userId, { stamina } = {}) {
   const row = new ActionRowBuilder();
   if (!plot.crop || plot.status === "rotted") {
     row.addComponents(
@@ -68,13 +69,23 @@ function plotButtonRow(plot, userId) {
         .setStyle(ButtonStyle.Success),
     );
   } else if (plot.status === "raided") {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`farm_defend_${userId}_${plot.plotIndex}`)
-        .setLabel("防禦（耗 1 體力 + 武器）")
-        .setEmoji("⚔️")
-        .setStyle(ButtonStyle.Danger),
-    );
+    if (stamina === 0) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`farm_trap_${userId}_${plot.plotIndex}`)
+          .setLabel("設陷阱（沒體力備案・30% 機率救回）")
+          .setEmoji("🪤")
+          .setStyle(ButtonStyle.Secondary),
+      );
+    } else {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`farm_defend_${userId}_${plot.plotIndex}`)
+          .setLabel("防禦（耗 1 體力 + 武器）")
+          .setEmoji("⚔️")
+          .setStyle(ButtonStyle.Danger),
+      );
+    }
   } else {
     // growing
     row.addComponents(
@@ -89,7 +100,7 @@ function plotButtonRow(plot, userId) {
 }
 
 // 主畫面：每塊地一個獨立區塊 + 緊接該地塊的 ActionRow（符合 UX 規則 #1）
-function buildFarmContainer({ plots, userId, plotCount, maxPlots }) {
+function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina }) {
   const now = Date.now();
   const resolvedPlots = plots.map((p) => resolveLiveStatus(p, now));
   const readyCount = resolvedPlots.filter((p) => p.status === "ready").length;
@@ -120,7 +131,7 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots }) {
 
   for (const p of resolvedPlots) {
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(plotLine(p)));
-    container.addActionRowComponents(plotButtonRow(p, userId));
+    container.addActionRowComponents(plotButtonRow(p, userId, { stamina }));
   }
 
   container.addSeparatorComponents(new SeparatorBuilder());

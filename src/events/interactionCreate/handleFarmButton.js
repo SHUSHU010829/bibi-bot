@@ -37,11 +37,13 @@ const {
   sendFarmAnnouncement,
   buildHarvestAnnouncement,
   buildDefendAnnouncement,
+  buildTrapAnnouncement,
 } = require("../../features/farm/farmAnnouncer");
+const { resolveStamina, staminaMax } = require("../../features/mining/dungeonService");
 const reminder = require("../../features/reminders/cooldownReminderService");
 
 const BTN_PREFIXES = [
-  "farm_plant_", "farm_harvestall_", "farm_harvest_", "farm_fert_", "farm_defend_",
+  "farm_plant_", "farm_harvestall_", "farm_harvest_", "farm_fert_", "farm_defend_", "farm_trap_",
   "farm_expandconfirm_", "farm_expandcancel_", "farm_expand_",
   "farm_view_", "farm_sell_",
 ];
@@ -100,11 +102,14 @@ async function renderFarm(interaction, client) {
       }
     }
   }
+  const sMax = staminaMax(interaction.member);
+  const stamina = resolveStamina(profile, sMax).stamina;
   return buildFarmContainer({
     plots,
     userId,
     plotCount,
     maxPlots: farming.maxPlots || 8,
+    stamina,
   });
 }
 
@@ -602,6 +607,53 @@ module.exports = async (client, interaction) => {
       const defendNote = buildDefendAnnouncement({ user: interaction.user, result });
       if (defendNote) {
         sendFarmAnnouncement(client, interaction.channel, defendNote).catch(() => {});
+      }
+
+      return interaction.editReply({
+        components: [c],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+
+    // ── trap：沒體力時的備案，30% 賭機率救作物 ──
+    if (action === "trap") {
+      await interaction.deferReply();
+      const result = await farmService.setTrap(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        username: interaction.user.username,
+        member: interaction.member,
+        plotIndex,
+      });
+      if (!result.ok) {
+        const map = {
+          no_raid: ["⚠️ 沒有入侵中", "這塊地沒有怪物正在侵擾。", "回主畫面重新整理狀態"],
+        };
+        const [t, b, h] = map[result.reason] || ["🔧 擺陷阱失敗", `原因：\`${result.reason}\``, ""];
+        return replyEphemeralContainer(interaction, errContainer(t, b, h));
+      }
+      const monster = result.monster;
+      const lines = result.won
+        ? [
+            `🪤 陷阱成功！**${monster.monsterEmoji} ${monster.monsterName}** 落荒而逃。`,
+            result.coinsGained > 0 ? `💰 撿到 **+${result.coinsGained} 幣**` : null,
+            `🌱 作物保住了`,
+          ].filter(Boolean)
+        : [
+            `💀 陷阱失靈，**${monster.monsterEmoji} ${monster.monsterName}** 把作物啃光了…`,
+            result.flavor ? `-# ${result.flavor}` : null,
+            `-# 想穩一點就乖乖等體力回復用「防禦」`,
+          ].filter(Boolean);
+      const c = buildSuccessContainer(
+        result.won ? "🪤 陷阱奏效" : "🪤 陷阱失靈",
+        lines.join("\n"),
+        interaction.user.id,
+        result.won ? 0x2ecc71 : 0xe74c3c,
+      );
+
+      const trapNote = buildTrapAnnouncement({ user: interaction.user, result });
+      if (trapNote) {
+        sendFarmAnnouncement(client, interaction.channel, trapNote).catch(() => {});
       }
 
       return interaction.editReply({
