@@ -1129,7 +1129,7 @@ module.exports = async (client) => {
         { expireAfterSeconds: 90 * 24 * 60 * 60, name: "gcwl_ttl_90d" }
       ).catch((e) => console.log(`[WARN] GuildClubWarehouseLogs TTL: ${e.message}`.yellow));
 
-      // 每日取礦額度：(userId, guildId, day_key) 唯一；7 天 TTL 自動清舊
+      // 每日領取額度：(userId, guildId, day_key) 唯一；7 天 TTL 自動清舊
       await guildClubWarehouseDailyCollection.createIndex(
         { user_id: 1, guildId: 1, day_key: 1 },
         { unique: true, name: "uniq_gcwd_user_guild_day" }

@@ -60,7 +60,7 @@ const buildWarehouseContainer = ({
   const takenLine =
     todayItemsTaken.length > 0
       ? `你今日已領：${todayItemsTaken.map((i) => itemDef(i)?.name || i).join("・")}（${todayTimesUsed}/${settings.dailyMaxTimes}）`
-      : `你今日尚未取礦（0/${settings.dailyMaxTimes}）`;
+      : `你今日尚未領取（0/${settings.dailyMaxTimes}）`;
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(

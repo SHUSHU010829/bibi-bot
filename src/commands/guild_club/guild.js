@@ -44,8 +44,8 @@ const SUB_RANK = "排行";
 const SUB_PROMOTE_VICE = "指派副會長";
 const SUB_DEMOTE_VICE = "撤銷副會長";
 const SUB_WAREHOUSE = "倉庫";
-const SUB_DEPOSIT = "存礦";
-const SUB_WITHDRAW = "取礦";
+const SUB_DEPOSIT = "存入";
+const SUB_WITHDRAW = "領取";
 
 module.exports = {
   // /公會 自己會檢查 allowedCategoryIds，跳過全域桶分流以免兩層互打。
@@ -161,7 +161,7 @@ module.exports = {
         )
     )
     .addSubcommand((sub) =>
-      sub.setName(SUB_WAREHOUSE).setDescription("查看公會倉庫存貨與今日取礦額度")
+      sub.setName(SUB_WAREHOUSE).setDescription("查看公會倉庫存貨與今日領取額度")
     )
     .addSubcommand((sub) =>
       sub
@@ -1351,7 +1351,7 @@ function depositErrorView(result, itemId) {
   if (reason === "not_in_club")
     return warehouseView.buildErrorContainer({
       title: "🏰 你還沒加入公會",
-      body: "請先加入公會才能存礦。",
+      body: "請先加入公會才能存入物資。",
     });
   if (reason === "club_missing")
     return warehouseView.buildErrorContainer({
@@ -1400,7 +1400,7 @@ function depositErrorView(result, itemId) {
       body: "已退回背包資源，請稍後再試。",
     });
   return warehouseView.buildErrorContainer({
-    title: "❌ 存礦失敗",
+    title: "❌ 存入失敗",
     body: `原因：${reason}`,
   });
 }
@@ -1411,7 +1411,7 @@ function withdrawErrorView(result, itemId) {
   if (reason === "not_in_club")
     return warehouseView.buildErrorContainer({
       title: "🏰 你還沒加入公會",
-      body: "請先加入公會才能取礦。",
+      body: "請先加入公會才能領取物資。",
     });
   if (reason === "club_missing")
     return warehouseView.buildErrorContainer({
@@ -1434,11 +1434,11 @@ function withdrawErrorView(result, itemId) {
     return warehouseView.buildErrorContainer({
       title: "🔒 公會貢獻不足",
       body: `累積貢獻需 ≥ ${result.need}，目前 ${result.have}（差 ${result.need - result.have}）。`,
-      hint: "可用 /公會 捐款 或 /公會 存礦 補貢獻。",
+      hint: "可用 /公會 捐款 或 /公會 存入 補貢獻。",
     });
   if (reason === "daily_limit_reached")
     return warehouseView.buildErrorContainer({
-      title: "🧊 今日取礦次數用完",
+      title: "🧊 今日領取次數用完",
       body: `已取 ${result.used}/${result.max} 次。`,
       hint: "明天 00:00 重置。",
     });
@@ -1488,7 +1488,7 @@ function withdrawErrorView(result, itemId) {
       body: "倉庫已回滾，請稍後再試。",
     });
   return warehouseView.buildErrorContainer({
-    title: "❌ 取礦失敗",
+    title: "❌ 領取失敗",
     body: `原因：${reason}`,
   });
 }
