@@ -1,6 +1,7 @@
 const {
   ContainerBuilder,
   TextDisplayBuilder,
+  SectionBuilder,
   SeparatorBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -79,78 +80,92 @@ const buildWarehouseContainer = ({
   for (const it of inventory) groups[groupKey(it.item_id, it.def)].push(it);
 
   const empties = [];
+  const footerCost = isManager ? 6 : 4;
+  let budget = 40 - 2 /* container + header */ - footerCost;
+  if (typeof netFlow7d === "number" && netFlow7d < 0) budget -= 1;
 
+  const overflow = [];
+  const groupsWithVisible = [];
   for (const key of KIND_ORDER) {
     const list = groups[key];
     if (!list || list.length === 0) continue;
+    const visible = list.filter((it) => it.qty > 0);
+    for (const it of list) if (it.qty === 0) empties.push(it.def.name);
+    if (visible.length > 0) groupsWithVisible.push({ key, visible });
+  }
+
+  const reserveOverflow = () => 1;
+  const reserveEmpties = () => (empties.length > 0 ? 2 : 0);
+
+  for (const { key, visible } of groupsWithVisible) {
+    const headerCost = 2;
+    if (budget - headerCost - reserveOverflow() - reserveEmpties() < 0) {
+      for (const it of visible) overflow.push(it);
+      continue;
+    }
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`**${GROUP_TITLE[key]}**`)
     );
-    for (const it of list) {
-      if (it.qty === 0) {
-        empties.push(it.def.name);
-        continue;
-      }
+    budget -= headerCost;
+
+    for (const it of visible) {
       const cap = capacityFor(it.item_id, club.level, club.warehouse_settings);
       const protTail =
         it.protected_qty > 0 && it.next_unlock_at
           ? `（${it.protected_qty} 保護中，<t:${Math.floor(it.next_unlock_at / 1000)}:R> 解鎖）`
           : "";
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `${it.def.emoji} **${it.def.name}** ${it.qty} / ${cap}${protTail}`
-        )
-      );
       const personalCap = perTakeMaxFor(it.item_id, club.warehouse_settings);
       const maxTake = Math.min(personalCap, it.available_qty);
-      if (maxTake > 0 && !todayItemsTaken.includes(it.item_id)) {
-        const fee1 = calcFee(it.item_id, 1, club);
+      const takeable = maxTake > 0 && !todayItemsTaken.includes(it.item_id);
+      const cost = takeable ? 3 : 1;
+
+      if (budget - cost - reserveOverflow() - reserveEmpties() < 0) {
+        overflow.push(it);
+        continue;
+      }
+
+      const mainText = `${it.def.emoji} **${it.def.name}** ${it.qty} / ${cap}${protTail}`;
+      if (takeable) {
         const feeMax = calcFee(it.item_id, maxTake, club);
-        const row = new ActionRowBuilder();
-        if (personalCap >= 1) {
-          row.addComponents(
-            new ButtonBuilder()
-              .setCustomId(`gcw_take_${viewerId}_${it.item_id}_1`)
-              .setLabel(`領 1（-${fee1}）`)
-              .setStyle(ButtonStyle.Primary)
-          );
-        }
-        if (personalCap >= 5 && maxTake >= 5) {
-          const fee5 = calcFee(it.item_id, 5, club);
-          row.addComponents(
-            new ButtonBuilder()
-              .setCustomId(`gcw_take_${viewerId}_${it.item_id}_5`)
-              .setLabel(`領 5（-${fee5}）`)
-              .setStyle(ButtonStyle.Primary)
-          );
-        }
-        if (maxTake > 1) {
-          row.addComponents(
-            new ButtonBuilder()
-              .setCustomId(`gcw_take_${viewerId}_${it.item_id}_${maxTake}`)
-              .setLabel(`領 ${maxTake}（-${feeMax}）`)
-              .setStyle(ButtonStyle.Success)
-          );
-        }
-        container.addActionRowComponents(row);
-      } else if (todayItemsTaken.includes(it.item_id)) {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`-# 今天已領過此項，明日再來`)
+        container.addSectionComponents(
+          new SectionBuilder()
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(mainText))
+            .setButtonAccessory(
+              new ButtonBuilder()
+                .setCustomId(`gcw_take_${viewerId}_${it.item_id}_${maxTake}`)
+                .setLabel(`領 ${maxTake}（-${feeMax}）`)
+                .setStyle(ButtonStyle.Success)
+            )
         );
-      } else if (it.available_qty === 0) {
+        budget -= 3;
+      } else {
+        let tail = "";
+        if (todayItemsTaken.includes(it.item_id)) tail = "　-# 今日已領";
+        else if (it.available_qty === 0) tail = "　-# 可取 0（保護中）";
         container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`-# 可取量為 0（保護中或暫無）`)
+          new TextDisplayBuilder().setContent(mainText + tail)
         );
+        budget -= 1;
       }
     }
   }
 
-  if (empties.length > 0) {
+  if (overflow.length > 0 && budget >= 1) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 其餘可領：${overflow.map((it) => `${it.def.emoji}${it.def.name}`).join("・")}（請用 \`/公會 領取\`）`
+      )
+    );
+    budget -= 1;
+  }
+
+  if (empties.length > 0 && budget >= 2) {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`-# 尚無：${empties.join("・")}`)
     );
+    budget -= 2;
   }
 
   container.addSeparatorComponents(new SeparatorBuilder());

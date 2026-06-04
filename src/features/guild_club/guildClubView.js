@@ -160,18 +160,25 @@ function buildInfoContainer({
       new TextDisplayBuilder().setContent(`**成員**\n-# 尚無成員`)
     );
   } else {
+    const contributionOf = (m) =>
+      (m.total_donated || 0) + (m.warehouse_donated_value || 0);
     const roleWeight = (r) => (r === "leader" ? 0 : r === "vice_leader" ? 1 : 2);
     const sorted = [...members].sort((a, b) => {
       const wa = roleWeight(a.role);
       const wb = roleWeight(b.role);
       if (wa !== wb) return wa - wb;
-      return (b.total_donated || 0) - (a.total_donated || 0);
+      return contributionOf(b) - contributionOf(a);
     });
     const lines = sorted.map((m) => {
       const roleEmoji =
         m.role === "leader" ? "👑" : m.role === "vice_leader" ? "🛡️" : "・";
-      const donated = (m.total_donated || 0).toLocaleString();
-      return `${roleEmoji} <@${m.userId}>　捐款 ${donated} ${COIN_EMOJI}`;
+      const base = `${roleEmoji} <@${m.userId}>　貢獻 ${contributionOf(m).toLocaleString()}`;
+      if (isMember && m.userId === viewerId) {
+        const donatedRaw = m.total_donated || 0;
+        const warehouseRaw = m.warehouse_donated_value || 0;
+        return `${base}\n-# 你的拆解：捐款 ${donatedRaw.toLocaleString()} ${COIN_EMOJI} + 倉庫存入 ${warehouseRaw.toLocaleString()}`;
+      }
+      return base;
     });
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`**成員**（${members.length}）\n${lines.join("\n")}`)
