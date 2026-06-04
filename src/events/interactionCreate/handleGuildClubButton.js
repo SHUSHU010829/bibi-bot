@@ -13,6 +13,8 @@
 //   gc_rank_<userId>                                 — 開啟排行榜 ephemeral
 //   gc_quest_claim_<leaderId>                        — 一鍵領取週任務獎勵
 //   gc_kick_<leaderId>_<targetId>                    — 從資訊頁面踢人
+//   gc_edit_desc_<userId>                            — 編輯公會簡介（彈出 Modal）
+//   gc_desc_modal_<userId>                           — Modal submit：寫入簡介
 
 require("colors");
 const { MessageFlags } = require("discord.js");
@@ -31,9 +33,18 @@ async function loadClubAndMembers(client, guild_club_id) {
 }
 
 module.exports = async (client, interaction) => {
-  if (!interaction.isButton()) return;
   const id = interaction.customId || "";
   if (!id.startsWith("gc_")) return;
+
+  if (interaction.isModalSubmit?.() && id.startsWith(guildClubView.EDIT_DESC_MODAL_PREFIX)) {
+    return handleEditDescriptionSubmit(client, interaction);
+  }
+
+  if (!interaction.isButton()) return;
+
+  if (id.startsWith("gc_edit_desc_")) {
+    return handleEditDescriptionButton(client, interaction);
+  }
 
   if (id.startsWith("gc_disband_confirm_")) {
     return handleDisbandConfirm(client, interaction);
@@ -469,6 +480,7 @@ async function handleQuickView(client, interaction) {
         members,
         isMember: true,
         isLeader: membership.role === "leader",
+        viewerRole: membership.role,
       }),
     ],
     flags: MessageFlags.IsComponentsV2,
@@ -584,7 +596,8 @@ async function handleViewClub(client, interaction) {
   );
   const isMember =
     !!myMembership && myMembership.guild_club_id === loaded.club.guild_club_id;
-  const isLeader = isMember && myMembership.role === "leader";
+  const viewerRole = isMember ? myMembership.role : null;
+  const isLeader = viewerRole === "leader";
   return interaction.editReply({
     components: [
       guildClubView.buildInfoContainer({
@@ -593,6 +606,7 @@ async function handleViewClub(client, interaction) {
         members: loaded.members,
         isMember,
         isLeader,
+        viewerRole,
       }),
     ],
     flags: MessageFlags.IsComponentsV2,
@@ -667,6 +681,11 @@ async function handleQuickKick(client, interaction) {
     // 從 ephemeral 觸發的按鈕踢人不公開廣播（要公開請用 /公會 踢人）
     const loaded = await loadClubAndMembers(client, result.club.guild_club_id);
     if (!loaded) return;
+    const myMembership = await guildClubService.getMembership(
+      client,
+      interaction.user.id,
+      interaction.guildId
+    );
     return interaction.editReply({
       components: [
         guildClubView.buildInfoContainer({
@@ -674,7 +693,8 @@ async function handleQuickKick(client, interaction) {
           club: loaded.club,
           members: loaded.members,
           isMember: true,
-          isLeader: true,
+          isLeader: myMembership?.role === "leader",
+          viewerRole: myMembership?.role || null,
         }),
       ],
       flags: MessageFlags.IsComponentsV2,
@@ -682,6 +702,125 @@ async function handleQuickKick(client, interaction) {
   } catch (e) {
     console.log(`[GUILD_CLUB] quick kick 失敗：${e.stack || e.message}`.red);
   }
+}
+
+async function handleEditDescriptionButton(client, interaction) {
+  const ownerId = interaction.customId.slice("gc_edit_desc_".length);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的編輯按鈕！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  const membership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  if (!membership || !guildClubService.isManager(membership.role)) {
+    return interaction.reply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "🚫 沒有編輯權限",
+          body: "只有會長或副會長可以編輯公會簡介。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+  const club = await guildClubService.getClubById(client, membership.guild_club_id);
+  if (!club) {
+    return interaction.reply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 公會已不存在",
+          body: "找不到你的公會。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+  return interaction.showModal(
+    guildClubView.buildEditDescriptionModal({
+      userId: interaction.user.id,
+      club,
+    })
+  );
+}
+
+async function handleEditDescriptionSubmit(client, interaction) {
+  const ownerId = interaction.customId.slice(guildClubView.EDIT_DESC_MODAL_PREFIX.length);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的編輯表單！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const raw = interaction.fields.getTextInputValue("gc_desc_text");
+  try {
+    const result = await guildClubService.setDescription(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      description: raw,
+    });
+    if (!result.ok) {
+      return interaction.editReply({
+        components: [editDescriptionFailureView(result)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+    return interaction.editReply({
+      components: [
+        guildClubView.buildDescriptionUpdatedContainer({
+          club: result.club,
+          cleared: result.cleared,
+          role: result.role,
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (e) {
+    console.log(`[GUILD_CLUB] edit description 失敗：${e.stack || e.message}`.red);
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 更新失敗",
+          body: "出了點狀況，請稍後再試。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+}
+
+function editDescriptionFailureView(result) {
+  const { reason } = result;
+  if (reason === "not_in_club")
+    return guildClubView.buildErrorContainer({
+      title: "🏰 你已不在公會",
+      body: "沒有公會可編輯。",
+    });
+  if (reason === "not_manager")
+    return guildClubView.buildErrorContainer({
+      title: "🚫 沒有編輯權限",
+      body: "只有會長或副會長可以編輯公會簡介。",
+    });
+  if (reason === "club_missing")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 公會已不存在",
+      body: "公會已解散。",
+    });
+  if (reason === "description_too_long")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 內容過長",
+      body: `最多 ${result.max} 字，目前 ${result.length} 字。`,
+      hint: "精簡一下再送出。",
+    });
+  return guildClubView.buildErrorContainer({
+    title: "❌ 更新失敗",
+    body: `原因：${reason}`,
+  });
 }
 
 function questClaimFailureBody(result) {

@@ -46,7 +46,7 @@ const invite = async (client, { leaderId, guildId, inviteeId }) => {
 
   const leaderM = await service.getMembership(client, leaderId, guildId);
   if (!leaderM) return { ok: false, reason: "leader_not_in_club" };
-  if (leaderM.role !== "leader") return { ok: false, reason: "not_leader" };
+  if (!service.isManager(leaderM.role)) return { ok: false, reason: "not_leader" };
 
   const club = await service.getClubById(client, leaderM.guild_club_id);
   if (!club) return { ok: false, reason: "club_missing" };
@@ -247,7 +247,7 @@ const listPendingApplications = async (
 ) => {
   const m = await service.getMembership(client, leaderId, guildId);
   if (!m) return { ok: false, reason: "not_in_club" };
-  if (m.role !== "leader") return { ok: false, reason: "not_leader" };
+  if (!service.isManager(m.role)) return { ok: false, reason: "not_leader" };
 
   const club = await service.getClubById(client, m.guild_club_id);
   if (!club) return { ok: false, reason: "club_missing" };
@@ -266,7 +266,7 @@ const respondApplication = async (
 ) => {
   const m = await service.getMembership(client, leaderId, guildId);
   if (!m) return { ok: false, reason: "not_in_club" };
-  if (m.role !== "leader") return { ok: false, reason: "not_leader" };
+  if (!service.isManager(m.role)) return { ok: false, reason: "not_leader" };
 
   const app = await client.guildClubApplicationsCollection.findOne({
     application_id,
@@ -390,11 +390,15 @@ const kick = async (client, { leaderId, guildId, targetId }) => {
 
   const leaderM = await service.getMembership(client, leaderId, guildId);
   if (!leaderM) return { ok: false, reason: "not_in_club" };
-  if (leaderM.role !== "leader") return { ok: false, reason: "not_leader" };
+  if (!service.isManager(leaderM.role)) return { ok: false, reason: "not_leader" };
 
   const targetM = await service.getMembership(client, targetId, guildId);
   if (!targetM || targetM.guild_club_id !== leaderM.guild_club_id)
     return { ok: false, reason: "target_not_in_your_club" };
+
+  // 副會長不能踢會長 / 其他副會長
+  if (leaderM.role === "vice_leader" && service.isManager(targetM.role))
+    return { ok: false, reason: "vice_cannot_kick_manager" };
 
   const club = await service.getClubById(client, leaderM.guild_club_id);
   if (!club) return { ok: false, reason: "club_missing" };
@@ -448,6 +452,61 @@ const transfer = async (client, { leaderId, guildId, newLeaderId }) => {
   return { ok: true, club, oldLeaderId: leaderId, newLeaderId };
 };
 
+const promoteViceLeader = async (
+  client,
+  { leaderId, guildId, targetId }
+) => {
+  if (targetId === leaderId)
+    return { ok: false, reason: "cannot_promote_self" };
+
+  const leaderM = await service.getMembership(client, leaderId, guildId);
+  if (!leaderM) return { ok: false, reason: "not_in_club" };
+  if (leaderM.role !== "leader") return { ok: false, reason: "not_leader" };
+
+  const targetM = await service.getMembership(client, targetId, guildId);
+  if (!targetM || targetM.guild_club_id !== leaderM.guild_club_id)
+    return { ok: false, reason: "target_not_in_your_club" };
+  if (targetM.role === "vice_leader")
+    return { ok: false, reason: "already_vice_leader" };
+  if (targetM.role === "leader")
+    return { ok: false, reason: "target_is_leader" };
+
+  const club = await service.getClubById(client, leaderM.guild_club_id);
+  if (!club) return { ok: false, reason: "club_missing" };
+
+  await client.guildClubMembersCollection.updateOne(
+    { userId: targetId, guildId, guild_club_id: club.guild_club_id },
+    { $set: { role: "vice_leader" } }
+  );
+
+  return { ok: true, club, targetId };
+};
+
+const demoteViceLeader = async (
+  client,
+  { leaderId, guildId, targetId }
+) => {
+  const leaderM = await service.getMembership(client, leaderId, guildId);
+  if (!leaderM) return { ok: false, reason: "not_in_club" };
+  if (leaderM.role !== "leader") return { ok: false, reason: "not_leader" };
+
+  const targetM = await service.getMembership(client, targetId, guildId);
+  if (!targetM || targetM.guild_club_id !== leaderM.guild_club_id)
+    return { ok: false, reason: "target_not_in_your_club" };
+  if (targetM.role !== "vice_leader")
+    return { ok: false, reason: "target_not_vice_leader" };
+
+  const club = await service.getClubById(client, leaderM.guild_club_id);
+  if (!club) return { ok: false, reason: "club_missing" };
+
+  await client.guildClubMembersCollection.updateOne(
+    { userId: targetId, guildId, guild_club_id: club.guild_club_id },
+    { $set: { role: "member" } }
+  );
+
+  return { ok: true, club, targetId };
+};
+
 module.exports = {
   invite,
   respondInvitation,
@@ -457,4 +516,6 @@ module.exports = {
   leave,
   kick,
   transfer,
+  promoteViceLeader,
+  demoteViceLeader,
 };
