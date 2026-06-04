@@ -33,6 +33,7 @@ const barter = require("./barter.json");
 const coinHistory = require("./coinHistory.json");
 const boss = require("./boss.json");
 const guildClub = require("./guild_club.json");
+const guildWarehouse = require("./guild_warehouse.json");
 
 module.exports = {
   ...server,
@@ -68,4 +69,5 @@ module.exports = {
   ...coinHistory,
   ...boss,
   ...guildClub,
+  ...guildWarehouse,
 };

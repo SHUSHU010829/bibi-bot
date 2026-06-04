@@ -169,6 +169,9 @@ module.exports = async (client) => {
     const guildClubApplicationsCollection = database.collection("GuildClubApplications");
     const guildClubQuestClaimsCollection = database.collection("GuildClubQuestClaims");
     const guildClubContributionsCollection = database.collection("GuildClubContributions");
+    const guildClubWarehouseCollection = database.collection("GuildClubWarehouse");
+    const guildClubWarehouseLogsCollection = database.collection("GuildClubWarehouseLogs");
+    const guildClubWarehouseDailyCollection = database.collection("GuildClubWarehouseDaily");
 
     // 打工系統 collection（記每位玩家的打工冷卻）
     const workProfilesCollection = database.collection("WorkProfiles");
@@ -283,6 +286,9 @@ module.exports = async (client) => {
     client.guildClubApplicationsCollection = guildClubApplicationsCollection;
     client.guildClubQuestClaimsCollection = guildClubQuestClaimsCollection;
     client.guildClubContributionsCollection = guildClubContributionsCollection;
+    client.guildClubWarehouseCollection = guildClubWarehouseCollection;
+    client.guildClubWarehouseLogsCollection = guildClubWarehouseLogsCollection;
+    client.guildClubWarehouseDailyCollection = guildClubWarehouseDailyCollection;
     client.workProfilesCollection = workProfilesCollection;
     client.duelGamesCollection = duelGamesCollection;
     client.auctionListingsCollection = auctionListingsCollection;
@@ -1102,6 +1108,37 @@ module.exports = async (client) => {
         { guild_club_id: 1, totalContribution: -1 },
         { name: "gcc_club_total_rank" }
       ).catch((e) => console.log(`[WARN] GuildClubContributions total: ${e.message}`.yellow));
+
+      // 公會倉庫：(公會, 物品) 唯一
+      await guildClubWarehouseCollection.createIndex(
+        { guild_club_id: 1, item_id: 1 },
+        { unique: true, name: "uniq_gcw_club_item" }
+      ).catch((e) => console.log(`[WARN] GuildClubWarehouse uniq: ${e.message}`.yellow));
+
+      // 倉庫流水：90 天 TTL；公會時間軸 + 24h 自存自領查詢用
+      await guildClubWarehouseLogsCollection.createIndex(
+        { guild_club_id: 1, created_at: -1 },
+        { name: "gcwl_club_time" }
+      ).catch((e) => console.log(`[WARN] GuildClubWarehouseLogs idx: ${e.message}`.yellow));
+      await guildClubWarehouseLogsCollection.createIndex(
+        { user_id: 1, item_id: 1, action: 1, created_at: -1 },
+        { name: "gcwl_user_item_action" }
+      ).catch((e) => console.log(`[WARN] GuildClubWarehouseLogs user_item idx: ${e.message}`.yellow));
+      await guildClubWarehouseLogsCollection.createIndex(
+        { created_at: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "gcwl_ttl_90d" }
+      ).catch((e) => console.log(`[WARN] GuildClubWarehouseLogs TTL: ${e.message}`.yellow));
+
+      // 每日取礦額度：(userId, guildId, day_key) 唯一；7 天 TTL 自動清舊
+      await guildClubWarehouseDailyCollection.createIndex(
+        { user_id: 1, guildId: 1, day_key: 1 },
+        { unique: true, name: "uniq_gcwd_user_guild_day" }
+      ).catch((e) => console.log(`[WARN] GuildClubWarehouseDaily uniq: ${e.message}`.yellow));
+      await guildClubWarehouseDailyCollection.createIndex(
+        { updated_at: 1 },
+        { expireAfterSeconds: 7 * 24 * 60 * 60, name: "gcwd_ttl_7d" }
+      ).catch((e) => console.log(`[WARN] GuildClubWarehouseDaily TTL: ${e.message}`.yellow));
+
       await fishLogsCollection.createIndex(
         { ts: 1 },
         { expireAfterSeconds: 90 * 24 * 60 * 60, name: "fish_logs_ttl_90d" }

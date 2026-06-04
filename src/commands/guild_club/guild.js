@@ -5,7 +5,7 @@ const {
   MessageFlags,
 } = require("discord.js");
 
-const { guildClub } = require("../../config");
+const { guildClub, guildWarehouse } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const guildClubService = require("../../features/guild_club/guildClubService");
 const guildClubMembership = require("../../features/guild_club/guildClubMembership");
@@ -13,6 +13,10 @@ const guildClubQuest = require("../../features/guild_club/guildClubQuest");
 const guildClubView = require("../../features/guild_club/guildClubView");
 const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
 const guildClubContribution = require("../../features/guild_club/guildClubContribution");
+const warehouseService = require("../../features/guild_club/warehouse/warehouseService");
+const warehouseView = require("../../features/guild_club/warehouse/warehouseView");
+const warehouseSettings = require("../../features/guild_club/warehouse/warehouseSettings");
+const warehouseEligibility = require("../../features/guild_club/warehouse/warehouseEligibility");
 
 // 公會指令類別白名單。Thread 走 parent channel 的 parentId（祖父類別）。
 // 空 / 未設定 → 不限制。
@@ -42,6 +46,9 @@ const SUB_RANK = "排行";
 const SUB_EDIT_DESC = "編輯簡介";
 const SUB_PROMOTE_VICE = "指派副會長";
 const SUB_DEMOTE_VICE = "撤銷副會長";
+const SUB_WAREHOUSE = "倉庫";
+const SUB_DEPOSIT = "存礦";
+const SUB_WITHDRAW = "取礦";
 
 module.exports = {
   // /公會 自己會檢查 allowedCategoryIds，跳過全域桶分流以免兩層互打。
@@ -170,7 +177,68 @@ module.exports = {
         .addUserOption((opt) =>
           opt.setName("使用者").setDescription("要撤銷的副會長").setRequired(true)
         )
+    )
+    .addSubcommand((sub) =>
+      sub.setName(SUB_WAREHOUSE).setDescription("查看公會倉庫存貨與今日取礦額度")
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName(SUB_DEPOSIT)
+        .setDescription("把背包 / 魚袋的資源捐入公會倉庫（不可收回）")
+        .addStringOption((opt) =>
+          opt
+            .setName("物品")
+            .setDescription("要存入的物品")
+            .setRequired(true)
+            .setAutocomplete(true)
+        )
+        .addIntegerOption((opt) =>
+          opt
+            .setName("數量")
+            .setDescription("要存入的數量（正整數）")
+            .setRequired(true)
+            .setMinValue(1)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName(SUB_WITHDRAW)
+        .setDescription("從公會倉庫領取資源（需付手續費，每日次數限制）")
+        .addStringOption((opt) =>
+          opt
+            .setName("物品")
+            .setDescription("要領取的物品")
+            .setRequired(true)
+            .setAutocomplete(true)
+        )
+        .addIntegerOption((opt) =>
+          opt
+            .setName("數量")
+            .setDescription("要領取的數量（受單次上限限制）")
+            .setRequired(true)
+            .setMinValue(1)
+        )
     ),
+
+  autocomplete: async (client, interaction) => {
+    const sub = interaction.options.getSubcommand();
+    if (sub !== SUB_DEPOSIT && sub !== SUB_WITHDRAW) return;
+    const focused = interaction.options.getFocused(true);
+    if (focused.name !== "物品") return;
+    const term = (focused.value || "").toLowerCase();
+    const choices = warehouseSettings
+      .allItemIds()
+      .map((id) => ({ id, def: warehouseSettings.itemDef(id) }))
+      .filter(
+        ({ id, def }) =>
+          !term ||
+          id.includes(term) ||
+          def.name.toLowerCase().includes(term)
+      )
+      .slice(0, 25)
+      .map(({ id, def }) => ({ name: `${def.name}（${id}）`, value: id }));
+    await interaction.respond(choices).catch(() => {});
+  },
 
   run: async (client, interaction) => {
     const sub = interaction.options.getSubcommand();
@@ -219,6 +287,9 @@ module.exports = {
       if (sub === SUB_EDIT_DESC) return runEditDescription(client, interaction);
       if (sub === SUB_PROMOTE_VICE) return runPromoteVice(client, interaction);
       if (sub === SUB_DEMOTE_VICE) return runDemoteVice(client, interaction);
+      if (sub === SUB_WAREHOUSE) return runWarehouse(client, interaction);
+      if (sub === SUB_DEPOSIT) return runDeposit(client, interaction);
+      if (sub === SUB_WITHDRAW) return runWithdraw(client, interaction);
     } catch (e) {
       console.log(`[GUILD_CLUB] /公會 ${sub} 失敗：${e.stack || e.message}`.red);
       const reply = {
@@ -1280,6 +1351,298 @@ function leaveErrorView(result) {
     });
   return guildClubView.buildErrorContainer({
     title: "❌ 退會失敗",
+    body: `原因：${reason}`,
+  });
+}
+
+// ───────── 倉庫 ─────────
+
+async function runWarehouse(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const membership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  if (!membership) {
+    return interaction.editReply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "🏰 你還沒加入公會",
+          body: "倉庫是公會專屬功能。",
+          hint: "可使用 /公會 建立 或 /公會 申請。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  const club = await guildClubService.getClubById(client, membership.guild_club_id);
+  if (!club) {
+    return interaction.editReply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "❌ 公會資料異常",
+          body: "公會已不存在。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  if ((club.level || 1) < (guildWarehouse?.unlockLevel || 2)) {
+    return interaction.editReply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "🔒 公會倉庫尚未解鎖",
+          body: `倉庫於 Lv.${guildWarehouse?.unlockLevel || 2} 解鎖。\n目前：Lv.${club.level || 1}`,
+          hint: "多 /公會 捐款 或做 /公會 任務 升等。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  const inventory = await warehouseService.getInventory(client, club.guild_club_id);
+  const daily = await warehouseEligibility.getDailyDoc(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+
+  return interaction.editReply({
+    components: [
+      warehouseView.buildWarehouseContainer({
+        viewerId: interaction.user.id,
+        club,
+        inventory,
+        isManager: guildClubService.isManager(membership.role),
+        todayItemsTaken: daily?.items_taken || [],
+        todayTimesUsed: daily?.times_used || 0,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+async function runDeposit(client, interaction) {
+  await interaction.deferReply();
+  const itemId = interaction.options.getString("物品", true);
+  const qty = interaction.options.getInteger("數量", true);
+
+  const result = await warehouseService.deposit(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    member: interaction.member,
+    itemId,
+    qty,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [depositErrorView(result, itemId)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  return interaction.editReply({
+    components: [
+      warehouseView.buildDepositSuccessContainer({
+        userId: interaction.user.id,
+        club: result.club,
+        itemDefArg: result.item,
+        deposited: result.deposited,
+        newTotal: result.new_total,
+        capacity: result.capacity,
+        availableAt: result.available_at,
+        marketValueAmount: result.market_value,
+        contributionAdded: result.contribution_added,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+async function runWithdraw(client, interaction) {
+  await interaction.deferReply();
+  const itemId = interaction.options.getString("物品", true);
+  const qty = interaction.options.getInteger("數量", true);
+
+  const result = await warehouseService.withdraw(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    member: interaction.member,
+    itemId,
+    qty,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [withdrawErrorView(result, itemId)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  return interaction.editReply({
+    components: [
+      warehouseView.buildWithdrawSuccessContainer({
+        userId: interaction.user.id,
+        club: result.club,
+        itemDefArg: result.item,
+        withdrawn: result.withdrawn,
+        fee: result.fee,
+        newTotal: result.new_total,
+        dailyRemaining: result.daily_remaining,
+        dailyMax: result.daily_max,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+function depositErrorView(result, itemId) {
+  const name = warehouseSettings.itemDef(itemId)?.name || itemId;
+  const { reason } = result;
+  if (reason === "not_in_club")
+    return warehouseView.buildErrorContainer({
+      title: "🏰 你還沒加入公會",
+      body: "請先加入公會才能存礦。",
+    });
+  if (reason === "club_missing")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 公會資料異常",
+      body: "公會已不存在。",
+    });
+  if (reason === "club_level_locked")
+    return warehouseView.buildErrorContainer({
+      title: "🔒 公會倉庫尚未解鎖",
+      body: `倉庫於 Lv.${result.need} 解鎖。\n目前：Lv.${result.have}`,
+      hint: "多 /公會 捐款 或做 /公會 任務 升等。",
+    });
+  if (reason === "unknown_item")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 未知物品",
+      body: `「${itemId}」不在倉庫支援清單。`,
+      hint: "請從 autocomplete 選單挑選。",
+    });
+  if (reason === "invalid_qty")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 數量無效",
+      body: "請輸入正整數。",
+    });
+  if (reason === "not_enough_in_pack") {
+    const where = result.kind === "fish_bag" ? "魚袋" : "背包";
+    return warehouseView.buildErrorContainer({
+      title: "❌ 庫存不足",
+      body: `你的${where}只有 ${result.have} 個 ${name}，要存 ${result.need}。`,
+      hint: "去挖礦 / 種田 / 釣魚補貨再來。",
+    });
+  }
+  if (reason === "capacity_exceeded")
+    return warehouseView.buildErrorContainer({
+      title: "📦 倉庫已滿",
+      body: `${name} 目前 ${result.have} / 上限 ${result.cap}，再加 ${result.add} 會爆。`,
+      hint: "升級公會可擴張倉庫容量。",
+    });
+  if (reason === "race_lost_pack")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 存入失敗",
+      body: "剛剛背包/魚袋狀態變動了，請重試。",
+    });
+  if (reason === "warehouse_write_failed")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 倉庫寫入失敗",
+      body: "已退回背包資源，請稍後再試。",
+    });
+  return warehouseView.buildErrorContainer({
+    title: "❌ 存礦失敗",
+    body: `原因：${reason}`,
+  });
+}
+
+function withdrawErrorView(result, itemId) {
+  const name = warehouseSettings.itemDef(itemId)?.name || itemId;
+  const { reason } = result;
+  if (reason === "not_in_club")
+    return warehouseView.buildErrorContainer({
+      title: "🏰 你還沒加入公會",
+      body: "請先加入公會才能取礦。",
+    });
+  if (reason === "club_missing")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 公會資料異常",
+      body: "公會已不存在。",
+    });
+  if (reason === "club_level_locked")
+    return warehouseView.buildErrorContainer({
+      title: "🔒 公會倉庫尚未解鎖",
+      body: `倉庫於 Lv.${result.need} 解鎖。\n目前：Lv.${result.have}`,
+      hint: "多 /公會 捐款 或做 /公會 任務 升等。",
+    });
+  if (reason === "tenure_not_enough")
+    return warehouseView.buildErrorContainer({
+      title: "🔒 入會時間不足",
+      body: `需加入此公會至少 ${result.needHours} 小時，目前 ${result.haveHours} 小時。`,
+      hint: `<t:${Math.floor(result.readyAt / 1000)}:R> 後可使用倉庫。`,
+    });
+  if (reason === "contribution_not_enough")
+    return warehouseView.buildErrorContainer({
+      title: "🔒 公會貢獻不足",
+      body: `累積貢獻需 ≥ ${result.need}，目前 ${result.have}（差 ${result.need - result.have}）。`,
+      hint: "可用 /公會 捐款 或 /公會 存礦 補貢獻。",
+    });
+  if (reason === "daily_limit_reached")
+    return warehouseView.buildErrorContainer({
+      title: "🧊 今日取礦次數用完",
+      body: `已取 ${result.used}/${result.max} 次。`,
+      hint: "明天 00:00 重置。",
+    });
+  if (reason === "item_already_taken_today")
+    return warehouseView.buildErrorContainer({
+      title: "🧊 今天已領過這項",
+      body: `${name} 一天限領一次。`,
+      hint: "改領別項，明天再來取此物品。",
+    });
+  if (reason === "self_deposit_24h_lock")
+    return warehouseView.buildErrorContainer({
+      title: "🧊 24 小時內存過此項",
+      body: `你最近存了 ${result.qty} 個 ${name}，自存自領鎖到 <t:${Math.floor(result.unlock_at / 1000)}:R>。`,
+      hint: "此鎖防止「存入刷貢獻 → 自己領回」零成本攻擊。",
+    });
+  if (reason === "qty_over_personal_limit")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 超過單次上限",
+      body: `${name} 單次最多 ${result.limit} 個，你申請 ${result.asked}。`,
+    });
+  if (reason === "qty_over_available")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 倉庫可取量不足",
+      body: `${name} 可取 ${result.available}（總 ${result.total}，其中 ${result.protected} 保護中），你申請 ${result.asked}。`,
+      hint: "等保護期解鎖或請隊友存貨。",
+    });
+  if (reason === "warehouse_empty")
+    return warehouseView.buildErrorContainer({
+      title: "📦 倉庫暫時沒有此項",
+      body: `${name} 目前可取 0（總 ${result.total}，其中 ${result.protected} 保護中）。`,
+      hint: "可發布訊息請會員捐貨。",
+    });
+  if (reason === "insufficient_funds_for_fee")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 手續費不足",
+      body: `本次需 ${result.need} ${COIN_EMOJI}，你只有 ${result.have} ${COIN_EMOJI}。`,
+      hint: "去 /打工 或 /賣礦 補幣再來。",
+    });
+  if (reason === "race_lost")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 已被搶先領取",
+      body: "別的會員剛剛領走了。",
+    });
+  if (reason === "charge_failed")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 扣費失敗",
+      body: "倉庫已回滾，請稍後再試。",
+    });
+  return warehouseView.buildErrorContainer({
+    title: "❌ 取礦失敗",
     body: `原因：${reason}`,
   });
 }
