@@ -16,23 +16,23 @@
       {
         "id": "daily_messages",
         "name": "文字活躍",
-        "description": "當日在伺服器傳送 ≥ 10 則訊息",
+        "description": "當日在伺服器傳送 ≥ 20 則訊息",
         "reward": 200,
-        "target": 10
+        "target": 20
       },
       {
         "id": "daily_voice_30",
         "name": "語音初段",
-        "description": "當日在語音頻道待滿 30 分鐘",
+        "description": "當日在語音頻道待滿 45 分鐘",
         "reward": 150,
-        "target": 30
+        "target": 45
       },
       {
         "id": "daily_voice_60",
         "name": "語音進階",
-        "description": "當日在語音頻道待滿 60 分鐘（累加，共 250）",
+        "description": "當日在語音頻道待滿 90 分鐘（累加，共 250）",
         "reward": 100,
-        "target": 60
+        "target": 90
       },
       {
         "id": "daily_gamble",
@@ -51,9 +51,9 @@
       {
         "id": "daily_mine_3",
         "name": "礦工打卡",
-        "description": "當日成功挖礦 ≥ 3 次",
+        "description": "當日成功挖礦 ≥ 5 次",
         "reward": 150,
-        "target": 3
+        "target": 5
       },
       {
         "id": "daily_sell_ore",
@@ -79,23 +79,23 @@
       {
         "id": "daily_dungeon_win",
         "name": "地城獵人",
-        "description": "當日地下城戰鬥勝利 ≥ 2 次",
+        "description": "當日地下城戰鬥勝利 ≥ 3 次",
         "reward": 250,
-        "target": 2
+        "target": 3
       },
       {
         "id": "daily_dungeon_10",
         "name": "地城常客",
-        "description": "當日完成地下城探索 ≥ 10 次（不論勝負）",
+        "description": "當日完成地下城探索 ≥ 15 次（不論勝負）",
         "reward": 350,
-        "target": 10
+        "target": 15
       },
       {
         "id": "daily_farm_harvest",
         "name": "今日豐收",
-        "description": "當日從農場收成 ≥ 2 次",
+        "description": "當日從農場收成 ≥ 4 次",
         "reward": 200,
-        "target": 2
+        "target": 4
       },
       {
         "id": "daily_farm_plant",
@@ -116,23 +116,23 @@
       {
         "id": "weekly_messages",
         "name": "活躍市民",
-        "description": "本週發送訊息 ≥ 50 則",
+        "description": "本週發送訊息 ≥ 120 則",
         "reward": 1500,
-        "target": 50
+        "target": 120
       },
       {
         "id": "weekly_popular",
         "name": "人氣王",
-        "description": "本週收到 ≥ 20 個表情符號反應",
+        "description": "本週收到 ≥ 40 個表情符號反應",
         "reward": 2000,
-        "target": 20
+        "target": 40
       },
       {
         "id": "weekly_mine_20",
         "name": "週末礦工",
-        "description": "本週成功挖礦 ≥ 20 次",
+        "description": "本週成功挖礦 ≥ 40 次",
         "reward": 1000,
-        "target": 20
+        "target": 40
       },
       {
         "id": "weekly_diamond",
@@ -144,37 +144,37 @@
       {
         "id": "weekly_craft",
         "name": "鍛造師週記",
-        "description": "本週完成合成 ≥ 3 次",
+        "description": "本週完成合成 ≥ 6 次",
         "reward": 1200,
-        "target": 3
+        "target": 6
       },
       {
         "id": "weekly_sell_value",
         "name": "礦石大亨",
-        "description": "本週賣礦累積收入 ≥ 1,000 金幣",
+        "description": "本週賣礦累積收入 ≥ 3,000 金幣",
         "reward": 1500,
-        "target": 1000
+        "target": 3000
       },
       {
         "id": "weekly_dungeon",
         "name": "週週下城",
-        "description": "本週完成地下城探索 ≥ 35 次",
+        "description": "本週完成地下城探索 ≥ 70 次",
         "reward": 1500,
-        "target": 35
+        "target": 70
       },
       {
         "id": "weekly_dungeon_win",
         "name": "深淵征服者",
-        "description": "本週地下城戰鬥勝利 ≥ 10 次",
+        "description": "本週地下城戰鬥勝利 ≥ 20 次",
         "reward": 1800,
-        "target": 10
+        "target": 20
       },
       {
         "id": "weekly_farm_harvest",
         "name": "週末市集",
-        "description": "本週累積收成 ≥ 10 次",
+        "description": "本週累積收成 ≥ 25 次",
         "reward": 1500,
-        "target": 10
+        "target": 25
       },
       {
         "id": "weekly_farm_rose",
