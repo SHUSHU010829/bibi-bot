@@ -21,7 +21,7 @@ async function dmUser(client, userId, content) {
   }
 }
 
-// 依賣家 Twitch tier 決定手續費率（仿 auctionService）
+// 依賣家 Twitch tier 決定手續費率
 async function resolveSellerFeeRate(client, listing, defaultRate) {
   try {
     const guild =
@@ -622,7 +622,7 @@ async function fulfillWant(client, { listingId, sellerId, guildId, sellerName, m
   };
 }
 
-// ─── 競標出價（仿 auctionService.placeBid）────────────────────────────────────
+// ─── 競標出價 ────────────────────────────────────────────────────────────────
 async function placeBid(client, { listingId, bidderId, guildId, bidderName, member, amount }) {
   const c = cfg();
   if (!mining?.enabled || !c.enabled) return { ok: false, reason: "disabled" };

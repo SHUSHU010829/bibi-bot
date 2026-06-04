@@ -271,7 +271,8 @@ const RESOLVERS = {
       matched: { $gte: 6 },
     }),
   auction_merchant: async (cache, ctx, req) =>
-    (await cache.count("auctionListingsCollection", {
+    (await cache.count("marketListingsCollection", {
+      listing_type: "auction",
       seller_id: ctx.userId,
       guild_id: ctx.guildId,
       status: "sold",
@@ -416,7 +417,8 @@ async function progress(client, { userId, guildId }) {
       case "auction_merchant":
         push(
           "成交件數",
-          await cache.count("auctionListingsCollection", {
+          await cache.count("marketListingsCollection", {
+            listing_type: "auction",
             seller_id: userId,
             guild_id: guildId,
             status: "sold",

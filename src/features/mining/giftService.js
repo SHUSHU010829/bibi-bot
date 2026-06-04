@@ -1,6 +1,6 @@
 require("colors");
 const { DateTime } = require("luxon");
-const { mining, auction } = require("../../config");
+const { mining, gift } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
 const { priceOf } = require("./overflowConfirm");
 const grantCoins = require("../economy/grantCoins");
@@ -8,7 +8,7 @@ const grantCoins = require("../economy/grantCoins");
 const TZ = "Asia/Taipei";
 
 function giveCfg() {
-  return auction?.give || {};
+  return gift || {};
 }
 
 // 贈送礦石給其他玩家（無手續費、每日有次數上限、不能送自己）。

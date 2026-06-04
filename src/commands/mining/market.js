@@ -16,6 +16,8 @@ const {
   buildMyStallView,
   oreLabel,
   BUY_PREFIX,
+  VIEW_BROWSE_ID,
+  VIEW_MYSTALL_ID,
 } = require("../../features/marketplace/marketplaceView");
 const { COIN_EMOJI } = require("../../constants/coin");
 
@@ -378,6 +380,20 @@ async function handleAuction(client, interaction) {
           `起標價：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}${buyoutLine}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
           `-# 得標者加收 ${feeRate}% 手續費，賣方拿全額；無人出價會自動退回礦石。`
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(VIEW_MYSTALL_ID)
+          .setLabel("查看我的攤位")
+          .setEmoji("📦")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(VIEW_BROWSE_ID)
+          .setLabel("查看市集")
+          .setEmoji("🏪")
+          .setStyle(ButtonStyle.Secondary)
       )
     );
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
