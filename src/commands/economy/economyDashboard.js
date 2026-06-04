@@ -60,10 +60,10 @@ function formatSourceList(bySource, totalForPct, n = 5) {
     .join("\n");
 }
 
-function maskUsername(name) {
-  if (!name) return "（未知）";
-  if (name.length <= 2) return name;
-  return name.slice(0, 1) + "*".repeat(Math.max(1, name.length - 2)) + name.slice(-1);
+function formatHolder(h) {
+  const tag = `<@${h.userId}>`;
+  const fallback = h.username ? ` (${h.username})` : "";
+  return `${tag}${fallback}`;
 }
 
 function trendLine(snapshots) {
@@ -194,7 +194,7 @@ module.exports = {
       const top10Lines = top10
         .map(
           (h, i) =>
-            `${i + 1}. ${maskUsername(h.username)}　${fmt(h.totalCoins)}　・ ${pct(h.share)}`,
+            `${i + 1}. ${formatHolder(h)}　${fmt(h.totalCoins)}　・ ${pct(h.share)}`,
         )
         .join("\n");
       container
