@@ -19,6 +19,11 @@ const nextLevelDef = (currentLv) =>
 
 const antiLaunderingCfg = () => guildClub?.antiLaundering || {};
 
+const isManager = (role) => role === "leader" || role === "vice_leader";
+
+const descriptionMaxLength = () =>
+  guildClub?.description?.maxLength || 500;
+
 const hoursToMs = (h) => (h || 0) * 3600 * 1000;
 
 // 防洗錢冷卻：由 user_id + source 在 logs 中查最後一筆事件時間
@@ -149,6 +154,7 @@ const create = async (client, { userId, guildId, name, member }) => {
     locked_entries: [],
     level: 1,
     max_members: lv1.maxMembers,
+    description: null,
     created_at: now,
     disbanded_at: null,
     updated_at: now,
@@ -450,6 +456,35 @@ const donate = async (client, { userId, guildId, member, amount }) => {
   };
 };
 
+const setDescription = async (
+  client,
+  { userId, guildId, description }
+) => {
+  const m = await getMembership(client, userId, guildId);
+  if (!m) return { ok: false, reason: "not_in_club" };
+  if (!isManager(m.role)) return { ok: false, reason: "not_manager" };
+
+  const club = await getClubById(client, m.guild_club_id);
+  if (!club) return { ok: false, reason: "club_missing" };
+
+  const max = descriptionMaxLength();
+  const raw = typeof description === "string" ? description : "";
+  const trimmed = raw.replace(/\r/g, "").trim();
+  if (trimmed.length > max)
+    return { ok: false, reason: "description_too_long", max, length: trimmed.length };
+
+  const next = trimmed.length === 0 ? null : trimmed;
+  const updated = await client.guildsClubCollection.findOneAndUpdate(
+    { guild_club_id: club.guild_club_id, disbanded_at: null },
+    { $set: { description: next, updated_at: new Date() } },
+    { returnDocument: "after" }
+  );
+  const doc = updated?.value || updated;
+  if (!doc) return { ok: false, reason: "club_missing" };
+
+  return { ok: true, club: doc, cleared: next === null, role: m.role };
+};
+
 module.exports = {
   validateName,
   newGuildClubId,
@@ -470,4 +505,7 @@ module.exports = {
   eligibleForPayout,
   hoursToMs,
   antiLaunderingCfg,
+  isManager,
+  setDescription,
+  descriptionMaxLength,
 };

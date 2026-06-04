@@ -6,11 +6,21 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } = require("discord.js");
 
 const { guildClub } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
-const { levelDef, nextLevelDef, maxLevel } = require("./guildClubService");
+const {
+  levelDef,
+  nextLevelDef,
+  maxLevel,
+  descriptionMaxLength,
+} = require("./guildClubService");
+
+const EDIT_DESC_MODAL_PREFIX = "gc_desc_modal_";
 
 const COLOR_GOLD = 0xf1c40f;
 const COLOR_ERROR = 0xe74c3c;
@@ -37,10 +47,13 @@ function buildInfoContainer({
   members,
   isMember,
   isLeader,
+  viewerRole,
   bossContributions,
 }) {
   const def = levelDef(club.level);
   const next = nextLevelDef(club.level);
+  const role = viewerRole || (isLeader ? "leader" : isMember ? "member" : null);
+  const isManager = role === "leader" || role === "vice_leader";
   const container = new ContainerBuilder().setAccentColor(COLOR_GOLD);
 
   container.addTextDisplayComponents(
@@ -50,11 +63,42 @@ function buildInfoContainer({
   );
   container.addSeparatorComponents(new SeparatorBuilder());
 
+  const viceLeaders = members.filter((m) => m.role === "vice_leader");
+  const viceLine =
+    viceLeaders.length > 0
+      ? `\n副會長：${viceLeaders.map((m) => `<@${m.userId}>`).join("、")}`
+      : "";
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `會長：<@${club.leader_id}>　成員：${members.length}/${club.max_members}`
+      `會長：<@${club.leader_id}>${viceLine}　成員：${members.length}/${club.max_members}`
     )
   );
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+  if (club.description) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**📜 公會簡介 / 會規**\n${club.description}`
+      )
+    );
+  } else {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**📜 公會簡介 / 會規**\n-# ${isManager ? "尚未撰寫，點下方按鈕新增。" : "會長尚未撰寫簡介。"}`
+      )
+    );
+  }
+  if (isManager) {
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`gc_edit_desc_${viewerId}`)
+          .setLabel(club.description ? "編輯簡介 / 會規" : "撰寫簡介 / 會規")
+          .setEmoji("📝")
+          .setStyle(ButtonStyle.Primary)
+      )
+    );
+  }
 
   const lockedAmount = club.treasury_locked || 0;
   const treasuryLine = next
@@ -106,13 +150,16 @@ function buildInfoContainer({
       new TextDisplayBuilder().setContent(`**成員**\n-# 尚無成員`)
     );
   } else {
+    const roleWeight = (r) => (r === "leader" ? 0 : r === "vice_leader" ? 1 : 2);
     const sorted = [...members].sort((a, b) => {
-      if (a.role === "leader") return -1;
-      if (b.role === "leader") return 1;
+      const wa = roleWeight(a.role);
+      const wb = roleWeight(b.role);
+      if (wa !== wb) return wa - wb;
       return (b.total_donated || 0) - (a.total_donated || 0);
     });
     const lines = sorted.map((m) => {
-      const roleEmoji = m.role === "leader" ? "👑" : "・";
+      const roleEmoji =
+        m.role === "leader" ? "👑" : m.role === "vice_leader" ? "🛡️" : "・";
       const donated = (m.total_donated || 0).toLocaleString();
       return `${roleEmoji} <@${m.userId}>　捐款 ${donated} ${COIN_EMOJI}`;
     });
@@ -139,11 +186,18 @@ function buildInfoContainer({
     );
   }
 
-  if (isLeader) {
+  if (role === "leader") {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 你是會長。可使用 /公會 邀請、/公會 申請列表、/公會 踢人、/公會 解散。`
+        `-# 你是會長。可使用 /公會 邀請、/公會 申請列表、/公會 踢人、/公會 指派副會長、/公會 解散。`
+      )
+    );
+  } else if (role === "vice_leader") {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 你是副會長。可使用 /公會 邀請、/公會 申請列表、/公會 踢人、/公會 領獎（會長轉讓與解散僅會長可用）。`
       )
     );
   } else if (!isMember) {
@@ -718,6 +772,79 @@ function formatElapsed(date) {
   return `${Math.floor(hr / 24)} 天`;
 }
 
+function buildEditDescriptionModal({ userId, club }) {
+  const modal = new ModalBuilder()
+    .setCustomId(`${EDIT_DESC_MODAL_PREFIX}${userId}`)
+    .setTitle(`編輯「${club.name}」簡介 / 會規`.slice(0, 45));
+  const input = new TextInputBuilder()
+    .setCustomId("gc_desc_text")
+    .setLabel(`簡介 / 會規（最多 ${descriptionMaxLength()} 字，留空清除）`)
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(false)
+    .setMaxLength(descriptionMaxLength())
+    .setPlaceholder("例：歡迎大家！每週至少打 BOSS 一次，捐款隨意。");
+  if (club.description) input.setValue(club.description);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
+function buildDescriptionUpdatedContainer({ club, cleared, role }) {
+  const editorTitle = role === "vice_leader" ? "副會長" : "會長";
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_SUCCESS)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ✅ 「${club.name}」簡介已${cleared ? "清除" : "更新"}`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder());
+  if (cleared) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${editorTitle}清空了公會簡介 / 會規。`
+      )
+    );
+  } else {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**📜 公會簡介 / 會規**\n${club.description}`
+      )
+    );
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 由${editorTitle}更新。成員執行 /公會 資訊 即可看到。`
+      )
+    );
+  }
+  return container;
+}
+
+function buildPromoteViceSuccessContainer({ club, leaderId, targetId }) {
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_GOLD)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🛡️ 新任副會長就任\n<@${leaderId}> 指派 <@${targetId}> 為「${club.name}」副會長`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 副會長擁有與會長相同權限（除解散公會、轉讓會長、指派/撤銷副會長外）。`
+      )
+    );
+}
+
+function buildDemoteViceSuccessContainer({ club, leaderId, targetId }) {
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_WARN)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🪶 副會長已卸任\n<@${leaderId}> 撤銷了 <@${targetId}> 的副會長身分（仍是「${club.name}」成員）`
+      )
+    );
+}
+
 function buildErrorContainer({ title, body, hint }) {
   const c = new ContainerBuilder()
     .setAccentColor(COLOR_ERROR)
@@ -750,5 +877,10 @@ module.exports = {
   buildLeaderboardContainer,
   buildQuestRewardAnnouncementContainer,
   buildErrorContainer,
+  buildEditDescriptionModal,
+  buildDescriptionUpdatedContainer,
+  buildPromoteViceSuccessContainer,
+  buildDemoteViceSuccessContainer,
   formatBuff,
+  EDIT_DESC_MODAL_PREFIX,
 };

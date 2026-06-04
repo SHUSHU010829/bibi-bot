@@ -8,6 +8,9 @@
       "maxLength": 12,
       "forbiddenChars": ["@", "#", "<", ">", "`"]
     },
+    "description": {
+      "maxLength": 500
+    },
     "levels": [
       {
         "level": 1,
