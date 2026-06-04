@@ -145,10 +145,12 @@ async function fish(client, { userId, guildId, location = "stream" }) {
   // 釣竿耐久：非竹竿且有耐久值才消耗；歸 0 退回竹竿（比照鎬子）
   let rodBroke = false;
   let rodDurabilityAfter = null;
+  let rodDurabilityWarnCrossed = null;
   const hasDurability =
     rodKey !== "bamboo" && typeof profile.rod_durability === "number";
   if (hasDurability) {
-    rodDurabilityAfter = profile.rod_durability - 1;
+    const before = profile.rod_durability;
+    rodDurabilityAfter = before - 1;
     if (rodDurabilityAfter <= 0) {
       rodBroke = true;
       rodDurabilityAfter = null;
@@ -157,6 +159,12 @@ async function fish(client, { userId, guildId, location = "stream" }) {
       set.rod_max_durability = null;
     } else {
       inc.rod_durability = -1;
+      const warn = fishing?.durabilityWarn || {};
+      if (typeof warn.critical === "number" && before > warn.critical && rodDurabilityAfter <= warn.critical) {
+        rodDurabilityWarnCrossed = "critical";
+      } else if (typeof warn.low === "number" && before > warn.low && rodDurabilityAfter <= warn.low) {
+        rodDurabilityWarnCrossed = "low";
+      }
     }
   }
 
@@ -194,6 +202,7 @@ async function fish(client, { userId, guildId, location = "stream" }) {
     successRate,
     rodBroke,
     rodDurabilityAfter,
+    rodDurabilityWarnCrossed,
     newCooldownAt,
     fishCountTotal: (profile.fish_count_total || 0) + 1,
     rareDrops,

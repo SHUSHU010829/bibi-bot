@@ -18,6 +18,7 @@
       "diamond": { "name": "鑽石鎬", "emoji": "<:pickaxe_diamond:1509126881184583740>", "cdReductionMs": 3600000, "luckBonus": 0.12, "qtyBonus": 1, "durability": 50 }
     },
     "luckPotionBonus": 0.08,
+    "durabilityWarn": { "low": 5, "critical": 1 },
     "cdTicketReductionMs": 1800000,
     "cdTicketDailyUseLimit": 0,
     "announceChannelId": "",

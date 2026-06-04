@@ -14,6 +14,7 @@
       "感覺有東西咬，拉起來只剩空鉤…",
       "魚試探了一下餌，轉頭就游走了…"
     ],
+    "durabilityWarn": { "low": 5, "critical": 1 },
     "rods": {
       "bamboo":  { "name": "竹釣竿",   "emoji": "🎣", "successBonus": 0,    "rareBonus": 0,   "cdReductionMs": 0,       "qtyBonus": 0, "durability": null },
       "carbon":  { "name": "碳纖釣竿", "emoji": "🎏", "successBonus": 0.12, "rareBonus": 0.5, "cdReductionMs": 1800000, "qtyBonus": 0, "durability": 50 },

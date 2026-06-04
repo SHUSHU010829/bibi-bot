@@ -23,6 +23,17 @@ function locationChoices() {
   }));
 }
 
+async function dmRodLowDurability(interaction, rodKey, durabilityAfter, level) {
+  const def = fishing?.rods?.[rodKey] || {};
+  const head =
+    level === "critical"
+      ? `🚨 你的 **${def.emoji || ""} ${def.name || rodKey}** 只剩 **${durabilityAfter}** 次耐久，下一次釣魚就會斷！`
+      : `⚠️ 你的 **${def.emoji || ""} ${def.name || rodKey}** 耐久剩 **${durabilityAfter}** 次，差不多該準備了。`;
+  await interaction.user.send(
+    `${head}\n趁還沒斷，到 \`/合成\` 再做一支吧！`
+  );
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("釣魚")
@@ -132,10 +143,23 @@ module.exports = {
       }[fishDef.rarity || "普通"] ?? 0x7fb2d8;
 
       const qty = result.qty || 1;
-      const rodDuraText =
-        result.rodKey !== "bamboo" && typeof result.rodDurabilityAfter === "number"
-          ? `（耐久剩 ${result.rodDurabilityAfter}）`
-          : "";
+      const warn = fishing.durabilityWarn || {};
+      const showDura =
+        result.rodKey !== "bamboo" && typeof result.rodDurabilityAfter === "number";
+      let rodDuraText = "";
+      let rodWarnLevel = null;
+      if (showDura) {
+        const after = result.rodDurabilityAfter;
+        if (typeof warn.critical === "number" && after <= warn.critical) {
+          rodDuraText = `（🚨 耐久剩 ${after}）`;
+          rodWarnLevel = "critical";
+        } else if (typeof warn.low === "number" && after <= warn.low) {
+          rodDuraText = `（⚠️ 耐久剩 ${after}）`;
+          rodWarnLevel = "low";
+        } else {
+          rodDuraText = `（耐久剩 ${after}）`;
+        }
+      }
 
       const container = new ContainerBuilder()
         .setAccentColor(rarityColor)
@@ -167,6 +191,27 @@ module.exports = {
             "-# 🪝 你的釣竿斷了，已換回竹釣竿，快去 /合成 打造新的！"
           )
         );
+      } else if (rodWarnLevel === "critical") {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `🚨 **釣竿快斷了！**\n${rodLabel} 只剩 **${result.rodDurabilityAfter}** 次，再釣就會斷裂退回竹釣竿。快去 \`/合成\` 一支新的！`
+          )
+        );
+      } else if (rodWarnLevel === "low") {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `⚠️ **釣竿耐久偏低**\n${rodLabel} 剩 **${result.rodDurabilityAfter}** 次，建議先去 \`/合成\` 備一支。`
+          )
+        );
+      }
+
+      if (result.rodDurabilityWarnCrossed) {
+        dmRodLowDurability(
+          interaction,
+          result.rodKey,
+          result.rodDurabilityAfter,
+          result.rodDurabilityWarnCrossed,
+        ).catch(() => {});
       }
 
       // 稀有副產物（例如熔岩湖撈到的月光露水）

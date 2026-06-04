@@ -77,10 +77,12 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
   // 耐久：非木鎬且有耐久值才消耗；歸 0 退回木鎬
   let durabilityBroke = false;
   let durabilityAfter = null;
+  let durabilityWarnCrossed = null;
   const hasDurability =
     profile.pickaxe !== "wood" && typeof profile.pickaxe_durability === "number";
   if (hasDurability) {
-    durabilityAfter = profile.pickaxe_durability - 1;
+    const before = profile.pickaxe_durability;
+    durabilityAfter = before - 1;
     if (durabilityAfter <= 0) {
       durabilityBroke = true;
       durabilityAfter = null;
@@ -89,6 +91,12 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
       set.pickaxe_max_durability = null;
     } else {
       inc.pickaxe_durability = -1;
+      const warn = mining?.durabilityWarn || {};
+      if (typeof warn.critical === "number" && before > warn.critical && durabilityAfter <= warn.critical) {
+        durabilityWarnCrossed = "critical";
+      } else if (typeof warn.low === "number" && before > warn.low && durabilityAfter <= warn.low) {
+        durabilityWarnCrossed = "low";
+      }
     }
   }
 
@@ -127,6 +135,7 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     pickaxeBefore: profile.pickaxe,
     durabilityBroke,
     durabilityAfter,
+    durabilityWarnCrossed,
     mineCountTotal: (profile.mine_count_total || 0) + 1,
   };
 
