@@ -1,11 +1,12 @@
 // 公會倉庫按鈕處理器
 //
 // customId 格式（prefix `gcw_`）：
-//   gcw_take_<userId>_<itemId>_<qty>   — 領取快捷按鈕
-//   gcw_refresh_<userId>               — 重整倉庫畫面
-//   gcw_log_<userId>                   — 開倉庫紀錄（會長 / 副會長）
-//   gcw_settings_<userId>              — 開倉庫設定 modal（會長 / 副會長）
-//   gcw_help_<userId>                  — 顯示存入說明
+//   gcw_takeopen_<userId>_<itemId>_<maxTake>  — 點按鈕後跳 Modal 問數量
+//   gcw_takedo_<userId>_<itemId>              — Modal 送出（實際領取）
+//   gcw_refresh_<userId>                      — 重整倉庫畫面
+//   gcw_log_<userId>                          — 開倉庫紀錄（會長 / 副會長）
+//   gcw_settings_<userId>                     — 開倉庫設定 modal（會長 / 副會長）
+//   gcw_help_<userId>                         — 顯示存入說明
 
 require("colors");
 const { MessageFlags } = require("discord.js");
@@ -21,12 +22,16 @@ module.exports = async (client, interaction) => {
   const id = interaction.customId || "";
   if (!id.startsWith("gcw_")) return;
 
-  if (interaction.isModalSubmit?.() && id.startsWith(warehouseView.SETTINGS_MODAL_PREFIX)) {
-    return handleSettingsSubmit(client, interaction);
+  if (interaction.isModalSubmit?.()) {
+    if (id.startsWith(warehouseView.SETTINGS_MODAL_PREFIX))
+      return handleSettingsSubmit(client, interaction);
+    if (id.startsWith(warehouseView.TAKE_MODAL_PREFIX))
+      return handleTakeModalSubmit(client, interaction);
+    return;
   }
   if (!interaction.isButton()) return;
 
-  if (id.startsWith("gcw_take_")) return handleTake(client, interaction);
+  if (id.startsWith("gcw_takeopen_")) return handleTakeOpen(client, interaction);
   if (id.startsWith("gcw_refresh_")) return handleRefresh(client, interaction);
   if (id.startsWith("gcw_log_")) return handleLog(client, interaction);
   if (id.startsWith("gcw_help_")) return handleHelp(client, interaction);
@@ -47,18 +52,75 @@ async function denyNotOwner(interaction, label) {
   });
 }
 
-async function handleTake(client, interaction) {
-  const { ownerId, payload } = parseOwner("gcw_take_", interaction.customId);
+async function handleTakeOpen(client, interaction) {
+  const { ownerId, payload } = parseOwner("gcw_takeopen_", interaction.customId);
   if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "領取按鈕");
   const parts = payload.split("_");
   if (parts.length < 2)
     return interaction.reply({ content: "❌ 按鈕格式錯誤", flags: MessageFlags.Ephemeral });
-  const qty = parseInt(parts[parts.length - 1], 10);
+  const maxTake = parseInt(parts[parts.length - 1], 10);
   const itemId = parts.slice(0, -1).join("_");
-  if (!Number.isInteger(qty) || qty <= 0)
-    return interaction.reply({ content: "❌ 數量錯誤", flags: MessageFlags.Ephemeral });
+  if (!Number.isInteger(maxTake) || maxTake <= 0)
+    return interaction.reply({ content: "❌ 按鈕資料錯誤", flags: MessageFlags.Ephemeral });
+
+  const membership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  if (!membership)
+    return interaction.reply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "🏰 你還沒加入公會",
+          body: "倉庫是公會專屬功能。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  const club = await guildClubService.getClubById(client, membership.guild_club_id);
+  if (!club)
+    return interaction.reply({
+      components: [
+        warehouseView.buildErrorContainer({ title: "❌ 公會資料異常", body: "公會已不存在。" }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+
+  return interaction.showModal(
+    warehouseView.buildTakeModal({
+      userId: interaction.user.id,
+      club,
+      itemId,
+      maxTake,
+    })
+  );
+}
+
+async function handleTakeModalSubmit(client, interaction) {
+  const rest = interaction.customId.slice(warehouseView.TAKE_MODAL_PREFIX.length);
+  const sepIdx = rest.indexOf("_");
+  if (sepIdx < 0)
+    return interaction.reply({ content: "❌ Modal 格式錯誤", flags: MessageFlags.Ephemeral });
+  const ownerId = rest.slice(0, sepIdx);
+  const itemId = rest.slice(sepIdx + 1);
+  if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "領取視窗");
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const qtyRaw = (interaction.fields.getTextInputValue("qty") || "").trim();
+  const qty = parseInt(qtyRaw, 10);
+  if (!Number.isInteger(qty) || qty <= 0)
+    return interaction.editReply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "❌ 數量格式錯誤",
+          body: `請輸入正整數，你輸入了「${qtyRaw}」。`,
+          hint: "重新點按鈕再試一次。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
 
   try {
     const result = await warehouseService.withdraw(client, {
@@ -92,7 +154,7 @@ async function handleTake(client, interaction) {
       flags: MessageFlags.IsComponentsV2,
     });
   } catch (e) {
-    console.log(`[GUILD_WAREHOUSE] take button 失敗：${e.stack || e.message}`.red);
+    console.log(`[GUILD_WAREHOUSE] take modal 失敗：${e.stack || e.message}`.red);
     return interaction.editReply({
       components: [
         warehouseView.buildErrorContainer({
@@ -359,6 +421,12 @@ function withdrawButtonErrorView(result, itemId) {
     return warehouseView.buildErrorContainer({
       title: "🧊 24h 內存過此項",
       body: `你最近存了 ${result.qty} 個 ${name}，自存自領鎖至 <t:${Math.floor(result.unlock_at / 1000)}:R>。`,
+    });
+  if (reason === "qty_over_personal_limit")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 超過單次上限",
+      body: `${name} 單次最多 ${result.limit} 個，你想領 ${result.asked}。`,
+      hint: "請填 1～上限之間的整數。",
     });
   if (reason === "qty_over_available")
     return warehouseView.buildErrorContainer({

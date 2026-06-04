@@ -127,14 +127,13 @@ const buildWarehouseContainer = ({
 
       const mainText = `${it.def.emoji} **${it.def.name}** ${it.qty} / ${cap}${protTail}`;
       if (takeable) {
-        const feeMax = calcFee(it.item_id, maxTake, club);
         container.addSectionComponents(
           new SectionBuilder()
             .addTextDisplayComponents(new TextDisplayBuilder().setContent(mainText))
             .setButtonAccessory(
               new ButtonBuilder()
-                .setCustomId(`gcw_take_${viewerId}_${it.item_id}_${maxTake}`)
-                .setLabel(`領 ${maxTake}（-${feeMax}）`)
+                .setCustomId(`gcw_takeopen_${viewerId}_${it.item_id}_${maxTake}`)
+                .setLabel(`領取（≤ ${maxTake}）`)
                 .setStyle(ButtonStyle.Success)
             )
         );
@@ -336,6 +335,35 @@ const buildLogContainer = ({ club, entries, isVice }) => {
   return container;
 };
 
+const TAKE_MODAL_PREFIX = "gcw_takedo_";
+
+const buildTakeModal = ({ userId, club, itemId, maxTake }) => {
+  const def = itemDef(itemId);
+  const oneFee = calcFee(itemId, 1, club);
+  const maxFee = calcFee(itemId, maxTake, club);
+  const modal = new ModalBuilder()
+    .setCustomId(`${TAKE_MODAL_PREFIX}${userId}_${itemId}`)
+    .setTitle(`領取 ${def?.name || itemId}`.slice(0, 45));
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("qty")
+        .setLabel(`數量（1～${maxTake}）`)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(4)
+        .setPlaceholder(
+          maxTake === 1
+            ? `1 顆扣 ${oneFee} 幣手續費`
+            : `1 顆 -${oneFee}、領滿 ${maxTake} 顆 -${maxFee} 幣`
+        )
+        .setValue(String(maxTake))
+    )
+  );
+  return modal;
+};
+
 const SETTINGS_MODAL_PREFIX = "gcw_settings_modal_";
 
 const buildSettingsModal = ({ userId, club }) => {
@@ -464,6 +492,8 @@ module.exports = {
   buildSettingsUpdatedContainer,
   buildLargeDepositAnnouncement,
   buildWarehouseSummaryBlock,
+  buildTakeModal,
   SETTINGS_MODAL_PREFIX,
+  TAKE_MODAL_PREFIX,
   SETTING_LABEL,
 };
