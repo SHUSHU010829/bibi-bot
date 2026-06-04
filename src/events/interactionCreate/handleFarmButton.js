@@ -321,11 +321,16 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.IsComponentsV2,
       });
 
+      const nextReadyAtPlant = await farmService.getNextReadyAt(
+        client,
+        interaction.user.id,
+        interaction.guildId,
+      );
       reminder.refreshIfEnabled(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
         type: "farm",
-        readyAt: result.plot.ready_at,
+        readyAt: nextReadyAtPlant,
       }).catch(() => {});
 
       applyQuestHooks(client, ctxOf(interaction), [{ questId: "daily_farm_plant" }]).catch(() => {});
@@ -463,11 +468,16 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.IsComponentsV2,
       });
 
+      const nextReadyAtPlantAll = await farmService.getNextReadyAt(
+        client,
+        interaction.user.id,
+        interaction.guildId,
+      );
       reminder.refreshIfEnabled(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
         type: "farm",
-        readyAt: earliestReady,
+        readyAt: nextReadyAtPlantAll,
       }).catch(() => {});
 
       const hooks = result.planted.map(() => ({ questId: "daily_farm_plant" }));
@@ -555,17 +565,16 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.IsComponentsV2,
       });
 
-      const earliest = await client.farmPlotsCollection
-        ?.findOne(
-          { userId: interaction.user.id, guildId: interaction.guildId, status: "growing" },
-          { sort: { ready_at: 1 }, projection: { ready_at: 1 } },
-        )
-        .catch(() => null);
+      const nextReadyAtFert = await farmService.getNextReadyAt(
+        client,
+        interaction.user.id,
+        interaction.guildId,
+      );
       reminder.refreshIfEnabled(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
         type: "farm",
-        readyAt: earliest?.ready_at || 0,
+        readyAt: nextReadyAtFert,
       }).catch(() => {});
       return;
     }
@@ -651,6 +660,11 @@ module.exports = async (client, interaction) => {
         }
       }
 
+      const nextReadyAtHarvestAll = await farmService.getNextReadyAt(client, userId, guildId);
+      reminder.refreshIfEnabled(client, {
+        userId, guildId, type: "farm", readyAt: nextReadyAtHarvestAll,
+      }).catch(() => {});
+
       return interaction.editReply({
         components: [c],
         flags: MessageFlags.IsComponentsV2,
@@ -700,6 +714,18 @@ module.exports = async (client, interaction) => {
       if (harvestNote) {
         sendFarmAnnouncement(client, interaction.channel, harvestNote).catch(() => {});
       }
+
+      const nextReadyAtHarvest = await farmService.getNextReadyAt(
+        client,
+        interaction.user.id,
+        interaction.guildId,
+      );
+      reminder.refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "farm",
+        readyAt: nextReadyAtHarvest,
+      }).catch(() => {});
 
       return interaction.editReply({
         components: [c],

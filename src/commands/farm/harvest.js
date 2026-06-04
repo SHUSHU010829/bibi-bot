@@ -13,6 +13,7 @@ const {
 
 const { farming } = require("../../config");
 const farmService = require("../../features/farm/farmService");
+const reminder = require("../../features/reminders/cooldownReminderService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const {
   sendFarmAnnouncement,
@@ -154,6 +155,18 @@ module.exports = {
       if (harvestNote) {
         sendFarmAnnouncement(client, interaction.channel, harvestNote).catch(() => {});
       }
+
+      const nextReadyAt = await farmService.getNextReadyAt(
+        client,
+        interaction.user.id,
+        interaction.guildId,
+      );
+      reminder.refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "farm",
+        readyAt: nextReadyAt,
+      }).catch(() => {});
 
       const hooks = [
         { questId: "daily_farm_harvest" },

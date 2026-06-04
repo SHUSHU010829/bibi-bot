@@ -636,6 +636,21 @@ async function setTrap(client, { userId, guildId, username, member, plotIndex })
   };
 }
 
+// 取「下一個將成熟」的地塊 ready_at（仍在 growing 且尚未到期），用於把農場到點
+// 通知對齊到真正要 DM 的時間。施肥剛把 ready_at 夾到 now、或被追蹤的那塊已成熟時，
+// 跳過它去找下一塊還在長的，避免單塊覆蓋掉整個玩家的提醒。沒有時回 0。
+async function getNextReadyAt(client, userId, guildId) {
+  const c = coll(client);
+  if (!c) return 0;
+  const plot = await c
+    .findOne(
+      { userId, guildId, status: "growing", ready_at: { $gt: Date.now() } },
+      { sort: { ready_at: 1 }, projection: { ready_at: 1 } },
+    )
+    .catch(() => null);
+  return plot?.ready_at || 0;
+}
+
 // Cron 用：掃 growing→ready、ready→rotted。回傳更新數量供日誌使用。
 async function runDecaySweep(client) {
   const c = coll(client);
@@ -672,4 +687,5 @@ module.exports = {
   getPlots,
   getPlotCount,
   resolveLiveStatus,
+  getNextReadyAt,
 };
