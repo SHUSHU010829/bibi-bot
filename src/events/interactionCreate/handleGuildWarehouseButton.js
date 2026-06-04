@@ -1,11 +1,11 @@
 // 公會倉庫按鈕處理器
 //
 // customId 格式（prefix `gcw_`）：
-//   gcw_take_<userId>_<itemId>_<qty>   — 取礦快捷按鈕
+//   gcw_take_<userId>_<itemId>_<qty>   — 領取快捷按鈕
 //   gcw_refresh_<userId>               — 重整倉庫畫面
 //   gcw_log_<userId>                   — 開倉庫紀錄（會長 / 副會長）
 //   gcw_settings_<userId>              — 開倉庫設定 modal（會長 / 副會長）
-//   gcw_help_<userId>                  — 顯示存礦說明
+//   gcw_help_<userId>                  — 顯示存入說明
 
 require("colors");
 const { MessageFlags } = require("discord.js");
@@ -49,7 +49,7 @@ async function denyNotOwner(interaction, label) {
 
 async function handleTake(client, interaction) {
   const { ownerId, payload } = parseOwner("gcw_take_", interaction.customId);
-  if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "取礦按鈕");
+  if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "領取按鈕");
   const parts = payload.split("_");
   if (parts.length < 2)
     return interaction.reply({ content: "❌ 按鈕格式錯誤", flags: MessageFlags.Ephemeral });
@@ -216,12 +216,12 @@ async function handleHelp(client, interaction) {
       warehouseView.buildErrorContainer({
         title: "📦 怎麼用公會倉庫",
         body:
-          "存礦：`/公會 存礦 物品:鐵礦 數量:30`\n" +
-          "取礦：`/公會 取礦 物品:鐵礦 數量:5`（或直接點上方按鈕）\n" +
+          "存入：`/公會 存入 物品:鐵礦 數量:30`\n" +
+          "領取：`/公會 領取 物品:鐵礦 數量:5`（或直接點上方按鈕）\n" +
           "・存入後 1 小時保護期，全員都不能領\n" +
-          "・取礦每日 2 次，同種類一天限領一次\n" +
+          "・領取每日 2 次，同種類一天限領一次\n" +
           "・手續費 = 市價 × 10%（最低 20 幣），費用進公會金庫",
-        hint: "存礦不可收回，等同捐贈。",
+        hint: "存入後不可收回，等同捐贈。",
       }),
     ],
     flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
@@ -343,7 +343,7 @@ function withdrawButtonErrorView(result, itemId) {
     return warehouseView.buildErrorContainer({
       title: "🔒 公會貢獻不足",
       body: `需 ${result.need}，目前 ${result.have}（差 ${result.need - result.have}）。`,
-      hint: "可用 /公會 捐款 或 /公會 存礦 補貢獻。",
+      hint: "可用 /公會 捐款 或 /公會 存入 補貢獻。",
     });
   if (reason === "daily_limit_reached")
     return warehouseView.buildErrorContainer({
@@ -386,7 +386,7 @@ function withdrawButtonErrorView(result, itemId) {
       body: `倉庫於 Lv.${result.need} 解鎖。\n目前：Lv.${result.have}`,
     });
   return warehouseView.buildErrorContainer({
-    title: "❌ 取礦失敗",
+    title: "❌ 領取失敗",
     body: `原因：${reason}`,
   });
 }
