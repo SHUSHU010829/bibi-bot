@@ -1376,7 +1376,12 @@ function depositErrorView(result, itemId) {
       body: "請輸入正整數。",
     });
   if (reason === "not_enough_in_pack") {
-    const where = result.kind === "fish_bag" ? "魚袋" : "背包";
+    const where =
+      result.kind === "fish_bag"
+        ? "魚袋"
+        : result.kind === "veggie_bag"
+          ? "菜籃"
+          : "背包";
     return warehouseView.buildErrorContainer({
       title: "❌ 庫存不足",
       body: `你的${where}只有 ${result.have} 個 ${name}，要存 ${result.need}。`,

@@ -23,8 +23,10 @@ const {
 
 const PROFILE = "miningProfilesCollection";
 
-const fieldForItem = (def) =>
-  def.kind === "fish_bag" ? `fish_bag.${def._id}` : `backpack.${def._id}`;
+const BAG_BY_KIND = { fish_bag: "fish_bag", veggie_bag: "veggie_bag" };
+const bagFieldFor = (def) => BAG_BY_KIND[def.kind] || "backpack";
+
+const fieldForItem = (def) => `${bagFieldFor(def)}.${def._id}`;
 
 const enriched = (itemId) => {
   const d = itemDef(itemId);
@@ -124,7 +126,7 @@ const deposit = async (
   if (!lock.ok) return lock;
 
   const profile = await client[PROFILE].findOne({ userId, guildId });
-  const haveField = def.kind === "fish_bag" ? "fish_bag" : "backpack";
+  const haveField = bagFieldFor(def);
   const have = profile?.[haveField]?.[itemId] || 0;
   if (have < qty)
     return { ok: false, reason: "not_enough_in_pack", have, need: qty, kind: def.kind };
@@ -340,8 +342,8 @@ const withdraw = async (
     { $inc: { treasury_current: fee }, $set: { updated_at: new Date() } }
   ).catch(() => {});
 
-  // 3) 加成品到玩家的背包/魚袋
-  const haveField = def.kind === "fish_bag" ? "fish_bag" : "backpack";
+  // 3) 加成品到玩家的背包/魚袋/菜籃
+  const haveField = bagFieldFor(def);
   await client[PROFILE].updateOne(
     { userId, guildId },
     {
