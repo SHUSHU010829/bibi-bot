@@ -9,11 +9,11 @@ const {
 const questService = require("./questService");
 const questNotifyPref = require("./questNotifyPref");
 const questClaimButton = require("./questClaimButton");
+const questManageButton = require("./questManageButton");
+const questAssignmentService = require("./questAssignmentService");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 const PROGRESS_BAR_LEN = 8;
-// 進度條方塊：填滿用綠色、未填用深色（接近 Dank Memer 那種綠色長條 + 深色底）。
-// 已領取的任務改用藍色，跟「進行中／待入帳」的綠色區隔開。
 const BAR_FILLED = "🟩";
 const BAR_FILLED_CLAIMED = "🟦";
 const BAR_EMPTY = "⬛";
@@ -33,7 +33,6 @@ const STATE_LABEL = {
 const renderBar = (progress, target, claimed) => {
   const ratio = target > 0 ? Math.min(1, progress / target) : 0;
   let filled = Math.round(ratio * PROGRESS_BAR_LEN);
-  // 有進度但四捨五入成 0 時，至少亮一格（呼應圖上 1/10 也有一小段綠）。
   if (filled === 0 && progress > 0) filled = 1;
   const fillEmoji = claimed ? BAR_FILLED_CLAIMED : BAR_FILLED;
   return fillEmoji.repeat(filled) + BAR_EMPTY.repeat(PROGRESS_BAR_LEN - filled);
@@ -48,7 +47,58 @@ const renderQuestLine = (q) => {
   ].join("\n");
 };
 
-// 讀取任務進度與通知偏好，組出 /逼幣任務 的 V2 容器。
+function appendQuestList(container, header, quests, userId, tier, assignment) {
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(header));
+
+  if (quests.length === 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# （此期間沒有任務，可能全被跳過）"),
+    );
+    return;
+  }
+
+  const showButtons =
+    !!tier && questAssignmentService.isEnabled() && !!assignment;
+  const rerollCost = tier ? questAssignmentService.rerollCostFor(tier) : 0;
+  const skipCost = tier ? questAssignmentService.skipCostFor(tier) : 0;
+  const rerollLimit = tier ? questAssignmentService.rerollLimitFor(tier) : 0;
+  const skipLimit = tier ? questAssignmentService.skipLimitFor(tier) : 0;
+  const rerollsUsed = assignment?.rerollsUsed || 0;
+  const skipsUsed = assignment?.skipsUsed || 0;
+  const rerollFull = rerollsUsed >= rerollLimit;
+  const skipFull = skipsUsed >= skipLimit;
+
+  for (const q of quests) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(renderQuestLine(q)),
+    );
+    if (showButtons && q.state !== "claimed") {
+      container.addActionRowComponents(
+        questManageButton.buildButtonRow({
+          userId,
+          questId: q.id,
+          state: q.state,
+          reward: q.reward,
+          rerollCost,
+          skipCost,
+          rerollDisabled: rerollFull,
+          skipDisabled: skipFull,
+        }),
+      );
+    }
+  }
+
+  if (showButtons) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 🔄 重抽額度 ${rerollsUsed}/${rerollLimit}　・ ⏭️ 跳過額度 ${skipsUsed}/${skipLimit}`,
+      ),
+    );
+  }
+}
+
 async function buildQuestContainer(client, userId, guildId) {
   const status = await questService.getStatus(client, userId, guildId);
   const dmNotify = await questNotifyPref.isDmEnabled(client, userId, guildId);
@@ -65,51 +115,51 @@ async function buildQuestContainer(client, userId, guildId) {
       new TextDisplayBuilder().setContent(
         `## 📜 逼幣任務${
           readyCount > 0 ? ` ・ 有 **${readyCount}** 個任務剛完成等入帳` : ""
-        }`
-      )
+        }`,
+      ),
     );
 
-  if (status.daily.length > 0) {
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `### 🌞 每日任務\n${status.daily.map(renderQuestLine).join("\n\n")}`
-        )
-      );
-  }
-  if (status.weekly.length > 0) {
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `### 📅 週常任務\n${status.weekly.map(renderQuestLine).join("\n\n")}`
-        )
-      );
-  }
+  appendQuestList(
+    container,
+    "### 🌞 每日任務",
+    status.daily,
+    userId,
+    "daily",
+    status.assignment?.daily,
+  );
+
+  appendQuestList(
+    container,
+    "### 📅 週常任務",
+    status.weekly,
+    userId,
+    "weekly",
+    status.assignment?.weekly,
+  );
 
   if (eventQuestList.length > 0) {
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `### 🎉 限時活動任務\n${eventQuestList.map(renderQuestLine).join("\n\n")}`
-        )
+          `### 🎉 限時活動任務\n${eventQuestList.map(renderQuestLine).join("\n\n")}`,
+        ),
       );
   }
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `-# 任務完成會自動入帳；若有「待入帳」未到帳，按下方「領錢」即可補領。\n` +
+      `-# 任務完成後不再自動入帳，需要自行按 💰 領取（或下方「一鍵領取」全收）。\n` +
+        `-# 任務每日/每週隨機指派；不喜歡可付幣🔄重抽換一個、或⏭️跳過直接消除（不會發獎勵）。\n` +
         `-# 「完成 DM 通知」可開關「被動任務（發言／語音／表情等）完成時的 DM 通知」，目前**${
           dmNotify ? "已開啟 🔔" : "已關閉 🔕"
-        }**。`
-    )
+        }**。`,
+    ),
   );
 
   container.addActionRowComponents(
     questClaimButton.buildButtonRow({ userId, hasReady: readyCount > 0 }),
-    questNotifyPref.buildButtonRow({ userId, enabled: dmNotify })
+    questNotifyPref.buildButtonRow({ userId, enabled: dmNotify }),
   );
 
   return container;

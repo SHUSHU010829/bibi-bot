@@ -35,7 +35,7 @@ const REAL_INFLOW = [
   "deposit_interest",
 ];
 const REPAY_INFLOW = ["deposit_release", "payout", "stock_sell", "auction_payout", "auction_refund", "duel_payout", "duel_refund"];
-const OUTFLOW = ["bet", "deposit_lock", "transfer_out", "transfer_fee", "deposit_penalty", "shop_buy", "wealth_tax", "stock_buy", "stock_fee", "auction_bid", "duel_stake"];
+const OUTFLOW = ["bet", "deposit_lock", "transfer_out", "transfer_fee", "deposit_penalty", "shop_buy", "wealth_tax", "stock_buy", "stock_fee", "auction_bid", "duel_stake", "quest_reroll", "quest_skip"];
 
 const CASINO_GAME_LABEL = {
   blackjack: "BJ",

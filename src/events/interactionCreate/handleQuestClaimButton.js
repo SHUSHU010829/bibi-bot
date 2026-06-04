@@ -85,7 +85,7 @@ module.exports = async (client, interaction) => {
     if (!result.claimed || result.claimed.length === 0) {
       await replyEphemeral(
         interaction,
-        "📭 目前沒有待入帳的任務獎勵～任務完成時通常會自動入帳。"
+        "📭 目前沒有可領的任務獎勵～去完成任務後再回來按一鍵領取。"
       );
       return;
     }

@@ -447,6 +447,7 @@ module.exports = {
         ["🐲 BOSS", market.boss],
         ["🗡️ 地下城", market.dungeon],
         ["📜 任務", market.quest],
+        ["📜 任務重抽/跳過", market.questManage],
         ["🎲 隨機事件", market.encounter],
         ["🎉 自辦活動", market.event],
         ["🏰 公會", market.guild],

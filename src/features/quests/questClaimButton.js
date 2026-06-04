@@ -24,13 +24,13 @@ function parseCustomId(customId) {
   return { userId };
 }
 
-// 產生「領錢」按鈕。hasReady 時亮藍燈強調，否則灰色。
+// 產生「一鍵領取」按鈕。hasReady 時亮綠燈強調，否則灰色。
 function buildButton({ userId, hasReady }) {
   return new ButtonBuilder()
     .setCustomId(buildCustomId(userId))
-    .setLabel("領錢")
+    .setLabel("一鍵領取")
     .setEmoji("🪙")
-    .setStyle(hasReady ? ButtonStyle.Primary : ButtonStyle.Secondary);
+    .setStyle(hasReady ? ButtonStyle.Success : ButtonStyle.Secondary);
 }
 
 // 單獨成列（如需與其他按鈕同列，直接用 buildButton）。

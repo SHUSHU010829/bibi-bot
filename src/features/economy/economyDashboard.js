@@ -42,6 +42,7 @@ const PURE_SINK_SOURCES = new Set([
   "guild_create", "guild_donate",
   "invite_clawback",
   "transfer_fee", "deposit_penalty",
+  "quest_reroll", "quest_skip",
 ]);
 
 function todayIso() {
@@ -698,6 +699,7 @@ async function aggregateMarketActivity(client, guildId, fromIso, toIso) {
     fishing: ["fish_sell"],
     chat: ["message", "voice", "reaction"],
     quest: ["quest_daily", "quest_weekly", "quest_event"],
+    questManage: ["quest_reroll", "quest_skip"],
     dungeon: ["dungeon"],
     boss: ["boss_loot", "boss_killer", "boss_kill_bonus"],
     invite: ["invite_reward", "invite_welcome", "invite_clawback"],

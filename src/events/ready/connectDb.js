@@ -119,6 +119,9 @@ module.exports = async (client) => {
     // 任務通知偏好（每位玩家的「完成 DM 通知」開關）
     const questSettingsCollection = database.collection("QuestSettings");
 
+    // 任務指派（每位玩家每期被隨機指派的任務清單 + 重抽/跳過額度）
+    const questAssignmentsCollection = database.collection("QuestAssignments");
+
     // 經濟健康快照（每日聚合，用於通膨追蹤）
     const economySnapshotsCollection = database.collection("EconomySnapshots");
 
@@ -253,6 +256,7 @@ module.exports = async (client) => {
     client.welfareClaimsCollection = welfareClaimsCollection;
     client.questProgressCollection = questProgressCollection;
     client.questSettingsCollection = questSettingsCollection;
+    client.questAssignmentsCollection = questAssignmentsCollection;
     client.economySnapshotsCollection = economySnapshotsCollection;
     client.hostedEventsCollection = hostedEventsCollection;
     client.quizGamesCollection = quizGamesCollection;
@@ -837,6 +841,16 @@ module.exports = async (client) => {
       await questSettingsCollection.createIndex(
         { userId: 1, guildId: 1 },
         { unique: true, name: "uniq_quest_settings_user_guild" }
+      );
+
+      // 任務指派：(user, guild, tier, period) 唯一
+      await questAssignmentsCollection.createIndex(
+        { userId: 1, guildId: 1, tier: 1, period: 1 },
+        { unique: true, name: "uniq_quest_assign_user_guild_tier_period" }
+      );
+      await questAssignmentsCollection.createIndex(
+        { updatedAt: 1 },
+        { expireAfterSeconds: 60 * 24 * 60 * 60, name: "quest_assign_ttl_60d" }
       );
 
       // 股市系統索引
