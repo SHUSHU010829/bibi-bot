@@ -146,7 +146,8 @@ const incrementProgress = async (
 
   // 把進度直接 cap 在 target 上（不需要追蹤超過部分）
   const cappedProgress = Math.min(target, (existing?.progress || 0) + delta);
-  const completed = cappedProgress >= target;
+  // 一旦達標就永遠保持 completed（避免目標值之後被上調時把已完成翻回未完成）
+  const completed = !!existing?.completed || cappedProgress >= target;
 
   const update = await client.questProgressCollection.findOneAndUpdate(
     { userId, guildId, questId, period },
@@ -209,7 +210,8 @@ const addMetaValue = async (
 
   const newMetaVal = (existing?.meta?.[key] || 0) + delta;
   const cappedProgress = Math.min(target, newMetaVal);
-  const completed = cappedProgress >= target;
+  // 同 incrementProgress：completed 是單調的，避免事後上調 target 把達標翻回未達標
+  const completed = !!existing?.completed || cappedProgress >= target;
 
   const update = await client.questProgressCollection.findOneAndUpdate(
     { userId, guildId, questId, period },
@@ -346,21 +348,23 @@ const getStatus = async (client, userId, guildId) => {
 
   const enrich = (def, period) => {
     const doc = byKey.get(`${def.id}|${period}`);
-    const progress = doc?.progress || 0;
+    const rawProgress = doc?.progress || 0;
     const target = def.target || 1;
-    const completed = doc?.completed || progress >= target;
+    const completed = doc?.completed || rawProgress >= target;
     const claimed = !!doc?.claimed;
     let state = "pending";
     if (claimed) state = "claimed";
     else if (completed) state = "ready";
-    else if (progress > 0) state = "in_progress";
+    else if (rawProgress > 0) state = "in_progress";
+    // 已完成就顯示滿條（避免事後上調 target 時，已達標玩家看到「9 / 20」這種卡住的條）
+    const displayProgress = completed ? target : Math.min(rawProgress, target);
     return {
       id: def.id,
       name: def.name,
       description: def.description,
       reward: def.reward,
       target,
-      progress: Math.min(progress, target),
+      progress: displayProgress,
       completed,
       claimed,
       state,
