@@ -5,11 +5,10 @@
     "assignment": {
       "enabled": true,
       "dailyPoolSize": 5,
-      "weeklyPoolSize": 4,
-      "rerollCost": { "daily": 50, "weekly": 200 },
+      "weeklyPoolSize": 5,
+      "rerollCost": { "daily": 100, "weekly": 200 },
       "skipCost": { "daily": 30, "weekly": 100 },
-      "rerollLimit": { "daily": 2, "weekly": 1 },
-      "skipLimit": { "daily": 2, "weekly": 1 }
+      "actionLimit": { "daily": 4, "weekly": 2 }
     },
     "daily": [
       {

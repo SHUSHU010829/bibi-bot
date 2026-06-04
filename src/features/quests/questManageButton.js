@@ -68,7 +68,7 @@ function buildButtonRow({
       .setDisabled(!!rerollDisabled),
     new ButtonBuilder()
       .setCustomId(buildCustomId(SKIP_PREFIX, userId, questId))
-      .setLabel(`跳過 (-${skipCost})`)
+      .setLabel(`不做了 (-${skipCost})`)
       .setEmoji("⏭️")
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(!!skipDisabled),

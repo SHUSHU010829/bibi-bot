@@ -144,13 +144,13 @@ module.exports = async (client, interaction) => {
       await replyEphemeral(
         interaction,
         `🔄 已重抽「**${def.name}**」→「**${newDef?.name || result.to}**」・ 花費 **${result.cost.toLocaleString()}** ${COIN_EMOJI}\n` +
-          `-# 本期重抽額度 ${result.rerollsUsed}/${result.rerollsLimit}`,
+          `-# 本期調整額度 ${result.used}/${result.limit}`,
       );
     } else if (action === "skip") {
       await replyEphemeral(
         interaction,
-        `⏭️ 已跳過「**${def.name}**」・ 花費 **${result.cost.toLocaleString()}** ${COIN_EMOJI}\n` +
-          `-# 本期跳過額度 ${result.skipsUsed}/${result.skipsLimit}`,
+        `⏭️ 已標記不做「**${def.name}**」・ 花費 **${result.cost.toLocaleString()}** ${COIN_EMOJI}（此任務本期不再發獎勵）\n` +
+          `-# 本期調整額度 ${result.used}/${result.limit}`,
       );
     } else {
       const c = result.claimed;

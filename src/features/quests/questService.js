@@ -436,6 +436,41 @@ const claimAll = async (client, userId, guildId, member, username) => {
   return { claimed: claimedList, total };
 };
 
+// 每日 23:50 cron 用：掃出所有「completed=true, claimed=false」的玩家，逐一 claimAll
+// 把忘了領的當期任務全部結算入帳，避免跨期作廢。
+const autoFlushAllReady = async (client) => {
+  if (!isEnabled()) return { users: 0, total: 0 };
+  if (!client.questProgressCollection) return { users: 0, total: 0 };
+
+  const rows = await client.questProgressCollection
+    .aggregate([
+      { $match: { completed: true, claimed: { $ne: true } } },
+      { $group: { _id: { userId: "$userId", guildId: "$guildId" } } },
+    ])
+    .toArray();
+
+  let users = 0;
+  let total = 0;
+  for (const r of rows) {
+    const { userId, guildId } = r._id;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) continue;
+    const member = await guild.members.fetch(userId).catch(() => null);
+    const username = member?.user?.username || null;
+    const res = await module.exports
+      .claimAll(client, userId, guildId, member, username)
+      .catch((e) => {
+        console.log(`[QUEST] autoFlush user ${userId}: ${e}`.red);
+        return null;
+      });
+    if (res?.claimed?.length > 0) {
+      users += 1;
+      total += res.total || 0;
+    }
+  }
+  return { users, total };
+};
+
 module.exports = {
   periodKey,
   incrementProgress,
@@ -444,4 +479,5 @@ module.exports = {
   getStatus,
   claimSingle,
   claimAll,
+  autoFlushAllReady,
 };

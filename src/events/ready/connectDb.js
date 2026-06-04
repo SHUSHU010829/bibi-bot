@@ -849,8 +849,8 @@ module.exports = async (client) => {
         { unique: true, name: "uniq_quest_assign_user_guild_tier_period" }
       );
       await questAssignmentsCollection.createIndex(
-        { updatedAt: 1 },
-        { expireAfterSeconds: 60 * 24 * 60 * 60, name: "quest_assign_ttl_60d" }
+        { createdAt: 1 },
+        { expireAfterSeconds: 60 * 24 * 60 * 60, name: "quest_assign_ttl_60d_create" }
       );
 
       // 股市系統索引

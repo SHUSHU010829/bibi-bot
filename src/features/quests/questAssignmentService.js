@@ -19,10 +19,9 @@ const periodFor = (tier) => {
 const poolFor = (tier) => (tier === "weekly" ? weeklyQuests() : dailyQuests());
 const poolSizeFor = (tier) =>
   tier === "weekly" ? cfg().weeklyPoolSize ?? 4 : cfg().dailyPoolSize ?? 5;
-const rerollCostFor = (tier) => cfg().rerollCost?.[tier] ?? (tier === "weekly" ? 200 : 50);
+const rerollCostFor = (tier) => cfg().rerollCost?.[tier] ?? (tier === "weekly" ? 200 : 100);
 const skipCostFor = (tier) => cfg().skipCost?.[tier] ?? (tier === "weekly" ? 100 : 30);
-const rerollLimitFor = (tier) => cfg().rerollLimit?.[tier] ?? (tier === "weekly" ? 1 : 2);
-const skipLimitFor = (tier) => cfg().skipLimit?.[tier] ?? (tier === "weekly" ? 1 : 2);
+const actionLimitFor = (tier) => cfg().actionLimit?.[tier] ?? (tier === "weekly" ? 2 : 4);
 
 function pickRandomIds(pool, n) {
   const ids = pool.map((q) => q.id);
@@ -102,9 +101,10 @@ async function rerollQuest(client, userId, guildId, tier, questId, opts = {}) {
   });
   if (progress?.claimed) return { ok: false, reason: "already_claimed" };
 
-  const limit = rerollLimitFor(tier);
-  if ((assignment.rerollsUsed || 0) >= limit) {
-    return { ok: false, reason: "over_limit", used: assignment.rerollsUsed, limit };
+  const limit = actionLimitFor(tier);
+  const used = (assignment.rerollsUsed || 0) + (assignment.skipsUsed || 0);
+  if (used >= limit) {
+    return { ok: false, reason: "over_limit", used, limit };
   }
 
   const poolIds = poolFor(tier).map((q) => q.id);
@@ -113,6 +113,7 @@ async function rerollQuest(client, userId, guildId, tier, questId, opts = {}) {
   if (candidates.length === 0) return { ok: false, reason: "pool_exhausted" };
   const newQuestId = candidates[Math.floor(Math.random() * candidates.length)];
 
+  // 用 $expr 原子檢查「rerollsUsed + skipsUsed < limit」，避免併發超額
   const swap = await client.questAssignmentsCollection.findOneAndUpdate(
     {
       userId,
@@ -120,7 +121,7 @@ async function rerollQuest(client, userId, guildId, tier, questId, opts = {}) {
       tier,
       period,
       quests: questId,
-      rerollsUsed: { $lt: limit },
+      $expr: { $lt: [{ $add: ["$rerollsUsed", "$skipsUsed"] }, limit] },
     },
     {
       $set: { "quests.$": newQuestId, updatedAt: new Date() },
@@ -159,8 +160,8 @@ async function rerollQuest(client, userId, guildId, tier, questId, opts = {}) {
     from: questId,
     to: newQuestId,
     cost,
-    rerollsUsed: after.rerollsUsed,
-    rerollsLimit: limit,
+    used: (after.rerollsUsed || 0) + (after.skipsUsed || 0),
+    limit,
   };
 }
 
@@ -184,9 +185,10 @@ async function skipQuest(client, userId, guildId, tier, questId, opts = {}) {
   });
   if (progress?.claimed) return { ok: false, reason: "already_claimed" };
 
-  const limit = skipLimitFor(tier);
-  if ((assignment.skipsUsed || 0) >= limit) {
-    return { ok: false, reason: "over_limit", used: assignment.skipsUsed, limit };
+  const limit = actionLimitFor(tier);
+  const used = (assignment.rerollsUsed || 0) + (assignment.skipsUsed || 0);
+  if (used >= limit) {
+    return { ok: false, reason: "over_limit", used, limit };
   }
 
   const upd = await client.questAssignmentsCollection.findOneAndUpdate(
@@ -196,8 +198,8 @@ async function skipQuest(client, userId, guildId, tier, questId, opts = {}) {
       tier,
       period,
       quests: questId,
-      skipsUsed: { $lt: limit },
       skipped: { $ne: questId },
+      $expr: { $lt: [{ $add: ["$rerollsUsed", "$skipsUsed"] }, limit] },
     },
     {
       $addToSet: { skipped: questId },
@@ -236,8 +238,8 @@ async function skipQuest(client, userId, guildId, tier, questId, opts = {}) {
     ok: true,
     questId,
     cost,
-    skipsUsed: after.skipsUsed,
-    skipsLimit: limit,
+    used: (after.rerollsUsed || 0) + (after.skipsUsed || 0),
+    limit,
   };
 }
 
@@ -254,8 +256,7 @@ module.exports = {
   poolSizeFor,
   rerollCostFor,
   skipCostFor,
-  rerollLimitFor,
-  skipLimitFor,
+  actionLimitFor,
   getOrCreateAssignment,
   isQuestAssigned,
   rerollQuest,
