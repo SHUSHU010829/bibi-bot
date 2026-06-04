@@ -198,11 +198,26 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
       );
       await dmPickaxeBroke(interaction, result.pickaxeBefore).catch(() => {});
     } else if (result.durabilityAfter !== null) {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `**鎬子耐久**\n${pickaxeLabel(result.pickaxeBefore)} 剩 ${result.durabilityAfter} 次`,
-        ),
-      );
+      const warn = mining?.durabilityWarn || {};
+      const after = result.durabilityAfter;
+      const label = pickaxeLabel(result.pickaxeBefore);
+      let line;
+      if (typeof warn.critical === "number" && after <= warn.critical) {
+        line = `🚨 **鎬子快斷了！**\n${label} 只剩 **${after}** 次，再挖就會斷裂退回木鎬。快去 \`/合成\` 一把新的、或到 \`/背包\` 用劣質磨鎬石補耐久！`;
+      } else if (typeof warn.low === "number" && after <= warn.low) {
+        line = `⚠️ **鎬子耐久偏低**\n${label} 剩 **${after}** 次，建議先去 \`/合成\` 備一把、或到 \`/背包\` 用劣質磨鎬石補耐久。`;
+      } else {
+        line = `**鎬子耐久**\n${label} 剩 ${after} 次`;
+      }
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(line));
+      if (result.durabilityWarnCrossed) {
+        dmPickaxeLowDurability(
+          interaction,
+          result.pickaxeBefore,
+          after,
+          result.durabilityWarnCrossed,
+        ).catch(() => {});
+      }
     }
 
     const notifyState = await reminder.getState(client, {
@@ -329,6 +344,17 @@ async function dmPickaxeBroke(interaction, pickaxeBefore) {
   await interaction.user.send(
     `⛏️ 你的 **${def.emoji || ""} ${def.name || pickaxeBefore}** 耐久已耗盡，自動退回 **木鎬**。\n` +
       `想繼續享受加成，到 \`/合成\` 再合成一把吧！`
+  );
+}
+
+async function dmPickaxeLowDurability(interaction, pickaxeBefore, durabilityAfter, level) {
+  const def = mining?.pickaxes?.[pickaxeBefore] || {};
+  const head =
+    level === "critical"
+      ? `🚨 你的 **${def.emoji || ""} ${def.name || pickaxeBefore}** 只剩 **${durabilityAfter}** 次耐久，下一次挖礦就會斷！`
+      : `⚠️ 你的 **${def.emoji || ""} ${def.name || pickaxeBefore}** 耐久剩 **${durabilityAfter}** 次，差不多該準備了。`;
+  await interaction.user.send(
+    `${head}\n趁還沒斷，到 \`/合成\` 再做一把、或到 \`/背包\` 用劣質磨鎬石補滿耐久。`
   );
 }
 
