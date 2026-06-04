@@ -1,4 +1,4 @@
-// /逼幣任務 介面的 Components V2 容器建構（指令與通知開關按鈕共用）。
+// /逼幣任務 介面的 Components V2 容器建構（指令與按鈕共用）。
 
 const {
   ContainerBuilder,
@@ -10,7 +10,6 @@ const {
 const { DateTime } = require("luxon");
 const { questSystem } = require("../../config");
 const questService = require("./questService");
-const questNotifyPref = require("./questNotifyPref");
 const questClaimButton = require("./questClaimButton");
 const questManageButton = require("./questManageButton");
 const questAssignmentService = require("./questAssignmentService");
@@ -65,25 +64,21 @@ const renderQuestLine = (q) => {
   ].join("\n");
 };
 
-function appendQuestList(container, header, quests, userId, tier, assignment, expandedQuestId) {
+function appendQuestList(container, header, quests, userId, tier, assignment) {
   const showButtons =
     !!tier && questAssignmentService.isEnabled() && !!assignment;
   const rerollCost = tier ? questAssignmentService.rerollCostFor(tier) : 0;
-  const skipCost = tier ? questAssignmentService.skipCostFor(tier) : 0;
   const actionLimit = tier ? questAssignmentService.actionLimitFor(tier) : 0;
   const rerollsUsed = assignment?.rerollsUsed || 0;
-  const skipsUsed = assignment?.skipsUsed || 0;
-  const actionsUsed = rerollsUsed + skipsUsed;
-  const actionFull = actionsUsed >= actionLimit;
+  const rerollFull = rerollsUsed >= actionLimit;
 
-  // 標題 + 刷新時間 + 調整額度全部壓在同一個 TextDisplay，省元件數
   const resetUnix = tier === "weekly" ? nextWeeklyResetUnix() : nextDailyResetUnix();
   const headerParts = [header];
   if (tier) {
     headerParts.push(`-# 下次刷新 <t:${resetUnix}:R>`);
     if (showButtons) {
       headerParts.push(
-        `-# 🔄 ${rerollsUsed} ・ ⏭️ ${skipsUsed} ・ 本期調整額度 **${actionsUsed}/${actionLimit}**`,
+        `-# 🔄 本期重抽次數 **${rerollsUsed}/${actionLimit}**`,
       );
     }
   }
@@ -93,7 +88,7 @@ function appendQuestList(container, header, quests, userId, tier, assignment, ex
 
   if (quests.length === 0) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# （此期間沒有任務，可能全被跳過）"),
+      new TextDisplayBuilder().setContent("-# （此期間沒有任務）"),
     );
     return;
   }
@@ -109,27 +104,6 @@ function appendQuestList(container, header, quests, userId, tier, assignment, ex
       continue;
     }
 
-    // 展開的任務（pending/in_progress）：就地顯示重抽 / 不做了，吃掉 4 個元件
-    if (showButtons && q.id === expandedQuestId && q.state !== "ready") {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(line),
-      );
-      container.addActionRowComponents(
-        questManageButton.buildButtonRow({
-          userId,
-          questId: q.id,
-          state: q.state,
-          reward: q.reward,
-          rerollCost,
-          skipCost,
-          rerollDisabled: actionFull,
-          skipDisabled: actionFull,
-        }),
-      );
-      continue;
-    }
-
-    // 一般狀態：Section + 單顆配件按鈕（領取 / 管理），每筆只吃 3 個元件
     let accessory = null;
     if (q.state === "ready") {
       accessory = questManageButton.buildClaimButton({
@@ -138,10 +112,11 @@ function appendQuestList(container, header, quests, userId, tier, assignment, ex
         reward: q.reward,
       });
     } else if (showButtons) {
-      accessory = questManageButton.buildManageButton({
+      accessory = questManageButton.buildRerollButton({
         userId,
         questId: q.id,
-        disabled: actionFull,
+        rerollCost,
+        disabled: rerollFull,
       });
     }
 
@@ -159,9 +134,8 @@ function appendQuestList(container, header, quests, userId, tier, assignment, ex
   }
 }
 
-async function buildQuestContainer(client, userId, guildId, expandedQuestId = null) {
+async function buildQuestContainer(client, userId, guildId) {
   const status = await questService.getStatus(client, userId, guildId);
-  const dmNotify = await questNotifyPref.isDmEnabled(client, userId, guildId);
 
   const eventQuestList = status.event || [];
   const readyCount =
@@ -186,7 +160,6 @@ async function buildQuestContainer(client, userId, guildId, expandedQuestId = nu
     userId,
     "daily",
     status.assignment?.daily,
-    expandedQuestId,
   );
 
   appendQuestList(
@@ -196,31 +169,29 @@ async function buildQuestContainer(client, userId, guildId, expandedQuestId = nu
     userId,
     "weekly",
     status.assignment?.weekly,
-    expandedQuestId,
   );
 
   if (eventQuestList.length > 0) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `### 🎉 限時活動任務\n${eventQuestList.map(renderQuestLine).join("\n\n")}\n` +
-          `-# 活動任務不可重抽 / 跳過`,
+          `-# 活動任務不可重抽`,
       ),
     );
   }
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `-# 點任務右側「⋯ 管理」可重抽 🔄 或不做了 ⏭️；忘了領的話每天 23:50 系統會自動結算當日未領的任務。\n` +
-        `-# 「完成 DM 通知」目前**${dmNotify ? "已開啟 🔔" : "已關閉 🔕"}**（只影響被動任務完成時的 DM）`,
+      `-# 點任務右側「🔄 重抽」可換一個新任務；忘了領的話每天 23:50 系統會自動結算當日未領的任務。\n` +
+        `-# 任務完成 DM 通知開關已搬到 \`/通知設定\`。`,
     ),
   );
 
-  // 把「一鍵領取」「DM 通知開關」併到同一個 ActionRow（省 1 個元件）
-  const bottomRow = new ActionRowBuilder().addComponents(
-    questClaimButton.buildButton({ userId, hasReady: readyCount > 0 }),
-    questNotifyPref.buildButton({ userId, enabled: dmNotify }),
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      questClaimButton.buildButton({ userId, hasReady: readyCount > 0 }),
+    ),
   );
-  container.addActionRowComponents(bottomRow);
 
   return container;
 }

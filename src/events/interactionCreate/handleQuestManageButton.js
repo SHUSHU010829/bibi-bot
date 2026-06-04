@@ -1,5 +1,5 @@
-// /逼幣任務 介面內，每個任務旁的「🔄 重抽」「⏭️ 跳過」按鈕處理器。
-// customId = qrr_<userId>_<questId> / qsk_<userId>_<questId>（features/quests/questManageButton.js）。
+// /逼幣任務 介面內，每個任務旁的「🔄 重抽」「💰 領取」按鈕處理器。
+// customId = qrr_<userId>_<questId> / qcl_<userId>_<questId>（features/quests/questManageButton.js）。
 
 const { MessageFlags } = require("discord.js");
 
@@ -22,7 +22,7 @@ const REASON_MSG = {
   not_found: "❌ 找不到這個任務。",
   already_skipped: "❌ 這個任務已經被你跳過了。",
   already_claimed: "❌ 這個任務已經領取了。",
-  over_limit: "❌ 你本期的額度已用完。",
+  over_limit: "❌ 你本期的重抽額度已用完。",
   pool_exhausted: "❌ 任務池已抽完，沒有其他任務可換。",
   stale: "⚠️ 任務狀態剛被更新，請重新打開 /逼幣任務。",
   charge_failed: "💸 餘額不足或扣款失敗。",
@@ -78,28 +78,12 @@ module.exports = async (client, interaction) => {
       return;
     }
     const tier = questAssignmentService.tierFromPeriod(def.period);
-    if (action !== "claim" && !tier) {
-      await replyEphemeral(interaction, "❌ 此任務不支援重抽 / 跳過。");
+    if (action === "reroll" && !tier) {
+      await replyEphemeral(interaction, "❌ 此任務不支援重抽。");
       return;
     }
 
     await interaction.deferUpdate();
-
-    // 「管理」：就地展開這個任務的重抽 / 不做了選項，不做任何實際扣費 / 改動
-    if (action === "manage") {
-      const container = await buildQuestContainer(
-        client,
-        interaction.user.id,
-        interaction.guildId,
-        questId,
-      );
-      await interaction.editReply({
-        components: [container],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-      });
-      trackSuccess("quest-manage-expand");
-      return;
-    }
 
     const opts = {
       username: interaction.user.username,
@@ -109,15 +93,6 @@ module.exports = async (client, interaction) => {
     let result;
     if (action === "reroll") {
       result = await questAssignmentService.rerollQuest(
-        client,
-        interaction.user.id,
-        interaction.guildId,
-        tier,
-        questId,
-        opts,
-      );
-    } else if (action === "skip") {
-      result = await questAssignmentService.skipQuest(
         client,
         interaction.user.id,
         interaction.guildId,
@@ -160,13 +135,7 @@ module.exports = async (client, interaction) => {
       await replyEphemeral(
         interaction,
         `🔄 已重抽「**${def.name}**」→「**${newDef?.name || result.to}**」・ 花費 **${result.cost.toLocaleString()}** ${COIN_EMOJI}\n` +
-          `-# 本期調整額度 ${result.used}/${result.limit}`,
-      );
-    } else if (action === "skip") {
-      await replyEphemeral(
-        interaction,
-        `⏭️ 已標記不做「**${def.name}**」・ 花費 **${result.cost.toLocaleString()}** ${COIN_EMOJI}（此任務本期不再發獎勵）\n` +
-          `-# 本期調整額度 ${result.used}/${result.limit}`,
+          `-# 本期重抽次數 ${result.used}/${result.limit}`,
       );
     } else {
       const c = result.claimed;
@@ -185,7 +154,7 @@ module.exports = async (client, interaction) => {
         err: err.message,
         stack: err.stack,
       },
-      "重抽/跳過任務按鈕處理時出錯",
+      "重抽任務按鈕處理時出錯",
     );
     trackError("quest-manage-button", err, {
       customId: interaction?.customId,
