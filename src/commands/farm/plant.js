@@ -119,6 +119,10 @@ module.exports = {
       const plot = result.plot;
       const readyEpoch = Math.floor(plot.ready_at / 1000);
       const rotEpoch = Math.floor(plot.expires_at / 1000);
+      const costParts = [];
+      if (result.seedConsumed) costParts.push(`🌱 ${cropDef.emoji} 種子 ×1`);
+      if (result.coinsPaid > 0) costParts.push(`${result.coinsPaid} 幣`);
+      const costLine = costParts.join(" + ") || "免費";
 
       const container = new ContainerBuilder()
         .setAccentColor(0x4a90a4)
@@ -131,7 +135,7 @@ module.exports = {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `📍 地塊：**${plotIndex + 1}**\n` +
-              `💸 種植成本：${cropDef.plantCost} 幣\n` +
+              `💸 花費：${costLine}\n` +
               `🌟 成熟：<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）\n` +
               `🥀 凋萎於：<t:${rotEpoch}:R>`,
           ),
