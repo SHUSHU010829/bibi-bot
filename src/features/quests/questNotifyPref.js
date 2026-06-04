@@ -34,13 +34,16 @@ function parseCustomId(customId) {
 }
 
 // 產生通知開關按鈕（開＝綠燈鈴鐺，關＝灰色靜音）。
-function buildButtonRow({ userId, enabled }) {
-  const button = new ButtonBuilder()
+function buildButton({ userId, enabled }) {
+  return new ButtonBuilder()
     .setCustomId(buildCustomId(userId))
     .setLabel(enabled ? "完成 DM 通知：開" : "完成 DM 通知：關")
     .setEmoji(enabled ? "🔔" : "🔕")
     .setStyle(enabled ? ButtonStyle.Success : ButtonStyle.Secondary);
-  return new ActionRowBuilder().addComponents(button);
+}
+
+function buildButtonRow({ userId, enabled }) {
+  return new ActionRowBuilder().addComponents(buildButton({ userId, enabled }));
 }
 
 // 讀取目前是否開啟 DM 通知。沒有資料 → 預設開啟（true）。
@@ -79,6 +82,7 @@ module.exports = {
   CUSTOM_ID_PREFIX,
   buildCustomId,
   parseCustomId,
+  buildButton,
   buildButtonRow,
   isDmEnabled,
   toggle,

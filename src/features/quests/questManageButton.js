@@ -11,11 +11,13 @@ const {
 const REROLL_PREFIX = "qrr";
 const SKIP_PREFIX = "qsk";
 const CLAIM_PREFIX = "qcl";
+const MANAGE_PREFIX = "qmg";
 
 const PREFIX_TO_ACTION = {
   [REROLL_PREFIX]: "reroll",
   [SKIP_PREFIX]: "skip",
   [CLAIM_PREFIX]: "claim",
+  [MANAGE_PREFIX]: "manage",
 };
 
 function buildCustomId(prefix, userId, questId) {
@@ -51,12 +53,7 @@ function buildButtonRow({
 }) {
   if (state === "ready") {
     return new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(buildCustomId(CLAIM_PREFIX, userId, questId))
-        .setLabel(`領取 (+${reward})`)
-        .setEmoji("💰")
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(!!claimDisabled),
+      buildClaimButton({ userId, questId, reward, disabled: claimDisabled }),
     );
   }
   return new ActionRowBuilder().addComponents(
@@ -75,10 +72,34 @@ function buildButtonRow({
   );
 }
 
+// Section 側邊配件用：單顆「領取」按鈕（state === ready）
+function buildClaimButton({ userId, questId, reward, disabled }) {
+  return new ButtonBuilder()
+    .setCustomId(buildCustomId(CLAIM_PREFIX, userId, questId))
+    .setLabel(`領取 (+${reward})`)
+    .setEmoji("💰")
+    .setStyle(ButtonStyle.Success)
+    .setDisabled(!!disabled);
+}
+
+// Section 側邊配件用：單顆「管理」按鈕（pending/in_progress），
+// 點下後就地展開該任務的重抽 / 不做了選項，避免每筆任務都吃掉 4 個元件。
+function buildManageButton({ userId, questId, disabled }) {
+  return new ButtonBuilder()
+    .setCustomId(buildCustomId(MANAGE_PREFIX, userId, questId))
+    .setLabel("管理")
+    .setEmoji("⋯")
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(!!disabled);
+}
+
 module.exports = {
   REROLL_PREFIX,
   SKIP_PREFIX,
   CLAIM_PREFIX,
+  MANAGE_PREFIX,
   parseCustomId,
   buildButtonRow,
+  buildClaimButton,
+  buildManageButton,
 };

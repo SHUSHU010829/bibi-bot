@@ -6,6 +6,8 @@ const grantCoins = require("../economy/grantCoins");
 
 const TZ = () => questSystem?.resetTimezone || "Asia/Taipei";
 
+const backfillQuestProgress = require("./questBackfill");
+
 const cfg = () => questSystem?.assignment || {};
 const isEnabled = () => cfg().enabled !== false;
 
@@ -67,7 +69,19 @@ async function getOrCreateAssignment(client, userId, guildId, tier) {
     },
     { upsert: true, returnDocument: "after" },
   );
-  return upserted?.value || upserted;
+  const doc = upserted?.value || upserted;
+
+  // 首次建立指派時，把當期已經做過的活動回填進 QuestProgress
+  // （findOneAndUpdate 的 upsert + $setOnInsert 在「真的有新增」時 createdAt 才會等於 now）
+  if (doc && doc.createdAt instanceof Date && doc.createdAt.getTime() === now.getTime()) {
+    await Promise.all(
+      (doc.quests || []).map((qid) =>
+        backfillQuestProgress(client, userId, guildId, qid).catch(() => {}),
+      ),
+    );
+  }
+
+  return doc;
 }
 
 // 是否為玩家本期指派的任務（未指派 / 已 skip → false）。
@@ -154,6 +168,9 @@ async function rerollQuest(client, userId, guildId, tier, questId, opts = {}) {
       return { ok: false, reason: "charge_failed" };
     }
   }
+
+  // 重抽到新任務時，把當期已經做過的活動回填進新任務的進度
+  await backfillQuestProgress(client, userId, guildId, newQuestId).catch(() => {});
 
   return {
     ok: true,
