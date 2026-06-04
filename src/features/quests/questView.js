@@ -3,7 +3,8 @@
 const {
   ContainerBuilder,
   TextDisplayBuilder,
-  SeparatorBuilder,
+  SectionBuilder,
+  ActionRowBuilder,
 } = require("discord.js");
 
 const { DateTime } = require("luxon");
@@ -64,23 +65,7 @@ const renderQuestLine = (q) => {
   ].join("\n");
 };
 
-function appendQuestList(container, header, quests, userId, tier, assignment) {
-  const resetUnix = tier === "weekly" ? nextWeeklyResetUnix() : nextDailyResetUnix();
-  const headerWithReset = tier
-    ? `${header}　-# 下次刷新 <t:${resetUnix}:R>`
-    : header;
-
-  container
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(headerWithReset));
-
-  if (quests.length === 0) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# （此期間沒有任務，可能全被跳過）"),
-    );
-    return;
-  }
-
+function appendQuestList(container, header, quests, userId, tier, assignment, expandedQuestId) {
   const showButtons =
     !!tier && questAssignmentService.isEnabled() && !!assignment;
   const rerollCost = tier ? questAssignmentService.rerollCostFor(tier) : 0;
@@ -91,11 +76,44 @@ function appendQuestList(container, header, quests, userId, tier, assignment) {
   const actionsUsed = rerollsUsed + skipsUsed;
   const actionFull = actionsUsed >= actionLimit;
 
-  for (const q of quests) {
+  // 標題 + 刷新時間 + 調整額度全部壓在同一個 TextDisplay，省元件數
+  const resetUnix = tier === "weekly" ? nextWeeklyResetUnix() : nextDailyResetUnix();
+  const headerParts = [header];
+  if (tier) {
+    headerParts.push(`-# 下次刷新 <t:${resetUnix}:R>`);
+    if (showButtons) {
+      headerParts.push(
+        `-# 🔄 ${rerollsUsed} ・ ⏭️ ${skipsUsed} ・ 本期調整額度 **${actionsUsed}/${actionLimit}**`,
+      );
+    }
+  }
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(headerParts.join("\n")),
+  );
+
+  if (quests.length === 0) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(renderQuestLine(q)),
+      new TextDisplayBuilder().setContent("-# （此期間沒有任務，可能全被跳過）"),
     );
-    if (showButtons && q.state !== "claimed") {
+    return;
+  }
+
+  for (const q of quests) {
+    const line = renderQuestLine(q);
+
+    // 已領取：純文字、不放按鈕
+    if (q.state === "claimed") {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(line),
+      );
+      continue;
+    }
+
+    // 展開的任務（pending/in_progress）：就地顯示重抽 / 不做了，吃掉 4 個元件
+    if (showButtons && q.id === expandedQuestId && q.state !== "ready") {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(line),
+      );
       container.addActionRowComponents(
         questManageButton.buildButtonRow({
           userId,
@@ -108,19 +126,40 @@ function appendQuestList(container, header, quests, userId, tier, assignment) {
           skipDisabled: actionFull,
         }),
       );
+      continue;
     }
-  }
 
-  if (showButtons) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# 🔄 重抽 ${rerollsUsed} ・ ⏭️ 跳過 ${skipsUsed}　・ 本期調整額度 **${actionsUsed}/${actionLimit}**（合計）`,
-      ),
-    );
+    // 一般狀態：Section + 單顆配件按鈕（領取 / 管理），每筆只吃 3 個元件
+    let accessory = null;
+    if (q.state === "ready") {
+      accessory = questManageButton.buildClaimButton({
+        userId,
+        questId: q.id,
+        reward: q.reward,
+      });
+    } else if (showButtons) {
+      accessory = questManageButton.buildManageButton({
+        userId,
+        questId: q.id,
+        disabled: actionFull,
+      });
+    }
+
+    if (accessory) {
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(line))
+          .setButtonAccessory(accessory),
+      );
+    } else {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(line),
+      );
+    }
   }
 }
 
-async function buildQuestContainer(client, userId, guildId) {
+async function buildQuestContainer(client, userId, guildId, expandedQuestId = null) {
   const status = await questService.getStatus(client, userId, guildId);
   const dmNotify = await questNotifyPref.isDmEnabled(client, userId, guildId);
 
@@ -147,6 +186,7 @@ async function buildQuestContainer(client, userId, guildId) {
     userId,
     "daily",
     status.assignment?.daily,
+    expandedQuestId,
   );
 
   appendQuestList(
@@ -156,33 +196,31 @@ async function buildQuestContainer(client, userId, guildId) {
     userId,
     "weekly",
     status.assignment?.weekly,
+    expandedQuestId,
   );
 
   if (eventQuestList.length > 0) {
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `### 🎉 限時活動任務\n${eventQuestList.map(renderQuestLine).join("\n\n")}\n` +
-            `-# 活動任務不可重抽 / 跳過`,
-        ),
-      );
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### 🎉 限時活動任務\n${eventQuestList.map(renderQuestLine).join("\n\n")}\n` +
+          `-# 活動任務不可重抽 / 跳過`,
+      ),
+    );
   }
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `-# 任務完成後不再自動入帳；自己按 💰 領取，或下方「一鍵領取」全收；忘了領的話每天 23:50 系統會自動結算當日未領的任務。\n` +
-        `-# 「不做了 ⏭️」=付幣消除該任務、**不會發獎勵**；「重抽 🔄」=付幣抽一個新的同 tier 任務（也可能更難）。\n` +
-        `-# 「完成 DM 通知」可開關「被動任務（發言／語音／表情等）完成時的 DM 通知」，目前**${
-          dmNotify ? "已開啟 🔔" : "已關閉 🔕"
-        }**。`,
+      `-# 點任務右側「⋯ 管理」可重抽 🔄 或不做了 ⏭️；忘了領的話每天 23:50 系統會自動結算當日未領的任務。\n` +
+        `-# 「完成 DM 通知」目前**${dmNotify ? "已開啟 🔔" : "已關閉 🔕"}**（只影響被動任務完成時的 DM）`,
     ),
   );
 
-  container.addActionRowComponents(
-    questClaimButton.buildButtonRow({ userId, hasReady: readyCount > 0 }),
-    questNotifyPref.buildButtonRow({ userId, enabled: dmNotify }),
+  // 把「一鍵領取」「DM 通知開關」併到同一個 ActionRow（省 1 個元件）
+  const bottomRow = new ActionRowBuilder().addComponents(
+    questClaimButton.buildButton({ userId, hasReady: readyCount > 0 }),
+    questNotifyPref.buildButton({ userId, enabled: dmNotify }),
   );
+  container.addActionRowComponents(bottomRow);
 
   return container;
 }

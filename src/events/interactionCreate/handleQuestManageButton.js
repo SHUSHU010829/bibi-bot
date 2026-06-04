@@ -85,6 +85,22 @@ module.exports = async (client, interaction) => {
 
     await interaction.deferUpdate();
 
+    // 「管理」：就地展開這個任務的重抽 / 不做了選項，不做任何實際扣費 / 改動
+    if (action === "manage") {
+      const container = await buildQuestContainer(
+        client,
+        interaction.user.id,
+        interaction.guildId,
+        questId,
+      );
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+      trackSuccess("quest-manage-expand");
+      return;
+    }
+
     const opts = {
       username: interaction.user.username,
       avatarHash: interaction.user.avatar,
