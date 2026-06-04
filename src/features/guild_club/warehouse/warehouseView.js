@@ -31,8 +31,7 @@ const KIND_ORDER = ["backpack_mining", "backpack_farming", "fish_bag"];
 
 const groupKey = (id, def) => {
   if (def.kind === "fish_bag") return "fish_bag";
-  if (["carrot", "corn", "strawberry", "black_rose"].includes(id))
-    return "backpack_farming";
+  if (def.kind === "veggie_bag") return "backpack_farming";
   return "backpack_mining";
 };
 const GROUP_TITLE = {
