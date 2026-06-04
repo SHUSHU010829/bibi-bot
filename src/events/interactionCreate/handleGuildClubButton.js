@@ -15,6 +15,7 @@
 //   gc_kick_<leaderId>_<targetId>                    — 從資訊頁面踢人
 //   gc_edit_desc_<userId>                            — 編輯公會簡介（彈出 Modal）
 //   gc_desc_modal_<userId>                           — Modal submit：寫入簡介
+//   gc_apps_<userId>                                 — 開啟待審申請列表（會長/副會長）
 
 require("colors");
 const { MessageFlags } = require("discord.js");
@@ -76,7 +77,52 @@ module.exports = async (client, interaction) => {
   if (id.startsWith("gc_kick_")) {
     return handleQuickKick(client, interaction);
   }
+  if (id.startsWith("gc_apps_")) {
+    return handleOpenApplications(client, interaction);
+  }
 };
+
+async function handleOpenApplications(client, interaction) {
+  const ownerId = interaction.customId.slice("gc_apps_".length);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的申請列表！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const result = await guildClubMembership.listPendingApplications(client, {
+    leaderId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: result.reason === "not_leader" ? "🚫 只有會長可以查看" : "❌ 無法查看",
+          body:
+            result.reason === "not_in_club"
+              ? "你還沒加入公會。"
+              : result.reason === "not_leader"
+                ? "請會長使用此按鈕處理申請。"
+                : `原因：${result.reason}`,
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  return interaction.editReply({
+    components: [
+      guildClubView.buildApplicationListContainer({
+        leaderId: interaction.user.id,
+        club: result.club,
+        applications: result.applications,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
 
 async function handleDisbandConfirm(client, interaction) {
   const rest = interaction.customId.slice("gc_disband_confirm_".length);

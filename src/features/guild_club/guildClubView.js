@@ -49,6 +49,8 @@ function buildInfoContainer({
   isLeader,
   viewerRole,
   bossContributions,
+  warehouseSummary,
+  pendingApplicationCount,
 }) {
   const def = levelDef(club.level);
   const next = nextLevelDef(club.level);
@@ -89,15 +91,23 @@ function buildInfoContainer({
     );
   }
   if (isManager) {
-    container.addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`gc_edit_desc_${viewerId}`)
-          .setLabel(club.description ? "編輯簡介 / 會規" : "撰寫簡介 / 會規")
-          .setEmoji("📝")
-          .setStyle(ButtonStyle.Primary)
-      )
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`gc_edit_desc_${viewerId}`)
+        .setLabel(club.description ? "編輯簡介 / 會規" : "撰寫簡介 / 會規")
+        .setEmoji("📝")
+        .setStyle(ButtonStyle.Primary)
     );
+    if (pendingApplicationCount > 0) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`gc_apps_${viewerId}`)
+          .setLabel(`待審申請 ${pendingApplicationCount}`)
+          .setEmoji("📨")
+          .setStyle(ButtonStyle.Danger)
+      );
+    }
+    container.addActionRowComponents(row);
   }
 
   const lockedAmount = club.treasury_locked || 0;
@@ -168,6 +178,25 @@ function buildInfoContainer({
     );
   }
 
+  if (warehouseSummary) {
+    const warehouseView = require("./warehouse/warehouseView");
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      warehouseView.buildWarehouseSummaryBlock(warehouseSummary)
+    );
+    if (isMember) {
+      container.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`gcw_refresh_${viewerId}`)
+            .setLabel("開啟倉庫")
+            .setEmoji("📦")
+            .setStyle(ButtonStyle.Primary)
+        )
+      );
+    }
+  }
+
   if (bossContributions && bossContributions.length > 0) {
     container.addSeparatorComponents(new SeparatorBuilder());
     const lines = bossContributions.slice(0, 5).map((c, i) => {
@@ -190,14 +219,14 @@ function buildInfoContainer({
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 你是會長。可使用 /公會 邀請、/公會 申請列表、/公會 踢人、/公會 指派副會長、/公會 解散。`
+        `-# 你是會長。可使用 /公會 邀請、/公會 踢人、/公會 指派副會長、/公會 解散；上方按鈕可編輯簡介、處理申請。`
       )
     );
   } else if (role === "vice_leader") {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 你是副會長。可使用 /公會 邀請、/公會 申請列表、/公會 踢人、/公會 領獎（會長轉讓與解散僅會長可用）。`
+        `-# 你是副會長。可使用 /公會 邀請、/公會 踢人（會長轉讓與解散僅會長可用）；上方按鈕可編輯簡介、處理申請。`
       )
     );
   } else if (!isMember) {
@@ -645,7 +674,7 @@ function buildQuestListContainer({ viewerId, club, period, items, isLeader }) {
     } else {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `-# 有任務可領取，請會長執行 /公會 領獎`
+          `-# 有任務可領取，請會長開 /公會 任務 點上方「一鍵領取」按鈕。`
         )
       );
     }

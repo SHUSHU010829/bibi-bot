@@ -46,8 +46,25 @@ async function announceQuestReward(client, payload) {
     );
 }
 
+async function announceLargeDeposit(client, payload) {
+  const ch = await resolveAnnounceChannel(client);
+  if (!ch) return;
+  const warehouseView = require("./warehouse/warehouseView");
+  const container = warehouseView.buildLargeDepositAnnouncement(payload);
+  await ch
+    .send({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { parse: [] },
+    })
+    .catch((e) =>
+      console.log(`[GUILD_CLUB] announceLargeDeposit 失敗：${e.message}`.yellow)
+    );
+}
+
 module.exports = {
   resolveAnnounceChannel,
   announceLevelUp,
   announceQuestReward,
+  announceLargeDeposit,
 };
