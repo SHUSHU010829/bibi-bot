@@ -187,13 +187,13 @@ module.exports = {
 
       const transferId = `xfer-${Date.now()}-${senderId}-${target.id}`;
 
-      // 扣款（含手續費）
+      // 扣本金（不含手續費，保持 transfer_in / transfer_out 對稱可審計）
       const debit = await grantCoins(client, {
         userId: senderId,
         guildId,
         username: senderName,
         avatarHash: interaction.user.avatar,
-        amount: -totalDeduct,
+        amount: -amount,
         source: "transfer_out",
         member: interaction.member,
         meta: {
@@ -206,6 +206,32 @@ module.exports = {
       });
       if (!debit) {
         return interaction.editReply("🔧 轉帳扣款失敗，請稍後再試。");
+      }
+
+      // 扣手續費（獨立 sink，方便活動量統計顯示）
+      let feeDebit = null;
+      if (fee > 0) {
+        feeDebit = await grantCoins(client, {
+          userId: senderId,
+          guildId,
+          username: senderName,
+          avatarHash: interaction.user.avatar,
+          amount: -fee,
+          source: "transfer_fee",
+          member: interaction.member,
+          meta: { transferId, counterparty: target.id, amount, feeRate },
+        });
+        if (!feeDebit) {
+          await grantCoins(client, {
+            userId: senderId,
+            guildId,
+            username: senderName,
+            amount,
+            source: "admin",
+            meta: { reason: `transfer fee debit failed: ${transferId}`, operatorId: "system" },
+          }).catch(() => {});
+          return interaction.editReply("🔧 轉帳手續費扣款失敗，已退本金。請稍後再試。");
+        }
       }
 
       // 入款
@@ -225,7 +251,7 @@ module.exports = {
         },
       });
       if (!credit) {
-        // 回滾
+        // 回滾本金 + 手續費
         await grantCoins(client, {
           userId: senderId,
           guildId,
@@ -240,7 +266,8 @@ module.exports = {
         return interaction.editReply("🔧 對方入帳失敗，已退款。請稍後再試。");
       }
 
-      const senderAfter = debit.doc?.totalCoins ?? balance - totalDeduct;
+      const senderAfter =
+        feeDebit?.doc?.totalCoins ?? debit.doc?.totalCoins ?? balance - totalDeduct;
       const noteLine = note ? `\n📝 備註：${note}` : "";
 
       // 非阻塞：偵測雙向轉帳異常，超過閾值寫入告警頻道

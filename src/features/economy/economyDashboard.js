@@ -34,12 +34,14 @@ const PURE_MINT_SOURCES = new Set([
   "farm_harvest", "farm_raid", "farm_sell",
   "boss_loot", "boss_killer", "boss_kill_bonus",
   "guild_create_refund", "guild_donate_refund", "guild_disband_payout",
+  "deposit_interest",
 ]);
 const PURE_SINK_SOURCES = new Set([
   "shop_buy", "wealth_tax", "stock_fee", "stone_appraisal",
   "farm_plant", "farm_expand", "barter_fee",
   "guild_create", "guild_donate",
   "invite_clawback",
+  "transfer_fee", "deposit_penalty",
 ]);
 
 function todayIso() {
@@ -594,7 +596,10 @@ async function aggregateMarketActivity(client, guildId, fromIso, toIso) {
     market: ["market_buy", "market_escrow", "market_bid", "market_payout", "market_refund"],
     barter: ["barter_fee"],
     transfer: ["transfer_in", "transfer_out"],
+    transferFee: ["transfer_fee"],
     deposit: ["deposit_lock", "deposit_release"],
+    depositInterest: ["deposit_interest"],
+    depositPenalty: ["deposit_penalty"],
     welfare: ["welfare"],
     wealthTax: ["wealth_tax"],
     duel: ["duel_stake", "duel_payout", "duel_refund"],
