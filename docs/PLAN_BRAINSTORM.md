@@ -242,6 +242,105 @@ text-based choice adventure。森林 / 廢墟 / 深海 3 個場景，每場 3–
 
 ---
 
+## 🏗️ I. 支撐性 / 基礎建設類（**建議優先於新玩法**）
+
+> 這四項不是「玩法」，但缺了它們，30 個玩法疊上去會失控。
+> 經濟監控、銷毀槽原則、事件匯流排是地基；新手動線是門面。
+
+### I1. 經濟健康度儀表板 ⭐⭐⭐（**最優先**）
+
+幣的水龍頭 / 排水孔越多，越需要看得到「總量」。
+目前已有金幣、拍賣、股市、樂透、賭場、救濟金、抖內、稅 — 每加一個玩法就多一個出入口。
+沒這儀表板，寵物 / 賽季通行證上線後**無法判斷平衡**。
+
+**最小實作**：
+- 每日 cron 寫 `EconomySnapshots`（已有此 collection，但用法可擴）：
+  - `coins_minted_today`：依 source 拆（mine / fish / farm / work / quest / boss / donation / welfare）
+  - `coins_burned_today`：依 sink 拆（casino_lose / shop / auction_fee / tax / craft / black_market_fine）
+  - `coins_total`：全玩家 `UserCoins.balance` 加總
+  - `coins_net_flow`：當日淨變動
+  - `top10_holders`：幣集中度（避免單一玩家囤太多）
+- 新指令 `/economy-admin dashboard` 🔒：表格 + 7 / 30 / 90 天走勢
+- website Dashboard 加 `/admin/economy` 頁，配 Recharts 趨勢圖
+
+**接點**：複用既有 `CoinTransactions`（已有 source 標記）、`EconomySnapshots`。
+**預估**：2–3 天　**亮點**：所有玩法平衡決策的依據；老闆視角。
+
+---
+
+### I2. 幣與資源的「銷毀槽」設計原則（PLAN 規則）
+
+不是一個獨立 Phase，而是一條**寫進 PLAN 的鐵律**：
+
+> **每個新增的生產類玩法（產幣 / 產物），上線時必須同時設計對應的消耗出口。**
+
+| 生產來源 | 對應消耗槽（範例） |
+|---|---|
+| F3 動物畜牧（產蛋 / 奶 / 毛） | 必須有料理 / 賣店長期接收，否則奶會貶值 |
+| C2 遺跡考古（產文物） | 必須有 F1 小屋展示 / 收藏家 NPC 收購 |
+| F5 市集擺攤（產幣） | 必須有擺攤費 / 攤位裝飾消費 |
+| A1 寵物餵食 | 已是 F3 / fishing 的天然 sink ✅ |
+| F2 領地建造 / F4 鍊金術 | 本身就是礦石銷毀槽 ✅ |
+
+**操作建議**：
+- 在 `PLAN_INTEGRATED.md` 開頭「設計原則」加一條：「**新生產 → 必配對應 sink**」
+- 每個新 Phase 章節必須有「**消耗出口**」獨立段落
+- **排程含義**：A1 寵物（生產線 sink）→ F4 鍊金術 / F2 領地建造（礦石 sink）應**優先於** F3 畜牧、C2 考古（這兩是新水龍頭）
+
+**預估**：0 天（規則，非實作）　**亮點**：避免通膨失控。
+
+---
+
+### I3. 跨系統事件匯流排（Event Bus）
+
+目前接點全靠各玩法各自 hook。
+玩法到 10+ 個後，「釣到稀有魚」要同時觸發圖鑑（A2）/ 寵物親密度（A1）/ 賽季任務（E3）/ 料理大戰素材（D5）會變很亂、容易漏。
+
+**設計**：
+- 新增 `src/features/eventBus/index.js`，極輕量（`EventEmitter` 包裝）
+- 定義標準事件：
+  - `item.gained` `{ userId, itemType, itemId, qty, source }`
+  - `item.consumed` `{ userId, itemType, itemId, qty, sink }`
+  - `coin.delta` `{ userId, delta, source }`
+  - `boss.attacked` / `boss.killed`
+  - `dungeon.cleared` / `mine.done` / `fish.done` / `harvest.done`
+- 既有 service 在關鍵點 emit（一行 `bus.emit(...)`）
+- 新玩法**訂閱**而非互相寫死
+- 同步處理為主（不引 queue，避免複雜化）；catch 內錯誤不影響本體流程
+
+**接點**：先在 `mining/fishing/farm/boss` 各 service 加 emit 點（10 來行）；新玩法純訂閱者。
+**預估**：2 天（含改寫既有 service emit 點）　**亮點**：C1 冒險、E3 通行證、A2 圖鑑上線前的關鍵地基。
+
+**排程含義**：應在 A2 圖鑑 / E3 通行證 / A1 寵物之前先做。
+
+---
+
+### I4. 新手前 7 天動線（Onboarding 引導鏈）
+
+30 個玩法對老玩家香，對新人是迷宮。
+合併 H1 每日小遊戲牆，設計**前 7 天固定動線**。
+
+**設計**：
+- 新玩家加入伺服器當天 → DM 引導訊息 + 第一個任務「`/挖礦`」
+- 引導鏈範例：
+  - Day 1：挖礦 + 領救濟金 → 解鎖背包
+  - Day 2：打工 + 賣礦 → 解鎖經濟基礎
+  - Day 3：地下城 → 解鎖戰鬥
+  - Day 4：釣魚 + 烹飪 → 解鎖 buff 概念
+  - Day 5：農場種一格 → 解鎖被動收入
+  - Day 6：看天氣 + 抽占卜（B1 / B2）→ 解鎖環境概念
+  - Day 7：加入公會 + 通關「新手畢業任務」→ 大獎勵 + 稱號「逼逼新生」
+- 每天完成後在「逼逼大廳」公告 → 推老玩家歡迎新人
+- 跳過任務：可選「老玩家直通」，但失去新生獎勵
+- 設定檔：`src/config/onboarding.json` 定義任務鏈
+
+**接點**：複用 quest 系統、guildMemberAdd event、welfare、tutorial flag in `UserSettings`。
+**預估**：3–4 天　**亮點**：新人留存率拉升、玩法引導成本下降。
+
+**整合 H1**：每日小遊戲牆改為「動線完成後解鎖」，新生先走主線、老玩家走 H1。
+
+---
+
 ## 🎲 H. 輕量回流類
 
 ### H1. 每日小遊戲牆 ⭐
@@ -293,6 +392,10 @@ text-based choice adventure。森林 / 廢墟 / 深海 3 個場景，每場 3–
 | G3 | 時裝 / 裝扮 | 外觀 | 3–4d | ⭐ |
 | H1 | 每日小遊戲牆 | 回流 | 3–4d | ⭐ |
 | H2 | 直播連動副本 | Twitch | 2–3d | ⭐ |
+| **I1** | **經濟儀表板** | **支撐** | **2–3d** | **⭐⭐⭐ 最優先** |
+| I2 | 銷毀槽設計原則 | 規則 | 0d | ⭐⭐⭐ |
+| I3 | 事件匯流排 | 架構 | 2d | ⭐⭐⭐ |
+| I4 | 新手 7 天動線 | UX | 3–4d | ⭐⭐ |
 
 ---
 
@@ -322,7 +425,13 @@ text-based choice adventure。森林 / 廢墟 / 深海 3 個場景，每場 3–
 
 ## 下一步
 
-從 30 個方向中挑出 3–5 個 → 展開為完整 Phase 規劃（核心機制 / DB / 指令 / config / 接點 / 平衡參數）→ 整合進 `PLAN_INTEGRATED.md` 或新建 `PLAN_NEXT.md`。
+**建議實作順序**（兼顧地基與玩法）：
+
+1. **I1 經濟健康度儀表板**（2–3d）→ 立刻動工，所有後續玩法的平衡依據
+2. **I2 銷毀槽設計原則** → 寫進 `PLAN_INTEGRATED.md`，0 天
+3. **I3 事件匯流排**（2d）→ A1 / A2 / E3 上線前的地基
+4. **I4 新手動線**（3–4d）或先選 1–2 個玩法
+5. 玩法層從 30 個方向中挑出 3–5 個 → 展開為完整 Phase 規劃
 
 ---
 

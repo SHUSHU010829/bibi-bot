@@ -2,8 +2,10 @@ require("colors");
 
 const { registerCron } = require("../../utils/cronRegistry");
 const { DateTime } = require("luxon");
+const { aggregateFlow, getTopHolders } = require("../../features/economy/economyDashboard");
 
-// 每天 00:05 Asia/Taipei 對每個 guild 計算金幣總量、active 存款本金、active 玩家數，
+// 每天 00:05 Asia/Taipei 對每個 guild 計算金幣總量、active 存款本金、active 玩家數、
+// 昨日 flow（minted/burned by source）、Top10 集中度。
 // 寫進 EconomySnapshots collection，作為通膨追蹤資料來源。
 // 使用 {guildId, date} unique index 防止同一天重複寫入。
 
@@ -12,6 +14,7 @@ const SCHEDULE = "5 0 * * *";
 
 async function snapshotGuild(client, guildId) {
   const date = DateTime.now().setZone(TZ).toISODate();
+  const yesterdayIso = DateTime.now().setZone(TZ).minus({ days: 1 }).toISODate();
   const takenAt = new Date();
 
   const walletAggResult = await client.userCoinsCollection
@@ -56,6 +59,19 @@ async function snapshotGuild(client, guildId) {
     activeDepositCount: 0,
   };
 
+  // 昨日 flow 與 Top10 集中度（凍結，避免 CoinTransactions TTL 90 天後丟失歷史）
+  const [yesterdayFlow, topHolders] = await Promise.all([
+    aggregateFlow(client, guildId, yesterdayIso, yesterdayIso).catch((e) => {
+      console.log(`[ECON-SNAP] ${guildId} flow aggregate 失敗：${e.message}`.yellow);
+      return { days: [], totals: { mintedTotal: 0, burnedTotal: 0, netFlow: 0, mintedBySource: {}, burnedBySource: {} } };
+    }),
+    getTopHolders(client, guildId, 10).catch((e) => {
+      console.log(`[ECON-SNAP] ${guildId} top holders 失敗：${e.message}`.yellow);
+      return { top10Share: 0, top10Coins: 0 };
+    }),
+  ]);
+  const flowForDate = yesterdayFlow.days[0] || yesterdayFlow.totals;
+
   const doc = {
     guildId,
     date,
@@ -68,12 +84,24 @@ async function snapshotGuild(client, guildId) {
     userCount: walletAgg.userCount || 0,
     activeUsers: walletAgg.activeUsers || 0,
     activeDepositCount: depositAgg.activeDepositCount || 0,
+    flow: {
+      forDate: yesterdayIso,
+      mintedTotal: flowForDate.mintedTotal || 0,
+      burnedTotal: flowForDate.burnedTotal || 0,
+      netFlow: flowForDate.netFlow || 0,
+      mintedBySource: flowForDate.mintedBySource || {},
+      burnedBySource: flowForDate.burnedBySource || {},
+    },
+    concentration: {
+      top10Coins: topHolders.top10Coins || 0,
+      top10Share: topHolders.top10Share || 0,
+    },
   };
 
   try {
     await client.economySnapshotsCollection.insertOne(doc);
     console.log(
-      `[ECON-SNAP] ${guildId} ${date}：流通 ${doc.totalCirculation.toLocaleString()}（錢包 ${doc.totalWalletCoins.toLocaleString()} + 存款 ${doc.totalDepositPrincipal.toLocaleString()}），active ${doc.activeUsers}/${doc.userCount} 人`.cyan,
+      `[ECON-SNAP] ${guildId} ${date}：流通 ${doc.totalCirculation.toLocaleString()}（錢包 ${doc.totalWalletCoins.toLocaleString()} + 存款 ${doc.totalDepositPrincipal.toLocaleString()}），active ${doc.activeUsers}/${doc.userCount} 人，昨日淨流動 ${doc.flow.netFlow.toLocaleString()}（+${doc.flow.mintedTotal.toLocaleString()} / -${doc.flow.burnedTotal.toLocaleString()}）`.cyan,
     );
     return doc;
   } catch (e) {

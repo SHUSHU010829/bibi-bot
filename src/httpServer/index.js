@@ -8,6 +8,7 @@ const createAdminMeHandler = require("./adminMe");
 const createAdminDonationRouter = require("./adminDonationApi");
 const createAdminUsersRouter = require("./adminUsersApi");
 const createAdminCronRouter = require("./adminCronApi");
+const createAdminEconomyRouter = require("./adminEconomyApi");
 const createPublicProfileHandler = require("./publicProfileApi");
 const requireAdmin = require("./middleware/requireAdmin");
 const logger = require("../utils/logger");
@@ -74,6 +75,7 @@ module.exports = function startHttpServer(client) {
   app.use("/api/v1/admin/donation", createAdminDonationRouter(client));
   app.use("/api/v1/admin/users", createAdminUsersRouter(client));
   app.use("/api/v1/admin/cron", createAdminCronRouter(client));
+  app.use("/api/v1/admin/economy", createAdminEconomyRouter(client));
 
   app.use((err, _req, res, _next) => {
     logger.error({ source: "http", err: err.message, stack: err.stack }, "HTTP unhandled error");
