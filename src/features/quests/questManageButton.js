@@ -87,8 +87,7 @@ function buildClaimButton({ userId, questId, reward, disabled }) {
 function buildManageButton({ userId, questId, disabled }) {
   return new ButtonBuilder()
     .setCustomId(buildCustomId(MANAGE_PREFIX, userId, questId))
-    .setLabel("管理")
-    .setEmoji("⋯")
+    .setLabel("⋯ 管理")
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(!!disabled);
 }
