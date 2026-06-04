@@ -395,6 +395,96 @@ async function aggregateOreCirculation(client, guildId, fromIso, toIso) {
   };
 }
 
+// 賭石鑑定流通量：以 stone_appraisal 為主，meta.count / meta.winnings 為據聚合每礦勝率與 RTP。
+// 同時併入 stone_appraisal_overflow（背包滿溢時的折金幣補償）。
+async function aggregateStoneAppraisal(client, guildId, fromIso, toIso) {
+  if (!client.coinTransactionsCollection) {
+    return {
+      sessions: 0,
+      stones: 0,
+      fee: 0,
+      overflowCoins: 0,
+      uniqueAppraisers: 0,
+      brokenCount: 0,
+      brokenRate: 0,
+      gainedValue: 0,
+      rtp: 0,
+      perOre: [],
+    };
+  }
+  const docs = await client.coinTransactionsCollection
+    .find({
+      guildId,
+      source: { $in: ["stone_appraisal", "stone_appraisal_overflow"] },
+      date: { $gte: fromIso, $lte: toIso },
+    })
+    .project({ source: 1, amount: 1, userId: 1, meta: 1 })
+    .toArray();
+
+  let sessions = 0;
+  let stones = 0;
+  let fee = 0;
+  let overflowCoins = 0;
+  const winningsByOre = {};
+  const successByOre = {};
+  const appraisers = new Set();
+
+  for (const d of docs) {
+    if (d.source === "stone_appraisal") {
+      sessions += 1;
+      stones += Math.max(0, Math.floor(d.meta?.count || 0));
+      fee += Math.max(0, -Number(d.amount || 0));
+      appraisers.add(d.userId);
+      const w = d.meta?.winnings || {};
+      for (const [ore, qty] of Object.entries(w)) {
+        const q = Math.max(0, Math.floor(qty || 0));
+        if (q <= 0) continue;
+        winningsByOre[ore] = (winningsByOre[ore] || 0) + q;
+        successByOre[ore] = (successByOre[ore] || 0) + 1;
+      }
+    } else if (d.source === "stone_appraisal_overflow") {
+      overflowCoins += Math.max(0, Number(d.amount || 0));
+    }
+  }
+
+  const totalGainedQty = Object.values(winningsByOre).reduce((s, n) => s + n, 0);
+  const brokenCount = Math.max(0, stones - totalGainedQty);
+  const brokenRate = stones > 0 ? brokenCount / stones : 0;
+
+  const perOre = Object.entries(winningsByOre)
+    .map(([ore, qty]) => {
+      const def = mining?.ores?.[ore] || {};
+      const value = qty * (def.price || 0);
+      return {
+        ore,
+        name: def.name || ore,
+        emoji: def.emoji || "",
+        basePrice: def.price || 0,
+        qty,
+        sessions: successByOre[ore] || 0,
+        hitRate: stones > 0 ? (successByOre[ore] || 0) / stones : 0,
+        value,
+      };
+    })
+    .sort((a, b) => b.value - a.value);
+
+  const gainedValue = perOre.reduce((s, o) => s + o.value, 0);
+  const rtp = fee > 0 ? gainedValue / fee : 0;
+
+  return {
+    sessions,
+    stones,
+    fee,
+    overflowCoins,
+    uniqueAppraisers: appraisers.size,
+    brokenCount,
+    brokenRate,
+    gainedValue,
+    rtp,
+    perOre,
+  };
+}
+
 // 漁獲每日流通量：依 FishLogs 聚合，含釣點分布
 async function aggregateFishCirculation(client, guildId, fromIso, toIso) {
   if (!client.fishLogsCollection) {
@@ -779,6 +869,7 @@ module.exports = {
   PURE_SINK_SOURCES,
   aggregateCasinoEdge,
   aggregateOreCirculation,
+  aggregateStoneAppraisal,
   aggregateFishCirculation,
   aggregateCropFlow,
   aggregateMarketActivity,
