@@ -118,12 +118,19 @@ async function renderFarm(interaction, client) {
 function buildPlantSelector(userId, plotIndex, { profile, coins } = {}) {
   const options = Object.entries(farming.crops || {}).map(([key, def]) => {
     const hours = Math.round((def.growMs || 0) / 3600000);
-    const parts = [`${def.plantCost}幣`, `${hours}h 成熟`];
-    if (def.seedKey) {
-      const seedQty = profile?.seed_bag?.[def.seedKey] || 0;
-      parts.push(`種子${seedQty >= 1 ? "✅" : "❌"}${seedQty}`);
+    const seedQty = def.seedKey ? (profile?.seed_bag?.[def.seedKey] || 0) : 0;
+    const willUseSeedFree = def.seedKey && def.seedOptional && seedQty >= 1;
+    const parts = [];
+    if (willUseSeedFree) {
+      parts.push(`🌱 用種子免費（剩${seedQty}）`);
+    } else {
+      parts.push(`${def.plantCost}幣`);
+      if (def.seedKey && !def.seedOptional) {
+        parts.push(`種子${seedQty >= 1 ? "✅" : "❌"}${seedQty}`);
+      }
+      if (typeof coins === "number" && coins < def.plantCost) parts.push("幣不足");
     }
-    if (typeof coins === "number" && coins < def.plantCost) parts.push("幣不足");
+    parts.push(`${hours}h 成熟`);
     return {
       label: def.name,
       value: key,
@@ -310,9 +317,13 @@ module.exports = async (client, interaction) => {
 
       const cropDef = result.crop;
       const readyEpoch = Math.floor(result.plot.ready_at / 1000);
+      const costParts = [];
+      if (result.seedConsumed) costParts.push(`🌱 ${cropDef.emoji} 種子 ×1`);
+      if (result.coinsPaid > 0) costParts.push(`${result.coinsPaid} 幣`);
+      const costLine = costParts.join(" + ") || "免費";
       const c = buildSuccessContainer(
         `${cropDef.emoji} 種下 **${cropDef.name}**`,
-        `📍 地塊：**${plotIndex + 1}**\n💸 花費：${cropDef.plantCost} 幣\n🌟 成熟：<t:${readyEpoch}:R>`,
+        `📍 地塊：**${plotIndex + 1}**\n💸 花費：${costLine}\n🌟 成熟：<t:${readyEpoch}:R>`,
         interaction.user.id,
         0x4a90a4,
       );
@@ -368,10 +379,16 @@ module.exports = async (client, interaction) => {
 
       const options = Object.entries(farming.crops || {}).map(([key, def]) => {
         const hours = Math.round((def.growMs || 0) / 3600000);
-        const totalCost = (def.plantCost || 0) * emptyCount;
-        const parts = [`${def.plantCost}幣/塊・共${totalCost.toLocaleString()}幣`, `${hours}h成熟`];
-        if (def.seedKey) {
-          const seedQty = profile?.seed_bag?.[def.seedKey] || 0;
+        const seedQty = def.seedKey ? (profile?.seed_bag?.[def.seedKey] || 0) : 0;
+        const seedUses = def.seedOptional ? Math.min(seedQty, emptyCount) : 0;
+        const coinSlots = emptyCount - seedUses;
+        const totalCost = (def.plantCost || 0) * coinSlots;
+        const parts = [];
+        if (seedUses > 0) parts.push(`🌱×${seedUses}免費`);
+        if (totalCost > 0) parts.push(`共${totalCost.toLocaleString()}幣`);
+        if (seedUses === 0 && totalCost === 0) parts.push("免費");
+        parts.push(`${hours}h成熟`);
+        if (def.seedKey && !def.seedOptional) {
           parts.push(`種子${seedQty >= emptyCount ? "✅" : "⚠️"}${seedQty}`);
         }
         if (coins < totalCost) parts.push("幣不足全部");
@@ -448,10 +465,13 @@ module.exports = async (client, interaction) => {
 
       const cropDef = result.crop;
       const earliestReady = Math.min(...result.planted.map((p) => p.ready_at));
-      const totalCost = (cropDef.plantCost || 0) * result.planted.length;
+      const costParts = [];
+      if (result.totalSeedsUsed > 0) costParts.push(`🌱 ${cropDef.emoji} 種子 ×${result.totalSeedsUsed}`);
+      if (result.totalCoinsPaid > 0) costParts.push(`${result.totalCoinsPaid.toLocaleString()} 幣`);
+      const costLine = costParts.join(" + ") || "免費";
       const lines = [
         `🌾 ${cropDef.emoji} **${cropDef.name}** ×${result.planted.length}`,
-        `💸 總花費：${totalCost.toLocaleString()} 幣`,
+        `💸 總花費：${costLine}`,
         `🌟 最早成熟：<t:${Math.floor(earliestReady / 1000)}:R>`,
       ];
       if (result.stopReason) {

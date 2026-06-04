@@ -59,7 +59,10 @@ function resolveLiveStatus(plot, now = Date.now()) {
   return plot;
 }
 
-// 種植：扣 plantCost 幣（黑玫瑰額外扣 seed_bag.seed_black_rose），寫入 FarmPlots。
+// 種植：依作物 seedKey/seedOptional 決定扣幣或扣種子，寫入 FarmPlots。
+// - 沒 seedKey（紅蘿蔔、玉米）：純扣 plantCost。
+// - seedKey + seedOptional（草莓）：有種子→扣 1 顆免幣；沒種子→扣 plantCost。
+// - seedKey 必填（黑玫瑰）：沒種子直接擋；有種子→扣 1 顆 + 仍扣 plantCost。
 async function plantCrop(client, { userId, guildId, username, member, cropKey, plotIndex }) {
   if (!farming?.enabled) return { ok: false, reason: "disabled" };
   if (!coll(client)) return { ok: false, reason: "disabled" };
@@ -78,33 +81,35 @@ async function plantCrop(client, { userId, guildId, username, member, cropKey, p
     return { ok: false, reason: "plot_occupied", existing };
   }
 
-  // 黑玫瑰需要種子
+  let seedConsumed = false;
   if (crop.seedKey) {
     const seedQty = profile.seed_bag?.[crop.seedKey] || 0;
-    if (seedQty < 1) {
+    if (seedQty >= 1) {
+      seedConsumed = true;
+    } else if (!crop.seedOptional) {
       return { ok: false, reason: "missing_seed", seedKey: crop.seedKey };
     }
   }
 
-  // 檢查餘額
-  const coinDoc = await client.userCoinsCollection
-    ?.findOne({ userId, guildId })
-    .catch(() => null);
-  const have = coinDoc?.totalCoins || 0;
-  if (have < crop.plantCost) {
-    return { ok: false, reason: "insufficient_coins", need: crop.plantCost, have };
+  const coinsNeeded = seedConsumed && crop.seedOptional ? 0 : (crop.plantCost || 0);
+
+  if (coinsNeeded > 0) {
+    const coinDoc = await client.userCoinsCollection
+      ?.findOne({ userId, guildId })
+      .catch(() => null);
+    const have = coinDoc?.totalCoins || 0;
+    if (have < coinsNeeded) {
+      return { ok: false, reason: "insufficient_coins", need: coinsNeeded, have };
+    }
+    await grantCoins(client, {
+      userId, guildId, username, member,
+      amount: -coinsNeeded,
+      source: "farm_plant",
+      meta: { crop: cropKey, plotIndex, seedConsumed },
+    });
   }
 
-  // 扣幣（sink）
-  await grantCoins(client, {
-    userId, guildId, username, member,
-    amount: -crop.plantCost,
-    source: "farm_plant",
-    meta: { crop: cropKey, plotIndex },
-  });
-
-  // 扣種子
-  if (crop.seedKey) {
+  if (seedConsumed) {
     await client.miningProfilesCollection.updateOne(
       { userId, guildId },
       { $inc: { [`seed_bag.${crop.seedKey}`]: -1 }, $set: { updatedAt: new Date() } },
@@ -140,7 +145,7 @@ async function plantCrop(client, { userId, guildId, username, member, cropKey, p
     { $inc: { farm_count_total: 1 } },
   ).catch(() => {});
 
-  return { ok: true, plot: plotDoc, crop };
+  return { ok: true, plot: plotDoc, crop, seedConsumed, coinsPaid: coinsNeeded };
 }
 
 // 一鍵種植：把同一種作物種在所有空地（含已枯萎），扣不夠時自然停止。
@@ -163,11 +168,15 @@ async function plantAllCrops(client, { userId, guildId, username, member, cropKe
   }
 
   const planted = [];
+  let totalCoinsPaid = 0;
+  let totalSeedsUsed = 0;
   let stopReason = null;
   for (const plotIndex of targets) {
     const r = await plantCrop(client, { userId, guildId, username, member, cropKey, plotIndex });
     if (r.ok) {
       planted.push(r.plot);
+      totalCoinsPaid += r.coinsPaid || 0;
+      if (r.seedConsumed) totalSeedsUsed += 1;
       continue;
     }
     if (r.reason === "insufficient_coins" || r.reason === "missing_seed") {
@@ -183,6 +192,8 @@ async function plantAllCrops(client, { userId, guildId, username, member, cropKe
     crop,
     stopReason,
     totalTargets: targets.length,
+    totalCoinsPaid,
+    totalSeedsUsed,
   };
 }
 

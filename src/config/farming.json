@@ -14,7 +14,7 @@
     "crops": {
       "carrot":     { "name": "紅蘿蔔", "emoji": "🥕", "plantCost": 20,  "growMs": 7200000,  "rotMs": 14400000, "payout": [50, 80] },
       "corn":       { "name": "玉米",   "emoji": "🌽", "plantCost": 60,  "growMs": 21600000, "rotMs": 21600000, "payout": [150, 200] },
-      "strawberry": { "name": "草莓",   "emoji": "🍓", "plantCost": 150, "growMs": 43200000, "rotMs": 28800000, "payout": [400, 500] },
+      "strawberry": { "name": "草莓",   "emoji": "🍓", "seedKey": "seed_strawberry", "seedOptional": true, "plantCost": 150, "growMs": 43200000, "rotMs": 28800000, "payout": [400, 500] },
       "black_rose": { "name": "黑玫瑰", "emoji": "🌹", "seedKey": "seed_black_rose", "plantCost": 500, "growMs": 86400000, "rotMs": 43200000, "payout": [1200, 1500],
         "bonusDrops": [
           { "kind": "fragment", "chance": 0.05, "amount": 1 },
