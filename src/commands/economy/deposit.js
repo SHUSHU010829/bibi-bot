@@ -279,23 +279,45 @@ async function claimDeposit(client, interaction, { userId, guildId, username }) 
     return interaction.editReply("⚠️ 存單狀態已變更，請重新查詢。");
   }
 
-  // 釋放金幣
-  if (payout > 0) {
+  // 本金歸還（與 deposit_lock 對稱，使 deposit_lock/release 收支平衡）
+  if (doc.principal > 0) {
     await grantCoins(client, {
       userId,
       guildId,
       username,
       avatarHash: interaction.user.avatar,
-      amount: payout,
+      amount: doc.principal,
       source: "deposit_release",
       member: interaction.member,
-      meta: {
-        depositId,
-        principal: doc.principal,
-        interest: kind === "matured" ? doc.interest : 0,
-        penaltyAmount,
-        early: kind === "early",
-      },
+      meta: { depositId, early: kind === "early" },
+    });
+  }
+
+  // 到期利息（純印幣，獨立 source 方便活動量統計顯示）
+  if (kind === "matured" && doc.interest > 0) {
+    await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      avatarHash: interaction.user.avatar,
+      amount: doc.interest,
+      source: "deposit_interest",
+      member: interaction.member,
+      meta: { depositId, principal: doc.principal, days: doc.days, rate: doc.rate },
+    });
+  }
+
+  // 提早領回違約金（純銷，獨立 source）
+  if (kind === "early" && penaltyAmount > 0) {
+    await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      avatarHash: interaction.user.avatar,
+      amount: -penaltyAmount,
+      source: "deposit_penalty",
+      member: interaction.member,
+      meta: { depositId, principal: doc.principal },
     });
   }
 

@@ -36,13 +36,13 @@
     },
     "stoneAppraisal": {
       "enabled": true,
-      "feePerStone": 150,
+      "feePerStone": 120,
       "windowMs": 600000,
       "announceDiamond": true,
       "outcomes": [
-        { "ore": null, "weight": 60 },
-        { "ore": "coal", "weight": 18, "minQty": 1, "maxQty": 2 },
-        { "ore": "iron", "weight": 10, "minQty": 1, "maxQty": 1 },
+        { "ore": null, "weight": 50 },
+        { "ore": "coal", "weight": 22, "minQty": 1, "maxQty": 3 },
+        { "ore": "iron", "weight": 12, "minQty": 1, "maxQty": 2 },
         { "ore": "gold", "weight": 7, "minQty": 1, "maxQty": 1 },
         { "ore": "diamond", "weight": 2, "minQty": 1, "maxQty": 1 }
       ]

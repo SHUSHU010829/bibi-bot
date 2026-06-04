@@ -9,6 +9,27 @@ const {
   eventQuests,
   isEnabled,
 } = require("./questDefinitions");
+const questAssignmentService = require("./questAssignmentService");
+const notifyQuestReady = require("./notifyQuestReady");
+
+// 進度更新後判定「剛從未達標 → 達標」就觸發通知（非阻塞）。
+function fireReadyNotifyIfFlipped(client, quest, existing, doc, claimCtx) {
+  if (!doc?.completed) return;
+  if (existing?.completed) return;
+  if (doc?.claimed) return;
+  const ctx = {
+    userId: doc.userId,
+    guildId: doc.guildId,
+    user: claimCtx?.member?.user || null,
+    interaction: claimCtx?.interaction || null,
+  };
+  notifyQuestReady(client, ctx, {
+    id: quest.id,
+    name: quest.name,
+    reward: quest.reward,
+    period: quest.period,
+  }).catch(() => {});
+}
 
 const getTz = () => questSystem?.resetTimezone || "Asia/Taipei";
 
@@ -31,8 +52,8 @@ const grantSourceFor = (period) => {
   return "quest_daily";
 };
 
-// 內部：原子標 claimed + 發幣。成功 → 回傳 { id, name, reward, period }；否則 null
-const tryAutoClaim = async (
+// 原子標 claimed + 發幣。成功 → { id, name, reward, period }；已 claimed → null
+const tryClaimOne = async (
   client,
   userId,
   guildId,
@@ -62,7 +83,7 @@ const tryAutoClaim = async (
     { returnDocument: "after" }
   );
   const after = update?.value || update;
-  if (!after) return null; // 已被別的 process 領了，或還沒 completed
+  if (!after) return null;
 
   const grantResult = await grantCoins(client, {
     userId,
@@ -75,7 +96,6 @@ const tryAutoClaim = async (
   });
 
   if (!grantResult) {
-    // 發放失敗 → rollback claimed
     await client.questProgressCollection
       .updateOne(
         { userId, guildId, questId: questDef.id, period },
@@ -107,6 +127,11 @@ const incrementProgress = async (
   if (!quest) return null;
   const period = periodKey(quest.period);
   const target = quest.target || 1;
+
+  const tier = questAssignmentService.tierFromPeriod(quest.period);
+  if (tier && !(await questAssignmentService.isQuestAssigned(client, userId, guildId, tier, questId))) {
+    return null;
+  }
 
   // 先讀現值決定是否要標 completed（用 update + filter 避免重置已 claimed 的紀錄）
   const existing = await client.questProgressCollection.findOne({
@@ -143,20 +168,9 @@ const incrementProgress = async (
     { upsert: true, returnDocument: "after" }
   );
   const doc = update?.value || update;
+  fireReadyNotifyIfFlipped(client, quest, existing, doc, claimCtx);
 
-  let autoClaimed = null;
-  if (completed && !doc?.claimed) {
-    autoClaimed = await tryAutoClaim(
-      client,
-      userId,
-      guildId,
-      quest,
-      claimCtx?.member,
-      claimCtx?.username
-    );
-  }
-
-  return { doc, autoClaimed };
+  return { doc, autoClaimed: null };
 };
 
 // 累計型任務：把 delta 累加到 meta[key]，並以累計值對比 target 判定完成。
@@ -177,6 +191,11 @@ const addMetaValue = async (
   if (!quest) return null;
   const period = periodKey(quest.period);
   const target = quest.target || 1;
+
+  const tier = questAssignmentService.tierFromPeriod(quest.period);
+  if (tier && !(await questAssignmentService.isQuestAssigned(client, userId, guildId, tier, questId))) {
+    return null;
+  }
 
   const existing = await client.questProgressCollection.findOne({
     userId,
@@ -213,20 +232,9 @@ const addMetaValue = async (
     { upsert: true, returnDocument: "after" }
   );
   const doc = update?.value || update;
+  fireReadyNotifyIfFlipped(client, quest, existing, doc, claimCtx);
 
-  let autoClaimed = null;
-  if (completed && !doc?.claimed) {
-    autoClaimed = await tryAutoClaim(
-      client,
-      userId,
-      guildId,
-      quest,
-      claimCtx?.member,
-      claimCtx?.username
-    );
-  }
-
-  return { doc, autoClaimed };
+  return { doc, autoClaimed: null };
 };
 
 const markCompleted = async (
@@ -242,6 +250,11 @@ const markCompleted = async (
   if (!quest) return null;
   const period = periodKey(quest.period);
   const target = quest.target || 1;
+
+  const tier = questAssignmentService.tierFromPeriod(quest.period);
+  if (tier && !(await questAssignmentService.isQuestAssigned(client, userId, guildId, tier, questId))) {
+    return null;
+  }
 
   // 已領取 → 直接回傳，避免 upsert 撞 unique index (E11000)
   const existing = await client.questProgressCollection.findOne({
@@ -274,32 +287,43 @@ const markCompleted = async (
     { upsert: true, returnDocument: "after" }
   );
   const doc = update?.value || update;
+  fireReadyNotifyIfFlipped(client, quest, existing, doc, claimCtx);
 
-  let autoClaimed = null;
-  if (!doc?.claimed) {
-    autoClaimed = await tryAutoClaim(
-      client,
-      userId,
-      guildId,
-      quest,
-      claimCtx?.member,
-      claimCtx?.username
-    );
-  }
-
-  return { doc, autoClaimed };
+  return { doc, autoClaimed: null };
 };
 
 const getStatus = async (client, userId, guildId) => {
   if (!client.questProgressCollection) {
-    return { daily: [], weekly: [], event: [] };
+    return { daily: [], weekly: [], event: [], assignment: null };
   }
-  const dailyDefs = dailyQuests();
-  const weeklyDefs = weeklyQuests();
+  const dailyDefsAll = dailyQuests();
+  const weeklyDefsAll = weeklyQuests();
   // 限時活動任務：僅取生效中活動，period token 由定義自帶（`evt-<id>`）。
   const eventDefs = eventQuests();
   const dailyPeriod = periodKey("daily");
   const weeklyPeriod = periodKey("weekly");
+
+  let dailyAssignment = null;
+  let weeklyAssignment = null;
+  if (questAssignmentService.isEnabled()) {
+    [dailyAssignment, weeklyAssignment] = await Promise.all([
+      questAssignmentService.getOrCreateAssignment(client, userId, guildId, "daily"),
+      questAssignmentService.getOrCreateAssignment(client, userId, guildId, "weekly"),
+    ]);
+  }
+
+  const filterByAssignment = (defs, assignment) => {
+    if (!assignment) return defs;
+    const order = assignment.quests || [];
+    const skipped = new Set(assignment.skipped || []);
+    const byId = new Map(defs.map((q) => [q.id, q]));
+    return order
+      .filter((id) => byId.has(id) && !skipped.has(id))
+      .map((id) => byId.get(id));
+  };
+
+  const dailyDefs = filterByAssignment(dailyDefsAll, dailyAssignment);
+  const weeklyDefs = filterByAssignment(weeklyDefsAll, weeklyAssignment);
 
   const allIds = [
     ...dailyDefs.map((q) => ({ id: q.id, period: dailyPeriod })),
@@ -307,13 +331,15 @@ const getStatus = async (client, userId, guildId) => {
     ...eventDefs.map((q) => ({ id: q.id, period: q.period })),
   ];
 
-  const docs = await client.questProgressCollection
-    .find({
-      userId,
-      guildId,
-      $or: allIds.map((x) => ({ questId: x.id, period: x.period })),
-    })
-    .toArray();
+  const docs = allIds.length
+    ? await client.questProgressCollection
+        .find({
+          userId,
+          guildId,
+          $or: allIds.map((x) => ({ questId: x.id, period: x.period })),
+        })
+        .toArray()
+    : [];
 
   const byKey = new Map();
   for (const d of docs) byKey.set(`${d.questId}|${d.period}`, d);
@@ -346,10 +372,37 @@ const getStatus = async (client, userId, guildId) => {
     daily: dailyDefs.map((q) => enrich(q, dailyPeriod)),
     weekly: weeklyDefs.map((q) => enrich(q, weeklyPeriod)),
     event: eventDefs.map((q) => enrich(q, q.period)),
+    assignment: {
+      daily: dailyAssignment,
+      weekly: weeklyAssignment,
+    },
   };
 };
 
-// 補領：自動入帳失敗時的退路。掃出 ready 的任務，逐一原子標 claimed + 發幣
+// 領取單個 ready 任務（玩家點按鈕觸發）
+const claimSingle = async (client, userId, guildId, questId, member, username) => {
+  if (!isEnabled()) return { ok: false, reason: "disabled" };
+  if (!client.questProgressCollection) return { ok: false, reason: "disabled" };
+
+  const def = getQuestById(questId);
+  if (!def) return { ok: false, reason: "not_found" };
+
+  const period = periodKey(def.period);
+  const existing = await client.questProgressCollection.findOne({
+    userId,
+    guildId,
+    questId,
+    period,
+  });
+  if (!existing || !existing.completed) return { ok: false, reason: "not_ready" };
+  if (existing.claimed) return { ok: false, reason: "already_claimed" };
+
+  const result = await tryClaimOne(client, userId, guildId, def, member, username);
+  if (!result) return { ok: false, reason: "stale" };
+  return { ok: true, claimed: result };
+};
+
+// 一鍵領取：掃出 ready 的任務，依「獎勵高 → 低」順序逐一領取
 const claimAll = async (client, userId, guildId, member, username) => {
   if (!isEnabled()) return { claimed: [], total: 0 };
   if (!client.questProgressCollection) return { claimed: [], total: 0 };
@@ -359,13 +412,15 @@ const claimAll = async (client, userId, guildId, member, username) => {
     ...status.daily.map((q) => ({ ...q, period: "daily" })),
     ...status.weekly.map((q) => ({ ...q, period: "weekly" })),
     ...(status.event || []).map((q) => ({ ...q, period: "event" })),
-  ].filter((q) => q.state === "ready");
+  ]
+    .filter((q) => q.state === "ready")
+    .sort((a, b) => (b.reward || 0) - (a.reward || 0));
 
   const claimedList = [];
   let total = 0;
   for (const quest of ready) {
     const questDef = getQuestById(quest.id);
-    const result = await tryAutoClaim(
+    const result = await tryClaimOne(
       client,
       userId,
       guildId,
@@ -381,11 +436,48 @@ const claimAll = async (client, userId, guildId, member, username) => {
   return { claimed: claimedList, total };
 };
 
+// 每日 23:50 cron 用：掃出所有「completed=true, claimed=false」的玩家，逐一 claimAll
+// 把忘了領的當期任務全部結算入帳，避免跨期作廢。
+const autoFlushAllReady = async (client) => {
+  if (!isEnabled()) return { users: 0, total: 0 };
+  if (!client.questProgressCollection) return { users: 0, total: 0 };
+
+  const rows = await client.questProgressCollection
+    .aggregate([
+      { $match: { completed: true, claimed: { $ne: true } } },
+      { $group: { _id: { userId: "$userId", guildId: "$guildId" } } },
+    ])
+    .toArray();
+
+  let users = 0;
+  let total = 0;
+  for (const r of rows) {
+    const { userId, guildId } = r._id;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) continue;
+    const member = await guild.members.fetch(userId).catch(() => null);
+    const username = member?.user?.username || null;
+    const res = await module.exports
+      .claimAll(client, userId, guildId, member, username)
+      .catch((e) => {
+        console.log(`[QUEST] autoFlush user ${userId}: ${e}`.red);
+        return null;
+      });
+    if (res?.claimed?.length > 0) {
+      users += 1;
+      total += res.total || 0;
+    }
+  }
+  return { users, total };
+};
+
 module.exports = {
   periodKey,
   incrementProgress,
   addMetaValue,
   markCompleted,
   getStatus,
+  claimSingle,
   claimAll,
+  autoFlushAllReady,
 };

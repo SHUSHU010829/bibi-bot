@@ -21,6 +21,7 @@ const {
   classifySource,
   aggregateCasinoEdge,
   aggregateOreCirculation,
+  aggregateStoneAppraisal,
   aggregateFishCirculation,
   aggregateCropFlow,
   aggregateMarketActivity,
@@ -187,6 +188,7 @@ module.exports = {
         snapshots,
         casinoEdge,
         ore,
+        appraisal,
         fishStats,
         crops,
         market,
@@ -201,6 +203,7 @@ module.exports = {
         getRecentSnapshots(client, guildId, Math.max(days, 7)),
         aggregateCasinoEdge(client, guildId, fromIso, toIso),
         aggregateOreCirculation(client, guildId, fromIso, toIso),
+        aggregateStoneAppraisal(client, guildId, fromIso, toIso),
         aggregateFishCirculation(client, guildId, fromIso, toIso),
         aggregateCropFlow(client, guildId, fromIso, toIso),
         aggregateMarketActivity(client, guildId, fromIso, toIso),
@@ -365,6 +368,31 @@ module.exports = {
         ),
       );
 
+      // 賭石鑑定
+      if (appraisal.sessions > 0 || appraisal.stones > 0) {
+        const netHouse = appraisal.fee - appraisal.gainedValue - appraisal.overflowCoins;
+        const houseEdge = appraisal.fee > 0 ? netHouse / appraisal.fee : 0;
+        const perOreLines = appraisal.perOre.length
+          ? appraisal.perOre
+              .map(
+                (o) =>
+                  `${o.emoji || ""} ${o.name}　開出 ${fmt(o.qty)} 顆　・命中 ${fmt(o.sessions)} 顆石頭（${pct(o.hitRate, 1)}）　・估值 ${fmt(o.value)}`,
+              )
+              .join("\n")
+          : "（期間內無任何礦石產出）";
+        c3.addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `## 💎 賭石鑑定（${rangeLabel}）\n` +
+                `鑑定場次 **${fmt(appraisal.sessions)}**　・鑑定石頭 **${fmt(appraisal.stones)}** 顆　・賭石玩家 ${fmt(appraisal.uniqueAppraisers)} 人\n` +
+                `總費用 **${fmt(appraisal.fee)}**　・基準價估值 **${fmt(appraisal.gainedValue)}**　・折金幣補償 ${fmt(appraisal.overflowCoins)}\n` +
+                `碎掉 ${fmt(appraisal.brokenCount)} 顆（${pct(appraisal.brokenRate, 1)}）　・玩家 RTP ${pct(appraisal.rtp, 1)}　・莊家 Edge ${pct(houseEdge, 1)}\n` +
+                `\n${perOreLines}\n` +
+                `-# RTP = 開出礦估值 / 鑑定費；莊家 Edge = 1 − RTP，賭場標準約 5~10%。`,
+            ),
+          );
+      }
+
       // 漁獲
       const fishLines = fishStats.fish.map((f) => formatFishLine(f, fishStats.days)).join("\n\n");
       const locLines = fishStats.locations
@@ -411,11 +439,15 @@ module.exports = {
         ["🏪 市集", market.market],
         ["🔀 交易所手續費", market.barter],
         ["💸 玩家轉帳", market.transfer],
+        ["💸 轉帳手續費", market.transferFee],
         ["🏦 定存進出", market.deposit],
+        ["🏦 定存利息發放", market.depositInterest],
+        ["🏦 定存違約金", market.depositPenalty],
         ["⚔️ 對決", market.duel],
         ["🐲 BOSS", market.boss],
         ["🗡️ 地下城", market.dungeon],
         ["📜 任務", market.quest],
+        ["📜 任務重抽/跳過", market.questManage],
         ["🎲 隨機事件", market.encounter],
         ["🎉 自辦活動", market.event],
         ["🏰 公會", market.guild],
