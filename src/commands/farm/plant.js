@@ -157,8 +157,9 @@ module.exports = {
         flags: MessageFlags.IsComponentsV2,
       });
 
+      const nextReadyAt = await farmService.getNextReadyAt(client, userId, guildId);
       reminder.refreshIfEnabled(client, {
-        userId, guildId, type: "farm", readyAt: plot.ready_at,
+        userId, guildId, type: "farm", readyAt: nextReadyAt,
       }).catch(() => {});
 
       await applyQuestHooks(

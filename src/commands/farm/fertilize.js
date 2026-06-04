@@ -169,18 +169,16 @@ module.exports = {
         flags: MessageFlags.IsComponentsV2,
       });
 
-      // 施肥後重新對齊「最早成熟」的到點通知；scope 於此玩家即可。
-      const earliest = await client.farmPlotsCollection
-        ?.findOne(
-          { userId: interaction.user.id, guildId: interaction.guildId, status: "growing" },
-          { sort: { ready_at: 1 }, projection: { ready_at: 1 } },
-        )
-        .catch(() => null);
+      const nextReadyAt = await farmService.getNextReadyAt(
+        client,
+        interaction.user.id,
+        interaction.guildId,
+      );
       reminder.refreshIfEnabled(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
         type: "farm",
-        readyAt: earliest?.ready_at || 0,
+        readyAt: nextReadyAt,
       }).catch(() => {});
     } catch (error) {
       console.log(`[ERROR] /施肥:\n${error}\n${error.stack}`.red);
