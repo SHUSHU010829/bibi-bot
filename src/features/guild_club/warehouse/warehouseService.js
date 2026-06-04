@@ -378,10 +378,48 @@ const withdraw = async (
   };
 };
 
+const getNetFlow = async (client, guildClubId, days = 7) => {
+  const since = new Date(Date.now() - days * 24 * 3600 * 1000);
+  const cursor = await client.guildClubWarehouseLogsCollection
+    .find({ guild_club_id: guildClubId, created_at: { $gte: since } })
+    .project({ action: 1, market_value: 1 })
+    .toArray();
+  let inFlow = 0;
+  let outFlow = 0;
+  for (const e of cursor) {
+    if (e.action === "deposit") inFlow += e.market_value || 0;
+    else outFlow += e.market_value || 0;
+  }
+  return { inFlow, outFlow, net: inFlow - outFlow };
+};
+
+const getSummary = async (client, guildClubId) => {
+  const inventory = await getInventory(client, guildClubId);
+  const totalValue = inventory.reduce(
+    (s, it) => s + marketValue(it.item_id, it.qty),
+    0
+  );
+  const last = await client.guildClubWarehouseLogsCollection
+    .find({ guild_club_id: guildClubId })
+    .sort({ created_at: -1 })
+    .limit(1)
+    .toArray();
+  const flow = await getNetFlow(client, guildClubId, 7);
+  return {
+    totalValue,
+    lastActivityAt: last[0]?.created_at || null,
+    netFlow7d: flow.net,
+    inFlow7d: flow.inFlow,
+    outFlow7d: flow.outFlow,
+  };
+};
+
 module.exports = {
   deposit,
   withdraw,
   getInventory,
   sweepProtection,
   sweepAll,
+  getNetFlow,
+  getSummary,
 };

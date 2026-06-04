@@ -5,6 +5,9 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } = require("discord.js");
 
 const { guildWarehouse } = require("../../../config");
@@ -45,6 +48,7 @@ const buildWarehouseContainer = ({
   isManager,
   todayItemsTaken = [],
   todayTimesUsed = 0,
+  netFlow7d = null,
 }) => {
   const settings = resolveSettings(club);
   const container = new ContainerBuilder().setAccentColor(COLOR_GOLD);
@@ -63,6 +67,14 @@ const buildWarehouseContainer = ({
       `# 📦 ${club.name} 倉庫\nLv.${club.level}｜總價值 ≈ ${totalValue.toLocaleString()} ${COIN_EMOJI}\n${takenLine}`
     )
   );
+
+  if (typeof netFlow7d === "number" && netFlow7d < 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ⚠️ 近 7 天淨流出 ${Math.abs(netFlow7d).toLocaleString()} 幣，請會長留意倉庫資源走向。`
+      )
+    );
+  }
 
   const groups = { backpack_mining: [], backpack_farming: [], fish_bag: [] };
   for (const it of inventory) groups[groupKey(it.item_id, it.def)].push(it);
@@ -310,10 +322,134 @@ const buildLogContainer = ({ club, entries, isVice }) => {
   return container;
 };
 
+const SETTINGS_MODAL_PREFIX = "gcw_settings_modal_";
+
+const buildSettingsModal = ({ userId, club }) => {
+  const w = guildWarehouse?.withdraw || {};
+  const cur = club?.warehouse_settings || {};
+  const settings = resolveSettings(club);
+  const modal = new ModalBuilder()
+    .setCustomId(`${SETTINGS_MODAL_PREFIX}${userId}`)
+    .setTitle(`「${club.name}」倉庫設定`.slice(0, 45));
+
+  const mk = (id, label, placeholder, value) =>
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId(id)
+        .setLabel(label)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setPlaceholder(placeholder)
+        .setValue(value ?? "")
+    );
+
+  modal.addComponents(
+    mk(
+      "dailyMaxTimes",
+      `每日次數（${w.dailyMaxTimesRange[0]}–${w.dailyMaxTimesRange[1]}，留空＝預設）`,
+      `預設 ${w.dailyMaxTimesDefault}，目前 ${settings.dailyMaxTimes}`,
+      cur.dailyMaxTimes != null ? String(cur.dailyMaxTimes) : ""
+    ),
+    mk(
+      "feeRate",
+      `手續費率（${w.feeRateRange[0] * 100}%–${w.feeRateRange[1] * 100}%）`,
+      `預設 ${w.feeRateDefault * 100}%，目前 ${(settings.feeRate * 100).toFixed(1)}%`,
+      cur.feeRate != null ? String(cur.feeRate) : ""
+    ),
+    mk(
+      "tenureHours",
+      `入會時間門檻 / 小時（${w.tenureHoursRange[0]}–${w.tenureHoursRange[1]}）`,
+      `預設 ${w.tenureHoursDefault}h，目前 ${settings.tenureHours}h`,
+      cur.tenureHours != null ? String(cur.tenureHours) : ""
+    ),
+    mk(
+      "minContribution",
+      `最低貢獻門檻（${w.minContributionRange[0]}–${w.minContributionRange[1]}）`,
+      `預設 ${w.minContributionDefault}，目前 ${settings.minContribution}`,
+      cur.minContribution != null ? String(cur.minContribution) : ""
+    )
+  );
+  return modal;
+};
+
+const formatSettingValue = (key, value) => {
+  if (value == null) return "預設";
+  if (key === "feeRate") return `${(value * 100).toFixed(1)}%`;
+  if (key === "tenureHours") return `${value} 小時`;
+  return String(value);
+};
+
+const SETTING_LABEL = {
+  dailyMaxTimes: "每日次數",
+  feeRate: "手續費率",
+  tenureHours: "入會時間門檻",
+  minContribution: "最低貢獻",
+};
+
+const buildSettingsUpdatedContainer = ({ club, applied, userId }) => {
+  const lines = Object.entries(applied).map(
+    ([k, v]) => `・${SETTING_LABEL[k] || k}：${formatSettingValue(k, v)}`
+  );
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_SUCCESS)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ⚙️ 「${club.name}」倉庫設定已更新`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(lines.join("\n"))
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 由 <@${userId}> 更新。輸入空白即恢復預設。`
+      )
+    );
+};
+
+const buildLargeDepositAnnouncement = ({ userId, club, itemDefArg, deposited, marketValueAmount }) =>
+  new ContainerBuilder()
+    .setAccentColor(COLOR_GOLD)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🎁 大額捐贈！<@${userId}> 存入 ${itemDefArg.emoji} ${itemDefArg.name} ×${deposited}`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `「${club.name}」倉庫獲得市價 ${marketValueAmount.toLocaleString()} ${COIN_EMOJI} 的物資`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# 1 小時後解鎖供會員取用。`)
+    );
+
+const buildWarehouseSummaryBlock = ({ totalValue, netFlow7d, lastActivityAt }) => {
+  const lines = [
+    `**📦 倉庫**　總價值 ≈ ${totalValue.toLocaleString()} ${COIN_EMOJI}`,
+  ];
+  if (lastActivityAt) {
+    lines.push(`-# 最近活動：<t:${Math.floor(new Date(lastActivityAt).getTime() / 1000)}:R>`);
+  }
+  if (netFlow7d != null) {
+    const sign = netFlow7d >= 0 ? "+" : "";
+    lines.push(`-# 近 7 天淨流入：${sign}${netFlow7d.toLocaleString()} 幣`);
+  }
+  return new TextDisplayBuilder().setContent(lines.join("\n"));
+};
+
 module.exports = {
   buildWarehouseContainer,
   buildDepositSuccessContainer,
   buildWithdrawSuccessContainer,
   buildErrorContainer,
   buildLogContainer,
+  buildSettingsModal,
+  buildSettingsUpdatedContainer,
+  buildLargeDepositAnnouncement,
+  buildWarehouseSummaryBlock,
+  SETTINGS_MODAL_PREFIX,
+  SETTING_LABEL,
 };

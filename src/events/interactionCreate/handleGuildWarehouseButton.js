@@ -15,17 +15,22 @@ const warehouseService = require("../../features/guild_club/warehouse/warehouseS
 const warehouseView = require("../../features/guild_club/warehouse/warehouseView");
 const warehouseEligibility = require("../../features/guild_club/warehouse/warehouseEligibility");
 const warehouseSettings = require("../../features/guild_club/warehouse/warehouseSettings");
+const warehouseSettingsService = require("../../features/guild_club/warehouse/warehouseSettingsService");
 
 module.exports = async (client, interaction) => {
   const id = interaction.customId || "";
   if (!id.startsWith("gcw_")) return;
+
+  if (interaction.isModalSubmit?.() && id.startsWith(warehouseView.SETTINGS_MODAL_PREFIX)) {
+    return handleSettingsSubmit(client, interaction);
+  }
   if (!interaction.isButton()) return;
 
   if (id.startsWith("gcw_take_")) return handleTake(client, interaction);
   if (id.startsWith("gcw_refresh_")) return handleRefresh(client, interaction);
   if (id.startsWith("gcw_log_")) return handleLog(client, interaction);
   if (id.startsWith("gcw_help_")) return handleHelp(client, interaction);
-  if (id.startsWith("gcw_settings_")) return handleSettingsStub(client, interaction);
+  if (id.startsWith("gcw_settings_")) return handleSettingsOpen(client, interaction);
 };
 
 function parseOwner(prefix, customId) {
@@ -223,18 +228,105 @@ async function handleHelp(client, interaction) {
   });
 }
 
-async function handleSettingsStub(client, interaction) {
+async function handleSettingsOpen(client, interaction) {
   const { ownerId } = parseOwner("gcw_settings_", interaction.customId);
   if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "設定按鈕");
-  return interaction.reply({
+
+  const membership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  if (!membership || !guildClubService.isManager(membership.role)) {
+    return interaction.reply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "🚫 僅會長 / 副會長可調設定",
+          body: "請會長或副會長使用。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+  const club = await guildClubService.getClubById(client, membership.guild_club_id);
+  if (!club)
+    return interaction.reply({
+      components: [
+        warehouseView.buildErrorContainer({ title: "❌ 公會資料異常", body: "公會已不存在。" }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+
+  return interaction.showModal(
+    warehouseView.buildSettingsModal({ userId: interaction.user.id, club })
+  );
+}
+
+async function handleSettingsSubmit(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const inputs = {};
+  for (const key of warehouseSettingsService.SETTING_KEYS) {
+    inputs[key] = interaction.fields.getTextInputValue(key);
+  }
+
+  const result = await warehouseSettingsService.updateSettings(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    inputs,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [settingsErrorView(result)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  return interaction.editReply({
     components: [
-      warehouseView.buildErrorContainer({
-        title: "🛠️ 倉庫設定即將開放",
-        body: "可微調項目：每日次數、手續費率、入會時間門檻、最低貢獻。",
-        hint: "M2 階段釋出 modal 編輯介面。",
+      warehouseView.buildSettingsUpdatedContainer({
+        club: result.club,
+        applied: result.applied,
+        userId: interaction.user.id,
       }),
     ],
-    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+function settingsErrorView(result) {
+  if (result.reason === "not_manager")
+    return warehouseView.buildErrorContainer({
+      title: "🚫 僅會長 / 副會長可調設定",
+      body: "請會長或副會長使用。",
+    });
+  if (result.reason === "no_change")
+    return warehouseView.buildErrorContainer({
+      title: "🟡 沒有可儲存的變更",
+      body: "你沒有填任何欄位，設定維持原狀。",
+      hint: "想恢復預設？把對應欄位填空白後送出。",
+    });
+  if (result.reason === "validation_failed") {
+    const lines = result.errors.map((e) => {
+      const label = warehouseView.SETTING_LABEL[e.key] || e.key;
+      if (e.reason === "not_integer") return `・${label}：請填整數`;
+      if (e.reason === "not_number") return `・${label}：請填數字（可帶 % ）`;
+      if (e.reason === "out_of_range") {
+        const lo = e.kind === "rate" ? `${e.lo * 100}%` : e.lo;
+        const hi = e.kind === "rate" ? `${e.hi * 100}%` : e.hi;
+        return `・${label}：請填 ${lo}–${hi}`;
+      }
+      return `・${label}：${e.reason}`;
+    });
+    return warehouseView.buildErrorContainer({
+      title: "❌ 設定值不合法",
+      body: lines.join("\n"),
+      hint: "範圍依設計上下限自動 clamp，不能超出。",
+    });
+  }
+  return warehouseView.buildErrorContainer({
+    title: "❌ 設定更新失敗",
+    body: `原因：${result.reason}`,
   });
 }
 

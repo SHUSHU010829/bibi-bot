@@ -35,15 +35,12 @@ const SUB_INFO = "資訊";
 const SUB_DISBAND = "解散";
 const SUB_INVITE = "邀請";
 const SUB_APPLY = "申請";
-const SUB_APPLICATIONS = "申請列表";
 const SUB_LEAVE = "退會";
 const SUB_KICK = "踢人";
 const SUB_TRANSFER = "轉讓";
 const SUB_DONATE = "捐款";
 const SUB_QUEST = "任務";
-const SUB_CLAIM = "領獎";
 const SUB_RANK = "排行";
-const SUB_EDIT_DESC = "編輯簡介";
 const SUB_PROMOTE_VICE = "指派副會長";
 const SUB_DEMOTE_VICE = "撤銷副會長";
 const SUB_WAREHOUSE = "倉庫";
@@ -111,11 +108,6 @@ module.exports = {
         )
     )
     .addSubcommand((sub) =>
-      sub
-        .setName(SUB_APPLICATIONS)
-        .setDescription("查看 / 處理待審申請（僅會長）")
-    )
-    .addSubcommand((sub) =>
       sub.setName(SUB_LEAVE).setDescription("退出目前所屬公會")
     )
     .addSubcommand((sub) =>
@@ -147,20 +139,10 @@ module.exports = {
         )
     )
     .addSubcommand((sub) =>
-      sub.setName(SUB_QUEST).setDescription("查看本週公會任務進度")
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName(SUB_CLAIM)
-        .setDescription("一鍵領取所有達標的週任務獎勵（僅會長）")
+      sub.setName(SUB_QUEST).setDescription("查看本週公會任務進度（達標後上方有領取按鈕）")
     )
     .addSubcommand((sub) =>
       sub.setName(SUB_RANK).setDescription("查看伺服器公會排行榜")
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName(SUB_EDIT_DESC)
-        .setDescription("編輯公會簡介 / 會規（會長 / 副會長）")
     )
     .addSubcommand((sub) =>
       sub
@@ -276,15 +258,12 @@ module.exports = {
       if (sub === SUB_DISBAND) return runDisband(client, interaction);
       if (sub === SUB_INVITE) return runInvite(client, interaction);
       if (sub === SUB_APPLY) return runApply(client, interaction);
-      if (sub === SUB_APPLICATIONS) return runApplications(client, interaction);
       if (sub === SUB_LEAVE) return runLeave(client, interaction);
       if (sub === SUB_KICK) return runKick(client, interaction);
       if (sub === SUB_TRANSFER) return runTransfer(client, interaction);
       if (sub === SUB_DONATE) return runDonate(client, interaction);
       if (sub === SUB_QUEST) return runQuest(client, interaction);
-      if (sub === SUB_CLAIM) return runClaim(client, interaction);
       if (sub === SUB_RANK) return runRank(client, interaction);
-      if (sub === SUB_EDIT_DESC) return runEditDescription(client, interaction);
       if (sub === SUB_PROMOTE_VICE) return runPromoteVice(client, interaction);
       if (sub === SUB_DEMOTE_VICE) return runDemoteVice(client, interaction);
       if (sub === SUB_WAREHOUSE) return runWarehouse(client, interaction);
@@ -463,6 +442,20 @@ async function runInfo(client, interaction) {
     .getWeeklyTop(client, club.guild_club_id, 5)
     .catch(() => []);
 
+  let warehouseSummary = null;
+  if (isMember && (club.level || 1) >= (guildWarehouse?.unlockLevel || 2)) {
+    warehouseSummary = await warehouseService
+      .getSummary(client, club.guild_club_id)
+      .catch(() => null);
+  }
+
+  let pendingApplicationCount = 0;
+  if (isLeader || viewerRole === "vice_leader") {
+    pendingApplicationCount = await client.guildClubApplicationsCollection
+      .countDocuments({ guild_club_id: club.guild_club_id, status: "pending" })
+      .catch(() => 0);
+  }
+
   return interaction.editReply({
     components: [
       guildClubView.buildInfoContainer({
@@ -473,6 +466,8 @@ async function runInfo(client, interaction) {
         isLeader,
         viewerRole,
         bossContributions,
+        warehouseSummary,
+        pendingApplicationCount,
       }),
     ],
     flags: MessageFlags.IsComponentsV2,
@@ -646,45 +641,6 @@ async function runApply(client, interaction) {
 
   return interaction.editReply({
     components: [guildClubView.buildApplicationSentContainer({ club: result.club })],
-    flags: MessageFlags.IsComponentsV2,
-  });
-}
-
-// ───────── 申請列表 ─────────
-
-async function runApplications(client, interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-  const result = await guildClubMembership.listPendingApplications(client, {
-    leaderId: interaction.user.id,
-    guildId: interaction.guildId,
-  });
-
-  if (!result.ok) {
-    return interaction.editReply({
-      components: [
-        guildClubView.buildErrorContainer({
-          title: result.reason === "not_leader" ? "🚫 只有會長可以查看" : "❌ 無法查看",
-          body:
-            result.reason === "not_in_club"
-              ? "你還沒加入公會。"
-              : result.reason === "not_leader"
-                ? "請會長使用此指令處理申請。"
-                : `原因：${result.reason}`,
-        }),
-      ],
-      flags: MessageFlags.IsComponentsV2,
-    });
-  }
-
-  return interaction.editReply({
-    components: [
-      guildClubView.buildApplicationListContainer({
-        leaderId: interaction.user.id,
-        club: result.club,
-        applications: result.applications,
-      }),
-    ],
     flags: MessageFlags.IsComponentsV2,
   });
 }
@@ -887,49 +843,6 @@ async function runQuest(client, interaction) {
   });
 }
 
-// ───────── 領獎 ─────────
-
-async function runClaim(client, interaction) {
-  await interaction.deferReply();
-
-  const result = await guildClubQuest.claimAllReady(client, {
-    userId: interaction.user.id,
-    guildId: interaction.guildId,
-  });
-
-  if (!result.ok) {
-    return interaction.editReply({
-      components: [questClaimErrorView(result)],
-      flags: MessageFlags.IsComponentsV2,
-    });
-  }
-
-  if (result.levelUp) {
-    guildClubAnnouncer.announceLevelUp(client, result.levelUp).catch(() => {});
-  }
-  guildClubAnnouncer
-    .announceQuestReward(client, {
-      club: result.club,
-      claimed: result.claimed,
-      totalReward: result.totalReward,
-      leaderId: interaction.user.id,
-    })
-    .catch(() => {});
-
-  return interaction.editReply({
-    components: [
-      guildClubView.buildQuestClaimSuccessContainer({
-        club: result.club,
-        claimed: result.claimed,
-        totalReward: result.totalReward,
-        levelUp: result.levelUp,
-        leaderId: interaction.user.id,
-      }),
-    ],
-    flags: MessageFlags.IsComponentsV2,
-  });
-}
-
 // ───────── 排行 ─────────
 
 async function runRank(client, interaction) {
@@ -958,57 +871,10 @@ async function runRank(client, interaction) {
   });
 }
 
-// ───────── 編輯簡介 ─────────
-
-async function runEditDescription(client, interaction) {
-  const membership = await guildClubService.getMembership(
-    client,
-    interaction.user.id,
-    interaction.guildId
-  );
-  if (!membership) {
-    return interaction.reply({
-      components: [
-        guildClubView.buildErrorContainer({
-          title: "🏰 你還沒加入公會",
-          body: "沒有公會可編輯。",
-          hint: "可使用 /公會 建立 自建公會，或申請加入別人的公會。",
-        }),
-      ],
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-    });
-  }
-  if (!guildClubService.isManager(membership.role)) {
-    return interaction.reply({
-      components: [
-        guildClubView.buildErrorContainer({
-          title: "🚫 只有會長或副會長能編輯",
-          body: "請會長或副會長使用此指令。",
-          hint: "會長可用 /公會 指派副會長 委派編輯權。",
-        }),
-      ],
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-    });
-  }
-  const club = await guildClubService.getClubById(client, membership.guild_club_id);
-  if (!club) {
-    return interaction.reply({
-      components: [
-        guildClubView.buildErrorContainer({
-          title: "❌ 公會資料異常",
-          body: "公會已不存在。",
-        }),
-      ],
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-    });
-  }
-  return interaction.showModal(
-    guildClubView.buildEditDescriptionModal({
-      userId: interaction.user.id,
-      club,
-    })
-  );
-}
+// 編輯簡介 / 領獎 / 申請列表 已改為按鈕（見 docs/GUILD_WAREHOUSE_DESIGN.md §12）。
+// 編輯：/公會 資訊 → [編輯簡介] 按鈕。
+// 領獎：/公會 任務 → [一鍵領取] 按鈕。
+// 申請：/公會 資訊 → [待審申請 N] 按鈕。
 
 // ───────── 指派 / 撤銷副會長 ─────────
 
@@ -1163,43 +1029,6 @@ function questStatusErrorView(result) {
     });
   return guildClubView.buildErrorContainer({
     title: "❌ 查詢失敗",
-    body: `原因：${result.reason}`,
-  });
-}
-
-function questClaimErrorView(result) {
-  if (result.reason === "not_in_club")
-    return guildClubView.buildErrorContainer({
-      title: "🏰 你還沒加入公會",
-      body: "沒有公會可領獎。",
-    });
-  if (result.reason === "not_leader")
-    return guildClubView.buildErrorContainer({
-      title: "🚫 只有會長可以領獎",
-      body: "請會長執行 /公會 領獎。",
-    });
-  if (result.reason === "nothing_to_claim") {
-    const lines = (result.items || []).map((q) => {
-      const tag =
-        q.state === "claimed" ? "🎁 已領取" : `🔄 ${q.progress}/${q.target}`;
-      return `・${q.name}：${tag}`;
-    });
-    return guildClubView.buildErrorContainer({
-      title: "🏆 目前沒有可領取的任務",
-      body:
-        lines.length > 0
-          ? `本週任務狀態：\n${lines.join("\n")}`
-          : "本週尚未設定任務。",
-      hint: "繼續挖礦、打地下城、賭場玩起來，達標就能領。",
-    });
-  }
-  if (result.reason === "all_claimed_by_other")
-    return guildClubView.buildErrorContainer({
-      title: "❌ 已被搶先領取",
-      body: "別的途徑剛剛領完了。",
-    });
-  return guildClubView.buildErrorContainer({
-    title: "❌ 領獎失敗",
     body: `原因：${result.reason}`,
   });
 }
@@ -1408,6 +1237,10 @@ async function runWarehouse(client, interaction) {
     interaction.user.id,
     interaction.guildId
   );
+  const isManagerNow = guildClubService.isManager(membership.role);
+  const flow = isManagerNow
+    ? await warehouseService.getNetFlow(client, club.guild_club_id, 7)
+    : null;
 
   return interaction.editReply({
     components: [
@@ -1415,9 +1248,10 @@ async function runWarehouse(client, interaction) {
         viewerId: interaction.user.id,
         club,
         inventory,
-        isManager: guildClubService.isManager(membership.role),
+        isManager: isManagerNow,
         todayItemsTaken: daily?.items_taken || [],
         todayTimesUsed: daily?.times_used || 0,
+        netFlow7d: flow?.net,
       }),
     ],
     flags: MessageFlags.IsComponentsV2,
@@ -1442,6 +1276,18 @@ async function runDeposit(client, interaction) {
       components: [depositErrorView(result, itemId)],
       flags: MessageFlags.IsComponentsV2,
     });
+  }
+
+  if (result.large_announce) {
+    guildClubAnnouncer
+      .announceLargeDeposit(client, {
+        userId: interaction.user.id,
+        club: result.club,
+        itemDefArg: result.item,
+        deposited: result.deposited,
+        marketValueAmount: result.market_value,
+      })
+      .catch(() => {});
   }
 
   return interaction.editReply({
