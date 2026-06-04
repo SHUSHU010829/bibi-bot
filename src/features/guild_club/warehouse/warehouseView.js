@@ -201,7 +201,7 @@ const buildDepositSuccessContainer = ({
     .setAccentColor(COLOR_SUCCESS)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# ✅ <@${userId}> 向公會倉庫存入 ${itemDefArg.emoji} ${itemDefArg.name} ×${deposited}`
+        `# ✅ <@${userId}> 向「${club.name}」倉庫存入 ${itemDefArg.emoji} ${itemDefArg.name} ×${deposited}`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder())
@@ -241,7 +241,7 @@ const buildWithdrawSuccessContainer = ({
     .setAccentColor(COLOR_SUCCESS)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# ✅ <@${userId}> 從公會倉庫領取 ${itemDefArg.emoji} ${itemDefArg.name} ×${withdrawn}`
+        `# ✅ <@${userId}> 從「${club.name}」倉庫領取 ${itemDefArg.emoji} ${itemDefArg.name} ×${withdrawn}`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder())

@@ -218,7 +218,7 @@ module.exports = {
           def.name.toLowerCase().includes(term)
       )
       .slice(0, 25)
-      .map(({ id, def }) => ({ name: `${def.name}（${id}）`, value: id }));
+      .map(({ id, def }) => ({ name: def.name, value: id }));
     await interaction.respond(choices).catch(() => {});
   },
 
