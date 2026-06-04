@@ -5,6 +5,7 @@ const { isMessageXpEligible, isMessageRepetitive } = require("../../utils/xpGuar
 const { randomInt } = require("../../utils/levelMath");
 const grantXp = require("../../features/leveling/grantXp");
 const grantCoins = require("../../features/economy/grantCoins");
+const chatRewardBuffer = require("../../features/economy/chatRewardBuffer");
 const questService = require("../../features/quests/questService");
 const notifyQuestClaim = require("../../features/quests/notifyQuestClaim");
 const { getQuestById } = require("../../features/quests/questDefinitions");
@@ -65,18 +66,15 @@ async function tryGrantMessageCoins(client, message) {
   const cfg = coinSystem.message;
   if (!cfg) return;
 
-  // 獨立冷卻（不和 XP 共用 levelTransactionsCollection）
+  // 獨立冷卻：buffer 化後改讀 chatBuffer.lastAt.message（已 flush 的舊紀錄不再查 CoinTransactions）
   const cooldownMs = (cfg.cooldownSeconds || 60) * 1000;
-  const recent = await client.coinTransactionsCollection.findOne(
-    {
-      userId: message.author.id,
-      guildId: message.guildId,
-      source: "message",
-      createdAt: { $gt: new Date(Date.now() - cooldownMs) },
-    },
-    { projection: { _id: 1 } },
+  const lastAt = await chatRewardBuffer.getLastChatAt(
+    client,
+    message.author.id,
+    message.guildId,
+    "message",
   );
-  if (recent) return;
+  if (lastAt && Date.now() - lastAt.getTime() < cooldownMs) return;
 
   const minC = cfg.minCoins ?? 0;
   const maxC = cfg.maxCoins ?? 2;

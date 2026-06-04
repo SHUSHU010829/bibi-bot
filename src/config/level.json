@@ -81,6 +81,12 @@
       "reactionsPerCoin": 2,
       "dailyCapPerUser": 10
     },
+    "chatBuffer": {
+      "enabled": true,
+      "flushThreshold": 50,
+      "flushCron": "5 0 * * *",
+      "timezone": "Asia/Taipei"
+    },
     "daily": {
       "baseCoins": 60,
       "streakBonusPerDay": 10,

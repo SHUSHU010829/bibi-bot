@@ -73,11 +73,17 @@ async function buildWalletView(client, { target, member, guildId }) {
   const tierLabel =
     tier === "platinum" ? "🌟 Platinum" : tier === "premium" ? "✨ Premium" : "Standard";
 
+  const pending =
+    (doc.chatBuffer?.pending?.message || 0) +
+    (doc.chatBuffer?.pending?.voice || 0) +
+    (doc.chatBuffer?.pending?.reaction || 0);
+  const pendingLine = pending > 0 ? ` ・ 待入帳 **+${pending.toLocaleString()}**` : "";
+
   const container = new ContainerBuilder()
     .setAccentColor(0xffd166)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `## ${MONEY_EMOJI} ${displayName} 的錢包\n-# 目前金幣 **${(doc.totalCoins || 0).toLocaleString()}** ・ 累積 **${lifetime.toLocaleString()}**`
+        `## ${MONEY_EMOJI} ${displayName} 的錢包\n-# 目前金幣 **${(doc.totalCoins || 0).toLocaleString()}** ・ 累積 **${lifetime.toLocaleString()}**${pendingLine}`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder());

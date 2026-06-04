@@ -8,6 +8,7 @@ const {
 const { getTodayCoinsBySources } = require("./dailyCoinCap");
 const { getActiveBuffMultiplier } = require("../shop/activeBuff");
 const { guildClub } = require("../../config");
+const chatRewardBuffer = require("./chatRewardBuffer");
 
 async function getGuildWorkMultiplier(client, userId, guildId) {
   if (!guildClub?.enabled) return 1;
@@ -26,6 +27,7 @@ async function getGuildWorkMultiplier(client, userId, guildId) {
 }
 
 const MSG_VOICE_SOURCES = ["message", "voice"];
+const CHAT_SOURCES = ["message", "voice", "reaction"];
 const CASINO_SOURCES = ["bet", "payout"];
 const SINK_SOURCES = ["shop_buy", "auction_bid", "wealth_tax", "transfer_out", "transfer_fee", "deposit_lock", "deposit_penalty", "stock_buy", "stock_fee", "event_host_lock", "invite_clawback", "duel_stake", "stone_appraisal", "market_buy", "market_escrow", "market_bid", "farm_plant", "farm_expand", "barter_fee", "guild_create", "guild_donate"];
 const PEER_SOURCES = ["transfer_in", "transfer_out", "deposit_lock", "deposit_release", "event_prize", "event_refund", "auction_payout", "auction_refund", "duel_payout", "duel_refund", "market_payout", "market_refund"];
@@ -53,6 +55,22 @@ module.exports = async (client, opts) => {
 
   let amount = Math.floor(opts.amount || 0);
   if (amount === 0 && opts.source !== "admin") return null;
+
+  // 聊天/語音/表情金幣走 buffer（每日上限 + threshold flush），減少每則訊息一筆 DB 寫入
+  if (
+    coinSystem?.chatBuffer?.enabled !== false &&
+    CHAT_SOURCES.includes(opts.source) &&
+    amount > 0
+  ) {
+    return chatRewardBuffer.addToBuffer(client, { ...opts, amount });
+  }
+
+  // 任何會扣款的非聊天 grant，先把該玩家的聊天 buffer flush，確保餘額包含已累積金額
+  if (amount < 0 && opts.userId && opts.guildId) {
+    await chatRewardBuffer
+      .flushUserBuffer(client, opts.userId, opts.guildId, { reason: "pre_debit" })
+      .catch(() => {});
+  }
   if (
     amount < 0 &&
     opts.source !== "admin" &&
