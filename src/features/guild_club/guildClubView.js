@@ -171,7 +171,14 @@ function buildInfoContainer({
       const roleEmoji =
         m.role === "leader" ? "👑" : m.role === "vice_leader" ? "🛡️" : "・";
       const donated = (m.total_donated || 0).toLocaleString();
-      return `${roleEmoji} <@${m.userId}>　捐款 ${donated} ${COIN_EMOJI}`;
+      const base = `${roleEmoji} <@${m.userId}>　捐款 ${donated} ${COIN_EMOJI}`;
+      if (isMember && m.userId === viewerId) {
+        const donatedRaw = m.total_donated || 0;
+        const warehouseRaw = m.warehouse_donated_value || 0;
+        const total = donatedRaw + warehouseRaw;
+        return `${base}\n-# 你目前公會貢獻：${total.toLocaleString()}（捐款 ${donatedRaw.toLocaleString()} + 倉庫存入 ${warehouseRaw.toLocaleString()}）`;
+      }
+      return base;
     });
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`**成員**（${members.length}）\n${lines.join("\n")}`)
