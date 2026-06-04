@@ -58,7 +58,22 @@
       "welfare": "🏛️ 福利金",
       "wealth_tax": "🏛️ 財富稅",
       "donation": "💖 抖內",
-      "admin": "🛠️ 系統調整"
+      "admin": "🛠️ 系統調整",
+      "dungeon": "🗡️ 地下城",
+      "farm_harvest": "🌾 農場收成",
+      "farm_raid": "🌾 農場掠奪",
+      "farm_sell": "🌾 賣作物",
+      "farm_plant": "🌾 種植",
+      "farm_expand": "🌾 擴建農場",
+      "boss_loot": "🐲 BOSS 掉落",
+      "boss_killer": "🐲 BOSS 尾刀",
+      "boss_kill_bonus": "🐲 BOSS 擊殺獎",
+      "guild_create": "🏰 公會建立",
+      "guild_donate": "🏰 公會捐款",
+      "guild_create_refund": "🏰 公會建立返還",
+      "guild_donate_refund": "🏰 公會捐款返還",
+      "guild_disband_payout": "🏰 公會解散返還",
+      "barter_fee": "🔀 物物交換手續費"
     }
   }
 }
