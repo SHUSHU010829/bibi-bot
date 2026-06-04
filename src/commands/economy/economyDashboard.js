@@ -77,13 +77,13 @@ function trendLine(snapshots) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("經濟儀表板")
+    .setName("economy-dashboard")
     .setDescription("[ADMIN] 查看金幣健康度：流通、印幣 / 銷幣、集中度 📊")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild)
     .addIntegerOption((opt) =>
       opt
-        .setName("區間")
+        .setName("range")
         .setDescription("查詢範圍")
         .setRequired(false)
         .addChoices(...RANGE_CHOICES.map((c) => ({ name: c.name, value: c.value }))),
@@ -100,7 +100,7 @@ module.exports = {
         return interaction.editReply("🔧 金幣系統尚未啟動！");
       }
 
-      const days = interaction.options.getInteger("區間") || 7;
+      const days = interaction.options.getInteger("range") || 7;
       const guildId = interaction.guildId;
       const fromIso = days === 1 ? todayIso() : isoDaysAgo(days - 1);
       const toIso = todayIso();
@@ -219,7 +219,7 @@ module.exports = {
         flags: MessageFlags.IsComponentsV2,
       });
     } catch (error) {
-      console.log(`[ERROR] /經濟儀表板:\n${error}\n${error.stack}`.red);
+      console.log(`[ERROR] /economy-dashboard:\n${error}\n${error.stack}`.red);
       await interaction
         .editReply("🔧 計算經濟儀表板失敗，看 console")
         .catch(() => {});
