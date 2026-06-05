@@ -141,15 +141,18 @@ const runExclusive = (guildId, fn) => {
   return next;
 };
 
-const detectUsedInvite = async (client, guild) => {
+const detectUsedInvite = async (client, guild, ctx = {}) => {
   const guildMap = ensureGuildMap(guild.id);
   const before = new Map(guildMap);
+  const who = ctx.inviteeId ? ` invitee=${ctx.inviteeId}` : "";
 
   let invites = null;
   try {
     invites = await guild.invites.fetch();
   } catch (e) {
-    console.log(`[INVITE] re-fetch invites failed: ${e.message}`.yellow);
+    console.log(
+      `[INVITE] re-fetch invites failed${who} guild=${guild.id}: ${e.message}`.red
+    );
     return null;
   }
 
@@ -217,9 +220,23 @@ const detectUsedInvite = async (client, guild) => {
   if (candidates.length === 1) {
     winner = candidates[0];
   } else if (candidates.length > 1) {
-    console.log(
-      `[INVITE] ambiguous: ${candidates.length} invites changed for guild ${guild.id}, skipping reward`.yellow
-    );
+    const uniqueInviters = new Set(candidates.map((c) => c.inviterId || ""));
+    const allSameInviter =
+      uniqueInviters.size === 1 && [...uniqueInviters][0] !== "";
+    if (allSameInviter) {
+      const nonVanity = candidates.find((c) => !c.vanity) || candidates[0];
+      winner = nonVanity;
+      console.log(
+        `[INVITE] ${candidates.length} candidates但 inviter 一致 (${winner.inviterId})${who}，仍歸因到 code=${winner.code}`.cyan
+      );
+    } else {
+      const dump = candidates
+        .map((c) => `${c.code}:${c.inviterId || "vanity"}`)
+        .join(", ");
+      console.log(
+        `[INVITE] ambiguous${who} guild=${guild.id} candidates=[${dump}], skipping reward`.red
+      );
+    }
   }
 
   // 重建 cache：勝出的邀請每次只「消耗」一次使用，把多出的 delta
@@ -268,8 +285,8 @@ const detectUsedInvite = async (client, guild) => {
   return winner;
 };
 
-const findUsedInvite = (client, guild) =>
-  runExclusive(guild.id, () => detectUsedInvite(client, guild));
+const findUsedInvite = (client, guild, ctx) =>
+  runExclusive(guild.id, () => detectUsedInvite(client, guild, ctx));
 
 module.exports = {
   primeCache,
