@@ -6,6 +6,7 @@ const grantCoins = require("../economy/grantCoins");
 const twitchPerks = require("./twitchPerks");
 const encounterService = require("./encounterService");
 const { getFoodAtkBonus } = require("../fishing/cookService");
+const bus = require("../eventBus");
 
 // CD 縮短券持有上限（與商店 shop.json maxStack 一致）
 const CD_TICKET_MAX = 60;
@@ -370,6 +371,70 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     weaponBroke,
     weaponDurabilityAfter,
   };
+
+  bus.emit("dungeon.cleared", {
+    userId,
+    guildId,
+    won,
+    monster: monster.name,
+    dungeonCount: result.dungeonCount,
+  });
+  if (won) {
+    if (oreGained?.qty > 0 && !oreOverflowToCoins) {
+      bus.emit("item.gained", {
+        userId, guildId,
+        itemType: "ore",
+        itemId: oreGained.ore,
+        qty: oreGained.qty,
+        source: "dungeon",
+      });
+    }
+    if (legendaryGained > 0) {
+      bus.emit("item.gained", {
+        userId, guildId,
+        itemType: "fragment",
+        itemId: "legendary_fragment",
+        qty: legendaryGained,
+        source: "dungeon",
+      });
+    }
+    if (potionGained > 0) {
+      bus.emit("item.gained", {
+        userId, guildId,
+        itemType: "potion",
+        itemId: "luck_potion",
+        qty: potionGained,
+        source: "dungeon",
+      });
+    }
+    if (ticketGained > 0) {
+      bus.emit("item.gained", {
+        userId, guildId,
+        itemType: "ticket",
+        itemId: "cd_ticket",
+        qty: ticketGained,
+        source: "dungeon",
+      });
+    }
+    if (slimeGained > 0) {
+      bus.emit("item.gained", {
+        userId, guildId,
+        itemType: "monster_drop",
+        itemId: "monster_slime",
+        qty: slimeGained,
+        source: "dungeon",
+      });
+    }
+    if (seedGained?.qty > 0) {
+      bus.emit("item.gained", {
+        userId, guildId,
+        itemType: "seed",
+        itemId: seedGained.seedKey,
+        qty: seedGained.qty,
+        source: "dungeon",
+      });
+    }
+  }
 
   // 突發事件（戰鬥擴充）：戰後以一定機率觸發。會自行寫庫並可能改動體力。
   const enc = await encounterService

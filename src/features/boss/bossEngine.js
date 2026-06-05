@@ -3,6 +3,7 @@ const { boss, serverId } = require("../../config");
 const buffResolver = require("../buff/buffResolver");
 const { getOrCreate } = require("../mining/miningProfile");
 const { resolveStamina, staminaMax, getMemberClub } = require("../mining/dungeonService");
+const bus = require("../eventBus");
 
 function cfg() {
   return boss || {};
@@ -254,6 +255,22 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     phase: newPhase,
     ts: now,
   });
+
+  bus.emit("boss.attacked", {
+    userId,
+    guildId,
+    bossId: bossDoc.boss_id,
+    damage,
+    isCounter,
+    phaseAfter: newPhase,
+  });
+  if (killed) {
+    bus.emit("boss.killed", {
+      userId,
+      guildId,
+      bossId: bossDoc.boss_id,
+    });
+  }
 
   return {
     ok: true,

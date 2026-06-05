@@ -8,6 +8,7 @@ const encounterService = require("./encounterService");
 const { consumeMineLuckUse } = require("../fishing/cookService");
 const grantCoins = require("../economy/grantCoins");
 const { priceOf } = require("./overflowConfirm");
+const bus = require("../eventBus");
 
 // 執行一次挖礦。回傳結果物件交由指令層呈現（含彩虹石公告與耐久 DM 所需資料）。
 // allowOverflow=true：背包滿時不擋；roll 出的礦能放多少放多少，溢出折成系統收購價金幣。
@@ -172,6 +173,24 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
       result.newCooldownAt = enc.patch.newCooldownAt;
     }
     result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body };
+  }
+
+  bus.emit("mine.done", {
+    userId,
+    guildId,
+    ore,
+    qty,
+    mineCountTotal: result.mineCountTotal,
+  });
+  if (qty > 0) {
+    bus.emit("item.gained", {
+      userId,
+      guildId,
+      itemType: "ore",
+      itemId: ore,
+      qty,
+      source: "mine",
+    });
   }
 
   // 賭石只能賭「這次挖到還留著的石頭」。突發事件可能扣掉本次剛挖到的石頭（lose_ore），

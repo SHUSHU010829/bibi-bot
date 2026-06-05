@@ -9,6 +9,7 @@ const { getTodayCoinsBySources } = require("./dailyCoinCap");
 const { getActiveBuffMultiplier } = require("../shop/activeBuff");
 const { guildClub } = require("../../config");
 const chatRewardBuffer = require("./chatRewardBuffer");
+const bus = require("../eventBus");
 
 async function getGuildWorkMultiplier(client, userId, guildId) {
   if (!guildClub?.enabled) return 1;
@@ -257,6 +258,14 @@ module.exports = async (client, opts) => {
       // gameTitleService 尚未載入就靜默
     }
   }
+
+  bus.emit("coin.delta", {
+    userId: opts.userId,
+    guildId: opts.guildId,
+    delta: amount,
+    source: opts.source,
+    meta: opts.meta || {},
+  });
 
   return {
     granted: amount,

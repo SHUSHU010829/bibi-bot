@@ -7,6 +7,7 @@ const {
   getFoodFishBonus,
   consumeFishFortuneUse,
 } = require("./cookService");
+const bus = require("../eventBus");
 
 // 依 rareBonus 調整後的掉落權重：weight * (1 + rareBonus * rareFactor)。
 // 比照挖礦的 dropTable.adjustedWeights，讓更好的釣竿 / 海鮮拼盤偏向稀有魚。
@@ -124,6 +125,13 @@ async function fish(client, { userId, guildId, location = "stream" }) {
       { $set: { fish_cooldown_at: failCdAt, updatedAt: new Date() } }
     );
     consumeFortune();
+    bus.emit("fish.done", {
+      userId,
+      guildId,
+      caught: false,
+      location,
+      fishCountTotal: profile.fish_count_total || 0,
+    });
     return {
       ok: true,
       caught: false,
@@ -200,6 +208,34 @@ async function fish(client, { userId, guildId, location = "stream" }) {
   client.fishLogsCollection
     ?.insertOne({ user_id: userId, guild_id: guildId, fish: fishKey, location, ts: new Date() })
     .catch((e) => console.log(`[ERROR] insert fish log: ${e}`.red));
+
+  const newFishCountTotal = (profile.fish_count_total || 0) + 1;
+  bus.emit("fish.done", {
+    userId,
+    guildId,
+    caught: true,
+    fish: fishKey,
+    location,
+    fishCountTotal: newFishCountTotal,
+  });
+  bus.emit("item.gained", {
+    userId,
+    guildId,
+    itemType: "fish",
+    itemId: fishKey,
+    qty,
+    source: "fish",
+  });
+  for (const drop of rareDrops) {
+    bus.emit("item.gained", {
+      userId,
+      guildId,
+      itemType: "rare_item",
+      itemId: drop.field,
+      qty: 1,
+      source: "fish",
+    });
+  }
 
   return {
     ok: true,
