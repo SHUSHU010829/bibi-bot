@@ -183,19 +183,66 @@ async function toggle(client, { userId, guildId, type, readyAt }) {
 // 供 /打工、/挖礦 成功後呼叫，讓通知持續追蹤最近一次的冷卻。
 // 若 readyAt 已過（例如用 CD 縮短券把冷卻直接歸零），代表玩家當下就能挖、人也在現場，
 // 直接標記 notified 避免掃描器補送多餘的「冷卻結束」DM。
+//
+// 例外：若目前已有「到點但尚未發 DM」的 pending 通知（notified=false 且 readyAt<=now），
+// 不要被新動作的 readyAt 蓋掉——讓 cron 先把那筆 DM 發完，之後會由 scanAndNotify
+// 自動推進到下一塊；否則會把還沒發出的提醒整個吃掉（例如成熟前一秒種了新地塊）。
 async function refreshIfEnabled(client, { userId, guildId, type, readyAt }) {
   const c = coll(client);
   if (!c) return;
+  const now = Date.now();
+
+  const existing = await c
+    .findOne({ userId, guildId, type, enabled: true })
+    .catch(() => null);
+  if (
+    existing &&
+    !existing.notified &&
+    existing.readyAt > 0 &&
+    existing.readyAt <= now
+  ) {
+    return;
+  }
+
   await c
     .updateOne(
       { userId, guildId, type, enabled: true },
       {
         $set: {
           readyAt,
-          notified: (readyAt || 0) <= Date.now(),
+          notified: (readyAt || 0) <= now,
           updatedAt: new Date(),
         },
       }
+    )
+    .catch(() => {});
+}
+
+// scanAndNotify 在發完 DM 後呼叫，把 reminder 推進到「下一塊未來才會成熟」的 ready_at。
+// 沒有下一塊則保持 notified=true（讓 reminder 靜下來，直到玩家下次動作觸發 refresh）。
+// 目前只有 farm 是「同一個訂閱可能要連續觸發多次 DM」的型別，其它型別不需要推進。
+async function advanceAfterNotify(client, { userId, guildId, type }) {
+  if (type !== "farm") return;
+  const c = coll(client);
+  if (!c) return;
+  const nextPlot = await client.farmPlotsCollection
+    ?.findOne(
+      { userId, guildId, status: "growing", ready_at: { $gt: Date.now() } },
+      { sort: { ready_at: 1 }, projection: { ready_at: 1 } },
+    )
+    .catch(() => null);
+  const nextReadyAt = nextPlot?.ready_at || 0;
+  if (!nextReadyAt) return;
+  await c
+    .updateOne(
+      { userId, guildId, type, enabled: true },
+      {
+        $set: {
+          readyAt: nextReadyAt,
+          notified: false,
+          updatedAt: new Date(),
+        },
+      },
     )
     .catch(() => {});
 }
@@ -221,43 +268,52 @@ async function scanAndNotify(client) {
       .catch(() => ({ modifiedCount: 0 }));
     if (!claim.modifiedCount) continue;
 
-    const meta = TYPE_META[r.type];
-    if (!meta) continue;
+    // 不管 DM 是否真的送出（主開關關、user fetch 失敗、DM 被擋…），claim 過後一定要
+    // 推進 farm reminder 到下一塊，否則後面成熟的地塊也會被一起卡住。
+    try {
+      const meta = TYPE_META[r.type];
+      if (!meta) continue;
 
-    // 通知總開關關閉時，靜默跳過（已標記 notified，不會反覆補送）。
-    const masterOn = await notifyPrefs.isMasterEnabled(
-      client,
-      r.userId,
-      r.guildId
-    );
-    if (!masterOn) continue;
-
-    const user = await client.users.fetch(r.userId).catch(() => null);
-    if (!user) continue;
-
-    const guildName = client.guilds.cache.get(r.guildId)?.name || "伺服器";
-    const desc = meta.notifyText
-      ? `你在 **${guildName}** 的${meta.label}${meta.notifyText}`
-      : `你在 **${guildName}** 的${meta.label}冷卻結束囉，快來大顯身手！`;
-
-    const embed = new EmbedBuilder()
-      .setColor(0x57f287)
-      .setTitle(`${meta.emoji} ${meta.label}提醒`)
-      .setDescription(desc);
-
-    const components = [];
-    const link = channelLink(r.guildId, meta.channelKey);
-    if (link) {
-      components.push(
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setStyle(ButtonStyle.Link)
-            .setLabel(`前往頻道使用 ${meta.command}`)
-            .setURL(link)
-        )
+      const masterOn = await notifyPrefs.isMasterEnabled(
+        client,
+        r.userId,
+        r.guildId
       );
+      if (!masterOn) continue;
+
+      const user = await client.users.fetch(r.userId).catch(() => null);
+      if (!user) continue;
+
+      const guildName = client.guilds.cache.get(r.guildId)?.name || "伺服器";
+      const desc = meta.notifyText
+        ? `你在 **${guildName}** 的${meta.label}${meta.notifyText}`
+        : `你在 **${guildName}** 的${meta.label}冷卻結束囉，快來大顯身手！`;
+
+      const embed = new EmbedBuilder()
+        .setColor(0x57f287)
+        .setTitle(`${meta.emoji} ${meta.label}提醒`)
+        .setDescription(desc);
+
+      const components = [];
+      const link = channelLink(r.guildId, meta.channelKey);
+      if (link) {
+        components.push(
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setStyle(ButtonStyle.Link)
+              .setLabel(`前往頻道使用 ${meta.command}`)
+              .setURL(link)
+          )
+        );
+      }
+      await user.send({ embeds: [embed], components }).catch(() => {});
+    } finally {
+      await advanceAfterNotify(client, {
+        userId: r.userId,
+        guildId: r.guildId,
+        type: r.type,
+      });
     }
-    await user.send({ embeds: [embed], components }).catch(() => {});
   }
 }
 
