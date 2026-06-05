@@ -16,6 +16,14 @@
 //   gc_edit_desc_<userId>                            — 編輯公會簡介（彈出 Modal）
 //   gc_desc_modal_<userId>                           — Modal submit：寫入簡介
 //   gc_apps_<userId>                                 — 開啟待審申請列表（會長/副會長）
+//   gc_manage_kick_<leaderId>                        — 公會管理：開啟踢人選單
+//   gc_manage_transfer_<leaderId>                    — 公會管理：開啟轉讓選單
+//   gc_manage_promote_vice_<leaderId>                — 公會管理：開啟指派副會長選單
+//   gc_manage_demote_vice_<leaderId>                 — 公會管理：開啟撤銷副會長選單
+//   gc_manage_disband_<leaderId>                     — 公會管理：開啟解散確認
+//   gc_select_<mode>_<leaderId>                      — UserSelectMenu 選人完成
+//   gc_transfer_confirm_<leaderId>_<targetId>        — 確定轉讓
+//   gc_transfer_cancel_<leaderId>                    — 取消轉讓
 
 require("colors");
 const { MessageFlags } = require("discord.js");
@@ -39,6 +47,14 @@ module.exports = async (client, interaction) => {
 
   if (interaction.isModalSubmit?.() && id.startsWith(guildClubView.EDIT_DESC_MODAL_PREFIX)) {
     return handleEditDescriptionSubmit(client, interaction);
+  }
+
+  if (interaction.isUserSelectMenu?.()) {
+    if (id.startsWith("gc_select_kick_")) return handleManageSelect(client, interaction, "kick");
+    if (id.startsWith("gc_select_transfer_")) return handleManageSelect(client, interaction, "transfer");
+    if (id.startsWith("gc_select_promote_vice_")) return handleManageSelect(client, interaction, "promote_vice");
+    if (id.startsWith("gc_select_demote_vice_")) return handleManageSelect(client, interaction, "demote_vice");
+    return;
   }
 
   if (!interaction.isButton()) return;
@@ -80,6 +96,13 @@ module.exports = async (client, interaction) => {
   if (id.startsWith("gc_apps_")) {
     return handleOpenApplications(client, interaction);
   }
+  if (id.startsWith("gc_manage_kick_")) return handleManageOpen(client, interaction, "kick");
+  if (id.startsWith("gc_manage_transfer_")) return handleManageOpen(client, interaction, "transfer");
+  if (id.startsWith("gc_manage_promote_vice_")) return handleManageOpen(client, interaction, "promote_vice");
+  if (id.startsWith("gc_manage_demote_vice_")) return handleManageOpen(client, interaction, "demote_vice");
+  if (id.startsWith("gc_manage_disband_")) return handleManageDisband(client, interaction);
+  if (id.startsWith("gc_transfer_confirm_")) return handleTransferConfirm(client, interaction);
+  if (id.startsWith("gc_transfer_cancel_")) return handleTransferCancel(client, interaction);
 };
 
 async function handleOpenApplications(client, interaction) {
@@ -875,6 +898,482 @@ function questClaimFailureBody(result) {
   if (result.reason === "all_claimed_by_other") return "別的途徑剛剛領完了。";
   if (result.reason === "club_missing") return "公會已解散。";
   return `原因：${result.reason}`;
+}
+
+async function handleManageOpen(client, interaction, mode) {
+  const prefix = `gc_manage_${mode}_`;
+  const ownerId = interaction.customId.slice(prefix.length);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的管理按鈕！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const membership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  if (!membership) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "🏰 你已不在公會",
+          body: "沒有公會可管理。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  const leaderOnly = mode !== "kick";
+  if (leaderOnly && membership.role !== "leader") {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "🚫 只有會長能操作",
+          body: "此功能僅會長可用。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  if (mode === "kick" && !guildClubService.isManager(membership.role)) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "🚫 沒有踢人權限",
+          body: "只有會長或副會長能踢人。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  const club = await guildClubService.getClubById(client, membership.guild_club_id);
+  if (!club) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 公會資料異常",
+          body: "公會已不存在。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  return interaction.editReply({
+    components: [
+      guildClubView.buildManagePanelContainer({
+        viewerId: interaction.user.id,
+        mode,
+        club,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+async function handleManageDisband(client, interaction) {
+  const ownerId = interaction.customId.slice("gc_manage_disband_".length);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的解散按鈕！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const membership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  if (!membership) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "🏰 你還沒加入公會",
+          body: "沒有公會可解散。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  if (membership.role !== "leader") {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "🚫 只有會長能解散公會",
+          body: "如要退出公會，請使用 /公會 退會。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  let club = await guildClubService.getClubById(
+    client,
+    membership.guild_club_id
+  );
+  if (!club) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 公會資料異常",
+          body: "公會已不存在。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  const graceMs = guildClubService.hoursToMs(
+    guildClubService.antiLaunderingCfg().newClubGracePeriodHours
+  );
+  if (graceMs > 0 && club.created_at) {
+    const readyAt = new Date(club.created_at).getTime() + graceMs;
+    if (Date.now() < readyAt) {
+      return interaction.editReply({
+        components: [
+          guildClubView.buildErrorContainer({
+            title: "🧊 公會冷靜期中",
+            body: `公會剛成立還在冷靜期，<t:${Math.floor(readyAt / 1000)}:R> 後才能解散。`,
+            hint: "此冷靜期防止「建立→拉人→解散」的洗錢循環。",
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+  }
+  club = await guildClubService.settleLockedTreasury(client, club);
+  const members = await guildClubService.listMembers(client, club.guild_club_id);
+  const tenureMs = guildClubService.hoursToMs(
+    guildClubService.antiLaunderingCfg().memberPayoutMinTenureHours
+  );
+  const eligibleMembers = guildClubService.eligibleForPayout(members, tenureMs);
+  const eligibleCount = eligibleMembers.length;
+  const ineligibleCount = members.length - eligibleCount;
+  const payoutPerMember =
+    eligibleCount > 0
+      ? Math.floor((club.treasury_current || 0) / eligibleCount)
+      : 0;
+  return interaction.editReply({
+    components: [
+      guildClubView.buildDisbandConfirmContainer({
+        leaderId: interaction.user.id,
+        club,
+        members,
+        eligibleCount,
+        ineligibleCount,
+        payoutPerMember,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+async function handleManageSelect(client, interaction, mode) {
+  const prefix = `gc_select_${mode}_`;
+  const ownerId = interaction.customId.slice(prefix.length);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的選單！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  const targetId = interaction.values?.[0];
+  if (!targetId) return;
+  await interaction.deferUpdate();
+
+  try {
+    if (mode === "kick") {
+      const result = await guildClubMembership.kick(client, {
+        leaderId: interaction.user.id,
+        guildId: interaction.guildId,
+        targetId,
+      });
+      if (!result.ok) {
+        return interaction.editReply({
+          components: [
+            guildClubView.buildErrorContainer({
+              title: "❌ 踢人失敗",
+              body: kickFailureBody(result, targetId),
+            }),
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      return interaction.editReply({
+        components: [
+          guildClubView.buildKickSuccessContainer({
+            club: result.club,
+            targetId,
+            leaderId: interaction.user.id,
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+    if (mode === "transfer") {
+      const club = await guildClubService.getClubById(
+        client,
+        (await guildClubService.getMembership(
+          client,
+          interaction.user.id,
+          interaction.guildId
+        ))?.guild_club_id
+      );
+      if (!club) {
+        return interaction.editReply({
+          components: [
+            guildClubView.buildErrorContainer({
+              title: "❌ 公會資料異常",
+              body: "公會已不存在。",
+            }),
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      return interaction.editReply({
+        components: [
+          guildClubView.buildTransferConfirmContainer({
+            viewerId: interaction.user.id,
+            club,
+            targetId,
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+    if (mode === "promote_vice") {
+      const result = await guildClubMembership.promoteViceLeader(client, {
+        leaderId: interaction.user.id,
+        guildId: interaction.guildId,
+        targetId,
+      });
+      if (!result.ok) {
+        return interaction.editReply({
+          components: [promoteViceFailureView(result, targetId)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      return interaction.editReply({
+        components: [
+          guildClubView.buildPromoteViceSuccessContainer({
+            club: result.club,
+            leaderId: interaction.user.id,
+            targetId,
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+    if (mode === "demote_vice") {
+      const result = await guildClubMembership.demoteViceLeader(client, {
+        leaderId: interaction.user.id,
+        guildId: interaction.guildId,
+        targetId,
+      });
+      if (!result.ok) {
+        return interaction.editReply({
+          components: [demoteViceFailureView(result, targetId)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      return interaction.editReply({
+        components: [
+          guildClubView.buildDemoteViceSuccessContainer({
+            club: result.club,
+            leaderId: interaction.user.id,
+            targetId,
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+  } catch (e) {
+    console.log(`[GUILD_CLUB] manage_select(${mode}) 失敗：${e.stack || e.message}`.red);
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 操作失敗",
+          body: "出了點狀況，請稍後再試。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    }).catch(() => {});
+  }
+}
+
+async function handleTransferConfirm(client, interaction) {
+  const rest = interaction.customId.slice("gc_transfer_confirm_".length);
+  const sepIdx = rest.indexOf("_");
+  if (sepIdx <= 0) return;
+  const ownerId = rest.slice(0, sepIdx);
+  const targetId = rest.slice(sepIdx + 1);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的轉讓確認！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  await interaction.deferUpdate();
+  try {
+    const result = await guildClubMembership.transfer(client, {
+      leaderId: interaction.user.id,
+      guildId: interaction.guildId,
+      newLeaderId: targetId,
+    });
+    if (!result.ok) {
+      return interaction.editReply({
+        components: [transferFailureView(result, targetId)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+    return interaction.editReply({
+      components: [
+        guildClubView.buildTransferSuccessContainer({
+          club: result.club,
+          oldLeaderId: interaction.user.id,
+          newLeaderId: targetId,
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (e) {
+    console.log(`[GUILD_CLUB] transfer_confirm 失敗：${e.stack || e.message}`.red);
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 轉讓失敗",
+          body: "出了點狀況，請稍後再試。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    }).catch(() => {});
+  }
+}
+
+async function handleTransferCancel(client, interaction) {
+  const ownerId = interaction.customId.slice("gc_transfer_cancel_".length);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的轉讓確認！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  await interaction.deferUpdate();
+  return interaction.editReply({
+    components: [
+      guildClubView.buildErrorContainer({
+        title: "✅ 已取消轉讓",
+        body: "會長身分維持不變。",
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+function kickFailureBody(result, targetId) {
+  const { reason } = result;
+  if (reason === "not_in_club") return "你已不在公會。";
+  if (reason === "not_leader") return "你不是會長 / 副會長。";
+  if (reason === "cannot_kick_self") return "不能踢自己（要退會請用 /公會 退會）。";
+  if (reason === "target_not_in_your_club") return `<@${targetId}> 不在你的公會。`;
+  return `原因：${reason}`;
+}
+
+function transferFailureView(result, targetId) {
+  const { reason } = result;
+  if (reason === "not_in_club")
+    return guildClubView.buildErrorContainer({
+      title: "🏰 你已不在公會",
+      body: "沒有公會可轉讓。",
+    });
+  if (reason === "not_leader")
+    return guildClubView.buildErrorContainer({
+      title: "🚫 只有會長能轉讓",
+      body: "請會長使用此功能。",
+    });
+  if (reason === "cannot_transfer_to_self")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 不能轉讓給自己",
+      body: "請選擇其他成員。",
+    });
+  if (reason === "target_not_in_your_club")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 對方不在你的公會",
+      body: `<@${targetId}> 不在你的公會。`,
+    });
+  return guildClubView.buildErrorContainer({
+    title: "❌ 轉讓失敗",
+    body: `原因：${reason}`,
+  });
+}
+
+function promoteViceFailureView(result, targetId) {
+  const { reason } = result;
+  if (reason === "not_in_club")
+    return guildClubView.buildErrorContainer({
+      title: "🏰 你已不在公會",
+      body: "沒有公會可管理。",
+    });
+  if (reason === "not_leader")
+    return guildClubView.buildErrorContainer({
+      title: "🚫 只有會長可指派副會長",
+      body: "請會長使用此功能。",
+    });
+  if (reason === "cannot_promote_self")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 不能指派自己",
+      body: "你已經是會長了。",
+    });
+  if (reason === "target_not_in_your_club")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 對方不在你的公會",
+      body: `<@${targetId}> 不在你的公會。`,
+    });
+  if (reason === "already_vice_leader")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 對方已經是副會長",
+      body: `<@${targetId}> 已經是副會長。`,
+    });
+  if (reason === "target_is_leader")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 對方是會長",
+      body: "會長不能被指派為副會長。",
+    });
+  return guildClubView.buildErrorContainer({
+    title: "❌ 指派失敗",
+    body: `原因：${reason}`,
+  });
+}
+
+function demoteViceFailureView(result, targetId) {
+  const { reason } = result;
+  if (reason === "not_in_club")
+    return guildClubView.buildErrorContainer({
+      title: "🏰 你已不在公會",
+      body: "沒有公會可管理。",
+    });
+  if (reason === "not_leader")
+    return guildClubView.buildErrorContainer({
+      title: "🚫 只有會長可撤銷副會長",
+      body: "請會長使用此功能。",
+    });
+  if (reason === "target_not_in_your_club")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 對方不在你的公會",
+      body: `<@${targetId}> 不在你的公會。`,
+    });
+  if (reason === "target_not_vice_leader")
+    return guildClubView.buildErrorContainer({
+      title: "❌ 對方不是副會長",
+      body: `<@${targetId}> 不是副會長，無需撤銷。`,
+    });
+  return guildClubView.buildErrorContainer({
+    title: "❌ 撤銷失敗",
+    body: `原因：${reason}`,
+  });
 }
 
 function applicationFailureBody(reason, result) {

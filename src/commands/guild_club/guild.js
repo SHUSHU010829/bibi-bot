@@ -32,20 +32,17 @@ function isChannelInAllowedCategory(channel) {
 
 const SUB_CREATE = "建立";
 const SUB_INFO = "資訊";
-const SUB_DISBAND = "解散";
 const SUB_INVITE = "邀請";
 const SUB_APPLY = "申請";
 const SUB_LEAVE = "退會";
-const SUB_KICK = "踢人";
-const SUB_TRANSFER = "轉讓";
 const SUB_DONATE = "捐款";
 const SUB_QUEST = "任務";
 const SUB_RANK = "排行";
-const SUB_PROMOTE_VICE = "指派副會長";
-const SUB_DEMOTE_VICE = "撤銷副會長";
 const SUB_WAREHOUSE = "倉庫";
 const SUB_DEPOSIT = "存入";
 const SUB_WITHDRAW = "領取";
+
+// 解散 / 踢人 / 轉讓 / 指派副會長 / 撤銷副會長 已合併到 /公會 資訊 的「⚙️ 公會管理」按鈕區。
 
 module.exports = {
   // /公會 自己會檢查 allowedCategoryIds，跳過全域桶分流以免兩層互打。
@@ -80,11 +77,6 @@ module.exports = {
     )
     .addSubcommand((sub) =>
       sub
-        .setName(SUB_DISBAND)
-        .setDescription("解散公會（僅會長可用，金庫平分給成員）")
-    )
-    .addSubcommand((sub) =>
-      sub
         .setName(SUB_INVITE)
         .setDescription("邀請玩家加入公會（僅會長）")
         .addUserOption((opt) =>
@@ -112,22 +104,6 @@ module.exports = {
     )
     .addSubcommand((sub) =>
       sub
-        .setName(SUB_KICK)
-        .setDescription("踢出公會成員（僅會長）")
-        .addUserOption((opt) =>
-          opt.setName("使用者").setDescription("要踢出的成員").setRequired(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName(SUB_TRANSFER)
-        .setDescription("把會長身分轉讓給其他成員")
-        .addUserOption((opt) =>
-          opt.setName("使用者").setDescription("新的會長").setRequired(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
         .setName(SUB_DONATE)
         .setDescription("捐款進公會金庫")
         .addIntegerOption((opt) =>
@@ -143,22 +119,6 @@ module.exports = {
     )
     .addSubcommand((sub) =>
       sub.setName(SUB_RANK).setDescription("查看伺服器公會排行榜")
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName(SUB_PROMOTE_VICE)
-        .setDescription("指派副會長（僅會長）")
-        .addUserOption((opt) =>
-          opt.setName("使用者").setDescription("要指派的成員").setRequired(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName(SUB_DEMOTE_VICE)
-        .setDescription("撤銷副會長（僅會長）")
-        .addUserOption((opt) =>
-          opt.setName("使用者").setDescription("要撤銷的副會長").setRequired(true)
-        )
     )
     .addSubcommand((sub) =>
       sub.setName(SUB_WAREHOUSE).setDescription("查看公會倉庫存貨與今日領取額度")
@@ -255,17 +215,12 @@ module.exports = {
     try {
       if (sub === SUB_CREATE) return runCreate(client, interaction);
       if (sub === SUB_INFO) return runInfo(client, interaction);
-      if (sub === SUB_DISBAND) return runDisband(client, interaction);
       if (sub === SUB_INVITE) return runInvite(client, interaction);
       if (sub === SUB_APPLY) return runApply(client, interaction);
       if (sub === SUB_LEAVE) return runLeave(client, interaction);
-      if (sub === SUB_KICK) return runKick(client, interaction);
-      if (sub === SUB_TRANSFER) return runTransfer(client, interaction);
       if (sub === SUB_DONATE) return runDonate(client, interaction);
       if (sub === SUB_QUEST) return runQuest(client, interaction);
       if (sub === SUB_RANK) return runRank(client, interaction);
-      if (sub === SUB_PROMOTE_VICE) return runPromoteVice(client, interaction);
-      if (sub === SUB_DEMOTE_VICE) return runDemoteVice(client, interaction);
       if (sub === SUB_WAREHOUSE) return runWarehouse(client, interaction);
       if (sub === SUB_DEPOSIT) return runDeposit(client, interaction);
       if (sub === SUB_WITHDRAW) return runWithdraw(client, interaction);
@@ -474,105 +429,6 @@ async function runInfo(client, interaction) {
   });
 }
 
-async function runDisband(client, interaction) {
-  await interaction.deferReply();
-
-  const membership = await guildClubService.getMembership(
-    client,
-    interaction.user.id,
-    interaction.guildId
-  );
-  if (!membership) {
-    return interaction.editReply({
-      components: [
-        guildClubView.buildErrorContainer({
-          title: "🏰 你還沒加入公會",
-          body: "沒有公會可解散。",
-        }),
-      ],
-      flags: MessageFlags.IsComponentsV2,
-    });
-  }
-  if (membership.role !== "leader") {
-    return interaction.editReply({
-      components: [
-        guildClubView.buildErrorContainer({
-          title: "🚫 只有會長能解散公會",
-          body: "如要退出公會，請使用 /公會 退會。",
-        }),
-      ],
-      flags: MessageFlags.IsComponentsV2,
-    });
-  }
-
-  let club = await guildClubService.getClubById(
-    client,
-    membership.guild_club_id
-  );
-  if (!club) {
-    return interaction.editReply({
-      components: [
-        guildClubView.buildErrorContainer({
-          title: "❌ 公會資料異常",
-          body: "公會已不存在。",
-        }),
-      ],
-      flags: MessageFlags.IsComponentsV2,
-    });
-  }
-
-  // 解散冷靜期：未過就直接擋下，不顯示確認 UI
-  const graceMs = guildClubService.hoursToMs(
-    guildClubService.antiLaunderingCfg().newClubGracePeriodHours
-  );
-  if (graceMs > 0 && club.created_at) {
-    const readyAt = new Date(club.created_at).getTime() + graceMs;
-    if (Date.now() < readyAt) {
-      return interaction.editReply({
-        components: [
-          guildClubView.buildErrorContainer({
-            title: "🧊 公會冷靜期中",
-            body: `公會剛成立還在冷靜期，<t:${Math.floor(readyAt / 1000)}:R> 後才能解散。`,
-            hint: "此冷靜期防止「建立→拉人→解散」的洗錢循環。",
-          }),
-        ],
-        flags: MessageFlags.IsComponentsV2,
-      });
-    }
-  }
-
-  club = await guildClubService.settleLockedTreasury(client, club);
-
-  const members = await guildClubService.listMembers(
-    client,
-    club.guild_club_id
-  );
-  const tenureMs = guildClubService.hoursToMs(
-    guildClubService.antiLaunderingCfg().memberPayoutMinTenureHours
-  );
-  const eligibleMembers = guildClubService.eligibleForPayout(members, tenureMs);
-  const eligibleCount = eligibleMembers.length;
-  const ineligibleCount = members.length - eligibleCount;
-  const payoutPerMember =
-    eligibleCount > 0
-      ? Math.floor((club.treasury_current || 0) / eligibleCount)
-      : 0;
-
-  return interaction.editReply({
-    components: [
-      guildClubView.buildDisbandConfirmContainer({
-        leaderId: interaction.user.id,
-        club,
-        members,
-        eligibleCount,
-        ineligibleCount,
-        payoutPerMember,
-      }),
-    ],
-    flags: MessageFlags.IsComponentsV2,
-  });
-}
-
 // ───────── 邀請 ─────────
 
 async function runInvite(client, interaction) {
@@ -667,108 +523,6 @@ async function runLeave(client, interaction) {
       guildClubView.buildLeaveSuccessContainer({
         club: result.club,
         userId: interaction.user.id,
-      }),
-    ],
-    flags: MessageFlags.IsComponentsV2,
-  });
-}
-
-// ───────── 踢人 ─────────
-
-async function runKick(client, interaction) {
-  await interaction.deferReply();
-  const target = interaction.options.getUser("使用者", true);
-
-  const result = await guildClubMembership.kick(client, {
-    leaderId: interaction.user.id,
-    guildId: interaction.guildId,
-    targetId: target.id,
-  });
-
-  if (!result.ok) {
-    return interaction.editReply({
-      components: [
-        guildClubView.buildErrorContainer({
-          title: "❌ 無法踢人",
-          body:
-            result.reason === "not_in_club"
-              ? "你還沒加入公會。"
-              : result.reason === "not_leader"
-                ? "只有會長能踢人。"
-                : result.reason === "cannot_kick_self"
-                  ? "不能踢自己（要退會請用 /公會 退會）。"
-                  : result.reason === "target_not_in_your_club"
-                    ? `<@${target.id}> 不在你的公會。`
-                    : `原因：${result.reason}`,
-        }),
-      ],
-      flags: MessageFlags.IsComponentsV2,
-    });
-  }
-
-  return interaction.editReply({
-    components: [
-      guildClubView.buildKickSuccessContainer({
-        club: result.club,
-        targetId: target.id,
-        leaderId: interaction.user.id,
-      }),
-    ],
-    flags: MessageFlags.IsComponentsV2,
-  });
-}
-
-// ───────── 轉讓 ─────────
-
-async function runTransfer(client, interaction) {
-  await interaction.deferReply();
-  const target = interaction.options.getUser("使用者", true);
-
-  if (target.bot) {
-    return interaction.editReply({
-      components: [
-        guildClubView.buildErrorContainer({
-          title: "❌ 不能轉讓給機器人",
-          body: "請選擇真人成員。",
-        }),
-      ],
-      flags: MessageFlags.IsComponentsV2,
-    });
-  }
-
-  const result = await guildClubMembership.transfer(client, {
-    leaderId: interaction.user.id,
-    guildId: interaction.guildId,
-    newLeaderId: target.id,
-  });
-
-  if (!result.ok) {
-    return interaction.editReply({
-      components: [
-        guildClubView.buildErrorContainer({
-          title: "❌ 無法轉讓",
-          body:
-            result.reason === "not_in_club"
-              ? "你還沒加入公會。"
-              : result.reason === "not_leader"
-                ? "只有會長能轉讓。"
-                : result.reason === "cannot_transfer_to_self"
-                  ? "不能轉讓給自己。"
-                  : result.reason === "target_not_in_your_club"
-                    ? `<@${target.id}> 不在你的公會。`
-                    : `原因：${result.reason}`,
-        }),
-      ],
-      flags: MessageFlags.IsComponentsV2,
-    });
-  }
-
-  return interaction.editReply({
-    components: [
-      guildClubView.buildTransferSuccessContainer({
-        club: result.club,
-        oldLeaderId: interaction.user.id,
-        newLeaderId: target.id,
       }),
     ],
     flags: MessageFlags.IsComponentsV2,
@@ -871,148 +625,7 @@ async function runRank(client, interaction) {
   });
 }
 
-// 編輯簡介 / 領獎 / 申請列表 已改為按鈕（見 docs/GUILD_WAREHOUSE_DESIGN.md §12）。
-// 編輯：/公會 資訊 → [編輯簡介] 按鈕。
-// 領獎：/公會 任務 → [一鍵領取] 按鈕。
-// 申請：/公會 資訊 → [待審申請 N] 按鈕。
-
-// ───────── 指派 / 撤銷副會長 ─────────
-
-async function runPromoteVice(client, interaction) {
-  await interaction.deferReply();
-  const target = interaction.options.getUser("使用者", true);
-
-  if (target.bot) {
-    return interaction.editReply({
-      components: [
-        guildClubView.buildErrorContainer({
-          title: "❌ 不能指派機器人",
-          body: "請選擇真人成員。",
-        }),
-      ],
-      flags: MessageFlags.IsComponentsV2,
-    });
-  }
-
-  const result = await guildClubMembership.promoteViceLeader(client, {
-    leaderId: interaction.user.id,
-    guildId: interaction.guildId,
-    targetId: target.id,
-  });
-
-  if (!result.ok) {
-    return interaction.editReply({
-      components: [vicePromoteErrorView(result, target.id)],
-      flags: MessageFlags.IsComponentsV2,
-    });
-  }
-
-  return interaction.editReply({
-    components: [
-      guildClubView.buildPromoteViceSuccessContainer({
-        club: result.club,
-        leaderId: interaction.user.id,
-        targetId: target.id,
-      }),
-    ],
-    flags: MessageFlags.IsComponentsV2,
-  });
-}
-
-async function runDemoteVice(client, interaction) {
-  await interaction.deferReply();
-  const target = interaction.options.getUser("使用者", true);
-
-  const result = await guildClubMembership.demoteViceLeader(client, {
-    leaderId: interaction.user.id,
-    guildId: interaction.guildId,
-    targetId: target.id,
-  });
-
-  if (!result.ok) {
-    return interaction.editReply({
-      components: [viceDemoteErrorView(result, target.id)],
-      flags: MessageFlags.IsComponentsV2,
-    });
-  }
-
-  return interaction.editReply({
-    components: [
-      guildClubView.buildDemoteViceSuccessContainer({
-        club: result.club,
-        leaderId: interaction.user.id,
-        targetId: target.id,
-      }),
-    ],
-    flags: MessageFlags.IsComponentsV2,
-  });
-}
-
-function vicePromoteErrorView(result, targetId) {
-  const { reason } = result;
-  if (reason === "not_in_club")
-    return guildClubView.buildErrorContainer({
-      title: "🏰 你還沒加入公會",
-      body: "請先 /公會 建立 或加入公會。",
-    });
-  if (reason === "not_leader")
-    return guildClubView.buildErrorContainer({
-      title: "🚫 只有會長可指派副會長",
-      body: "請會長使用此指令。",
-    });
-  if (reason === "cannot_promote_self")
-    return guildClubView.buildErrorContainer({
-      title: "❌ 不能指派自己",
-      body: "你已經是會長了。",
-    });
-  if (reason === "target_not_in_your_club")
-    return guildClubView.buildErrorContainer({
-      title: "❌ 對方不在你的公會",
-      body: `<@${targetId}> 不在你的公會。`,
-    });
-  if (reason === "already_vice_leader")
-    return guildClubView.buildErrorContainer({
-      title: "❌ 對方已經是副會長",
-      body: `<@${targetId}> 已經是副會長。`,
-    });
-  if (reason === "target_is_leader")
-    return guildClubView.buildErrorContainer({
-      title: "❌ 對方是會長",
-      body: "會長不能被指派為副會長。",
-    });
-  return guildClubView.buildErrorContainer({
-    title: "❌ 指派失敗",
-    body: `原因：${reason}`,
-  });
-}
-
-function viceDemoteErrorView(result, targetId) {
-  const { reason } = result;
-  if (reason === "not_in_club")
-    return guildClubView.buildErrorContainer({
-      title: "🏰 你還沒加入公會",
-      body: "請先加入公會。",
-    });
-  if (reason === "not_leader")
-    return guildClubView.buildErrorContainer({
-      title: "🚫 只有會長可撤銷副會長",
-      body: "請會長使用此指令。",
-    });
-  if (reason === "target_not_in_your_club")
-    return guildClubView.buildErrorContainer({
-      title: "❌ 對方不在你的公會",
-      body: `<@${targetId}> 不在你的公會。`,
-    });
-  if (reason === "target_not_vice_leader")
-    return guildClubView.buildErrorContainer({
-      title: "❌ 對方不是副會長",
-      body: `<@${targetId}> 不是副會長，無需撤銷。`,
-    });
-  return guildClubView.buildErrorContainer({
-    title: "❌ 撤銷失敗",
-    body: `原因：${reason}`,
-  });
-}
+// 編輯簡介 / 領獎 / 申請列表 / 解散 / 踢人 / 轉讓 / 副會長管理 已改為按鈕，集中在 /公會 資訊。
 
 // ───────── 錯誤 view helpers ─────────
 

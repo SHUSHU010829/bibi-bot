@@ -9,6 +9,7 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  UserSelectMenuBuilder,
 } = require("discord.js");
 
 const { guildClub } = require("../../config");
@@ -226,14 +227,52 @@ function buildInfoContainer({
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 你是會長。可使用 /公會 邀請、/公會 踢人、/公會 指派副會長、/公會 解散；上方按鈕可編輯簡介、處理申請。`
+        `**⚙️ 公會管理**\n-# 會長低頻操作集中此區。邀請仍使用 /公會 邀請。`
+      )
+    );
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`gc_manage_kick_${viewerId}`)
+          .setLabel("踢人")
+          .setEmoji("👢")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`gc_manage_promote_vice_${viewerId}`)
+          .setLabel("指派副會長")
+          .setEmoji("🛡️")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`gc_manage_demote_vice_${viewerId}`)
+          .setLabel("撤銷副會長")
+          .setEmoji("🪶")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`gc_manage_transfer_${viewerId}`)
+          .setLabel("轉讓會長")
+          .setEmoji("👑")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`gc_manage_disband_${viewerId}`)
+          .setLabel("解散公會")
+          .setEmoji("💥")
+          .setStyle(ButtonStyle.Danger)
       )
     );
   } else if (role === "vice_leader") {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 你是副會長。可使用 /公會 邀請、/公會 踢人（會長轉讓與解散僅會長可用）；上方按鈕可編輯簡介、處理申請。`
+        `**⚙️ 公會管理**（副會長）\n-# 邀請使用 /公會 邀請；解散 / 轉讓 / 副會長管理僅會長可用。`
+      )
+    );
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`gc_manage_kick_${viewerId}`)
+          .setLabel("踢人")
+          .setEmoji("👢")
+          .setStyle(ButtonStyle.Secondary)
       )
     );
   } else if (!isMember) {
@@ -881,6 +920,81 @@ function buildDemoteViceSuccessContainer({ club, leaderId, targetId }) {
     );
 }
 
+function buildManagePanelContainer({ viewerId, mode, club }) {
+  const titles = {
+    kick: "👢 選擇要踢出的成員",
+    transfer: "👑 選擇要轉讓會長的對象",
+    promote_vice: "🛡️ 選擇要指派為副會長的成員",
+    demote_vice: "🪶 選擇要撤銷副會長的成員",
+  };
+  const placeholders = {
+    kick: "選擇成員（會踢出公會）",
+    transfer: "選擇成員（成為新會長）",
+    promote_vice: "選擇成員（指派為副會長）",
+    demote_vice: "選擇副會長",
+  };
+  const hints = {
+    kick: "被踢出者進入入會冷卻，期間不能加入新公會。",
+    transfer: "下一步會有確認，轉讓後你會降為一般成員，不可逆。",
+    promote_vice: "副會長擁有與會長相同權限（除解散 / 轉讓 / 副會長管理外）。",
+    demote_vice: "撤銷後對方仍為一般成員。",
+  };
+  const container = new ContainerBuilder().setAccentColor(COLOR_WARN);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`# ${titles[mode]}`)
+  );
+  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`公會：「${club.name}」`)
+  );
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new UserSelectMenuBuilder()
+        .setCustomId(`gc_select_${mode}_${viewerId}`)
+        .setPlaceholder(placeholders[mode])
+        .setMinValues(1)
+        .setMaxValues(1)
+    )
+  );
+  if (hints[mode]) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# ${hints[mode]}`)
+    );
+  }
+  return container;
+}
+
+function buildTransferConfirmContainer({ viewerId, club, targetId }) {
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_WARN)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# 👑 確定轉讓會長？`)
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `「${club.name}」會長將從 <@${viewerId}> 轉給 <@${targetId}>。`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 此操作不可逆，你將降為一般成員。`
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`gc_transfer_confirm_${viewerId}_${targetId}`)
+          .setLabel("確定轉讓")
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId(`gc_transfer_cancel_${viewerId}`)
+          .setLabel("取消")
+          .setStyle(ButtonStyle.Secondary)
+      )
+    );
+}
+
 function buildErrorContainer({ title, body, hint }) {
   const c = new ContainerBuilder()
     .setAccentColor(COLOR_ERROR)
@@ -917,6 +1031,8 @@ module.exports = {
   buildDescriptionUpdatedContainer,
   buildPromoteViceSuccessContainer,
   buildDemoteViceSuccessContainer,
+  buildManagePanelContainer,
+  buildTransferConfirmContainer,
   formatBuff,
   EDIT_DESC_MODAL_PREFIX,
 };
