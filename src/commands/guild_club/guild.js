@@ -185,7 +185,7 @@ module.exports = {
     .addSubcommand((sub) =>
       sub
         .setName(SUB_WITHDRAW)
-        .setDescription("從公會倉庫領取資源（需付手續費，每日次數限制）")
+        .setDescription("快捷指令：從公會倉庫領取資源（或直接用 /公會 倉庫 點按鈕）")
         .addStringOption((opt) =>
           opt
             .setName("物品")
