@@ -179,9 +179,6 @@ module.exports = async (client) => {
     // 地下城決鬥對局狀態
     const duelGamesCollection = database.collection("DuelGames");
 
-    // 拍賣行掛牌
-    const auctionListingsCollection = database.collection("AuctionListings");
-
     // 市集掛單（擺攤/換礦/徵求/競標）
     const marketListingsCollection = database.collection("MarketListings");
 
@@ -291,7 +288,6 @@ module.exports = async (client) => {
     client.guildClubWarehouseDailyCollection = guildClubWarehouseDailyCollection;
     client.workProfilesCollection = workProfilesCollection;
     client.duelGamesCollection = duelGamesCollection;
-    client.auctionListingsCollection = auctionListingsCollection;
     client.marketListingsCollection = marketListingsCollection;
     client.barterListingsCollection = barterListingsCollection;
     client.marketplaceMailboxCollection = marketplaceMailboxCollection;
@@ -1179,24 +1175,6 @@ module.exports = async (client) => {
       await duelGamesCollection.createIndex(
         { updated_at: 1 },
         { expireAfterSeconds: 7 * 24 * 60 * 60, name: "duel_ttl_7d" }
-      );
-
-      // 拍賣行索引：(guild, listing_id) 唯一；結算掃描靠 (status, expires_at)
-      await auctionListingsCollection.createIndex(
-        { guild_id: 1, listing_id: 1 },
-        { unique: true, name: "uniq_auction_guild_listing" }
-      );
-      await auctionListingsCollection.createIndex(
-        { guild_id: 1, status: 1, expires_at: 1 },
-        { name: "auction_guild_status_expiry" }
-      );
-      await auctionListingsCollection.createIndex(
-        { guild_id: 1, seller_id: 1, status: 1 },
-        { name: "auction_guild_seller_status" }
-      );
-      await auctionListingsCollection.createIndex(
-        { settled_at: 1 },
-        { expireAfterSeconds: 7 * 24 * 60 * 60, name: "auction_ttl_7d", sparse: true }
       );
 
       // 市集索引：(guild, listing_id) 唯一；cron 用 (status, expires_at)；type 篩選

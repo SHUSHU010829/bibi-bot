@@ -196,6 +196,17 @@ function makeCache(client, userId, guildId) {
       }
       return c.coins;
     },
+    // 舊 AuctionListings 已被 MarketListings 取代，保留遷移寫入的歷史成交基數，
+    // 避免拍賣商人頭銜進度因切換 collection 而歸零。
+    async legacyAuctionBaseline() {
+      if (c.legacyAuctionBaseline === undefined) {
+        const d = await client.userLevelsCollection
+          ?.findOne({ userId, guildId }, { projection: { legacy_auction_sold_count: 1 } })
+          .catch(() => null);
+        c.legacyAuctionBaseline = d?.legacy_auction_sold_count || 0;
+      }
+      return c.legacyAuctionBaseline;
+    },
     count(coll, query) {
       return client[coll]?.countDocuments(query).catch(() => 0) ?? Promise.resolve(0);
     },
@@ -270,12 +281,16 @@ const RESOLVERS = {
       guildId: ctx.guildId,
       matched: { $gte: 6 },
     }),
-  auction_merchant: async (cache, ctx, req) =>
-    (await cache.count("auctionListingsCollection", {
+  auction_merchant: async (cache, ctx, req) => {
+    const current = await cache.count("marketListingsCollection", {
+      listing_type: "auction",
       seller_id: ctx.userId,
       guild_id: ctx.guildId,
       status: "sold",
-    })) >= req.soldCount,
+    });
+    const baseline = await cache.legacyAuctionBaseline();
+    return current + baseline >= req.soldCount;
+  },
 };
 
 // 檢查並解鎖達標稱號。categories 限制範圍（預設全部）。weekly 型不在此處理。
@@ -413,17 +428,17 @@ async function progress(client, { userId, guildId }) {
           1
         );
         break;
-      case "auction_merchant":
-        push(
-          "成交件數",
-          await cache.count("auctionListingsCollection", {
-            seller_id: userId,
-            guild_id: guildId,
-            status: "sold",
-          }),
-          req.soldCount
-        );
+      case "auction_merchant": {
+        const current = await cache.count("marketListingsCollection", {
+          listing_type: "auction",
+          seller_id: userId,
+          guild_id: guildId,
+          status: "sold",
+        });
+        const baseline = await cache.legacyAuctionBaseline();
+        push("成交件數", current + baseline, req.soldCount);
         break;
+      }
     }
     out.push({ id, weekly: false, parts });
   }

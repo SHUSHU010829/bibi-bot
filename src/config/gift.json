@@ -1,0 +1,6 @@
+{
+  "gift": {
+    "enabled": true,
+    "dailyMaxGives": 3
+  }
+}

@@ -1,6 +1,11 @@
 require("colors");
 const {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ContainerBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   TextDisplayBuilder,
   MessageFlags,
 } = require("discord.js");
@@ -24,6 +29,9 @@ const {
   ABORT_ID,
   PAGE_PREV,
   PAGE_NEXT,
+  VIEW_BROWSE_ID,
+  VIEW_MYSTALL_ID,
+  VIEW_MYBIDS_ID,
   BID_MODAL_PREFIX,
   FILTER_TYPE_ID,
   FILTER_ITEM_ID,
@@ -92,7 +100,14 @@ module.exports = async (client, interaction) => {
         type: typeArg,
         itemType: itemArg,
       });
-      const { container, rows: viewRows } = buildBrowseView(listings, total, 0, PAGE_SIZE, { listingType, itemType });
+      const { container, rows: viewRows } = buildBrowseView(
+        listings,
+        total,
+        0,
+        PAGE_SIZE,
+        { listingType, itemType },
+        interaction.user.id
+      );
       return interaction.editReply({
         components: [container, ...viewRows],
         flags: MessageFlags.IsComponentsV2,
@@ -127,7 +142,14 @@ module.exports = async (client, interaction) => {
         type: typeArg,
         itemType: itemArg,
       });
-      const { container, rows } = buildBrowseView(listings, total, page, PAGE_SIZE, { listingType, itemType });
+      const { container, rows } = buildBrowseView(
+        listings,
+        total,
+        page,
+        PAGE_SIZE,
+        { listingType, itemType },
+        interaction.user.id
+      );
       return interaction.editReply({
         components: [container, ...rows],
         flags: MessageFlags.IsComponentsV2,
@@ -211,7 +233,22 @@ module.exports = async (client, interaction) => {
 
     // ─── 點「下架」→ 確認面板（ephemeral）──────────────────────────────────
     if (interaction.isButton() && cid.startsWith(CANCEL_PREFIX)) {
-      const listingId = cid.slice(CANCEL_PREFIX.length);
+      // customId 格式：market_cancel_<sellerId>_<listingId>
+      // 舊格式（無 sellerId）也兼容：market_cancel_<listingId>
+      const rest = cid.slice(CANCEL_PREFIX.length);
+      const parts = rest.split("_");
+      let ownerIdFromCid = null;
+      let listingId = rest;
+      if (parts.length >= 2) {
+        ownerIdFromCid = parts[0];
+        listingId = parts.slice(1).join("_");
+      }
+      if (ownerIdFromCid && ownerIdFromCid !== interaction.user.id) {
+        return interaction.reply({
+          content: "❌ 這不是你的攤位，沒辦法下架。",
+          flags: MessageFlags.Ephemeral,
+        });
+      }
       const listing = await client.marketListingsCollection.findOne({
         guild_id: interaction.guildId,
         listing_id: listingId,
@@ -399,7 +436,64 @@ module.exports = async (client, interaction) => {
         member: interaction.member,
         amount,
       });
-      return interaction.editReply({ content: formatBidResult(result, amount), flags: MessageFlags.Ephemeral });
+      const { components } = buildBidResultView(result, amount);
+      return interaction.editReply({
+        components,
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
+
+    // ─── 快捷後續：回到 /市集 逛攤 ────────────────────────────────────────────
+    if (interaction.isButton() && cid === VIEW_BROWSE_ID) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const { listings, total } = await marketplaceService.listActive(client, interaction.guildId, {
+        page: 0,
+        pageSize: PAGE_SIZE,
+      });
+      const { container, rows } = buildBrowseView(
+        listings,
+        total,
+        0,
+        PAGE_SIZE,
+        {},
+        interaction.user.id
+      );
+      return interaction.editReply({
+        components: [container, ...rows],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
+
+    // ─── 快捷後續：回到 /市集 我的攤位 ─────────────────────────────────────────
+    if (interaction.isButton() && cid === VIEW_MYSTALL_ID) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const { buildMyStallView } = require("../../features/marketplace/marketplaceView");
+      const listings = await marketplaceService.listByOwner(
+        client,
+        interaction.guildId,
+        interaction.user.id
+      );
+      const { container, rows } = buildMyStallView(listings);
+      return interaction.editReply({
+        components: [container, ...rows],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
+
+    // ─── 快捷後續：查看我目前領先的競標 ───────────────────────────────────────
+    if (interaction.isButton() && cid === VIEW_MYBIDS_ID) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const { buildMyBidsView } = require("../../features/marketplace/marketplaceView");
+      const listings = await marketplaceService.listByBidder(
+        client,
+        interaction.guildId,
+        interaction.user.id
+      );
+      const { container, rows } = buildMyBidsView(listings);
+      return interaction.editReply({
+        components: [container, ...rows],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
     }
   } catch (error) {
     console.log(`[ERROR] handleMarketInteraction:\n${error}\n${error.stack}`.red);
@@ -482,36 +576,128 @@ function formatFulfillResult(result) {
   );
 }
 
-function formatBidResult(result, amount) {
+function bidFailContainer(result, amount) {
+  const container = new ContainerBuilder().setAccentColor(0xe74c3c);
+  const safeAmount = Number.isFinite(amount) ? amount.toLocaleString() : "—";
+
+  const blocks = {
+    not_found: {
+      title: "❌ 找不到這個競標",
+      detail: "可能剛好已被別人標走或已結標。",
+      hint: "用 /市集 逛攤 找其他競標。",
+    },
+    ended: {
+      title: "⌛ 競標已結束",
+      detail: "這件競標品已過期或已成交。",
+      hint: "用 /市集 逛攤 看現在還在進行的競標。",
+    },
+    own_listing: {
+      title: "❌ 不能對自己的競標出價",
+      detail: "這是你自己掛的攤位。",
+      hint: "想取消的話，用 /市集 我的攤位 點下架。",
+    },
+    too_low: {
+      title: "❌ 出價太低",
+      detail:
+        `需要至少：**${(result.required || 0).toLocaleString()}** ${COIN_EMOJI}\n` +
+        `你出價：**${safeAmount}** ${COIN_EMOJI}`,
+      hint: "每次至少需加價 5%（minBidIncrementRate）。",
+    },
+    insufficient_coins: {
+      title: "❌ 餘額不足",
+      detail:
+        `出價需要：**${safeAmount}** ${COIN_EMOJI}（含手續費）\n` +
+        `你目前有：**${(result.balance || 0).toLocaleString()}** ${COIN_EMOJI}`,
+      hint: "去 /打工 或 /挖礦 賺一點再回來。",
+    },
+    grant_failed: {
+      title: "❌ 出價失敗",
+      detail: "扣款時發生問題。",
+      hint: "稍後再試一次。",
+    },
+    race: {
+      title: "⚡ 出價被人搶先",
+      detail: "剛好有人同時出價，目前最高已不是你了。",
+      hint: "刷新頁面查看最新價格後再試。",
+    },
+  };
+  const b = blocks[result.reason] || {
+    title: "🔧 出價失敗",
+    detail: "發生未預期的錯誤。",
+    hint: "稍後再試或回報舒舒。",
+  };
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`# ${b.title}`)
+  );
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+  );
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`${b.detail}\n-# ${b.hint}`)
+  );
+  return container;
+}
+
+function bidSuccessButtons() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(VIEW_MYBIDS_ID)
+      .setLabel("我的競標")
+      .setEmoji("🏷️")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(VIEW_BROWSE_ID)
+      .setLabel("查看市集")
+      .setEmoji("🏪")
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+function buyoutSuccessButtons() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(VIEW_BROWSE_ID)
+      .setLabel("再逛逛市集")
+      .setEmoji("🏪")
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+function buildBidResultView(result, amount) {
   if (!result.ok) {
-    const msgs = {
-      not_found: "❌ 找不到這個競標（可能已結標）。",
-      ended: "⌛ 這件競標品已結標了。",
-      own_listing: "❌ 不能對自己的競標品出價。",
-      too_low: `❌ 出價太低，至少要 **${(result.required || 0).toLocaleString()}** ${COIN_EMOJI}。`,
-      insufficient_coins: `💰 餘額不足！你目前 **${(result.balance || 0).toLocaleString()}** ${COIN_EMOJI}。`,
-      grant_failed: "🔧 出價失敗，請稍後再試。",
-      race: "⚡ 剛好有人同時出價，請查看最新價格後再試。",
-    };
-    return msgs[result.reason] || "🔧 出價失敗，請稍後再試。";
+    return { components: [bidFailContainer(result, amount)] };
   }
 
   const l = result.listing;
   if (result.buyout) {
-    return (
-      `# 💰 直接成交！\n` +
-      `你以一口價 **${l.current_bid.toLocaleString()}** ${COIN_EMOJI} 買下 **#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty}！\n` +
-      `礦石已放進你的背包 🎒`
-    );
+    const container = new ContainerBuilder()
+      .setAccentColor(0x2ecc71)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 💰 直接成交！\n` +
+            `你以一口價 **${l.current_bid.toLocaleString()}** ${COIN_EMOJI} 買下 ` +
+            `**#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty}！\n` +
+            `礦石已放進你的背包 🎒`
+        )
+      )
+      .addActionRowComponents(buyoutSuccessButtons());
+    return { components: [container] };
   }
 
   const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
   const buyoutLine = l.buyout_price
     ? `\n💰 出到 **${l.buyout_price.toLocaleString()}** ${COIN_EMOJI} 可直接成交。`
     : "";
-  return (
-    `✅ **出價成功**\n` +
-    `你對 **#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty} 出價 **${l.current_bid.toLocaleString()}** ${COIN_EMOJI}，目前最高！\n` +
-    `截止 <t:${expiresEpoch}:R>，若被超越會自動退款。${buyoutLine}`
-  );
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ✅ 出價成功\n` +
+          `你對 **#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty} 出價 ` +
+          `**${l.current_bid.toLocaleString()}** ${COIN_EMOJI}，目前最高！\n` +
+          `截止 <t:${expiresEpoch}:R>，若被超越會自動退款。${buyoutLine}`
+      )
+    )
+    .addActionRowComponents(bidSuccessButtons());
+  return { components: [container] };
 }

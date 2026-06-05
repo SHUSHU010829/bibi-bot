@@ -21,6 +21,7 @@ const BUY_PREFIX      = "market_buy_";
 const ACCEPT_PREFIX   = "market_accept_";
 const FULFILL_PREFIX  = "market_fulfill_";
 const BID_PREFIX      = "market_bid_";
+// CANCEL 格式：market_cancel_<sellerId>_<listingId>（owner 驗證在 handler，渲染時也只給賣家看）
 const CANCEL_PREFIX   = "market_cancel_";
 const CONFIRM_BUY     = "market_confirm_buy_";
 const CONFIRM_ACCEPT  = "market_confirm_accept_";
@@ -29,6 +30,9 @@ const CONFIRM_CANCEL  = "market_confirm_cancel_";
 const ABORT_ID        = "market_abort";
 const PAGE_PREV       = "market_page_prev_";
 const PAGE_NEXT       = "market_page_next_";
+const VIEW_BROWSE_ID  = "market_view_browse";
+const VIEW_MYSTALL_ID = "market_view_mystall";
+const VIEW_MYBIDS_ID  = "market_view_mybids";
 
 function oreLabel(oreKey) {
   const def = mining?.ores?.[oreKey] || {};
@@ -107,9 +111,9 @@ function listingText(l) {
 // 組單筆掛單對應的操作按鈕（作為 Section 右側配件，與該筆掛單同排）
 function listingAccessoryButton(l, viewerIsSeller = false) {
   if (viewerIsSeller) {
-    // 我的攤位：只顯示下架鈕
+    // 賣家自己看到的攤位：只顯示下架鈕，customId 嵌入 sellerId 供 handler 驗證
     return new ButtonBuilder()
-      .setCustomId(`${CANCEL_PREFIX}${l.listing_id}`)
+      .setCustomId(`${CANCEL_PREFIX}${l.seller_id}_${l.listing_id}`)
       .setLabel("下架")
       .setEmoji("🗑️")
       .setStyle(ButtonStyle.Danger);
@@ -154,7 +158,8 @@ function encodePageId(prefix, page, { listingType = "all", itemType = "all" } = 
 
 // ─── 逛攤清單 ─────────────────────────────────────────────────────────────────
 // filters: { listingType: "all"|"sell"|"barter"|"want"|"auction", itemType: "all"|"ore"|"fish" }
-function buildBrowseView(listings, total, page, pageSize, filters = {}) {
+// viewerId：用來判斷某筆掛單是否屬於觀看者，是的話按鈕改顯示下架（owner gating at render time）
+function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId = null) {
   const { listingType = "all", itemType = "all" } = filters;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const container = new ContainerBuilder()
@@ -206,7 +211,8 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}) {
 
   // 每筆掛單一個區塊：左側敘述 + 右側操作鈕（同排），區塊之間以分隔線分開
   listings.forEach((l, idx) => {
-    const btn = listingAccessoryButton(l, false);
+    const viewerIsSeller = !!viewerId && l.seller_id === viewerId;
+    const btn = listingAccessoryButton(l, viewerIsSeller);
     if (btn) {
       container.addSectionComponents(
         new SectionBuilder()
@@ -295,6 +301,48 @@ function buildMyStallView(listings) {
   return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
 }
 
+// ─── 我的競標：我目前是最高出價者的競標 listing ─────────────────────────────
+function buildMyBidsView(listings) {
+  const container = new ContainerBuilder()
+    .setAccentColor(0x3498db)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        listings.length === 0
+          ? "# 🏷️ 我的競標\n你目前不是任何競標的最高出價者。\n-# 用 `/市集 逛攤` 找競標品。"
+          : `# 🏷️ 我的競標\n共 **${listings.length}** 件正領先中`
+      )
+    );
+
+  if (listings.length === 0) {
+    return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
+  }
+
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large)
+  );
+
+  listings.forEach((l, idx) => {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(listingText(l))
+    );
+    if (idx < listings.length - 1) {
+      container.addSeparatorComponents(
+        new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+      );
+    }
+  });
+
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+  );
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "-# 若被超越會自動退款並私訊通知；到期最高者得標。"
+    )
+  );
+  return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
+}
+
 // ─── 二次確認面板（ephemeral）────────────────────────────────────────────────
 function buildConfirmView(listing, action) {
   let content = "";
@@ -379,6 +427,7 @@ function buildBidModal(listingId, listing) {
 module.exports = {
   buildBrowseView,
   buildMyStallView,
+  buildMyBidsView,
   buildConfirmView,
   buildBidModal,
   oreLabel,
@@ -399,5 +448,8 @@ module.exports = {
   ABORT_ID,
   PAGE_PREV,
   PAGE_NEXT,
+  VIEW_BROWSE_ID,
+  VIEW_MYSTALL_ID,
+  VIEW_MYBIDS_ID,
   BID_MODAL_PREFIX,
 };
