@@ -4,6 +4,7 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  SectionBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -45,6 +46,80 @@ function pickaxeLabel(key) {
 const APPRAISE_PREFIX = "mining_appraise_";
 const MAX_LABEL_LEN = 80;
 
+// 冷卻中的 /挖礦 訊息上「🎫 使用 CD 縮短券」按鈕。
+// 與 /背包 上的 mining_use_cd_ticket_ 分開：那邊按完會刷新背包，這邊要刷新挖礦訊息。
+const MINE_CD_TICKET_PREFIX = "mine_cd_use_ticket_";
+
+function parseMineCdTicketId(customId) {
+  if (!customId || !customId.startsWith(MINE_CD_TICKET_PREFIX)) return null;
+  const ownerId = customId.slice(MINE_CD_TICKET_PREFIX.length);
+  if (!ownerId) return null;
+  return { ownerId };
+}
+
+function buildCooldownView({
+  ownerId,
+  readyAt,
+  cdTickets,
+  cdTicketUsedToday,
+  cdTicketDailyLimit,
+  cdTicketReductionMs,
+  notifyEnabled,
+}) {
+  const readyEpoch = Math.floor(readyAt / 1000);
+  const reductionMin = Math.max(1, Math.round((cdTicketReductionMs || 0) / 60000));
+  const overDailyLimit =
+    cdTicketDailyLimit > 0 && cdTicketUsedToday >= cdTicketDailyLimit;
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0xf1c40f)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ⏳ 鎬子還在休息\n下次可挖礦：<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  if (cdTickets > 0 && !overDailyLimit) {
+    container.addSectionComponents(
+      new SectionBuilder()
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `🎫 **CD 縮短券** ×${cdTickets}\n-# 立即 -${reductionMin} 分；冷卻歸零會自動再挖一次`,
+          ),
+        )
+        .setButtonAccessory(
+          new ButtonBuilder()
+            .setCustomId(`${MINE_CD_TICKET_PREFIX}${ownerId}`)
+            .setLabel(`使用 1 張（-${reductionMin} 分）`)
+            .setStyle(ButtonStyle.Primary),
+        ),
+    );
+  } else if (cdTickets > 0 && overDailyLimit) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 🎫 今日 CD 縮短券已用 ${cdTicketUsedToday}/${cdTicketDailyLimit} 張，明天再用吧！`,
+      ),
+    );
+  } else {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 🎫 沒有 CD 縮短券，可到 `/商店` 看看，或等冷卻自然結束。",
+      ),
+    );
+  }
+
+  if (!notifyEnabled) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 🔔 想冷卻結束時收到提醒？用 `/通知設定` 開啟挖礦到點通知。",
+      ),
+    );
+  }
+
+  return container;
+}
+
 function buildAppraiseRow(ownerId, ts, qty, feePerStone) {
   const fee = (feePerStone || 0) * (qty || 0);
   let label = `🔍 找鑑定師賭石（${qty} 顆・${fee.toLocaleString()} 金幣）`;
@@ -85,10 +160,24 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
         return interaction.editReply("🔧 挖礦系統尚未啟動！");
       }
       if (result.reason === "cooldown") {
-        const readyEpoch = Math.floor(result.readyAt / 1000);
-        return interaction.editReply(
-          `⛏️ 你的鎬子還在休息！下次可挖礦：<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）`
-        );
+        const notifyState = await reminder.getState(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          type: "mining",
+        });
+        const container = buildCooldownView({
+          ownerId: interaction.user.id,
+          readyAt: result.readyAt,
+          cdTickets: result.cdTickets,
+          cdTicketUsedToday: result.cdTicketUsedToday,
+          cdTicketDailyLimit: result.cdTicketDailyLimit,
+          cdTicketReductionMs: result.cdTicketReductionMs,
+          notifyEnabled: !!notifyState?.enabled,
+        });
+        return interaction.editReply({
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        });
       }
       if (result.reason === "backpack_full") {
         const confirm = buildOverflowConfirmView({
@@ -375,4 +464,7 @@ module.exports = {
   executeMine,
   MINE_OVERFLOW_CONFIRM_PREFIX,
   MINE_OVERFLOW_CANCEL_PREFIX,
+  MINE_CD_TICKET_PREFIX,
+  parseMineCdTicketId,
+  buildCooldownView,
 };

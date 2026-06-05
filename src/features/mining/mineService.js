@@ -19,11 +19,19 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
   const now = Date.now();
 
   if ((profile.mine_cooldown_at || 0) > now) {
+    const today = DateTime.now().setZone("Asia/Taipei").toISODate();
+    const dailyLimit = mining?.cdTicketDailyUseLimit || 0;
+    const usedToday =
+      profile.cd_ticket_used_date === today ? profile.cd_ticket_used_count || 0 : 0;
     return {
       ok: false,
       reason: "cooldown",
       remainingMs: profile.mine_cooldown_at - now,
       readyAt: profile.mine_cooldown_at,
+      cdTickets: profile.cd_ticket_count || 0,
+      cdTicketUsedToday: usedToday,
+      cdTicketDailyLimit: dailyLimit,
+      cdTicketReductionMs: mining?.cdTicketReductionMs || 0,
     };
   }
 
