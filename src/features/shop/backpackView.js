@@ -293,7 +293,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     };
 
     // ── 礦石 ──
-    if (category === "all" || category === "ore") {
+    if (category === "ore") {
       container.addSeparatorComponents(new SeparatorBuilder());
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
@@ -302,26 +302,61 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
             : "### ⛏️ 礦石\n-# 背包裡還沒有礦石，快去 /挖礦 吧！"
         )
       );
+    } else if (category === "all") {
+      container.addSeparatorComponents(new SeparatorBuilder());
+      const compact = [];
+      for (const [key, def] of Object.entries(mining.ores)) {
+        const qty = profile.backpack?.[key] || 0;
+        if (qty <= 0) continue;
+        compact.push(`${def.emoji || "⛏️"} ${def.name}×${qty}`);
+      }
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          compact.length > 0
+            ? `### ⛏️ 礦石（值 ${totalValue.toLocaleString()} ${COIN_EMOJI}）\n${compact.join("・")}`
+            : "### ⛏️ 礦石\n-# 背包裡還沒有礦石，快去 /挖礦 吧！"
+        )
+      );
     }
 
-    // ── 挖礦狀態 ──
-    if (category === "all" || category === "mine") {
+    // ── 挖礦狀態 + 道具（全部分類合併壓縮）──
+    if (category === "all") {
       container.addSeparatorComponents(new SeparatorBuilder());
-      // 在「挖礦道具」分類同時顯示礦石庫存，方便對照修復所需材料
-      const oreInvLine =
-        category === "mine"
-          ? (() => {
-              const lines = [];
-              for (const [key, def] of Object.entries(mining.ores)) {
-                const qty = profile.backpack?.[key] || 0;
-                if (qty <= 0) continue;
-                lines.push(`${def.emoji || "⛏️"} ${def.name}×${qty}`);
-              }
-              return lines.length > 0
-                ? `\n🪙 礦石庫存：${lines.join("・")}`
-                : `\n🪙 礦石庫存：（空）`;
-            })()
-          : "";
+      const toolItems = [
+        { emoji: "🍀", name: "幸運藥水", qty: luckUses },
+        { emoji: "🎫", name: "CD 縮短券", qty: ticketCount },
+        { emoji: "🪨", name: "劣質磨鎬石", qty: inferiorCount },
+        { emoji: "✨", name: "傳說素材碎片", qty: fragments },
+      ];
+      const hasTools = toolItems.filter((t) => t.qty > 0);
+      const noTools = toolItems.filter((t) => t.qty === 0);
+      const lines = [
+        `### 🪓 挖礦`,
+        `⛏️ 鎬子：${pdef.emoji || "⛏️"} ${pdef.name}（${durabilityText}）　📦 容量 ${used}/${cap}　⏳ ${cdText}`,
+      ];
+      if (hasTools.length > 0) {
+        lines.push(`🎁 道具：${hasTools.map((t) => `${t.emoji} ${t.name}×${t.qty}`).join("・")}`);
+      }
+      if (noTools.length > 0) {
+        lines.push(`-# 尚無：${noTools.map((t) => `${t.emoji} ${t.name}`).join("・")}`);
+      }
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(lines.join("\n"))
+      );
+    }
+
+    // ── 挖礦道具（互動分類）──
+    if (category === "mine") {
+      container.addSeparatorComponents(new SeparatorBuilder());
+      const oreInvLines = [];
+      for (const [key, def] of Object.entries(mining.ores)) {
+        const qty = profile.backpack?.[key] || 0;
+        if (qty <= 0) continue;
+        oreInvLines.push(`${def.emoji || "⛏️"} ${def.name}×${qty}`);
+      }
+      const oreInvLine = oreInvLines.length > 0
+        ? `\n🪙 礦石庫存：${oreInvLines.join("・")}`
+        : `\n🪙 礦石庫存：（空）`;
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `### 🪓 挖礦狀態\n` +
@@ -333,23 +368,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       );
     }
 
-    // ── 挖礦道具 ──
-    // 「全部」分類只顯示純文字摘要（避免超過 Discord Components V2 40 個元件上限），
-    // 切到「🪓 挖礦道具」分類才看到互動 Section + 按鈕。
-    if (category === "all") {
-      const repairHint = canRepair && repairCost
-        ? `\n🛠️ 修復鎬子需要：${formatCost(repairCost)}`
-        : "";
-      container.addSeparatorComponents(new SeparatorBuilder());
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `### 🎁 挖礦道具\n` +
-            `🍀 幸運藥水 ×${luckUses}　🎫 CD 縮短券 ×${ticketCount}　🪨 劣質磨鎬石 ×${inferiorCount}　✨ 傳說素材碎片 ×${fragments}` +
-            repairHint +
-            `\n-# 切到上方「🪓 挖礦道具」分類可使用道具／修復鎬子`
-        )
-      );
-    } else if (category === "mine") {
+    if (category === "mine") {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -475,19 +494,42 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     const rodLine = `🪝 目前釣竿：**${rodDef.emoji || "🎣"} ${rodDef.name || "竹釣竿"}**（${rodDuraText}）`;
 
     container.addSeparatorComponents(new SeparatorBuilder());
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `### 🎣 釣魚\n⏳ 釣魚冷卻：${fishCdText}\n${rodLine}` +
-        (buffLines.length > 0 ? `\n**食物 Buff**\n${buffLines.join("\n")}` : "\n-# 目前無食物 buff・用 /烹飪 製作")
-      )
-    );
 
-    // 每種有魚的魚種：在「釣魚」分類顯示數量 + 賣全部按鈕；
-    // 在「全部」分類只用純文字摘要，避免超過 Discord Components V2 40 個元件上限。
     const fishMarket = await orePriceEngine.getDailyFishPrices(client).catch(() => ({ prices: {} }));
     const fishPriceMap = fishMarket?.prices || {};
     const hasFish = Object.entries(fishing.fish || {}).some(([k]) => (fishBag[k] || 0) > 0);
-    if (category === "fish") {
+
+    if (category === "all") {
+      let bagTotalValue = 0;
+      const fishCompact = [];
+      for (const [key, def] of Object.entries(fishing.fish || {})) {
+        const qty = fishBag[key] || 0;
+        if (qty <= 0) continue;
+        const unit = typeof fishPriceMap[key] === "number" ? fishPriceMap[key] : (def.price || 0);
+        bagTotalValue += qty * unit;
+        fishCompact.push(`${def.emoji} ${def.name}×${qty}`);
+      }
+      const lines = [
+        `### 🎣 釣魚`,
+        `${rodLine}　⏳ ${fishCdText}`,
+      ];
+      if (fishCompact.length > 0) {
+        lines.push(`🐟 魚袋（值 ${bagTotalValue.toLocaleString()} ${COIN_EMOJI}）：${fishCompact.join("・")}`);
+      }
+      if (buffLines.length > 0) {
+        lines.push(`🍽️ **食物 Buff**`, ...buffLines);
+      }
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(lines.join("\n"))
+      );
+    } else {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🎣 釣魚\n⏳ 釣魚冷卻：${fishCdText}\n${rodLine}` +
+          (buffLines.length > 0 ? `\n**食物 Buff**\n${buffLines.join("\n")}` : "\n-# 目前無食物 buff・用 /烹飪 製作")
+        )
+      );
+
       if (hasFish) {
         for (const [key, def] of Object.entries(fishing.fish || {})) {
           const qty = fishBag[key] || 0;
@@ -520,7 +562,6 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         );
       }
 
-      // 0 條的魚種低調收到底部
       const emptyFish = Object.entries(fishing.fish || {})
         .filter(([k]) => (fishBag[k] || 0) === 0)
         .map(([, def]) => def.name)
@@ -533,34 +574,6 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent("-# 依今日行情計價，每日 00:00 變動")
       );
-    } else {
-      // category === "all"：純文字摘要
-      if (hasFish) {
-        let bagTotalValue = 0;
-        const fishLines = [];
-        for (const [key, def] of Object.entries(fishing.fish || {})) {
-          const qty = fishBag[key] || 0;
-          if (qty <= 0) continue;
-          const base = def.price || 0;
-          const unit = typeof fishPriceMap[key] === "number" ? fishPriceMap[key] : base;
-          const total = qty * unit;
-          bagTotalValue += total;
-          fishLines.push(`${def.emoji} **${def.name}** ×${qty} ・ ${total.toLocaleString()} ${COIN_EMOJI}（@${unit.toLocaleString()}${trendLabel(unit, base)}）`);
-        }
-        const emptyFish = Object.entries(fishing.fish || {})
-          .filter(([k]) => (fishBag[k] || 0) === 0)
-          .map(([, def]) => def.name)
-          .join("・");
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `**魚袋**\n${fishLines.join("\n")}\n-# 💰 全部賣出可得 ${bagTotalValue.toLocaleString()} ${COIN_EMOJI}・依今日行情計價・切到「🎣 釣魚」分類可一鍵賣出${emptyFish ? `\n-# 尚無：${emptyFish}` : ""}`
-          )
-        );
-      } else {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("-# 魚袋空空，快去 /釣魚 吧！")
-        );
-      }
     }
   }
 
@@ -573,13 +586,13 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     const plotCount = Math.max(1, Math.min(farmProfile.farm_plot_count || 2, farming.maxPlots || 8));
 
     container.addSeparatorComponents(new SeparatorBuilder());
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `### 🌾 農場\n地塊：**${plotCount} / ${farming.maxPlots || 8}** 格・累計收成 ${farmProfile.farm_harvest_total || 0} 次`,
-      ),
-    );
 
     if (category === "farm") {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🌾 農場\n地塊：**${plotCount} / ${farming.maxPlots || 8}** 格・累計收成 ${farmProfile.farm_harvest_total || 0} 次`,
+        ),
+      );
       // 蔬菜（含賣全部按鈕）
       const veggieEntries = Object.entries(farming.crops || {})
         .filter(([k]) => (veggieBag[k] || 0) > 0);
@@ -646,43 +659,39 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         );
       }
     } else {
-      // 全部分類：摘要顯示
-      const summary = [];
       let bagValue = 0;
+      const veggieCompact = [];
       for (const [key, def] of Object.entries(farming.crops || {})) {
         const qty = veggieBag[key] || 0;
         if (qty <= 0) continue;
         const price = (farming.sellPrices || {})[key] || 0;
         bagValue += qty * price;
-        summary.push(`${def.emoji} **${def.name}** ×${qty}`);
+        veggieCompact.push(`${def.emoji} ${def.name}×${qty}`);
       }
-      const fertSummary = [];
-      if (bp.compost > 0) fertSummary.push(`🍂 堆肥 ×${bp.compost}`);
-      if (bp.monster_slime > 0) fertSummary.push(`💧 黏液 ×${bp.monster_slime}`);
-      if (bp.moonlight_dew > 0) fertSummary.push(`🌟 露水 ×${bp.moonlight_dew}`);
-      const seedSummary = Object.entries(seedBag)
+      const fertCompact = [];
+      if (bp.compost > 0) fertCompact.push(`🍂 堆肥×${bp.compost}`);
+      if (bp.monster_slime > 0) fertCompact.push(`💧 黏液×${bp.monster_slime}`);
+      if (bp.moonlight_dew > 0) fertCompact.push(`🌟 露水×${bp.moonlight_dew}`);
+      const seedCompact = Object.entries(seedBag)
         .filter(([, v]) => v > 0)
         .map(([k, v]) => {
           const cropKey = k.replace(/^seed_/, "");
           const def = farming.crops?.[cropKey] || {};
-          return `${def.emoji || "🌱"} ${def.name || cropKey}種子 ×${v}`;
+          return `${def.emoji || "🌱"} ${def.name || cropKey}種子×${v}`;
         });
 
-      const parts = [];
-      if (summary.length > 0) {
-        parts.push(`**菜籃**：${summary.join("・")}\n-# 💰 全部賣出可得 ${bagValue.toLocaleString()} ${COIN_EMOJI}`);
+      const lines = [
+        `### 🌾 農場`,
+        `地塊 ${plotCount}/${farming.maxPlots || 8}　累計收成 ${farmProfile.farm_harvest_total || 0} 次`,
+      ];
+      if (veggieCompact.length > 0) {
+        lines.push(`🥬 菜籃（值 ${bagValue.toLocaleString()} ${COIN_EMOJI}）：${veggieCompact.join("・")}`);
       }
-      if (fertSummary.length > 0) parts.push(`**肥料**：${fertSummary.join("・")}`);
-      if (seedSummary.length > 0) parts.push(`**種子**：${seedSummary.join("・")}`);
-      if (parts.length === 0) {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("-# 農場尚未開張，去 /農場 看看吧！"),
-        );
-      } else {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(parts.join("\n") + `\n-# 切到「🌾 農場」分類可一鍵賣蔬菜`),
-        );
-      }
+      if (fertCompact.length > 0) lines.push(`💧 肥料：${fertCompact.join("・")}`);
+      if (seedCompact.length > 0) lines.push(`🌱 種子：${seedCompact.join("・")}`);
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(lines.join("\n"))
+      );
     }
   }
 
@@ -701,53 +710,80 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       return exp > now;
     });
 
-    container.addSeparatorComponents(new SeparatorBuilder());
-
-    const buffText =
-      activeBuffs.length > 0
-        ? activeBuffs
-            .map(
-              (b) =>
-                `・${b.type === "xp_boost" ? "📈 XP" : `${MONEY_EMOJI} 金幣`} ×${b.multiplier}（${fmtExpiry(b.expiresAt)}）`
-            )
-            .join("\n")
-        : "（沒有）";
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `### ✨ 生效中的 buff\n${buffText}\n-# 此處僅顯示商店購買的 XP／金幣 buff，贊助等挖礦幸運加成請於 \`/挖礦\` 結果或 \`/狀態\` 查看`
-      )
-    );
-
     const grouped = new Map();
     for (const it of items) {
       if (!grouped.has(it.type)) grouped.set(it.type, []);
       grouped.get(it.type).push(it);
     }
 
-    container.addSeparatorComponents(new SeparatorBuilder());
-
-    if (items.length === 0) {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("### 🛍️ 商店道具\n-# 還沒有任何道具，到 /商店 逛逛吧！")
-      );
-    } else {
-      const sections = [];
-      for (const [type, list] of grouped.entries()) {
-        const text = list
-          .map((it) => {
-            const equipped = it.equipped ? " ✅" : "";
-            const qty = it.qty ? ` ×${it.qty}` : "";
-            const exp = it.expiresAt ? ` — 到期：${fmtExpiry(it.expiresAt)}` : "";
-            return `・${it.name}${qty}${equipped}${exp}`;
-          })
+    if (category === "all") {
+      if (activeBuffs.length > 0) {
+        container.addSeparatorComponents(new SeparatorBuilder());
+        const buffText = activeBuffs
+          .map(
+            (b) =>
+              `・${b.type === "xp_boost" ? "📈 XP" : `${MONEY_EMOJI} 金幣`} ×${b.multiplier}（${fmtExpiry(b.expiresAt)}）`
+          )
           .join("\n");
-        sections.push(`**${TYPE_LABEL[type] || type}**\n${text}`);
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`### ✨ 生效中的 buff\n${buffText}`)
+        );
       }
+      if (items.length > 0) {
+        container.addSeparatorComponents(new SeparatorBuilder());
+        const summary = [];
+        for (const [type, list] of grouped.entries()) {
+          const equippedCount = list.filter((it) => it.equipped).length;
+          const mark = equippedCount > 0 ? " ✅" : "";
+          summary.push(`${TYPE_LABEL[type] || type}×${list.length}${mark}`);
+        }
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`### 🛍️ 商店道具\n${summary.join("・")}`)
+        );
+      }
+    } else {
+      container.addSeparatorComponents(new SeparatorBuilder());
+
+      const buffText =
+        activeBuffs.length > 0
+          ? activeBuffs
+              .map(
+                (b) =>
+                  `・${b.type === "xp_boost" ? "📈 XP" : `${MONEY_EMOJI} 金幣`} ×${b.multiplier}（${fmtExpiry(b.expiresAt)}）`
+              )
+              .join("\n")
+          : "（沒有）";
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `### 🛍️ 商店道具\n${sections.join("\n\n")}`.slice(0, 4000)
+          `### ✨ 生效中的 buff\n${buffText}\n-# 此處僅顯示商店購買的 XP／金幣 buff，贊助等挖礦幸運加成請於 \`/挖礦\` 結果或 \`/狀態\` 查看`
         )
       );
+
+      container.addSeparatorComponents(new SeparatorBuilder());
+
+      if (items.length === 0) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("### 🛍️ 商店道具\n-# 還沒有任何道具，到 /商店 逛逛吧！")
+        );
+      } else {
+        const sections = [];
+        for (const [type, list] of grouped.entries()) {
+          const text = list
+            .map((it) => {
+              const equipped = it.equipped ? " ✅" : "";
+              const qty = it.qty ? ` ×${it.qty}` : "";
+              const exp = it.expiresAt ? ` — 到期：${fmtExpiry(it.expiresAt)}` : "";
+              return `・${it.name}${qty}${equipped}${exp}`;
+            })
+            .join("\n");
+          sections.push(`**${TYPE_LABEL[type] || type}**\n${text}`);
+        }
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `### 🛍️ 商店道具\n${sections.join("\n\n")}`.slice(0, 4000)
+          )
+        );
+      }
     }
 
     // 四種可裝備道具併成單一下拉，徹底避免動作列爆量導致選單被截掉。
