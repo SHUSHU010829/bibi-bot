@@ -6,6 +6,7 @@ const {
   getFoodFarmYieldBonus,
   consumeFarmYieldUse,
 } = require("../fishing/cookService");
+const bus = require("../eventBus");
 
 // 農場核心服務。每塊地以 (userId, guildId, plotIndex) 唯一存於 FarmPlots。
 //
@@ -269,6 +270,32 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
   // 消耗一次 farm_yield buff（若有的話）
   if (foodBonus > 0) {
     consumeFarmYieldUse(client, userId, guildId, profileForBuff).catch(() => {});
+  }
+
+  bus.emit("harvest.done", {
+    userId,
+    guildId,
+    crop: plot.crop,
+    coins,
+    plotIndex,
+  });
+  bus.emit("item.gained", {
+    userId,
+    guildId,
+    itemType: "veggie",
+    itemId: plot.crop,
+    qty: 1,
+    source: "harvest",
+  });
+  for (const drop of bonusDropsResult) {
+    bus.emit("item.gained", {
+      userId,
+      guildId,
+      itemType: drop.kind,
+      itemId: drop.kind,
+      qty: drop.amount,
+      source: "harvest",
+    });
   }
 
   return {
