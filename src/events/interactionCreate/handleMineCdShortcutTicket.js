@@ -92,6 +92,9 @@ module.exports = async (client, interaction) => {
         cdTicketDailyLimit: result.dailyLimit,
         cdTicketReductionMs: mining?.cdTicketReductionMs || 0,
         notifyEnabled: !!notifyState?.enabled,
+        pickaxe: result.pickaxe,
+        pickaxeDurability: result.pickaxeDurability,
+        pickaxeMaxDurability: result.pickaxeMaxDurability,
       });
       await interaction.editReply({
         components: [container],
