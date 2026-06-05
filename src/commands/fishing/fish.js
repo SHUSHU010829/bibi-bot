@@ -8,6 +8,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -31,6 +32,15 @@ function parseFishCdTicketId(customId) {
   const location = rest.slice(us + 1);
   if (!ownerId || !location) return null;
   return { ownerId, location };
+}
+
+// 冷卻訊息上「變更地點」下拉選單。customId = fish_loc_change_<ownerId>
+const FISH_LOC_CHANGE_PREFIX = "fish_loc_change_";
+
+function parseFishLocChangeId(customId) {
+  if (!customId || !customId.startsWith(FISH_LOC_CHANGE_PREFIX)) return null;
+  const ownerId = customId.slice(FISH_LOC_CHANGE_PREFIX.length);
+  return ownerId ? { ownerId } : null;
 }
 
 function locationChoices() {
@@ -79,6 +89,9 @@ function buildCooldownView({
   const overDailyLimit =
     cdTicketDailyLimit > 0 && cdTicketUsedToday >= cdTicketDailyLimit;
 
+  const curLoc = fishing?.locations?.[location] || fishing?.locations?.stream || {};
+  const curLocLabel = `${curLoc.emoji || "🏞️"} ${curLoc.name || location}`;
+
   const container = new ContainerBuilder()
     .setAccentColor(0x3498db)
     .addTextDisplayComponents(
@@ -91,7 +104,28 @@ function buildCooldownView({
       new TextDisplayBuilder().setContent(
         rodDurabilityLine(rodKey, rodDurability, rodMaxDurability),
       ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `📍 **下一竿地點**\n${curLocLabel}\n-# 用券歸零自動再釣會到這個地點，下方可切換`,
+      ),
     );
+
+  const locOptions = Object.entries(fishing?.locations || {}).map(([key, def]) => ({
+    label: `${def.emoji || "🏞️"} ${def.name || key}`.slice(0, 100),
+    value: key,
+    default: key === location,
+  }));
+  if (locOptions.length > 1) {
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`${FISH_LOC_CHANGE_PREFIX}${ownerId}`)
+          .setPlaceholder("切換下一竿地點…")
+          .addOptions(locOptions.slice(0, 25)),
+      ),
+    );
+  }
 
   if (cdTickets > 0 && !overDailyLimit) {
     container.addSectionComponents(
@@ -477,6 +511,8 @@ module.exports = {
 
   FISH_CD_TICKET_PREFIX,
   parseFishCdTicketId,
+  FISH_LOC_CHANGE_PREFIX,
+  parseFishLocChangeId,
   buildCooldownView,
   executeFish,
 };
