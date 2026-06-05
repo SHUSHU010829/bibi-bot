@@ -117,7 +117,8 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina }) {
     .addSeparatorComponents(new SeparatorBuilder());
 
   const emptyCount = resolvedPlots.filter((p) => !p.crop || p.status === "rotted").length;
-  if (readyCount >= 2 || emptyCount >= 2) {
+  const growingCount = resolvedPlots.filter((p) => p.crop && p.status === "growing").length;
+  if (readyCount >= 2 || emptyCount >= 2 || growingCount >= 2) {
     const bulkRow = new ActionRowBuilder();
     if (readyCount >= 2) {
       bulkRow.addComponents(
@@ -126,6 +127,15 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina }) {
           .setLabel(`一鍵收成全部（${readyCount} 塊）`)
           .setEmoji("🌟")
           .setStyle(ButtonStyle.Success),
+      );
+    }
+    if (growingCount >= 2) {
+      bulkRow.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`farm_fertall_${userId}`)
+          .setLabel(`一鍵施肥成長中（${growingCount} 塊）`)
+          .setEmoji("💧")
+          .setStyle(ButtonStyle.Secondary),
       );
     }
     if (emptyCount >= 2) {
