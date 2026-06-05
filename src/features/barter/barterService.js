@@ -245,14 +245,15 @@ async function acceptListing(client, { listingId, guildId, acceptorId, acceptorN
   );
 
   if (client.users) {
+    const { buildSoldDmMessage } = require("./barterView");
+    const dmPayload = buildSoldDmMessage({
+      listing: { ...listing, settled_at: new Date() },
+      offerDef,
+      wantDef,
+      acceptorName,
+    });
     client.users.fetch(listing.seller_id)
-      .then((u) => u.send(
-        `# 🤝 交易所成交通知 #${listing.listing_id}\n` +
-        `你上架的 ${offerDef.emoji} **${offerDef.name}** ×${listing.offer.qty} ` +
-        `被 **${acceptorName}** 接走了！\n` +
-        `你收到了 ${wantDef.emoji} **${wantDef.name}** ×${listing.want.qty}\n` +
-        `-# 用 \`/魚袋\` / \`/背包\` 查看`
-      ))
+      .then((u) => u.send(dmPayload))
       .catch(() => {});
   }
 
