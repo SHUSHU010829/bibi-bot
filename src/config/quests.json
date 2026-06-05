@@ -195,7 +195,7 @@
         "id": "weekly_cook_50",
         "name": "週末大廚",
         "description": "本週完成烹飪 ≥ 50 次",
-        "reward": 5000,
+        "reward": 6000,
         "target": 50,
         "spawnChance": 0.01
       }
