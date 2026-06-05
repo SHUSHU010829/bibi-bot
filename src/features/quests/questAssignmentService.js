@@ -25,13 +25,31 @@ const rerollCostFor = (tier) => cfg().rerollCost?.[tier] ?? (tier === "weekly" ?
 const skipCostFor = (tier) => cfg().skipCost?.[tier] ?? (tier === "weekly" ? 100 : 30);
 const actionLimitFor = (tier) => cfg().actionLimit?.[tier] ?? (tier === "weekly" ? 2 : 4);
 
+// spawnChance：< 1 的稀有任務獨立擲骰，未命中就被排除在候選池外。
+// 命中的稀有任務會「擠掉」一個普通任務的位置，讓最終池大小維持 n。
+// 命中機率即為「該稀有任務出現在玩家當期指派裡」的整體機率。
 function pickRandomIds(pool, n) {
-  const ids = pool.map((q) => q.id);
-  for (let i = ids.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [ids[i], ids[j]] = [ids[j], ids[i]];
+  const normal = [];
+  const rare = [];
+  for (const q of pool) {
+    const chance = typeof q.spawnChance === "number" ? q.spawnChance : 1;
+    if (chance >= 1) normal.push(q.id);
+    else if (chance > 0 && Math.random() < chance) rare.push(q.id);
   }
-  return ids.slice(0, Math.min(n, ids.length));
+  const shuffled = [...normal];
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  const picked = shuffled.slice(0, Math.min(n, shuffled.length));
+  for (const rid of rare) {
+    if (picked.length < n) {
+      picked.push(rid);
+    } else {
+      picked[Math.floor(Math.random() * picked.length)] = rid;
+    }
+  }
+  return picked;
 }
 
 async function getOrCreateAssignment(client, userId, guildId, tier) {

@@ -12,6 +12,7 @@ const { fishing } = require("../../config");
 const cookService = require("../../features/fishing/cookService");
 const { getFishingProfile } = require("../../features/fishing/fishService");
 const cookView = require("../../features/fishing/cookView");
+const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 
 const VEGGIE_LABELS = {
   carrot: { emoji: "🥕", name: "紅蘿蔔" },
@@ -135,6 +136,19 @@ module.exports = {
       }
 
       await interaction.editReply(cookView.buildSuccessView({ recipe, result, userId }));
+
+      applyQuestHooks(
+        client,
+        {
+          interaction,
+          user: interaction.user,
+          userId,
+          guildId,
+          member: interaction.member,
+          username: interaction.user.username,
+        },
+        [{ questId: "weekly_cook_50" }],
+      ).catch(() => {});
     } catch (error) {
       console.log(`[ERROR] /烹飪:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 烹飪失敗，請呼叫舒舒！").catch(() => {});
