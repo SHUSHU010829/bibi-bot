@@ -3,7 +3,8 @@
 // customId 格式（prefix `gcw_`）：
 //   gcw_takeopen_<userId>_<itemId>_<maxTake>  — 點按鈕後跳 Modal 問數量
 //   gcw_takedo_<userId>_<itemId>              — Modal 送出（實際領取）
-//   gcw_refresh_<userId>                      — 重整倉庫畫面
+//   gcw_refresh_<userId>[_<view>]             — 重整倉庫畫面（保留當前 view）
+//   gcw_tab_<userId>_<view>                   — 切換分類頁籤（home/backpack_mining/...）
 //   gcw_log_<userId>                          — 開倉庫紀錄（會長 / 副會長）
 //   gcw_settings_<userId>                     — 開倉庫設定 modal（會長 / 副會長）
 //   gcw_help_<userId>                         — 顯示存入說明
@@ -33,6 +34,7 @@ module.exports = async (client, interaction) => {
 
   if (id.startsWith("gcw_takeopen_")) return handleTakeOpen(client, interaction);
   if (id.startsWith("gcw_refresh_")) return handleRefresh(client, interaction);
+  if (id.startsWith("gcw_tab_")) return handleTab(client, interaction);
   if (id.startsWith("gcw_log_")) return handleLog(client, interaction);
   if (id.startsWith("gcw_help_")) return handleHelp(client, interaction);
   if (id.startsWith("gcw_settings_")) return handleSettingsOpen(client, interaction);
@@ -168,10 +170,26 @@ async function handleTakeModalSubmit(client, interaction) {
 }
 
 async function handleRefresh(client, interaction) {
-  const { ownerId } = parseOwner("gcw_refresh_", interaction.customId);
+  const { ownerId, payload } = parseOwner("gcw_refresh_", interaction.customId);
   if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "倉庫畫面");
+  return renderWarehouse(client, interaction, { view: payload || "home", mode: "reply" });
+}
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+async function handleTab(client, interaction) {
+  const { ownerId, payload } = parseOwner("gcw_tab_", interaction.customId);
+  if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "倉庫頁籤");
+  return renderWarehouse(client, interaction, { view: payload || "home", mode: "update" });
+}
+
+async function renderWarehouse(client, interaction, { view, mode }) {
+  if (mode === "update") {
+    await interaction.deferUpdate();
+  } else {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
+
+  const editPayload = (components) =>
+    interaction.editReply({ components, flags: MessageFlags.IsComponentsV2 });
 
   const membership = await guildClubService.getMembership(
     client,
@@ -179,24 +197,22 @@ async function handleRefresh(client, interaction) {
     interaction.guildId
   );
   if (!membership) {
-    return interaction.editReply({
-      components: [
-        warehouseView.buildErrorContainer({
-          title: "🏰 你還沒加入公會",
-          body: "倉庫是公會專屬功能。",
-        }),
-      ],
-      flags: MessageFlags.IsComponentsV2,
-    });
+    return editPayload([
+      warehouseView.buildErrorContainer({
+        title: "🏰 你還沒加入公會",
+        body: "倉庫是公會專屬功能。",
+      }),
+    ]);
   }
   const club = await guildClubService.getClubById(client, membership.guild_club_id);
-  if (!club)
-    return interaction.editReply({
-      components: [
-        warehouseView.buildErrorContainer({ title: "❌ 公會資料異常", body: "公會已不存在。" }),
-      ],
-      flags: MessageFlags.IsComponentsV2,
-    });
+  if (!club) {
+    return editPayload([
+      warehouseView.buildErrorContainer({
+        title: "❌ 公會資料異常",
+        body: "公會已不存在。",
+      }),
+    ]);
+  }
 
   const inventory = await warehouseService.getInventory(client, club.guild_club_id);
   const daily = await warehouseEligibility.getDailyDoc(
@@ -204,19 +220,23 @@ async function handleRefresh(client, interaction) {
     interaction.user.id,
     interaction.guildId
   );
-  return interaction.editReply({
-    components: [
-      warehouseView.buildWarehouseContainer({
-        viewerId: interaction.user.id,
-        club,
-        inventory,
-        isManager: guildClubService.isManager(membership.role),
-        todayItemsTaken: daily?.items_taken || [],
-        todayTimesUsed: daily?.times_used || 0,
-      }),
-    ],
-    flags: MessageFlags.IsComponentsV2,
-  });
+  const isManagerNow = guildClubService.isManager(membership.role);
+  const flow = isManagerNow
+    ? await warehouseService.getNetFlow(client, club.guild_club_id, 7)
+    : null;
+
+  return editPayload([
+    warehouseView.buildWarehouseContainer({
+      viewerId: interaction.user.id,
+      club,
+      inventory,
+      isManager: isManagerNow,
+      todayItemsTaken: daily?.items_taken || [],
+      todayTimesUsed: daily?.times_used || 0,
+      netFlow7d: flow?.net,
+      view,
+    }),
+  ]);
 }
 
 async function handleLog(client, interaction) {

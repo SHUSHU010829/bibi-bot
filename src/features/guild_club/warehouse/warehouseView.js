@@ -40,6 +40,41 @@ const GROUP_TITLE = {
   backpack_farming: "🌾 作物",
   fish_bag: "🎣 魚類",
 };
+const GROUP_SHORT = {
+  backpack_mining: "礦石",
+  backpack_farming: "作物",
+  fish_bag: "魚類",
+};
+const GROUP_EMOJI = {
+  backpack_mining: "⛏️",
+  backpack_farming: "🌾",
+  fish_bag: "🎣",
+};
+
+const VALID_VIEWS = new Set(["home", ...KIND_ORDER]);
+const normalizeView = (v) => (VALID_VIEWS.has(v) ? v : "home");
+
+const buildTabRow = ({ viewerId, view, groups }) => {
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`gcw_tab_${viewerId}_home`)
+      .setLabel("首頁")
+      .setEmoji("📦")
+      .setStyle(view === "home" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+  );
+  for (const key of KIND_ORDER) {
+    const list = groups[key] || [];
+    const totalQty = list.reduce((s, it) => s + it.qty, 0);
+    const btn = new ButtonBuilder()
+      .setCustomId(`gcw_tab_${viewerId}_${key}`)
+      .setLabel(`${GROUP_SHORT[key]} ${totalQty}`)
+      .setEmoji(GROUP_EMOJI[key])
+      .setStyle(view === key ? ButtonStyle.Primary : ButtonStyle.Secondary);
+    if (totalQty === 0) btn.setDisabled(true);
+    row.addComponents(btn);
+  }
+  return row;
+};
 
 const buildWarehouseContainer = ({
   viewerId,
@@ -49,9 +84,14 @@ const buildWarehouseContainer = ({
   todayItemsTaken = [],
   todayTimesUsed = 0,
   netFlow7d = null,
+  view = "home",
 }) => {
   const settings = resolveSettings(club);
   const container = new ContainerBuilder().setAccentColor(COLOR_GOLD);
+  view = normalizeView(view);
+
+  const groups = { backpack_mining: [], backpack_farming: [], fish_bag: [] };
+  for (const it of inventory) groups[groupKey(it.item_id, it.def)].push(it);
 
   const totalValue = inventory.reduce(
     (s, it) => s + marketValue(it.item_id, it.qty),
@@ -62,9 +102,10 @@ const buildWarehouseContainer = ({
       ? `你今日已領：${todayItemsTaken.map((i) => itemDef(i)?.name || i).join("・")}（${todayTimesUsed}/${settings.dailyMaxTimes}）`
       : `你今日尚未領取（0/${settings.dailyMaxTimes}）`;
 
+  const headerTail = view === "home" ? "" : ` ・ ${GROUP_TITLE[view]}`;
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `# 📦 ${club.name} 倉庫\nLv.${club.level}｜總價值 ≈ ${totalValue.toLocaleString()} ${COIN_EMOJI}\n${takenLine}`
+      `# 📦 ${club.name} 倉庫${headerTail}\nLv.${club.level}｜總價值 ≈ ${totalValue.toLocaleString()} ${COIN_EMOJI}\n${takenLine}`
     )
   );
 
@@ -76,95 +117,99 @@ const buildWarehouseContainer = ({
     );
   }
 
-  const groups = { backpack_mining: [], backpack_farming: [], fish_bag: [] };
-  for (const it of inventory) groups[groupKey(it.item_id, it.def)].push(it);
+  container.addActionRowComponents(buildTabRow({ viewerId, view, groups }));
+  container.addSeparatorComponents(new SeparatorBuilder());
 
-  const empties = [];
-  const footerCost = isManager ? 6 : 4;
-  let budget = 40 - 2 /* container + header */ - footerCost;
-  if (typeof netFlow7d === "number" && netFlow7d < 0) budget -= 1;
+  if (view === "home") {
+    const summaryLines = [];
+    for (const key of KIND_ORDER) {
+      const list = groups[key];
+      if (!list || list.length === 0) continue;
+      const nonZero = list.filter((it) => it.qty > 0);
+      const totalQty = list.reduce((s, it) => s + it.qty, 0);
+      const value = list.reduce((s, it) => s + marketValue(it.item_id, it.qty), 0);
+      const takeable = nonZero.filter(
+        (it) => it.available_qty > 0 && !todayItemsTaken.includes(it.item_id)
+      ).length;
+      const tail = takeable > 0 ? `　-# 可領 ${takeable} 種` : "";
+      summaryLines.push(
+        `**${GROUP_TITLE[key]}**　${nonZero.length} 種・共 ${totalQty}｜≈ ${value.toLocaleString()} ${COIN_EMOJI}${tail}`
+      );
+    }
+    if (summaryLines.length === 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# 倉庫目前空空如也，先用 `/公會 存入` 捐一些物資吧。"
+        )
+      );
+    } else {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(summaryLines.join("\n"))
+      );
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# 點上方分類按鈕進入該類別直接領取。"
+        )
+      );
+    }
 
-  const overflow = [];
-  const groupsWithVisible = [];
-  for (const key of KIND_ORDER) {
-    const list = groups[key];
-    if (!list || list.length === 0) continue;
+    const empties = inventory.filter((it) => it.qty === 0).map((it) => it.def.name);
+    if (empties.length > 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`-# 尚無：${empties.join("・")}`)
+      );
+    }
+  } else {
+    const list = groups[view] || [];
     const visible = list.filter((it) => it.qty > 0);
-    for (const it of list) if (it.qty === 0) empties.push(it.def.name);
-    if (visible.length > 0) groupsWithVisible.push({ key, visible });
-  }
+    const emptiesInCat = list.filter((it) => it.qty === 0).map((it) => it.def.name);
 
-  const reserveOverflow = () => 1;
-  const reserveEmpties = () => (empties.length > 0 ? 2 : 0);
+    if (visible.length === 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 此分類目前沒有可領取的物品。`
+        )
+      );
+    } else {
+      for (const it of visible) {
+        const cap = capacityFor(it.item_id, club.level, club.warehouse_settings);
+        const protTail =
+          it.protected_qty > 0 && it.next_unlock_at
+            ? `（${it.protected_qty} 保護中，<t:${Math.floor(it.next_unlock_at / 1000)}:R> 解鎖）`
+            : "";
+        const personalCap = perTakeMaxFor(it.item_id, club.warehouse_settings);
+        const maxTake = Math.min(personalCap, it.available_qty);
+        const takeable = maxTake > 0 && !todayItemsTaken.includes(it.item_id);
 
-  for (const { key, visible } of groupsWithVisible) {
-    const headerCost = 2;
-    if (budget - headerCost - reserveOverflow() - reserveEmpties() < 0) {
-      for (const it of visible) overflow.push(it);
-      continue;
-    }
-    container.addSeparatorComponents(new SeparatorBuilder());
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`**${GROUP_TITLE[key]}**`)
-    );
-    budget -= headerCost;
-
-    for (const it of visible) {
-      const cap = capacityFor(it.item_id, club.level, club.warehouse_settings);
-      const protTail =
-        it.protected_qty > 0 && it.next_unlock_at
-          ? `（${it.protected_qty} 保護中，<t:${Math.floor(it.next_unlock_at / 1000)}:R> 解鎖）`
-          : "";
-      const personalCap = perTakeMaxFor(it.item_id, club.warehouse_settings);
-      const maxTake = Math.min(personalCap, it.available_qty);
-      const takeable = maxTake > 0 && !todayItemsTaken.includes(it.item_id);
-      const cost = takeable ? 3 : 1;
-
-      if (budget - cost - reserveOverflow() - reserveEmpties() < 0) {
-        overflow.push(it);
-        continue;
-      }
-
-      const mainText = `${it.def.emoji} **${it.def.name}** ${it.qty} / ${cap}${protTail}`;
-      if (takeable) {
-        container.addSectionComponents(
-          new SectionBuilder()
-            .addTextDisplayComponents(new TextDisplayBuilder().setContent(mainText))
-            .setButtonAccessory(
-              new ButtonBuilder()
-                .setCustomId(`gcw_takeopen_${viewerId}_${it.item_id}_${maxTake}`)
-                .setLabel(`領取（≤ ${maxTake}）`)
-                .setStyle(ButtonStyle.Success)
-            )
-        );
-        budget -= 3;
-      } else {
-        let tail = "";
-        if (todayItemsTaken.includes(it.item_id)) tail = "　-# 今日已領";
-        else if (it.available_qty === 0) tail = "　-# 可取 0（保護中）";
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(mainText + tail)
-        );
-        budget -= 1;
+        const mainText = `${it.def.emoji} **${it.def.name}** ${it.qty} / ${cap}${protTail}`;
+        if (takeable) {
+          container.addSectionComponents(
+            new SectionBuilder()
+              .addTextDisplayComponents(new TextDisplayBuilder().setContent(mainText))
+              .setButtonAccessory(
+                new ButtonBuilder()
+                  .setCustomId(`gcw_takeopen_${viewerId}_${it.item_id}_${maxTake}`)
+                  .setLabel(`領取（≤ ${maxTake}）`)
+                  .setStyle(ButtonStyle.Success)
+              )
+          );
+        } else {
+          let tail = "";
+          if (todayItemsTaken.includes(it.item_id)) tail = "　-# 今日已領";
+          else if (it.available_qty === 0) tail = "　-# 可取 0（保護中）";
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(mainText + tail)
+          );
+        }
       }
     }
-  }
 
-  if (overflow.length > 0 && budget >= 1) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# 其餘可領：${overflow.map((it) => `${it.def.emoji}${it.def.name}`).join("・")}（請用 \`/公會 領取\`）`
-      )
-    );
-    budget -= 1;
-  }
-
-  if (empties.length > 0 && budget >= 2) {
-    container.addSeparatorComponents(new SeparatorBuilder());
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`-# 尚無：${empties.join("・")}`)
-    );
-    budget -= 2;
+    if (emptiesInCat.length > 0) {
+      container.addSeparatorComponents(new SeparatorBuilder());
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`-# 此類尚無：${emptiesInCat.join("・")}`)
+      );
+    }
   }
 
   container.addSeparatorComponents(new SeparatorBuilder());
@@ -175,7 +220,7 @@ const buildWarehouseContainer = ({
       .setEmoji("❓")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId(`gcw_refresh_${viewerId}`)
+      .setCustomId(`gcw_refresh_${viewerId}_${view}`)
       .setLabel("重新整理")
       .setEmoji("🔄")
       .setStyle(ButtonStyle.Secondary)
