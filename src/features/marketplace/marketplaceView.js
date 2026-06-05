@@ -32,6 +32,7 @@ const PAGE_PREV       = "market_page_prev_";
 const PAGE_NEXT       = "market_page_next_";
 const VIEW_BROWSE_ID  = "market_view_browse";
 const VIEW_MYSTALL_ID = "market_view_mystall";
+const VIEW_MYBIDS_ID  = "market_view_mybids";
 
 function oreLabel(oreKey) {
   const def = mining?.ores?.[oreKey] || {};
@@ -300,6 +301,48 @@ function buildMyStallView(listings) {
   return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
 }
 
+// ─── 我的競標：我目前是最高出價者的競標 listing ─────────────────────────────
+function buildMyBidsView(listings) {
+  const container = new ContainerBuilder()
+    .setAccentColor(0x3498db)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        listings.length === 0
+          ? "# 🏷️ 我的競標\n你目前不是任何競標的最高出價者。\n-# 用 `/市集 逛攤` 找競標品。"
+          : `# 🏷️ 我的競標\n共 **${listings.length}** 件正領先中`
+      )
+    );
+
+  if (listings.length === 0) {
+    return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
+  }
+
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large)
+  );
+
+  listings.forEach((l, idx) => {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(listingText(l))
+    );
+    if (idx < listings.length - 1) {
+      container.addSeparatorComponents(
+        new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+      );
+    }
+  });
+
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+  );
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "-# 若被超越會自動退款並私訊通知；到期最高者得標。"
+    )
+  );
+  return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
+}
+
 // ─── 二次確認面板（ephemeral）────────────────────────────────────────────────
 function buildConfirmView(listing, action) {
   let content = "";
@@ -384,6 +427,7 @@ function buildBidModal(listingId, listing) {
 module.exports = {
   buildBrowseView,
   buildMyStallView,
+  buildMyBidsView,
   buildConfirmView,
   buildBidModal,
   oreLabel,
@@ -406,5 +450,6 @@ module.exports = {
   PAGE_NEXT,
   VIEW_BROWSE_ID,
   VIEW_MYSTALL_ID,
+  VIEW_MYBIDS_ID,
   BID_MODAL_PREFIX,
 };

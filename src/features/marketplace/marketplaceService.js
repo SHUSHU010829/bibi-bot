@@ -727,6 +727,18 @@ async function placeBid(client, { listingId, bidderId, guildId, bidderName, memb
     };
   }
 
+  // 通知賣家：有新出價（被超越的舊出價者已透過退款流程感知，不重複 DM）
+  const oreDef = mining?.ores?.[doc.ore] || {};
+  const oreText = `${oreDef.emoji || "⛏️"} ${oreDef.name || doc.ore} ×${doc.qty}`;
+  const expiresEpoch = Math.floor(new Date(doc.expires_at).getTime() / 1000);
+  dmUser(
+    client,
+    doc.seller_id,
+    `🏷️ 你的競標 **#${doc.listing_id}**（${oreText}）有新出價！\n` +
+      `目前最高：**${doc.current_bid.toLocaleString()}** 🪙（${bidderName}）\n` +
+      `截止 <t:${expiresEpoch}:R>`
+  );
+
   return { ok: true, listing: doc, prevBidderId: prevBidder, oreDef: mining?.ores?.[doc.ore] };
 }
 
@@ -973,6 +985,20 @@ async function listByOwner(client, guildId, sellerId) {
     .toArray();
 }
 
+// 我目前是最高出價者的所有 active 競標
+async function listByBidder(client, guildId, bidderId) {
+  if (!client.marketListingsCollection) return [];
+  return client.marketListingsCollection
+    .find({
+      guild_id: guildId,
+      listing_type: "auction",
+      status: "active",
+      bidder_id: bidderId,
+    })
+    .sort({ expires_at: 1 })
+    .toArray();
+}
+
 module.exports = {
   createSellListing,
   createFishSellListing,
@@ -987,6 +1013,7 @@ module.exports = {
   settleListing,
   listActive,
   listByOwner,
+  listByBidder,
   minNextBid,
   dmUser,
   minAuctionStartPrice,

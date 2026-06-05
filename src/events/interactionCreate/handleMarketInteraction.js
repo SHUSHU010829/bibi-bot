@@ -31,6 +31,7 @@ const {
   PAGE_NEXT,
   VIEW_BROWSE_ID,
   VIEW_MYSTALL_ID,
+  VIEW_MYBIDS_ID,
   BID_MODAL_PREFIX,
   FILTER_TYPE_ID,
   FILTER_ITEM_ID,
@@ -478,6 +479,22 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
     }
+
+    // ─── 快捷後續：查看我目前領先的競標 ───────────────────────────────────────
+    if (interaction.isButton() && cid === VIEW_MYBIDS_ID) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const { buildMyBidsView } = require("../../features/marketplace/marketplaceView");
+      const listings = await marketplaceService.listByBidder(
+        client,
+        interaction.guildId,
+        interaction.user.id
+      );
+      const { container, rows } = buildMyBidsView(listings);
+      return interaction.editReply({
+        components: [container, ...rows],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
   } catch (error) {
     console.log(`[ERROR] handleMarketInteraction:\n${error}\n${error.stack}`.red);
     try {
@@ -623,6 +640,11 @@ function bidFailContainer(result, amount) {
 
 function bidSuccessButtons() {
   return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(VIEW_MYBIDS_ID)
+      .setLabel("我的競標")
+      .setEmoji("🏷️")
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(VIEW_BROWSE_ID)
       .setLabel("查看市集")
