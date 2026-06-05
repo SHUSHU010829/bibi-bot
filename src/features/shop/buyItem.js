@@ -1,8 +1,8 @@
 require("colors");
-const { DateTime } = require("luxon");
 const { fishing } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 const { getItem, isStackable, stackMax } = require("./catalog");
+const { getTodayBoughtQty } = require("./dailyLimits");
 const { addBuff } = require("./activeBuff");
 const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
 const { ROD_TIER } = require("../mining/craftService");
@@ -32,20 +32,6 @@ const DAILY_LIMIT_UNIT = {
   mining_cd_ticket: "張",
   mining_stamina_potion: "瓶",
 };
-
-// 統計今天（Asia/Taipei）已購買的某商品數量（用於每日購買上限）。
-async function getTodayBoughtQty(client, { userId, guildId, itemId }) {
-  if (!client.shopTransactionsCollection) return 0;
-  const startOfToday = DateTime.now().setZone("Asia/Taipei").startOf("day").toJSDate();
-  const agg = await client.shopTransactionsCollection
-    .aggregate([
-      { $match: { userId, guildId, itemId, createdAt: { $gte: startOfToday } } },
-      { $group: { _id: null, total: { $sum: { $ifNull: ["$quantity", 1] } } } },
-    ])
-    .toArray()
-    .catch(() => []);
-  return agg[0]?.total || 0;
-}
 
 // 處理一筆購買：扣款 → 寫入 inventory → 對特殊 type 立即生效（buff/casino_token）
 // quantity 只對可堆疊商品（挖礦道具／賭場代幣）生效，其餘一律當作 1。

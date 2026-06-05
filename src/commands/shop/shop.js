@@ -26,7 +26,12 @@ module.exports = {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
-      await interaction.editReply(buildShopView(0, 0));
+      const view = await buildShopView(0, 0, {
+        client,
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+      });
+      await interaction.editReply(view);
     } catch (error) {
       console.log(`[ERROR] /商店:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 商店開啟失敗，請呼叫舒舒！").catch(() => {});
