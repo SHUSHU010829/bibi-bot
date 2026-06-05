@@ -31,6 +31,7 @@ const { spin } = require("../../features/casino/slot/slotMachine");
 const { SYMBOL_BY_ID } = require("../../features/casino/slot/paytable");
 const generateSlotGif = require("../../utils/generateSlotGif");
 const { rawFollowUpWithImage } = require("../../utils/rawWebhookUpload");
+const { flush: flushCommandStats } = require("../../utils/commandUsageTracker");
 
 const SLOT_PREVIEW_CHOICES = [
   { name: "JACKPOT (七七七)", value: "jackpot" },
@@ -182,11 +183,36 @@ module.exports = {
             .setDescription("用同一張 PNG buffer 並排測試兩條上傳路徑")
         )
     )
+    .addSubcommand((sub) =>
+      sub
+        .setName("cmdstats")
+        .setDescription("查看 slash command 使用量排行（找出冷門指令）")
+        .addStringOption((opt) =>
+          opt
+            .setName("order")
+            .setDescription("排序方向（預設由少到多）")
+            .setRequired(false)
+            .addChoices(
+              { name: "由少到多（找冷門）", value: "asc" },
+              { name: "由多到少（找熱門）", value: "desc" }
+            )
+        )
+        .addIntegerOption((opt) =>
+          opt
+            .setName("limit")
+            .setDescription("顯示前幾名（預設 30）")
+            .setMinValue(5)
+            .setMaxValue(100)
+            .setRequired(false)
+        )
+    )
     .toJSON(),
 
   run: async (client, interaction) => {
-    const group = interaction.options.getSubcommandGroup();
+    const group = interaction.options.getSubcommandGroup(false);
     const sub = interaction.options.getSubcommand();
+
+    if (!group && sub === "cmdstats") return runCmdStats(client, interaction);
 
     if (group === "level") {
       if (sub === "givexp") return runGrantXp(client, interaction);
@@ -613,6 +639,63 @@ function buildSlotPreviewReels(kind) {
         matchedSymbol: null,
         multiplier: 0,
       };
+  }
+}
+
+// ─────────────────────────── /dev cmdstats ───────────────────────────
+async function runCmdStats(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    if (!client.commandStatsCollection) {
+      return interaction.editReply("🔧 commandStats collection 尚未初始化");
+    }
+
+    const order = interaction.options.getString("order") || "asc";
+    const limit = interaction.options.getInteger("limit") || 30;
+
+    // 先 flush 一次記憶體計數，讓查詢看到最新數字
+    await flushCommandStats(client).catch(() => {});
+
+    const docs = await client.commandStatsCollection
+      .find({})
+      .sort({ count: order === "desc" ? -1 : 1, name: 1 })
+      .limit(limit)
+      .toArray();
+
+    if (docs.length === 0) {
+      return interaction.editReply(
+        "目前還沒有任何指令使用紀錄（每 10 分鐘 flush 一次，可能要等下一輪）"
+      );
+    }
+
+    const totalDoc = await client.commandStatsCollection
+      .aggregate([
+        { $group: { _id: null, total: { $sum: "$count" }, cmds: { $sum: 1 } } },
+      ])
+      .toArray();
+    const total = totalDoc[0]?.total ?? 0;
+    const cmds = totalDoc[0]?.cmds ?? 0;
+
+    const lines = docs.map((d, i) => {
+      const last = d.lastUsedAt
+        ? new Date(d.lastUsedAt).toISOString().slice(0, 16).replace("T", " ")
+        : "—";
+      const rank = String(i + 1).padStart(2, " ");
+      const name = `/${d.name}`.padEnd(22, " ");
+      const count = String(d.count).padStart(6, " ");
+      return `${rank}. ${name} ${count} 次   (最後使用 ${last})`;
+    });
+
+    const header =
+      `📊 指令使用量（${order === "desc" ? "由多到少" : "由少到多"}，前 ${docs.length} 名）\n` +
+      `總計 ${cmds} 個指令、累計 ${total.toLocaleString()} 次呼叫\n`;
+
+    await interaction.editReply(
+      `${header}\`\`\`\n${lines.join("\n")}\n\`\`\``
+    );
+  } catch (error) {
+    console.log(`[ERROR] /dev cmdstats:\n${error}\n${error.stack}`.red);
+    await interaction.editReply("🔧 查詢失敗，看 console").catch(() => {});
   }
 }
 

@@ -30,6 +30,7 @@ const mConfig = require("../../messageConfig.json");
 const getLocalCommands = require("../../utils/getLocalCommands");
 const { consume } = require("../../utils/rateLimiter");
 const { allowedChannelsFor } = require("../../utils/commandChannelGuard");
+const { recordUsage } = require("../../utils/commandUsageTracker");
 
 // 賭場類指令冷卻較短，避免打斷遊戲節奏
 const CASINO_COMMANDS = new Set([
@@ -155,6 +156,7 @@ module.exports = async (client, interaction) => {
       }
     }
 
+    recordUsage(interaction.commandName);
     await commandObject.run(client, interaction);
   } catch (err) {
     const sub = (() => {

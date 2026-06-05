@@ -214,6 +214,9 @@ module.exports = async (client) => {
     // 使用者個人偏好（公開資料 opt-in 等）
     const userSettingsCollection = database.collection("UserSettings");
 
+    // 指令使用量統計（每 10 分鐘批次 flush，純粹用來看哪些指令冷門可合併）
+    const commandStatsCollection = database.collection("CommandStats");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -301,6 +304,7 @@ module.exports = async (client) => {
     client.dashboardAuditLogCollection = dashboardAuditLogCollection;
     client.cronJobLogCollection = cronJobLogCollection;
     client.userSettingsCollection = userSettingsCollection;
+    client.commandStatsCollection = commandStatsCollection;
 
     // 抖內系統索引
     // - code unique：用於 webhook 對應 session
@@ -434,6 +438,18 @@ module.exports = async (client) => {
       )
       .catch((e) =>
         console.log(`[WARN] UserSettings 唯一索引建立失敗：${e.message}`.yellow),
+      );
+
+    // CommandStats：name 唯一（一個指令一筆）；排行查詢靠 count 索引
+    await commandStatsCollection
+      .createIndex({ name: 1 }, { unique: true, name: "uniq_command_stats_name" })
+      .catch((e) =>
+        console.log(`[WARN] CommandStats name 索引建立失敗：${e.message}`.yellow),
+      );
+    await commandStatsCollection
+      .createIndex({ count: -1 }, { name: "command_stats_count_desc" })
+      .catch((e) =>
+        console.log(`[WARN] CommandStats count 索引建立失敗：${e.message}`.yellow),
       );
 
     await economySnapshotsCollection
