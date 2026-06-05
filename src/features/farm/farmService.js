@@ -388,6 +388,112 @@ async function fertilize(client, { userId, guildId, plotIndex, fertilizerKey, co
   };
 }
 
+// 一鍵施肥預覽：算出此肥料能對多少塊成長中地塊各施 1 份、消耗多少材料。
+// 不寫庫；只給 UI 顯示用。
+async function previewFertilizeAll(client, { userId, guildId, fertilizerKey }) {
+  if (!farming?.enabled) return { ok: false, reason: "disabled" };
+  if (!coll(client)) return { ok: false, reason: "disabled" };
+
+  const fert = farming.fertilizers?.[fertilizerKey];
+  if (!fert) return { ok: false, reason: "invalid_fertilizer" };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const plotCount = getPlotCount(profile);
+  const plots = await getPlots(client, userId, guildId, plotCount);
+  const now = Date.now();
+  const cap = farming.growthReductionCapPct ?? 0.6;
+
+  const skipped = [];
+  const eligible = [];
+  for (const p of plots) {
+    const live = resolveLiveStatus(p, now);
+    if (!live.crop) continue;
+    if (live.status === "ready") { skipped.push({ plotIndex: live.plotIndex, reason: "already_ready" }); continue; }
+    if (live.status === "rotted") { skipped.push({ plotIndex: live.plotIndex, reason: "already_rotted" }); continue; }
+    if (live.status === "raided") { skipped.push({ plotIndex: live.plotIndex, reason: "under_raid" }); continue; }
+    if (live.status !== "growing") continue;
+    if (Array.isArray(fert.onlyCrops) && !fert.onlyCrops.includes(live.crop)) {
+      skipped.push({ plotIndex: live.plotIndex, reason: "fertilizer_not_applicable" });
+      continue;
+    }
+    if (fert.growReductionPct > 0 && !(fert.yieldBonusPct > 0)) {
+      const crop = farming.crops?.[live.crop];
+      const maxReduction = Math.floor((crop?.growMs || 0) * cap);
+      const room = maxReduction - (live.growth_reduction_ms || 0);
+      if (room <= 0) {
+        skipped.push({ plotIndex: live.plotIndex, reason: "growth_cap_reached" });
+        continue;
+      }
+    }
+    eligible.push(live);
+  }
+
+  const sourceField = fert.source === "fish_bag" ? "fish_bag" : "backpack";
+  const perPlot = fert.qty || 1;
+  const have = (profile[sourceField] || {})[fert.key] || 0;
+  const maxAffordable = Math.floor(have / perPlot);
+  const willApply = Math.min(eligible.length, maxAffordable);
+  const willConsume = willApply * perPlot;
+
+  return {
+    ok: true,
+    fert,
+    eligibleCount: eligible.length,
+    willApply,
+    willConsume,
+    have,
+    perPlot,
+    sourceField,
+    skipped,
+    materialShort: willApply < eligible.length,
+  };
+}
+
+// 一鍵施肥：對所有 growing 地塊各施 1 份；材料用完即停。
+// excludePlotIndex：用在「對其他成長中地塊也施一份」的快捷按鈕，跳過剛剛已處理的那塊。
+async function fertilizeAll(client, { userId, guildId, fertilizerKey, excludePlotIndex = null }) {
+  if (!farming?.enabled) return { ok: false, reason: "disabled" };
+  if (!coll(client)) return { ok: false, reason: "disabled" };
+
+  const fert = farming.fertilizers?.[fertilizerKey];
+  if (!fert) return { ok: false, reason: "invalid_fertilizer" };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const plotCount = getPlotCount(profile);
+  const plots = await getPlots(client, userId, guildId, plotCount);
+  const now = Date.now();
+
+  const applied = [];
+  const skipped = [];
+  let stoppedByMaterial = false;
+  for (const p of plots) {
+    const live = resolveLiveStatus(p, now);
+    if (!live.crop || live.status !== "growing") continue;
+    if (excludePlotIndex != null && live.plotIndex === excludePlotIndex) continue;
+    const r = await fertilize(client, {
+      userId, guildId, plotIndex: live.plotIndex, fertilizerKey, count: 1,
+    });
+    if (r.ok) {
+      applied.push({ plotIndex: live.plotIndex, ...r });
+      continue;
+    }
+    if (r.reason === "insufficient_material") {
+      stoppedByMaterial = true;
+      break;
+    }
+    skipped.push({ plotIndex: live.plotIndex, reason: r.reason });
+  }
+
+  return {
+    ok: applied.length > 0,
+    reason: applied.length > 0 ? null : "no_eligible_plot",
+    fert,
+    applied,
+    skipped,
+    stoppedByMaterial,
+  };
+}
+
 // 擴建預覽：只回傳下一階資訊與目前金幣，不執行扣費。
 async function previewExpand(client, { userId, guildId }) {
   if (!farming?.enabled) return { ok: false, reason: "disabled" };
@@ -688,6 +794,8 @@ module.exports = {
   plantAllCrops,
   harvestCrop,
   fertilize,
+  fertilizeAll,
+  previewFertilizeAll,
   previewExpand,
   expandFarm,
   defendRaid,

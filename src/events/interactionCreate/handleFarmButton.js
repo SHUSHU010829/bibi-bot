@@ -4,6 +4,11 @@
 //   farm_plant_<ownerId>_<plotIndex>    — 開啟作物選單（StringSelect）
 //   farm_harvest_<ownerId>_<plotIndex>  — 直接收成該地塊
 //   farm_fert_<ownerId>_<plotIndex>     — 開啟肥料選單（StringSelect）
+//   farm_fertall_<ownerId>              — 一鍵施肥：開啟肥料選單
+//   farm_fertallcfm_<ownerId>_<fertKey> — 確認執行一鍵施肥
+//   farm_fertallcancel_<ownerId>        — 取消一鍵施肥確認
+//   farm_fertagain_<ownerId>_<plotIndex>_<fertKey>_<count> — 對同地塊再施 N 份（count: 1/3/5/max）
+//   farm_fertrest_<ownerId>_<plotIndex>_<fertKey> — 對其他成長中地塊各施 1 份
 //   farm_defend_<ownerId>_<plotIndex>   — 戰鬥防禦
 //   farm_expand_<ownerId>               — 顯示擴建確認預覽
 //   farm_expandconfirm_<ownerId>        — 確認後實際扣款並擴建
@@ -14,6 +19,7 @@
 // StringSelect customId：
 //   farm_plantsel_<ownerId>_<plotIndex>  — 玩家選擇要種的作物
 //   farm_fertsel_<ownerId>_<plotIndex>   — 玩家選擇要施的肥料
+//   farm_fertallsel_<ownerId>            — 一鍵施肥的肥料選擇
 
 require("colors");
 const {
@@ -43,11 +49,14 @@ const { resolveStamina, staminaMax, getMemberClub } = require("../../features/mi
 const reminder = require("../../features/reminders/cooldownReminderService");
 
 const BTN_PREFIXES = [
-  "farm_plantall_", "farm_plant_", "farm_harvestall_", "farm_harvest_", "farm_fert_", "farm_defend_", "farm_trap_",
+  "farm_plantall_", "farm_plant_", "farm_harvestall_", "farm_harvest_",
+  "farm_fertallcancel_", "farm_fertallcfm_", "farm_fertall_",
+  "farm_fertagain_", "farm_fertrest_", "farm_fert_",
+  "farm_defend_", "farm_trap_",
   "farm_expandconfirm_", "farm_expandcancel_", "farm_expand_",
   "farm_view_", "farm_sell_",
 ];
-const SELECT_PREFIXES = ["farm_plantallsel_", "farm_plantsel_", "farm_fertsel_"];
+const SELECT_PREFIXES = ["farm_plantallsel_", "farm_plantsel_", "farm_fertallsel_", "farm_fertsel_"];
 
 function parseId(customId, prefixes) {
   for (const p of prefixes) {
@@ -189,6 +198,108 @@ async function fetchUserCoins(client, userId, guildId) {
     ?.findOne({ userId, guildId })
     .catch(() => null);
   return doc?.totalCoins || 0;
+}
+
+// 單塊施肥成功後的訊息：附「再施 ×N」「對其他地塊」「回到農場」快捷按鈕。
+// 按鈕會即時讀取剩餘材料與其他成長中地塊數，無法操作的就不顯示對應按鈕。
+async function buildFertSuccessContainer(client, { userId, guildId, plotIndex, fertilizerKey, result, title = "💧 施肥成功", accent = 0x4a90a4 }) {
+  const fertDef = farming.fertilizers?.[fertilizerKey] || {};
+  const readyEpoch = Math.floor(result.newReadyAt / 1000);
+  const mins = Math.round((result.reductionMs || 0) / 60000);
+  const partial = result.appliedCount < (result.requestedCount || result.appliedCount);
+  const body = [
+    `💧 ${fertDef.emoji} **${fertDef.name}** ×${result.consumed}（生效 ${result.appliedCount} 次${partial ? "・部分達上限" : ""}）`,
+    mins > 0 ? `⏱️ 成長 -${mins} 分鐘 → <t:${readyEpoch}:R>` : null,
+    result.newYieldBonus > 0 ? `🌟 累計收成 +${Math.round(result.newYieldBonus * 100)}%` : null,
+  ].filter(Boolean).join("\n");
+
+  const c = new ContainerBuilder()
+    .setAccentColor(accent)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${title}`))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const sourceField = fertDef.source === "fish_bag" ? "fish_bag" : "backpack";
+  const have = (profile[sourceField] || {})[fertDef.key] || 0;
+  const perPlot = fertDef.qty || 1;
+  const materialMax = Math.floor(have / perPlot);
+
+  const plotCount = farmService.getPlotCount(profile);
+  const plots = await farmService.getPlots(client, userId, guildId, plotCount);
+  const otherGrowing = plots.filter((p) => {
+    if (p.plotIndex === plotIndex) return false;
+    const live = farmService.resolveLiveStatus(p);
+    if (!live.crop || live.status !== "growing") return false;
+    if (Array.isArray(fertDef.onlyCrops) && !fertDef.onlyCrops.includes(live.crop)) return false;
+    return true;
+  }).length;
+
+  if (materialMax > 0) {
+    const reRow = new ActionRowBuilder();
+    for (const n of [1, 3, 5]) {
+      if (n > materialMax) continue;
+      reRow.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`farm_fertagain_${userId}_${plotIndex}_${fertilizerKey}_${n}`)
+          .setLabel(`再施 ×${n}`)
+          .setEmoji("💧")
+          .setStyle(ButtonStyle.Secondary),
+      );
+    }
+    if (materialMax > 5) {
+      reRow.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`farm_fertagain_${userId}_${plotIndex}_${fertilizerKey}_max`)
+          .setLabel(`再施 ×最多（${materialMax}）`)
+          .setEmoji("💧")
+          .setStyle(ButtonStyle.Secondary),
+      );
+    }
+    if (reRow.components.length > 0) {
+      c.addActionRowComponents(reRow);
+    }
+  }
+
+  const row2 = new ActionRowBuilder();
+  if (otherGrowing > 0 && materialMax >= 1) {
+    row2.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`farm_fertrest_${userId}_${plotIndex}_${fertilizerKey}`)
+        .setLabel(`對其他 ${otherGrowing} 塊各施 1 份`)
+        .setEmoji("🌾")
+        .setStyle(ButtonStyle.Primary),
+    );
+  }
+  row2.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`farm_view_${userId}`)
+      .setLabel("回到農場")
+      .setEmoji("🌾")
+      .setStyle(ButtonStyle.Secondary),
+  );
+  c.addActionRowComponents(row2);
+
+  return c;
+}
+
+// 文字化跳過理由，做成 -# 小字摘要
+function skippedSummaryLine(skipped) {
+  if (!skipped?.length) return null;
+  const labels = {
+    already_ready: "已成熟",
+    already_rotted: "已枯萎",
+    under_raid: "被入侵",
+    fertilizer_not_applicable: "肥料不適用",
+    growth_cap_reached: "已達加速上限",
+  };
+  const counts = new Map();
+  for (const s of skipped) {
+    const k = labels[s.reason] || s.reason;
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  const parts = [...counts.entries()].map(([k, v]) => `${k} ${v}`);
+  return `-# 跳過 ${skipped.length} 塊：${parts.join("・")}`;
 }
 
 // 成功訊息（ephemeral Container），附「回到農場」按鈕
@@ -572,14 +683,13 @@ module.exports = async (client, interaction) => {
         );
       }
 
-      const readyEpoch = Math.floor(result.newReadyAt / 1000);
-      const mins = Math.round((result.reductionMs || 0) / 60000);
-      const body = [
-        `💧 ${fertDef.emoji} **${fertDef.name}** ×${result.consumed}`,
-        mins > 0 ? `⏱️ 成長 -${mins} 分鐘 → <t:${readyEpoch}:R>` : null,
-        result.newYieldBonus > 0 ? `🌟 累計收成 +${Math.round(result.newYieldBonus * 100)}%` : null,
-      ].filter(Boolean).join("\n");
-      const c = buildSuccessContainer("💧 施肥成功", body, interaction.user.id, 0x4a90a4);
+      const c = await buildFertSuccessContainer(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        plotIndex,
+        fertilizerKey,
+        result: { ...result, requestedCount: 1 },
+      });
       await interaction.editReply({
         components: [c],
         flags: MessageFlags.IsComponentsV2,
@@ -595,6 +705,322 @@ module.exports = async (client, interaction) => {
         guildId: interaction.guildId,
         type: "farm",
         readyAt: nextReadyAtFert,
+      }).catch(() => {});
+      return;
+    }
+
+    // ── fertagain：對同地塊再施 N 份（payload: <plotIndex>_<fertKey>_<count>）──
+    if (action === "fertagain" && isBtn) {
+      const segs = (payload || "").split("_");
+      if (segs.length < 3) return;
+      const againPlotIndex = Number.parseInt(segs[0], 10);
+      const countSpec = segs[segs.length - 1];
+      const fertilizerKey = segs.slice(1, -1).join("_");
+      const fertDef = farming.fertilizers?.[fertilizerKey] || {};
+      await interaction.deferReply();
+
+      const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
+      const sourceField = fertDef.source === "fish_bag" ? "fish_bag" : "backpack";
+      const have = (profile[sourceField] || {})[fertDef.key] || 0;
+      const perPlot = fertDef.qty || 1;
+      const materialMax = Math.floor(have / perPlot);
+      const requested = countSpec === "max" ? materialMax : Number.parseInt(countSpec, 10);
+      const count = Math.min(Math.max(1, requested || 0), materialMax);
+
+      if (count <= 0) {
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("❌ 材料不足", `${sourceField === "fish_bag" ? "魚袋" : "背包"}「${fertDef.key}」需要 **${perPlot}**，目前 **${have}**。`, "去 /挖礦、/釣魚、/地下城、/烹飪 收集"),
+        );
+      }
+
+      const result = await farmService.fertilize(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        plotIndex: againPlotIndex, fertilizerKey, count,
+      });
+
+      if (!result.ok) {
+        if (result.reason === "growth_cap_reached") {
+          return replyEphemeralContainer(
+            interaction,
+            errContainer("⛔ 已達加速上限", `這塊地的成長時間已縮短到上限（${Math.round((farming.growthReductionCapPct || 0.6) * 100)}%）。`, "改施提升收成上限的肥料（章魚／月光露水）"),
+          );
+        }
+        if (result.reason === "already_ready") {
+          return replyEphemeralContainer(
+            interaction,
+            errContainer("🌟 已可收成", "這塊地的作物已成熟，無需施肥。", `直接點「收成」或用 /收成 地塊:${againPlotIndex + 1}`),
+          );
+        }
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("🔧 施肥失敗", `原因：\`${result.reason}\``, "請稍後再試"),
+        );
+      }
+
+      const c = await buildFertSuccessContainer(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        plotIndex: againPlotIndex,
+        fertilizerKey,
+        result: { ...result, requestedCount: count },
+      });
+      await interaction.editReply({
+        components: [c],
+        flags: MessageFlags.IsComponentsV2,
+      });
+
+      const nextReadyAtAgain = await farmService.getNextReadyAt(
+        client, interaction.user.id, interaction.guildId,
+      );
+      reminder.refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "farm",
+        readyAt: nextReadyAtAgain,
+      }).catch(() => {});
+      return;
+    }
+
+    // ── fertrest：對其他成長中地塊各施 1 份（payload: <plotIndex>_<fertKey>）──
+    if (action === "fertrest" && isBtn) {
+      const segs = (payload || "").split("_");
+      if (segs.length < 2) return;
+      const excludePlotIndex = Number.parseInt(segs[0], 10);
+      const fertilizerKey = segs.slice(1).join("_");
+      const fertDef = farming.fertilizers?.[fertilizerKey] || {};
+      await interaction.deferReply();
+
+      const result = await farmService.fertilizeAll(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        fertilizerKey,
+        excludePlotIndex,
+      });
+
+      if (!result.ok) {
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("🌱 沒有可施肥的地塊", "其他成長中的地塊不適用此肥料、或都已達加速上限。", "改用其他肥料試試"),
+        );
+      }
+
+      const fertSourceLabel = fertDef.source === "fish_bag" ? "魚袋" : "背包";
+      const totalConsumed = result.applied.reduce((s, a) => s + (a.consumed || 0), 0);
+      const lines = [
+        `💧 ${fertDef.emoji} **${fertDef.name}** 對其他 **${result.applied.length}** 塊地各施 1 份`,
+        `🧪 共消耗：${fertSourceLabel}「${fertDef.key}」 ×${totalConsumed}`,
+      ];
+      if (result.stoppedByMaterial) lines.push("-# ⚠️ 材料用完，剩餘地塊未施");
+      const skipLine = skippedSummaryLine(result.skipped);
+      if (skipLine) lines.push(skipLine);
+
+      const c = buildSuccessContainer("💧 一鍵施肥（其餘）完成", lines.join("\n"), interaction.user.id, 0x4a90a4);
+      await interaction.editReply({
+        components: [c],
+        flags: MessageFlags.IsComponentsV2,
+      });
+
+      const nextReadyAtRest = await farmService.getNextReadyAt(
+        client, interaction.user.id, interaction.guildId,
+      );
+      reminder.refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "farm",
+        readyAt: nextReadyAtRest,
+      }).catch(() => {});
+      return;
+    }
+
+    // ── fertall 按鈕：彈出肥料 select（一鍵施肥）──
+    if (action === "fertall" && isBtn) {
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId;
+      const profile = await getOrCreate(client, userId, guildId);
+      const plotCount = farmService.getPlotCount(profile);
+      const plots = await farmService.getPlots(client, userId, guildId, plotCount);
+      const growingCount = plots.filter((p) => {
+        const live = farmService.resolveLiveStatus(p);
+        return live.crop && live.status === "growing";
+      }).length;
+
+      if (growingCount === 0) {
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("🌱 沒有成長中的地塊", "目前沒有任何正在成長的作物可以施肥。", "等收成完再種點什麼"),
+        );
+      }
+
+      const options = Object.entries(farming.fertilizers || {}).map(([key, def]) => {
+        const sourceField = def.source === "fish_bag" ? "fish_bag" : "backpack";
+        const sourceLabel = def.source === "fish_bag" ? "魚袋" : "背包";
+        const have = (profile[sourceField] || {})[def.key] || 0;
+        const perPlot = def.qty || 1;
+        const canApply = Math.floor(have / perPlot);
+        const effects = [];
+        if (def.growReductionPct) effects.push(`-${Math.round(def.growReductionPct * 100)}%成長`);
+        if (def.yieldBonusPct) effects.push(`+${Math.round(def.yieldBonusPct * 100)}%收成`);
+        const parts = [
+          `${sourceLabel}${have}`,
+          `夠施${Math.min(canApply, growingCount)}/${growingCount}塊`,
+          effects.join("／"),
+        ];
+        if (Array.isArray(def.onlyCrops)) parts.push("限部分作物");
+        return {
+          label: def.name,
+          value: key,
+          description: parts.join("・").slice(0, 100),
+          emoji: def.emoji,
+        };
+      });
+
+      const c = new ContainerBuilder()
+        .setAccentColor(0x4a90a4)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`# 💧 一鍵施肥（${growingCount} 塊成長中地塊）`),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`你目前的材料：\n${fertilizerInventoryLine(profile)}`),
+        )
+        .addActionRowComponents(
+          new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`farm_fertallsel_${userId}`)
+              .setPlaceholder("選擇要施的肥料…")
+              .addOptions(options),
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 每塊地各施 1 份；確認後才會扣材料"),
+        );
+      return replyEphemeralContainer(interaction, c);
+    }
+
+    // ── fertallsel：選了肥料 → 顯示預覽確認 ──
+    if (action === "fertallsel" && isSelect) {
+      const fertilizerKey = interaction.values?.[0];
+      if (!fertilizerKey) return;
+      const fertDef = farming.fertilizers?.[fertilizerKey] || {};
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId;
+
+      const preview = await farmService.previewFertilizeAll(client, { userId, guildId, fertilizerKey });
+      if (!preview.ok) {
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("🔧 預覽失敗", `原因：\`${preview.reason}\``, "請稍後再試"),
+        );
+      }
+
+      const sourceLabel = preview.sourceField === "fish_bag" ? "魚袋" : "背包";
+      if (preview.willApply <= 0) {
+        const body = preview.eligibleCount === 0
+          ? "目前沒有任何能用這種肥料的成長中地塊（可能都不適用、或已達加速上限）。"
+          : `需要 ${sourceLabel}「${fertDef.key}」**${preview.eligibleCount * preview.perPlot}**，目前 **${preview.have}**。`;
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("❌ 無法施肥", body, "改用其他肥料或先收集材料"),
+        );
+      }
+
+      const lines = [
+        `🌾 將對 **${preview.willApply}** 塊成長中地塊各施 1 份 ${fertDef.emoji} **${fertDef.name}**`,
+        `🧪 消耗 ${sourceLabel}「${fertDef.key}」 **${preview.willConsume}**（庫存 ${preview.have} → ${preview.have - preview.willConsume}）`,
+      ];
+      if (fertDef.growReductionPct) lines.push(`⏱️ 每塊成長 -${Math.round(fertDef.growReductionPct * 100)}%（封頂 ${Math.round((farming.growthReductionCapPct || 0.6) * 100)}%）`);
+      if (fertDef.yieldBonusPct) lines.push(`🌟 每塊 +${Math.round(fertDef.yieldBonusPct * 100)}% 收成`);
+      if (preview.materialShort) lines.push(`-# ⚠️ 材料只夠 ${preview.willApply}/${preview.eligibleCount} 塊`);
+      const skipLine = skippedSummaryLine(preview.skipped);
+      if (skipLine) lines.push(skipLine);
+
+      const c = new ContainerBuilder()
+        .setAccentColor(0xf1c40f)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("# 💧 確認一鍵施肥？"),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
+        .addActionRowComponents(
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`farm_fertallcfm_${userId}_${fertilizerKey}`)
+              .setLabel(`確認施肥（${preview.willApply} 塊）`)
+              .setEmoji("💧")
+              .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+              .setCustomId(`farm_fertallcancel_${userId}`)
+              .setLabel("取消")
+              .setStyle(ButtonStyle.Secondary),
+          ),
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 按下「確認施肥」後才會扣材料"),
+        );
+      return replyEphemeralContainer(interaction, c);
+    }
+
+    // ── fertallcancel：取消一鍵施肥 ──
+    if (action === "fertallcancel") {
+      const c = new ContainerBuilder()
+        .setAccentColor(0x95a5a6)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent("# 已取消一鍵施肥"))
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent("沒有扣材料，地塊維持原狀。"));
+      return interaction.update({
+        components: [c],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+
+    // ── fertallcfm：確認後執行一鍵施肥（payload: <fertKey>）──
+    if (action === "fertallcfm" && isBtn) {
+      const fertilizerKey = payload;
+      const fertDef = farming.fertilizers?.[fertilizerKey] || {};
+      await interaction.deferReply();
+
+      const result = await farmService.fertilizeAll(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        fertilizerKey,
+      });
+
+      if (!result.ok) {
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("🌱 沒有可施肥的地塊", "成長中地塊不適用此肥料、或都已達加速上限。", "改用其他肥料試試"),
+        );
+      }
+
+      const sourceLabel = fertDef.source === "fish_bag" ? "魚袋" : "背包";
+      const totalConsumed = result.applied.reduce((s, a) => s + (a.consumed || 0), 0);
+      const totalReductionMs = result.applied.reduce((s, a) => s + (a.reductionMs || 0), 0);
+      const avgMin = result.applied.length > 0 ? Math.round(totalReductionMs / result.applied.length / 60000) : 0;
+      const lines = [
+        `💧 ${fertDef.emoji} **${fertDef.name}** 對 **${result.applied.length}** 塊地各施 1 份`,
+        `🧪 共消耗：${sourceLabel}「${fertDef.key}」 ×${totalConsumed}`,
+      ];
+      if (avgMin > 0) lines.push(`⏱️ 平均每塊成長 -${avgMin} 分鐘`);
+      if (result.stoppedByMaterial) lines.push("-# ⚠️ 材料用完，剩餘地塊未施");
+      const skipLine = skippedSummaryLine(result.skipped);
+      if (skipLine) lines.push(skipLine);
+
+      const c = buildSuccessContainer("💧 一鍵施肥完成", lines.join("\n"), interaction.user.id, 0x4a90a4);
+      await interaction.editReply({
+        components: [c],
+        flags: MessageFlags.IsComponentsV2,
+      });
+
+      const nextReadyAtAll = await farmService.getNextReadyAt(
+        client, interaction.user.id, interaction.guildId,
+      );
+      reminder.refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "farm",
+        readyAt: nextReadyAtAll,
       }).catch(() => {});
       return;
     }
