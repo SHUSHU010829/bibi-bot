@@ -26,7 +26,7 @@ const FISH_CD_TICKET_PREFIX = "fish_cd_use_ticket_";
 function parseFishCdTicketId(customId) {
   if (!customId || !customId.startsWith(FISH_CD_TICKET_PREFIX)) return null;
   const rest = customId.slice(FISH_CD_TICKET_PREFIX.length);
-  const us = rest.lastIndexOf("_");
+  const us = rest.indexOf("_");
   if (us <= 0) return null;
   const ownerId = rest.slice(0, us);
   const location = rest.slice(us + 1);
