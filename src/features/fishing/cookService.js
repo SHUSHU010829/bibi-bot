@@ -1,6 +1,7 @@
 require("colors");
 const { fishing } = require("../../config");
 const { getOrCreate } = require("../mining/miningProfile");
+const foodBag = require("./foodBag");
 
 // 食物合成與食物 buff 管理。
 //
@@ -136,7 +137,7 @@ function consumeFishFortuneUse(client, userId, guildId, profile) {
   return consumeFoodBuffUse(client, userId, guildId, profile, "fish_fortune");
 }
 
-// 執行一次烹飪。回傳結果物件。
+// 執行一次烹飪。產出進 food_bag（不立即套 buff，使用時才生效）。
 async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
   if (!fishing?.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
@@ -150,7 +151,6 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
   const backpack = profile.backpack || {};
   const veggieBag = profile.veggie_bag || {};
 
-  // 檢查魚袋材料
   const missingFish = [];
   for (const [fishKey, need] of Object.entries(recipe.materials || {})) {
     const have = fishBag[fishKey] || 0;
@@ -160,7 +160,6 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
     return { ok: false, reason: "insufficient_fish", missingFish };
   }
 
-  // 檢查蔬菜材料（農場聯動配方）
   const missingVeggies = [];
   for (const [veggieKey, need] of Object.entries(recipe.veggies || {})) {
     const have = veggieBag[veggieKey] || 0;
@@ -170,7 +169,6 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
     return { ok: false, reason: "insufficient_veggies", missingVeggies };
   }
 
-  // 煤炭烤製：useCoal=true 且 recipe.coalFuel > 0 時才套強化 buff
   const coalNeeded = useCoal ? (recipe.coalFuel || 0) : 0;
   if (coalNeeded > 0 && (backpack.coal || 0) < coalNeeded) {
     return {
@@ -181,29 +179,17 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
     };
   }
 
-  const buffDef = (useCoal && coalNeeded > 0 && recipe.coalBuff) ? recipe.coalBuff : recipe.buff;
   const isCoalEnhanced = useCoal && coalNeeded > 0 && !!recipe.coalBuff;
+  const buffDef = isCoalEnhanced ? recipe.coalBuff : recipe.buff;
 
-  // 建立新 buff
-  const now = Date.now();
-  let newBuff;
-  if (typeof buffDef.uses === "number") {
-    newBuff = { type: buffDef.type, value: buffDef.value, expires_at: null, uses_left: buffDef.uses };
-  } else {
-    newBuff = {
-      type: buffDef.type,
-      value: buffDef.value,
-      expires_at: now + (buffDef.durationMs || 3600000),
-      uses_left: null,
-    };
-  }
+  const instance = {
+    id: foodBag.newId(),
+    recipeId,
+    cookedAt: Date.now(),
+    useCoal: isCoalEnhanced,
+  };
 
-  // 若已有相同 type 的食物 buff → 重置（覆蓋，不疊加，避免無限堆疊）
-  const existingBuffs = cleanExpiredBuffs(profile.active_food_buffs || []);
-  const otherBuffs = existingBuffs.filter((b) => b.type !== newBuff.type);
-  const updatedBuffs = [...otherBuffs, newBuff];
-
-  // 原子更新：扣材料 + 扣煤炭 + 烹飪副產廚餘堆肥 + byproduct（如月光露水）+ 寫入新 buff
+  // 原子更新：扣材料 + 扣煤炭 + 入食物倉庫 + 烹飪副產廚餘堆肥 + byproduct
   const inc = {};
   for (const [fishKey, need] of Object.entries(recipe.materials || {})) {
     inc[`fish_bag.${fishKey}`] = -need;
@@ -214,9 +200,7 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
   if (coalNeeded > 0) {
     inc["backpack.coal"] = -coalNeeded;
   }
-  // 每次烹飪固定產出 1 份廚餘堆肥（接通農場肥料供應鏈）
   inc["backpack.compost"] = (inc["backpack.compost"] || 0) + 1;
-  // 配方特定副產物（例如黑玫瑰精華煉出月光露水）
   if (recipe.byproduct?.field && recipe.byproduct?.qty) {
     inc[recipe.byproduct.field] = (inc[recipe.byproduct.field] || 0) + recipe.byproduct.qty;
   }
@@ -225,7 +209,8 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
     { userId, guildId },
     {
       $inc: inc,
-      $set: { active_food_buffs: updatedBuffs, updatedAt: new Date() },
+      $push: { food_bag: instance },
+      $set: { updatedAt: new Date() },
     }
   );
 
@@ -236,8 +221,83 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
     buffDef,
     isCoalEnhanced,
     coalUsed: coalNeeded,
-    newBuff,
+    instance,
   };
+}
+
+// 取得某 instance 套用後會產生的 buff（含 freshness 衰減）。
+function previewBuffFromInstance(instance) {
+  const recipe = fishing?.recipes?.[instance.recipeId];
+  if (!recipe) return null;
+  const isCoalEnhanced = !!instance.useCoal && (recipe.coalFuel || 0) > 0 && !!recipe.coalBuff;
+  const buffDef = isCoalEnhanced ? recipe.coalBuff : recipe.buff;
+  if (!buffDef) return null;
+  const fresh = foodBag.freshness(instance);
+  const value = (Number(buffDef.value) || 0) * fresh;
+  return {
+    type: buffDef.type,
+    baseValue: Number(buffDef.value) || 0,
+    value,
+    freshness: fresh,
+    isCoalEnhanced,
+    durationMs: buffDef.durationMs || null,
+    uses: typeof buffDef.uses === "number" ? buffDef.uses : null,
+    label: buffDef.label || "",
+    recipe,
+  };
+}
+
+// 使用一份食物。
+//   confirmOverwrite=false 且已有同 type buff → 回 { ok:false, reason:"overwrite_needed", existingBuff, preview }
+//   否則 → 移除 instance、套上新 buff（value 已 × freshness）。
+async function useFood(client, { userId, guildId, instanceId, confirmOverwrite = false }) {
+  if (!fishing?.enabled) return { ok: false, reason: "disabled" };
+  if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  await foodBag.sweepSpoiled(client, userId, guildId, profile).catch(() => {});
+
+  const instance = (profile.food_bag || []).find((it) => it.id === instanceId);
+  if (!instance) return { ok: false, reason: "not_found" };
+
+  const fresh = foodBag.freshness(instance);
+  if (fresh <= 0) return { ok: false, reason: "spoiled" };
+
+  const preview = previewBuffFromInstance(instance);
+  if (!preview) return { ok: false, reason: "invalid_recipe" };
+
+  const now = Date.now();
+  const existingBuffs = cleanExpiredBuffs(profile.active_food_buffs || []);
+  const existingBuff = existingBuffs.find((b) => b.type === preview.type);
+  if (existingBuff && !confirmOverwrite) {
+    return { ok: false, reason: "overwrite_needed", existingBuff, preview, instance };
+  }
+
+  let newBuff;
+  if (preview.uses != null) {
+    newBuff = { type: preview.type, value: preview.value, expires_at: null, uses_left: preview.uses };
+  } else {
+    newBuff = {
+      type: preview.type,
+      value: preview.value,
+      expires_at: now + (preview.durationMs || 3600000),
+      uses_left: null,
+    };
+  }
+
+  const otherBuffs = existingBuffs.filter((b) => b.type !== newBuff.type);
+  const updatedBuffs = [...otherBuffs, newBuff];
+
+  const res = await client.miningProfilesCollection.updateOne(
+    { userId, guildId, "food_bag.id": instanceId },
+    {
+      $pull: { food_bag: { id: instanceId } },
+      $set: { active_food_buffs: updatedBuffs, updatedAt: new Date() },
+    }
+  );
+  if (res.modifiedCount === 0) return { ok: false, reason: "not_found" };
+
+  return { ok: true, instance, preview, newBuff, overwritten: !!existingBuff };
 }
 
 module.exports = {
@@ -253,4 +313,6 @@ module.exports = {
   consumeFishFortuneUse,
   consumeFarmYieldUse,
   cook,
+  useFood,
+  previewBuffFromInstance,
 };

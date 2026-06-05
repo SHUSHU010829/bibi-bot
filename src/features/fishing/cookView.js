@@ -54,89 +54,6 @@ function describeBuff(buff) {
   return `${buff.type} +${buff.value}`;
 }
 
-function describeBuffDuration(buff) {
-  if (!buff) return "";
-  if (buff.uses_left !== null && buff.uses_left !== undefined) {
-    return `剩餘 ${buff.uses_left} 次使用`;
-  }
-  if (buff.expires_at) {
-    return `到期 <t:${Math.floor(buff.expires_at / 1000)}:R>`;
-  }
-  return "";
-}
-
-// 預覽烹飪會套用的 buff 類型（與 cookService.cook 內部的 buff 選擇邏輯一致）
-function previewBuffType(recipe, useCoal) {
-  if (!recipe) return null;
-  const coalFuel = recipe.coalFuel || 0;
-  const willCoalBuff = useCoal && coalFuel > 0 && recipe.coalBuff;
-  const def = willCoalBuff ? recipe.coalBuff : recipe.buff;
-  return def?.type || null;
-}
-
-// ─── 覆蓋確認面板 ─────────────────────────────────────────────────────────────
-const CONFIRM_PREFIX = "cook_overwrite_";
-const CANCEL_PREFIX  = "cook_cancel_";
-
-function buildOverwriteConfirmView({ recipe, recipeId, useCoal, existingBuff, userId }) {
-  const newDef = (useCoal && (recipe.coalFuel || 0) > 0 && recipe.coalBuff)
-    ? recipe.coalBuff
-    : recipe.buff;
-
-  const existingDesc = describeBuff(existingBuff);
-  const existingDur = describeBuffDuration(existingBuff);
-  const existingLine = existingDur ? `${existingDesc}（${existingDur}）` : existingDesc;
-
-  const newLine = newDef?.label || describeBuff({ type: newDef?.type, value: newDef?.value });
-
-  const container = new ContainerBuilder()
-    .setAccentColor(0xe67e22)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `# ⚠️ 已有相同類型的料理效果`
-      )
-    )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**目前效果**：${existingLine}\n` +
-        `**新的效果**：${newLine}\n\n` +
-        `烹飪 ${recipe.emoji} **${recipe.name}** 會**覆蓋**目前的效果，要繼續嗎？`
-      )
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# 食物 buff 不會疊加；確認後材料才會被消耗。`
-      )
-    )
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`${CONFIRM_PREFIX}${userId}_${useCoal ? 1 : 0}_${recipeId}`)
-          .setLabel("✅ 確認覆蓋")
-          .setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-          .setCustomId(`${CANCEL_PREFIX}${userId}`)
-          .setLabel("❌ 取消")
-          .setStyle(ButtonStyle.Secondary)
-      )
-    );
-
-  return { components: [container], flags: MessageFlags.IsComponentsV2 };
-}
-
-function buildCanceledView(recipe) {
-  const container = new ContainerBuilder()
-    .setAccentColor(0x95a5a6)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `# ❌ 已取消烹飪\n` +
-        (recipe ? `沒有消耗 ${recipe.emoji} **${recipe.name}** 的任何材料。` : "沒有消耗任何材料。")
-      )
-    );
-  return { components: [container], flags: MessageFlags.IsComponentsV2 };
-}
-
 // ─── 失敗訊息 ────────────────────────────────────────────────────────────────
 function buildErrorView({ recipe, result, fishBag, backpack, veggieBag }) {
   if (result.reason === "insufficient_fish" || result.reason === "insufficient_veggies") {
@@ -188,46 +105,46 @@ function buildErrorView({ recipe, result, fishBag, backpack, veggieBag }) {
 
 // ─── 成功訊息 ────────────────────────────────────────────────────────────────
 function buildSuccessView({ recipe, result, userId }) {
-  const { isCoalEnhanced, coalUsed, newBuff } = result;
+  const { isCoalEnhanced, coalUsed, buffDef, instance } = result;
   const accentColor = isCoalEnhanced ? 0xff6b35 : 0x2ecc71;
 
-  const buffDesc = describeBuff(newBuff);
-
-  let durationDesc = "";
-  if (newBuff.uses_left !== null && newBuff.uses_left !== undefined) {
-    durationDesc = `持續 ${newBuff.uses_left} 次使用`;
-  } else if (newBuff.expires_at) {
-    durationDesc = `持續至 <t:${Math.floor(newBuff.expires_at / 1000)}:R>`;
-  }
+  const effectLabel = buffDef?.label || describeBuff({ type: buffDef?.type, value: buffDef?.value });
 
   const coalLine = isCoalEnhanced
-    ? `\n🪨 消耗煤炭 ×${coalUsed}，獲得**強化版**效果！`
+    ? `\n🪨 消耗煤炭 ×${coalUsed}，這份食物的**保鮮時間 ×${fishing.foodStorage?.coalMultiplier || 1.5}**`
     : recipe.coalFuel > 0
-    ? `\n-# 💡 加入 ${recipe.coalFuel} 個煤炭可升級效果（勾選「煤炭烤製」選項）`
+    ? `\n-# 💡 加入 ${recipe.coalFuel} 個煤炭可升級效果＋延長保鮮（勾選「煤炭烤製」選項）`
     : "";
 
   const container = new ContainerBuilder()
     .setAccentColor(accentColor)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# ${recipe.emoji} ${recipe.name} 烹飪完成！${isCoalEnhanced ? " 🔥" : ""}`
+        `# ${recipe.emoji} ${recipe.name} 出爐！${isCoalEnhanced ? " 🔥" : ""}`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `✨ **獲得 Buff**：${buffDesc}\n⏱️ ${durationDesc}${coalLine}`
+        `🥡 **已收進食物倉庫**\n` +
+        `✨ 食用後效果：${effectLabel}${coalLine}`
       )
     )
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`-# ${recipe.description || ""}`)
+      new TextDisplayBuilder().setContent(
+        `-# 食物新鮮度會隨時間衰減（一週後變廚餘堆肥）。隨時用 \`/食物\` 查看與食用。`
+      )
     )
     .addActionRowComponents(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`fish_bag_${userId}`)
-          .setLabel("查看背包")
-          .setStyle(ButtonStyle.Secondary)
+          .setCustomId(`food_open_${userId}`)
+          .setLabel("🥡 查看食物倉庫")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`food_useone_${userId}_${instance.id}`)
+          .setLabel("✨ 立刻食用")
+          .setStyle(ButtonStyle.Success)
       )
     );
 
@@ -235,11 +152,6 @@ function buildSuccessView({ recipe, result, userId }) {
 }
 
 module.exports = {
-  CONFIRM_PREFIX,
-  CANCEL_PREFIX,
-  previewBuffType,
-  buildOverwriteConfirmView,
-  buildCanceledView,
   buildErrorView,
   buildSuccessView,
 };

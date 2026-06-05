@@ -190,6 +190,14 @@
         "description": "本週成功收成黑玫瑰 ≥ 1 次",
         "reward": 2500,
         "target": 1
+      },
+      {
+        "id": "weekly_cook_50",
+        "name": "週末大廚",
+        "description": "本週完成烹飪 ≥ 50 次",
+        "reward": 5000,
+        "target": 50,
+        "spawnChance": 0.01
       }
     ]
   }

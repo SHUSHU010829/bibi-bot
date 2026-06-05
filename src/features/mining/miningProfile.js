@@ -42,6 +42,7 @@ function defaultProfile(userId, guildId) {
     rod_durability: null,
     rod_max_durability: null,
     active_food_buffs: [],
+    food_bag: [],
     createdAt: new Date(),
   };
 }
@@ -107,6 +108,7 @@ function normalize(doc) {
     }
   }
   if (!Array.isArray(doc.active_food_buffs)) doc.active_food_buffs = [];
+  if (!Array.isArray(doc.food_bag)) doc.food_bag = [];
   return doc;
 }
 

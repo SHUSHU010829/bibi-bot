@@ -60,6 +60,11 @@
         { "item": "moonlight_dew", "field": "backpack.moonlight_dew", "chance": 0.05, "name": "月光露水", "emoji": "🌟" }
       ]
     },
+    "foodStorage": {
+      "freshUntilMs": 43200000,
+      "zeroAtMs": 604800000,
+      "coalMultiplier": 1.5
+    },
     "recipes": {
       "fish_bento": {
         "name": "魚排便當",
