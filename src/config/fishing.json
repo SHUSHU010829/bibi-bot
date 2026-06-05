@@ -5,6 +5,8 @@
     "baseSuccessRate": 0.6,
     "successCap": 0.95,
     "failCooldownMs": 1800000,
+    "cdTicketReductionMs": 1800000,
+    "cdTicketDailyUseLimit": 0,
     "failMessages": [
       "魚吃完餌就溜走了…",
       "才剛咬餌就掙脫，魚跑了…",

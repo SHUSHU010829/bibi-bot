@@ -83,7 +83,7 @@
 
       { "id": "mining_luck_potion", "category": "挖礦道具", "type": "mining_luck_potion", "name": "幸運藥水", "description": "挖礦 luck +8%，持續 3 次挖礦（自動生效）", "price": 300, "payload": { "uses": 3 } },
       { "id": "mining_stamina_potion", "category": "挖礦道具", "type": "mining_stamina_potion", "name": "體力藥水", "description": "立即恢復 5 點地下城體力（不超過上限），體力已滿時無法購買。每日最多購買 2 瓶", "price": 600, "payload": { "restore": 5, "dailyLimit": 2 } },
-      { "id": "mining_cd_ticket", "category": "挖礦道具", "type": "mining_cd_ticket", "name": "CD 縮短券", "description": "挖礦冷卻中時，到 /背包 點按鈕使用，立即縮短 30 分鐘冷卻（剩餘不足 30 分則直接歸零）。最多持有 30 張，每日最多購買 30 張", "price": 150, "payload": { "qty": 1, "maxStack": 30, "dailyLimit": 30 } },
+      { "id": "mining_cd_ticket", "category": "通用道具", "type": "mining_cd_ticket", "name": "CD 縮短券", "description": "挖礦／釣魚冷卻中時，從 /挖礦 或 /釣魚 訊息點按鈕使用，立即縮短 30 分鐘冷卻（剩餘不足 30 分則直接歸零）。挖礦與釣魚共用同一批庫存。最多持有 60 張，每日最多購買 60 張", "price": 150, "payload": { "qty": 1, "maxStack": 60, "dailyLimit": 60 } },
       { "id": "mining_backpack_expand", "category": "挖礦道具", "type": "mining_backpack", "name": "背包擴充", "description": "永久增加礦石背包容量 +5 格", "price": 2000, "payload": { "slots": 5 } },
       { "id": "mining_whetstone_inferior", "category": "挖礦道具", "type": "mining_whetstone_inferior", "name": "劣質磨鎬石", "description": "到 /背包 使用，將鎬子耐久補滿，但最大耐久 -10（最大耐久不足 20 時無法使用）。最多持有 20 個", "price": 250, "payload": { "qty": 1, "maxStack": 20 } },
 
