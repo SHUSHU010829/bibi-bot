@@ -810,7 +810,7 @@ module.exports = async (client, interaction) => {
       const totalConsumed = result.applied.reduce((s, a) => s + (a.consumed || 0), 0);
       const lines = [
         `💧 ${fertDef.emoji} **${fertDef.name}** 對其他 **${result.applied.length}** 塊地各施 1 份`,
-        `🧪 共消耗：${fertSourceLabel}「${fertDef.key}」 ×${totalConsumed}`,
+        `🧪 共消耗：${fertSourceLabel}「${fertDef.name}」 ×${totalConsumed}`,
       ];
       if (result.stoppedByMaterial) lines.push("-# ⚠️ 材料用完，剩餘地塊未施");
       const skipLine = skippedSummaryLine(result.skipped);
@@ -1000,7 +1000,7 @@ module.exports = async (client, interaction) => {
       const avgMin = result.applied.length > 0 ? Math.round(totalReductionMs / result.applied.length / 60000) : 0;
       const lines = [
         `💧 ${fertDef.emoji} **${fertDef.name}** 對 **${result.applied.length}** 塊地各施 1 份`,
-        `🧪 共消耗：${sourceLabel}「${fertDef.key}」 ×${totalConsumed}`,
+        `🧪 共消耗：${sourceLabel}「${fertDef.name}」 ×${totalConsumed}`,
       ];
       if (avgMin > 0) lines.push(`⏱️ 平均每塊成長 -${avgMin} 分鐘`);
       if (result.stoppedByMaterial) lines.push("-# ⚠️ 材料用完，剩餘地塊未施");
