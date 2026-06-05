@@ -116,24 +116,6 @@ module.exports = {
       const guildId = interaction.guildId;
       const profile = await getFishingProfile(client, userId, guildId);
 
-      // 覆蓋防呆：若已有相同 type 的有效食物 buff → 先請玩家確認
-      const targetType = cookView.previewBuffType(recipe, useCoal);
-      const activeBuffs = cookService.getActiveFoodBuffs(profile);
-      const existingBuff = targetType
-        ? activeBuffs.find((b) => b.type === targetType)
-        : null;
-
-      if (existingBuff) {
-        const view = cookView.buildOverwriteConfirmView({
-          recipe,
-          recipeId,
-          useCoal,
-          existingBuff,
-          userId,
-        });
-        return interaction.editReply(view);
-      }
-
       const result = await cookService.cook(client, {
         userId,
         guildId,

@@ -10,6 +10,7 @@ const {
 
 const buffResolver = require("../../features/buff/buffResolver");
 const { getActiveFoodBuffs } = require("../../features/fishing/cookService");
+const foodBag = require("../../features/fishing/foodBag");
 const { getOrCreate: getMiningProfile } = require("../../features/mining/miningProfile");
 const { resolveStamina, staminaMax, staminaBonus, staminaGuildBonus, getMemberClub } = require("../../features/mining/dungeonService");
 const { fishing, dungeon } = require("../../config");
@@ -155,7 +156,32 @@ module.exports = {
           );
       }
 
-      // 食物 buff（Phase S4）
+      // 食物倉庫存量（Phase S4 — 食物囤積機制）
+      try {
+        if (miningProfileForStamina) {
+          const stockpile = foodBag.listFresh(miningProfileForStamina);
+          if (stockpile.length > 0) {
+            const avgFresh = stockpile.reduce((s, it) => s + it.freshness, 0) / stockpile.length;
+            const minFresh = Math.min(...stockpile.map((it) => it.freshness));
+            const urgent = stockpile.filter((it) => it.freshness < 0.2).length;
+            const lines = [
+              `**🥡 食物倉庫**：${stockpile.length} 份（平均新鮮度 ${Math.round(avgFresh * 100)}%）`,
+            ];
+            if (urgent > 0) {
+              lines.push(`-# 🔴 有 ${urgent} 份快壞了（最低 ${Math.round(minFresh * 100)}%），記得快點吃`);
+            } else {
+              lines.push(`-# 用 \`/食物\` 查看與食用`);
+            }
+            container
+              .addSeparatorComponents(new SeparatorBuilder())
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(lines.join("\n"))
+              );
+          }
+        }
+      } catch { /* 食物倉庫讀取失敗不影響主流程 */ }
+
+      // 食物 buff（生效中）
       try {
         if (miningProfileForStamina) {
           const foodBuffs = getActiveFoodBuffs(miningProfileForStamina);
