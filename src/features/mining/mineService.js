@@ -174,6 +174,34 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body };
   }
 
+  // 賭石只能賭「這次挖到還留著的石頭」。突發事件可能扣掉本次剛挖到的石頭（lose_ore），
+  // 用挖礦前後背包石頭數差回推還剩幾顆屬於這次挖到的，同步修正 pending 與按鈕顯示，
+  // 避免按鈕標 2 顆但實際只能賭 1 顆、或舊存量被誤算進賭石範圍。
+  if (appraisalEligible) {
+    const after = await client.miningProfilesCollection.findOne(
+      { userId, guildId },
+      { projection: { "backpack.stone": 1 } }
+    );
+    const stoneBefore = profile.backpack?.stone || 0;
+    const stoneAfter = after?.backpack?.stone || 0;
+    const effectiveQty = Math.max(0, Math.min(qty, stoneAfter - stoneBefore));
+    if (effectiveQty !== qty) {
+      if (effectiveQty > 0) {
+        await client.miningProfilesCollection.updateOne(
+          { userId, guildId, "pending_appraisal.ts": now },
+          { $set: { "pending_appraisal.qty": effectiveQty, updatedAt: new Date() } }
+        );
+        result.appraisal.qty = effectiveQty;
+      } else {
+        await client.miningProfilesCollection.updateOne(
+          { userId, guildId, "pending_appraisal.ts": now },
+          { $set: { pending_appraisal: null, updatedAt: new Date() } }
+        );
+        delete result.appraisal;
+      }
+    }
+  }
+
   return result;
 }
 
