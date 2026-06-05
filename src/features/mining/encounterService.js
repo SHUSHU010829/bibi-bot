@@ -316,18 +316,32 @@ async function trigger(client, ctx) {
         const profile = await getOrCreate(client, userId, guildId);
         const wdef = (dungeon?.weapons || {})[profile.weapon] || {};
         if (profile.weapon !== "fist" && wdef.durability) {
+          const max = wdef.durability;
+          const cur =
+            typeof profile.weapon_durability === "number"
+              ? profile.weapon_durability
+              : max;
+          const next = eff.pct
+            ? clamp(cur + Math.ceil(max * eff.pct), 0, max)
+            : max;
           await coll(client).updateOne(
             { userId, guildId },
             {
               $set: {
-                weapon_durability: wdef.durability,
+                weapon_durability: next,
                 updatedAt: new Date(),
               },
             }
           );
-          lines.push(
-            `🛠️ ${wdef.emoji || "⚔️"} ${wdef.name} 耐久恢復至 ${wdef.durability}`
-          );
+          if (eff.pct) {
+            lines.push(
+              `🛠️ ${wdef.emoji || "⚔️"} ${wdef.name} 耐久 ${cur} → ${next}/${max}`
+            );
+          } else {
+            lines.push(
+              `🛠️ ${wdef.emoji || "⚔️"} ${wdef.name} 耐久恢復至 ${max}`
+            );
+          }
         } else {
           lines.push("可惜你沒有需要保養的武器。");
         }

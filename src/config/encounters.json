@@ -2,7 +2,7 @@
   "randomEncounters": {
     "enabled": true,
     "miningChance": 0.12,
-    "dungeonChance": 0.15,
+    "dungeonChance": 0.2,
     "mining": [
       {
         "id": "hidden_vein",
@@ -107,6 +107,14 @@
         "weight": 5,
         "effect": { "type": "repair_weapon" },
         "text": "你找到一塊上等磨刀石，順手把武器磨利、耐久完全恢復！"
+      },
+      {
+        "id": "broken_whetstone",
+        "name": "碎裂的磨刀石",
+        "emoji": "🪨",
+        "weight": 10,
+        "effect": { "type": "repair_weapon", "pct": 0.5 },
+        "text": "你撿到一塊碎裂的磨刀石，將就著磨了磨武器，耐久回了一些。"
       },
       {
         "id": "trap",
