@@ -57,6 +57,22 @@ function parseMineCdTicketId(customId) {
   return { ownerId };
 }
 
+function pickaxeDurabilityLine(pickaxe, durability, maxDurability) {
+  if (!pickaxe || pickaxe === "wood" || durability === null || durability === undefined) {
+    return `🪓 **目前鎬子**\n${pickaxeLabel("wood")}（無耐久消耗）`;
+  }
+  const warn = mining?.durabilityWarn || {};
+  const label = pickaxeLabel(pickaxe);
+  const maxText = typeof maxDurability === "number" ? `/${maxDurability}` : "";
+  if (typeof warn.critical === "number" && durability <= warn.critical) {
+    return `🚨 **鎬子快斷了！**\n${label} 只剩 **${durability}**${maxText} 次，再挖就會斷裂退回木鎬。\n-# 快去 \`/合成\` 一把新的、或到 \`/背包\` 用劣質磨鎬石補耐久！`;
+  }
+  if (typeof warn.low === "number" && durability <= warn.low) {
+    return `⚠️ **鎬子耐久偏低**\n${label} 剩 **${durability}**${maxText} 次\n-# 建議先去 \`/合成\` 備一把、或到 \`/背包\` 用劣質磨鎬石補耐久。`;
+  }
+  return `🪓 **目前鎬子**\n${label}・耐久 ${durability}${maxText} 次`;
+}
+
 function buildCooldownView({
   ownerId,
   readyAt,
@@ -65,6 +81,9 @@ function buildCooldownView({
   cdTicketDailyLimit,
   cdTicketReductionMs,
   notifyEnabled,
+  pickaxe,
+  pickaxeDurability,
+  pickaxeMaxDurability,
 }) {
   const readyEpoch = Math.floor(readyAt / 1000);
   const reductionMin = Math.max(1, Math.round((cdTicketReductionMs || 0) / 60000));
@@ -78,7 +97,12 @@ function buildCooldownView({
         `# ⏳ 鎬子還在休息\n下次可挖礦：<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）`,
       ),
     )
-    .addSeparatorComponents(new SeparatorBuilder());
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        pickaxeDurabilityLine(pickaxe, pickaxeDurability, pickaxeMaxDurability),
+      ),
+    );
 
   if (cdTickets > 0 && !overDailyLimit) {
     container.addSectionComponents(
@@ -173,6 +197,9 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
           cdTicketDailyLimit: result.cdTicketDailyLimit,
           cdTicketReductionMs: result.cdTicketReductionMs,
           notifyEnabled: !!notifyState?.enabled,
+          pickaxe: result.pickaxe,
+          pickaxeDurability: result.pickaxeDurability,
+          pickaxeMaxDurability: result.pickaxeMaxDurability,
         });
         return interaction.editReply({
           components: [container],

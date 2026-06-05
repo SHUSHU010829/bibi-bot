@@ -32,6 +32,9 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
       cdTicketUsedToday: usedToday,
       cdTicketDailyLimit: dailyLimit,
       cdTicketReductionMs: mining?.cdTicketReductionMs || 0,
+      pickaxe: profile.pickaxe,
+      pickaxeDurability: profile.pickaxe_durability,
+      pickaxeMaxDurability: profile.pickaxe_max_durability,
     };
   }
 
@@ -244,6 +247,9 @@ async function useCdTicket(client, { userId, guildId }) {
     ticketsLeft: (profile.cd_ticket_count || 0) - 1,
     usedToday: usedToday + 1,
     dailyLimit,
+    pickaxe: profile.pickaxe,
+    pickaxeDurability: profile.pickaxe_durability,
+    pickaxeMaxDurability: profile.pickaxe_max_durability,
   };
 }
 
