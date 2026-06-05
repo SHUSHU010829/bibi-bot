@@ -8,7 +8,7 @@ const encounterService = require("./encounterService");
 const { getFoodAtkBonus } = require("../fishing/cookService");
 
 // CD 縮短券持有上限（與商店 shop.json maxStack 一致）
-const CD_TICKET_MAX = 30;
+const CD_TICKET_MAX = 60;
 
 // CD 縮短券滿倉時的折算金幣價（取商店售價，fallback 150）
 function cdTicketCoinValue() {

@@ -31,16 +31,6 @@ function trendLabel(price, base) {
   return pct > 0 ? ` ▲+${pct}%` : pct < 0 ? ` ▼${pct}%` : " ▬";
 }
 
-// CD 縮短券「使用」按鈕 customId 格式：mining_use_cd_ticket_<ownerId>
-// 由 events/interactionCreate/handleMiningTicket.js 處理。
-const USE_TICKET_PREFIX = "mining_use_cd_ticket_";
-
-function parseUseTicketId(customId) {
-  if (!customId || !customId.startsWith(USE_TICKET_PREFIX)) return null;
-  const ownerId = customId.slice(USE_TICKET_PREFIX.length);
-  return ownerId ? { ownerId } : null;
-}
-
 // 劣質磨鎬石「使用」按鈕：mining_use_whetstone_inferior_<ownerId>
 // 確認按鈕：mining_use_whetstone_inferior_confirm_<ownerId>
 // 注意：_inferior_ 是 _whetstone_ 的超集，handler 內先比長的 prefix。
@@ -376,20 +366,10 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           `🍀 **幸運藥水** ×${luckUses}\n-# 挖礦自動生效，提升幸運`
       )
     );
-    container.addSectionComponents(
-      new SectionBuilder()
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `🎫 **CD 縮短券** ×${ticketCount}\n-# 冷卻中使用，立即 -${reductionMin} 分`
-          )
-        )
-        .setButtonAccessory(
-          new ButtonBuilder()
-            .setCustomId(`${USE_TICKET_PREFIX}${userId}`)
-            .setLabel("使用")
-            .setStyle(ButtonStyle.Primary)
-            .setDisabled(!(ticketCount > 0 && inCooldown))
-        )
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🎫 **CD 縮短券** ×${ticketCount}\n-# 立即 -${reductionMin} 分・在 \`/挖礦\` 或 \`/釣魚\` 冷卻訊息上按使用`
+      )
     );
     // 劣質磨鎬石
     {
@@ -827,8 +807,6 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
 module.exports = {
   buildBackpackView,
   BACKPACK_CATEGORIES,
-  USE_TICKET_PREFIX,
-  parseUseTicketId,
   USE_WHETSTONE_INFERIOR_PREFIX,
   USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX,
   parseUseWhetstoneInferiorId,

@@ -1,4 +1,5 @@
 require("colors");
+const { DateTime } = require("luxon");
 const { fishing } = require("../../config");
 const { getOrCreate } = require("../mining/miningProfile");
 const { weightedRandom } = require("../mining/weightedRandom");
@@ -48,11 +49,22 @@ async function fish(client, { userId, guildId, location = "stream" }) {
 
   // CD 檢查
   if ((profile.fish_cooldown_at || 0) > now) {
+    const today = DateTime.now().setZone("Asia/Taipei").toISODate();
+    const dailyLimit = fishing?.cdTicketDailyUseLimit || 0;
+    const usedToday =
+      profile.cd_ticket_used_date === today ? profile.cd_ticket_used_count || 0 : 0;
     return {
       ok: false,
       reason: "cooldown",
       remainingMs: profile.fish_cooldown_at - now,
       readyAt: profile.fish_cooldown_at,
+      cdTickets: profile.cd_ticket_count || 0,
+      cdTicketUsedToday: usedToday,
+      cdTicketDailyLimit: dailyLimit,
+      cdTicketReductionMs: fishing?.cdTicketReductionMs || 0,
+      rodKey: profile.fishing_rod || "bamboo",
+      rodDurability: profile.rod_durability,
+      rodMaxDurability: profile.rod_max_durability,
     };
   }
 
@@ -209,4 +221,77 @@ async function fish(client, { userId, guildId, location = "stream" }) {
   };
 }
 
-module.exports = { fish, getFishingProfile, locationUnlockDesc };
+// 冷卻中主動使用一張 CD 縮短券：直接縮短目前的釣魚冷卻。
+// 與挖礦共用 cd_ticket_count 庫存與 cd_ticket_used_* 每日計數，
+// 縮短量取 fishing.cdTicketReductionMs（預設 30 分），不足則歸零。
+async function useCdTicket(client, { userId, guildId }) {
+  if (!fishing?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const now = Date.now();
+
+  if ((profile.cd_ticket_count || 0) <= 0) {
+    return { ok: false, reason: "no_ticket" };
+  }
+  if ((profile.fish_cooldown_at || 0) <= now) {
+    return { ok: false, reason: "not_in_cooldown" };
+  }
+
+  const today = DateTime.now().setZone("Asia/Taipei").toISODate();
+  const dailyLimit = fishing?.cdTicketDailyUseLimit || 0;
+  const usedToday =
+    profile.cd_ticket_used_date === today ? profile.cd_ticket_used_count || 0 : 0;
+  if (dailyLimit > 0 && usedToday >= dailyLimit) {
+    return { ok: false, reason: "daily_limit", limit: dailyLimit };
+  }
+
+  const reductionMs = fishing?.cdTicketReductionMs || 0;
+  const newCooldownAt = Math.max(now, profile.fish_cooldown_at - reductionMs);
+  const clearedToReady = newCooldownAt <= now;
+
+  const res = await client.miningProfilesCollection.updateOne(
+    {
+      userId,
+      guildId,
+      cd_ticket_count: { $gte: 1 },
+      fish_cooldown_at: { $gt: now },
+    },
+    [
+      {
+        $set: {
+          cd_ticket_count: { $add: ["$cd_ticket_count", -1] },
+          fish_cooldown_at: newCooldownAt,
+          cd_ticket_used_date: today,
+          cd_ticket_used_count: {
+            $cond: [
+              { $eq: ["$cd_ticket_used_date", today] },
+              { $add: [{ $ifNull: ["$cd_ticket_used_count", 0] }, 1] },
+              1,
+            ],
+          },
+          updatedAt: "$$NOW",
+        },
+      },
+    ]
+  );
+
+  if (res.modifiedCount === 0) {
+    return { ok: false, reason: "retry" };
+  }
+
+  return {
+    ok: true,
+    clearedToReady,
+    newCooldownAt,
+    ticketsLeft: (profile.cd_ticket_count || 0) - 1,
+    usedToday: usedToday + 1,
+    dailyLimit,
+    rodKey: profile.fishing_rod || "bamboo",
+    rodDurability: profile.rod_durability,
+    rodMaxDurability: profile.rod_max_durability,
+  };
+}
+
+module.exports = { fish, getFishingProfile, locationUnlockDesc, useCdTicket };
