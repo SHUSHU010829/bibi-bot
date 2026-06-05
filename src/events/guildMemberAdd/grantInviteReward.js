@@ -23,8 +23,12 @@ module.exports = async (client, member) => {
         `[INVITE] ${member.user?.username || member.id} 帳號年齡 ${ageDays.toFixed(1)}d < ${minAgeDays}d，略過獎勵`.yellow
       );
     } else {
-      const used = await findUsedInvite(client, member.guild).catch((e) => {
-        console.log(`[INVITE] findUsedInvite error: ${e.message}`.red);
+      const used = await findUsedInvite(client, member.guild, {
+        inviteeId: member.id,
+      }).catch((e) => {
+        console.log(
+          `[INVITE] findUsedInvite error invitee=${member.id}: ${e.message}`.red
+        );
         return null;
       });
 
