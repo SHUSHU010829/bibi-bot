@@ -36,7 +36,7 @@ module.exports = async (client, interaction) => {
     if (!interaction.isButton()) return;
     const parsed = parseFishCdTicketId(interaction.customId);
     if (!parsed) return;
-    const { ownerId } = parsed;
+    const { ownerId, location } = parsed;
 
     const rl = consume(interaction.user.id, "btn:fishCdShortcutTicket", {
       windowMs: 1500,
@@ -74,7 +74,7 @@ module.exports = async (client, interaction) => {
       });
 
       if (result.clearedToReady) {
-        await executeFish(client, interaction, { location: "stream" });
+        await executeFish(client, interaction, { location });
         trackSuccess("fish-cd-shortcut-ticket");
         return;
       }
@@ -86,6 +86,7 @@ module.exports = async (client, interaction) => {
       });
       const container = buildCooldownView({
         ownerId: interaction.user.id,
+        location,
         readyAt: result.newCooldownAt,
         cdTickets: result.ticketsLeft,
         cdTicketUsedToday: result.usedToday,

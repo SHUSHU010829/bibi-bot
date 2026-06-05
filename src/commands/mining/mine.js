@@ -47,7 +47,6 @@ const APPRAISE_PREFIX = "mining_appraise_";
 const MAX_LABEL_LEN = 80;
 
 // 冷卻中的 /挖礦 訊息上「🎫 使用 CD 縮短券」按鈕。
-// 與 /背包 上的 mining_use_cd_ticket_ 分開：那邊按完會刷新背包，這邊要刷新挖礦訊息。
 const MINE_CD_TICKET_PREFIX = "mine_cd_use_ticket_";
 
 function parseMineCdTicketId(customId) {

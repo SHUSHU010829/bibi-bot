@@ -18,14 +18,19 @@ const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
 
 // 冷卻中的 /釣魚 訊息上「🎫 使用 CD 縮短券」按鈕。
-// 與挖礦的 mine_cd_use_ticket_ 分開：按完要刷新釣魚訊息（或冷卻歸零後直接再釣一次）。
+// customId 格式：fish_cd_use_ticket_<ownerId>_<location>
+// 帶 location 是為了在「冷卻歸零自動再釣一次」時能還原玩家原本選的地點。
 const FISH_CD_TICKET_PREFIX = "fish_cd_use_ticket_";
 
 function parseFishCdTicketId(customId) {
   if (!customId || !customId.startsWith(FISH_CD_TICKET_PREFIX)) return null;
-  const ownerId = customId.slice(FISH_CD_TICKET_PREFIX.length);
-  if (!ownerId) return null;
-  return { ownerId };
+  const rest = customId.slice(FISH_CD_TICKET_PREFIX.length);
+  const us = rest.lastIndexOf("_");
+  if (us <= 0) return null;
+  const ownerId = rest.slice(0, us);
+  const location = rest.slice(us + 1);
+  if (!ownerId || !location) return null;
+  return { ownerId, location };
 }
 
 function locationChoices() {
@@ -58,6 +63,7 @@ function rodDurabilityLine(rodKey, durability, maxDurability) {
 
 function buildCooldownView({
   ownerId,
+  location,
   readyAt,
   cdTickets,
   cdTicketUsedToday,
@@ -97,7 +103,7 @@ function buildCooldownView({
         )
         .setButtonAccessory(
           new ButtonBuilder()
-            .setCustomId(`${FISH_CD_TICKET_PREFIX}${ownerId}`)
+            .setCustomId(`${FISH_CD_TICKET_PREFIX}${ownerId}_${location || "stream"}`)
             .setLabel(`使用 1 張（-${reductionMin} 分）`)
             .setStyle(ButtonStyle.Primary),
         ),
@@ -158,6 +164,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
         });
         const container = buildCooldownView({
           ownerId: interaction.user.id,
+          location,
           readyAt: result.readyAt,
           cdTickets: result.cdTickets,
           cdTicketUsedToday: result.cdTicketUsedToday,
