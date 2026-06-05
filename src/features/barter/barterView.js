@@ -5,6 +5,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
 } = require("discord.js");
 
 const { getItemDef } = require("./itemCatalog");
@@ -133,6 +134,44 @@ function buildOwnerContainer({ listings, viewerId }) {
   return c;
 }
 
+function buildSoldDmMessage({ listing, offerDef, wantDef, acceptorName }) {
+  const settledEpoch = Math.floor(
+    new Date(listing.settled_at || Date.now()).getTime() / 1000,
+  );
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🤝 交易所成交通知\n-# 掛單 **#${listing.listing_id}** ・ <t:${settledEpoch}:R>`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### 📤 你給出\n${offerDef.emoji} **${offerDef.name}** ×${listing.offer.qty}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### 📥 你收到\n${wantDef.emoji} **${wantDef.name}** ×${listing.want.qty}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`🙋 接受者：**${acceptorName}**`),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 用 `/魚袋` 或 `/背包` 查看新到手的物品",
+      ),
+    );
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
+}
+
 function errorContainer(title, body, hint) {
   return new ContainerBuilder()
     .setAccentColor(0xe74c3c)
@@ -142,4 +181,10 @@ function errorContainer(title, body, hint) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${hint}`));
 }
 
-module.exports = { buildBoardContainer, buildOwnerContainer, errorContainer, listingLine };
+module.exports = {
+  buildBoardContainer,
+  buildOwnerContainer,
+  buildSoldDmMessage,
+  errorContainer,
+  listingLine,
+};
