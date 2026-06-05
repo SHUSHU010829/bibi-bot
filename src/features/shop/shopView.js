@@ -11,6 +11,7 @@ const {
   MessageFlags,
 } = require("discord.js");
 const { getCatalog, getCategories } = require("./catalog");
+const { getTodayBoughtMap } = require("./dailyLimits");
 const { MONEY_EMOJI } = require("../../constants/coin");
 
 const PAGE_SIZE = 5;
@@ -24,6 +25,20 @@ const CATEGORY_EMOJI = {
   釣魚道具: "🎣",
   通用道具: "🎫",
 };
+
+// 取得頁面上有 dailyLimit 設定的商品 ID 列表
+function dailyLimitItemIds(items) {
+  return items.filter((it) => it.payload?.dailyLimit > 0).map((it) => it.id);
+}
+
+// 把「今日購買 X / N」附在描述後面；若達上限回傳 { reached: true } 讓上層 disable 購買鈕
+function dailyLimitInfo(item, boughtToday) {
+  const limit = item.payload?.dailyLimit;
+  if (!(limit > 0)) return null;
+  const used = boughtToday || 0;
+  const reached = used >= limit;
+  return { limit, used, reached, line: `-# 🗓️ 今日購買：${used} / ${limit}${reached ? "（已達上限）" : ""}` };
+}
 
 // 顏色身份組：每件商品各自一個 Container，accent 即為顏色預覽
 function buildColorCategoryView(catIndex, cat, items, page, totalPages, cats) {
@@ -132,7 +147,8 @@ function getItemsByCategory(catIndex) {
 
 // 組出商店面板（Components V2：公開、可翻頁、每件商品一個區塊 + 購買鈕配件）。
 // catIndex / page 皆會被夾在合法範圍內。
-function buildShopView(catIndex = 0, page = 0) {
+// opts.client / opts.userId / opts.guildId 若有提供，會查詢當日購買數，顯示「今日 X/N」並在達上限時 disable 購買鈕。
+async function buildShopView(catIndex = 0, page = 0, opts = {}) {
   const cats = getCategories();
   if (!Number.isInteger(catIndex) || catIndex < 0 || catIndex >= cats.length) {
     catIndex = 0;
@@ -151,6 +167,14 @@ function buildShopView(catIndex = 0, page = 0) {
   const start = page * PAGE_SIZE;
   const pageItems = items.slice(start, start + PAGE_SIZE);
   const catEmoji = CATEGORY_EMOJI[cat] || "🛒";
+
+  // 批次查詢本頁有 dailyLimit 商品的今日購買數
+  const { client, userId, guildId } = opts;
+  let boughtMap = new Map();
+  const limitIds = dailyLimitItemIds(pageItems);
+  if (client && userId && guildId && limitIds.length) {
+    boughtMap = await getTodayBoughtMap(client, { userId, guildId, itemIds: limitIds });
+  }
 
   const container = new ContainerBuilder().setAccentColor(0xffd166);
 
@@ -187,18 +211,23 @@ function buildShopView(catIndex = 0, page = 0) {
     pageItems.forEach((it, idx) => {
       const meta = itemMeta(it);
       const head = `**${it.name}** — **${it.price.toLocaleString()}** ${MONEY_EMOJI}${meta ? `（${meta}）` : ""}`;
+      const limit = dailyLimitInfo(it, boughtMap.get(it.id));
+      const descLines = [head, it.description];
+      if (limit) descLines.push(limit.line);
+      const button = new ButtonBuilder()
+        .setCustomId(`shop_buy_${it.id}`)
+        .setEmoji("🛒");
+      if (limit?.reached) {
+        button.setLabel("今日已售完").setStyle(ButtonStyle.Secondary).setDisabled(true);
+      } else {
+        button.setLabel("購買").setStyle(ButtonStyle.Success);
+      }
       container.addSectionComponents(
         new SectionBuilder()
           .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(`${head}\n${it.description}`)
+            new TextDisplayBuilder().setContent(descLines.join("\n"))
           )
-          .setButtonAccessory(
-            new ButtonBuilder()
-              .setCustomId(`shop_buy_${it.id}`)
-              .setLabel("購買")
-              .setEmoji("🛒")
-              .setStyle(ButtonStyle.Success)
-          )
+          .setButtonAccessory(button)
       );
       if (idx < pageItems.length - 1) {
         container.addSeparatorComponents(

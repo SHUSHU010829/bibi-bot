@@ -125,7 +125,12 @@ async function handleCardNumberModalSubmit(client, interaction) {
 // 切換分類 → 回到該分類第 1 頁（直接更新公開面板）
 async function handleCategorySelect(client, interaction) {
   const catIndex = parseInt(interaction.values?.[0], 10) || 0;
-  await interaction.update(buildShopView(catIndex, 0));
+  const view = await buildShopView(catIndex, 0, {
+    client,
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
+  await interaction.update(view);
 }
 
 // 分頁：customId = shop_nav_<catIndex>_<page>_<action>
@@ -142,7 +147,12 @@ async function handleNav(client, interaction) {
   else if (action === "next") target = page + 1;
   else if (action === "last") target = Number.MAX_SAFE_INTEGER; // buildShopView 會夾到最後一頁
 
-  await interaction.update(buildShopView(catIndex, target));
+  const view = await buildShopView(catIndex, target, {
+    client,
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
+  await interaction.update(view);
 }
 
 // 購買鈕：customId = shop_buy_<itemId>。不直接扣款，先跳出（僅自己可見的）確認面板防誤觸。
