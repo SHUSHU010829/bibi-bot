@@ -61,6 +61,7 @@ async function getTodayTransferOut(client, userId, guildId) {
 }
 
 module.exports = {
+  channelBuckets: ["general", "marketplace"],
   data: new SlashCommandBuilder()
     .setName("轉帳")
     .setDescription("把金幣轉給其他玩家 💸")
