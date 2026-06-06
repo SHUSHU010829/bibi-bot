@@ -1,7 +1,6 @@
 {
   "boss": {
     "enabled": true,
-    "attackChannelId": "1511617684532367440",
     "announceChannelId": "1511617684532367440",
     "chronicleChannelId": "1511610220856475701",
     "hpPerPlayer": 2500,
