@@ -14,6 +14,7 @@ const FOLDER_BUCKET = {
   fishing: "fishing",
   farm: "farm",
   shop: "marketplace",
+  boss: "boss",
   ask: "citizen",
   draw: "citizen",
   food: "citizen",
