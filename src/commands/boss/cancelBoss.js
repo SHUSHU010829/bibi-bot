@@ -13,7 +13,7 @@ module.exports = {
   devOnly: true,
 
   data: new SlashCommandBuilder()
-    .setName("清除首領")
+    .setName("clearboss")
     .setDescription("[DEV] 強制中止當前 BOSS（不結算、不發獎）🧹")
     .setContexts(InteractionContextType.Guild),
 
@@ -66,7 +66,7 @@ module.exports = {
         flags: MessageFlags.Ephemeral,
       });
     } catch (e) {
-      console.log(`[BOSS] /清除首領 失敗：${e.stack || e.message}`.red);
+      console.log(`[BOSS] /clearboss 失敗：${e.stack || e.message}`.red);
       return interaction.editReply({
         components: [
           bossView.buildErrorContainer({
