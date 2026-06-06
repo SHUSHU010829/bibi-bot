@@ -127,6 +127,19 @@ module.exports = {
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {
+    const allowedChannelId = boss?.attackChannelId;
+    if (allowedChannelId && interaction.channelId !== allowedChannelId) {
+      return interaction.reply({
+        components: [
+          bossView.buildErrorContainer({
+            title: "🚫 這裡不能攻擊 BOSS",
+            body: `請到 <#${allowedChannelId}> 使用 \`/攻擊\` 指令。`,
+            hint: "限定頻道是為了讓戰況集中、避免洗版",
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
     await interaction.deferReply();
     try {
       return await runAttack(client, interaction);
