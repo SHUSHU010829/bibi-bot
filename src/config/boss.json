@@ -33,11 +33,11 @@
     },
     "comboAnnouncement": "⚡ Combo 滿格！全場傷害 ×1.3 持續 120 秒！（由 <@{user}> 接力觸發）",
     "rewards": {
-      "poolRatio": 0.5,
+      "poolRatio": 0.3,
       "killBonus": 100,
-      "killerBonusRatio": 0.05,
+      "killerBonusRatio": 0.03,
       "killerRareReward": 1,
-      "topRareRewards": 3,
+      "topRareRewardTiers": [3, 2, 1, 1, 1],
       "dragonHeirThreshold": 10
     },
     "damage": {
