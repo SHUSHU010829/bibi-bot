@@ -14,7 +14,7 @@ module.exports = {
   devOnly: true,
 
   data: new SlashCommandBuilder()
-    .setName("召喚boss")
+    .setName("spawnboss")
     .setDescription("[DEV] 立刻召喚一隻 BOSS ⚔️")
     .setContexts(InteractionContextType.Guild)
     .addStringOption((o) =>
@@ -105,7 +105,7 @@ module.exports = {
         flags: MessageFlags.Ephemeral,
       });
     } catch (e) {
-      console.log(`[BOSS] /召喚boss 失敗：${e.stack || e.message}`.red);
+      console.log(`[BOSS] /spawnboss 失敗：${e.stack || e.message}`.red);
       return interaction.editReply({
         components: [
           bossView.buildErrorContainer({
