@@ -3,7 +3,7 @@
     "enabled": true,
     "announceChannelId": "1511617684532367440",
     "chronicleChannelId": "1511610220856475701",
-    "hpPerPlayer": 2500,
+    "hpPerPlayer": 2000,
     "minHp": 15000,
     "durationMinutes": 30,
     "attackLimitPerPlayer": 5,
