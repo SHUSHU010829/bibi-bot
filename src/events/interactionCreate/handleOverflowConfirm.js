@@ -3,7 +3,7 @@
 // 路由 prefix：
 //   mine_overflow_confirm_<userId>      → 重跑挖礦，allowOverflow=true
 //   mine_overflow_cancel_<userId>       → 取消
-//   gift_overflow_confirm_<giverId>_<recipientId>_<ore>_<qty> → 重跑贈送
+//   gift_overflow_confirm_<giverId>_<recipientId>_<type>_<key>_<qty> → 重跑贈送
 //   gift_overflow_cancel_<giverId>      → 取消
 //
 // 賭石（appraise_overflow_*）與地下城（dungeon_overflow_*）由各自既有 handler 處理。
@@ -52,11 +52,12 @@ module.exports = async (client, interaction) => {
     if (cid.startsWith(giveCmd.GIFT_OVERFLOW_CONFIRM_PREFIX)) {
       const rest = cid.slice(giveCmd.GIFT_OVERFLOW_CONFIRM_PREFIX.length);
       const parts = rest.split("_");
-      if (parts.length < 4) return;
+      if (parts.length < 5) return;
       const giverId = parts[0];
       const recipientId = parts[1];
+      const type = parts[2];
       const qty = Number(parts[parts.length - 1]);
-      const ore = parts.slice(2, parts.length - 1).join("_");
+      const key = parts.slice(3, parts.length - 1).join("_");
       if (interaction.user.id !== giverId) {
         return replyEphemeral(interaction, "🚫 這不是你的贈送確認。");
       }
@@ -71,7 +72,8 @@ module.exports = async (client, interaction) => {
       await interaction.deferUpdate();
       return await giveCmd.executeGift(client, interaction, {
         target,
-        ore,
+        type,
+        key,
         qty,
         allowOverflow: true,
       });
