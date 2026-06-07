@@ -11,10 +11,10 @@
     "fistWinRateMax": 0.1,
     "weapons": {
       "fist": { "name": "赤手空拳", "emoji": "👊", "atk": 0, "critRate": 0, "durability": null },
-      "iron_sword": { "name": "鐵劍", "emoji": "🗡️", "atk": 25, "critRate": 0, "durability": 60 },
-      "steel_sword": { "name": "鋼劍", "emoji": "⚔️", "atk": 50, "critRate": 0.03, "durability": 60 },
+      "iron_sword": { "name": "鐵劍", "emoji": "🗡️", "atk": 25, "critRate": 0, "durability": 40 },
+      "steel_sword": { "name": "鋼劍", "emoji": "⚔️", "atk": 50, "critRate": 0.03, "durability": 45 },
       "gold_sword": { "name": "黃金劍", "emoji": "🌟", "atk": 80, "critRate": 0.06, "durability": 60 },
-      "diamond_sword": { "name": "鑽石劍", "emoji": "💎", "atk": 120, "critRate": 0.1, "durability": 50 },
+      "diamond_sword": { "name": "鑽石劍", "emoji": "💎", "atk": 120, "critRate": 0.1, "durability": 80 },
       "legendary_sword": { "name": "傳說之劍", "emoji": "🔥", "atk": 180, "critRate": 0.2, "durability": 80 }
     },
     "monsters": [

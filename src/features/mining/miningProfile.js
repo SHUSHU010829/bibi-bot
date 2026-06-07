@@ -1,5 +1,5 @@
 // 集中管理 MiningProfiles 的預設欄位與讀取，避免 schema 預設散落各處。
-const { mining, fishing } = require("../../config");
+const { mining, fishing, dungeon } = require("../../config");
 
 function defaultProfile(userId, guildId) {
   return {
@@ -11,6 +11,7 @@ function defaultProfile(userId, guildId) {
     pickaxe_max_durability: null,
     weapon: "fist",
     weapon_durability: null,
+    weapon_max_durability: null,
     luck_potion_uses: 0,
     whetstone_inferior_count: 0,
     stamina_potion_count: 0,
@@ -76,6 +77,17 @@ function normalize(doc) {
   }
   doc.weapon ??= "fist";
   if (doc.weapon_durability === undefined) doc.weapon_durability = null;
+  // 回填 weapon_max_durability：舊文件若持有非 fist 但缺此欄位，從設定補齊（比照鎬子）
+  if (doc.weapon_max_durability === undefined || doc.weapon_max_durability === null) {
+    if (doc.weapon && doc.weapon !== "fist" && typeof doc.weapon_durability === "number") {
+      const configMax = dungeon?.weapons?.[doc.weapon]?.durability ?? null;
+      doc.weapon_max_durability = configMax != null
+        ? Math.max(doc.weapon_durability, configMax)
+        : null;
+    } else {
+      doc.weapon_max_durability = null;
+    }
+  }
   doc.luck_potion_uses ??= 0;
   doc.whetstone_inferior_count ??= 0;
   doc.stamina_potion_count ??= 0;

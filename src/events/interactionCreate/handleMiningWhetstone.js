@@ -1,12 +1,13 @@
-// 鎬子修復按鈕處理器：劣質磨鎬石（使用）+ 材料修復（預覽→確認）。
+// 裝備修復按鈕處理器：劣質磨鎬石 + 鎬子/武器/釣竿材料修復（預覽→確認）。
 //
 // 按鈕 customId：
-//   mining_use_whetstone_inferior_<ownerId>   — 劣質磨鎬石一鍵使用
-//   mining_repair_material_<ownerId>           — 材料修復：顯示消耗預覽並附確認鈕
-//   mining_repair_material_confirm_<ownerId>   — 材料修復確認，實際執行扣料
+//   mining_use_whetstone_inferior_<ownerId>     — 劣質磨鎬石一鍵使用
+//   mining_repair_material_<ownerId>            — 鎬子材料修復（預覽 / 確認）
+//   mining_repair_weapon_<ownerId>              — 武器材料修復（預覽 / 確認）
+//   mining_repair_rod_<ownerId>                 — 釣竿材料修復（預覽 / 確認）
 //
-// 注意：_inferior_ 是 _whetstone_ 的超集；parseRepairMaterialId 也先比長的。
-// handler 已正確地先比最長的 prefix，不會誤匹配。
+// 各 parse 函式內已先比較長的 _confirm_ 後綴，不會誤匹配。
+// 三組修復 prefix 第一個分歧字元不同（material/weapon/rod），彼此互不重疊。
 
 const { MessageFlags, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require("discord.js");
 
@@ -17,12 +18,30 @@ const {
   buildBackpackView,
   parseUseWhetstoneInferiorId,
   parseRepairMaterialId,
+  parseRepairWeaponId,
+  parseRepairRodId,
   REPAIR_MATERIAL_CONFIRM_PREFIX,
+  REPAIR_WEAPON_CONFIRM_PREFIX,
+  REPAIR_ROD_CONFIRM_PREFIX,
   USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX,
 } = require("../../features/shop/backpackView");
 const mineService = require("../../features/mining/mineService");
 const { getOrCreate } = require("../../features/mining/miningProfile");
-const { mining } = require("../../config");
+const { mining, fishing, dungeon } = require("../../config");
+
+function materialLabel(mat) {
+  const fishDef = fishing?.fish?.[mat];
+  if (fishDef) return `${fishDef.emoji} ${fishDef.name}`;
+  const oreDef = mining?.ores?.[mat];
+  if (oreDef) return `${oreDef.emoji} ${oreDef.name}`;
+  return mat;
+}
+
+function formatCostLine(cost) {
+  return Object.entries(cost || {})
+    .map(([mat, qty]) => `${materialLabel(mat)} ×${qty}`)
+    .join("　");
+}
 
 async function replyEphemeral(interaction, content) {
   try {
@@ -130,7 +149,161 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    // ── 材料修復（預覽 or 確認）──────────────────────────────────────────────
+    // ── 武器修復（預覽 or 確認）──────────────────────────────────────────────
+    const parsedWeapon = parseRepairWeaponId(customId);
+    if (parsedWeapon) {
+      const { ownerId, confirm } = parsedWeapon;
+      const rl = consume(interaction.user.id, "btn:miningRepairWeapon", {
+        windowMs: 2000,
+        max: 3,
+      });
+      if (!rl.allowed) {
+        await replyEphemeral(interaction, `⏳ 點太快了，等 ${Math.ceil(rl.retryAfterMs / 1000)} 秒。`);
+        return;
+      }
+      if (interaction.user.id !== ownerId) {
+        await replyEphemeral(interaction, "🚫 這是別人的裝備按鈕，請用 /裝備 開自己的～");
+        return;
+      }
+
+      if (!confirm) {
+        const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
+        const cost = mineService.getWeaponRepairCost(profile);
+        if (!cost || profile.weapon === "fist") {
+          await replyEphemeral(interaction, "⚔️ 你目前沒有可修復的武器。");
+          return;
+        }
+        if (
+          typeof profile.weapon_durability === "number" &&
+          typeof profile.weapon_max_durability === "number" &&
+          profile.weapon_durability >= profile.weapon_max_durability
+        ) {
+          await replyEphemeral(interaction, "✅ 武器耐久已滿，不需要修復！");
+          return;
+        }
+        const wdef = dungeon?.weapons?.[profile.weapon] || {};
+        const confirmBtn = new ButtonBuilder()
+          .setCustomId(`${REPAIR_WEAPON_CONFIRM_PREFIX}${interaction.user.id}`)
+          .setLabel("確認修復")
+          .setStyle(ButtonStyle.Danger);
+        await interaction.reply({
+          content: `🛠️ 確認要修復 **${wdef.name || profile.weapon}**（耐久 ${profile.weapon_durability} → ${profile.weapon_max_durability}）？\n\n**消耗材料**：${formatCostLine(cost)}\n\n-# 此操作無法撤回，請確認背包有足夠材料後再按確認。`,
+          components: [new ActionRowBuilder().addComponents(confirmBtn)],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await interaction.deferUpdate();
+      const result = await mineService.repairWeaponWithMaterials(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+      });
+      if (!result.ok) {
+        const messages = {
+          disabled: "🔧 挖礦系統尚未啟動！",
+          no_weapon: "⚔️ 你目前沒有可修復的武器。",
+          no_recipe: "🔧 找不到該武器的合成配方，請呼叫舒舒！",
+          already_full: "✅ 武器耐久已滿，不需要修復！",
+          insufficient: `🪨 材料不足！${
+            result.missing
+              ? result.missing.map((m) => `${materialLabel(m.mat)}（需 ${m.need}，有 ${m.have}）`).join("、")
+              : ""
+          }`,
+          retry: "⏳ 操作衝突，請再試一次。",
+        };
+        await interaction.editReply({
+          content: messages[result.reason] || "🔧 修復失敗，請稍後再試。",
+          components: [],
+        });
+        return;
+      }
+      await interaction.editReply({
+        content: `🛠️ 修復完成！武器耐久恢復至 **${result.durabilityAfter}**。\n消耗了：${formatCostLine(result.cost)}\n\n-# 重新打開 /裝備 可看到最新狀態。`,
+        components: [],
+      });
+      trackSuccess("mining-repair-weapon");
+      return;
+    }
+
+    // ── 釣竿修復（預覽 or 確認）──────────────────────────────────────────────
+    const parsedRod = parseRepairRodId(customId);
+    if (parsedRod) {
+      const { ownerId, confirm } = parsedRod;
+      const rl = consume(interaction.user.id, "btn:miningRepairRod", {
+        windowMs: 2000,
+        max: 3,
+      });
+      if (!rl.allowed) {
+        await replyEphemeral(interaction, `⏳ 點太快了，等 ${Math.ceil(rl.retryAfterMs / 1000)} 秒。`);
+        return;
+      }
+      if (interaction.user.id !== ownerId) {
+        await replyEphemeral(interaction, "🚫 這是別人的裝備按鈕，請用 /裝備 開自己的～");
+        return;
+      }
+
+      if (!confirm) {
+        const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
+        const cost = mineService.getRodRepairCost(profile);
+        if (!cost || profile.fishing_rod === "bamboo") {
+          await replyEphemeral(interaction, "🪝 你目前沒有可修復的釣竿。");
+          return;
+        }
+        if (
+          typeof profile.rod_durability === "number" &&
+          typeof profile.rod_max_durability === "number" &&
+          profile.rod_durability >= profile.rod_max_durability
+        ) {
+          await replyEphemeral(interaction, "✅ 釣竿耐久已滿，不需要修復！");
+          return;
+        }
+        const rdef = fishing?.rods?.[profile.fishing_rod] || {};
+        const confirmBtn = new ButtonBuilder()
+          .setCustomId(`${REPAIR_ROD_CONFIRM_PREFIX}${interaction.user.id}`)
+          .setLabel("確認修復")
+          .setStyle(ButtonStyle.Danger);
+        await interaction.reply({
+          content: `🛠️ 確認要修復 **${rdef.name || profile.fishing_rod}**（耐久 ${profile.rod_durability} → ${profile.rod_max_durability}）？\n\n**消耗材料**：${formatCostLine(cost)}\n\n-# 此操作無法撤回，請確認背包/魚袋有足夠材料後再按確認。`,
+          components: [new ActionRowBuilder().addComponents(confirmBtn)],
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await interaction.deferUpdate();
+      const result = await mineService.repairRodWithMaterials(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+      });
+      if (!result.ok) {
+        const messages = {
+          disabled: "🔧 挖礦系統尚未啟動！",
+          no_rod: "🪝 你目前沒有可修復的釣竿。",
+          no_recipe: "🔧 找不到該釣竿的合成配方，請呼叫舒舒！",
+          already_full: "✅ 釣竿耐久已滿，不需要修復！",
+          insufficient: `🪨 材料不足！${
+            result.missing
+              ? result.missing.map((m) => `${materialLabel(m.mat)}（需 ${m.need}，有 ${m.have}）`).join("、")
+              : ""
+          }`,
+          retry: "⏳ 操作衝突，請再試一次。",
+        };
+        await interaction.editReply({
+          content: messages[result.reason] || "🔧 修復失敗，請稍後再試。",
+          components: [],
+        });
+        return;
+      }
+      await interaction.editReply({
+        content: `🛠️ 修復完成！釣竿耐久恢復至 **${result.durabilityAfter}**。\n消耗了：${formatCostLine(result.cost)}\n\n-# 重新打開 /裝備 可看到最新狀態。`,
+        components: [],
+      });
+      trackSuccess("mining-repair-rod");
+      return;
+    }
+
+    // ── 鎬子材料修復（預覽 or 確認）──────────────────────────────────────────────
     const parsedRepair = parseRepairMaterialId(customId);
     if (!parsedRepair) return;
 

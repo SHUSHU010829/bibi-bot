@@ -29,7 +29,7 @@ function resolveSlot(type) {
       tiers: WEAPON_TIER,
       equippedField: "weapon",
       durabilityField: "weapon_durability",
-      maxDurabilityField: null,
+      maxDurabilityField: "weapon_max_durability",
       defaultId: "fist",
     };
   }
