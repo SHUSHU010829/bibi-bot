@@ -6,8 +6,19 @@ const { priceOf } = require("./overflowConfirm");
 const inventory = require("../barter/inventoryAdapter");
 const { getItemDef } = require("../barter/itemCatalog");
 const grantCoins = require("../economy/grantCoins");
+const { COIN_EMOJI } = require("../../constants/coin");
 
 const TZ = "Asia/Taipei";
+
+// 對方關閉私訊時靜默失敗，不影響贈送流程。
+async function dmRecipient(client, recipientId, content) {
+  try {
+    const user = await client.users.fetch(recipientId);
+    await user.send(content);
+  } catch (err) {
+    console.log(`[WARN] gift DM 失敗（${recipientId}）：${err?.message || err}`.yellow);
+  }
+}
 
 function giveCfg() {
   return gift || {};
@@ -19,7 +30,7 @@ function giveCfg() {
 // 溢出折成系統收購價金幣存入對方錢包。
 async function giveItem(
   client,
-  { giverId, guildId, recipientId, recipientName, type, key, qty, allowOverflow = false }
+  { giverId, giverName, guildId, recipientId, recipientName, type, key, qty, allowOverflow = false }
 ) {
   const c = giveCfg();
   if (!mining?.enabled || !c.enabled) return { ok: false, reason: "disabled" };
@@ -92,6 +103,27 @@ async function giveItem(
       meta: { giverId, type, key, overflowQty },
     }).catch((e) => console.log(`[ERROR] gift overflow grantCoins: ${e}`.red));
   }
+
+  const guild =
+    client.guilds.cache.get(guildId) ||
+    (await client.guilds.fetch(guildId).catch(() => null));
+  const guildName = guild?.name || "伺服器";
+  const dmLines = [
+    `🎁 你在 **${guildName}** 收到一份禮物！`,
+    `**${giverName || "某位玩家"}** 送你 **${itemDef.emoji} ${itemDef.name} ×${deliveredQty || qty}**`,
+  ];
+  if (overflowQty > 0) {
+    if (deliveredQty > 0) {
+      dmLines.push(
+        `🎒 背包只放得下 **${deliveredQty}** 顆，剩下 **${overflowQty}** 顆折成 **+${overflowCoins.toLocaleString()}** ${COIN_EMOJI} 入帳。`,
+      );
+    } else {
+      dmLines.push(
+        `🎒 背包已滿，全部折成 **+${overflowCoins.toLocaleString()}** ${COIN_EMOJI} 入帳。`,
+      );
+    }
+  }
+  dmRecipient(client, recipientId, dmLines.join("\n"));
 
   return {
     ok: true,

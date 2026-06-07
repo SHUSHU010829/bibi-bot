@@ -93,6 +93,7 @@ async function executeGift(client, interaction, { target, type, key, qty, allowO
   try {
     const result = await giftService.giveItem(client, {
       giverId: interaction.user.id,
+      giverName: interaction.user.username,
       guildId: interaction.guildId,
       recipientId: target.id,
       recipientName: target.username,
