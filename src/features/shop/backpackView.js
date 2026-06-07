@@ -88,6 +88,40 @@ function parseRepairMaterialId(customId) {
   return null;
 }
 
+// 武器材料修復：mining_repair_weapon_<ownerId> / _confirm_
+const REPAIR_WEAPON_PREFIX = "mining_repair_weapon_";
+const REPAIR_WEAPON_CONFIRM_PREFIX = "mining_repair_weapon_confirm_";
+
+function parseRepairWeaponId(customId) {
+  if (!customId) return null;
+  if (customId.startsWith(REPAIR_WEAPON_CONFIRM_PREFIX)) {
+    const ownerId = customId.slice(REPAIR_WEAPON_CONFIRM_PREFIX.length);
+    return ownerId ? { ownerId, confirm: true } : null;
+  }
+  if (customId.startsWith(REPAIR_WEAPON_PREFIX)) {
+    const ownerId = customId.slice(REPAIR_WEAPON_PREFIX.length);
+    return ownerId ? { ownerId, confirm: false } : null;
+  }
+  return null;
+}
+
+// 釣竿材料修復：mining_repair_rod_<ownerId> / _confirm_
+const REPAIR_ROD_PREFIX = "mining_repair_rod_";
+const REPAIR_ROD_CONFIRM_PREFIX = "mining_repair_rod_confirm_";
+
+function parseRepairRodId(customId) {
+  if (!customId) return null;
+  if (customId.startsWith(REPAIR_ROD_CONFIRM_PREFIX)) {
+    const ownerId = customId.slice(REPAIR_ROD_CONFIRM_PREFIX.length);
+    return ownerId ? { ownerId, confirm: true } : null;
+  }
+  if (customId.startsWith(REPAIR_ROD_PREFIX)) {
+    const ownerId = customId.slice(REPAIR_ROD_PREFIX.length);
+    return ownerId ? { ownerId, confirm: false } : null;
+  }
+  return null;
+}
+
 const TYPE_LABEL = {
   role_color: "🎨 顏色身份組",
   role_color_custom: "🎨 自訂顏色身份組",

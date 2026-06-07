@@ -4,6 +4,9 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  SectionBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -11,6 +14,16 @@ const {
 const { mining, craft, dungeon, fishing } = require("../../config");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const { playerAtk } = require("../../features/mining/dungeonService");
+const {
+  getPickaxeRepairCost,
+  getWeaponRepairCost,
+  getRodRepairCost,
+} = require("../../features/mining/mineService");
+const {
+  REPAIR_MATERIAL_PREFIX,
+  REPAIR_WEAPON_PREFIX,
+  REPAIR_ROD_PREFIX,
+} = require("../../features/shop/backpackView");
 
 function pickaxeLabel(key) {
   const def = mining?.pickaxes?.[key] || {};
@@ -171,23 +184,135 @@ module.exports = {
       const rodSuccessPct = Math.round((rdef.successBonus || 0) * 100);
       const rodCdReduceMin = Math.round((rdef.cdReductionMs || 0) / 60000);
 
-      const statLines = [
-        `⛏️ 目前鎬子：**${pickaxeLabel(profile.pickaxe)}**（耐久 ${pickDurability}）`,
-        `　屬性：luck +${luckPct}% ・ CD -${cdReduceMin} 分 ・ 數量 +${pdef.qtyBonus || 0}`,
-        `⚔️ 目前武器：**${weaponLabel(wKey)}**（耐久 ${weaponDurability}）${weaponNote}`,
-        `　戰鬥力：**${atk}**` + (critPct > 0 ? ` ・ ⚡ 暴擊 ${critPct}%` : ""),
-        `🪝 目前釣竿：**${rodLabel(rodKey)}**（耐久 ${rodDurability}）`,
-        `　屬性：成功率 +${rodSuccessPct}% ・ 稀有度 +${rdef.rareBonus || 0} ・ CD -${rodCdReduceMin} 分 ・ 數量 +${rdef.qtyBonus || 0}`,
-        `✨ 傳說素材碎片：**${profile.legendary_fragments || 0}**`,
-      ];
-
       const container = new ContainerBuilder()
         .setAccentColor(0x95a5a6)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `# 🔧 ${interaction.user.username} 的裝備\n${statLines.join("\n")}`,
+            `# 🔧 ${interaction.user.username} 的裝備`,
           ),
         );
+
+      const formatCost = (cost) => {
+        if (!cost) return "";
+        return Object.entries(cost)
+          .map(([mat, qty]) => {
+            const have = ownedMaterial(profile, mat);
+            const mark = have >= qty ? "✅" : "❌";
+            return `${materialLabel(mat)}×${qty}（有 ${have}）${mark}`;
+          })
+          .join("、");
+      };
+
+      // ── 鎬子 ──
+      {
+        const pickaxeText =
+          `⛏️ **目前鎬子**：${pickaxeLabel(profile.pickaxe)}（耐久 ${pickDurability}）\n` +
+          `-# luck +${luckPct}% ・ CD -${cdReduceMin} 分 ・ 數量 +${pdef.qtyBonus || 0}`;
+        const pickRepairCost = getPickaxeRepairCost(profile);
+        const canRepairPick =
+          pickRepairCost !== null &&
+          profile.pickaxe !== "wood" &&
+          typeof profile.pickaxe_durability === "number" &&
+          typeof profile.pickaxe_max_durability === "number" &&
+          profile.pickaxe_durability < profile.pickaxe_max_durability;
+        if (profile.pickaxe !== "wood" && pickRepairCost) {
+          container.addSectionComponents(
+            new SectionBuilder()
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `${pickaxeText}\n🛠️ 修復消耗：${formatCost(pickRepairCost)}`,
+                ),
+              )
+              .setButtonAccessory(
+                new ButtonBuilder()
+                  .setCustomId(`${REPAIR_MATERIAL_PREFIX}${interaction.user.id}`)
+                  .setLabel("修復")
+                  .setStyle(ButtonStyle.Secondary)
+                  .setDisabled(!canRepairPick),
+              ),
+          );
+        } else {
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(pickaxeText),
+          );
+        }
+      }
+
+      // ── 武器 ──
+      {
+        const weaponText =
+          `⚔️ **目前武器**：${weaponLabel(wKey)}（耐久 ${weaponDurability}）${weaponNote}\n` +
+          `-# 戰鬥力 **${atk}**` + (critPct > 0 ? ` ・ ⚡ 暴擊 ${critPct}%` : "");
+        const weaponRepairCost = getWeaponRepairCost(profile);
+        const canRepairWeapon =
+          weaponRepairCost !== null &&
+          wKey !== "fist" &&
+          typeof profile.weapon_durability === "number" &&
+          typeof profile.weapon_max_durability === "number" &&
+          profile.weapon_durability < profile.weapon_max_durability;
+        if (wKey !== "fist" && weaponRepairCost) {
+          container.addSectionComponents(
+            new SectionBuilder()
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `${weaponText}\n🛠️ 修復消耗：${formatCost(weaponRepairCost)}`,
+                ),
+              )
+              .setButtonAccessory(
+                new ButtonBuilder()
+                  .setCustomId(`${REPAIR_WEAPON_PREFIX}${interaction.user.id}`)
+                  .setLabel("修復")
+                  .setStyle(ButtonStyle.Secondary)
+                  .setDisabled(!canRepairWeapon),
+              ),
+          );
+        } else {
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(weaponText),
+          );
+        }
+      }
+
+      // ── 釣竿 ──
+      {
+        const rodText =
+          `🪝 **目前釣竿**：${rodLabel(rodKey)}（耐久 ${rodDurability}）\n` +
+          `-# 成功率 +${rodSuccessPct}% ・ 稀有度 +${rdef.rareBonus || 0} ・ CD -${rodCdReduceMin} 分 ・ 數量 +${rdef.qtyBonus || 0}`;
+        const rodRepairCost = getRodRepairCost(profile);
+        const canRepairRod =
+          rodRepairCost !== null &&
+          rodKey !== "bamboo" &&
+          typeof profile.rod_durability === "number" &&
+          typeof profile.rod_max_durability === "number" &&
+          profile.rod_durability < profile.rod_max_durability;
+        if (rodKey !== "bamboo" && rodRepairCost) {
+          container.addSectionComponents(
+            new SectionBuilder()
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `${rodText}\n🛠️ 修復消耗：${formatCost(rodRepairCost)}`,
+                ),
+              )
+              .setButtonAccessory(
+                new ButtonBuilder()
+                  .setCustomId(`${REPAIR_ROD_PREFIX}${interaction.user.id}`)
+                  .setLabel("修復")
+                  .setStyle(ButtonStyle.Secondary)
+                  .setDisabled(!canRepairRod),
+              ),
+          );
+        } else {
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(rodText),
+          );
+        }
+      }
+
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `✨ 傳說素材碎片：**${profile.legendary_fragments || 0}**`,
+        ),
+      );
 
       const recipes = craft?.recipes || [];
       const pickaxeRecipes = recipes.filter(

@@ -303,6 +303,9 @@ async function useCdTicket(client, { userId, guildId }) {
 // 依當前鎬子的合成配方計算材料修復所需材料。
 // 成本 = 合成配方礦石各取一半（ceil），加固定 石頭×20、煤炭×10。
 // 回傳 { stone: N, coal: N, iron?: N, gold?: N, diamond?: N } 或 null（木鎬）。
+// bottleneck 級材料：修理時跳過（傳說碎片極稀缺、熔岩魚需 Lv.40 + 通關 10 次解鎖）
+const REPAIR_SKIP_MATERIALS = new Set(["legendary_fragment", "lava_fish"]);
+
 function getPickaxeRepairCost(profile) {
   const { craft } = require("../../config");
   const pickaxeId = profile?.pickaxe;
@@ -310,10 +313,44 @@ function getPickaxeRepairCost(profile) {
   const recipeId = `pickaxe_${pickaxeId}`;
   const recipe = (craft?.recipes || []).find((r) => r.id === recipeId);
   if (!recipe) return null;
-  const cost = { stone: 20, coal: 10 };
+  // 固定基底加 iron 5，讓鑽石鎬也吃鐵（鐵礦全階級 sink）
+  const cost = { stone: 20, coal: 10, iron: 5 };
   for (const [mat, qty] of Object.entries(recipe.materials || {})) {
-    // 不把煤炭的「配方中煤炭 ÷2」加進去，只算礦石部分（coal 屬燃料不分）
     if (mat === "coal") continue;
+    cost[mat] = (cost[mat] || 0) + Math.ceil(qty / 2);
+  }
+  return cost;
+}
+
+function getWeaponRepairCost(profile) {
+  const { craft } = require("../../config");
+  const weaponId = profile?.weapon;
+  if (!weaponId || weaponId === "fist") return null;
+  const recipe = (craft?.recipes || []).find(
+    (r) => r.result?.type === "weapon" && r.result?.id === weaponId
+  );
+  if (!recipe) return null;
+  const cost = { stone: 20, coal: 10, iron: 5 };
+  for (const [mat, qty] of Object.entries(recipe.materials || {})) {
+    if (mat === "coal") continue;
+    if (REPAIR_SKIP_MATERIALS.has(mat)) continue;
+    cost[mat] = (cost[mat] || 0) + Math.ceil(qty / 2);
+  }
+  return cost;
+}
+
+function getRodRepairCost(profile) {
+  const { craft } = require("../../config");
+  const rodId = profile?.fishing_rod;
+  if (!rodId || rodId === "bamboo") return null;
+  const recipe = (craft?.recipes || []).find(
+    (r) => r.result?.type === "rod" && r.result?.id === rodId
+  );
+  if (!recipe) return null;
+  const cost = { stone: 20, coal: 10, iron: 5 };
+  for (const [mat, qty] of Object.entries(recipe.materials || {})) {
+    if (mat === "coal") continue;
+    if (REPAIR_SKIP_MATERIALS.has(mat)) continue;
     cost[mat] = (cost[mat] || 0) + Math.ceil(qty / 2);
   }
   return cost;
@@ -449,4 +486,140 @@ async function repairPickaxeWithMaterials(client, { userId, guildId }) {
   };
 }
 
-module.exports = { mine, useCdTicket, getPickaxeRepairCost, useInferiorWhetstone, repairPickaxeWithMaterials };
+// 武器材料修復：補滿耐久至 weapon_max_durability，無懲罰。
+async function repairWeaponWithMaterials(client, { userId, guildId }) {
+  if (!mining?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+
+  const profile = await getOrCreate(client, userId, guildId);
+
+  if (!profile.weapon || profile.weapon === "fist") {
+    return { ok: false, reason: "no_weapon" };
+  }
+  if (typeof profile.weapon_max_durability !== "number") {
+    return { ok: false, reason: "no_weapon" };
+  }
+  if (
+    typeof profile.weapon_durability === "number" &&
+    profile.weapon_durability >= profile.weapon_max_durability
+  ) {
+    return { ok: false, reason: "already_full", durability: profile.weapon_durability };
+  }
+
+  const cost = getWeaponRepairCost(profile);
+  if (!cost) return { ok: false, reason: "no_recipe" };
+
+  const bp = profile.backpack || {};
+  const missing = [];
+  for (const [mat, need] of Object.entries(cost)) {
+    const have = bp[mat] || 0;
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) {
+    return { ok: false, reason: "insufficient", missing, cost };
+  }
+
+  const inc = {};
+  for (const [mat, need] of Object.entries(cost)) {
+    inc[`backpack.${mat}`] = -need;
+  }
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    {
+      $inc: inc,
+      $set: {
+        weapon_durability: profile.weapon_max_durability,
+        updatedAt: new Date(),
+      },
+    }
+  );
+
+  return {
+    ok: true,
+    cost,
+    durabilityAfter: profile.weapon_max_durability,
+    maxDurability: profile.weapon_max_durability,
+  };
+}
+
+// 釣竿材料修復：補滿耐久至 rod_max_durability，無懲罰。
+// 配方含魚類材料時從 fish_bag 扣（如黃金竿吃 shark），礦石類從 backpack 扣。
+async function repairRodWithMaterials(client, { userId, guildId }) {
+  if (!mining?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+  const { fishing } = require("../../config");
+
+  const profile = await getOrCreate(client, userId, guildId);
+
+  if (!profile.fishing_rod || profile.fishing_rod === "bamboo") {
+    return { ok: false, reason: "no_rod" };
+  }
+  if (typeof profile.rod_max_durability !== "number") {
+    return { ok: false, reason: "no_rod" };
+  }
+  if (
+    typeof profile.rod_durability === "number" &&
+    profile.rod_durability >= profile.rod_max_durability
+  ) {
+    return { ok: false, reason: "already_full", durability: profile.rod_durability };
+  }
+
+  const cost = getRodRepairCost(profile);
+  if (!cost) return { ok: false, reason: "no_recipe" };
+
+  const bp = profile.backpack || {};
+  const fb = profile.fish_bag || {};
+  const fishDefs = fishing?.fish || {};
+  const isFish = (mat) => !!fishDefs[mat];
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(cost)) {
+    const have = isFish(mat) ? (fb[mat] || 0) : (bp[mat] || 0);
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) {
+    return { ok: false, reason: "insufficient", missing, cost };
+  }
+
+  const inc = {};
+  for (const [mat, need] of Object.entries(cost)) {
+    if (isFish(mat)) {
+      inc[`fish_bag.${mat}`] = -need;
+    } else {
+      inc[`backpack.${mat}`] = -need;
+    }
+  }
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    {
+      $inc: inc,
+      $set: {
+        rod_durability: profile.rod_max_durability,
+        updatedAt: new Date(),
+      },
+    }
+  );
+
+  return {
+    ok: true,
+    cost,
+    durabilityAfter: profile.rod_max_durability,
+    maxDurability: profile.rod_max_durability,
+  };
+}
+
+module.exports = {
+  mine,
+  useCdTicket,
+  getPickaxeRepairCost,
+  getWeaponRepairCost,
+  getRodRepairCost,
+  useInferiorWhetstone,
+  repairPickaxeWithMaterials,
+  repairWeaponWithMaterials,
+  repairRodWithMaterials,
+};

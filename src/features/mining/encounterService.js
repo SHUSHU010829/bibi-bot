@@ -316,7 +316,11 @@ async function trigger(client, ctx) {
         const profile = await getOrCreate(client, userId, guildId);
         const wdef = (dungeon?.weapons || {})[profile.weapon] || {};
         if (profile.weapon !== "fist" && wdef.durability) {
-          const max = wdef.durability;
+          // 優先用 profile 上的 max（舊存檔可能尚未 backfill，fallback 到 config）
+          const max =
+            typeof profile.weapon_max_durability === "number"
+              ? profile.weapon_max_durability
+              : wdef.durability;
           const cur =
             typeof profile.weapon_durability === "number"
               ? profile.weapon_durability
@@ -329,6 +333,7 @@ async function trigger(client, ctx) {
             {
               $set: {
                 weapon_durability: next,
+                weapon_max_durability: max,
                 updatedAt: new Date(),
               },
             }

@@ -19,9 +19,9 @@
     "durabilityWarn": { "low": 5, "critical": 1 },
     "rods": {
       "bamboo":  { "name": "竹釣竿",   "emoji": "🎣", "successBonus": 0,    "rareBonus": 0,   "cdReductionMs": 0,       "qtyBonus": 0, "durability": null },
-      "carbon":  { "name": "碳纖釣竿", "emoji": "🎏", "successBonus": 0.12, "rareBonus": 0.5, "cdReductionMs": 1800000, "qtyBonus": 0, "durability": 50 },
+      "carbon":  { "name": "碳纖釣竿", "emoji": "🎏", "successBonus": 0.12, "rareBonus": 0.5, "cdReductionMs": 1800000, "qtyBonus": 0, "durability": 30 },
       "gold":    { "name": "黃金釣竿", "emoji": "🥇", "successBonus": 0.20, "rareBonus": 1.0, "cdReductionMs": 2700000, "qtyBonus": 0, "durability": 50 },
-      "mythril": { "name": "秘銀釣竿", "emoji": "🔱", "successBonus": 0.28, "rareBonus": 1.5, "cdReductionMs": 3600000, "qtyBonus": 1, "durability": 50 }
+      "mythril": { "name": "秘銀釣竿", "emoji": "🔱", "successBonus": 0.28, "rareBonus": 1.5, "cdReductionMs": 3600000, "qtyBonus": 1, "durability": 80 }
     },
     "locations": {
       "stream": {
