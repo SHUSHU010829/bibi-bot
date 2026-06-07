@@ -30,31 +30,24 @@ module.exports = {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
-      const s = await buffResolver.summary(
-        client,
-        interaction.user.id,
-        interaction.guildId,
-        interaction.member
-      );
+      const [s, roleGroups] = await Promise.all([
+        buffResolver.summary(
+          client,
+          interaction.user.id,
+          interaction.guildId,
+          interaction.member
+        ),
+        buffResolver.roleBuffSummary(
+          client,
+          interaction.user.id,
+          interaction.guildId,
+          interaction.member
+        ).catch(() => []),
+      ]);
 
       const cdMin = s.miningCdMs ? Math.round((s.miningCdMs / 60000) * 10) / 10 : null;
 
-      const incomeLines = [];
-      if (s.income.twitch?.multiplier > 1) {
-        incomeLines.push(`• ${s.income.twitch.name || "Twitch 訂閱"}：+${pct(s.income.twitch.multiplier)}`);
-      }
-      if (s.income.serverBoost?.multiplier > 1) {
-        incomeLines.push(`• ${s.income.serverBoost.name || "伺服器加成"}：+${pct(s.income.serverBoost.multiplier)}`);
-      }
-      if (s.income.coinBoost > 1) {
-        incomeLines.push(`• 金幣 buff：+${pct(s.income.coinBoost)}`);
-      }
-      if (!incomeLines.length) incomeLines.push("• 無金幣加成");
-
-      const farmLine = s.farmYieldBonus > 0
-        ? `**🌾 農場收成**：+${Math.round(s.farmYieldBonus * 100)}%\n`
-        : "";
-
+      // ── 體力 ──
       const miningProfileForStamina = await getMiningProfile(
         client, interaction.user.id, interaction.guildId
       ).catch(() => null);
@@ -93,27 +86,63 @@ module.exports = {
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(staminaLines.join("\n"))
-        )
+        );
+
+      // ── 加成總覽（套用後）──
+      const overviewLines = [
+        `**⚔️ 攻擊力**：${s.atk}`,
+        `**🍀 挖礦幸運**：+${Math.round(s.luckBonus * 100)}%`,
+        `**⛏️ 挖礦數量**：+${s.qtyBonus}`,
+      ];
+      if (cdMin != null) overviewLines.push(`**⏱️ 挖礦冷卻**：${cdMin} 分鐘`);
+      if (s.farmYieldBonus > 0)
+        overviewLines.push(`**🌾 農場收成**：+${Math.round(s.farmYieldBonus * 100)}%`);
+      overviewLines.push(
+        `**📈 經驗加成**：${s.xpBoost > 1 ? `+${pct(s.xpBoost)}` : "無"}`
+      );
+
+      container
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `**⚔️ 攻擊力**：${s.atk}\n` +
-              `**🍀 挖礦幸運**：+${Math.round(s.luckBonus * 100)}%\n` +
-              `**⛏️ 挖礦數量加成**：+${s.qtyBonus}\n` +
-              (cdMin != null ? `**⏱️ 挖礦冷卻**：${cdMin} 分鐘\n` : "") +
-              farmLine
-          )
-        )
-        .addSeparatorComponents(new SeparatorBuilder())
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`**🪙 金幣加成**\n${incomeLines.join("\n")}`)
-        )
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `**📈 經驗加成**：${s.xpBoost > 1 ? `+${pct(s.xpBoost)}` : "無"}`
+            `### 📊 加成總覽（已套用所有來源）\n${overviewLines.join("\n")}`
           )
         );
 
+      // ── 金幣加成（細項：以挖礦賣礦情境為例）──
+      const incomeLines = [];
+      if (s.income.twitch?.multiplier > 1) {
+        incomeLines.push(`• ${s.income.twitch.name || "Twitch 訂閱"}：×${s.income.twitch.multiplier}`);
+      }
+      if (s.income.serverBoost?.multiplier > 1) {
+        incomeLines.push(`• ${s.income.serverBoost.name || "伺服器加成"}：×${s.income.serverBoost.multiplier}`);
+      }
+      if (s.income.coinBoost > 1) {
+        incomeLines.push(`• 商店金幣 buff：×${s.income.coinBoost}`);
+      }
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `### 🪙 金幣加成來源\n${incomeLines.length ? incomeLines.join("\n") : "-# 目前沒有金幣加成"}\n-# 多重來源會相乘，最終實際倍率以發放時為準`
+          )
+        );
+
+      // ── 身分組來源（從 /背包 搬過來）──
+      if (roleGroups.length > 0) {
+        const roleText = roleGroups
+          .map((g) => `${g.header}\n${g.lines.map((l) => `　${l}`).join("\n")}`)
+          .join("\n");
+        container
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `### 🎖️ 身分組來源\n${roleText}\n-# 失去身分組即失效`
+            )
+          );
+      }
+
+      // ── 限時活動 ──
       if (s.events && s.events.length > 0) {
         const eventLines = s.events.map((e) => {
           const bits = [];
@@ -125,12 +154,12 @@ module.exports = {
           .addSeparatorComponents(new SeparatorBuilder())
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              `**🎉 限時活動**\n${eventLines.join("\n")}`
+              `### 🎉 限時活動\n${eventLines.join("\n")}`
             )
           );
       }
 
-      // 公會共享 buff（Phase A）
+      // ── 公會共享 buff ──
       if (s.guildClub) {
         const lines = [];
         if (s.guildClub.miningQtyBonus > 0)
@@ -151,37 +180,12 @@ module.exports = {
           .addSeparatorComponents(new SeparatorBuilder())
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              `**🏰 公會「${s.guildClub.name}」(Lv.${s.guildClub.level})**\n${lines.join("\n")}`
+              `### 🏰 公會「${s.guildClub.name}」(Lv.${s.guildClub.level})\n${lines.join("\n")}`
             )
           );
       }
 
-      // 食物倉庫存量（Phase S4 — 食物囤積機制）
-      try {
-        if (miningProfileForStamina) {
-          const stockpile = foodBag.listFresh(miningProfileForStamina);
-          if (stockpile.length > 0) {
-            const avgFresh = stockpile.reduce((s, it) => s + it.freshness, 0) / stockpile.length;
-            const minFresh = Math.min(...stockpile.map((it) => it.freshness));
-            const urgent = stockpile.filter((it) => it.freshness < 0.2).length;
-            const lines = [
-              `**🥡 食物倉庫**：${stockpile.length} 份（平均新鮮度 ${Math.round(avgFresh * 100)}%）`,
-            ];
-            if (urgent > 0) {
-              lines.push(`-# 🔴 有 ${urgent} 份快壞了（最低 ${Math.round(minFresh * 100)}%），記得快點吃`);
-            } else {
-              lines.push(`-# 用 \`/食物\` 查看與食用`);
-            }
-            container
-              .addSeparatorComponents(new SeparatorBuilder())
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(lines.join("\n"))
-              );
-          }
-        }
-      } catch { /* 食物倉庫讀取失敗不影響主流程 */ }
-
-      // 食物 buff（生效中）
+      // ── 食物 buff（生效中）──
       try {
         if (miningProfileForStamina) {
           const foodBuffs = getActiveFoodBuffs(miningProfileForStamina);
@@ -213,18 +217,45 @@ module.exports = {
               .addSeparatorComponents(new SeparatorBuilder())
               .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                  `**🍽️ 食物 Buff**\n${foodLines.join("\n")}`
+                  `### 🍽️ 食物 Buff（生效中）\n${foodLines.join("\n")}`
                 )
               );
           }
         }
       } catch { /* 讀取食物 buff 失敗不影響主流程 */ }
 
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          "-# 加成來源：鎬子 / 幸運藥水 / Twitch 訂閱 / 伺服器加成 / 抖內 / 商店 buff / 限時活動 / 食物 / 公會"
-        )
-      );
+      // ── 食物倉庫存量 ──
+      try {
+        if (miningProfileForStamina) {
+          const stockpile = foodBag.listFresh(miningProfileForStamina);
+          if (stockpile.length > 0) {
+            const avgFresh = stockpile.reduce((s, it) => s + it.freshness, 0) / stockpile.length;
+            const minFresh = Math.min(...stockpile.map((it) => it.freshness));
+            const urgent = stockpile.filter((it) => it.freshness < 0.2).length;
+            const lines = [
+              `**🥡 食物倉庫**：${stockpile.length} 份（平均新鮮度 ${Math.round(avgFresh * 100)}%）`,
+            ];
+            if (urgent > 0) {
+              lines.push(`-# 🔴 有 ${urgent} 份快壞了（最低 ${Math.round(minFresh * 100)}%），記得快點吃`);
+            } else {
+              lines.push(`-# 用 \`/食物\` 查看與食用`);
+            }
+            container
+              .addSeparatorComponents(new SeparatorBuilder())
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(lines.join("\n"))
+              );
+          }
+        }
+      } catch { /* 食物倉庫讀取失敗不影響主流程 */ }
+
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "-# 加成來源：鎬子 / 幸運藥水 / Twitch 訂閱 / 伺服器加成 / 抖內 / 商店 buff / 限時活動 / 食物 / 公會\n-# 想看背包與道具，請用 `/背包`"
+          )
+        );
 
       await interaction.editReply({
         components: [container],
