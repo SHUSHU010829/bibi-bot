@@ -367,22 +367,33 @@ const leave = async (client, { userId, guildId }) => {
     return { ok: false, reason: "leader_must_disband" };
   }
 
+  const allMembers = await service.listMembers(client, m.guild_club_id);
+  const managerIds = allMembers
+    .filter((mem) => service.isManager(mem.role) && mem.userId !== userId)
+    .map((mem) => mem.userId);
+
   await client.guildClubMembersCollection.deleteOne({
     userId,
     guildId,
     guild_club_id: m.guild_club_id,
   });
 
+  const now = new Date();
   await client.guildClubLogsCollection.insertOne({
     guild_club_id: m.guild_club_id,
     user_id: userId,
     amount: 0,
     source: "left_club",
     meta: {},
-    createdAt: new Date(),
+    createdAt: now,
   });
 
-  return { ok: true, club };
+  const rejoinMs = service.hoursToMs(
+    service.antiLaunderingCfg().rejoinCooldownHours
+  );
+  const rejoinReadyAt = rejoinMs > 0 ? now.getTime() + rejoinMs : null;
+
+  return { ok: true, club, managerIds, rejoinReadyAt };
 };
 
 const kick = async (client, { leaderId, guildId, targetId }) => {

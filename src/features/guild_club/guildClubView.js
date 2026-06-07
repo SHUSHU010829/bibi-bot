@@ -640,14 +640,32 @@ function buildLevelUpAnnouncementContainer({ club, fromLevel, toLevel, crossedTh
   return container;
 }
 
-function buildLeaveSuccessContainer({ club, userId }) {
-  return new ContainerBuilder()
+function buildLeaveSuccessContainer({ club, rejoinReadyAt }) {
+  const container = new ContainerBuilder()
     .setAccentColor(COLOR_WARN)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# 👋 <@${userId}> 退出了「${club.name}」`
+        `# 👋 你已退出「${club.name}」`
       )
     );
+
+  if (rejoinReadyAt) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🧊 加入新公會冷卻：<t:${Math.floor(rejoinReadyAt / 1000)}:R>（<t:${Math.floor(rejoinReadyAt / 1000)}:F>）後才能加入或申請其他公會。\n-# 同樣的提醒已 DM 給你；會長與副會長也已收到通知。`
+      )
+    );
+  } else {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 會長與副會長已收到 DM 通知。`
+      )
+    );
+  }
+
+  return container;
 }
 
 function buildKickSuccessContainer({ club, targetId, leaderId }) {
