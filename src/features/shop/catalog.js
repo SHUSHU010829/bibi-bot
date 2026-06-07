@@ -6,6 +6,7 @@ const STACKABLE_TYPES = [
   "mining_cd_ticket",
   "mining_backpack",
   "mining_whetstone_inferior",
+  "mining_stamina_potion",
   "casino_token",
 ];
 

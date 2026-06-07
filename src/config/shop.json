@@ -49,7 +49,7 @@
       { "id": "mining_backpack_expand", "category": "通用道具", "type": "mining_backpack", "name": "背包擴充", "description": "永久增加礦石背包容量 +5 格", "price": 2000, "payload": { "slots": 5 } },
 
       { "id": "mining_luck_potion", "category": "挖礦道具", "type": "mining_luck_potion", "name": "幸運藥水", "description": "挖礦 luck +8%，持續 3 次挖礦（自動生效）", "price": 300, "payload": { "uses": 3 } },
-      { "id": "mining_stamina_potion", "category": "挖礦道具", "type": "mining_stamina_potion", "name": "體力藥水", "description": "立即恢復 5 點地下城體力（不超過上限），體力已滿時無法購買。每日最多購買 3 瓶", "price": 600, "payload": { "restore": 5, "dailyLimit": 3 } },
+      { "id": "mining_stamina_potion", "category": "挖礦道具", "type": "mining_stamina_potion", "name": "體力藥水", "description": "到 /背包 使用，立即恢復 5 點地下城體力（不超過上限）。最多持有 30 瓶，每日最多購買 3 瓶", "price": 600, "payload": { "restore": 5, "qty": 1, "maxStack": 30, "dailyLimit": 3 } },
       { "id": "mining_whetstone_inferior", "category": "挖礦道具", "type": "mining_whetstone_inferior", "name": "劣質磨鎬石", "description": "到 /背包 使用，將鎬子耐久補滿，但最大耐久 -10（最大耐久不足 20 時無法使用）。最多持有 20 個", "price": 250, "payload": { "qty": 1, "maxStack": 20 } },
 
       { "id": "fishing_rod_carbon", "category": "釣魚道具", "type": "fishing_rod", "name": "碳纖釣竿", "description": "釣魚成功率 +12%、稀有度提升、冷卻 -30 分，耐久 50 次。已持有同級或更好的釣竿時無法購買；更高階釣竿請用 /合成 打造", "price": 3000, "payload": { "rodId": "carbon" } },

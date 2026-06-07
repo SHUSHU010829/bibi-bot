@@ -6,12 +6,6 @@ const { getTodayBoughtQty } = require("./dailyLimits");
 const { addBuff } = require("./activeBuff");
 const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
 const { ROD_TIER } = require("../mining/craftService");
-const {
-  restoreStamina,
-  resolveStamina,
-  staminaMax,
-  getMemberClub,
-} = require("../mining/dungeonService");
 
 const MINING_ITEM_TYPES = [
   "mining_luck_potion",
@@ -25,6 +19,7 @@ const MINING_ITEM_TYPES = [
 const MINING_STACK_LIMIT_MAP = {
   mining_cd_ticket: "cd_ticket_count",
   mining_whetstone_inferior: "whetstone_inferior_count",
+  mining_stamina_potion: "stamina_potion_count",
 };
 
 // 每日購買上限的數量單位（純文案用）。
@@ -84,17 +79,6 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
         ok: false,
         error: `「${item.name}」每日最多購買 ${limit} ${unit}，你今天已買 ${boughtToday} ${unit}，今天最多再買 ${Math.max(0, limit - boughtToday)} ${unit}。`,
       };
-    }
-  }
-
-  // 體力藥水：體力已滿時拒絕購買（避免浪費），在扣款前檢查
-  if (item.type === "mining_stamina_potion") {
-    const club = await getMemberClub(client, userId, guildId);
-    const max = staminaMax(member, club);
-    const prof = await getMiningProfile(client, userId, guildId);
-    const st = resolveStamina(prof, max);
-    if (st.stamina >= max) {
-      return { ok: false, error: `你的體力已滿（${st.stamina}/${max}），不需要購買體力藥水。` };
     }
   }
 
@@ -186,7 +170,6 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
 
   // 寫入背包（buff 類型不需要 inventory，直接生效）
   let inventoryDoc = null;
-  let staminaResult = null;
   if (item.type === "xp_boost" || item.type === "coin_boost") {
     await addBuff(client, {
       userId,
@@ -217,14 +200,6 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
       },
       { upsert: true, returnDocument: "after" },
     );
-  } else if (item.type === "mining_stamina_potion") {
-    // 體力藥水：購買後立即恢復體力（不進 UserInventory）
-    staminaResult = await restoreStamina(client, {
-      userId,
-      guildId,
-      member,
-      amount: item.payload?.restore || 0,
-    });
   } else if (item.type === "fishing_rod") {
     // 釣竿：直接裝備到 MiningProfiles（含耐久），不進 UserInventory
     await getMiningProfile(client, userId, guildId);
@@ -250,6 +225,7 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
       mining_cd_ticket:   { field: "cd_ticket_count",  payloadKey: "qty"  },
       mining_backpack:    { field: "backpack_bonus_slots", payloadKey: "slots" },
       mining_whetstone_inferior: { field: "whetstone_inferior_count", payloadKey: "qty" },
+      mining_stamina_potion: { field: "stamina_potion_count", payloadKey: "qty" },
     };
     const mapping = MINING_FIELD_MAP[item.type];
     const incField = mapping?.field || "luck_potion_uses";
@@ -304,7 +280,6 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     balanceAfter: grant.doc?.totalCoins || 0,
     expiresAt,
     inventoryDoc,
-    stamina: staminaResult,
   };
 }
 
