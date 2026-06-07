@@ -8,7 +8,11 @@
 //
 // 賭石（appraise_overflow_*）與地下城（dungeon_overflow_*）由各自既有 handler 處理。
 
-const { MessageFlags } = require("discord.js");
+const {
+  MessageFlags,
+  ContainerBuilder,
+  TextDisplayBuilder,
+} = require("discord.js");
 const mineCmd = require("../../commands/mining/mine");
 const giveCmd = require("../../commands/mining/give");
 
@@ -22,6 +26,12 @@ async function replyEphemeral(interaction, content) {
   } catch (_) {
     /* noop */
   }
+}
+
+function cancelledPanel(text) {
+  return new ContainerBuilder()
+    .setAccentColor(0x95a5a6)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text));
 }
 
 module.exports = async (client, interaction) => {
@@ -44,7 +54,10 @@ module.exports = async (client, interaction) => {
         return replyEphemeral(interaction, "🚫 這不是你的挖礦。");
       }
       return interaction
-        .update({ components: [], content: "已取消這次挖礦。" })
+        .update({
+          components: [cancelledPanel("✖️ 已取消這次挖礦。")],
+          flags: MessageFlags.IsComponentsV2,
+        })
         .catch(() => {});
     }
 
@@ -84,7 +97,10 @@ module.exports = async (client, interaction) => {
         return replyEphemeral(interaction, "🚫 這不是你的贈送。");
       }
       return interaction
-        .update({ components: [], content: "已取消這次贈送。" })
+        .update({
+          components: [cancelledPanel("✖️ 已取消這次贈送。")],
+          flags: MessageFlags.IsComponentsV2,
+        })
         .catch(() => {});
     }
   } catch (err) {
