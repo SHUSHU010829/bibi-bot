@@ -13,6 +13,22 @@ function rand(min, max) {
   return Math.floor(min + Math.random() * (max - min + 1));
 }
 
+function pickFrom(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function generateRandomBoss() {
+  const g = cfg().nameGenerator || {};
+  const prefix = pickFrom(g.prefixes) || "";
+  const core = pickFrom(g.cores) || "巨龍";
+  const suffix = pickFrom(g.suffixes) || "";
+  return {
+    name: `${prefix}${core}${suffix}`,
+    emoji: pickFrom(g.emojis) || "🐉",
+  };
+}
+
 function phaseOf(currentHp, maxHp) {
   const ratio = maxHp > 0 ? currentHp / maxHp : 0;
   const phases = cfg().phases || {};
@@ -62,11 +78,13 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs }) {
   const duration = durationMs ?? (cfg().durationMinutes ?? 30) * 60 * 1000;
   const bossId = `boss_${guildId}_${now}`;
 
+  const generated = (name && emoji) ? null : generateRandomBoss();
+
   const doc = {
     boss_id: bossId,
     guild_id: guildId,
-    name: name || cfg().saturdaySpawn?.name || "巨龍",
-    emoji: emoji || cfg().saturdaySpawn?.emoji || "🐉",
+    name: name || generated?.name || cfg().saturdaySpawn?.name || "巨龍",
+    emoji: emoji || generated?.emoji || cfg().saturdaySpawn?.emoji || "🐉",
     max_hp: finalHp,
     current_hp: finalHp,
     phase: "normal",
