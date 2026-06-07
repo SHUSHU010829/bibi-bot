@@ -184,24 +184,32 @@ async function toggle(client, { userId, guildId, type, readyAt }) {
 // 若 readyAt 已過（例如用 CD 縮短券把冷卻直接歸零），代表玩家當下就能挖、人也在現場，
 // 直接標記 notified 避免掃描器補送多餘的「冷卻結束」DM。
 //
-// 例外：若目前已有「到點但尚未發 DM」的 pending 通知（notified=false 且 readyAt<=now），
-// 不要被新動作的 readyAt 蓋掉——讓 cron 先把那筆 DM 發完，之後會由 scanAndNotify
+// 例外：farm 是唯一「同一訂閱可連續觸發多次 DM」的型別（一塊地一塊地成熟）。
+// 若目前已有「到點但尚未發 DM」的 pending 通知（notified=false 且 readyAt<=now），
+// 不要被新動作的 readyAt 蓋掉——讓 cron 先把那筆 DM 發完，之後會由 advanceAfterNotify
 // 自動推進到下一塊；否則會把還沒發出的提醒整個吃掉（例如成熟前一秒種了新地塊）。
+//
+// 其它類型（mining/work/fish/dungeon/crash）一個訂閱只追一個下次冷卻、不會 advance：
+// 套用同樣的保留邏輯會吃掉下一輪通知——cron 把舊 pending claim 成 notified=true 後
+// readyAt 還停在舊值，新的下次冷卻就永遠不會被掃到（玩家會「沒通知到」）。所以這些
+// 類型一律直接覆蓋成最新冷卻；舊的「冷卻結束」DM 對剛動作完的玩家本來就沒意義。
 async function refreshIfEnabled(client, { userId, guildId, type, readyAt }) {
   const c = coll(client);
   if (!c) return;
   const now = Date.now();
 
-  const existing = await c
-    .findOne({ userId, guildId, type, enabled: true })
-    .catch(() => null);
-  if (
-    existing &&
-    !existing.notified &&
-    existing.readyAt > 0 &&
-    existing.readyAt <= now
-  ) {
-    return;
+  if (type === "farm") {
+    const existing = await c
+      .findOne({ userId, guildId, type, enabled: true })
+      .catch(() => null);
+    if (
+      existing &&
+      !existing.notified &&
+      existing.readyAt > 0 &&
+      existing.readyAt <= now
+    ) {
+      return;
+    }
   }
 
   await c
