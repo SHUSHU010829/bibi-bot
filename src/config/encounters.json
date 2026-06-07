@@ -101,6 +101,14 @@
         "text": "你撿到一瓶神秘藥水，喝下後體力恢復了一些。"
       },
       {
+        "id": "broken_whetstone",
+        "name": "碎裂的磨刀石",
+        "emoji": "🪨",
+        "weight": 10,
+        "effect": { "type": "repair_weapon", "pct": 0.5 },
+        "text": "你撿到一塊碎裂的磨刀石，將就著磨了磨武器，耐久回了一些。"
+      },
+      {
         "id": "trap",
         "name": "陷阱",
         "emoji": "⚠️",
