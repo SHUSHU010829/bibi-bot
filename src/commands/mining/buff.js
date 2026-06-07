@@ -23,7 +23,7 @@ module.exports = {
   ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("狀態")
-    .setDescription("查看目前體力、加成（攻擊 / 幸運 / 金幣 / 經驗）與生效中的 buff ✨")
+    .setDescription("查看體力、所有加成與生效中 Buff（身分組／食物／公會／活動）✨")
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {
