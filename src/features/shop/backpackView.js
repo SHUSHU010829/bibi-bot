@@ -37,6 +37,15 @@ function trendLabel(price, base) {
 const USE_WHETSTONE_INFERIOR_PREFIX = "mining_use_whetstone_inferior_";
 const USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX = "mining_use_whetstone_inferior_confirm_";
 
+// 體力藥水「使用」按鈕：mining_use_stamina_potion_<ownerId>
+const USE_STAMINA_POTION_PREFIX = "mining_use_stamina_potion_";
+
+function parseUseStaminaPotionId(customId) {
+  if (!customId || !customId.startsWith(USE_STAMINA_POTION_PREFIX)) return null;
+  const ownerId = customId.slice(USE_STAMINA_POTION_PREFIX.length);
+  return ownerId ? { ownerId } : null;
+}
+
 function parseUseWhetstoneInferiorId(customId) {
   if (!customId) return null;
   if (customId.startsWith(USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX)) {
@@ -256,8 +265,13 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     const luckUses = profile.luck_potion_uses || 0;
     const ticketCount = profile.cd_ticket_count || 0;
     const inferiorCount = profile.whetstone_inferior_count || 0;
+    const staminaPotionCount = profile.stamina_potion_count || 0;
     const fragments = profile.legendary_fragments || 0;
     const reductionMin = Math.round((mining?.cdTicketReductionMs || 0) / 60000);
+    const staminaPotionItem = (shop?.items || []).find(
+      (it) => it.type === "mining_stamina_potion"
+    );
+    const staminaPotionRestore = staminaPotionItem?.payload?.restore || 5;
 
     // 材料修復：計算所需材料（讓 UI 提示用）
     const repairCost = getPickaxeRepairCost(profile);
@@ -316,6 +330,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         { emoji: "🍀", name: "幸運藥水", qty: luckUses },
         { emoji: "🎫", name: "CD 縮短券", qty: ticketCount },
         { emoji: "🪨", name: "劣質磨鎬石", qty: inferiorCount },
+        { emoji: "🧪", name: "體力藥水", qty: staminaPotionCount },
         { emoji: "✨", name: "傳說素材碎片", qty: fragments },
       ];
       const hasTools = toolItems.filter((t) => t.qty > 0);
@@ -371,6 +386,24 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         `🎫 **CD 縮短券** ×${ticketCount}\n-# 立即 -${reductionMin} 分・在 \`/挖礦\` 或 \`/釣魚\` 冷卻訊息上按使用`
       )
     );
+    // 體力藥水
+    {
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `🧪 **體力藥水** ×${staminaPotionCount}\n-# 立即恢復 ${staminaPotionRestore} 點地下城體力（不超過上限）`
+            )
+          )
+          .setButtonAccessory(
+            new ButtonBuilder()
+              .setCustomId(`${USE_STAMINA_POTION_PREFIX}${userId}`)
+              .setLabel("使用")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(staminaPotionCount <= 0)
+          )
+      );
+    }
     // 劣質磨鎬石
     {
       const maxDur = profile.pickaxe_max_durability;
@@ -813,5 +846,7 @@ module.exports = {
   REPAIR_MATERIAL_PREFIX,
   REPAIR_MATERIAL_CONFIRM_PREFIX,
   parseRepairMaterialId,
+  USE_STAMINA_POTION_PREFIX,
+  parseUseStaminaPotionId,
   UNIFIED_EQUIP_ID,
 };

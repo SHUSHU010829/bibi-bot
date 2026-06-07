@@ -129,6 +129,47 @@ async function restoreStamina(client, { userId, guildId, member, amount }) {
   };
 }
 
+// 使用一瓶體力藥水：扣 1 罐 + 補體力。庫存或體力滿時各自回傳對應 reason。
+async function useStaminaPotion(client, { userId, guildId, member }) {
+  if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
+
+  const club = await getMemberClub(client, userId, guildId);
+  const max = staminaMax(member, club);
+  const profile = await getOrCreate(client, userId, guildId);
+
+  const owned = profile.stamina_potion_count || 0;
+  if (owned <= 0) return { ok: false, reason: "no_potion" };
+
+  const st = resolveStamina(profile, max);
+  if (st.stamina >= max) {
+    return { ok: false, reason: "full", staminaBefore: st.stamina, max };
+  }
+
+  const { shop } = require("../../config");
+  const item = (shop?.items || []).find((i) => i.type === "mining_stamina_potion");
+  const restore = item?.payload?.restore || 5;
+
+  // 原子扣減：filter 帶 stamina_potion_count >= 1，防止連點重複扣
+  const updated = await client.miningProfilesCollection.findOneAndUpdate(
+    { userId, guildId, stamina_potion_count: { $gte: 1 } },
+    { $inc: { stamina_potion_count: -1 }, $set: { updatedAt: new Date() } },
+    { returnDocument: "after" },
+  );
+  const updatedDoc = updated?.value || updated;
+  if (!updatedDoc) return { ok: false, reason: "retry" };
+
+  const restored = await restoreStamina(client, { userId, guildId, member, amount: restore });
+  return {
+    ok: true,
+    staminaBefore: restored.staminaBefore,
+    staminaAfter: restored.staminaAfter,
+    restored: restored.restored,
+    max: restored.max,
+    potionLeft: updatedDoc.stamina_potion_count || 0,
+    nextRegenAt: restored.nextRegenAt,
+  };
+}
+
 // 估算「體力補滿」的 epoch ms。已滿回 0；用於到點通知與 /通知設定 面板。
 // member 可選，用於把 Twitch 訂閱的體力上限加乘算進去。
 async function staminaFullAt(client, { userId, guildId, member }) {
@@ -521,6 +562,7 @@ module.exports = {
   rollbackDungeon,
   resolveStamina,
   restoreStamina,
+  useStaminaPotion,
   staminaMax,
   staminaBonus,
   staminaGuildBonus,

@@ -281,11 +281,8 @@ async function handleConfirmButton(client, interaction, qty, itemId) {
   if (item.type === "xp_boost" || item.type === "coin_boost") {
     lines.push("・效果：已自動套用，可用 `/背包` 查看剩餘時間");
   }
-  if (item.type === "mining_stamina_potion" && result.stamina) {
-    const s = result.stamina;
-    lines.push(
-      `・體力：${s.staminaBefore} → **${s.staminaAfter}** / ${s.max}（+${s.restored}）`,
-    );
+  if (item.type === "mining_stamina_potion") {
+    lines.push("・已加入背包，到 `/背包` 點「使用」即可恢復體力");
   }
 
   const invId = result.inventoryDoc?.insertedId
