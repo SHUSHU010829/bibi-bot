@@ -1,7 +1,12 @@
 require("colors");
-const { MessageFlags } = require("discord.js");
+const { EmbedBuilder, MessageFlags } = require("discord.js");
 const { boss } = require("../../config");
 const { buildSettlementContainer } = require("./bossView");
+
+function pickFrom(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
 async function resolveChannel(client, id) {
   if (!id) return null;
@@ -14,13 +19,27 @@ async function announceSpawn(client, bossDoc) {
   if (!ch) return;
   const endsAt = Math.floor(bossDoc.ends_at / 1000);
   const onlineSuffix = bossDoc.online_count != null
-    ? `（依當前 ${bossDoc.online_count} 名線上玩家決定）`
+    ? `\n-# 依當前 ${bossDoc.online_count} 名線上玩家決定`
     : "";
-  const text =
-    `# ${bossDoc.emoji} **${bossDoc.name}** 出現！\n` +
-    `血量 ${bossDoc.max_hp.toLocaleString()}${onlineSuffix}　戰鬥結束：<t:${endsAt}:R>\n` +
-    `輸入 **/攻擊** 一起討伐，每人每場最多 ${boss?.attackLimitPerPlayer ?? 5} 次！`;
-  await ch.send({ content: text, allowedMentions: { parse: [] } }).catch(() => {});
+  const limit = boss?.attackLimitPerPlayer ?? 5;
+  const intro = pickFrom(boss?.spawnIntros) || "傳說中的存在現身了！";
+
+  const embed = new EmbedBuilder()
+    .setColor(0xe74c3c)
+    .setTitle(`${bossDoc.emoji} ${bossDoc.name} 出現！`)
+    .setDescription(intro)
+    .addFields(
+      {
+        name: "💖 血量",
+        value: `${bossDoc.max_hp.toLocaleString()}${onlineSuffix}`,
+        inline: false,
+      },
+      { name: "⏳ 戰鬥結束", value: `<t:${endsAt}:R>`, inline: true },
+      { name: "⚔️ 攻擊上限", value: `每人 ${limit} 次`, inline: true },
+    )
+    .setFooter({ text: "輸入 /攻擊 一起討伐！" });
+
+  await ch.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch(() => {});
 }
 
 async function announcePhase(client, bossDoc, newPhase) {
