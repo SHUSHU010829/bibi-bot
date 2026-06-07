@@ -166,6 +166,13 @@ module.exports = {
           payoutResult?.doc?.totalCoins ?? balanceAfter + initial.payout;
       }
 
+      // 起手就 settled（雙方 BJ 等）的局，牌型已沒人需要查 → 不存進 doc 省 storage
+      if (doc.status === "settled") {
+        delete doc.deck;
+        delete doc.playerHand;
+        delete doc.dealerHand;
+        delete doc.hands;
+      }
       await client.blackjackGamesCollection.insertOne(doc);
 
       await saveLastBet(client, {

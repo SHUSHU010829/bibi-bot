@@ -27,13 +27,13 @@ module.exports = {
     .addStringOption((option) =>
       option
         .setName("期間")
-        .setDescription("統計區間（預設：本月）")
+        .setDescription("統計區間（預設：本月；紀錄保留 30 天）")
         .setRequired(false)
         .addChoices(
           { name: "今日", value: "today" },
           { name: "本週", value: "week" },
           { name: "本月", value: "month" },
-          { name: "全部時間", value: "all" },
+          { name: "近 30 天（全部）", value: "all" },
         ),
     )
     .addStringOption((option) =>

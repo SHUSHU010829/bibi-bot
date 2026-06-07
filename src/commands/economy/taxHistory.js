@@ -28,8 +28,7 @@ module.exports = {
         .setRequired(false)
         .addChoices(
           { name: "本月", value: "month" },
-          { name: "今年", value: "year" },
-          { name: "全部", value: "all" },
+          { name: "近 30 天（全部）", value: "all" },
         ),
     )
     .toJSON(),
@@ -144,8 +143,6 @@ function getDateFilter(period) {
   switch (period) {
     case "month":
       return { date: { $gte: now.startOf("month").toISODate() } };
-    case "year":
-      return { date: { $gte: now.startOf("year").toISODate() } };
     case "all":
     default:
       return {};
@@ -156,11 +153,9 @@ function describePeriod(period) {
   switch (period) {
     case "month":
       return "本月";
-    case "year":
-      return "今年";
     case "all":
     default:
-      return "全部時間";
+      return "近 30 天";
   }
 }
 

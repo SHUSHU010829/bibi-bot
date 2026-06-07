@@ -9,37 +9,13 @@ module.exports = function createAdminCronRouter(client) {
   router.use(requireAdmin(client));
 
   // GET /api/v1/admin/cron/jobs — 列出所有已註冊任務 + 最近一次紀錄
+  //
+  // lastRun 來源：listJobs() in-memory（每次 runOnce 都會更新）。
+  // CronJobLog 只記錄失敗 / 慢的 run（≥3 秒），所以不再從 DB 撈最後一筆，
+  // 否則成功的 fast cron 永遠看不到「剛剛跑過」。
   router.get("/jobs", async (_req, res, next) => {
     try {
-      const jobs = listJobs();
-      const col = client.cronJobLogCollection;
-
-      const enriched = await Promise.all(
-        jobs.map(async (j) => {
-          if (!col) return { ...j, lastRun: null };
-          const last = await col
-            .find({ name: j.name })
-            .sort({ startedAt: -1 })
-            .limit(1)
-            .next()
-            .catch(() => null);
-          return {
-            ...j,
-            lastRun: last
-              ? {
-                  startedAt: last.startedAt,
-                  finishedAt: last.finishedAt || null,
-                  status: last.status,
-                  durationMs: last.durationMs || null,
-                  trigger: last.trigger || null,
-                  error: last.error || null,
-                }
-              : null,
-          };
-        }),
-      );
-
-      res.json({ ok: true, jobs: enriched });
+      res.json({ ok: true, jobs: listJobs() });
     } catch (err) {
       next(err);
     }

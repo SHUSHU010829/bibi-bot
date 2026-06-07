@@ -410,7 +410,7 @@ module.exports = async (client) => {
         console.log(`[WARN] DashboardAuditLog TTL 索引建立失敗：${e.message}`.yellow),
       );
 
-    // Cron 任務紀錄索引：依任務名 + 時間倒序查、90 天 TTL 自動清
+    // Cron 任務紀錄索引：依任務名 + 時間倒序查、30 天 TTL 自動清
     await cronJobLogCollection
       .createIndex({ name: 1, startedAt: -1 }, { name: "cron_log_name_time" })
       .catch((e) =>
@@ -424,7 +424,7 @@ module.exports = async (client) => {
     await cronJobLogCollection
       .createIndex(
         { startedAt: 1 },
-        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "cron_log_ttl_90d" },
+        { expireAfterSeconds: 30 * 24 * 60 * 60, name: "cron_log_ttl_30d" },
       )
       .catch((e) =>
         console.log(`[WARN] CronJobLog TTL 索引建立失敗：${e.message}`.yellow),
@@ -559,7 +559,7 @@ module.exports = async (client) => {
       );
       await levelTransactionsCollection.createIndex(
         { createdAt: 1 },
-        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "ttl_90d" }
+        { expireAfterSeconds: 30 * 24 * 60 * 60, name: "level_tx_ttl_30d" }
       );
 
       await dailyCheckinCollection.createIndex(
@@ -606,7 +606,7 @@ module.exports = async (client) => {
       );
       await coinTransactionsCollection.createIndex(
         { createdAt: 1 },
-        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "coin_ttl_90d" }
+        { expireAfterSeconds: 30 * 24 * 60 * 60, name: "coin_ttl_30d" }
       );
 
       // 21 點對局索引：每位玩家同 guild 同時只能有一局 playing，靠 status 過濾不上 unique

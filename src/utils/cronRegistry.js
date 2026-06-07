@@ -37,6 +37,9 @@ const cron = require("node-cron");
  */
 
 const MAX_CONSECUTIVE_ERRORS = 3;
+// 成功 + 比這還快的 cron run 不寫 CronJobLog（純省 storage / write IO）。
+// 慢 / 失敗的還是會寫。dashboard 透過 in-memory lastRun 看「最後跑過沒」。
+const SLOW_RUN_MS = 3000;
 const jobs = new Map();
 
 function registerCron(client, opts) {
@@ -58,6 +61,7 @@ function registerCron(client, opts) {
     consecutiveErrors: 0,
     task: null,
     stopped: false,
+    lastRun: null,
   };
 
   if (schedule) {
@@ -88,60 +92,63 @@ function registerCron(client, opts) {
 async function runOnce(client, job, trigger) {
   const col = client.cronJobLogCollection;
   const startedAt = new Date();
-  let logId = null;
-  if (col) {
-    const insert = await col
-      .insertOne({
-        name: job.name,
-        startedAt,
-        status: "running",
-        trigger,
-      })
-      .catch(() => null);
-    logId = insert?.insertedId || null;
-  }
 
   try {
     const result = await job.runner(client);
     const finishedAt = new Date();
-    const duration = finishedAt - startedAt;
+    const durationMs = finishedAt - startedAt;
     job.consecutiveErrors = 0;
-    if (col && logId) {
+    job.lastRun = {
+      startedAt,
+      finishedAt,
+      status: "success",
+      durationMs,
+      trigger,
+      error: null,
+    };
+    if (col && durationMs >= SLOW_RUN_MS) {
       await col
-        .updateOne(
-          { _id: logId },
-          {
-            $set: {
-              status: "success",
-              finishedAt,
-              durationMs: duration,
-              result: serializableResult(result),
-            },
-          },
-        )
+        .insertOne({
+          name: job.name,
+          startedAt,
+          finishedAt,
+          status: "success",
+          durationMs,
+          trigger,
+          slow: true,
+          result: serializableResult(result),
+        })
         .catch(() => null);
     }
     return { ok: true, result };
   } catch (err) {
     const finishedAt = new Date();
+    const durationMs = finishedAt - startedAt;
     job.consecutiveErrors += 1;
+    const errMsg = String(err.message || err);
+    job.lastRun = {
+      startedAt,
+      finishedAt,
+      status: "failed",
+      durationMs,
+      trigger,
+      error: errMsg,
+    };
     console.log(
       `[CRON] ${job.name} failed (${job.consecutiveErrors}):\n${err.stack || err}`.red,
     );
-    if (col && logId) {
+    if (col) {
       await col
-        .updateOne(
-          { _id: logId },
-          {
-            $set: {
-              status: "failed",
-              finishedAt,
-              durationMs: finishedAt - startedAt,
-              error: String(err.message || err),
-              stack: err.stack || null,
-            },
-          },
-        )
+        .insertOne({
+          name: job.name,
+          startedAt,
+          finishedAt,
+          status: "failed",
+          durationMs,
+          trigger,
+          error: errMsg,
+          stack: err.stack || null,
+        })
         .catch(() => null);
     }
     return { ok: false, error: err };
@@ -156,6 +163,7 @@ function listJobs() {
     timezone: j.timezone,
     consecutiveErrors: j.consecutiveErrors,
     stopped: j.stopped,
+    lastRun: j.lastRun || null,
   }));
 }
 

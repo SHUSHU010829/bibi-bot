@@ -66,7 +66,7 @@ module.exports = {
           { name: "Today", value: "today" },
           { name: "This week", value: "week" },
           { name: "This month", value: "month" },
-          { name: "All time", value: "all" },
+          { name: "Last 30 days", value: "all" },
         ),
     )
     .toJSON(),
@@ -185,7 +185,7 @@ module.exports = {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `-# Period: ${describePeriod(period)} ・ <t:${Math.floor(Date.now() / 1000)}:R>\n` +
-              `-# Source: CoinTransactions（bet/payout，最多保留 90 天）`,
+              `-# Source: CoinTransactions（bet/payout，最多保留 30 天）`,
           ),
         );
 
@@ -227,6 +227,6 @@ function describePeriod(period) {
       return "This month";
     case "all":
     default:
-      return "All time";
+      return "Last 30 days";
   }
 }
