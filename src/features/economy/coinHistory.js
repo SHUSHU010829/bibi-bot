@@ -18,7 +18,7 @@ const PERIOD_LABELS = {
   today: "今日",
   week: "本週",
   month: "本月",
-  all: "全部時間",
+  all: "近 30 天",
 };
 
 const DIRECTION_LABELS = {
@@ -237,7 +237,7 @@ function buildContainer({ result, filters, displayName, ownerId }) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 紀錄保留 90 天 ・ 🟢 入帳 / 🔴 出帳 ・ 想換條件就重新呼叫 \`/我的金流紀錄\``,
+        `-# 紀錄保留 30 天 ・ 🟢 入帳 / 🔴 出帳 ・ 想換條件就重新呼叫 \`/我的金流紀錄\``,
       ),
     );
 

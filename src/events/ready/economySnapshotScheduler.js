@@ -59,7 +59,7 @@ async function snapshotGuild(client, guildId) {
     activeDepositCount: 0,
   };
 
-  // 昨日 flow 與 Top10 集中度（凍結，避免 CoinTransactions TTL 90 天後丟失歷史）
+  // 昨日 flow 與 Top10 集中度（凍結，避免 CoinTransactions TTL 30 天後丟失歷史）
   const [yesterdayFlow, topHolders] = await Promise.all([
     aggregateFlow(client, guildId, yesterdayIso, yesterdayIso).catch((e) => {
       console.log(`[ECON-SNAP] ${guildId} flow aggregate 失敗：${e.message}`.yellow);

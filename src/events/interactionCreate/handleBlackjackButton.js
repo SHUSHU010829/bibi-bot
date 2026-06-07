@@ -178,25 +178,30 @@ module.exports = async (client, interaction) => {
     const ttlSec = cfg.gameTtlSeconds ?? 300;
     const now = new Date();
 
-    await client.blackjackGamesCollection.updateOne(
-      { _id: state._id },
-      {
-        $set: {
-          deck: next.deck,
-          playerHand: next.playerHand,
-          dealerHand: next.dealerHand,
-          doubled: next.doubled,
-          hands: next.hands,
-          activeIndex: next.activeIndex,
-          isSplit: next.isSplit,
-          status: next.status,
-          result: next.result,
-          payout: next.payout,
-          updatedAt: now,
-          expiresAt: new Date(now.getTime() + ttlSec * 1000),
-        },
-      }
-    );
+    // 結算後牌型 / 牌組 / 各手陣列都不再被查詢（CoinTransactions 已留下
+    // handResults 作為審計軌），直接從 doc 清掉以省 DB storage。
+    const settled = next.status === "settled";
+    const setFields = {
+      doubled: next.doubled,
+      activeIndex: next.activeIndex,
+      isSplit: next.isSplit,
+      status: next.status,
+      result: next.result,
+      payout: next.payout,
+      updatedAt: now,
+      expiresAt: new Date(now.getTime() + ttlSec * 1000),
+    };
+    if (!settled) {
+      setFields.deck = next.deck;
+      setFields.playerHand = next.playerHand;
+      setFields.dealerHand = next.dealerHand;
+      setFields.hands = next.hands;
+    }
+    const update = { $set: setFields };
+    if (settled) {
+      update.$unset = { deck: "", playerHand: "", dealerHand: "", hands: "" };
+    }
+    await client.blackjackGamesCollection.updateOne({ _id: state._id }, update);
 
     // 結算派彩
     let balanceAfter;

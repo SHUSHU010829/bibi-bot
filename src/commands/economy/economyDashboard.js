@@ -35,7 +35,6 @@ const RANGE_CHOICES = [
   { name: "今日（即時）", value: 1 },
   { name: "近 7 天", value: 7 },
   { name: "近 30 天", value: 30 },
-  { name: "近 90 天", value: 90 },
 ];
 
 const GAME_LABELS = {
@@ -538,7 +537,7 @@ module.exports = {
       c4.addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `-# 資料源：CoinTransactions（TTL 90 天）・MineLogs / FishLogs（TTL 90 天）・EconomySnapshots（每日 00:05 凍結）・OreMarketPrices\n` +
+            `-# 資料源：CoinTransactions（TTL 30 天）・MineLogs / FishLogs（TTL 90 天）・EconomySnapshots（每日 00:05 凍結）・OreMarketPrices\n` +
               `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
           ),
         );

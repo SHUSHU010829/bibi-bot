@@ -101,7 +101,7 @@ async function fetchCasino(client, { guildId, period }, kind) {
     total: rows.length,
     footer:
       `統計範圍：拉霸、21 點、HI-LO、輪盤、骰寶、德州撲克、樂透（${rangeText}）` +
-      "・交易紀錄最多保留 90 天",
+      "・交易紀錄最多保留 30 天",
     emptyHint:
       kind === "winners"
         ? "📊 這個期間還沒有人在賭場賺到錢"
