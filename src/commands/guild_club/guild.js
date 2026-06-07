@@ -12,6 +12,7 @@ const guildClubMembership = require("../../features/guild_club/guildClubMembersh
 const guildClubQuest = require("../../features/guild_club/guildClubQuest");
 const guildClubView = require("../../features/guild_club/guildClubView");
 const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
+const guildClubDm = require("../../features/guild_club/guildClubDm");
 const guildClubContribution = require("../../features/guild_club/guildClubContribution");
 const warehouseService = require("../../features/guild_club/warehouse/warehouseService");
 const warehouseView = require("../../features/guild_club/warehouse/warehouseView");
@@ -193,7 +194,7 @@ module.exports = {
             body: "目前無法使用公會功能。",
           }),
         ],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        flags: MessageFlags.IsComponentsV2,
       });
     }
 
@@ -208,7 +209,7 @@ module.exports = {
             hint: "此限制適用於所有 /公會 subcommand。",
           }),
         ],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        flags: MessageFlags.IsComponentsV2,
       });
     }
 
@@ -233,7 +234,7 @@ module.exports = {
             body: "出了點狀況，請稍後再試。",
           }),
         ],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        flags: MessageFlags.IsComponentsV2,
       };
       if (interaction.replied || interaction.deferred) {
         await interaction.editReply(reply).catch(() => {});
@@ -504,7 +505,7 @@ async function runApply(client, interaction) {
 // ───────── 退會 ─────────
 
 async function runLeave(client, interaction) {
-  await interaction.deferReply();
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const result = await guildClubMembership.leave(client, {
     userId: interaction.user.id,
@@ -518,14 +519,32 @@ async function runLeave(client, interaction) {
     });
   }
 
+  guildClubDm
+    .notifyLeaverCooldown(client, {
+      leaverId: interaction.user.id,
+      guildId: interaction.guildId,
+      clubName: result.club.name,
+      rejoinReadyAt: result.rejoinReadyAt,
+    })
+    .catch(() => {});
+
+  guildClubDm
+    .notifyManagersOfLeave(client, {
+      managerIds: result.managerIds || [],
+      guildId: interaction.guildId,
+      leaverId: interaction.user.id,
+      clubName: result.club.name,
+    })
+    .catch(() => {});
+
   return interaction.editReply({
     components: [
       guildClubView.buildLeaveSuccessContainer({
         club: result.club,
-        userId: interaction.user.id,
+        rejoinReadyAt: result.rejoinReadyAt,
       }),
     ],
-    flags: MessageFlags.IsComponentsV2,
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
   });
 }
 
