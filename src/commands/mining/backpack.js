@@ -12,7 +12,7 @@ module.exports = {
   ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("背包")
-    .setDescription("查看你的背包：礦石、道具、生效中的 buff 與挖礦狀態 🎒")
+    .setDescription("查看背包容量與道具：礦石、釣魚、農場、商店物品 🎒（加成請用 /狀態）")
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {
