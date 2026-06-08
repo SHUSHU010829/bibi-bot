@@ -29,6 +29,64 @@ function isLaunching(state, now = Date.now()) {
   return typeof started === "number" && now < started;
 }
 
+// 發射前確認用 payload：列出本局參數＋玩家必須知道的注意事項，按下確認才扣款開局。
+function buildConfirmPayload({
+  bet,
+  autocashout,
+  balance,
+  username,
+  userId,
+  avatarURL,
+}) {
+  const autoText =
+    autocashout != null
+      ? `×${autocashout.toFixed(2)}（達標自動派彩，不必搶按鈕）`
+      : "未設定（全程手動收手）";
+
+  const lines = [
+    "## 🚀 發射前確認",
+    `**下注**：${bet.toLocaleString()} credits`,
+    `**自動收手**：${autoText}`,
+    `**確認後餘額**：${(balance - bet).toLocaleString()} credits`,
+    "",
+    "## ⚠️ 開局前請務必看完",
+    "・倍率隨時間升空，按下「💰 收手」鎖定當下倍率派彩；爆炸前沒收手就 **全輸**。",
+    "・**Discord 訊息每 2 秒才更新一次**，畫面上的倍率不是即時的，你看到的數字可能比真實倍率慢一拍。",
+    "・**結算用伺服器真實時間**算，所以你按下收手那瞬間的派彩，**可能比畫面顯示的數字略高**（誤差是給你的，不是吃你的）。",
+    "・按下「確認發射」立即扣下注金額並升空，**無法取消**。",
+  ];
+
+  const embed = buildCasinoEmbed({
+    game: "🚀 火箭 — 發射前確認",
+    user: { id: userId, displayName: username, avatarURL },
+    outcome: "neutral",
+    lines,
+    bet,
+    balance,
+  });
+
+  const autoArg = autocashout != null ? autocashout.toFixed(2) : "0";
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`cr_start_${userId}_${bet}_${autoArg}`)
+      .setLabel("確認發射")
+      .setEmoji("🚀")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`cr_cancel_${userId}`)
+      .setLabel("取消")
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  return {
+    content: "",
+    embeds: [embed],
+    components: [row],
+    files: [],
+    attachments: [],
+  };
+}
+
 function buildCashOutButton(state, now = Date.now()) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -188,6 +246,7 @@ async function buildSettledPayload(state, { username, balance, userId, avatarURL
 }
 
 module.exports = {
+  buildConfirmPayload,
   buildPlayingPayload,
   buildSettledPayload,
   renderPlayingText,

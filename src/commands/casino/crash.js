@@ -1,5 +1,4 @@
 require("colors");
-const crypto = require("crypto");
 const {
   SlashCommandBuilder,
   InteractionContextType,
@@ -8,23 +7,14 @@ const { MONEY_EMOJI } = require("../../constants/coin");
 const { DateTime } = require("luxon");
 
 const { coinSystem, casino } = require("../../config");
-const grantCoins = require("../../features/economy/grantCoins");
 const parseBetAmount = require("../../utils/parseBetAmount");
 const {
-  startGame,
   MIN_AUTOCASHOUT,
-  DEFAULT_HOUSE_EDGE,
+  clampAutocashout,
 } = require("../../features/casino/crash/engine");
-const { buildPlayingPayload } = require("../../features/casino/crash/renderer");
-const tickManager = require("../../features/casino/crash/tick");
-const { saveLastBet } = require("../../features/casino/replay");
+const { buildConfirmPayload } = require("../../features/casino/crash/renderer");
 
 const WEEKDAY_LABEL = ["", "週一", "週二", "週三", "週四", "週五", "週六", "週日"];
-
-// 按下開始（發射 /火箭）後先暫停這段時間，火箭停在 ×1.00 蓄勢，
-// 過了才真正升空。multiplierAt 在 now < startedAt 時本來就回 1.00，
-// 所以只要把開局時間往後挪即可。
-const LAUNCH_DELAY_MS = 1_000;
 
 function getCrashConfig() {
   return casino?.crash || {};
@@ -123,7 +113,6 @@ module.exports = {
       const guildId = interaction.guildId;
       const username =
         interaction.member?.displayName || interaction.user.username;
-      const member = interaction.member;
 
       // 同時只能有一局 playing
       const existing = await client.crashGamesCollection.findOne({
@@ -159,7 +148,6 @@ module.exports = {
 
       const minBet = cfg.minBet ?? 10;
       const maxBet = cfg.maxBet ?? 0;
-      const houseEdge = cfg.houseEdge ?? DEFAULT_HOUSE_EDGE;
 
       const before = await client.userCoinsCollection.findOne({
         userId,
@@ -192,91 +180,19 @@ module.exports = {
 
       const autocashoutInput =
         interaction.options.getNumber("自動收手") ?? null;
+      const autocashout =
+        autocashoutInput != null ? clampAutocashout(autocashoutInput) : null;
 
-      const gameId = crypto.randomUUID();
-
-      // 扣下注
-      const betResult = await grantCoins(client, {
-        userId,
-        guildId,
-        username,
-        avatarHash: interaction.user.avatar,
-        amount: -bet,
-        source: "bet",
-        member,
-        meta: { game: "crash", gameId },
-      });
-      if (!betResult) {
-        return interaction.editReply("🔧 下注失敗，請稍後再試。");
-      }
-      const balanceAfter = betResult.doc?.totalCoins ?? balance - bet;
-
-      // 開局：延後 1 秒再讓火箭升空（按下開始後先蓄勢一秒）
-      const initial = startGame({
+      // 不在這裡扣款 / 開局：先讓玩家確認注意事項，按下「確認發射」才真正開始。
+      const payload = buildConfirmPayload({
         bet,
-        autocashout: autocashoutInput,
-        houseEdge,
-        now: Date.now() + LAUNCH_DELAY_MS,
-      });
-      const now = new Date();
-      const ttlSec = cfg.gameTtlSeconds ?? 300;
-      const doc = {
-        ...initial,
-        gameId,
-        userId,
-        guildId,
+        autocashout,
+        balance,
         username,
-        channelId: interaction.channelId,
-        // messageId 之後拿到再回填
-        startedAt: new Date(initial.startedAt),
-        bustAt: new Date(initial.bustAt),
-        autocashoutAt:
-          initial.autocashoutAt != null
-            ? new Date(initial.autocashoutAt)
-            : null,
-        createdAt: now,
-        updatedAt: now,
-        expiresAt: new Date(now.getTime() + ttlSec * 1000),
-      };
-
-      await client.crashGamesCollection.insertOne(doc);
-
-      // 紀錄上一注（下注為字串選項，自動收手可為 null），供「再來一局」
-      await saveLastBet(client, {
         userId,
-        guildId,
-        game: "crash",
-        payload: {
-          options: { 下注: String(bet), 自動收手: autocashoutInput },
-        },
+        avatarURL: interaction.user.displayAvatarURL(),
       });
-
-      // 第一次回應：playing payload
-      const payload = buildPlayingPayload(
-        { ...initial, gameId },
-        {
-          username,
-          balance: balanceAfter,
-          userId,
-          avatarURL: interaction.user.displayAvatarURL(),
-        },
-      );
-      const msg = await interaction.editReply(payload);
-
-      // 回填 messageId，tick 才知道要 edit 哪則
-      const messageId = msg?.id;
-      if (messageId) {
-        await client.crashGamesCollection.updateOne(
-          { gameId },
-          { $set: { messageId, updatedAt: new Date() } },
-        );
-      }
-
-      // 撈剛才寫進去的 doc（包含 messageId）給 tick 用
-      const liveDoc = await client.crashGamesCollection.findOne({ gameId });
-      if (liveDoc && liveDoc.status === "playing") {
-        tickManager.start(client, liveDoc);
-      }
+      await interaction.editReply(payload);
     } catch (error) {
       console.log(`[ERROR] /火箭:\n${error}\n${error.stack}`.red);
       await interaction
