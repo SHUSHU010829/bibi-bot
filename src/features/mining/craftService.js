@@ -76,6 +76,12 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
 
   const type = recipe.result?.type || "pickaxe";
   const resultId = recipe.result?.id;
+
+  // 維修工具：消耗品，不走 equipment slot 替換流程
+  if (type === "repair_tool") {
+    return craftRepairTool(client, { userId, guildId, recipe, tier: resultId });
+  }
+
   const slot = resolveSlot(type);
   const targetDef = slot.defs[resultId];
   if (!targetDef) return { ok: false, reason: "no_recipe" };
@@ -152,4 +158,44 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
   };
 }
 
-module.exports = { craftItem, getRecipe, PICKAXE_TIER, WEAPON_TIER, ROD_TIER, FRAGMENT_KEY };
+async function craftRepairTool(client, { userId, guildId, recipe, tier }) {
+  const profile = await getOrCreate(client, userId, guildId);
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const have = ownedMaterial(profile, mat);
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) {
+    return { ok: false, reason: "insufficient", missing, recipe };
+  }
+
+  const inc = { craft_count_total: 1, [`repair_tools.${tier}`]: 1 };
+  for (const [mat, need] of Object.entries(recipe.materials)) {
+    if (mat === FRAGMENT_KEY) {
+      inc.legendary_fragments = (inc.legendary_fragments || 0) - need;
+    } else if (isFishMaterial(mat)) {
+      inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+    } else {
+      inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+    }
+  }
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: inc, $set: { updatedAt: new Date() } },
+  );
+
+  const toolDef = (craft.repairTools || {})[tier] || {};
+  return {
+    ok: true,
+    recipe,
+    type: "repair_tool",
+    resultId: tier,
+    resultName: toolDef.name || recipe.name,
+    resultEmoji: toolDef.emoji || recipe.emoji || "🔧",
+    durability: null,
+    craftCountTotal: (profile.craft_count_total || 0) + 1,
+  };
+}
+
+module.exports = { craftItem, craftRepairTool, getRecipe, PICKAXE_TIER, WEAPON_TIER, ROD_TIER, FRAGMENT_KEY };

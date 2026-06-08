@@ -18,11 +18,12 @@ const {
 } = require("discord.js");
 const { mining, craft, dungeon, fishing } = require("../../config");
 const craftService = require("../../features/mining/craftService");
+const { useRepairTool } = require("../../features/mining/mineService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
 
-const { TAB_PREFIX, CRAFT_PREFIX, CONFIRM_PREFIX, CANCEL_PREFIX, TABS } = workshopView;
+const { TAB_PREFIX, CRAFT_PREFIX, CONFIRM_PREFIX, CANCEL_PREFIX, REPAIR_TOOL_PREFIX, TABS } = workshopView;
 
 function isFishMaterial(mat) {
   return !!(fishing?.fish && fishing.fish[mat]);
@@ -97,7 +98,17 @@ function buildSuccessContainer(result) {
     materialLabel(mat, qty),
   );
   const resultLabel = `${result.resultEmoji || ""} ${result.resultName}`.trim();
-  const accent = result.type === "weapon" ? 0xe67e22 : result.type === "rod" ? 0x16a085 : 0x9b59b6;
+  const isRepairTool = result.type === "repair_tool";
+  const accent = isRepairTool
+    ? 0x3498db
+    : result.type === "weapon"
+      ? 0xe67e22
+      : result.type === "rod"
+        ? 0x16a085
+        : 0x9b59b6;
+  const tail = isRepairTool
+    ? `**屬性**　消耗品（1 張）\n**累積合成**　${result.craftCountTotal} 件\n-# 切到「修復」分頁按下使用`
+    : `**耐久**　${result.durability == null ? "永久" : `${result.durability} 次`}\n**累積合成**　${result.craftCountTotal} 件`;
   return new ContainerBuilder()
     .setAccentColor(accent)
     .addTextDisplayComponents(
@@ -109,11 +120,7 @@ function buildSuccessContainer(result) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`**消耗材料**\n${matLines.join("\n")}`),
     )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**耐久**　${result.durability == null ? "永久" : `${result.durability} 次`}\n**累積合成**　${result.craftCountTotal} 件`,
-      ),
-    );
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(tail));
 }
 
 function buildInsufficientContainer(result) {
@@ -287,6 +294,47 @@ module.exports = async (client, interaction) => {
       postCraftSideEffects(client, interaction);
     } catch (err) {
       console.log(`[ERROR] wsConfirm handler:\n${err}\n${err.stack}`.red);
+    }
+    return;
+  }
+
+  // 維修工具使用
+  if (customId.startsWith(REPAIR_TOOL_PREFIX)) {
+    const { ownerId, payload: tier } = parseOwnerAndPayload(customId, REPAIR_TOOL_PREFIX);
+    if (interaction.user.id !== ownerId) {
+      return interaction.reply({
+        content: "❌ 這不是你的工坊！",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    await interaction.deferUpdate();
+    try {
+      const result = await useRepairTool(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        tier,
+      });
+      if (!result.ok) {
+        const reasonMsg = {
+          no_tool: `❌ 你沒有 ${tier} 階維修工具。`,
+          no_pickaxe: "❌ 木鎬不需要修復。先合成一把鐵鎬以上。",
+          max_too_low: `❌ 鎬子最大耐久過低（${result.maxDurability}）：使用此工具會讓 max 降到 ${result.after}，不允許。改用更高階工具或材料修復。`,
+          retry: "⚠️ 操作衝突，請再試一次。",
+          no_tool_def: "🔧 設定錯誤，請呼叫舒舒。",
+          disabled: "🔧 系統未啟用。",
+        }[result.reason] || `🔧 修復失敗：${result.reason}`;
+        await interaction.followUp({ content: reasonMsg, flags: MessageFlags.Ephemeral });
+        return;
+      }
+      await interaction.followUp({
+        content:
+          `🛠️ 已使用 **${result.def.name}**\n` +
+          `鎬子耐久：${result.durabilityAfter} / ${result.maxAfter}　・ 剩餘 ${result.toolsLeft} 張`,
+        flags: MessageFlags.Ephemeral,
+      });
+      await refreshWorkshop(client, interaction, "repair").catch(() => {});
+    } catch (err) {
+      console.log(`[ERROR] wsRepairTool handler:\n${err}\n${err.stack}`.red);
     }
     return;
   }

@@ -37,6 +37,7 @@ const TAB_PREFIX = "wsTab_";
 const CRAFT_PREFIX = "wsCraft_";
 const CONFIRM_PREFIX = "wsConfirm_";
 const CANCEL_PREFIX = "wsCancel_";
+const REPAIR_TOOL_PREFIX = "wsRepairTool_";
 
 const TABS = ["equipment", "craft", "repair"];
 
@@ -185,7 +186,15 @@ function craftableSection(container, recipes, profile, type, userId) {
     );
     const resultId = recipe.result?.id;
     let propLine = "";
-    if (type === "weapon") {
+    if (type === "repair_tool") {
+      const tdef = (craft?.repairTools || {})[resultId] || {};
+      const deltaTxt = tdef.maxDelta === 0
+        ? "max 不變"
+        : tdef.maxDelta > 0
+          ? `max +${tdef.maxDelta}`
+          : `max ${tdef.maxDelta}`;
+      propLine = `效果：+${Math.round((tdef.duraPct || 0) * 100)}% 鎬子耐久 ・ ${deltaTxt}`;
+    } else if (type === "weapon") {
       const wdef = (dungeon?.weapons || {})[resultId] || {};
       const totalAtk = (dungeon?.baseAtk ?? 20) + (wdef.atk || 0);
       const critPct = Math.round((wdef.critRate || 0) * 100);
@@ -243,6 +252,7 @@ function buildCraftTab(container, { userId, displayName, profile }) {
   const pickaxes = recipes.filter((r) => (r.result?.type || "pickaxe") === "pickaxe");
   const weapons = recipes.filter((r) => r.result?.type === "weapon");
   const rods = recipes.filter((r) => r.result?.type === "rod");
+  const repairTools = recipes.filter((r) => r.result?.type === "repair_tool");
 
   if (pickaxes.length) {
     container
@@ -261,6 +271,16 @@ function buildCraftTab(container, { userId, displayName, profile }) {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(new TextDisplayBuilder().setContent("### 🎣 釣竿（釣魚）"));
     craftableSection(container, rods, profile, "rod", userId);
+  }
+  if (repairTools.length) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "### 🛠️ 維修工具（消耗品）\n-# 合成完到「修復」分頁使用，可堆疊持有",
+        ),
+      );
+    craftableSection(container, repairTools, profile, "repair_tool", userId);
   }
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -392,9 +412,45 @@ function buildRepairTab(container, { userId, displayName, profile }) {
     }
   }
 
+  // 維修工具（消耗品，僅對鎬子）
+  const tools = profile.repair_tools || {};
+  const ownedTiers = Object.entries((craft?.repairTools || {}))
+    .filter(([tier]) => (tools[tier] || 0) > 0);
+  if (ownedTiers.length > 0 && profile.pickaxe && profile.pickaxe !== "wood") {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🛠️ 維修工具（消耗品，僅對鎬子）\n-# 每使用一張會依階級調整鎬子最大耐久；無背包扣費`,
+        ),
+      );
+    for (const [tier, def] of ownedTiers) {
+      const owned = tools[tier];
+      const deltaTxt = def.maxDelta === 0
+        ? "max 不變"
+        : def.maxDelta > 0
+          ? `max +${def.maxDelta}`
+          : `max ${def.maxDelta}`;
+      const body =
+        `${def.emoji || "🔧"} **${def.name}** ×${owned}\n` +
+        `-# +${Math.round((def.duraPct || 0) * 100)}% 耐久 ・ ${deltaTxt}`;
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(body))
+          .setButtonAccessory(
+            new ButtonBuilder()
+              .setCustomId(`${REPAIR_TOOL_PREFIX}${userId}_${tier}`)
+              .setLabel("使用 1 張")
+              .setEmoji("🛠️")
+              .setStyle(ButtonStyle.Primary),
+          ),
+      );
+    }
+  }
+
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "-# 想改用「劣質磨鎬石」單耐久 +滿但 max -10？去 /背包 找該道具按使用",
+      "-# 還沒有維修工具？切到「合成」分頁打造，鐵製便宜、傳說 max +2",
     ),
   );
 }
@@ -424,5 +480,6 @@ module.exports = {
   CRAFT_PREFIX,
   CONFIRM_PREFIX,
   CANCEL_PREFIX,
+  REPAIR_TOOL_PREFIX,
   TABS,
 };

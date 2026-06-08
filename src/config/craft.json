@@ -77,7 +77,57 @@
         "emoji": "🔥",
         "materials": { "legendary_fragment": 18, "diamond": 12, "coal": 15 },
         "result": { "type": "weapon", "id": "legendary_sword" }
+      },
+      {
+        "id": "repair_tool_iron",
+        "name": "鐵製維修工具",
+        "emoji": "🔩",
+        "materials": { "iron": 8, "coal": 4 },
+        "result": { "type": "repair_tool", "id": "iron" }
+      },
+      {
+        "id": "repair_tool_steel",
+        "name": "鋼製維修工具",
+        "emoji": "⚙️",
+        "materials": { "iron": 16, "coal": 10 },
+        "result": { "type": "repair_tool", "id": "steel" }
+      },
+      {
+        "id": "repair_tool_gold",
+        "name": "黃金維修工具",
+        "emoji": "🪛",
+        "materials": { "gold": 4, "iron": 12 },
+        "result": { "type": "repair_tool", "id": "gold" }
+      },
+      {
+        "id": "repair_tool_mythril",
+        "name": "密銀維修工具",
+        "emoji": "🔧",
+        "materials": { "diamond": 3, "gold": 6 },
+        "result": { "type": "repair_tool", "id": "mythril" }
+      },
+      {
+        "id": "repair_tool_diamond",
+        "name": "鑽石維修工具",
+        "emoji": "💠",
+        "materials": { "diamond": 6, "gold": 10 },
+        "result": { "type": "repair_tool", "id": "diamond" }
+      },
+      {
+        "id": "repair_tool_legendary",
+        "name": "傳說維修工具",
+        "emoji": "✨",
+        "materials": { "legendary_fragment": 4, "diamond": 8 },
+        "result": { "type": "repair_tool", "id": "legendary" }
       }
-    ]
+    ],
+    "repairTools": {
+      "iron":      { "name": "鐵製維修工具", "emoji": "🔩", "duraPct": 0.60, "maxDelta": -5 },
+      "steel":     { "name": "鋼製維修工具", "emoji": "⚙️", "duraPct": 0.75, "maxDelta": -3 },
+      "gold":      { "name": "黃金維修工具", "emoji": "🪛", "duraPct": 0.85, "maxDelta": -1 },
+      "mythril":   { "name": "密銀維修工具", "emoji": "🔧", "duraPct": 0.95, "maxDelta": 0 },
+      "diamond":   { "name": "鑽石維修工具", "emoji": "💠", "duraPct": 1.00, "maxDelta": 0 },
+      "legendary": { "name": "傳說維修工具", "emoji": "✨", "duraPct": 1.00, "maxDelta": 2 }
+    }
   }
 }
