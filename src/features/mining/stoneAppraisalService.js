@@ -14,8 +14,12 @@ function cfg() {
 }
 
 // 逐顆開石頭（純函式，不碰 DB）。回傳贏得礦石總表與每顆結果（供呈現）。
-function rollOutcomes(count) {
-  const outcomes = Array.isArray(cfg().outcomes) ? cfg().outcomes : [];
+// quality === "high" 時用 outcomesHigh（gold / diamond 機率提升）。
+function rollOutcomes(count, quality = "normal") {
+  const c = cfg();
+  const table =
+    quality === "high" && Array.isArray(c.outcomesHigh) ? c.outcomesHigh : c.outcomes;
+  const outcomes = Array.isArray(table) ? table : [];
   const weights = {};
   outcomes.forEach((o, i) => {
     weights[String(i)] = o.weight || 0;
@@ -65,10 +69,12 @@ async function appraise(client, { userId, guildId, member, username, ts, allowOv
   }
 
   const pendingQty = Math.max(0, Math.floor(pending.qty || 0));
+  const synthetic = pending.synthetic === true;
   const haveStone = profile.backpack?.stone || 0;
-  // 挖到後若被事件扣掉，照實際剩下的石頭數量賭（有幾顆賭幾顆）
-  const count = Math.min(pendingQty, haveStone);
+  // 挖到後若被事件扣掉，照實際剩下的石頭數量賭（有幾顆賭幾顆）；synthetic（碎石合成觸發）不依賴背包石頭。
+  const count = synthetic ? pendingQty : Math.min(pendingQty, haveStone);
   if (count <= 0) return { ok: false, reason: "no_stone" };
+  const quality = pending.quality === "high" ? "high" : "normal";
 
   const feePerStone = Math.max(0, Math.floor(c.feePerStone || 0));
   const fee = feePerStone * count;
@@ -82,11 +88,12 @@ async function appraise(client, { userId, guildId, member, username, ts, allowOv
   }
 
   // 先 roll，再算背包淨變化（石頭被消耗、贏得礦石加回）
-  const { winnings, rolls } = rollOutcomes(count);
+  const { winnings, rolls } = rollOutcomes(count, quality);
   const gained = Object.values(winnings).reduce((s, n) => s + n, 0);
   const cap = backpackCapacity(profile, mining);
   const used = backpackUsed(profile);
-  const freeAfterConsume = cap - (used - count);
+  // synthetic 賭石不會佔/扣背包的石頭格子，所以剩餘容量就是 cap - used
+  const freeAfterConsume = synthetic ? cap - used : cap - (used - count);
 
   // 算出哪些 winnings 進背包、哪些折金幣
   const acceptedWinnings = { ...winnings };
@@ -114,19 +121,21 @@ async function appraise(client, { userId, guildId, member, username, ts, allowOv
   }
 
   // 原子更新：條件鎖 pending_appraisal.ts（保證單次）與石頭庫存，扣石頭 + 加礦 + 清 pending
-  const inc = { "backpack.stone": -count };
+  // synthetic 不扣 backpack.stone（沒有實體石頭來源）
+  const inc = {};
+  if (!synthetic) inc["backpack.stone"] = -count;
   for (const [ore, q] of Object.entries(acceptedWinnings)) {
     if (q > 0) inc[`backpack.${ore}`] = (inc[`backpack.${ore}`] || 0) + q;
   }
-  const res = await client.miningProfilesCollection.updateOne(
-    {
-      userId,
-      guildId,
-      "pending_appraisal.ts": pending.ts,
-      "backpack.stone": { $gte: count },
-    },
-    { $inc: inc, $set: { pending_appraisal: null, updatedAt: new Date() } }
-  );
+  const filter = {
+    userId,
+    guildId,
+    "pending_appraisal.ts": pending.ts,
+  };
+  if (!synthetic) filter["backpack.stone"] = { $gte: count };
+  const update = { $set: { pending_appraisal: null, updatedAt: new Date() } };
+  if (Object.keys(inc).length > 0) update.$inc = inc;
+  const res = await client.miningProfilesCollection.updateOne(filter, update);
   // 沒改到：pending 已被用掉（重複點）或石頭已不足
   if (res.modifiedCount === 0) return { ok: false, reason: "stale" };
 
@@ -141,16 +150,19 @@ async function appraise(client, { userId, guildId, member, username, ts, allowOv
     meta: { count, winnings },
   });
   if (!grant) {
-    const rollback = { "backpack.stone": count };
+    const rollback = {};
+    if (!synthetic) rollback["backpack.stone"] = count;
     for (const [ore, q] of Object.entries(acceptedWinnings)) {
       if (q > 0) rollback[`backpack.${ore}`] = -q;
     }
-    await client.miningProfilesCollection
-      .updateOne(
-        { userId, guildId },
-        { $inc: rollback, $set: { updatedAt: new Date() } }
-      )
-      .catch(() => {});
+    if (Object.keys(rollback).length > 0) {
+      await client.miningProfilesCollection
+        .updateOne(
+          { userId, guildId },
+          { $inc: rollback, $set: { updatedAt: new Date() } },
+        )
+        .catch(() => {});
+    }
     return { ok: false, reason: "charge_failed" };
   }
 

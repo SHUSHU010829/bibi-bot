@@ -91,6 +91,14 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
     return craftFishingNet(client, { userId, guildId, recipe });
   }
 
+  // 賭石碎石：消耗碎石，設定 pending_appraisal（synthetic）等玩家點「立刻賭石」
+  if (type === "stone_appraisal_trigger") {
+    return craftStoneAppraisalTrigger(client, {
+      userId, guildId, recipe,
+      quality: recipe.result?.quality === "high" ? "high" : "low",
+    });
+  }
+
   const slot = resolveSlot(type);
   const targetDef = slot.defs[resultId];
   if (!targetDef) return { ok: false, reason: "no_recipe" };
@@ -257,4 +265,63 @@ async function craftFishingNet(client, { userId, guildId, recipe }) {
   };
 }
 
-module.exports = { craftItem, craftRepairTool, craftFishingNet, getRecipe, PICKAXE_TIER, WEAPON_TIER, ROD_TIER, FRAGMENT_KEY };
+async function craftStoneAppraisalTrigger(client, { userId, guildId, recipe, quality }) {
+  const profile = await getOrCreate(client, userId, guildId);
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const have = ownedMaterial(profile, mat);
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) {
+    return { ok: false, reason: "insufficient", missing, recipe };
+  }
+
+  const ts = Date.now();
+  const inc = { craft_count_total: 1 };
+  for (const [mat, need] of Object.entries(recipe.materials)) {
+    if (SPECIAL_MAT_FIELDS[mat]) {
+      const field = SPECIAL_MAT_FIELDS[mat];
+      inc[field] = (inc[field] || 0) - need;
+    } else if (isFishMaterial(mat)) {
+      inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+    } else {
+      inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+    }
+  }
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    {
+      $inc: inc,
+      $set: {
+        pending_appraisal: { qty: 1, ts, quality, synthetic: true },
+        updatedAt: new Date(),
+      },
+    },
+  );
+
+  return {
+    ok: true,
+    recipe,
+    type: "stone_appraisal_trigger",
+    resultId: quality,
+    resultName: recipe.name,
+    resultEmoji: recipe.emoji || (quality === "high" ? "💎" : "🪨"),
+    quality,
+    appraiseTs: ts,
+    appraiseQty: 1,
+    craftCountTotal: (profile.craft_count_total || 0) + 1,
+  };
+}
+
+module.exports = {
+  craftItem,
+  craftRepairTool,
+  craftFishingNet,
+  craftStoneAppraisalTrigger,
+  getRecipe,
+  PICKAXE_TIER,
+  WEAPON_TIER,
+  ROD_TIER,
+  FRAGMENT_KEY,
+};

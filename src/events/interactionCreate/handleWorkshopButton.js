@@ -93,14 +93,15 @@ function buildConfirmContainer(userId, recipeId, recipeName, currentLabel, curre
     );
 }
 
-function buildSuccessContainer(result) {
+function buildSuccessContainer(result, userId) {
   const matLines = Object.entries(result.recipe.materials).map(([mat, qty]) =>
     materialLabel(mat, qty),
   );
   const resultLabel = `${result.resultEmoji || ""} ${result.resultName}`.trim();
   const isRepairTool = result.type === "repair_tool";
   const isFishingNet = result.type === "fishing_net";
-  const accent = isRepairTool || isFishingNet
+  const isAppraisalTrigger = result.type === "stone_appraisal_trigger";
+  const accent = isRepairTool || isFishingNet || isAppraisalTrigger
     ? 0x3498db
     : result.type === "weapon"
       ? 0xe67e22
@@ -112,10 +113,13 @@ function buildSuccessContainer(result) {
     tail = `**屬性**　消耗品（1 張）\n**累積合成**　${result.craftCountTotal} 件\n-# 切到「修復」分頁按下使用`;
   } else if (isFishingNet) {
     tail = `**效果**　+${result.usesAdded} 次撈網使用次數\n**目前累計可用**　${result.usesTotal} 次\n-# 下次 /釣魚 自動套用 +10% 成功率`;
+  } else if (isAppraisalTrigger) {
+    const qualityTxt = result.quality === "high" ? "優質（diamond 機率 ×2.5）" : "劣質（與普通賭石同表）";
+    tail = `**已觸發**　${qualityTxt}\n-# 10 分鐘內按「立刻賭石」開出，過期就失效（不退碎石）`;
   } else {
     tail = `**耐久**　${result.durability == null ? "永久" : `${result.durability} 次`}\n**累積合成**　${result.craftCountTotal} 件`;
   }
-  return new ContainerBuilder()
+  const container = new ContainerBuilder()
     .setAccentColor(accent)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -127,6 +131,19 @@ function buildSuccessContainer(result) {
       new TextDisplayBuilder().setContent(`**消耗材料**\n${matLines.join("\n")}`),
     )
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(tail));
+
+  if (isAppraisalTrigger && userId && result.appraiseTs) {
+    const fee = (mining?.stoneAppraisal?.feePerStone || 0) * (result.appraiseQty || 1);
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`mining_appraise_${userId}_${result.appraiseTs}`)
+          .setLabel(`🔍 立刻賭石（${result.appraiseQty || 1} 顆・${fee.toLocaleString()} 幣）`)
+          .setStyle(ButtonStyle.Primary),
+      ),
+    );
+  }
+  return container;
 }
 
 function buildInsufficientContainer(result) {
@@ -251,7 +268,7 @@ module.exports = async (client, interaction) => {
         return;
       }
       await interaction.followUp({
-        components: [buildSuccessContainer(result)],
+        components: [buildSuccessContainer(result, interaction.user.id)],
         flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
       await refreshWorkshop(client, interaction, "craft").catch(() => {});
@@ -294,7 +311,7 @@ module.exports = async (client, interaction) => {
         return;
       }
       await interaction.editReply({
-        components: [buildSuccessContainer(result)],
+        components: [buildSuccessContainer(result, interaction.user.id)],
         flags: MessageFlags.IsComponentsV2,
       });
       postCraftSideEffects(client, interaction);

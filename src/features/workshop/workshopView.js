@@ -197,6 +197,11 @@ function craftableSection(container, recipes, profile, type, userId) {
     } else if (type === "fishing_net") {
       const fcfg = craft?.fishingNet || {};
       propLine = `效果：+${Math.round((fcfg.successBonus || 0) * 100)}% 釣魚成功率 ・ ${fcfg.usesPerCraft || 3} 次釣魚成功後失效`;
+    } else if (type === "stone_appraisal_trigger") {
+      const q = recipe.result?.quality;
+      propLine = q === "high"
+        ? "效果：觸發優質賭石（diamond 5%、gold 11%，期望 EV ≈ 82 幣 / 顆）"
+        : "效果：觸發劣質賭石（與普通賭石同表，期望 EV ≈ 50 幣 / 顆）";
     } else if (type === "weapon") {
       const wdef = (dungeon?.weapons || {})[resultId] || {};
       const totalAtk = (dungeon?.baseAtk ?? 20) + (wdef.atk || 0);
@@ -257,6 +262,7 @@ function buildCraftTab(container, { userId, displayName, profile }) {
   const rods = recipes.filter((r) => r.result?.type === "rod");
   const repairTools = recipes.filter((r) => r.result?.type === "repair_tool");
   const consumables = recipes.filter((r) => r.result?.type === "fishing_net");
+  const appraisalTriggers = recipes.filter((r) => r.result?.type === "stone_appraisal_trigger");
 
   if (pickaxes.length) {
     container
@@ -295,6 +301,17 @@ function buildCraftTab(container, { userId, displayName, profile }) {
         ),
       );
     craftableSection(container, consumables, profile, "fishing_net", userId);
+  }
+  if (appraisalTriggers.length) {
+    const shardCount = (profile.backpack || {}).stone_shard || 0;
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🪨 賭石碎石回收（持有碎石 **${shardCount}**）\n-# 合成完立刻觸發賭石，10 分鐘內按「立刻賭石」開出，過期就失效`,
+        ),
+      );
+    craftableSection(container, appraisalTriggers, profile, "stone_appraisal_trigger", userId);
   }
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(

@@ -126,6 +126,20 @@
         "emoji": "🕸️",
         "materials": { "broken_net_fragment": 5 },
         "result": { "type": "fishing_net" }
+      },
+      {
+        "id": "stone_from_shards_low",
+        "name": "劣質賭石（5 碎石）",
+        "emoji": "🪨",
+        "materials": { "stone_shard": 5 },
+        "result": { "type": "stone_appraisal_trigger", "quality": "low" }
+      },
+      {
+        "id": "stone_from_shards_high",
+        "name": "優質賭石（10 碎石）",
+        "emoji": "💎",
+        "materials": { "stone_shard": 10 },
+        "result": { "type": "stone_appraisal_trigger", "quality": "high" }
       }
     ],
     "fishingNet": {

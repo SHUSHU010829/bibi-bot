@@ -216,16 +216,18 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
     }
   } catch { /* noop */ }
 
-  // 撈網 buff
+  // 撈網 buff + 碎石 / 漁網碎片 庫存
   if (miningProfileForStamina) {
     const netUses = miningProfileForStamina.fishing_net_uses || 0;
     const fragCount = miningProfileForStamina.broken_net_fragments || 0;
-    if (netUses > 0 || fragCount > 0) {
-      const lines = [];
-      if (netUses > 0) lines.push(`🕸️ **撈網生效中**：剩 **${netUses}** 次（+10% 釣魚成功率）`);
-      if (fragCount > 0) {
-        lines.push(`🪡 **損壞的漁網碎片**：${fragCount} 個（每 5 個可合成 1 張撈網）`);
-      }
+    const stoneShards = (miningProfileForStamina.backpack || {}).stone_shard || 0;
+    const lines = [];
+    if (netUses > 0) lines.push(`🕸️ **撈網生效中**：剩 **${netUses}** 次（+10% 釣魚成功率）`);
+    if (fragCount > 0) lines.push(`🪡 **損壞的漁網碎片**：${fragCount} 個（5 個合成 1 張撈網）`);
+    if (stoneShards > 0) {
+      lines.push(`🪨 **碎石**：${stoneShards} 個（5 個劣質賭石、10 個優質賭石）`);
+    }
+    if (lines.length > 0) {
       container
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
