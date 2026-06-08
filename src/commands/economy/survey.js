@@ -17,7 +17,7 @@ module.exports = {
   ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("問卷調查")
-    .setDescription("填寫玩家問卷，完成全部必填題領 2000 幣 📋")
+    .setDescription("填寫玩家問卷，完成全部必填題領 3000 幣 📋")
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {
