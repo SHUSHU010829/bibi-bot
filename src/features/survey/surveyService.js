@@ -139,6 +139,45 @@ async function submit(client, userId, guildId, member, username) {
   };
 }
 
+async function aggregateStats(client, guildId, templateId = null) {
+  if (!client.surveyResponsesCollection) return null;
+  const activeId = templateId || survey.activeTemplate;
+  const template = survey.templates?.[activeId];
+  if (!template) return null;
+
+  const baseFilter = { guildId, templateId: activeId };
+
+  const opened = await client.surveyResponsesCollection.countDocuments(baseFilter);
+  const completedDocs = await client.surveyResponsesCollection
+    .find({ ...baseFilter, completedAt: { $ne: null } })
+    .sort({ completedAt: -1 })
+    .toArray();
+
+  const total = completedDocs.length;
+
+  const byQuestion = {};
+  for (const q of template.selectQuestions) {
+    const counts = {};
+    for (const opt of q.options) counts[opt.value] = 0;
+    let answered = 0;
+    for (const doc of completedDocs) {
+      const v = doc.answers?.[q.id];
+      if (!Array.isArray(v) || v.length === 0) continue;
+      answered += 1;
+      for (const val of v) {
+        if (counts[val] !== undefined) counts[val] += 1;
+      }
+    }
+    byQuestion[q.id] = { counts, answered };
+  }
+
+  const openEntries = completedDocs.filter((d) =>
+    template.openQuestions.some((q) => (d.openAnswers?.[q.id] || "").trim().length > 0),
+  );
+
+  return { template, total, opened, byQuestion, openEntries };
+}
+
 module.exports = {
   getWindowStatus,
   getResponse,
@@ -147,4 +186,5 @@ module.exports = {
   saveOpenAnswers,
   validateRequired,
   submit,
+  aggregateStats,
 };
