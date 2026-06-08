@@ -217,6 +217,9 @@ module.exports = async (client) => {
     // 指令使用量統計（每 10 分鐘批次 flush，純粹用來看哪些指令冷門可合併）
     const commandStatsCollection = database.collection("CommandStats");
 
+    // 玩家問卷調查回應（每位玩家每 guild 一筆）
+    const surveyResponsesCollection = database.collection("SurveyResponses");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -305,6 +308,7 @@ module.exports = async (client) => {
     client.cronJobLogCollection = cronJobLogCollection;
     client.userSettingsCollection = userSettingsCollection;
     client.commandStatsCollection = commandStatsCollection;
+    client.surveyResponsesCollection = surveyResponsesCollection;
 
     // 抖內系統索引
     // - code unique：用於 webhook 對應 session
@@ -450,6 +454,24 @@ module.exports = async (client) => {
       .createIndex({ count: -1 }, { name: "command_stats_count_desc" })
       .catch((e) =>
         console.log(`[WARN] CommandStats count 索引建立失敗：${e.message}`.yellow),
+      );
+
+    // SurveyResponses：(userId, guildId) 唯一；統計查詢靠 (guildId, completedAt)
+    await surveyResponsesCollection
+      .createIndex(
+        { userId: 1, guildId: 1 },
+        { unique: true, name: "uniq_survey_user_guild" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] SurveyResponses 唯一索引建立失敗：${e.message}`.yellow),
+      );
+    await surveyResponsesCollection
+      .createIndex(
+        { guildId: 1, completedAt: -1 },
+        { name: "survey_guild_completed" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] SurveyResponses 統計索引建立失敗：${e.message}`.yellow),
       );
 
     await economySnapshotsCollection

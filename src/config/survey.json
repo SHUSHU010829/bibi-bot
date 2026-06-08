@@ -1,0 +1,107 @@
+{
+  "survey": {
+    "enabled": true,
+    "version": "v1_2026q2",
+    "reward": 2000,
+    "rewardSource": "survey",
+    "title": "逼逼機器人 v1 玩家問卷",
+    "intro": "想聽你對目前玩法的真實想法，幫忙未來開發方向！\n完成全部必填題即可領取 **2000 幣**（每位玩家限填一次）。",
+    "selectQuestions": [
+      {
+        "id": "frequency",
+        "label": "你多常玩逼逼機器人？",
+        "placeholder": "請選擇遊玩頻率",
+        "min": 1,
+        "max": 1,
+        "required": true,
+        "options": [
+          { "value": "daily", "label": "每天都玩", "emoji": "🔥" },
+          { "value": "weekly_3_5", "label": "每週 3-5 次", "emoji": "📅" },
+          { "value": "weekly_1_2", "label": "每週 1-2 次", "emoji": "🌙" },
+          { "value": "rare", "label": "很少 / 路過", "emoji": "💨" }
+        ]
+      },
+      {
+        "id": "roles",
+        "label": "你主要的玩家身份是？（最多 3 個）",
+        "placeholder": "選 1-3 個最符合的身份",
+        "min": 1,
+        "max": 3,
+        "required": true,
+        "options": [
+          { "value": "miner", "label": "礦工", "emoji": "⛏️" },
+          { "value": "fisher", "label": "漁夫", "emoji": "🎣" },
+          { "value": "farmer", "label": "農夫", "emoji": "🌾" },
+          { "value": "warrior", "label": "戰士 / BOSS 獵人", "emoji": "⚔️" },
+          { "value": "gambler", "label": "賭徒", "emoji": "🎰" },
+          { "value": "merchant", "label": "商人 / 拍賣達人", "emoji": "💰" },
+          { "value": "guild_member", "label": "公會幹部", "emoji": "🏰" },
+          { "value": "casual", "label": "純觀光仔", "emoji": "👀" }
+        ]
+      },
+      {
+        "id": "core_cmds",
+        "label": "你每天 / 每次上線必用的指令？（最多 5 個）",
+        "placeholder": "選 1-5 個你最常用的功能",
+        "min": 1,
+        "max": 5,
+        "required": true,
+        "options": [
+          { "value": "mine", "label": "/挖礦", "emoji": "⛏️" },
+          { "value": "fish", "label": "/釣魚", "emoji": "🎣" },
+          { "value": "work", "label": "/打工", "emoji": "💼" },
+          { "value": "farm", "label": "/農場（種植 / 採收）", "emoji": "🌾" },
+          { "value": "dungeon", "label": "/地下城", "emoji": "🗡️" },
+          { "value": "boss", "label": "/BOSS 共鬥", "emoji": "🐉" },
+          { "value": "casino", "label": "賭場（21 點 / 拉霸 / 輪盤…）", "emoji": "🎲" },
+          { "value": "stock", "label": "/股市", "emoji": "📈" },
+          { "value": "lottery", "label": "/樂透", "emoji": "🎟️" },
+          { "value": "market", "label": "/拍賣 or /市集", "emoji": "🏪" },
+          { "value": "guild", "label": "/公會", "emoji": "🏰" },
+          { "value": "welfare", "label": "/乞討（救濟金）", "emoji": "🪙" },
+          { "value": "profile", "label": "/檔案 / 個人卡", "emoji": "📇" }
+        ]
+      },
+      {
+        "id": "wanted",
+        "label": "未來最期待哪些新玩法？（最多 3 個）",
+        "placeholder": "選 1-3 個你最想要的新玩法",
+        "min": 1,
+        "max": 3,
+        "required": true,
+        "options": [
+          { "value": "pet", "label": "寵物 / 夥伴養成", "emoji": "🐾" },
+          { "value": "codex", "label": "圖鑑收集", "emoji": "📖" },
+          { "value": "weather", "label": "天氣 / 季節影響玩法", "emoji": "🌦️" },
+          { "value": "fortune", "label": "每日占卜運勢", "emoji": "🔮" },
+          { "value": "adventure", "label": "文字冒險（森林 / 廢墟 / 深海）", "emoji": "🗺️" },
+          { "value": "guild_war", "label": "公會領地戰 PvP", "emoji": "⚔️" },
+          { "value": "thief", "label": "偷竊 / 通緝", "emoji": "🥷" },
+          { "value": "season_pass", "label": "賽季通行證", "emoji": "🎫" },
+          { "value": "house", "label": "個人小屋 / 收藏館", "emoji": "🏠" },
+          { "value": "alchemy", "label": "鍊金術 / 消耗品", "emoji": "🧪" },
+          { "value": "class", "label": "轉職 / 職業系統", "emoji": "🎓" },
+          { "value": "outfit", "label": "時裝 / 外觀", "emoji": "👔" },
+          { "value": "minigame", "label": "每日小遊戲", "emoji": "🎮" },
+          { "value": "blackmarket", "label": "神祕黑市", "emoji": "🕶️" }
+        ]
+      }
+    ],
+    "openQuestions": [
+      {
+        "id": "pain_point",
+        "label": "目前最想改進的地方？",
+        "placeholder": "例：合成步驟太多、找不到 XX 指令、冷卻太長…",
+        "max": 500,
+        "required": false
+      },
+      {
+        "id": "wishlist",
+        "label": "還想要逼逼加什麼？",
+        "placeholder": "一句話也行，什麼天馬行空的想法都歡迎",
+        "max": 500,
+        "required": false
+      }
+    ]
+  }
+}
