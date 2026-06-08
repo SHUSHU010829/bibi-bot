@@ -20,7 +20,7 @@ function buildSelectRow(userId, question, currentValues) {
   const select = new StringSelectMenuBuilder()
     .setCustomId(`${PREFIX}_select_${userId}_${question.id}`)
     .setPlaceholder(question.placeholder || question.label)
-    .setMinValues(question.min || 1)
+    .setMinValues(question.min ?? 1)
     .setMaxValues(question.max || 1);
   for (const opt of question.options) {
     const option = {

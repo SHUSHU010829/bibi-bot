@@ -81,7 +81,8 @@ function validateRequired(doc) {
   for (const q of survey.selectQuestions) {
     if (!q.required) continue;
     const v = doc?.answers?.[q.id];
-    if (!Array.isArray(v) || v.length < (q.min || 1)) missing.push(q);
+    const min = q.min ?? 1;
+    if (!Array.isArray(v) || v.length < Math.max(min, 1)) missing.push(q);
   }
   return missing;
 }

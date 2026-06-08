@@ -39,26 +39,56 @@
         ]
       },
       {
-        "id": "core_cmds",
-        "label": "你每天 / 每次上線必用的指令？（最多 5 個）",
-        "placeholder": "選 1-5 個你最常用的功能",
+        "id": "cooldown_feel",
+        "label": "現有冷卻時間（挖礦 / 釣魚 / 打工）感覺如何？",
+        "placeholder": "請選擇你對冷卻時間的感受",
         "min": 1,
-        "max": 5,
+        "max": 1,
         "required": true,
         "options": [
-          { "value": "mine", "label": "/挖礦", "emoji": "⛏️" },
-          { "value": "fish", "label": "/釣魚", "emoji": "🎣" },
-          { "value": "work", "label": "/打工", "emoji": "💼" },
-          { "value": "farm", "label": "/農場（種植 / 採收）", "emoji": "🌾" },
-          { "value": "dungeon", "label": "/地下城", "emoji": "🗡️" },
-          { "value": "boss", "label": "/BOSS 共鬥", "emoji": "🐉" },
-          { "value": "casino", "label": "賭場（21 點 / 拉霸 / 輪盤…）", "emoji": "🎲" },
-          { "value": "stock", "label": "/股市", "emoji": "📈" },
-          { "value": "lottery", "label": "/樂透", "emoji": "🎟️" },
-          { "value": "market", "label": "/拍賣 or /市集", "emoji": "🏪" },
-          { "value": "guild", "label": "/公會", "emoji": "🏰" },
-          { "value": "welfare", "label": "/乞討（救濟金）", "emoji": "🪙" },
-          { "value": "profile", "label": "/檔案 / 個人卡", "emoji": "📇" }
+          { "value": "too_long", "label": "太長，等到不想玩", "emoji": "🐢" },
+          { "value": "slightly_long", "label": "有點長，可接受", "emoji": "⏳" },
+          { "value": "just_right", "label": "剛剛好", "emoji": "👌" },
+          { "value": "too_short", "label": "太短，跟不上產出", "emoji": "💨" }
+        ]
+      },
+      {
+        "id": "coin_economy",
+        "label": "金幣的「賺」和「花」你的感受？",
+        "placeholder": "請選擇最符合的經濟感受",
+        "min": 1,
+        "max": 1,
+        "required": true,
+        "options": [
+          { "value": "easy_easy", "label": "好賺也好花（流通順暢）", "emoji": "💸" },
+          { "value": "easy_hard", "label": "好賺但沒地方花", "emoji": "💰" },
+          { "value": "hard_easy", "label": "難賺但很容易花光", "emoji": "🕳️" },
+          { "value": "hard_hard", "label": "難賺又沒地方花（卡住）", "emoji": "🧱" },
+          { "value": "no_feel", "label": "沒太注意金幣", "emoji": "🤷" }
+        ]
+      },
+      {
+        "id": "pain_features",
+        "label": "哪些功能 / 介面讓你覺得不順？（最多 5 個）",
+        "placeholder": "選出你覺得卡卡的功能",
+        "min": 0,
+        "max": 5,
+        "required": false,
+        "options": [
+          { "value": "none", "label": "都還算順暢，沒特別痛點", "emoji": "✅" },
+          { "value": "craft", "label": "合成介面 / 步驟太多", "emoji": "🔨" },
+          { "value": "market", "label": "拍賣 / 市集 找東西很難", "emoji": "🏪" },
+          { "value": "backpack", "label": "背包 / 魚袋 不好整理", "emoji": "🎒" },
+          { "value": "guild", "label": "公會操作（庫藏 / 任務 / 邀請）", "emoji": "🏰" },
+          { "value": "duel", "label": "決鬥 / PvP 流程", "emoji": "⚔️" },
+          { "value": "boss", "label": "BOSS 共鬥不知怎麼參戰", "emoji": "🐉" },
+          { "value": "dungeon", "label": "地下城戰鬥訊息看不懂", "emoji": "🗡️" },
+          { "value": "casino", "label": "賭場規則 / 介面難懂", "emoji": "🎲" },
+          { "value": "stock", "label": "股市操作複雜", "emoji": "📈" },
+          { "value": "farm", "label": "農場種植 / 採收流程", "emoji": "🌾" },
+          { "value": "notify", "label": "冷卻通知設定難找", "emoji": "🔔" },
+          { "value": "discover", "label": "新指令 / 功能找不到入口", "emoji": "🧭" },
+          { "value": "buttons", "label": "按鈕位置奇怪 / 太多步", "emoji": "🖱️" }
         ]
       },
       {
@@ -88,16 +118,23 @@
     ],
     "openQuestions": [
       {
-        "id": "pain_point",
-        "label": "目前最想改進的地方？",
-        "placeholder": "例：合成步驟太多、找不到 XX 指令、冷卻太長…",
+        "id": "pain_detail",
+        "label": "上面選的不順功能，具體哪裡卡？",
+        "placeholder": "例：合成要點 3 層選單才能做、市集沒有搜尋功能…",
+        "max": 500,
+        "required": false
+      },
+      {
+        "id": "confusing_msg",
+        "label": "哪個指令的訊息 / 按鈕讓你看不懂？",
+        "placeholder": "例：BOSS 結算訊息一堆數字不知道是什麼、賭場下注選項看不懂…",
         "max": 500,
         "required": false
       },
       {
         "id": "wishlist",
-        "label": "還想要逼逼加什麼？",
-        "placeholder": "一句話也行，什麼天馬行空的想法都歡迎",
+        "label": "還想要逼逼加什麼？（功能 / 改進 / 都行）",
+        "placeholder": "一句話也可以，天馬行空的想法都歡迎",
         "max": 500,
         "required": false
       }
