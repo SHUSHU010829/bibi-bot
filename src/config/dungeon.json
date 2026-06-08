@@ -17,6 +17,7 @@
       "diamond_sword": { "name": "鑽石劍", "emoji": "💎", "atk": 120, "critRate": 0.1, "durability": 80 },
       "legendary_sword": { "name": "傳說之劍", "emoji": "🔥", "atk": 180, "critRate": 0.2, "durability": 80 }
     },
+    "durabilityWarn": { "low": 5, "critical": 1 },
     "monsters": [
       { "name": "洞窟蝙蝠", "emoji": "🦇" },
       { "name": "石化史萊姆", "emoji": "🪨" },

@@ -34,7 +34,18 @@ function weaponLabel(key) {
   return `${def.emoji || "👊"} ${def.name || key}`;
 }
 
-function appendCombatExtras(container, result) {
+async function dmWeaponLowDurability(interaction, weaponKey, durabilityAfter, level) {
+  const def = (dungeon?.weapons || {})[weaponKey] || {};
+  const head =
+    level === "critical"
+      ? `🚨 你的 **${def.emoji || ""} ${def.name || weaponKey}** 只剩 **${durabilityAfter}** 次耐久，下一次戰鬥就會斷！`
+      : `⚠️ 你的 **${def.emoji || ""} ${def.name || weaponKey}** 耐久剩 **${durabilityAfter}** 次，差不多該準備了。`;
+  await interaction.user.send(
+    `${head}\n趁還沒斷，到 \`/合成\` 再做一把、或到 \`/裝備\` 用礦石修復耐久。`
+  );
+}
+
+function appendCombatExtras(container, result, interaction) {
   if (result.usingFist) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -49,11 +60,26 @@ function appendCombatExtras(container, result) {
       ),
     );
   } else if (result.weaponDurabilityAfter !== null) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**武器耐久**\n${weaponLabel(result.weaponBefore)} 剩 ${result.weaponDurabilityAfter} 次`,
-      ),
-    );
+    const warn = dungeon?.durabilityWarn || {};
+    const after = result.weaponDurabilityAfter;
+    const label = weaponLabel(result.weaponBefore);
+    let line;
+    if (typeof warn.critical === "number" && after <= warn.critical) {
+      line = `🚨 **武器快斷了！**\n${label} 只剩 **${after}** 次，再戰就會斷裂退回赤手空拳。快去 \`/合成\` 一把新的、或到 \`/裝備\` 用礦石修復耐久！`;
+    } else if (typeof warn.low === "number" && after <= warn.low) {
+      line = `⚠️ **武器耐久偏低**\n${label} 剩 **${after}** 次，建議先去 \`/合成\` 備一把、或到 \`/裝備\` 用礦石修復耐久。`;
+    } else {
+      line = `**武器耐久**\n${label} 剩 ${after} 次`;
+    }
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(line));
+    if (result.weaponDurabilityWarnCrossed && interaction) {
+      dmWeaponLowDurability(
+        interaction,
+        result.weaponBefore,
+        after,
+        result.weaponDurabilityWarnCrossed,
+      ).catch(() => {});
+    }
   }
 
   if (result.encounter) {
@@ -266,7 +292,7 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
           ),
         )
         .addActionRowComponents(continueRow);
-      appendCombatExtras(container, result);
+      appendCombatExtras(container, result, interaction);
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           "-# 合成更好的武器能提升戰鬥力，提高勝率！",
@@ -349,7 +375,7 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
     }
 
     container.addActionRowComponents(continueRow);
-    appendCombatExtras(container, result);
+    appendCombatExtras(container, result, interaction);
     const notifyInfo = await applyStaminaNotifyPre(
       client,
       interaction,

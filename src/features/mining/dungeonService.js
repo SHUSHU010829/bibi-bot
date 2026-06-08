@@ -280,11 +280,13 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
   // 武器耐久：打怪時消耗（與鎬子挖礦時消耗同模式）；歸 0 退回赤手。
   let weaponBroke = false;
   let weaponDurabilityAfter = null;
+  let weaponDurabilityWarnCrossed = null;
   const weaponBefore = profile.weapon;
   const hasWeaponDurability =
     profile.weapon !== "fist" && typeof profile.weapon_durability === "number";
   if (hasWeaponDurability) {
-    weaponDurabilityAfter = profile.weapon_durability - 1;
+    const before = profile.weapon_durability;
+    weaponDurabilityAfter = before - 1;
     if (weaponDurabilityAfter <= 0) {
       weaponBroke = true;
       weaponDurabilityAfter = null;
@@ -292,6 +294,12 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
       set.weapon_durability = null;
     } else {
       inc.weapon_durability = -1;
+      const warn = dungeon?.durabilityWarn || {};
+      if (typeof warn.critical === "number" && before > warn.critical && weaponDurabilityAfter <= warn.critical) {
+        weaponDurabilityWarnCrossed = "critical";
+      } else if (typeof warn.low === "number" && before > warn.low && weaponDurabilityAfter <= warn.low) {
+        weaponDurabilityWarnCrossed = "low";
+      }
     }
   }
 
@@ -418,6 +426,7 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     weaponBefore,
     weaponBroke,
     weaponDurabilityAfter,
+    weaponDurabilityWarnCrossed,
   };
 
   bus.emit("dungeon.cleared", {
