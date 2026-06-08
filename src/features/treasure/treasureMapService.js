@@ -8,6 +8,33 @@ function cfg() {
   return treasureMap || {};
 }
 
+async function broadcastNeighborPrank(client, { userId, count, threshold, unlockedAchievement }) {
+  const channelId = cfg().announceChannelId;
+  if (!channelId) return;
+  try {
+    const ch = await client.channels.fetch(channelId).catch(() => null);
+    if (!ch?.isTextBased?.()) return;
+    const userTag = `<@${userId}>`;
+    const flavors = Array.isArray(cfg().neighborPrankFlavors) ? cfg().neighborPrankFlavors : [];
+    const template = flavors.length > 0
+      ? flavors[Math.floor(Math.random() * flavors.length)]
+      : "又被隔壁村民耍了（第 {count} 張，集 {threshold} 張可拿成就）";
+    const filled = template
+      .replace(/\{count\}/g, String(count))
+      .replace(/\{threshold\}/g, String(threshold));
+    const lines = [`📜 ${userTag} ${filled}`];
+    if (unlockedAchievement) {
+      lines.push(`🏆 ${userTag} 達成成就 **「哈哈我是 SB」** — 集滿 ${threshold} 張隔壁村民惡作劇紙條`);
+    }
+    await ch.send({
+      content: lines.join("\n"),
+      allowedMentions: { parse: ["users"] },
+    });
+  } catch (err) {
+    console.log(`[WARN] treasureMap 廣播失敗：${err?.message || err}`.yellow);
+  }
+}
+
 function rollEvent() {
   const events = Array.isArray(cfg().events) ? cfg().events : [];
   const weights = {};
@@ -123,11 +150,16 @@ async function useMap(client, { userId, guildId, username, member }) {
       { returnDocument: "after" },
     );
     const after = (upd?.value || upd)?.neighbor_prank_count ?? ((profile.neighbor_prank_count || 0) + 1);
-    lines.push(`📜 紙條：「哈哈你被騙了！— 隔壁村民」（成就計數：**${after} / 5**）`);
-    if (after >= 5) {
-      lines.push(`🏆 成就解鎖：**哈哈我是 SB**（集滿 5 張隔壁村民惡作劇紙條）`);
+    const threshold = cfg().neighborPrankAchievementThreshold ?? 5;
+    lines.push(`📜 紙條：「哈哈你被騙了！— 隔壁村民」（成就計數：**${after} / ${threshold}**）`);
+    const unlocked = after === threshold;
+    if (after >= threshold) {
+      lines.push(`🏆 成就解鎖：**哈哈我是 SB**（集滿 ${threshold} 張隔壁村民惡作劇紙條）`);
     }
     patch.prankAfter = after;
+    broadcastNeighborPrank(client, {
+      userId, count: after, threshold, unlockedAchievement: unlocked,
+    }).catch(() => {});
   }
 
   return {
