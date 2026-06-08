@@ -5,6 +5,23 @@ const { getOrCreate } = require("../mining/miningProfile");
 const grantCoins = require("../economy/grantCoins");
 const mailbox = require("../marketplace/marketplaceMailbox");
 
+// 清理玩家自填標題：剝掉 Discord mention / channel / @everyone / 換行，trim、限長 30。
+// 空字串視為「沒設標題」回傳 null。
+function sanitizeTitle(raw) {
+  if (typeof raw !== "string") return null;
+  let s = raw
+    .replace(/<@!?\d+>/g, "")
+    .replace(/<#\d+>/g, "")
+    .replace(/<@&\d+>/g, "")
+    .replace(/@everyone/gi, "")
+    .replace(/@here/gi, "")
+    .replace(/[\r\n]+/g, " ")
+    .trim();
+  if (s.length === 0) return null;
+  if (s.length > 30) s = s.slice(0, 30);
+  return s;
+}
+
 // 把託管物品退回賣家：礦石走信箱溢出，其他類型沒有容量上限直接寫回。
 async function _refundOffer(client, listing, reason) {
   const { type, key, qty } = listing.offer;
@@ -60,6 +77,7 @@ async function createListing(client, {
   sellerId, sellerName, guildId,
   offerType, offerKey, offerQty,
   wantType, wantKey, wantQty,
+  title,
 }) {
   const c = cfg();
   if (!c.enabled) return { ok: false, reason: "disabled" };
@@ -107,6 +125,7 @@ async function createListing(client, {
     guild_id: guildId,
     seller_id: sellerId,
     seller_name: sellerName,
+    title: sanitizeTitle(title),
     offer: { type: offerType, key: offerKey, qty: offerQty },
     want: { type: wantType, key: wantKey, qty: wantQty },
     fee_at_creation: fee,
