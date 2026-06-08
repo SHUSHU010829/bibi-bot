@@ -12,6 +12,7 @@ const { mining, craft, dungeon, fishing } = require("../../config");
 const craftService = require("../../features/mining/craftService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
+const workshopView = require("../../features/workshop/workshopView");
 
 function recipeChoices() {
   return (craft?.recipes || []).map((r) => ({ name: r.name, value: r.id }));
@@ -51,8 +52,8 @@ module.exports = {
     .addStringOption((o) =>
       o
         .setName("裝備")
-        .setDescription("要合成的鎬子或武器")
-        .setRequired(true)
+        .setDescription("要合成的鎬子或武器；不填則打開工坊「合成」分頁，用按鈕直接合成")
+        .setRequired(false)
         .addChoices(...recipeChoices())
     )
     .addBooleanOption((o) =>
@@ -63,10 +64,35 @@ module.exports = {
     ),
 
   run: async (client, interaction) => {
+    const recipeId = interaction.options.getString("裝備");
+
+    // 不指定配方 → 直接開工坊（合成分頁，ephemeral）
+    if (!recipeId) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        if (!mining?.enabled || !client.miningProfilesCollection) {
+          return interaction.editReply("🔧 合成系統尚未啟動！");
+        }
+        const view = await workshopView.buildView(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          displayName:
+            interaction.member?.displayName ||
+            interaction.user.displayName ||
+            interaction.user.username,
+          tab: "craft",
+        });
+        return interaction.editReply(view);
+      } catch (error) {
+        console.log(`[ERROR] /合成 開工坊:\n${error}\n${error.stack}`.red);
+        return interaction.editReply("🔧 開工坊失敗，請呼叫舒舒！").catch(() => {});
+      }
+    }
+
+    // 指定配方 → 維持原本的公開合成流程（直接執行）
     await interaction.deferReply();
 
     try {
-      const recipeId = interaction.options.getString("裝備");
       const confirm = interaction.options.getBoolean("確認") || false;
 
       const result = await craftService.craftItem(client, {
