@@ -9,6 +9,7 @@ const { fishing } = require("../../config");
 const foodBag = require("../../features/fishing/foodBag");
 const foodBagView = require("../../features/fishing/foodBagView");
 const { getOrCreate: getMiningProfile } = require("../../features/mining/miningProfile");
+const { appendNav } = require("../../features/playerStatus/statusNav");
 
 module.exports = {
   ephemeral: true,
@@ -36,6 +37,7 @@ module.exports = {
         : profilePre;
 
       const view = foodBagView.buildBagView({ userId, profile, sweepInfo });
+      appendNav(view, userId, "food");
       await interaction.editReply(view);
     } catch (error) {
       console.log(`[ERROR] /食物:\n${error}\n${error.stack}`.red);

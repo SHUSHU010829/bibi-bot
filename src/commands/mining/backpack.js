@@ -7,6 +7,7 @@ const {
 
 const { mining, shop } = require("../../config");
 const { buildBackpackView } = require("../../features/shop/backpackView");
+const { appendNav } = require("../../features/playerStatus/statusNav");
 
 module.exports = {
   ephemeral: true,
@@ -36,6 +37,7 @@ module.exports = {
           interaction.user.username,
       });
 
+      appendNav(view, interaction.user.id, "backpack");
       await interaction.editReply(view);
     } catch (error) {
       console.log(`[ERROR] /背包:\n${error}\n${error.stack}`.red);
