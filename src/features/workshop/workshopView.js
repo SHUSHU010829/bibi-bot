@@ -75,8 +75,16 @@ function ownedMaterial(profile, mat) {
   return (profile.backpack || {})[mat] || 0;
 }
 
+const SPECIAL_MATERIAL_LABELS = {
+  legendary_fragment: "✨ 傳說素材碎片",
+  broken_net_fragment: "🕸️ 破損漁網碎片",
+  broken_trap_fragment: "🪤 破損陷阱碎片",
+  treasure_map_fragment: "🗺️ 藏寶圖碎片",
+  stone_shard: "🪨 碎石",
+};
+
 function materialLabel(mat) {
-  if (mat === "legendary_fragment") return "✨ 傳說素材碎片";
+  if (SPECIAL_MATERIAL_LABELS[mat]) return SPECIAL_MATERIAL_LABELS[mat];
   if (isFishMaterial(mat)) {
     const f = fishing.fish[mat] || {};
     return `${f.emoji || "🐟"} ${f.name || mat}`;
