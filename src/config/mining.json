@@ -11,6 +11,9 @@
       "gold": { "name": "黃金", "emoji": "<:ore_gold:1509064763550994432>", "rarity": "稀有", "weight": 6, "luckFactor": 1.5, "price": 200, "minQty": 1, "maxQty": 1 },
       "diamond": { "name": "鑽石", "emoji": "<:ore_diamond:1509064761709559818>", "rarity": "傳說", "weight": 1, "luckFactor": 2, "price": 800, "minQty": 1, "maxQty": 1 }
     },
+    "specialOres": {
+      "stone_shard": { "name": "碎石", "emoji": "🥌", "price": 0 }
+    },
     "pickaxes": {
       "wood": { "name": "木鎬", "emoji": "<:pickaxe_wood:1509061543055331338>", "cdReductionMs": 0, "luckBonus": 0, "qtyBonus": 0, "durability": null },
       "iron": { "name": "鐵鎬", "emoji": "<:pickaxe_iron:1509061628698693713>", "cdReductionMs": 1800000, "luckBonus": 0.05, "qtyBonus": 0, "durability": 30 },

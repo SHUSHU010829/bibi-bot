@@ -190,6 +190,8 @@ async function appraise(client, { userId, guildId, member, username, ts, allowOv
     rolls,
     gainedDiamond: (winnings.diamond || 0) > 0,
     balanceAfter,
+    synthetic,
+    quality,
   };
 }
 

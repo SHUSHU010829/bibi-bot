@@ -1,6 +1,14 @@
 {
   "treasureMap": {
     "enabled": true,
+    "announceChannelId": "1511655301953228800",
+    "neighborPrankAchievementThreshold": 5,
+    "neighborPrankFlavors": [
+      "又被「隔壁村民」釣到了，這算第 {count} 張，集滿 {threshold} 張可拿成就「哈哈我是 SB」",
+      "辛苦攢的藏寶圖，撕開只有一張寫滿髒話的紙…（第 {count} 張）",
+      "藏寶圖上明明畫著黃金圖示！結果只挖到自己的尊嚴 — 第 {count} 張紙條到手",
+      "隔壁村民又贏了一回合（{count}/{threshold}）"
+    ],
     "events": [
       {
         "id": "treasure_chest",
