@@ -249,7 +249,7 @@ module.exports = async (client, interaction) => {
     return;
   }
 
-  // 二次確認：以 update() 直接覆蓋確認 followUp 的內容
+  // 二次確認：先 deferUpdate 避免 3 秒 interaction timeout，再 editReply 覆蓋確認 followUp 內容
   if (customId.startsWith(CONFIRM_PREFIX)) {
     const { ownerId, payload: recipeId } = parseOwnerAndPayload(customId, CONFIRM_PREFIX);
     if (interaction.user.id !== ownerId) {
@@ -258,6 +258,7 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.Ephemeral,
       });
     }
+    await interaction.deferUpdate();
     try {
       const result = await craftService.craftItem(client, {
         userId: interaction.user.id,
@@ -266,20 +267,20 @@ module.exports = async (client, interaction) => {
         confirm: true,
       });
       if (!result.ok && result.reason === "insufficient") {
-        await interaction.update({
+        await interaction.editReply({
           components: [buildInsufficientContainer(result)],
           flags: MessageFlags.IsComponentsV2,
         });
         return;
       }
       if (!result.ok) {
-        await interaction.update({
+        await interaction.editReply({
           content: "🔧 合成失敗，請稍後再試。",
           components: [],
         });
         return;
       }
-      await interaction.update({
+      await interaction.editReply({
         components: [buildSuccessContainer(result)],
         flags: MessageFlags.IsComponentsV2,
       });
@@ -290,7 +291,7 @@ module.exports = async (client, interaction) => {
     return;
   }
 
-  // 取消：用 update() 把確認框改成「已取消」
+  // 取消：deferUpdate + editReply 把確認框改成「已取消」
   if (customId.startsWith(CANCEL_PREFIX)) {
     const { ownerId } = parseOwnerAndPayload(customId, CANCEL_PREFIX);
     if (interaction.user.id !== ownerId) {
@@ -299,7 +300,8 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.Ephemeral,
       });
     }
-    await interaction.update({
+    await interaction.deferUpdate();
+    await interaction.editReply({
       content: "🚫 已取消合成。",
       components: [],
     });
