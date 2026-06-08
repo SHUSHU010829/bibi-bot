@@ -216,6 +216,21 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
     }
   } catch { /* noop */ }
 
+  // 撈網 / 高級陷阱 buff 剩餘次數（消耗品庫存與碎片數放在 /背包，避免重複）
+  if (miningProfileForStamina) {
+    const netUses = miningProfileForStamina.fishing_net_uses || 0;
+    const trapUses = miningProfileForStamina.advanced_trap_uses || 0;
+    if (netUses > 0 || trapUses > 0) {
+      const lines = [];
+      if (netUses > 0) lines.push(`🕸️ **撈網生效中**：剩 **${netUses}** 次（+10% 釣魚成功率）`);
+      if (trapUses > 0) lines.push(`🪤 **高級陷阱保護中**：剩 **${trapUses}** 次（自動抵擋農場 raid）`);
+      lines.push("-# 道具庫存、碎片數量請看 `/背包`");
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+    }
+  }
+
   container
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(

@@ -1,6 +1,6 @@
 require("colors");
 const { DateTime } = require("luxon");
-const { fishing } = require("../../config");
+const { fishing, craft } = require("../../config");
 const { getOrCreate } = require("../mining/miningProfile");
 const { weightedRandom } = require("../mining/weightedRandom");
 const {
@@ -107,23 +107,31 @@ async function fish(client, { userId, guildId, location = "stream" }) {
 
   const base = fishing.baseSuccessRate ?? 0.6;
   const cap = fishing.successCap ?? 0.95;
+  const netActive = (profile.fishing_net_uses || 0) > 0;
+  const netBonus = netActive ? (craft?.fishingNet?.successBonus ?? 0.1) : 0;
   const successRate = Math.min(
     cap,
-    base + (rodDef.successBonus || 0) + (foodFish.success || 0)
+    base + (rodDef.successBonus || 0) + (foodFish.success || 0) + netBonus
   );
 
   // 釣魚計次都會消耗一次 fish_fortune（不論成功失敗），手感 buff 是「次數制」
   const consumeFortune = () =>
     consumeFishFortuneUse(client, userId, guildId, profile).catch(() => {});
 
+  // 損壞漁網碎片：每次釣魚（不論成敗）固定機率掉
+  const netFragChance = craft?.fishingNet?.dropChancePerFish ?? 0;
+  const droppedNetFragment = netFragChance > 0 && Math.random() < netFragChance;
+
   // 成功判定
   if (Math.random() >= successRate) {
-    // 失敗：魚跑了，套用較短的失敗冷卻，不扣釣竿耐久
+    // 失敗：魚跑了，套用較短的失敗冷卻，不扣釣竿耐久；撈網不扣使用次數
     const failCdAt = now + (fishing.failCooldownMs || 1800000);
-    await client.miningProfilesCollection.updateOne(
-      { userId, guildId },
-      { $set: { fish_cooldown_at: failCdAt, updatedAt: new Date() } }
-    );
+    const failSet = { fish_cooldown_at: failCdAt, updatedAt: new Date() };
+    const failInc = {};
+    if (droppedNetFragment) failInc.broken_net_fragments = 1;
+    const updateOps = { $set: failSet };
+    if (Object.keys(failInc).length > 0) updateOps.$inc = failInc;
+    await client.miningProfilesCollection.updateOne({ userId, guildId }, updateOps);
     consumeFortune();
     bus.emit("fish.done", {
       userId,
@@ -142,6 +150,8 @@ async function fish(client, { userId, guildId, location = "stream" }) {
       successRate,
       newCooldownAt: failCdAt,
       fishCountTotal: profile.fish_count_total || 0,
+      droppedNetFragment,
+      netActive,
     };
   }
 
@@ -160,6 +170,8 @@ async function fish(client, { userId, guildId, location = "stream" }) {
     [`fish_bag.${fishKey}`]: qty,
     fish_count_total: 1,
   };
+  if (droppedNetFragment) inc.broken_net_fragments = 1;
+  if (netActive) inc.fishing_net_uses = -1;
   const set = { fish_cooldown_at: newCooldownAt, updatedAt: new Date() };
 
   // 釣竿耐久：非竹竿且有耐久值才消耗；歸 0 退回竹竿（比照鎬子）
@@ -254,6 +266,9 @@ async function fish(client, { userId, guildId, location = "stream" }) {
     newCooldownAt,
     fishCountTotal: (profile.fish_count_total || 0) + 1,
     rareDrops,
+    droppedNetFragment,
+    netActive,
+    netUsesAfter: netActive ? (profile.fishing_net_uses || 0) - 1 : (profile.fishing_net_uses || 0),
   };
 }
 

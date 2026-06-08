@@ -1,0 +1,47 @@
+{
+  "treasureMap": {
+    "enabled": true,
+    "events": [
+      {
+        "id": "treasure_chest",
+        "name": "藏寶箱",
+        "emoji": "📦",
+        "weight": 50,
+        "effect": { "type": "bonus_coins", "min": 50, "max": 500 },
+        "text": "你按著藏寶圖找到一個塵封的寶箱，撬開後翻出了一袋金幣！"
+      },
+      {
+        "id": "stamina_potion",
+        "name": "體力藥水",
+        "emoji": "🩹",
+        "weight": 15,
+        "effect": { "type": "restore_stamina", "amount": 3 },
+        "text": "你在地下室找到一瓶慢慢流失的體力藥水，當場喝下後體力回復了 3 點。"
+      },
+      {
+        "id": "mimic",
+        "name": "寶箱怪襲來",
+        "emoji": "👹",
+        "weight": 17,
+        "effect": { "type": "mimic", "winCoinsMin": 50, "winCoinsMax": 500, "slimeReward": 2, "loseStamina": 1 },
+        "text": "你打開寶箱…竟然是一隻寶箱怪！"
+      },
+      {
+        "id": "prank_note",
+        "name": "惡作劇紙條",
+        "emoji": "📜",
+        "weight": 15,
+        "effect": { "type": "prank" },
+        "text": "你打開盒子，裡面只有一張紙條：「哈哈你被騙了」。"
+      },
+      {
+        "id": "neighbor_prank",
+        "name": "隔壁村民的惡作劇",
+        "emoji": "📜",
+        "weight": 3,
+        "effect": { "type": "prank_achievement" },
+        "text": "紙條寫著：「哈哈你被騙了！— 隔壁村民」。集 5 張可以拿到成就「哈哈我是 SB」。"
+      }
+    ]
+  }
+}

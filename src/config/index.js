@@ -30,6 +30,7 @@ const marketplace = require("./marketplace.json");
 const fishing = require("./fishing.json");
 const farming = require("./farming.json");
 const barter = require("./barter.json");
+const treasureMap = require("./treasureMap.json");
 const coinHistory = require("./coinHistory.json");
 const boss = require("./boss.json");
 const guildClub = require("./guild_club.json");
@@ -67,6 +68,7 @@ module.exports = {
   ...fishing,
   ...farming,
   ...barter,
+  ...treasureMap,
   ...coinHistory,
   ...boss,
   ...guildClub,

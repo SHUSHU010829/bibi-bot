@@ -1,6 +1,6 @@
 require("colors");
 const { DateTime } = require("luxon");
-const { mining } = require("../../config");
+const { mining, craft } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
 const dropTable = require("./dropTable");
 const unifiedBuffResolver = require("../buff/buffResolver");
@@ -425,6 +425,63 @@ async function useInferiorWhetstone(client, { userId, guildId }) {
   };
 }
 
+// 使用維修工具修復鎬子：依工具階級補 % 耐久、調整 max。
+// 例：鋼製 +75% 當前 max、max -3；傳說 +100% 且 max +2。
+// max 不能低於 10（避免變垃圾），低於 20 時不允許使用會降 max 的工具。
+async function useRepairTool(client, { userId, guildId, tier }) {
+  if (!mining?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+  const def = (craft?.repairTools || {})[tier];
+  if (!def) return { ok: false, reason: "no_tool_def" };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const owned = (profile.repair_tools || {})[tier] || 0;
+  if (owned <= 0) return { ok: false, reason: "no_tool", tier };
+  if (!profile.pickaxe || profile.pickaxe === "wood") {
+    return { ok: false, reason: "no_pickaxe" };
+  }
+  if (typeof profile.pickaxe_max_durability !== "number") {
+    return { ok: false, reason: "no_pickaxe" };
+  }
+  const curMax = profile.pickaxe_max_durability;
+  const maxDelta = def.maxDelta || 0;
+  if (maxDelta < 0 && curMax + maxDelta < 10) {
+    return { ok: false, reason: "max_too_low", maxDurability: curMax, after: curMax + maxDelta };
+  }
+
+  const newMax = Math.max(1, curMax + maxDelta);
+  const restoreAmount = Math.ceil(newMax * (def.duraPct ?? 1));
+  const newDura = Math.min(newMax, restoreAmount);
+
+  const res = await client.miningProfilesCollection.updateOne(
+    {
+      userId,
+      guildId,
+      pickaxe: { $ne: "wood" },
+      [`repair_tools.${tier}`]: { $gte: 1 },
+    },
+    {
+      $set: {
+        pickaxe_max_durability: newMax,
+        pickaxe_durability: newDura,
+        updatedAt: new Date(),
+      },
+      $inc: { [`repair_tools.${tier}`]: -1 },
+    },
+  );
+  if (res.modifiedCount === 0) return { ok: false, reason: "retry" };
+
+  return {
+    ok: true,
+    tier,
+    durabilityAfter: newDura,
+    maxAfter: newMax,
+    toolsLeft: owned - 1,
+    def,
+  };
+}
+
 // 使用礦石材料原地修復鎬子：補滿耐久至 pickaxe_max_durability，無懲罰。
 // 成本為合成配方礦石各取一半（ceil）加石頭×20、煤炭×10。
 async function repairPickaxeWithMaterials(client, { userId, guildId }) {
@@ -619,6 +676,7 @@ module.exports = {
   getWeaponRepairCost,
   getRodRepairCost,
   useInferiorWhetstone,
+  useRepairTool,
   repairPickaxeWithMaterials,
   repairWeaponWithMaterials,
   repairRodWithMaterials,

@@ -50,6 +50,13 @@ const USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX = "mining_use_whetstone_inferior_con
 // 體力藥水「使用」按鈕：mining_use_stamina_potion_<ownerId>
 const USE_STAMINA_POTION_PREFIX = "mining_use_stamina_potion_";
 
+const USE_TREASURE_MAP_PREFIX = "use_treasure_map_";
+
+function parseUseTreasureMapId(customId) {
+  if (!customId || !customId.startsWith(USE_TREASURE_MAP_PREFIX)) return null;
+  return customId.slice(USE_TREASURE_MAP_PREFIX.length);
+}
+
 function parseUseStaminaPotionId(customId) {
   if (!customId || !customId.startsWith(USE_STAMINA_POTION_PREFIX)) return null;
   const ownerId = customId.slice(USE_STAMINA_POTION_PREFIX.length);
@@ -308,6 +315,14 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     const inferiorCount = profile.whetstone_inferior_count || 0;
     const staminaPotionCount = profile.stamina_potion_count || 0;
     const fragments = profile.legendary_fragments || 0;
+    const stoneShards = profile.backpack?.stone_shard || 0;
+    const netFrags = profile.broken_net_fragments || 0;
+    const netUses = profile.fishing_net_uses || 0;
+    const trapFrags = profile.broken_trap_fragments || 0;
+    const trapUses = profile.advanced_trap_uses || 0;
+    const mapFrags = profile.treasure_map_fragments || 0;
+    const treasureMaps = profile.treasure_maps || 0;
+    const repairTools = profile.repair_tools || {};
     const reductionMin = Math.round((mining?.cdTicketReductionMs || 0) / 60000);
     const staminaPotionItem = (shop?.items || []).find(
       (it) => it.type === "mining_stamina_potion"
@@ -371,6 +386,11 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         { emoji: "🪨", name: "劣質磨鎬石", qty: inferiorCount },
         { emoji: "🧪", name: "體力藥水", qty: staminaPotionCount },
         { emoji: "✨", name: "傳說素材碎片", qty: fragments },
+        { emoji: "🥌", name: "碎石", qty: stoneShards },
+        { emoji: "🪡", name: "漁網碎片", qty: netFrags },
+        { emoji: "🪛", name: "陷阱碎片", qty: trapFrags },
+        { emoji: "📜", name: "藏寶圖碎片", qty: mapFrags },
+        { emoji: "🗺️", name: "藏寶圖", qty: treasureMaps },
       ];
       const hasTools = toolItems.filter((t) => t.qty > 0);
       const noTools = toolItems.filter((t) => t.qty === 0);
@@ -383,6 +403,12 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       }
       if (noTools.length > 0) {
         lines.push(`-# 尚無：${noTools.map((t) => `${t.emoji} ${t.name}`).join("・")}`);
+      }
+      const buffLines = [];
+      if (netUses > 0) buffLines.push(`🕸️ 撈網剩 ${netUses} 次`);
+      if (trapUses > 0) buffLines.push(`🪤 陷阱保護剩 ${trapUses} 次`);
+      if (buffLines.length > 0) {
+        lines.push(`-# 生效中：${buffLines.join("・")}`);
       }
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(lines.join("\n"))
@@ -494,6 +520,64 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           `✨ **傳說素材碎片** ×${fragments}\n-# 合成傳說裝備材料`
         )
       );
+
+      // 探險道具 / 合成材料：藏寶圖、碎片類
+      const explorerLines = [];
+      const explorerZero = [];
+      if (mapFrags > 0) explorerLines.push(`📜 **藏寶圖碎片** ×${mapFrags} / 6\n-# 集滿到工坊合成藏寶圖`);
+      else explorerZero.push("📜 藏寶圖碎片");
+      if (stoneShards > 0) explorerLines.push(`🥌 **碎石** ×${stoneShards}\n-# 5 個合成劣質賭石、10 個合成優質賭石`);
+      else explorerZero.push("🥌 碎石");
+      if (netFrags > 0) explorerLines.push(`🪡 **損壞的漁網碎片** ×${netFrags}\n-# 5 個合成 1 張撈網（+10% 釣魚成功率 / 3 次）`);
+      else explorerZero.push("🪡 漁網碎片");
+      if (trapFrags > 0) explorerLines.push(`🪛 **損壞的陷阱碎片** ×${trapFrags}\n-# 5 個合成 1 張高級陷阱（被動抵擋 4 次 raid）`);
+      else explorerZero.push("🪛 陷阱碎片");
+
+      if (explorerLines.length > 0 || treasureMaps > 0 || explorerZero.length > 0) {
+        container.addSeparatorComponents(new SeparatorBuilder());
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`### 🗺️ 探險道具 / 合成材料`),
+        );
+        if (treasureMaps > 0) {
+          container.addSectionComponents(
+            new SectionBuilder()
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `🗺️ **藏寶圖** ×${treasureMaps}\n-# 撕開觸發隨機事件：藏寶箱 / 體力藥水 / 寶箱怪 / 惡作劇紙條`,
+                ),
+              )
+              .setButtonAccessory(
+                new ButtonBuilder()
+                  .setCustomId(`${USE_TREASURE_MAP_PREFIX}${userId}`)
+                  .setLabel("使用 1 張")
+                  .setEmoji("🗺️")
+                  .setStyle(ButtonStyle.Primary),
+              ),
+          );
+        }
+        for (const line of explorerLines) {
+          container.addTextDisplayComponents(new TextDisplayBuilder().setContent(line));
+        }
+        const bottomZeroBits = [];
+        if (treasureMaps === 0) bottomZeroBits.push("🗺️ 藏寶圖");
+        bottomZeroBits.push(...explorerZero);
+        if (bottomZeroBits.length > 0) {
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`-# 尚無：${bottomZeroBits.join("・")}`),
+          );
+        }
+      }
+
+      // 生效中的 buff（撈網 / 高級陷阱），方便玩家確認剩餘次數
+      if (netUses > 0 || trapUses > 0) {
+        const buffLines = [];
+        if (netUses > 0) buffLines.push(`🕸️ **撈網生效中**：剩 ${netUses} 次（+10% 釣魚成功率）`);
+        if (trapUses > 0) buffLines.push(`🪤 **高級陷阱保護中**：剩 ${trapUses} 次（自動抵擋農場 raid）`);
+        container.addSeparatorComponents(new SeparatorBuilder());
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`### ✨ 自動生效 buff\n${buffLines.join("\n")}`),
+        );
+      }
     }
   }
 
@@ -818,6 +902,8 @@ module.exports = {
   REPAIR_ROD_CONFIRM_PREFIX,
   parseRepairRodId,
   USE_STAMINA_POTION_PREFIX,
+  USE_TREASURE_MAP_PREFIX,
+  parseUseTreasureMapId,
   parseUseStaminaPotionId,
   UNIFIED_EQUIP_ID,
 };

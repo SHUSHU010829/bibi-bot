@@ -14,6 +14,7 @@ function defaultProfile(userId, guildId) {
     weapon_max_durability: null,
     luck_potion_uses: 0,
     whetstone_inferior_count: 0,
+    repair_tools: { iron: 0, steel: 0, gold: 0, mythril: 0, diamond: 0, legendary: 0 },
     stamina_potion_count: 0,
     cd_ticket_count: 0,
     cd_ticket_used_date: null,
@@ -26,6 +27,13 @@ function defaultProfile(userId, guildId) {
     seed_bag: { seed_carrot: 0, seed_corn: 0, seed_strawberry: 0, seed_black_rose: 0 },
     veggie_bag: { carrot: 0, corn: 0, strawberry: 0, black_rose: 0 },
     rare_bait: 0,
+    broken_net_fragments: 0,
+    fishing_net_uses: 0,
+    broken_trap_fragments: 0,
+    advanced_trap_uses: 0,
+    treasure_map_fragments: 0,
+    treasure_maps: 0,
+    neighbor_prank_count: 0,
     farm_plot_count: 2,
     farm_count_total: 0,
     farm_harvest_total: 0,
@@ -57,6 +65,13 @@ function normalize(doc) {
   doc.seed_bag = { seed_carrot: 0, seed_corn: 0, seed_strawberry: 0, seed_black_rose: 0, ...(doc.seed_bag || {}) };
   doc.veggie_bag = { carrot: 0, corn: 0, strawberry: 0, black_rose: 0, ...(doc.veggie_bag || {}) };
   doc.rare_bait ??= 0;
+  doc.broken_net_fragments ??= 0;
+  doc.fishing_net_uses ??= 0;
+  doc.broken_trap_fragments ??= 0;
+  doc.advanced_trap_uses ??= 0;
+  doc.treasure_map_fragments ??= 0;
+  doc.treasure_maps ??= 0;
+  doc.neighbor_prank_count ??= 0;
   doc.farm_plot_count ??= 2;
   doc.farm_count_total ??= 0;
   doc.farm_harvest_total ??= 0;
@@ -90,6 +105,7 @@ function normalize(doc) {
   }
   doc.luck_potion_uses ??= 0;
   doc.whetstone_inferior_count ??= 0;
+  doc.repair_tools = { iron: 0, steel: 0, gold: 0, mythril: 0, diamond: 0, legendary: 0, ...(doc.repair_tools || {}) };
   doc.stamina_potion_count ??= 0;
   doc.cd_ticket_count ??= 0;
   if (doc.cd_ticket_used_date === undefined) doc.cd_ticket_used_date = null;

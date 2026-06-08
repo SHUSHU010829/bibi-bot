@@ -37,6 +37,7 @@ const TAB_PREFIX = "wsTab_";
 const CRAFT_PREFIX = "wsCraft_";
 const CONFIRM_PREFIX = "wsConfirm_";
 const CANCEL_PREFIX = "wsCancel_";
+const REPAIR_TOOL_PREFIX = "wsRepairTool_";
 
 const TABS = ["equipment", "craft", "repair"];
 
@@ -185,7 +186,28 @@ function craftableSection(container, recipes, profile, type, userId) {
     );
     const resultId = recipe.result?.id;
     let propLine = "";
-    if (type === "weapon") {
+    if (type === "repair_tool") {
+      const tdef = (craft?.repairTools || {})[resultId] || {};
+      const deltaTxt = tdef.maxDelta === 0
+        ? "max 不變"
+        : tdef.maxDelta > 0
+          ? `max +${tdef.maxDelta}`
+          : `max ${tdef.maxDelta}`;
+      propLine = `效果：+${Math.round((tdef.duraPct || 0) * 100)}% 鎬子耐久 ・ ${deltaTxt}`;
+    } else if (type === "fishing_net") {
+      const fcfg = craft?.fishingNet || {};
+      propLine = `效果：+${Math.round((fcfg.successBonus || 0) * 100)}% 釣魚成功率 ・ ${fcfg.usesPerCraft || 3} 次釣魚成功後失效`;
+    } else if (type === "stone_appraisal_trigger") {
+      const q = recipe.result?.quality;
+      propLine = q === "high"
+        ? "效果：觸發優質賭石（diamond 5%、gold 11%，期望 EV ≈ 82 幣 / 顆）"
+        : "效果：觸發劣質賭石（與普通賭石同表，期望 EV ≈ 50 幣 / 顆）";
+    } else if (type === "advanced_trap") {
+      const acfg = craft?.advancedTrap || {};
+      propLine = `效果：+${acfg.blocksPerCraft || 4} 次被動抵擋（上限 ${acfg.maxStack || 12}）`;
+    } else if (type === "treasure_map") {
+      propLine = `效果：合成 1 張藏寶圖，到 /背包 「探險道具」按「使用 1 張」撕開觸發隨機事件`;
+    } else if (type === "weapon") {
       const wdef = (dungeon?.weapons || {})[resultId] || {};
       const totalAtk = (dungeon?.baseAtk ?? 20) + (wdef.atk || 0);
       const critPct = Math.round((wdef.critRate || 0) * 100);
@@ -243,6 +265,11 @@ function buildCraftTab(container, { userId, displayName, profile }) {
   const pickaxes = recipes.filter((r) => (r.result?.type || "pickaxe") === "pickaxe");
   const weapons = recipes.filter((r) => r.result?.type === "weapon");
   const rods = recipes.filter((r) => r.result?.type === "rod");
+  const repairTools = recipes.filter((r) => r.result?.type === "repair_tool");
+  const consumables = recipes.filter((r) => r.result?.type === "fishing_net");
+  const appraisalTriggers = recipes.filter((r) => r.result?.type === "stone_appraisal_trigger");
+  const farmTools = recipes.filter((r) => r.result?.type === "advanced_trap");
+  const treasureMaps = recipes.filter((r) => r.result?.type === "treasure_map");
 
   if (pickaxes.length) {
     container
@@ -261,6 +288,63 @@ function buildCraftTab(container, { userId, displayName, profile }) {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(new TextDisplayBuilder().setContent("### 🎣 釣竿（釣魚）"));
     craftableSection(container, rods, profile, "rod", userId);
+  }
+  if (repairTools.length) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "### 🛠️ 維修工具（消耗品）\n-# 合成完到「修復」分頁使用，可堆疊持有",
+        ),
+      );
+    craftableSection(container, repairTools, profile, "repair_tool", userId);
+  }
+  if (consumables.length) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "### 🕸️ 釣魚消耗品\n-# 合成後 buff 自動生效，於 /釣魚 自動套用",
+        ),
+      );
+    craftableSection(container, consumables, profile, "fishing_net", userId);
+  }
+  if (appraisalTriggers.length) {
+    const shardCount = (profile.backpack || {}).stone_shard || 0;
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🪨 賭石碎石回收（持有碎石 **${shardCount}**）\n-# 合成完立刻觸發賭石，10 分鐘內按「立刻賭石」開出，過期就失效`,
+        ),
+      );
+    craftableSection(container, appraisalTriggers, profile, "stone_appraisal_trigger", userId);
+  }
+  if (farmTools.length) {
+    const trapCfg = craft?.advancedTrap || {};
+    const fragCount = profile.broken_trap_fragments || 0;
+    const usesNow = profile.advanced_trap_uses || 0;
+    const cap = trapCfg.maxStack ?? 12;
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🪤 農場防護（持有碎片 **${fragCount}**，目前保護 ${usesNow} / ${cap} 次）\n-# 合成即自動生效，被動抵擋下一次農場 raid；達上限多餘的次數會被丟掉`,
+        ),
+      );
+    craftableSection(container, farmTools, profile, "advanced_trap", userId);
+  }
+  if (treasureMaps.length) {
+    const fragCount = profile.treasure_map_fragments || 0;
+    const mapCount = profile.treasure_maps || 0;
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🗺️ 藏寶圖（持有碎片 **${fragCount}** ・ 完整圖 **${mapCount}**）\n-# 合成完到 /背包「探險道具」按「使用 1 張」撕開，可能找到金幣、體力藥水、寶箱怪、或一張惡作劇紙條`,
+        ),
+      );
+    craftableSection(container, treasureMaps, profile, "treasure_map", userId);
   }
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -392,9 +476,45 @@ function buildRepairTab(container, { userId, displayName, profile }) {
     }
   }
 
+  // 維修工具（消耗品，僅對鎬子）
+  const tools = profile.repair_tools || {};
+  const ownedTiers = Object.entries((craft?.repairTools || {}))
+    .filter(([tier]) => (tools[tier] || 0) > 0);
+  if (ownedTiers.length > 0 && profile.pickaxe && profile.pickaxe !== "wood") {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🛠️ 維修工具（消耗品，僅對鎬子）\n-# 每使用一張會依階級調整鎬子最大耐久；無背包扣費`,
+        ),
+      );
+    for (const [tier, def] of ownedTiers) {
+      const owned = tools[tier];
+      const deltaTxt = def.maxDelta === 0
+        ? "max 不變"
+        : def.maxDelta > 0
+          ? `max +${def.maxDelta}`
+          : `max ${def.maxDelta}`;
+      const body =
+        `${def.emoji || "🔧"} **${def.name}** ×${owned}\n` +
+        `-# +${Math.round((def.duraPct || 0) * 100)}% 耐久 ・ ${deltaTxt}`;
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(body))
+          .setButtonAccessory(
+            new ButtonBuilder()
+              .setCustomId(`${REPAIR_TOOL_PREFIX}${userId}_${tier}`)
+              .setLabel("使用 1 張")
+              .setEmoji("🛠️")
+              .setStyle(ButtonStyle.Primary),
+          ),
+      );
+    }
+  }
+
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "-# 想改用「劣質磨鎬石」單耐久 +滿但 max -10？去 /背包 找該道具按使用",
+      "-# 還沒有維修工具？切到「合成」分頁打造，鐵製便宜、傳說 max +2",
     ),
   );
 }
@@ -424,5 +544,6 @@ module.exports = {
   CRAFT_PREFIX,
   CONFIRM_PREFIX,
   CANCEL_PREFIX,
+  REPAIR_TOOL_PREFIX,
   TABS,
 };

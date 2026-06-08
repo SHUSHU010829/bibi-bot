@@ -1202,13 +1202,16 @@ module.exports = async (client, interaction) => {
       const lines = result.won
         ? [
             `⚔️ 擊退了 **${monster.monsterEmoji} ${monster.monsterName}**！`,
-            `💰 戰利品：+${result.coinsGained} 幣${result.slimeGained > 0 ? `、💧 黏液 ×${result.slimeGained}` : ""}`,
+            `💰 戰利品：+${result.coinsGained} 幣${result.slimeGained > 0 ? `、💧 黏液 ×${result.slimeGained}` : ""}${result.droppedTrapFragment ? `、🪛 損壞的陷阱碎片 ×1` : ""}`,
             `🌟 作物保住了，可立即點「收成」`,
           ]
         : [
             `💀 被 **${monster.monsterEmoji} ${monster.monsterName}** 擊敗，作物被毀！`,
             `下次更早回來收成吧 🥲`,
           ];
+      if (result.won && result.droppedTrapFragment) {
+        lines.push(`-# 集 5 個損壞的陷阱碎片可在工坊合成「高級陷阱」，被動抵擋 4 次來犯`);
+      }
       if (result.weaponBroke) lines.push(`💥 武器斷裂，已換回赤手！`);
       else if (typeof result.weaponDurabilityAfter === "number") {
         lines.push(`-# 武器耐久剩 ${result.weaponDurabilityAfter}`);
