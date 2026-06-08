@@ -1,0 +1,137 @@
+{
+  "id": "v1_2026q2",
+  "title": "逼逼機器人 v1 玩家問卷",
+  "intro": "想聽你對目前玩法的真實想法，幫忙未來開發方向！\n完成全部必填題即可領取 **3000 幣**（每位玩家限填一次）。",
+  "selectQuestions": [
+    {
+      "id": "frequency",
+      "label": "你多常玩逼逼機器人？",
+      "placeholder": "請選擇遊玩頻率",
+      "min": 1,
+      "max": 1,
+      "required": true,
+      "options": [
+        { "value": "daily", "label": "每天都玩", "emoji": "🔥" },
+        { "value": "weekly_3_5", "label": "每週 3-5 次", "emoji": "📅" },
+        { "value": "weekly_1_2", "label": "每週 1-2 次", "emoji": "🌙" },
+        { "value": "rare", "label": "很少 / 路過", "emoji": "💨" }
+      ]
+    },
+    {
+      "id": "session_length",
+      "label": "你單次上線通常會待多久？",
+      "placeholder": "請選擇平均停留時間",
+      "min": 1,
+      "max": 1,
+      "required": true,
+      "options": [
+        { "value": "under_5", "label": "5 分鐘以內（簽到型）", "emoji": "⚡" },
+        { "value": "5_15", "label": "5-15 分鐘", "emoji": "⏱️" },
+        { "value": "15_30", "label": "15-30 分鐘", "emoji": "🕐" },
+        { "value": "30_60", "label": "30-60 分鐘", "emoji": "⏰" },
+        { "value": "1_2h", "label": "1-2 小時", "emoji": "🌙" },
+        { "value": "over_2h", "label": "2 小時以上（沉迷型）", "emoji": "🔥" }
+      ]
+    },
+    {
+      "id": "cooldown_feel",
+      "label": "現有冷卻時間（挖礦 / 釣魚 / 打工）感覺如何？",
+      "placeholder": "請選擇你對冷卻時間的感受",
+      "min": 1,
+      "max": 1,
+      "required": true,
+      "options": [
+        { "value": "too_long", "label": "太長，等到不想玩", "emoji": "🐢" },
+        { "value": "slightly_long", "label": "有點長，可接受", "emoji": "⏳" },
+        { "value": "just_right", "label": "剛剛好", "emoji": "👌" },
+        { "value": "too_short", "label": "太短，跟不上產出", "emoji": "💨" }
+      ]
+    },
+    {
+      "id": "coin_economy",
+      "label": "金幣的「賺」和「花」你的感受？",
+      "placeholder": "請選擇最符合的經濟感受",
+      "min": 1,
+      "max": 1,
+      "required": true,
+      "options": [
+        { "value": "easy_easy", "label": "好賺也好花(流通順暢)", "emoji": "💸" },
+        { "value": "easy_hard", "label": "好賺但沒地方花", "emoji": "💰" },
+        { "value": "hard_easy", "label": "難賺但很容易花光", "emoji": "🕳️" },
+        { "value": "hard_hard", "label": "難賺又沒地方花(卡住)", "emoji": "🧱" },
+        { "value": "no_feel", "label": "沒太注意金幣", "emoji": "🤷" }
+      ]
+    },
+    {
+      "id": "pain_features",
+      "label": "哪些功能 / 介面讓你覺得不順？（最多 5 個）",
+      "placeholder": "選出你覺得卡卡的功能",
+      "min": 0,
+      "max": 5,
+      "required": false,
+      "options": [
+        { "value": "none", "label": "都還算順暢，沒特別痛點", "emoji": "✅" },
+        { "value": "craft", "label": "合成介面 / 步驟太多", "emoji": "🔨" },
+        { "value": "market", "label": "拍賣 / 市集 找東西很難", "emoji": "🏪" },
+        { "value": "backpack", "label": "背包 / 魚袋 不好整理", "emoji": "🎒" },
+        { "value": "guild", "label": "公會操作(庫藏 / 任務 / 邀請)", "emoji": "🏰" },
+        { "value": "duel", "label": "決鬥 / PvP 流程", "emoji": "⚔️" },
+        { "value": "boss", "label": "BOSS 共鬥不知怎麼參戰", "emoji": "🐉" },
+        { "value": "dungeon", "label": "地下城戰鬥訊息看不懂", "emoji": "🗡️" },
+        { "value": "casino", "label": "賭場規則 / 介面難懂", "emoji": "🎲" },
+        { "value": "stock", "label": "股市操作複雜", "emoji": "📈" },
+        { "value": "farm", "label": "農場種植 / 採收流程", "emoji": "🌾" },
+        { "value": "notify", "label": "冷卻通知設定難找", "emoji": "🔔" },
+        { "value": "discover", "label": "新指令 / 功能找不到入口", "emoji": "🧭" },
+        { "value": "buttons", "label": "按鈕位置奇怪 / 太多步", "emoji": "🖱️" }
+      ]
+    },
+    {
+      "id": "wanted",
+      "label": "未來最期待哪些新玩法？（最多 3 個）",
+      "placeholder": "選 1-3 個你最想要的新玩法",
+      "min": 1,
+      "max": 3,
+      "required": true,
+      "options": [
+        { "value": "pet", "label": "寵物 / 夥伴養成", "emoji": "🐾" },
+        { "value": "codex", "label": "圖鑑收集", "emoji": "📖" },
+        { "value": "weather", "label": "天氣 / 季節影響玩法", "emoji": "🌦️" },
+        { "value": "fortune", "label": "每日占卜運勢", "emoji": "🔮" },
+        { "value": "adventure", "label": "文字冒險(森林 / 廢墟 / 深海)", "emoji": "🗺️" },
+        { "value": "guild_war", "label": "公會領地戰 PvP", "emoji": "⚔️" },
+        { "value": "thief", "label": "偷竊 / 通緝", "emoji": "🥷" },
+        { "value": "season_pass", "label": "賽季通行證", "emoji": "🎫" },
+        { "value": "house", "label": "個人小屋 / 收藏館", "emoji": "🏠" },
+        { "value": "alchemy", "label": "鍊金術 / 消耗品", "emoji": "🧪" },
+        { "value": "class", "label": "轉職 / 職業系統", "emoji": "🎓" },
+        { "value": "outfit", "label": "時裝 / 外觀", "emoji": "👔" },
+        { "value": "minigame", "label": "每日小遊戲", "emoji": "🎮" },
+        { "value": "blackmarket", "label": "神祕黑市", "emoji": "🕶️" }
+      ]
+    }
+  ],
+  "openQuestions": [
+    {
+      "id": "pain_detail",
+      "label": "上面選的不順功能，具體哪裡卡？",
+      "placeholder": "例：合成要點 3 層選單才能做、市集沒有搜尋功能…",
+      "max": 500,
+      "required": false
+    },
+    {
+      "id": "confusing_msg",
+      "label": "哪個指令的訊息 / 按鈕讓你看不懂？",
+      "placeholder": "例：BOSS 結算訊息一堆數字不知道是什麼、賭場下注選項看不懂…",
+      "max": 500,
+      "required": false
+    },
+    {
+      "id": "wishlist",
+      "label": "還想要逼逼加什麼？(功能 / 改進 / 都行)",
+      "placeholder": "一句話也可以，天馬行空的想法都歡迎",
+      "max": 500,
+      "required": false
+    }
+  ]
+}

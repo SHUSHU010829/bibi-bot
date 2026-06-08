@@ -34,6 +34,7 @@ const coinHistory = require("./coinHistory.json");
 const boss = require("./boss.json");
 const guildClub = require("./guild_club.json");
 const guildWarehouse = require("./guild_warehouse.json");
+const survey = require("./survey");
 
 module.exports = {
   ...server,
@@ -70,4 +71,5 @@ module.exports = {
   ...boss,
   ...guildClub,
   ...guildWarehouse,
+  ...survey,
 };
