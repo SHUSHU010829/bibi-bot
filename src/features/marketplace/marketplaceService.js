@@ -10,6 +10,23 @@ function cfg() {
   return marketplace || {};
 }
 
+// 清理玩家自填標題：剝掉 Discord mention / channel / @everyone / 換行，trim、限長 30。
+// 空字串視為「沒設標題」回傳 null。
+function sanitizeTitle(raw) {
+  if (typeof raw !== "string") return null;
+  let s = raw
+    .replace(/<@!?\d+>/g, "")
+    .replace(/<#\d+>/g, "")
+    .replace(/<@&\d+>/g, "")
+    .replace(/@everyone/gi, "")
+    .replace(/@here/gi, "")
+    .replace(/[\r\n]+/g, " ")
+    .trim();
+  if (s.length === 0) return null;
+  if (s.length > 30) s = s.slice(0, 30);
+  return s;
+}
+
 // 私訊通知使用者（對方關閉私訊時靜默失敗，不影響交易流程）
 async function dmUser(client, userId, content) {
   if (!client || !userId) return;
@@ -85,7 +102,7 @@ async function checkActiveLimit(client, sellerId, guildId) {
 }
 
 // ─── 掛牌：賣礦（一口價，收金幣）─────────────────────────────────────────────
-async function createSellListing(client, { sellerId, guildId, sellerName, ore, qty, price }) {
+async function createSellListing(client, { sellerId, guildId, sellerName, ore, qty, price, title }) {
   const c = cfg();
   if (!mining?.enabled || !c.enabled) return { ok: false, reason: "disabled" };
   if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
@@ -121,6 +138,7 @@ async function createSellListing(client, { sellerId, guildId, sellerName, ore, q
     seller_id: sellerId,
     seller_name: sellerName,
     guild_id: guildId,
+    title: sanitizeTitle(title),
     ore,
     qty,
     price,
@@ -136,7 +154,7 @@ async function createSellListing(client, { sellerId, guildId, sellerName, ore, q
 }
 
 // ─── 掛牌：換礦（以物易物）────────────────────────────────────────────────────
-async function createBarterListing(client, { sellerId, guildId, sellerName, giveOre, giveQty, wantOre, wantQty }) {
+async function createBarterListing(client, { sellerId, guildId, sellerName, giveOre, giveQty, wantOre, wantQty, title }) {
   const c = cfg();
   if (!mining?.enabled || !c.enabled) return { ok: false, reason: "disabled" };
   if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
@@ -171,6 +189,7 @@ async function createBarterListing(client, { sellerId, guildId, sellerName, give
     seller_id: sellerId,
     seller_name: sellerName,
     guild_id: guildId,
+    title: sanitizeTitle(title),
     ore: giveOre,
     qty: giveQty,
     want_ore: wantOre,
@@ -192,7 +211,7 @@ async function createWantListing(client, {
   sellerId, guildId, sellerName,
   wantOre, wantQty,
   payKind, coinAmount, payOre, payQty,
-  member,
+  member, title,
 }) {
   const c = cfg();
   if (!mining?.enabled || !c.enabled) return { ok: false, reason: "disabled" };
@@ -268,6 +287,7 @@ async function createWantListing(client, {
     seller_id: sellerId,
     seller_name: sellerName,
     guild_id: guildId,
+    title: sanitizeTitle(title),
     ore: wantOre,
     qty: wantQty,
     pay_kind: payKind,
@@ -288,7 +308,7 @@ async function createWantListing(client, {
 }
 
 // ─── 掛牌：競標──────────────────────────────────────────────────────────────
-async function createAuctionListing(client, { sellerId, guildId, sellerName, ore, qty, startPrice, buyoutPrice }) {
+async function createAuctionListing(client, { sellerId, guildId, sellerName, ore, qty, startPrice, buyoutPrice, title }) {
   const c = cfg();
   if (!mining?.enabled || !c.enabled) return { ok: false, reason: "disabled" };
   if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
@@ -327,6 +347,7 @@ async function createAuctionListing(client, { sellerId, guildId, sellerName, ore
     seller_id: sellerId,
     seller_name: sellerName,
     guild_id: guildId,
+    title: sanitizeTitle(title),
     ore,
     qty,
     start_price: startPrice,
@@ -905,7 +926,7 @@ async function _refundEscrow(client, listing) {
 }
 
 // ─── 掛牌：賣魚（一口價，收金幣）─────────────────────────────────────────────
-async function createFishSellListing(client, { sellerId, guildId, sellerName, fishKey, qty, price }) {
+async function createFishSellListing(client, { sellerId, guildId, sellerName, fishKey, qty, price, title }) {
   const { fishing } = require("../../config");
   const c = cfg();
   if (!c.enabled) return { ok: false, reason: "disabled" };
@@ -943,6 +964,7 @@ async function createFishSellListing(client, { sellerId, guildId, sellerName, fi
     seller_id: sellerId,
     seller_name: sellerName,
     guild_id: guildId,
+    title: sanitizeTitle(title),
     fish_key: fishKey,
     qty,
     price,

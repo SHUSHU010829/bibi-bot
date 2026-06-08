@@ -24,44 +24,78 @@ async function runAttack(client, interaction) {
     });
   }
 
-  const result = await bossEngine.applyAttack(client, {
+  const count = Math.max(1, Math.min(5, interaction.options.getInteger("次數") ?? 1));
+  const params = {
     userId: interaction.user.id,
     guildId: interaction.guildId,
     username: interaction.user.username,
     member: interaction.member,
-  });
+  };
 
-  if (!result.ok) {
-    const container = buildAttackErrorContainer(result);
-    return interaction.editReply({
+  if (count === 1) {
+    const result = await bossEngine.applyAttack(client, params);
+    if (!result.ok) {
+      return interaction.editReply({
+        components: [buildAttackErrorContainer(result)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+    const displayName =
+      interaction.member?.displayName || interaction.user.username;
+    const container = bossView.buildAttackResultContainer({
+      userId: interaction.user.id,
+      displayName,
+      result,
+    });
+    await interaction.editReply({
       components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+    if (result.phaseChanged && !result.killed) {
+      bossAnnouncer.announcePhase(client, result.boss, result.phaseAfter).catch(() => {});
+    }
+    if (result.comboTriggered) {
+      bossAnnouncer.announceCombo(client, result.boss, interaction.user.id).catch(() => {});
+    }
+    if (result.killed) {
+      settleAndAnnounce(client, interaction.guild, result.boss.boss_id).catch((e) =>
+        console.log(`[BOSS] settle on kill failed: ${e.message}`.red),
+      );
+    }
+    return;
+  }
+
+  const combo = await bossEngine.applyComboAttack(client, params, count);
+  if (!combo.ok) {
+    return interaction.editReply({
+      components: [buildAttackErrorContainer(combo.errorResult || { reason: combo.reason })],
       flags: MessageFlags.IsComponentsV2,
     });
   }
 
   const displayName =
     interaction.member?.displayName || interaction.user.username;
-  const container = bossView.buildAttackResultContainer({
+  const { container } = bossView.buildComboResultContainer({
     userId: interaction.user.id,
     displayName,
-    result,
+    hits: combo.hits,
+    stopReason: combo.stopReason,
   });
   await interaction.editReply({
     components: [container],
     flags: MessageFlags.IsComponentsV2,
   });
 
-  // 階段變化 / Combo 觸發 → 公告（背景跑，不擋玩家回覆）
-  if (result.phaseChanged && !result.killed) {
-    bossAnnouncer.announcePhase(client, result.boss, result.phaseAfter).catch(() => {});
+  if (combo.phaseChanged && !combo.killed) {
+    bossAnnouncer
+      .announcePhase(client, combo.lastResult.boss, combo.lastResult.phaseAfter)
+      .catch(() => {});
   }
-  if (result.comboTriggered) {
-    bossAnnouncer.announceCombo(client, result.boss, interaction.user.id).catch(() => {});
+  if (combo.comboTriggered) {
+    bossAnnouncer.announceCombo(client, combo.lastResult.boss, interaction.user.id).catch(() => {});
   }
-
-  // 擊殺立即結算
-  if (result.killed) {
-    settleAndAnnounce(client, interaction.guild, result.boss.boss_id).catch((e) =>
+  if (combo.killed) {
+    settleAndAnnounce(client, interaction.guild, combo.lastResult.boss.boss_id).catch((e) =>
       console.log(`[BOSS] settle on kill failed: ${e.message}`.red),
     );
   }
@@ -124,7 +158,14 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("攻擊")
     .setDescription("攻擊當前出現的 BOSS！⚔️")
-    .setContexts(InteractionContextType.Guild),
+    .setContexts(InteractionContextType.Guild)
+    .addIntegerOption((o) =>
+      o
+        .setName("次數")
+        .setDescription("連擊幾刀（1-5，預設 1）。Combo 需要多人接力，旺場時建議一刀一刀打。")
+        .setMinValue(1)
+        .setMaxValue(5),
+    ),
 
   run: async (client, interaction) => {
     await interaction.deferReply();

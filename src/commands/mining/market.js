@@ -63,6 +63,9 @@ module.exports = {
         .addIntegerOption((o) =>
           o.setName("總價").setDescription("你要賣多少金幣（一口價總額）").setRequired(true).setMinValue(1)
         )
+        .addStringOption((o) =>
+          o.setName("標題").setDescription("選填：自訂標題顯示在掛單前（例：佛心給鑽、保留給某人）").setMaxLength(30)
+        )
     )
     // 徵求
     .addSubcommand((s) =>
@@ -103,6 +106,9 @@ module.exports = {
             .setRequired(false)
             .setMinValue(1)
         )
+        .addStringOption((o) =>
+          o.setName("標題").setDescription("選填：自訂標題顯示在掛單前").setMaxLength(30)
+        )
     )
     // 賣魚
     .addSubcommand((s) =>
@@ -117,6 +123,9 @@ module.exports = {
         )
         .addIntegerOption((o) =>
           o.setName("總價").setDescription("你要賣多少金幣（一口價總額）").setRequired(true).setMinValue(1)
+        )
+        .addStringOption((o) =>
+          o.setName("標題").setDescription("選填：自訂標題顯示在掛單前").setMaxLength(30)
         )
     )
     // 競標
@@ -139,6 +148,9 @@ module.exports = {
             .setDescription("選填：出價達到此價立即成交（總價，須 ≥ 起標價）")
             .setRequired(false)
             .setMinValue(1)
+        )
+        .addStringOption((o) =>
+          o.setName("標題").setDescription("選填：自訂標題顯示在掛單前").setMaxLength(30)
         )
     ),
 
@@ -210,6 +222,7 @@ async function handleSell(client, interaction) {
     ore,
     qty,
     price,
+    title: interaction.options.getString("標題"),
   });
 
   if (!result.ok) {
@@ -238,6 +251,7 @@ async function handleSell(client, interaction) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# 💰 賣礦掛牌成功\n` +
+          (l.title ? `📌 ${l.title}\n` : "") +
           `**#${l.listing_id}** ・ ${oreLabel(l.ore)} ×${l.qty}\n` +
           `一口價：**${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
@@ -284,6 +298,7 @@ async function handleWant(client, interaction) {
     payOre,
     payQty,
     member: interaction.member,
+    title: interaction.options.getString("標題"),
   });
 
   if (!result.ok) {
@@ -316,6 +331,7 @@ async function handleWant(client, interaction) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# 📋 徵求掛牌成功\n` +
+          (l.title ? `📌 ${l.title}\n` : "") +
           `**#${l.listing_id}**\n` +
           `徵求 ${oreLabel(l.ore)} ×${l.qty}，付出 ${payStr}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
@@ -340,6 +356,7 @@ async function handleAuction(client, interaction) {
     qty,
     startPrice,
     buyoutPrice,
+    title: interaction.options.getString("標題"),
   });
 
   if (!result.ok) {
@@ -376,6 +393,7 @@ async function handleAuction(client, interaction) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# 🏷️ 競標掛牌成功\n` +
+          (l.title ? `📌 ${l.title}\n` : "") +
           `**#${l.listing_id}** ・ ${oreLabel(l.ore)} ×${l.qty}\n` +
           `起標價：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}${buyoutLine}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
@@ -412,6 +430,7 @@ async function handleFishSell(client, interaction) {
     fishKey,
     qty,
     price,
+    title: interaction.options.getString("標題"),
   });
 
   if (!result.ok) {
@@ -441,6 +460,7 @@ async function handleFishSell(client, interaction) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# 🐟 賣魚掛牌成功\n` +
+          (l.title ? `📌 ${l.title}\n` : "") +
           `**#${l.listing_id}** ・ ${fishDef.emoji} ${fishDef.name} ×${l.qty}\n` +
           `一口價：**${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +

@@ -66,7 +66,8 @@ function typeBadge(type) {
 function listingText(l) {
   const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
   const badge = typeBadge(l.listing_type);
-  const header = `**${badge} #${l.listing_id} ・ ${typeLabel(l.listing_type)}**`;
+  const titleLine = l.title ? `📌 ${l.title}\n` : "";
+  const header = `${titleLine}**${badge} #${l.listing_id} ・ ${typeLabel(l.listing_type)}**`;
 
   if (l.listing_type === "sell") {
     return (

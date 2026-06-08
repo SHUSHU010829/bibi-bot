@@ -204,24 +204,30 @@ function buildConfirmContainer({ userId, itemType, itemKey, preview, qtyArg }) {
     .setAccentColor(0xf1c40f)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# 🤔 確認賣出？\n` +
+        `# 🤔 確認賣給系統？\n` +
         `${emoji} **${def.name}** ×${qty} ＠${price.toLocaleString()}${trend}\n` +
-        `→ 預估收益 **${total.toLocaleString()} ${COIN_EMOJI}**`
+        `→ 預估收益 **${total.toLocaleString()} ${COIN_EMOJI}**（系統收購）`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `${intentLine}\n` +
-        `-# 點下方按鈕確認，否則本次不會扣物品也不會給錢`
+        `-# 💡 想賣給玩家更高價？用 \`/市集 賣礦\` 或 \`/市集 賣魚\` 上架\n` +
+        `-# 點下方紅色按鈕確認，否則本次不會扣物品也不會給錢`
       )
     )
     .addActionRowComponents(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`${SELL_CONFIRM_PREFIX}${userId}_${itemType}_${qtyToken}_${itemKey}`)
-          .setLabel(`確認賣出 ×${qty}（+${total.toLocaleString()}）`)
-          .setStyle(ButtonStyle.Success),
+          .setLabel(`確認賣給系統 ×${qty}（+${total.toLocaleString()}）`)
+          .setStyle(ButtonStyle.Danger),
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`${SELL_CANCEL_PREFIX}${userId}`)
           .setLabel("取消")
