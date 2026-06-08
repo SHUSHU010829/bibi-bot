@@ -23,7 +23,7 @@ const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
 
-const { TAB_PREFIX, CRAFT_PREFIX, CONFIRM_PREFIX, CANCEL_PREFIX, REPAIR_TOOL_PREFIX, TABS } = workshopView;
+const { TAB_PREFIX, CRAFT_SUB_PREFIX, CRAFT_PREFIX, CONFIRM_PREFIX, CANCEL_PREFIX, REPAIR_TOOL_PREFIX, TABS, CRAFT_SUB_IDS } = workshopView;
 
 function isFishMaterial(mat) {
   return !!(fishing?.fish && fishing.fish[mat]);
@@ -201,7 +201,16 @@ async function postCraftSideEffects(client, interaction) {
   ).catch(() => {});
 }
 
-async function refreshWorkshop(client, interaction, tab) {
+function craftSubForRecipe(recipeId) {
+  const recipe = (craft?.recipes || []).find((r) => r.id === recipeId);
+  const type = recipe?.result?.type || "pickaxe";
+  if (type === "pickaxe" || type === "repair_tool") return "tools";
+  if (type === "weapon") return "battle";
+  if (type === "rod" || type === "fishing_net") return "fish";
+  return "misc";
+}
+
+async function refreshWorkshop(client, interaction, tab, craftSub) {
   const view = await workshopView.buildView(client, {
     userId: interaction.user.id,
     guildId: interaction.guildId,
@@ -210,6 +219,7 @@ async function refreshWorkshop(client, interaction, tab) {
       interaction.user.displayName ||
       interaction.user.username,
     tab,
+    craftSub,
   });
   await interaction.editReply(view);
 }
@@ -233,6 +243,25 @@ module.exports = async (client, interaction) => {
       await refreshWorkshop(client, interaction, tab);
     } catch (err) {
       console.log(`[ERROR] wsTab handler:\n${err}\n${err.stack}`.red);
+    }
+    return;
+  }
+
+  // 合成子分類切換
+  if (customId.startsWith(CRAFT_SUB_PREFIX)) {
+    const { ownerId, payload: sub } = parseOwnerAndPayload(customId, CRAFT_SUB_PREFIX);
+    if (interaction.user.id !== ownerId) {
+      return interaction.reply({
+        content: "❌ 這不是你的工坊！",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    if (!CRAFT_SUB_IDS.includes(sub)) return;
+    await interaction.deferUpdate();
+    try {
+      await refreshWorkshop(client, interaction, "craft", sub);
+    } catch (err) {
+      console.log(`[ERROR] wsCraftSub handler:\n${err}\n${err.stack}`.red);
     }
     return;
   }
@@ -313,7 +342,7 @@ module.exports = async (client, interaction) => {
         components: [buildSuccessContainer(result, interaction.user.id)],
         flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
-      await refreshWorkshop(client, interaction, "craft").catch(() => {});
+      await refreshWorkshop(client, interaction, "craft", craftSubForRecipe(recipeId)).catch(() => {});
       postCraftSideEffects(client, interaction);
     } catch (err) {
       console.log(`[ERROR] wsCraft handler:\n${err}\n${err.stack}`.red);
