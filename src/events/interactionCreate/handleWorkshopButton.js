@@ -123,7 +123,7 @@ function buildSuccessContainer(result, userId) {
     tail = `**效果**　+${result.blocksAdded} 次被動抵擋\n**目前保護**　${result.blocksAfter} / ${result.maxStack} 次`
       + (dropped ? `\n-# 達上限，多餘次數已丟棄` : `\n-# 下次 /農場 來犯時自動抵擋`);
   } else if (isTreasureMap) {
-    tail = `**目前藏寶圖**　${result.mapsAfter} 張\n-# 用 \`/使用藏寶圖\` 撕開觸發隨機事件`;
+    tail = `**目前藏寶圖**　${result.mapsAfter} 張\n-# 到 \`/背包\` 「探險道具」區按「使用 1 張」撕開觸發隨機事件`;
   } else {
     tail = `**耐久**　${result.durability == null ? "永久" : `${result.durability} 次`}\n**累積合成**　${result.craftCountTotal} 件`;
   }

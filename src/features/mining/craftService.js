@@ -106,7 +106,7 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
     return craftAdvancedTrap(client, { userId, guildId, recipe });
   }
 
-  // 藏寶圖：累加 treasure_maps（無上限，用 /使用藏寶圖 觸發）
+  // 藏寶圖：累加 treasure_maps（無上限，到 /背包 探險道具區按使用觸發）
   if (type === "treasure_map") {
     return craftTreasureMap(client, { userId, guildId, recipe });
   }

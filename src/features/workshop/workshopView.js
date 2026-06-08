@@ -206,7 +206,7 @@ function craftableSection(container, recipes, profile, type, userId) {
       const acfg = craft?.advancedTrap || {};
       propLine = `效果：+${acfg.blocksPerCraft || 4} 次被動抵擋（上限 ${acfg.maxStack || 12}）`;
     } else if (type === "treasure_map") {
-      propLine = `效果：合成 1 張藏寶圖，用 /使用藏寶圖 觸發隨機事件`;
+      propLine = `效果：合成 1 張藏寶圖，到 /背包 「探險道具」按「使用 1 張」撕開觸發隨機事件`;
     } else if (type === "weapon") {
       const wdef = (dungeon?.weapons || {})[resultId] || {};
       const totalAtk = (dungeon?.baseAtk ?? 20) + (wdef.atk || 0);
@@ -341,7 +341,7 @@ function buildCraftTab(container, { userId, displayName, profile }) {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `### 🗺️ 藏寶圖（持有碎片 **${fragCount}** ・ 完整圖 **${mapCount}**）\n-# 合成完用 /使用藏寶圖 撕開，可能找到金幣、體力藥水、寶箱怪、或一張惡作劇紙條`,
+          `### 🗺️ 藏寶圖（持有碎片 **${fragCount}** ・ 完整圖 **${mapCount}**）\n-# 合成完到 /背包「探險道具」按「使用 1 張」撕開，可能找到金幣、體力藥水、寶箱怪、或一張惡作劇紙條`,
         ),
       );
     craftableSection(container, treasureMaps, profile, "treasure_map", userId);
