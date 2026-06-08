@@ -275,13 +275,22 @@ async function useFood(client, { userId, guildId, instanceId, confirmOverwrite =
 
   let newBuff;
   if (preview.uses != null) {
-    newBuff = { type: preview.type, value: preview.value, expires_at: null, uses_left: preview.uses };
+    newBuff = {
+      type: preview.type,
+      value: preview.value,
+      expires_at: null,
+      uses_left: preview.uses,
+      recipeId: instance.recipeId,
+      useCoal: !!instance.useCoal,
+    };
   } else {
     newBuff = {
       type: preview.type,
       value: preview.value,
       expires_at: now + (preview.durationMs || 3600000),
       uses_left: null,
+      recipeId: instance.recipeId,
+      useCoal: !!instance.useCoal,
     };
   }
 
