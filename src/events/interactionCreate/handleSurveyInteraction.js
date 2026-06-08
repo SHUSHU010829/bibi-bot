@@ -8,6 +8,8 @@ const {
   buildOpenModal,
   buildCompletedContainer,
   buildMissingContainer,
+  buildClosedContainer,
+  buildThankYouDm,
 } = require("../../features/survey/surveyView");
 
 function parseCustomId(customId) {
@@ -134,6 +136,13 @@ module.exports = async (client, interaction) => {
           });
           return;
         }
+        if (result.reason === "closed") {
+          await interaction.editReply({
+            components: [buildClosedContainer(result.window)],
+            flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+          });
+          return;
+        }
         await interaction.editReply({
           content: "🔧 送出失敗，請稍後再試或聯絡舒舒。",
           components: [],
@@ -145,9 +154,27 @@ module.exports = async (client, interaction) => {
       console.log(
         `[Survey] ${interaction.user.username} 完成問卷 +${result.reward} 幣`.cyan,
       );
+
+      // DM 感謝（玩家關閉 DM 就靜默略過，獎勵照發）
+      let dmDelivered = true;
+      try {
+        await interaction.user.send({
+          components: [buildThankYouDm(result.reward, result.newBalance)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      } catch (dmErr) {
+        dmDelivered = false;
+        console.log(
+          `[Survey] DM 失敗 ${interaction.user.username}: ${dmErr.message}`.yellow,
+        );
+      }
+
       await interaction.editReply({
         components: [
-          buildCompletedContainer(result.doc, { newBalance: result.newBalance }),
+          buildCompletedContainer(result.doc, {
+            newBalance: result.newBalance,
+            dmDelivered,
+          }),
         ],
         flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });

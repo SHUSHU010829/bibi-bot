@@ -167,13 +167,59 @@ function buildCompletedContainer(doc, opts = {}) {
       );
   }
 
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `-# 你的回答會幫助舒舒決定下一步開發方向。`,
-    ),
-  );
+  const footer =
+    opts.dmDelivered === false
+      ? `-# 你的 DM 似乎關閉了，獎勵照發但收不到感謝訊息～`
+      : `-# 你的回答會幫助舒舒決定下一步開發方向。`;
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(footer));
 
   return container;
+}
+
+function buildClosedContainer(window) {
+  const lines = [];
+  if (window.reason === "not_started") {
+    lines.push(`## 🔒 問卷尚未開放`);
+    if (window.startAt) {
+      const epoch = Math.floor(window.startAt.getTime() / 1000);
+      lines.push(`開放時間：<t:${epoch}:F>（<t:${epoch}:R>）`);
+    }
+  } else {
+    lines.push(`## 🔒 問卷已截止`);
+    if (window.endAt) {
+      const epoch = Math.floor(window.endAt.getTime() / 1000);
+      lines.push(`截止時間：<t:${epoch}:F>（<t:${epoch}:R>）`);
+    }
+  }
+  return new ContainerBuilder()
+    .setAccentColor(0x9e9e9e)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        window.reason === "not_started"
+          ? `-# 開放後再來填，獎勵 ${survey.reward.toLocaleString()} 幣等你。`
+          : `-# 問卷已結束，感謝大家的回饋。`,
+      ),
+    );
+}
+
+function buildThankYouDm(reward, newBalance) {
+  const lines = [
+    `## ✅ 問卷已收到`,
+    survey.thankYouDm || "感謝你填寫逼逼機器人玩家問卷！",
+    `\n**+${reward.toLocaleString()}** ${COIN_EMOJI} 已入帳`,
+  ];
+  if (newBalance != null) {
+    lines.push(`目前餘額：**${newBalance.toLocaleString()}** ${COIN_EMOJI}`);
+  }
+  return new ContainerBuilder()
+    .setAccentColor(0x4caf50)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 想看自己的答案可以再執行一次 \`/問卷調查\`。`,
+      ),
+    );
 }
 
 function buildMissingContainer(missing) {
@@ -204,4 +250,6 @@ module.exports = {
   buildOpenModal,
   buildCompletedContainer,
   buildMissingContainer,
+  buildClosedContainer,
+  buildThankYouDm,
 };

@@ -10,6 +10,7 @@ const surveyService = require("../../features/survey/surveyService");
 const {
   buildSurveyContainer,
   buildCompletedContainer,
+  buildClosedContainer,
 } = require("../../features/survey/surveyView");
 
 module.exports = {
@@ -37,6 +38,14 @@ module.exports = {
       if (existing?.completedAt) {
         return interaction.editReply({
           components: [buildCompletedContainer(existing)],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
+      }
+
+      const window = surveyService.getWindowStatus();
+      if (!window.open) {
+        return interaction.editReply({
+          components: [buildClosedContainer(window)],
           flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
         });
       }

@@ -2,6 +2,18 @@ require("colors");
 const { survey } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 
+function getWindowStatus(now = new Date()) {
+  const startAt = survey.startAt ? new Date(survey.startAt) : null;
+  const endAt = survey.endAt ? new Date(survey.endAt) : null;
+  if (startAt && now < startAt) {
+    return { open: false, reason: "not_started", startAt, endAt };
+  }
+  if (endAt && now > endAt) {
+    return { open: false, reason: "ended", startAt, endAt };
+  }
+  return { open: true, startAt, endAt };
+}
+
 async function getResponse(client, userId, guildId) {
   if (!client.surveyResponsesCollection) return null;
   return client.surveyResponsesCollection.findOne({ userId, guildId });
@@ -75,6 +87,9 @@ function validateRequired(doc) {
 }
 
 async function submit(client, userId, guildId, member, username) {
+  const window = getWindowStatus();
+  if (!window.open) return { ok: false, reason: "closed", window };
+
   const doc = await getResponse(client, userId, guildId);
   if (!doc) return { ok: false, reason: "no_doc" };
   if (doc.completedAt) return { ok: false, reason: "already_completed", doc };
@@ -124,6 +139,7 @@ async function submit(client, userId, guildId, member, username) {
 }
 
 module.exports = {
+  getWindowStatus,
   getResponse,
   ensureDoc,
   saveSelectAnswer,
