@@ -2,6 +2,7 @@
 //
 // customId 規約：
 //   wsTab_<userId>_<tab>            — 切換分頁（tab: equipment / craft / repair）
+//   wsCraftSub_<userId>_<sub>       — 在合成分頁切子分類（tools / battle / fish / misc）
 //   wsCraft_<userId>_<recipeId>     — 在合成分頁點某配方的「合成」按鈕
 //   wsConfirm_<userId>_<recipeId>   — confirm_needed 時的「確認替換」
 //   wsCancel_<userId>               — confirm_needed 時的「取消」
@@ -34,12 +35,21 @@ const {
 } = require("../shop/backpackView");
 
 const TAB_PREFIX = "wsTab_";
+const CRAFT_SUB_PREFIX = "wsCraftSub_";
 const CRAFT_PREFIX = "wsCraft_";
 const CONFIRM_PREFIX = "wsConfirm_";
 const CANCEL_PREFIX = "wsCancel_";
 const REPAIR_TOOL_PREFIX = "wsRepairTool_";
 
 const TABS = ["equipment", "craft", "repair"];
+
+const CRAFT_SUBS = [
+  { id: "tools", label: "鎬子・維修", emoji: "⛏️", types: ["pickaxe", "repair_tool"] },
+  { id: "battle", label: "武器", emoji: "⚔️", types: ["weapon"] },
+  { id: "fish", label: "釣魚", emoji: "🎣", types: ["rod", "fishing_net"] },
+  { id: "misc", label: "其他", emoji: "🪨", types: ["stone_appraisal_trigger", "advanced_trap", "treasure_map"] },
+];
+const CRAFT_SUB_IDS = CRAFT_SUBS.map((s) => s.id);
 
 function pickaxeLabel(key) {
   const def = mining?.pickaxes?.[key] || {};
@@ -72,6 +82,21 @@ function materialLabel(mat) {
   }
   const def = mining?.ores?.[mat] || mining?.specialOres?.[mat] || {};
   return `${def.emoji || "⛏️"} ${def.name || mat}`;
+}
+
+function craftSubRow(userId, currentSub) {
+  const row = new ActionRowBuilder();
+  for (const sub of CRAFT_SUBS) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${CRAFT_SUB_PREFIX}${userId}_${sub.id}`)
+        .setLabel(sub.label)
+        .setEmoji(sub.emoji)
+        .setStyle(currentSub === sub.id ? ButtonStyle.Primary : ButtonStyle.Secondary)
+        .setDisabled(currentSub === sub.id),
+    );
+  }
+  return row;
 }
 
 function tabRow(userId, current) {
@@ -249,12 +274,15 @@ function craftableSection(container, recipes, profile, type, userId) {
   }
 }
 
-function buildCraftTab(container, { userId, displayName, profile }) {
+function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
+  if (!CRAFT_SUB_IDS.includes(craftSub)) craftSub = "tools";
+
   container
     .setAccentColor(0x9b59b6)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`# 🛠️ ${displayName} 的工坊\n### 🔨 合成`),
     )
+    .addActionRowComponents(craftSubRow(userId, craftSub))
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `-# 點配方右側「合成」即可打造；舊裝備若仍有耐久會跳出二次確認`,
@@ -271,81 +299,87 @@ function buildCraftTab(container, { userId, displayName, profile }) {
   const farmTools = recipes.filter((r) => r.result?.type === "advanced_trap");
   const treasureMaps = recipes.filter((r) => r.result?.type === "treasure_map");
 
-  if (pickaxes.length) {
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent("### ⛏️ 鎬子（採集）"));
-    craftableSection(container, pickaxes, profile, "pickaxe", userId);
+  if (craftSub === "tools") {
+    if (pickaxes.length) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent("### ⛏️ 鎬子（採集）"));
+      craftableSection(container, pickaxes, profile, "pickaxe", userId);
+    }
+    if (repairTools.length) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "### 🛠️ 維修工具（消耗品）\n-# 合成完到「修復」分頁使用，可堆疊持有",
+          ),
+        );
+      craftableSection(container, repairTools, profile, "repair_tool", userId);
+    }
+  } else if (craftSub === "battle") {
+    if (weapons.length) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent("### ⚔️ 武器（戰鬥）"));
+      craftableSection(container, weapons, profile, "weapon", userId);
+    }
+  } else if (craftSub === "fish") {
+    if (rods.length) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent("### 🎣 釣竿（釣魚）"));
+      craftableSection(container, rods, profile, "rod", userId);
+    }
+    if (consumables.length) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "### 🕸️ 釣魚消耗品\n-# 合成後 buff 自動生效，於 /釣魚 自動套用",
+          ),
+        );
+      craftableSection(container, consumables, profile, "fishing_net", userId);
+    }
+  } else if (craftSub === "misc") {
+    if (appraisalTriggers.length) {
+      const shardCount = (profile.backpack || {}).stone_shard || 0;
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `### 🪨 賭石碎石回收（持有碎石 **${shardCount}**）\n-# 合成完立刻觸發賭石，10 分鐘內按「立刻賭石」開出，過期就失效`,
+          ),
+        );
+      craftableSection(container, appraisalTriggers, profile, "stone_appraisal_trigger", userId);
+    }
+    if (farmTools.length) {
+      const trapCfg = craft?.advancedTrap || {};
+      const fragCount = profile.broken_trap_fragments || 0;
+      const usesNow = profile.advanced_trap_uses || 0;
+      const cap = trapCfg.maxStack ?? 12;
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `### 🪤 農場防護（持有碎片 **${fragCount}**，目前保護 ${usesNow} / ${cap} 次）\n-# 合成即自動生效，被動抵擋下一次農場 raid；達上限多餘的次數會被丟掉`,
+          ),
+        );
+      craftableSection(container, farmTools, profile, "advanced_trap", userId);
+    }
+    if (treasureMaps.length) {
+      const fragCount = profile.treasure_map_fragments || 0;
+      const mapCount = profile.treasure_maps || 0;
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `### 🗺️ 藏寶圖（持有碎片 **${fragCount}** ・ 完整圖 **${mapCount}**）\n-# 合成完到 /背包「探險道具」按「使用 1 張」撕開，可能找到金幣、體力藥水、寶箱怪、或一張惡作劇紙條`,
+          ),
+        );
+      craftableSection(container, treasureMaps, profile, "treasure_map", userId);
+    }
   }
-  if (weapons.length) {
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent("### ⚔️ 武器（戰鬥）"));
-    craftableSection(container, weapons, profile, "weapon", userId);
-  }
-  if (rods.length) {
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent("### 🎣 釣竿（釣魚）"));
-    craftableSection(container, rods, profile, "rod", userId);
-  }
-  if (repairTools.length) {
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          "### 🛠️ 維修工具（消耗品）\n-# 合成完到「修復」分頁使用，可堆疊持有",
-        ),
-      );
-    craftableSection(container, repairTools, profile, "repair_tool", userId);
-  }
-  if (consumables.length) {
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          "### 🕸️ 釣魚消耗品\n-# 合成後 buff 自動生效，於 /釣魚 自動套用",
-        ),
-      );
-    craftableSection(container, consumables, profile, "fishing_net", userId);
-  }
-  if (appraisalTriggers.length) {
-    const shardCount = (profile.backpack || {}).stone_shard || 0;
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `### 🪨 賭石碎石回收（持有碎石 **${shardCount}**）\n-# 合成完立刻觸發賭石，10 分鐘內按「立刻賭石」開出，過期就失效`,
-        ),
-      );
-    craftableSection(container, appraisalTriggers, profile, "stone_appraisal_trigger", userId);
-  }
-  if (farmTools.length) {
-    const trapCfg = craft?.advancedTrap || {};
-    const fragCount = profile.broken_trap_fragments || 0;
-    const usesNow = profile.advanced_trap_uses || 0;
-    const cap = trapCfg.maxStack ?? 12;
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `### 🪤 農場防護（持有碎片 **${fragCount}**，目前保護 ${usesNow} / ${cap} 次）\n-# 合成即自動生效，被動抵擋下一次農場 raid；達上限多餘的次數會被丟掉`,
-        ),
-      );
-    craftableSection(container, farmTools, profile, "advanced_trap", userId);
-  }
-  if (treasureMaps.length) {
-    const fragCount = profile.treasure_map_fragments || 0;
-    const mapCount = profile.treasure_maps || 0;
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `### 🗺️ 藏寶圖（持有碎片 **${fragCount}** ・ 完整圖 **${mapCount}**）\n-# 合成完到 /背包「探險道具」按「使用 1 張」撕開，可能找到金幣、體力藥水、寶箱怪、或一張惡作劇紙條`,
-        ),
-      );
-    craftableSection(container, treasureMaps, profile, "treasure_map", userId);
-  }
+
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       "-# 礦石來自 /挖礦，魚來自 /釣魚，✨ 傳說素材碎片來自 /地下城 / BOSS",
@@ -520,7 +554,7 @@ function buildRepairTab(container, { userId, displayName, profile }) {
 }
 
 // ─── 主入口 ──────────────────────────────────────────────────────────────────
-async function buildView(client, { userId, guildId, displayName, tab = "equipment" }) {
+async function buildView(client, { userId, guildId, displayName, tab = "equipment", craftSub = "tools" }) {
   if (!TABS.includes(tab)) tab = "equipment";
   const profile = await getOrCreate(client, userId, guildId);
 
@@ -529,7 +563,7 @@ async function buildView(client, { userId, guildId, displayName, tab = "equipmen
   container.addSeparatorComponents(new SeparatorBuilder());
 
   if (tab === "equipment") buildEquipmentTab(container, { userId, displayName, profile });
-  else if (tab === "craft") buildCraftTab(container, { userId, displayName, profile });
+  else if (tab === "craft") buildCraftTab(container, { userId, displayName, profile, craftSub });
   else if (tab === "repair") buildRepairTab(container, { userId, displayName, profile });
 
   return {
@@ -541,9 +575,11 @@ async function buildView(client, { userId, guildId, displayName, tab = "equipmen
 module.exports = {
   buildView,
   TAB_PREFIX,
+  CRAFT_SUB_PREFIX,
   CRAFT_PREFIX,
   CONFIRM_PREFIX,
   CANCEL_PREFIX,
   REPAIR_TOOL_PREFIX,
   TABS,
+  CRAFT_SUB_IDS,
 };
