@@ -39,7 +39,8 @@ function parseOverflowId(customId) {
 }
 
 function oreLabel(oreKey) {
-  const def = mining?.ores?.[oreKey] || {};
+  const def =
+    mining?.ores?.[oreKey] || mining?.specialOres?.[oreKey] || {};
   return `${def.emoji || "⛏️"} ${def.name || oreKey}`;
 }
 
@@ -205,19 +206,25 @@ async function runAppraisal(client, interaction, { ts, allowOverflow }) {
       : allBust
         ? 0x95a5a6
         : 0xf1c40f;
+    const qualityTag = result.synthetic
+      ? result.quality === "high"
+        ? "（優質賭石・碎石合成觸發）"
+        : "（劣質賭石・碎石合成觸發）"
+      : "";
     const title = result.gainedDiamond
-      ? "💎 賭石開出鑽石！"
+      ? `💎 賭石開出鑽石！${qualityTag}`
       : allBust
-        ? "💥 賭石結果"
-        : "🔍 賭石結果";
+        ? `💥 賭石結果${qualityTag}`
+        : `🔍 賭石結果${qualityTag}`;
+
+    const investedLine = result.synthetic
+      ? `合成觸發、無實體石頭，鑑定費 **${result.fee.toLocaleString()}** ${COIN_EMOJI}`
+      : `投入 **🪨 石頭 ×${result.count}**，鑑定費 **${result.fee.toLocaleString()}** ${COIN_EMOJI}`;
 
     const container = new ContainerBuilder()
       .setAccentColor(accent)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `# ${title}\n` +
-            `投入 **🪨 石頭 ×${result.count}**，鑑定費 **${result.fee.toLocaleString()}** ${COIN_EMOJI}`,
-        ),
+        new TextDisplayBuilder().setContent(`# ${title}\n${investedLine}`),
       )
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(

@@ -25,7 +25,7 @@ function materialLabel(mat, qty) {
     const f = fishing.fish[mat];
     return `${f.emoji || "🐟"} ${f.name || mat} ×${qty}`;
   }
-  const def = mining?.ores?.[mat] || {};
+  const def = mining?.ores?.[mat] || mining?.specialOres?.[mat] || {};
   return `${def.emoji || "⛏️"} ${def.name || mat} ×${qty}`;
 }
 
