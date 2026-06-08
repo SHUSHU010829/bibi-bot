@@ -140,8 +140,19 @@
         "emoji": "💎",
         "materials": { "stone_shard": 10 },
         "result": { "type": "stone_appraisal_trigger", "quality": "high" }
+      },
+      {
+        "id": "advanced_trap",
+        "name": "高級陷阱",
+        "emoji": "🪤",
+        "materials": { "broken_trap_fragment": 5 },
+        "result": { "type": "advanced_trap" }
       }
     ],
+    "advancedTrap": {
+      "blocksPerCraft": 4,
+      "maxStack": 12
+    },
     "fishingNet": {
       "dropChancePerFish": 0.02,
       "successBonus": 0.10,

@@ -202,6 +202,9 @@ function craftableSection(container, recipes, profile, type, userId) {
       propLine = q === "high"
         ? "效果：觸發優質賭石（diamond 5%、gold 11%，期望 EV ≈ 82 幣 / 顆）"
         : "效果：觸發劣質賭石（與普通賭石同表，期望 EV ≈ 50 幣 / 顆）";
+    } else if (type === "advanced_trap") {
+      const acfg = craft?.advancedTrap || {};
+      propLine = `效果：+${acfg.blocksPerCraft || 4} 次被動抵擋（上限 ${acfg.maxStack || 12}）`;
     } else if (type === "weapon") {
       const wdef = (dungeon?.weapons || {})[resultId] || {};
       const totalAtk = (dungeon?.baseAtk ?? 20) + (wdef.atk || 0);
@@ -263,6 +266,7 @@ function buildCraftTab(container, { userId, displayName, profile }) {
   const repairTools = recipes.filter((r) => r.result?.type === "repair_tool");
   const consumables = recipes.filter((r) => r.result?.type === "fishing_net");
   const appraisalTriggers = recipes.filter((r) => r.result?.type === "stone_appraisal_trigger");
+  const farmTools = recipes.filter((r) => r.result?.type === "advanced_trap");
 
   if (pickaxes.length) {
     container
@@ -312,6 +316,20 @@ function buildCraftTab(container, { userId, displayName, profile }) {
         ),
       );
     craftableSection(container, appraisalTriggers, profile, "stone_appraisal_trigger", userId);
+  }
+  if (farmTools.length) {
+    const trapCfg = craft?.advancedTrap || {};
+    const fragCount = profile.broken_trap_fragments || 0;
+    const usesNow = profile.advanced_trap_uses || 0;
+    const cap = trapCfg.maxStack ?? 12;
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🪤 農場防護（持有碎片 **${fragCount}**，目前保護 ${usesNow} / ${cap} 次）\n-# 合成即自動生效，被動抵擋下一次農場 raid；達上限多餘的次數會被丟掉`,
+        ),
+      );
+    craftableSection(container, farmTools, profile, "advanced_trap", userId);
   }
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(

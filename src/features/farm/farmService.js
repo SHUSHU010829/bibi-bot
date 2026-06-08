@@ -677,12 +677,18 @@ async function defendRaid(client, { userId, guildId, username, member, plotIndex
 
   let coinsGained = 0;
   let slimeGained = 0;
+  let droppedTrapFragment = false;
   if (won) {
     const [cLo, cHi] = farming.raid?.winRewards?.coins || [0, 0];
     coinsGained = randInt(cLo, cHi);
     const [sLo, sHi] = farming.raid?.winRewards?.slime || [0, 0];
     slimeGained = randInt(sLo, sHi);
     if (slimeGained > 0) inc["backpack.monster_slime"] = slimeGained;
+    const fragChance = farming.raid?.winRewards?.brokenTrapFragmentChance || 0;
+    if (fragChance > 0 && Math.random() < fragChance) {
+      droppedTrapFragment = true;
+      inc.broken_trap_fragments = 1;
+    }
   }
 
   await client.miningProfilesCollection.updateOne(
@@ -718,6 +724,7 @@ async function defendRaid(client, { userId, guildId, username, member, plotIndex
     monster: plot.raid,
     coinsGained,
     slimeGained,
+    droppedTrapFragment,
     weaponBroke,
     weaponDurabilityAfter,
     stamina: newStamina,

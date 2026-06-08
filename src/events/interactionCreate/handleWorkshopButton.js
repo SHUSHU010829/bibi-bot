@@ -101,7 +101,8 @@ function buildSuccessContainer(result, userId) {
   const isRepairTool = result.type === "repair_tool";
   const isFishingNet = result.type === "fishing_net";
   const isAppraisalTrigger = result.type === "stone_appraisal_trigger";
-  const accent = isRepairTool || isFishingNet || isAppraisalTrigger
+  const isAdvancedTrap = result.type === "advanced_trap";
+  const accent = isRepairTool || isFishingNet || isAppraisalTrigger || isAdvancedTrap
     ? 0x3498db
     : result.type === "weapon"
       ? 0xe67e22
@@ -116,6 +117,10 @@ function buildSuccessContainer(result, userId) {
   } else if (isAppraisalTrigger) {
     const qualityTxt = result.quality === "high" ? "優質（diamond 機率 ×2.5）" : "劣質（與普通賭石同表）";
     tail = `**已觸發**　${qualityTxt}\n-# 10 分鐘內按「立刻賭石」開出，過期就失效（不退碎石）`;
+  } else if (isAdvancedTrap) {
+    const dropped = (result.blocksAdded < (craft?.advancedTrap?.blocksPerCraft ?? 4));
+    tail = `**效果**　+${result.blocksAdded} 次被動抵擋\n**目前保護**　${result.blocksAfter} / ${result.maxStack} 次`
+      + (dropped ? `\n-# 達上限，多餘次數已丟棄` : `\n-# 下次 /農場 來犯時自動抵擋`);
   } else {
     tail = `**耐久**　${result.durability == null ? "永久" : `${result.durability} 次`}\n**累積合成**　${result.craftCountTotal} 件`;
   }
@@ -241,6 +246,13 @@ module.exports = async (client, interaction) => {
         await interaction.followUp({
           components: [buildInsufficientContainer(result)],
           flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!result.ok && result.reason === "trap_full") {
+        await interaction.followUp({
+          content: `🪤 高級陷阱保護已達上限（${result.current} / ${result.maxStack}）。等被攻擊消耗幾次再合成。`,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }

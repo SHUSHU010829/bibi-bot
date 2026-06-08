@@ -29,9 +29,17 @@ module.exports = {
       const plotCount = farmService.getPlotCount(profile);
       let plots = await farmService.getPlots(client, userId, guildId, plotCount);
 
-      // 隨機觸發 raid（種下後超過 minElapsedMs 即可能，無論成熟與否）
+      // 隨機觸發 raid（種下後超過 minElapsedMs 即可能，無論成熟與否）；
+      // 高級陷阱優先抵擋，剩餘次數歸 0 後才會 markRaid。
+      let trapBlocksRemaining = profile.advanced_trap_uses || 0;
+      let trapBlocksUsedThisOpen = 0;
       for (const p of plots) {
         if (farmService.shouldTriggerRaid(p) && !p.raid?.active) {
+          if (trapBlocksRemaining > 0) {
+            trapBlocksRemaining -= 1;
+            trapBlocksUsedThisOpen += 1;
+            continue;
+          }
           const raid = await farmService.markRaid(client, {
             userId, guildId, plotIndex: p.plotIndex, fromStatus: p.status,
           });
@@ -40,6 +48,12 @@ module.exports = {
             p.raid = raid;
           }
         }
+      }
+      if (trapBlocksUsedThisOpen > 0) {
+        await client.miningProfilesCollection.updateOne(
+          { userId, guildId },
+          { $inc: { advanced_trap_uses: -trapBlocksUsedThisOpen }, $set: { updatedAt: new Date() } },
+        );
       }
 
       const club = await getMemberClub(client, interaction.user.id, interaction.guildId);
@@ -52,6 +66,8 @@ module.exports = {
         plotCount,
         maxPlots: farming.maxPlots || 8,
         stamina,
+        trapBlocksRemaining,
+        trapBlocksUsedThisOpen,
       });
 
       await interaction.editReply({

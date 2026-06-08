@@ -19,6 +19,7 @@ const FRAGMENT_KEY = "legendary_fragment";
 const SPECIAL_MAT_FIELDS = {
   legendary_fragment: "legendary_fragments",
   broken_net_fragment: "broken_net_fragments",
+  broken_trap_fragment: "broken_trap_fragments",
 };
 
 function getRecipe(recipeId) {
@@ -97,6 +98,11 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
       userId, guildId, recipe,
       quality: recipe.result?.quality === "high" ? "high" : "low",
     });
+  }
+
+  // 高級陷阱：自動使用，累加 advanced_trap_uses（上限 12）
+  if (type === "advanced_trap") {
+    return craftAdvancedTrap(client, { userId, guildId, recipe });
   }
 
   const slot = resolveSlot(type);
@@ -314,11 +320,69 @@ async function craftStoneAppraisalTrigger(client, { userId, guildId, recipe, qua
   };
 }
 
+async function craftAdvancedTrap(client, { userId, guildId, recipe }) {
+  const profile = await getOrCreate(client, userId, guildId);
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const have = ownedMaterial(profile, mat);
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) {
+    return { ok: false, reason: "insufficient", missing, recipe };
+  }
+
+  const cfg = craft?.advancedTrap || {};
+  const blocksPerCraft = cfg.blocksPerCraft ?? 4;
+  const maxStack = cfg.maxStack ?? 12;
+
+  const current = profile.advanced_trap_uses || 0;
+  if (current >= maxStack) {
+    return { ok: false, reason: "trap_full", current, maxStack, recipe };
+  }
+  const room = maxStack - current;
+  const actualAdd = Math.min(blocksPerCraft, room);
+
+  const inc = {
+    craft_count_total: 1,
+    advanced_trap_uses: actualAdd,
+  };
+  for (const [mat, need] of Object.entries(recipe.materials)) {
+    if (SPECIAL_MAT_FIELDS[mat]) {
+      const field = SPECIAL_MAT_FIELDS[mat];
+      inc[field] = (inc[field] || 0) - need;
+    } else if (isFishMaterial(mat)) {
+      inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+    } else {
+      inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+    }
+  }
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: inc, $set: { updatedAt: new Date() } },
+  );
+
+  return {
+    ok: true,
+    recipe,
+    type: "advanced_trap",
+    resultId: "advanced_trap",
+    resultName: recipe.name,
+    resultEmoji: recipe.emoji || "🪤",
+    durability: null,
+    blocksAdded: actualAdd,
+    blocksAfter: current + actualAdd,
+    maxStack,
+    craftCountTotal: (profile.craft_count_total || 0) + 1,
+  };
+}
+
 module.exports = {
   craftItem,
   craftRepairTool,
   craftFishingNet,
   craftStoneAppraisalTrigger,
+  craftAdvancedTrap,
   getRecipe,
   PICKAXE_TIER,
   WEAPON_TIER,

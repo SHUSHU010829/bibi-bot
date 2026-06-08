@@ -100,7 +100,7 @@ function plotButtonRow(plot, userId, { stamina } = {}) {
 }
 
 // 主畫面：每塊地一個獨立區塊 + 緊接該地塊的 ActionRow（符合 UX 規則 #1）
-function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina }) {
+function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapBlocksRemaining, trapBlocksUsedThisOpen }) {
   const now = Date.now();
   const resolvedPlots = plots.map((p) => resolveLiveStatus(p, now));
   const readyCount = resolvedPlots.filter((p) => p.status === "ready").length;
@@ -113,8 +113,19 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina }) {
       new TextDisplayBuilder().setContent(
         `# 🌾 你的農場（${plotCount} / ${maxPlots} 格${readyCount > 0 ? ` ・ 🌟 ${readyCount} 塊可收成` : ""}）`,
       ),
-    )
-    .addSeparatorComponents(new SeparatorBuilder());
+    );
+
+  if ((trapBlocksRemaining || 0) > 0 || (trapBlocksUsedThisOpen || 0) > 0) {
+    const lines = [];
+    if (trapBlocksUsedThisOpen > 0) {
+      lines.push(`🪤 **高級陷阱抵擋了 ${trapBlocksUsedThisOpen} 次本次來犯**`);
+    }
+    if (trapBlocksRemaining > 0) {
+      lines.push(`-# 高級陷阱剩餘 ${trapBlocksRemaining} 次保護`);
+    }
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+  }
+  container.addSeparatorComponents(new SeparatorBuilder());
 
   const emptyCount = resolvedPlots.filter((p) => !p.crop || p.status === "rotted").length;
   const growingCount = resolvedPlots.filter((p) => p.crop && p.status === "growing").length;

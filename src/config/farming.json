@@ -33,7 +33,7 @@
     "raid": {
       "minElapsedMs": 1800000,
       "rollChance": 0.08,
-      "winRewards": { "coins": [200, 600], "slime": [1, 2] },
+      "winRewards": { "coins": [200, 600], "slime": [1, 2], "brokenTrapFragmentChance": 0.20 },
       "loseBehavior": "destroy_crop",
       "monsters": [
         { "name": "田鼠強盜", "emoji": "🐀", "hp": 80 },
