@@ -192,9 +192,11 @@ module.exports = {
           if (foodBuffs.length > 0) {
             const recipes = fishing?.recipes || {};
             const foodLines = foodBuffs.map((b) => {
-              const recipe = Object.values(recipes).find(
-                (r) => r.buff?.type === b.type || r.coalBuff?.type === b.type
-              );
+              const recipe =
+                (b.recipeId && recipes[b.recipeId]) ||
+                Object.values(recipes).find(
+                  (r) => r.buff?.type === b.type || r.coalBuff?.type === b.type
+                );
               const name = recipe?.name || b.type;
               const emoji = recipe?.emoji || "🍽️";
               let desc = "";
