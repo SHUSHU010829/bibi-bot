@@ -225,6 +225,22 @@ async function runCheckin(client, interaction) {
         throw err;
       }
 
+      if (consumedFreeze) {
+        await client.dailyCheckinCollection
+          .insertOne({
+            userId,
+            guildId,
+            date: yesterday,
+            streak: prevStreak,
+            makeup: true,
+            reward: { xp: 0, bonus: false },
+            createdAt: new Date(),
+          })
+          .catch((err) => {
+            if (err?.code !== 11000) throw err;
+          });
+      }
+
       await client.userLevelsCollection.updateOne(
         { userId, guildId },
         {
@@ -311,7 +327,12 @@ async function runCheckin(client, interaction) {
       const recentCheckins = await client.dailyCheckinCollection
         .find({ userId, guildId, date: { $gte: calendarStart } })
         .toArray();
-      const checkinDates = new Set(recentCheckins.map((c) => c.date));
+      const checkinDates = new Set(
+        recentCheckins.filter((c) => !c.makeup).map((c) => c.date)
+      );
+      const makeupDates = new Set(
+        recentCheckins.filter((c) => c.makeup).map((c) => c.date)
+      );
 
       let attachment = null;
       let fileName = null;
@@ -328,6 +349,7 @@ async function runCheckin(client, interaction) {
           multiplier,
           afterLevel: grantResult?.after,
           checkinDates,
+          makeupDates,
           today,
           timezone: tz,
         });

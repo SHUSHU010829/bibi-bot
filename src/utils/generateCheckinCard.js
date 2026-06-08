@@ -5,7 +5,7 @@ const { renderCard, fetchAvatarDataUri } = require("./cardRenderer");
 
 const checkinCardCache = new LruCache(256);
 
-function buildCalendar(today, timezone, checkinDates) {
+function buildCalendar(today, timezone, checkinDates, makeupDates) {
   const cells = [];
   for (let i = 29; i >= 0; i--) {
     const d = DateTime.fromISO(today, { zone: timezone })
@@ -14,6 +14,7 @@ function buildCalendar(today, timezone, checkinDates) {
     cells.push({
       date: d,
       checked: checkinDates.has(d),
+      makeup: makeupDates?.has(d) || false,
       isToday: i === 0,
     });
   }
@@ -32,6 +33,7 @@ function buildMarkup(data) {
     today,
     timezone,
     checkinDates,
+    makeupDates,
   } = data;
 
   const ink = "#2A2420";
@@ -40,8 +42,9 @@ function buildMarkup(data) {
   const muted = "#A89270";
   const subtle = "#E8DFC8";
   const teal = "#3D6F6A";
+  const makeup = "#D4A24C";
 
-  const cells = buildCalendar(today, timezone, checkinDates);
+  const cells = buildCalendar(today, timezone, checkinDates, makeupDates);
 
   // 5 列 × 6 欄 = 30 格（橫向排版避免吃高度）
   const calendarRows = [];
@@ -57,6 +60,9 @@ function buildMarkup(data) {
     }
     if (cell.checked) {
       return `<div style="display:flex;width:${CELL}px;height:${CELL}px;background:${teal};box-sizing:border-box;"></div>`;
+    }
+    if (cell.makeup) {
+      return `<div style="display:flex;width:${CELL}px;height:${CELL}px;background:${makeup};border:2px dashed ${ink};box-sizing:border-box;"></div>`;
     }
     return `<div style="display:flex;width:${CELL}px;height:${CELL}px;background:${subtle};border:1px solid ${muted};box-sizing:border-box;"></div>`;
   };
@@ -117,6 +123,7 @@ function buildMarkup(data) {
           <div style="display:flex;margin-top:14px;margin-bottom:14px;gap:18px;font-family:'SpaceMono';font-size:11px;letter-spacing:2px;color:${muted};">
             <div style="display:flex;align-items:center;"><div style="display:flex;width:14px;height:14px;background:${accent};margin-right:6px;"></div>TODAY</div>
             <div style="display:flex;align-items:center;"><div style="display:flex;width:14px;height:14px;background:${teal};margin-right:6px;"></div>CHECKED</div>
+            <div style="display:flex;align-items:center;"><div style="display:flex;width:14px;height:14px;background:${makeup};border:2px dashed ${ink};margin-right:6px;box-sizing:border-box;"></div>MAKEUP</div>
             <div style="display:flex;align-items:center;"><div style="display:flex;width:14px;height:14px;background:${subtle};border:1px solid ${muted};margin-right:6px;"></div>MISSED</div>
           </div>
         </div>
@@ -146,6 +153,9 @@ function buildCacheKey(data) {
   const dates = data.checkinDates
     ? [...data.checkinDates].sort().join(",")
     : "";
+  const makeup = data.makeupDates
+    ? [...data.makeupDates].sort().join(",")
+    : "";
   return [
     data.userId || data.username || "",
     data.today || "",
@@ -155,6 +165,7 @@ function buildCacheKey(data) {
     data.multiplier ?? "",
     data.afterLevel ?? "",
     dates,
+    makeup,
   ].join("|");
 }
 
