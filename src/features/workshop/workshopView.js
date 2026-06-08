@@ -2,7 +2,7 @@
 //
 // customId 規約：
 //   wsTab_<userId>_<tab>            — 切換分頁（tab: equipment / craft / repair）
-//   wsCraftSub_<userId>_<sub>       — 在合成分頁切子分類（tools / battle / fish / misc）
+//   wsCraftSub_<userId>_<sub>       — 在合成分頁切子分類（pickaxe / repair / battle / fish / misc）
 //   wsCraft_<userId>_<recipeId>     — 在合成分頁點某配方的「合成」按鈕
 //   wsConfirm_<userId>_<recipeId>   — confirm_needed 時的「確認替換」
 //   wsCancel_<userId>               — confirm_needed 時的「取消」
@@ -44,7 +44,8 @@ const REPAIR_TOOL_PREFIX = "wsRepairTool_";
 const TABS = ["equipment", "craft", "repair"];
 
 const CRAFT_SUBS = [
-  { id: "tools", label: "鎬子・維修", emoji: "⛏️", types: ["pickaxe", "repair_tool"] },
+  { id: "pickaxe", label: "鎬子", emoji: "⛏️", types: ["pickaxe"] },
+  { id: "repair", label: "維修", emoji: "🛠️", types: ["repair_tool"] },
   { id: "battle", label: "武器", emoji: "⚔️", types: ["weapon"] },
   { id: "fish", label: "釣魚", emoji: "🎣", types: ["rod", "fishing_net"] },
   { id: "misc", label: "其他", emoji: "🪨", types: ["stone_appraisal_trigger", "advanced_trap", "treasure_map"] },
@@ -275,7 +276,7 @@ function craftableSection(container, recipes, profile, type, userId) {
 }
 
 function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
-  if (!CRAFT_SUB_IDS.includes(craftSub)) craftSub = "tools";
+  if (!CRAFT_SUB_IDS.includes(craftSub)) craftSub = "pickaxe";
 
   container
     .setAccentColor(0x9b59b6)
@@ -299,13 +300,14 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
   const farmTools = recipes.filter((r) => r.result?.type === "advanced_trap");
   const treasureMaps = recipes.filter((r) => r.result?.type === "treasure_map");
 
-  if (craftSub === "tools") {
+  if (craftSub === "pickaxe") {
     if (pickaxes.length) {
       container
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(new TextDisplayBuilder().setContent("### ⛏️ 鎬子（採集）"));
       craftableSection(container, pickaxes, profile, "pickaxe", userId);
     }
+  } else if (craftSub === "repair") {
     if (repairTools.length) {
       container
         .addSeparatorComponents(new SeparatorBuilder())
@@ -554,7 +556,7 @@ function buildRepairTab(container, { userId, displayName, profile }) {
 }
 
 // ─── 主入口 ──────────────────────────────────────────────────────────────────
-async function buildView(client, { userId, guildId, displayName, tab = "equipment", craftSub = "tools" }) {
+async function buildView(client, { userId, guildId, displayName, tab = "equipment", craftSub = "pickaxe" }) {
   if (!TABS.includes(tab)) tab = "equipment";
   const profile = await getOrCreate(client, userId, guildId);
 

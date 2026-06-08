@@ -204,7 +204,8 @@ async function postCraftSideEffects(client, interaction) {
 function craftSubForRecipe(recipeId) {
   const recipe = (craft?.recipes || []).find((r) => r.id === recipeId);
   const type = recipe?.result?.type || "pickaxe";
-  if (type === "pickaxe" || type === "repair_tool") return "tools";
+  if (type === "pickaxe") return "pickaxe";
+  if (type === "repair_tool") return "repair";
   if (type === "weapon") return "battle";
   if (type === "rod" || type === "fishing_net") return "fish";
   return "misc";
