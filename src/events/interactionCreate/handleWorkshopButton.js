@@ -201,6 +201,15 @@ async function postCraftSideEffects(client, interaction) {
   ).catch(() => {});
 }
 
+function craftSubForRecipe(recipeId) {
+  const recipe = (craft?.recipes || []).find((r) => r.id === recipeId);
+  const type = recipe?.result?.type || "pickaxe";
+  if (type === "pickaxe" || type === "repair_tool") return "tools";
+  if (type === "weapon") return "battle";
+  if (type === "rod" || type === "fishing_net") return "fish";
+  return "misc";
+}
+
 async function refreshWorkshop(client, interaction, tab, craftSub) {
   const view = await workshopView.buildView(client, {
     userId: interaction.user.id,
@@ -333,7 +342,7 @@ module.exports = async (client, interaction) => {
         components: [buildSuccessContainer(result, interaction.user.id)],
         flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
-      await refreshWorkshop(client, interaction, "craft").catch(() => {});
+      await refreshWorkshop(client, interaction, "craft", craftSubForRecipe(recipeId)).catch(() => {});
       postCraftSideEffects(client, interaction);
     } catch (err) {
       console.log(`[ERROR] wsCraft handler:\n${err}\n${err.stack}`.red);
