@@ -21,9 +21,10 @@ function listingLine(listing) {
   if (!offerDef || !wantDef) return null;
   const fee = computeFee(offerDef, listing.offer.qty, wantDef, listing.want.qty);
   const expiresEpoch = Math.floor(new Date(listing.expires_at).getTime() / 1000);
+  const titleLine = listing.title ? `📌 ${listing.title}\n` : "";
   return {
     text:
-      `**#${listing.listing_id}** ・ <@${listing.seller_id}>\n` +
+      `${titleLine}**#${listing.listing_id}** ・ <@${listing.seller_id}>\n` +
       `🎁 給出：${lineForItem(offerDef, listing.offer.qty)}\n` +
       `🎯 想要：${lineForItem(wantDef, listing.want.qty)}\n` +
       `-# 手續費（接受方付）：**${fee}** 🪙 ・ 截止：<t:${expiresEpoch}:R>`,

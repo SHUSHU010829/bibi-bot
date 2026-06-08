@@ -64,6 +64,12 @@ module.exports = {
         )
         .addIntegerOption((o) =>
           o.setName("想要數量").setDescription("想要的數量").setRequired(true).setMinValue(1),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("標題")
+            .setDescription("選填：自訂顯示在 #編號 前的標題（≤30 字，例：保留給某人）")
+            .setMaxLength(30),
         ),
     )
     .addSubcommand((s) => s.setName("列表").setDescription("瀏覽所有掛單"))
@@ -129,6 +135,7 @@ async function runCreate(client, interaction) {
     guildId: interaction.guildId,
     offerType: offer.type, offerKey: offer.key, offerQty,
     wantType: want.type, wantKey: want.key, wantQty,
+    title: interaction.options.getString("標題"),
   });
 
   if (!result.ok) {
@@ -145,6 +152,7 @@ async function runCreate(client, interaction) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# 🔁 上架成功 #${listing.listing_id}\n` +
+          (listing.title ? `📌 ${listing.title}\n` : "") +
           `🎁 給出：${offerDef.emoji} **${offerDef.name}** ×${listing.offer.qty}\n` +
           `🎯 想要：${wantDef.emoji} **${wantDef.name}** ×${listing.want.qty}\n` +
           `-# 接受方需付手續費 **${fee}** 🪙 ・ 截止：<t:${expiresEpoch}:R>`,
