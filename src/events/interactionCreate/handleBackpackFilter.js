@@ -5,6 +5,7 @@
 require("colors");
 const { MessageFlags } = require("discord.js");
 const { buildBackpackView, BACKPACK_CATEGORIES } = require("../../features/shop/backpackView");
+const { appendNav } = require("../../features/playerStatus/statusNav");
 
 const PREFIX = "backpack_cat_";
 
@@ -39,6 +40,7 @@ module.exports = async (client, interaction) => {
       category,
     });
 
+    appendNav(view, interaction.user.id, "backpack");
     await interaction.editReply(view);
   } catch (err) {
     console.log(`[ERROR] backpack_cat handler:\n${err}`.red);

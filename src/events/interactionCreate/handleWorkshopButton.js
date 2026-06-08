@@ -151,6 +151,17 @@ function buildSuccessContainer(result, userId) {
       ),
     );
   }
+  if (isRepairTool && userId) {
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${TAB_PREFIX}${userId}_repair`)
+          .setLabel("切到「修復」分頁")
+          .setEmoji("🔧")
+          .setStyle(ButtonStyle.Primary),
+      ),
+    );
+  }
   return container;
 }
 
