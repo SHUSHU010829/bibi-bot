@@ -35,7 +35,9 @@
           { "value": "under_5", "label": "5 分鐘以內（簽到型）", "emoji": "⚡" },
           { "value": "5_15", "label": "5-15 分鐘", "emoji": "⏱️" },
           { "value": "15_30", "label": "15-30 分鐘", "emoji": "🕐" },
-          { "value": "over_30", "label": "30 分鐘以上（沉迷型）", "emoji": "🔥" }
+          { "value": "30_60", "label": "30-60 分鐘", "emoji": "⏰" },
+          { "value": "1_2h", "label": "1-2 小時", "emoji": "🌙" },
+          { "value": "over_2h", "label": "2 小時以上（沉迷型）", "emoji": "🔥" }
         ]
       },
       {
