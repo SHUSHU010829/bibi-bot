@@ -253,9 +253,25 @@ module.exports = async (client, interaction) => {
         return;
       }
       if (!result.ok && result.reason === "trap_full") {
+        const fullC = new ContainerBuilder()
+          .setAccentColor(0xe67e22)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`# 🪤 高級陷阱保護已達上限`),
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `目前保護：**${result.current} / ${result.maxStack}** 次`,
+            ),
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `-# 等被攻擊消耗幾次再合成；超過上限的次數會被丟掉`,
+            ),
+          );
         await interaction.followUp({
-          content: `🪤 高級陷阱保護已達上限（${result.current} / ${result.maxStack}）。等被攻擊消耗幾次再合成。`,
-          flags: MessageFlags.Ephemeral,
+          components: [fullC],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
         });
         return;
       }
@@ -353,22 +369,47 @@ module.exports = async (client, interaction) => {
         tier,
       });
       if (!result.ok) {
-        const reasonMsg = {
-          no_tool: `❌ 你沒有 ${tier} 階維修工具。`,
-          no_pickaxe: "❌ 木鎬不需要修復。先合成一把鐵鎬以上。",
-          max_too_low: `❌ 鎬子最大耐久過低（${result.maxDurability}）：使用此工具會讓 max 降到 ${result.after}，不允許。改用更高階工具或材料修復。`,
-          retry: "⚠️ 操作衝突，請再試一次。",
-          no_tool_def: "🔧 設定錯誤，請呼叫舒舒。",
-          disabled: "🔧 系統未啟用。",
-        }[result.reason] || `🔧 修復失敗：${result.reason}`;
-        await interaction.followUp({ content: reasonMsg, flags: MessageFlags.Ephemeral });
+        const titleAndHint = {
+          no_tool: { title: "❌ 沒有維修工具", body: `你沒有 \`${tier}\` 階維修工具。`, hint: "切到「合成」分頁打造" },
+          no_pickaxe: { title: "❌ 不需要修復", body: "木鎬不需要修復。", hint: "先合成一把鐵鎬以上再使用" },
+          max_too_low: {
+            title: "❌ 鎬子最大耐久過低",
+            body: `目前 max 為 **${result.maxDurability}**，使用此工具會降到 **${result.after}**。`,
+            hint: "改用更高階工具（max 不降的密銀以上）或「材料修復」",
+          },
+          retry: { title: "⚠️ 操作衝突", body: "請再試一次。", hint: "" },
+          no_tool_def: { title: "🔧 設定錯誤", body: "請呼叫舒舒。", hint: "" },
+          disabled: { title: "🔧 系統未啟用", body: "請稍後再試。", hint: "" },
+        }[result.reason] || { title: "🔧 修復失敗", body: `原因：\`${result.reason}\``, hint: "" };
+        const errC = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${titleAndHint.title}`))
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(titleAndHint.body));
+        if (titleAndHint.hint) {
+          errC.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${titleAndHint.hint}`));
+        }
+        await interaction.followUp({
+          components: [errC],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
         return;
       }
+      const okC = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`# 🛠️ 已使用 ${result.def.name}`),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `鎬子耐久：**${result.durabilityAfter} / ${result.maxAfter}**\n` +
+              `${result.def.emoji || "🔧"} ${result.def.name} 剩餘 **${result.toolsLeft}** 張`,
+          ),
+        );
       await interaction.followUp({
-        content:
-          `🛠️ 已使用 **${result.def.name}**\n` +
-          `鎬子耐久：${result.durabilityAfter} / ${result.maxAfter}　・ 剩餘 ${result.toolsLeft} 張`,
-        flags: MessageFlags.Ephemeral,
+        components: [okC],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
       await refreshWorkshop(client, interaction, "repair").catch(() => {});
     } catch (err) {

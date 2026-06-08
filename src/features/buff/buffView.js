@@ -216,26 +216,15 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
     }
   } catch { /* noop */ }
 
-  // 碎片 / 消耗品 / 被動 buff 總覽
+  // 撈網 / 高級陷阱 buff 剩餘次數（消耗品庫存與碎片數放在 /背包，避免重複）
   if (miningProfileForStamina) {
     const netUses = miningProfileForStamina.fishing_net_uses || 0;
-    const fragCount = miningProfileForStamina.broken_net_fragments || 0;
-    const stoneShards = (miningProfileForStamina.backpack || {}).stone_shard || 0;
     const trapUses = miningProfileForStamina.advanced_trap_uses || 0;
-    const trapFragCount = miningProfileForStamina.broken_trap_fragments || 0;
-    const lines = [];
-    if (netUses > 0) lines.push(`🕸️ **撈網生效中**：剩 **${netUses}** 次（+10% 釣魚成功率）`);
-    if (trapUses > 0) lines.push(`🪤 **高級陷阱保護中**：剩 **${trapUses}** 次（自動抵擋農場 raid）`);
-    if (fragCount > 0) lines.push(`🪡 **損壞的漁網碎片**：${fragCount} 個（5 個合成 1 張撈網）`);
-    if (trapFragCount > 0) lines.push(`🪛 **損壞的陷阱碎片**：${trapFragCount} 個（5 個合成 1 張高級陷阱）`);
-    const mapFrag = miningProfileForStamina.treasure_map_fragments || 0;
-    const mapWhole = miningProfileForStamina.treasure_maps || 0;
-    if (mapWhole > 0) lines.push(`🗺️ **藏寶圖**：${mapWhole} 張（用 /使用藏寶圖 撕開）`);
-    if (mapFrag > 0) lines.push(`📜 **藏寶圖碎片**：${mapFrag} / 6（集滿可合成藏寶圖）`);
-    if (stoneShards > 0) {
-      lines.push(`🪨 **碎石**：${stoneShards} 個（5 個劣質賭石、10 個優質賭石）`);
-    }
-    if (lines.length > 0) {
+    if (netUses > 0 || trapUses > 0) {
+      const lines = [];
+      if (netUses > 0) lines.push(`🕸️ **撈網生效中**：剩 **${netUses}** 次（+10% 釣魚成功率）`);
+      if (trapUses > 0) lines.push(`🪤 **高級陷阱保護中**：剩 **${trapUses}** 次（自動抵擋農場 raid）`);
+      lines.push("-# 道具庫存、碎片數量請看 `/背包`");
       container
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
