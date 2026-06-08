@@ -99,16 +99,22 @@ function buildSuccessContainer(result) {
   );
   const resultLabel = `${result.resultEmoji || ""} ${result.resultName}`.trim();
   const isRepairTool = result.type === "repair_tool";
-  const accent = isRepairTool
+  const isFishingNet = result.type === "fishing_net";
+  const accent = isRepairTool || isFishingNet
     ? 0x3498db
     : result.type === "weapon"
       ? 0xe67e22
       : result.type === "rod"
         ? 0x16a085
         : 0x9b59b6;
-  const tail = isRepairTool
-    ? `**屬性**　消耗品（1 張）\n**累積合成**　${result.craftCountTotal} 件\n-# 切到「修復」分頁按下使用`
-    : `**耐久**　${result.durability == null ? "永久" : `${result.durability} 次`}\n**累積合成**　${result.craftCountTotal} 件`;
+  let tail;
+  if (isRepairTool) {
+    tail = `**屬性**　消耗品（1 張）\n**累積合成**　${result.craftCountTotal} 件\n-# 切到「修復」分頁按下使用`;
+  } else if (isFishingNet) {
+    tail = `**效果**　+${result.usesAdded} 次撈網使用次數\n**目前累計可用**　${result.usesTotal} 次\n-# 下次 /釣魚 自動套用 +10% 成功率`;
+  } else {
+    tail = `**耐久**　${result.durability == null ? "永久" : `${result.durability} 次`}\n**累積合成**　${result.craftCountTotal} 件`;
+  }
   return new ContainerBuilder()
     .setAccentColor(accent)
     .addTextDisplayComponents(

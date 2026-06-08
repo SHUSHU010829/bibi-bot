@@ -27,6 +27,8 @@ function defaultProfile(userId, guildId) {
     seed_bag: { seed_carrot: 0, seed_corn: 0, seed_strawberry: 0, seed_black_rose: 0 },
     veggie_bag: { carrot: 0, corn: 0, strawberry: 0, black_rose: 0 },
     rare_bait: 0,
+    broken_net_fragments: 0,
+    fishing_net_uses: 0,
     farm_plot_count: 2,
     farm_count_total: 0,
     farm_harvest_total: 0,
@@ -58,6 +60,8 @@ function normalize(doc) {
   doc.seed_bag = { seed_carrot: 0, seed_corn: 0, seed_strawberry: 0, seed_black_rose: 0, ...(doc.seed_bag || {}) };
   doc.veggie_bag = { carrot: 0, corn: 0, strawberry: 0, black_rose: 0, ...(doc.veggie_bag || {}) };
   doc.rare_bait ??= 0;
+  doc.broken_net_fragments ??= 0;
+  doc.fishing_net_uses ??= 0;
   doc.farm_plot_count ??= 2;
   doc.farm_count_total ??= 0;
   doc.farm_harvest_total ??= 0;

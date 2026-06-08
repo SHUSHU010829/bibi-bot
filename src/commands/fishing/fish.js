@@ -301,6 +301,14 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           )
         );
 
+      if (result.droppedNetFragment) {
+        failContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `🕸️ **撿到 損壞的漁網碎片 ×1**（集 5 個可合成「撈網」）`,
+          ),
+        );
+      }
+
       await interaction.editReply({
         components: [failContainer],
         flags: MessageFlags.IsComponentsV2,
@@ -405,6 +413,23 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           )
         );
       }
+    }
+
+    // 損壞漁網碎片掉落
+    if (result.droppedNetFragment) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🕸️ **撿到 損壞的漁網碎片 ×1**（集 5 個可在工坊合成「撈網」+10% 釣魚成功率 / 3 次）`,
+        ),
+      );
+    }
+    // 撈網 buff 進行中
+    if (result.netActive) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 🕸️ 撈網生效中，剩餘 **${result.netUsesAfter}** 次`,
+        ),
+      );
     }
 
     // 如果這種魚有對應食譜，提示可以烹飪

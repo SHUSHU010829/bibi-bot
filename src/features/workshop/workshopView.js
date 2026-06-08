@@ -194,6 +194,9 @@ function craftableSection(container, recipes, profile, type, userId) {
           ? `max +${tdef.maxDelta}`
           : `max ${tdef.maxDelta}`;
       propLine = `效果：+${Math.round((tdef.duraPct || 0) * 100)}% 鎬子耐久 ・ ${deltaTxt}`;
+    } else if (type === "fishing_net") {
+      const fcfg = craft?.fishingNet || {};
+      propLine = `效果：+${Math.round((fcfg.successBonus || 0) * 100)}% 釣魚成功率 ・ ${fcfg.usesPerCraft || 3} 次釣魚成功後失效`;
     } else if (type === "weapon") {
       const wdef = (dungeon?.weapons || {})[resultId] || {};
       const totalAtk = (dungeon?.baseAtk ?? 20) + (wdef.atk || 0);
@@ -253,6 +256,7 @@ function buildCraftTab(container, { userId, displayName, profile }) {
   const weapons = recipes.filter((r) => r.result?.type === "weapon");
   const rods = recipes.filter((r) => r.result?.type === "rod");
   const repairTools = recipes.filter((r) => r.result?.type === "repair_tool");
+  const consumables = recipes.filter((r) => r.result?.type === "fishing_net");
 
   if (pickaxes.length) {
     container
@@ -281,6 +285,16 @@ function buildCraftTab(container, { userId, displayName, profile }) {
         ),
       );
     craftableSection(container, repairTools, profile, "repair_tool", userId);
+  }
+  if (consumables.length) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "### 🕸️ 釣魚消耗品\n-# 合成後 buff 自動生效，於 /釣魚 自動套用",
+        ),
+      );
+    craftableSection(container, consumables, profile, "fishing_net", userId);
   }
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(

@@ -119,8 +119,20 @@
         "emoji": "✨",
         "materials": { "legendary_fragment": 4, "diamond": 8 },
         "result": { "type": "repair_tool", "id": "legendary" }
+      },
+      {
+        "id": "fishing_net",
+        "name": "撈網",
+        "emoji": "🕸️",
+        "materials": { "broken_net_fragment": 5 },
+        "result": { "type": "fishing_net" }
       }
     ],
+    "fishingNet": {
+      "dropChancePerFish": 0.02,
+      "successBonus": 0.10,
+      "usesPerCraft": 3
+    },
     "repairTools": {
       "iron":      { "name": "鐵製維修工具", "emoji": "🔩", "duraPct": 0.60, "maxDelta": -5 },
       "steel":     { "name": "鋼製維修工具", "emoji": "⚙️", "duraPct": 0.75, "maxDelta": -3 },

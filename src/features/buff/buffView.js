@@ -216,6 +216,22 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
     }
   } catch { /* noop */ }
 
+  // 撈網 buff
+  if (miningProfileForStamina) {
+    const netUses = miningProfileForStamina.fishing_net_uses || 0;
+    const fragCount = miningProfileForStamina.broken_net_fragments || 0;
+    if (netUses > 0 || fragCount > 0) {
+      const lines = [];
+      if (netUses > 0) lines.push(`🕸️ **撈網生效中**：剩 **${netUses}** 次（+10% 釣魚成功率）`);
+      if (fragCount > 0) {
+        lines.push(`🪡 **損壞的漁網碎片**：${fragCount} 個（每 5 個可合成 1 張撈網）`);
+      }
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+    }
+  }
+
   container
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(

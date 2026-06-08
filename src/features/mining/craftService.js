@@ -14,8 +14,12 @@ const WEAPON_TIER = {
 };
 const ROD_TIER = { bamboo: 0, carbon: 1, gold: 2, mythril: 3 };
 
-// 特殊材料：傳說素材碎片存在 profile.legendary_fragments，不在 backpack 內。
+// 特殊材料：走獨立 profile 欄位、不在 backpack 內。
 const FRAGMENT_KEY = "legendary_fragment";
+const SPECIAL_MAT_FIELDS = {
+  legendary_fragment: "legendary_fragments",
+  broken_net_fragment: "broken_net_fragments",
+};
 
 function getRecipe(recipeId) {
   return (craft?.recipes || []).find((r) => r.id === recipeId) || null;
@@ -59,9 +63,9 @@ function isFishMaterial(mat) {
   return !!(fishing?.fish && fishing.fish[mat]);
 }
 
-// 玩家目前持有某材料的數量（傳說碎片走獨立欄位、魚走 fish_bag）。
+// 玩家目前持有某材料的數量（特殊材料走獨立欄位、魚走 fish_bag）。
 function ownedMaterial(profile, mat) {
-  if (mat === FRAGMENT_KEY) return profile.legendary_fragments || 0;
+  if (SPECIAL_MAT_FIELDS[mat]) return profile[SPECIAL_MAT_FIELDS[mat]] || 0;
   if (isFishMaterial(mat)) return (profile.fish_bag || {})[mat] || 0;
   return (profile.backpack || {})[mat] || 0;
 }
@@ -80,6 +84,11 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
   // 維修工具：消耗品，不走 equipment slot 替換流程
   if (type === "repair_tool") {
     return craftRepairTool(client, { userId, guildId, recipe, tier: resultId });
+  }
+
+  // 撈網：消耗 broken_net_fragment，累加 fishing_net_uses
+  if (type === "fishing_net") {
+    return craftFishingNet(client, { userId, guildId, recipe });
   }
 
   const slot = resolveSlot(type);
@@ -124,8 +133,9 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
   // 扣材料（傳說碎片走獨立欄位、魚走 fish_bag）+ 換裝備 + craft_count_total
   const inc = { craft_count_total: 1 };
   for (const [mat, need] of Object.entries(recipe.materials)) {
-    if (mat === FRAGMENT_KEY) {
-      inc.legendary_fragments = (inc.legendary_fragments || 0) - need;
+    if (SPECIAL_MAT_FIELDS[mat]) {
+      const field = SPECIAL_MAT_FIELDS[mat];
+      inc[field] = (inc[field] || 0) - need;
     } else if (isFishMaterial(mat)) {
       inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
     } else {
@@ -172,8 +182,9 @@ async function craftRepairTool(client, { userId, guildId, recipe, tier }) {
 
   const inc = { craft_count_total: 1, [`repair_tools.${tier}`]: 1 };
   for (const [mat, need] of Object.entries(recipe.materials)) {
-    if (mat === FRAGMENT_KEY) {
-      inc.legendary_fragments = (inc.legendary_fragments || 0) - need;
+    if (SPECIAL_MAT_FIELDS[mat]) {
+      const field = SPECIAL_MAT_FIELDS[mat];
+      inc[field] = (inc[field] || 0) - need;
     } else if (isFishMaterial(mat)) {
       inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
     } else {
@@ -198,4 +209,52 @@ async function craftRepairTool(client, { userId, guildId, recipe, tier }) {
   };
 }
 
-module.exports = { craftItem, craftRepairTool, getRecipe, PICKAXE_TIER, WEAPON_TIER, ROD_TIER, FRAGMENT_KEY };
+async function craftFishingNet(client, { userId, guildId, recipe }) {
+  const profile = await getOrCreate(client, userId, guildId);
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const have = ownedMaterial(profile, mat);
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) {
+    return { ok: false, reason: "insufficient", missing, recipe };
+  }
+
+  const cfg = craft?.fishingNet || {};
+  const usesPerCraft = cfg.usesPerCraft ?? 3;
+
+  const inc = {
+    craft_count_total: 1,
+    fishing_net_uses: usesPerCraft,
+  };
+  for (const [mat, need] of Object.entries(recipe.materials)) {
+    if (SPECIAL_MAT_FIELDS[mat]) {
+      const field = SPECIAL_MAT_FIELDS[mat];
+      inc[field] = (inc[field] || 0) - need;
+    } else if (isFishMaterial(mat)) {
+      inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+    } else {
+      inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+    }
+  }
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: inc, $set: { updatedAt: new Date() } },
+  );
+
+  return {
+    ok: true,
+    recipe,
+    type: "fishing_net",
+    resultId: "fishing_net",
+    resultName: recipe.name,
+    resultEmoji: recipe.emoji || "🕸️",
+    durability: null,
+    craftCountTotal: (profile.craft_count_total || 0) + 1,
+    usesAdded: usesPerCraft,
+    usesTotal: (profile.fishing_net_uses || 0) + usesPerCraft,
+  };
+}
+
+module.exports = { craftItem, craftRepairTool, craftFishingNet, getRecipe, PICKAXE_TIER, WEAPON_TIER, ROD_TIER, FRAGMENT_KEY };
