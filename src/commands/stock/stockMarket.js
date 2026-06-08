@@ -34,6 +34,8 @@ const {
   sellMarket,
   isMarketOpen,
 } = require("../../features/stock/tradeService");
+const triggerService = require("../../features/stock/triggerService");
+const portfolioService = require("../../features/stock/portfolioService");
 const { buildChartContainer } = require("../../features/stock/chartView");
 const {
   buildStockHoldingsView,
@@ -181,6 +183,32 @@ module.exports = {
         .setName("持股")
         .setDescription("查看自己的持股、損益與一鍵賣出 💼")
     )
+    .addSubcommand((s) =>
+      s
+        .setName("停損停利")
+        .setDescription("設定股票自動停損 / 停利價（命中時開盤掃描會全倉自動賣出）🔔")
+        .addStringOption((o) =>
+          o
+            .setName("股票代號")
+            .setDescription("要設定的股票")
+            .setRequired(true)
+            .addChoices(...getStaticSymbolChoices())
+        )
+        .addNumberOption((o) =>
+          o
+            .setName("停損價")
+            .setDescription("跌到此價自動賣出（須低於現價，留 1% 緩衝）；填 0 取消停損")
+            .setRequired(false)
+            .setMinValue(0)
+        )
+        .addNumberOption((o) =>
+          o
+            .setName("停利價")
+            .setDescription("漲到此價自動賣出（須高於現價，留 1% 緩衝）；填 0 取消停利")
+            .setRequired(false)
+            .setMinValue(0)
+        )
+    )
     .toJSON(),
 
   run: async (client, interaction) => {
@@ -192,8 +220,86 @@ module.exports = {
     if (sub === "紀錄") return runTradeHistory(client, interaction);
     if (sub === "報價") return runQuotePanel(client, interaction);
     if (sub === "持股") return runHoldings(client, interaction);
+    if (sub === "停損停利") return runSetTriggers(client, interaction);
   },
 };
+
+// ──────────────────────────── /股市 停損停利 ────────────────────────────
+async function runSetTriggers(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    if (!stockSystem?.enabled) return interaction.editReply("🔧 股市系統未啟用。");
+    const tenure = checkServerTenure(interaction.member);
+    if (!tenure.ok) return interaction.editReply(tenure.message);
+
+    const symbol = interaction.options.getString("股票代號").toUpperCase().trim();
+    const rawStop = interaction.options.getNumber("停損價");
+    const rawTake = interaction.options.getNumber("停利價");
+    if (rawStop == null && rawTake == null) {
+      return interaction.editReply(
+        "❌ 至少要填一個（停損價或停利價）。想清除已設定的觸發，填 0 即可。",
+      );
+    }
+    // 0 = 清除該欄
+    const stopLoss = rawStop === 0 ? null : rawStop;
+    const takeProfit = rawTake === 0 ? null : rawTake;
+
+    if (stopLoss == null && takeProfit == null) {
+      const position = await portfolioService.getPosition(
+        client,
+        interaction.user.id,
+        interaction.guildId,
+        symbol,
+      );
+      if (!position) return interaction.editReply(`❌ 你沒有持有 \`${symbol}\`。`);
+      await triggerService.clearTriggers(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        symbol,
+      });
+      return interaction.editReply(`✅ 已清除 \`${symbol}\` 的停損 / 停利設定。`);
+    }
+
+    const result = await triggerService.setTriggers(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      symbol,
+      stopLoss,
+      takeProfit,
+    });
+    if (!result.ok) {
+      if (result.reason === "no_position") {
+        return interaction.editReply(`❌ 你沒有持有 \`${symbol}\`，無法設定觸發。`);
+      }
+      if (result.reason === "no_symbol") {
+        return interaction.editReply(`❌ 找不到股票代號 \`${symbol}\`。`);
+      }
+      if (result.reason === "stop_too_close") {
+        return interaction.editReply(
+          `❌ 停損價太靠近現價（${result.currentPrice.toLocaleString()}），請至少留 1% 緩衝以避免抖動立刻觸發。`,
+        );
+      }
+      if (result.reason === "take_too_close") {
+        return interaction.editReply(
+          `❌ 停利價太靠近現價（${result.currentPrice.toLocaleString()}），請至少留 1% 緩衝以避免抖動立刻觸發。`,
+        );
+      }
+      return interaction.editReply("🔧 設定失敗，請稍後再試。");
+    }
+
+    const lines = [
+      `# 🔔 停損 / 停利設定成功`,
+      `**${result.name}（${result.symbol}）**　現價：${result.currentPrice.toLocaleString()}`,
+      `📉 停損價：${result.stopLoss != null ? result.stopLoss.toLocaleString() : "未設定"}`,
+      `📈 停利價：${result.takeProfit != null ? result.takeProfit.toLocaleString() : "未設定"}`,
+      `-# 開盤時段每分鐘掃描一次，命中即全倉自動賣出 + 私訊通知；同股每 24 小時最多自動成交一次。`,
+    ];
+    return interaction.editReply(lines.join("\n"));
+  } catch (err) {
+    console.log(`[ERROR] /股市 停損停利:\n${err}\n${err.stack}`.red);
+    return interaction.editReply("🔧 設定失敗，請呼叫舒舒！").catch(() => {});
+  }
+}
 
 // ──────────────────────────── /股市 買 ────────────────────────────
 async function runBuy(client, interaction) {
