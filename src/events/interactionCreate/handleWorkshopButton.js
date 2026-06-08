@@ -102,7 +102,8 @@ function buildSuccessContainer(result, userId) {
   const isFishingNet = result.type === "fishing_net";
   const isAppraisalTrigger = result.type === "stone_appraisal_trigger";
   const isAdvancedTrap = result.type === "advanced_trap";
-  const accent = isRepairTool || isFishingNet || isAppraisalTrigger || isAdvancedTrap
+  const isTreasureMap = result.type === "treasure_map";
+  const accent = isRepairTool || isFishingNet || isAppraisalTrigger || isAdvancedTrap || isTreasureMap
     ? 0x3498db
     : result.type === "weapon"
       ? 0xe67e22
@@ -121,6 +122,8 @@ function buildSuccessContainer(result, userId) {
     const dropped = (result.blocksAdded < (craft?.advancedTrap?.blocksPerCraft ?? 4));
     tail = `**效果**　+${result.blocksAdded} 次被動抵擋\n**目前保護**　${result.blocksAfter} / ${result.maxStack} 次`
       + (dropped ? `\n-# 達上限，多餘次數已丟棄` : `\n-# 下次 /農場 來犯時自動抵擋`);
+  } else if (isTreasureMap) {
+    tail = `**目前藏寶圖**　${result.mapsAfter} 張\n-# 用 \`/使用藏寶圖\` 撕開觸發隨機事件`;
   } else {
     tail = `**耐久**　${result.durability == null ? "永久" : `${result.durability} 次`}\n**累積合成**　${result.craftCountTotal} 件`;
   }

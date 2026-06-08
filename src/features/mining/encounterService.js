@@ -226,6 +226,16 @@ async function trigger(client, ctx) {
         break;
       }
 
+      case "gift_treasure_map_fragment": {
+        const qty = eff.qty || 1;
+        await coll(client).updateOne(
+          { userId, guildId },
+          { $inc: { treasure_map_fragments: qty }, $set: { updatedAt: new Date() } }
+        );
+        lines.push(`📜 藏寶圖碎片 ×${qty}（集 6 張可在工坊合成藏寶圖）`);
+        break;
+      }
+
       case "gift_cd_ticket": {
         const profile = await getOrCreate(client, userId, guildId);
         const owned = profile.cd_ticket_count || 0;

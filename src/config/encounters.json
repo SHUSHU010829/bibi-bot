@@ -73,6 +73,14 @@
         "weight": 8,
         "effect": { "type": "gift_cd_ticket", "qty": 1 },
         "text": "坑道深處的迴音讓你靈感乍現，發現了一條捷徑，挖礦效率大提升！（獲得 CD 縮短券 ×1）"
+      },
+      {
+        "id": "treasure_map_fragment_mine",
+        "name": "破舊的藏寶圖一角",
+        "emoji": "📜",
+        "weight": 4,
+        "effect": { "type": "gift_treasure_map_fragment", "qty": 1 },
+        "text": "你發現一張被礦工遺落的破舊紙片，像是某張藏寶圖的一角。"
       }
     ],
     "dungeon": [
@@ -162,6 +170,14 @@
         "weight": 8,
         "effect": { "type": "gift_whetstone_inferior", "qty": 1 },
         "text": "牆角有座廢棄的鍛爐，灰塵底下還留著一塊劣質磨鎬石，你收進背包。"
+      },
+      {
+        "id": "treasure_map_fragment_dungeon",
+        "name": "破舊的藏寶圖一角",
+        "emoji": "📜",
+        "weight": 5,
+        "effect": { "type": "gift_treasure_map_fragment", "qty": 1 },
+        "text": "你在地牢角落踢到一張破舊紙片，看起來像是某張藏寶圖的一角。"
       }
     ]
   }

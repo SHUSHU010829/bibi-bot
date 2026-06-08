@@ -20,6 +20,7 @@ const SPECIAL_MAT_FIELDS = {
   legendary_fragment: "legendary_fragments",
   broken_net_fragment: "broken_net_fragments",
   broken_trap_fragment: "broken_trap_fragments",
+  treasure_map_fragment: "treasure_map_fragments",
 };
 
 function getRecipe(recipeId) {
@@ -103,6 +104,11 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
   // 高級陷阱：自動使用，累加 advanced_trap_uses（上限 12）
   if (type === "advanced_trap") {
     return craftAdvancedTrap(client, { userId, guildId, recipe });
+  }
+
+  // 藏寶圖：累加 treasure_maps（無上限，用 /使用藏寶圖 觸發）
+  if (type === "treasure_map") {
+    return craftTreasureMap(client, { userId, guildId, recipe });
   }
 
   const slot = resolveSlot(type);
@@ -377,12 +383,54 @@ async function craftAdvancedTrap(client, { userId, guildId, recipe }) {
   };
 }
 
+async function craftTreasureMap(client, { userId, guildId, recipe }) {
+  const profile = await getOrCreate(client, userId, guildId);
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const have = ownedMaterial(profile, mat);
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) {
+    return { ok: false, reason: "insufficient", missing, recipe };
+  }
+
+  const inc = { craft_count_total: 1, treasure_maps: 1 };
+  for (const [mat, need] of Object.entries(recipe.materials)) {
+    if (SPECIAL_MAT_FIELDS[mat]) {
+      const field = SPECIAL_MAT_FIELDS[mat];
+      inc[field] = (inc[field] || 0) - need;
+    } else if (isFishMaterial(mat)) {
+      inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+    } else {
+      inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+    }
+  }
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: inc, $set: { updatedAt: new Date() } },
+  );
+
+  return {
+    ok: true,
+    recipe,
+    type: "treasure_map",
+    resultId: "treasure_map",
+    resultName: recipe.name,
+    resultEmoji: recipe.emoji || "🗺️",
+    durability: null,
+    mapsAfter: (profile.treasure_maps || 0) + 1,
+    craftCountTotal: (profile.craft_count_total || 0) + 1,
+  };
+}
+
 module.exports = {
   craftItem,
   craftRepairTool,
   craftFishingNet,
   craftStoneAppraisalTrigger,
   craftAdvancedTrap,
+  craftTreasureMap,
   getRecipe,
   PICKAXE_TIER,
   WEAPON_TIER,

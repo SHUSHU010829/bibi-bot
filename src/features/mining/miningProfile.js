@@ -31,6 +31,9 @@ function defaultProfile(userId, guildId) {
     fishing_net_uses: 0,
     broken_trap_fragments: 0,
     advanced_trap_uses: 0,
+    treasure_map_fragments: 0,
+    treasure_maps: 0,
+    neighbor_prank_count: 0,
     farm_plot_count: 2,
     farm_count_total: 0,
     farm_harvest_total: 0,
@@ -66,6 +69,9 @@ function normalize(doc) {
   doc.fishing_net_uses ??= 0;
   doc.broken_trap_fragments ??= 0;
   doc.advanced_trap_uses ??= 0;
+  doc.treasure_map_fragments ??= 0;
+  doc.treasure_maps ??= 0;
+  doc.neighbor_prank_count ??= 0;
   doc.farm_plot_count ??= 2;
   doc.farm_count_total ??= 0;
   doc.farm_harvest_total ??= 0;

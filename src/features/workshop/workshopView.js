@@ -205,6 +205,8 @@ function craftableSection(container, recipes, profile, type, userId) {
     } else if (type === "advanced_trap") {
       const acfg = craft?.advancedTrap || {};
       propLine = `效果：+${acfg.blocksPerCraft || 4} 次被動抵擋（上限 ${acfg.maxStack || 12}）`;
+    } else if (type === "treasure_map") {
+      propLine = `效果：合成 1 張藏寶圖，用 /使用藏寶圖 觸發隨機事件`;
     } else if (type === "weapon") {
       const wdef = (dungeon?.weapons || {})[resultId] || {};
       const totalAtk = (dungeon?.baseAtk ?? 20) + (wdef.atk || 0);
@@ -267,6 +269,7 @@ function buildCraftTab(container, { userId, displayName, profile }) {
   const consumables = recipes.filter((r) => r.result?.type === "fishing_net");
   const appraisalTriggers = recipes.filter((r) => r.result?.type === "stone_appraisal_trigger");
   const farmTools = recipes.filter((r) => r.result?.type === "advanced_trap");
+  const treasureMaps = recipes.filter((r) => r.result?.type === "treasure_map");
 
   if (pickaxes.length) {
     container
@@ -330,6 +333,18 @@ function buildCraftTab(container, { userId, displayName, profile }) {
         ),
       );
     craftableSection(container, farmTools, profile, "advanced_trap", userId);
+  }
+  if (treasureMaps.length) {
+    const fragCount = profile.treasure_map_fragments || 0;
+    const mapCount = profile.treasure_maps || 0;
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🗺️ 藏寶圖（持有碎片 **${fragCount}** ・ 完整圖 **${mapCount}**）\n-# 合成完用 /使用藏寶圖 撕開，可能找到金幣、體力藥水、寶箱怪、或一張惡作劇紙條`,
+        ),
+      );
+    craftableSection(container, treasureMaps, profile, "treasure_map", userId);
   }
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(

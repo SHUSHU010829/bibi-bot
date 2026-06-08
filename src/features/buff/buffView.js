@@ -228,6 +228,10 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
     if (trapUses > 0) lines.push(`🪤 **高級陷阱保護中**：剩 **${trapUses}** 次（自動抵擋農場 raid）`);
     if (fragCount > 0) lines.push(`🪡 **損壞的漁網碎片**：${fragCount} 個（5 個合成 1 張撈網）`);
     if (trapFragCount > 0) lines.push(`🪛 **損壞的陷阱碎片**：${trapFragCount} 個（5 個合成 1 張高級陷阱）`);
+    const mapFrag = miningProfileForStamina.treasure_map_fragments || 0;
+    const mapWhole = miningProfileForStamina.treasure_maps || 0;
+    if (mapWhole > 0) lines.push(`🗺️ **藏寶圖**：${mapWhole} 張（用 /使用藏寶圖 撕開）`);
+    if (mapFrag > 0) lines.push(`📜 **藏寶圖碎片**：${mapFrag} / 6（集滿可合成藏寶圖）`);
     if (stoneShards > 0) {
       lines.push(`🪨 **碎石**：${stoneShards} 個（5 個劣質賭石、10 個優質賭石）`);
     }

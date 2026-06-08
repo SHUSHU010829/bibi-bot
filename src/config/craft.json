@@ -147,6 +147,13 @@
         "emoji": "🪤",
         "materials": { "broken_trap_fragment": 5 },
         "result": { "type": "advanced_trap" }
+      },
+      {
+        "id": "treasure_map",
+        "name": "藏寶圖",
+        "emoji": "🗺️",
+        "materials": { "treasure_map_fragment": 6 },
+        "result": { "type": "treasure_map" }
       }
     ],
     "advancedTrap": {
