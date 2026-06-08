@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "activeTemplate": "v1_2026q2",
+  "reward": 2000,
+  "rewardSource": "survey",
+  "startAt": "2026-06-08T00:00:00+08:00",
+  "endAt": "2026-06-22T23:59:59+08:00",
+  "thankYouDm": "🎉 感謝你填寫逼逼機器人玩家問卷！\n你的回饋會直接影響下一步開發方向，舒舒會把每則自由意見都看完。"
+}

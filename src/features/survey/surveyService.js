@@ -27,7 +27,7 @@ async function ensureDoc(client, userId, guildId) {
       $setOnInsert: {
         userId,
         guildId,
-        version: survey.version,
+        templateId: survey.activeTemplate,
         answers: {},
         openAnswers: {},
         completedAt: null,
@@ -118,7 +118,7 @@ async function submit(client, userId, guildId, member, username) {
     username,
     amount: reward,
     source: survey.rewardSource || "survey",
-    meta: { version: survey.version },
+    meta: { templateId: survey.activeTemplate },
   });
 
   await client.surveyResponsesCollection.updateOne(
