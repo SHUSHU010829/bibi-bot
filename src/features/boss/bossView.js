@@ -134,6 +134,80 @@ function buildAttackResultContainer({ userId, displayName, result }) {
   return container;
 }
 
+function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
+  const last = hits[hits.length - 1];
+  const b = last.boss;
+  const phase = last.phaseAfter;
+  const killed = hits.some((h) => h.killed);
+  const lowStamina = !killed && last.stamina <= 1;
+  const color = killed ? COLOR_VICTORY : lowStamina ? COLOR_ERROR : phaseColor(phase);
+  const container = new ContainerBuilder().setAccentColor(color);
+
+  const totalDamage = hits.reduce((s, h) => s + (h.damage || 0), 0);
+  const counters = hits.filter((h) => h.isCounter).length;
+  const phaseChange = hits.find((h) => h.phaseChanged);
+  const comboTriggered = hits.some((h) => h.comboTriggered);
+
+  const headline = killed
+    ? `# 🏆 致命一擊！\n**${displayName}** 連擊 ${hits.length} 刀，最終擊敗 **${b.emoji} ${b.name}**！`
+    : lowStamina
+      ? `# ⚠️ 體力低落\n**${displayName}** 連擊 ${hits.length} 刀，對 **${b.emoji} ${b.name}** 造成共 **${totalDamage.toLocaleString()}** 點傷害！`
+      : `# ⚔️ 連擊 ${hits.length} 刀！\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成共 **${totalDamage.toLocaleString()}** 點傷害！`;
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headline));
+
+  const hitLines = hits.map((h, i) => {
+    if (h.isCounter) return `**第 ${i + 1} 刀** 被反擊（-2 體力）`;
+    const extras = [];
+    if (h.phaseChanged) extras.push(`💥 進入 ${phaseLabel(h.phaseAfter)}`);
+    if (h.comboTriggered) extras.push(`⚡ 觸發 Combo`);
+    return `**第 ${i + 1} 刀** ${h.damage.toLocaleString()} 傷害${extras.length ? "（" + extras.join("、") + "）" : ""}`;
+  });
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(hitLines.join("\n")));
+
+  if (!killed) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**BOSS 狀態**（${phaseLabel(phase)}）\n${hpBar(b.current_hp, b.max_hp)}`,
+        ),
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🔋 體力：${last.stamina}/${last.staminaMax}${counters > 0 ? `（${counters} 次被反擊）` : ""}\n⚔️ 本場攻擊次數：${last.attackCount}/${last.attackLimit}`,
+        ),
+      );
+  }
+
+  const stopHint = {
+    stamina_drained: `已自動停止：體力歸零`,
+    attack_limit_reached: `已自動停止：用完本場攻擊次數`,
+    killed: null,
+  }[stopReason];
+  if (stopHint) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${stopHint}`));
+  } else if (lowStamina) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# 體力低落，建議等回復再戰`));
+  }
+
+  if (!killed && last.attackCount < last.attackLimit) {
+    const canAttack = last.stamina > 0;
+    const btn = attackButton(userId);
+    if (!canAttack) btn.setDisabled(true);
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(btn, infoButton(userId)),
+    );
+  } else if (!killed) {
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(infoButton(userId)),
+    );
+  }
+
+  return { container, killed, phaseChange, comboTriggered };
+}
+
 function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive }) {
   const phase = b.phase || "normal";
   const remainMs = Math.max(0, b.ends_at - Date.now());
@@ -290,6 +364,7 @@ function buildSettlementContainer(settlement) {
 
 module.exports = {
   buildAttackResultContainer,
+  buildComboResultContainer,
   buildInfoContainer,
   buildErrorContainer,
   buildSettlementContainer,

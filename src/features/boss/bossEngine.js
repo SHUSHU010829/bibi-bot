@@ -184,9 +184,10 @@ async function applyAttack(client, { userId, guildId, username, member }) {
 
   if (!isCounter) {
     const windowMs = (comboCfgVal.windowSec ?? 10) * 1000;
-    if (comboLastUser && userId !== comboLastUser && now - comboLastTs <= windowMs) {
+    const isNewUser = !comboLastUser || userId !== comboLastUser;
+    if (comboLastUser && isNewUser && now - comboLastTs <= windowMs) {
       comboCount += 1;
-    } else if (!comboLastUser || userId !== comboLastUser) {
+    } else if (isNewUser) {
       comboCount = 1;
     }
     if (comboCount >= (comboCfgVal.triggerCount ?? 5)) {
@@ -195,8 +196,11 @@ async function applyAttack(client, { userId, guildId, username, member }) {
       comboMvp = userId;
       comboCount = 0;
     }
-    comboLastUser = userId;
-    comboLastTs = now;
+    // 同一人連砍不 refresh combo window，避免延長計時、卡住他人接力空間
+    if (isNewUser) {
+      comboLastUser = userId;
+      comboLastTs = now;
+    }
   }
 
   // 傷害計算
@@ -446,10 +450,66 @@ async function incrementKillCount(client, { userId, guildId }) {
   return doc?.kills ?? 1;
 }
 
+async function applyComboAttack(client, params, count) {
+  const hits = [];
+  let stopReason = null;
+  let lastOkResult = null;
+  let killed = false;
+  let phaseChanged = false;
+  let comboTriggered = false;
+
+  for (let i = 0; i < count; i++) {
+    const r = await applyAttack(client, params);
+    if (!r.ok) {
+      stopReason = r.reason;
+      if (hits.length === 0) {
+        return { ok: false, reason: r.reason, errorResult: r };
+      }
+      return {
+        ok: true,
+        hits,
+        stopReason,
+        lastResult: lastOkResult,
+        killed,
+        phaseChanged,
+        comboTriggered,
+      };
+    }
+    hits.push(r);
+    lastOkResult = r;
+    if (r.phaseChanged) phaseChanged = true;
+    if (r.comboTriggered) comboTriggered = true;
+    if (r.killed) {
+      killed = true;
+      stopReason = "killed";
+      break;
+    }
+    if (r.stamina <= 0) {
+      stopReason = "stamina_drained";
+      break;
+    }
+    if (r.attackCount >= r.attackLimit) {
+      stopReason = "attack_limit_reached";
+      break;
+    }
+  }
+
+  return {
+    ok: true,
+    hits,
+    stopReason,
+    lastResult: lastOkResult,
+    killed,
+    phaseChanged,
+    comboTriggered,
+  };
+}
+
 module.exports = {
   cfg,
   spawnBoss,
   applyAttack,
+  applyComboAttack,
   settleBoss,
   getActiveBoss,
   getBossInfo,
