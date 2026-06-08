@@ -229,7 +229,14 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
   const st = resolveStamina(profile, max);
 
   if (st.stamina <= 0) {
-    return { ok: false, reason: "no_stamina", nextRegenAt: st.nextRegenAt, max, staminaBonus: bonus };
+    return {
+      ok: false,
+      reason: "no_stamina",
+      nextRegenAt: st.nextRegenAt,
+      max,
+      staminaBonus: bonus,
+      potionCount: profile.stamina_potion_count || 0,
+    };
   }
 
   // 背包完全滿 → 先讓玩家確認（戰利品掉到礦的話會直接折金幣，不會佔背包）

@@ -175,12 +175,48 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
         return interaction.editReply("🔧 地下城系統尚未啟動！");
       }
       if (result.reason === "no_stamina") {
-        const tail = result.nextRegenAt
-          ? `\n下一點體力：<t:${Math.floor(result.nextRegenAt / 1000)}:R>`
-          : "";
-        return interaction.editReply(
-          `😮‍💨 體力耗盡了（0/${result.max}）！每小時回復 1 點，休息一下再來。${tail}`
-        );
+        const container = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("## 😮‍💨 體力耗盡"),
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `🔋 目前體力：**0 / ${result.max}**\n` +
+                (result.nextRegenAt
+                  ? `下一點體力：<t:${Math.floor(result.nextRegenAt / 1000)}:R>（每小時回復 1 點）`
+                  : "每小時回復 1 點，休息一下再來。"),
+            ),
+          );
+
+        const potionCount = result.potionCount || 0;
+        if (potionCount > 0) {
+          container.addActionRowComponents(
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`mining_use_stamina_potion_${interaction.user.id}`)
+                .setLabel(`🧪 補充體力藥水（剩 ${potionCount} 瓶）`)
+                .setStyle(ButtonStyle.Success),
+            ),
+          );
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              "-# 點上方按鈕立即補體力，補完再執行 /地下城 繼續探索。",
+            ),
+          );
+        } else {
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              "-# 想立刻續命？到 /商店 → 挖礦道具 買體力藥水（每日上限 3 瓶）。",
+            ),
+          );
+        }
+
+        return interaction.editReply({
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        });
       }
       if (result.reason === "backpack_full") {
         const confirm = buildOverflowConfirmView({
