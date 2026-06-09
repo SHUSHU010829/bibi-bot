@@ -37,6 +37,7 @@ const {
 const triggerService = require("../../features/stock/triggerService");
 const portfolioService = require("../../features/stock/portfolioService");
 const { buildChartContainer } = require("../../features/stock/chartView");
+const { getDailyVolume, invalidate: invalidateVolume } = require("../../features/stock/volumeService");
 const {
   buildStockHoldingsView,
 } = require("../../features/profile/views/stockHoldings");
@@ -831,6 +832,11 @@ async function runQuotePanel(client, interaction) {
     }
 
     let selected = null; // 當前選中的 symbol
+    let volumeBySymbol = await fetchDailyVolumeMap(client, guildId, stocks);
+
+    const refreshVolumes = async () => {
+      volumeBySymbol = await fetchDailyVolumeMap(client, guildId, stocks);
+    };
 
     const buildComponents = (disabled = false) => {
       const select = new StringSelectMenuBuilder()
@@ -880,7 +886,7 @@ async function runQuotePanel(client, interaction) {
 
     const message = await interaction.editReply({
       content: "",
-      embeds: [buildPanelEmbed(stocks, selected)],
+      embeds: [buildPanelEmbed(stocks, selected, { volumeBySymbol })],
       components: buildComponents(),
     });
 
@@ -901,7 +907,7 @@ async function runQuotePanel(client, interaction) {
           selected = i.values[0];
           await i.update({
             content: "",
-            embeds: [buildPanelEmbed(stocks, selected)],
+            embeds: [buildPanelEmbed(stocks, selected, { volumeBySymbol })],
             components: buildComponents(),
           });
           collector.resetTimer();
@@ -1021,17 +1027,20 @@ async function runQuotePanel(client, interaction) {
             });
           }
 
-          // 重新撈 stocks 讓報價更新
+          // 剛成交，把該股的量快取打掉再重撈，讓今日量立刻反映
+          invalidateVolume({ guildId, symbol: selected });
+
           const refreshed = await client.stockMarketCollection
             .find({ guildId })
             .sort({ symbol: 1 })
             .toArray();
           stocks.length = 0;
           stocks.push(...refreshed);
+          await refreshVolumes();
           try {
             await interaction.editReply({
               content: "",
-              embeds: [buildPanelEmbed(stocks, selected)],
+              embeds: [buildPanelEmbed(stocks, selected, { volumeBySymbol })],
               components: buildComponents(),
             });
           } catch {
@@ -1048,7 +1057,9 @@ async function runQuotePanel(client, interaction) {
       try {
         await interaction.editReply({
           content: "",
-          embeds: [buildPanelEmbed(stocks, selected, { expired: true })],
+          embeds: [
+            buildPanelEmbed(stocks, selected, { expired: true, volumeBySymbol }),
+          ],
           components: buildComponents(true),
         });
       } catch {
@@ -1061,11 +1072,12 @@ async function runQuotePanel(client, interaction) {
   }
 }
 
-function buildPanelEmbed(stocks, selected, { expired = false } = {}) {
+function buildPanelEmbed(stocks, selected, { expired = false, volumeBySymbol } = {}) {
   const open = isMarketOpen();
   const marketLabel = open ? "🟢 開盤中" : "🌙 收盤";
+  const volMap = volumeBySymbol || new Map();
 
-  // 等寬欄位:代號|名稱|報價(用 inline code 撐版面)
+  // 等寬欄位:代號|名稱|報價|今日量
   const maxName = Math.max(...stocks.map((s) => [...s.name].length), 4);
   const padName = (name) => {
     const w = [...name].length;
@@ -1074,7 +1086,11 @@ function buildPanelEmbed(stocks, selected, { expired = false } = {}) {
   const rows = stocks.map((s) => {
     const tag = selected === s.symbol ? "▶︎" : "・";
     const price = (s.currentPrice || 0).toFixed(1).padStart(7, " ");
-    return `${tag} \`${s.symbol}\`　${padName(s.name)}　\`${price}\``;
+    const vol = volMap.get(s.symbol);
+    const volLabel = vol && vol.totalShares > 0
+      ? `量 \`${String(vol.totalShares).padStart(5, " ")}\``
+      : "量 \`    -\`";
+    return `${tag} \`${s.symbol}\`　${padName(s.name)}　\`${price}\`　${volLabel}`;
   });
 
   const embed = new EmbedBuilder()
@@ -1082,16 +1098,20 @@ function buildPanelEmbed(stocks, selected, { expired = false } = {}) {
     .setColor(open ? 0x2ecc71 : 0x95a5a6)
     .setDescription(`**${marketLabel}**\n\n${rows.join("\n")}`)
     .setFooter({
-      text: `手續費 1%(最低 ${stockSystem.minFee} 逼幣)・ 持股上限 ${stockSystem.maxSharesPerUser} 股${expired ? " ・ 已逾時" : ""}`,
+      text: `手續費 1%(最低 ${stockSystem.minFee} 逼幣)・ 持股上限 ${stockSystem.maxSharesPerUser} 股 ・ 量=今日成交股數${expired ? " ・ 已逾時" : ""}`,
     })
     .setTimestamp();
 
   if (selected) {
     const cur = stocks.find((s) => s.symbol === selected);
     if (cur) {
+      const vol = volMap.get(cur.symbol);
+      const volLine = vol && vol.totalShares > 0
+        ? `\n今日量 **${vol.totalShares.toLocaleString()}** 股 ・ 買 ${vol.buyShares.toLocaleString()} / 賣 ${vol.sellShares.toLocaleString()}`
+        : `\n今日量 — （尚無成交）`;
       embed.addFields({
         name: "目前選擇",
-        value: `\`${cur.symbol}\` **${cur.name}** ・ 當前報價 **${(cur.currentPrice || 0).toFixed(1)}**`,
+        value: `\`${cur.symbol}\` **${cur.name}** ・ 當前報價 **${(cur.currentPrice || 0).toFixed(1)}**${volLine}`,
       });
     }
   } else {
@@ -1102,4 +1122,19 @@ function buildPanelEmbed(stocks, selected, { expired = false } = {}) {
   }
 
   return embed;
+}
+
+async function fetchDailyVolumeMap(client, guildId, stocks) {
+  const map = new Map();
+  await Promise.all(
+    stocks.map(async (s) => {
+      try {
+        const vol = await getDailyVolume(client, { guildId, symbol: s.symbol });
+        map.set(s.symbol, vol);
+      } catch (err) {
+        console.log(`[STOCK] daily volume fetch failed (${s.symbol}): ${err.message}`);
+      }
+    }),
+  );
+  return map;
 }
