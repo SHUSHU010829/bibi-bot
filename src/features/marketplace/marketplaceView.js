@@ -57,6 +57,7 @@ const PAGE_NEXT       = "market_page_next_";
 const VIEW_BROWSE_ID  = "market_view_browse";
 const VIEW_MYSTALL_ID = "market_view_mystall";
 const VIEW_MYBIDS_ID  = "market_view_mybids";
+const VIEW_BARTER_ID  = "market_view_barter";
 
 function oreLabel(oreKey) {
   const def = mining?.ores?.[oreKey] || {};
@@ -254,6 +255,18 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId
   );
 
   if (listings.length === 0) {
+    container.addSeparatorComponents(
+      new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+    );
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(VIEW_BARTER_ID)
+          .setLabel("逛交易所")
+          .setEmoji("🔁")
+          .setStyle(ButtonStyle.Secondary)
+      )
+    );
     return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
   }
 
@@ -307,6 +320,20 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId
     }
     if (pageRow.components.length > 0) container.addActionRowComponents(pageRow);
   }
+
+  // 跨指令導覽：去看 /交易所 列表
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+  );
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(VIEW_BARTER_ID)
+        .setLabel("逛交易所")
+        .setEmoji("🔁")
+        .setStyle(ButtonStyle.Secondary)
+    )
+  );
 
   return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
 }
@@ -509,5 +536,6 @@ module.exports = {
   VIEW_BROWSE_ID,
   VIEW_MYSTALL_ID,
   VIEW_MYBIDS_ID,
+  VIEW_BARTER_ID,
   BID_MODAL_PREFIX,
 };

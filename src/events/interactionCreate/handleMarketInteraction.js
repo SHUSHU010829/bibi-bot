@@ -34,6 +34,7 @@ const {
   VIEW_BROWSE_ID,
   VIEW_MYSTALL_ID,
   VIEW_MYBIDS_ID,
+  VIEW_BARTER_ID,
   BID_MODAL_PREFIX,
   FILTER_TYPE_ID,
   FILTER_ITEM_ID,
@@ -513,6 +514,30 @@ module.exports = async (client, interaction) => {
       const { container, rows } = buildMyBidsView(listings);
       return interaction.editReply({
         components: [container, ...rows],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
+
+    // ─── 快捷後續：去看 /交易所 列表（ephemeral） ─────────────────────────────
+    if (interaction.isButton() && cid === VIEW_BARTER_ID) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const barterService = require("../../features/barter/barterService");
+      const { buildBoardContainer } = require("../../features/barter/barterView");
+      const c = barterService.cfg();
+      const pageSize = c.pageSize ?? 5;
+      const { listings, total } = await barterService.listActive(client, interaction.guildId, {
+        limit: pageSize,
+        skip: 0,
+      });
+      const container = buildBoardContainer({
+        listings,
+        viewerId: interaction.user.id,
+        total,
+        page: 1,
+        pageSize,
+      });
+      return interaction.editReply({
+        components: [container],
         flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
     }
