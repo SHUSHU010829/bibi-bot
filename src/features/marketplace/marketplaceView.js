@@ -13,7 +13,7 @@ const {
   TextInputBuilder,
   TextInputStyle,
 } = require("discord.js");
-const { mining, fishing } = require("../../config");
+const { mining, fishing, guildWarehouse } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 // customId 前綴常數（與 handleMarketInteraction 共用）
@@ -39,8 +39,13 @@ function oreLabel(oreKey) {
   return `${def.emoji || "⛏️"} ${def.name || oreKey || "未知物品"}`;
 }
 
-// 統一 item 顯示：根據 item_type / fish_key 決定顯示礦石或魚
+// 統一 item 顯示：根據 item_type / fish_key 決定顯示礦石、魚或作物
 function itemLabel(listing) {
+  // 公會寄售：由 item_id + item_kind 查 guild_warehouse config
+  if (listing.listing_type === "guild_sell") {
+    const def = guildWarehouse?.items?.[listing.item_id] || {};
+    return `${def.emoji || "📦"} ${def.name || listing.item_id || "未知物品"}`;
+  }
   if (listing.item_type === "fish" || listing.fish_key) {
     const def = fishing?.fish?.[listing.fish_key] || {};
     return `${def.emoji || "🐟"} ${def.name || listing.fish_key || "未知魚種"}`;
@@ -53,12 +58,24 @@ const FILTER_TYPE_ID = "market_filter_type";
 const FILTER_ITEM_ID = "market_filter_item";
 
 function typeLabel(type) {
-  const map = { sell: "賣礦", barter: "換礦", want: "徵求", auction: "競標" };
+  const map = {
+    sell: "賣出",
+    barter: "換物",
+    want: "徵求",
+    auction: "競標",
+    guild_sell: "公會寄售",
+  };
   return map[type] || type;
 }
 
 function typeBadge(type) {
-  const map = { sell: "💰", barter: "🔄", want: "📋", auction: "🏷️" };
+  const map = {
+    sell: "💰",
+    barter: "🔄",
+    want: "📋",
+    auction: "🏷️",
+    guild_sell: "🏰",
+  };
   return map[type] || "📦";
 }
 
@@ -74,6 +91,14 @@ function listingText(l) {
       `${header}\n` +
       `${itemLabel(l)} ×${l.qty}　💰 **${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
       `賣家：${l.seller_name || "?"}　截止 <t:${expiresEpoch}:R>`
+    );
+  }
+  if (l.listing_type === "guild_sell") {
+    return (
+      `${header}\n` +
+      `${itemLabel(l)} ×${l.qty}　💰 **${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
+      `🏰 ${l.guild_club_name || "公會"}（上架：${l.seller_name || "?"}）　截止 <t:${expiresEpoch}:R>\n` +
+      `-# 收益全額進公會金庫`
     );
   }
   if (l.listing_type === "barter") {
@@ -120,11 +145,11 @@ function listingAccessoryButton(l, viewerIsSeller = false) {
       .setStyle(ButtonStyle.Danger);
   }
 
-  if (l.listing_type === "sell") {
+  if (l.listing_type === "sell" || l.listing_type === "guild_sell") {
     return new ButtonBuilder()
       .setCustomId(`${BUY_PREFIX}${l.listing_id}`)
       .setLabel("購買")
-      .setEmoji("💰")
+      .setEmoji(l.listing_type === "guild_sell" ? "🏰" : "💰")
       .setStyle(ButtonStyle.Success);
   }
   if (l.listing_type === "barter") {
@@ -181,11 +206,12 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId
         .setCustomId(FILTER_TYPE_ID)
         .setPlaceholder("📋 交易類型篩選")
         .addOptions([
-          { label: "全部類型", value: "all",     default: listingType === "all" },
-          { label: "💰 賣出",  value: "sell",    default: listingType === "sell" },
-          { label: "🔄 換物",  value: "barter",  default: listingType === "barter" },
-          { label: "📋 徵求",  value: "want",    default: listingType === "want" },
-          { label: "🏷️ 競標", value: "auction", default: listingType === "auction" },
+          { label: "全部類型",    value: "all",        default: listingType === "all" },
+          { label: "💰 賣出",     value: "sell",       default: listingType === "sell" },
+          { label: "🏰 公會寄售", value: "guild_sell", default: listingType === "guild_sell" },
+          { label: "🔄 換物",     value: "barter",     default: listingType === "barter" },
+          { label: "📋 徵求",     value: "want",       default: listingType === "want" },
+          { label: "🏷️ 競標",    value: "auction",    default: listingType === "auction" },
         ])
     )
   );
@@ -195,9 +221,10 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId
         .setCustomId(FILTER_ITEM_ID)
         .setPlaceholder("📦 物品類別篩選")
         .addOptions([
-          { label: "全部物品", value: "all",  default: itemType === "all" },
-          { label: "⛏️ 礦石",  value: "ore",  default: itemType === "ore" },
-          { label: "🐟 魚類",  value: "fish", default: itemType === "fish" },
+          { label: "全部物品", value: "all",    default: itemType === "all" },
+          { label: "⛏️ 礦石",  value: "ore",    default: itemType === "ore" },
+          { label: "🐟 魚類",  value: "fish",   default: itemType === "fish" },
+          { label: "🌾 作物",  value: "veggie", default: itemType === "veggie" },
         ])
     )
   );
@@ -349,9 +376,13 @@ function buildConfirmView(listing, action) {
   let content = "";
 
   if (action === "buy") {
+    const guildLine =
+      listing.listing_type === "guild_sell"
+        ? `\n🏰 來自 ${listing.guild_club_name || "公會"}（收益全額進公會金庫）`
+        : "";
     content =
       `## 確認購買？\n` +
-      `**#${listing.listing_id}** ${itemLabel(listing)} ×${listing.qty}\n` +
+      `**#${listing.listing_id}** ${itemLabel(listing)} ×${listing.qty}${guildLine}\n` +
       `💰 **${listing.price.toLocaleString()}** ${COIN_EMOJI} 將從你的帳戶扣除（成交後不退）`;
   } else if (action === "accept") {
     content =

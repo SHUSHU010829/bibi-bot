@@ -201,6 +201,22 @@ const buildWarehouseContainer = ({
             new TextDisplayBuilder().setContent(mainText + tail)
           );
         }
+
+        if (isManager && it.available_qty > 0) {
+          const consignMax = Math.min(
+            it.available_qty,
+            guildWarehouse?.consignment?.perTakeMaxBackpack || 200
+          );
+          container.addActionRowComponents(
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`gcw_consign_${viewerId}_${it.item_id}_${consignMax}`)
+                .setLabel(`寄售到市集（≤ ${consignMax}）`)
+                .setEmoji("🏰")
+                .setStyle(ButtonStyle.Primary)
+            )
+          );
+        }
       }
     }
 
@@ -342,7 +358,7 @@ const buildLogContainer = ({ club, entries, isVice }) => {
   const totals = { in: 0, out: 0, leaderNet: 0, leaderFeeBack: 0 };
   for (const e of entries) {
     if (e.action === "deposit") totals.in += e.market_value || 0;
-    else {
+    else if (e.action === "withdraw") {
       totals.out += e.market_value || 0;
       if (e.user_id === leaderId) {
         totals.leaderNet += (e.market_value || 0) - (e.fee || 0);
@@ -364,13 +380,25 @@ const buildLogContainer = ({ club, entries, isVice }) => {
       new TextDisplayBuilder().setContent(`-# 尚無紀錄。`)
     );
   } else {
+    const VERB = {
+      deposit: "📥 存",
+      withdraw: "📤 取",
+      consign_listed: "🏷️ 寄售",
+      consign_sold: "💰 售出",
+      consign_returned: "↩️ 退回",
+    };
     const lines = recent.map((e) => {
       const ts = Math.floor(new Date(e.created_at).getTime() / 1000);
       const def = itemDef(e.item_id);
       const name = def ? `${def.emoji} ${def.name}` : e.item_id;
-      const verb = e.action === "deposit" ? "📥 存" : "📤 取";
-      const tail =
-        e.action === "withdraw" ? `（-${(e.fee || 0).toLocaleString()} 幣手續費）` : "";
+      const verb = VERB[e.action] || "・";
+      let tail = "";
+      if (e.action === "withdraw")
+        tail = `（-${(e.fee || 0).toLocaleString()} 幣手續費）`;
+      else if (e.action === "consign_listed")
+        tail = `（${(e.price || 0).toLocaleString()} 幣標價）`;
+      else if (e.action === "consign_sold")
+        tail = `（+${(e.price || 0).toLocaleString()} 幣入金庫）`;
       return `<t:${ts}:R>　${verb} <@${e.user_id}>　${name} ×${e.qty}${tail}`;
     });
     container.addTextDisplayComponents(
@@ -404,6 +432,45 @@ const buildTakeModal = ({ userId, club, itemId, maxTake }) => {
             : `1 顆 -${oneFee}、領滿 ${maxTake} 顆 -${maxFee} 幣`
         )
         .setValue(String(maxTake))
+    )
+  );
+  return modal;
+};
+
+const CONSIGN_MODAL_PREFIX = "gcw_consigndo_";
+
+const buildConsignModal = ({ userId, itemId, maxQty }) => {
+  const def = itemDef(itemId);
+  const unit = def?.unitPrice || 1;
+  const minPriceFactor =
+    guildWarehouse?.consignment?.minPriceFactor ?? 0.5;
+  const minOne = Math.max(1, Math.ceil(unit * minPriceFactor));
+  const minMax = Math.max(1, Math.ceil(unit * maxQty * minPriceFactor));
+  const modal = new ModalBuilder()
+    .setCustomId(`${CONSIGN_MODAL_PREFIX}${userId}_${itemId}`)
+    .setTitle(`寄售 ${def?.name || itemId}`.slice(0, 45));
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("qty")
+        .setLabel(`數量（1～${maxQty}）`)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(4)
+        .setPlaceholder(`目前倉庫可上架 ${maxQty} 個`)
+        .setValue(String(maxQty))
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("price")
+        .setLabel(`總售價（最低 ${minOne}/個・市價參考 ${unit}/個）`)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(10)
+        .setPlaceholder(
+          `1 個下限 ${minOne}、${maxQty} 個下限 ${minMax}（成交後全額進公會金庫）`
+        )
     )
   );
   return modal;
@@ -495,6 +562,100 @@ const buildSettingsUpdatedContainer = ({ club, applied, userId }) => {
     );
 };
 
+const buildConsignErrorContainer = (result, itemId) => {
+  const name = itemDef(itemId)?.name || itemId;
+  const { reason } = result;
+  if (reason === "disabled")
+    return buildErrorContainer({ title: "🔧 公會寄售未啟用", body: "目前無法使用此功能。" });
+  if (reason === "not_in_club")
+    return buildErrorContainer({ title: "🏰 你還沒加入公會", body: "寄售是公會專屬功能。" });
+  if (reason === "not_manager")
+    return buildErrorContainer({
+      title: "🚫 僅會長 / 副會長可上架寄售",
+      body: "請會長或副會長使用。",
+    });
+  if (reason === "club_missing")
+    return buildErrorContainer({ title: "❌ 公會資料異常", body: "公會已不存在。" });
+  if (reason === "unknown_item")
+    return buildErrorContainer({
+      title: "❌ 未知物品",
+      body: `「${itemId}」不在倉庫支援清單。`,
+    });
+  if (reason === "invalid_qty")
+    return buildErrorContainer({ title: "❌ 數量無效", body: "請輸入正整數。" });
+  if (reason === "invalid_price")
+    return buildErrorContainer({ title: "❌ 售價無效", body: "請輸入正整數。" });
+  if (reason === "qty_over_limit")
+    return buildErrorContainer({
+      title: "❌ 超過單次上架上限",
+      body: `${name} 單次最多 ${result.limit} 個，你輸入 ${result.asked}。`,
+      hint: "想清更多分多筆上架。",
+    });
+  if (reason === "price_too_low")
+    return buildErrorContainer({
+      title: "❌ 售價過低",
+      body: `${name} 此批最低售價 ${result.minPrice.toLocaleString()} ${COIN_EMOJI}，你出 ${result.asked.toLocaleString()}。`,
+      hint: "防止傾銷的最低保護價（市價 50%）。",
+    });
+  if (reason === "too_many")
+    return buildErrorContainer({
+      title: "❌ 公會寄售已達上限",
+      body: `目前已有 ${result.count}/${result.max} 筆寄售中。`,
+      hint: "等舊單成交、過期或下架後再上新單。",
+    });
+  if (reason === "warehouse_not_enough_available")
+    return buildErrorContainer({
+      title: "❌ 倉庫可上架數量不足",
+      body: `${name} 目前可上架數量不足，可能有保護中庫存或其他寄售佔用。`,
+      hint: "用 /公會 倉庫 查看當前可動用量。",
+    });
+  if (reason === "listing_insert_failed")
+    return buildErrorContainer({
+      title: "❌ 上架失敗",
+      body: "倉庫已自動回滾，請稍後再試。",
+    });
+  return buildErrorContainer({ title: "❌ 寄售失敗", body: `原因：${reason}` });
+};
+
+const buildConsignSuccessContainer = ({ userId, club, itemDefArg, listing }) => {
+  const expiresEpoch = Math.floor(new Date(listing.expires_at).getTime() / 1000);
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_SUCCESS)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ✅ 已上架到市集：${itemDefArg.emoji} ${itemDefArg.name} ×${listing.qty}`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🏰 ${club.name}　編號 **#${listing.listing_id}**\n` +
+          `售價 **${listing.price.toLocaleString()}** ${COIN_EMOJI}（成交後全額進公會金庫）\n` +
+          `截止 <t:${expiresEpoch}:R>，過期未售出物資自動退回倉庫`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 由 <@${userId}> 上架。需要下架請到 /市集 我的攤位。`
+      )
+    );
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("market_view_browse")
+      .setLabel("查看市集")
+      .setEmoji("🏪")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("market_view_mystall")
+      .setLabel("我的攤位")
+      .setEmoji("📋")
+      .setStyle(ButtonStyle.Secondary)
+  );
+  container.addActionRowComponents(row);
+  return container;
+};
+
 const buildLargeDepositAnnouncement = ({ userId, club, itemDefArg, deposited, marketValueAmount }) =>
   new ContainerBuilder()
     .setAccentColor(COLOR_GOLD)
@@ -538,7 +699,11 @@ module.exports = {
   buildLargeDepositAnnouncement,
   buildWarehouseSummaryBlock,
   buildTakeModal,
+  buildConsignSuccessContainer,
+  buildConsignErrorContainer,
+  buildConsignModal,
   SETTINGS_MODAL_PREFIX,
   TAKE_MODAL_PREFIX,
+  CONSIGN_MODAL_PREFIX,
   SETTING_LABEL,
 };
