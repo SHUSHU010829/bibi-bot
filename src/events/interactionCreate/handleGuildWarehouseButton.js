@@ -18,6 +18,7 @@ const warehouseView = require("../../features/guild_club/warehouse/warehouseView
 const warehouseEligibility = require("../../features/guild_club/warehouse/warehouseEligibility");
 const warehouseSettings = require("../../features/guild_club/warehouse/warehouseSettings");
 const warehouseSettingsService = require("../../features/guild_club/warehouse/warehouseSettingsService");
+const guildWarehouseListingService = require("../../features/guild_club/warehouse/guildWarehouseListingService");
 
 module.exports = async (client, interaction) => {
   const id = interaction.customId || "";
@@ -28,11 +29,14 @@ module.exports = async (client, interaction) => {
       return handleSettingsSubmit(client, interaction);
     if (id.startsWith(warehouseView.TAKE_MODAL_PREFIX))
       return handleTakeModalSubmit(client, interaction);
+    if (id.startsWith(warehouseView.CONSIGN_MODAL_PREFIX))
+      return handleConsignModalSubmit(client, interaction);
     return;
   }
   if (!interaction.isButton()) return;
 
   if (id.startsWith("gcw_takeopen_")) return handleTakeOpen(client, interaction);
+  if (id.startsWith("gcw_consign_")) return handleConsignOpen(client, interaction);
   if (id.startsWith("gcw_refresh_")) return handleRefresh(client, interaction);
   if (id.startsWith("gcw_tab_")) return handleTab(client, interaction);
   if (id.startsWith("gcw_log_")) return handleLog(client, interaction);
@@ -157,6 +161,131 @@ async function handleTakeModalSubmit(client, interaction) {
     });
   } catch (e) {
     console.log(`[GUILD_WAREHOUSE] take modal 失敗：${e.stack || e.message}`.red);
+    return interaction.editReply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "❌ 操作失敗",
+          body: "出了點狀況，請稍後再試。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+}
+
+async function handleConsignOpen(client, interaction) {
+  const { ownerId, payload } = parseOwner("gcw_consign_", interaction.customId);
+  if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "寄售按鈕");
+  const parts = payload.split("_");
+  if (parts.length < 2)
+    return interaction.reply({ content: "❌ 按鈕格式錯誤", flags: MessageFlags.Ephemeral });
+  const maxQty = parseInt(parts[parts.length - 1], 10);
+  const itemId = parts.slice(0, -1).join("_");
+  if (!Number.isInteger(maxQty) || maxQty <= 0)
+    return interaction.reply({ content: "❌ 按鈕資料錯誤", flags: MessageFlags.Ephemeral });
+
+  const membership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  if (!membership || !guildClubService.isManager(membership.role)) {
+    return interaction.reply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "🚫 僅會長 / 副會長可上架寄售",
+          body: "請會長或副會長使用。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+  const club = await guildClubService.getClubById(client, membership.guild_club_id);
+  if (!club)
+    return interaction.reply({
+      components: [
+        warehouseView.buildErrorContainer({ title: "❌ 公會資料異常", body: "公會已不存在。" }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+
+  return interaction.showModal(
+    warehouseView.buildConsignModal({
+      userId: interaction.user.id,
+      itemId,
+      maxQty,
+    })
+  );
+}
+
+async function handleConsignModalSubmit(client, interaction) {
+  const rest = interaction.customId.slice(warehouseView.CONSIGN_MODAL_PREFIX.length);
+  const sepIdx = rest.indexOf("_");
+  if (sepIdx < 0)
+    return interaction.reply({ content: "❌ Modal 格式錯誤", flags: MessageFlags.Ephemeral });
+  const ownerId = rest.slice(0, sepIdx);
+  const itemId = rest.slice(sepIdx + 1);
+  if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "寄售視窗");
+
+  await interaction.deferReply();
+
+  const qtyRaw = (interaction.fields.getTextInputValue("qty") || "").trim();
+  const priceRaw = (interaction.fields.getTextInputValue("price") || "")
+    .replace(/[,，\s]/g, "")
+    .trim();
+  const qty = parseInt(qtyRaw, 10);
+  const price = parseInt(priceRaw, 10);
+  if (!Number.isInteger(qty) || qty <= 0)
+    return interaction.editReply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "❌ 數量格式錯誤",
+          body: `請輸入正整數，你輸入了「${qtyRaw}」。`,
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  if (!Number.isInteger(price) || price <= 0)
+    return interaction.editReply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "❌ 售價格式錯誤",
+          body: `請輸入正整數，你輸入了「${priceRaw}」。`,
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+
+  try {
+    const result = await guildWarehouseListingService.createListing(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      sellerName: interaction.member?.displayName || interaction.user.username,
+      itemId,
+      qty,
+      price,
+    });
+
+    if (!result.ok) {
+      return interaction.editReply({
+        components: [warehouseView.buildConsignErrorContainer(result, itemId)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+
+    return interaction.editReply({
+      components: [
+        warehouseView.buildConsignSuccessContainer({
+          userId: interaction.user.id,
+          club: result.club,
+          itemDefArg: result.item,
+          listing: result.listing,
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (e) {
+    console.log(`[GUILD_WAREHOUSE] consign modal 失敗：${e.stack || e.message}`.red);
     return interaction.editReply({
       components: [
         warehouseView.buildErrorContainer({
