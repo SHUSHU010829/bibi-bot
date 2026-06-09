@@ -31,6 +31,8 @@ module.exports = async (client, interaction) => {
       return handleTakeModalSubmit(client, interaction);
     if (id.startsWith(warehouseView.CONSIGN_MODAL_PREFIX))
       return handleConsignModalSubmit(client, interaction);
+    if (id.startsWith(warehouseView.PTM_MODAL_PREFIX))
+      return handlePerTakeMaxSubmit(client, interaction);
     return;
   }
   if (!interaction.isButton()) return;
@@ -42,6 +44,8 @@ module.exports = async (client, interaction) => {
   if (id.startsWith("gcw_log_")) return handleLog(client, interaction);
   if (id.startsWith("gcw_help_")) return handleHelp(client, interaction);
   if (id.startsWith("gcw_settings_")) return handleSettingsOpen(client, interaction);
+  if (id.startsWith("gcw_ptmopen_")) return handlePerTakeMaxOpen(client, interaction);
+  if (id.startsWith("gcw_ptm_")) return handlePerTakeMaxPicker(client, interaction);
 };
 
 function parseOwner(prefix, customId) {
@@ -296,6 +300,162 @@ async function handleConsignModalSubmit(client, interaction) {
       flags: MessageFlags.IsComponentsV2,
     });
   }
+}
+
+async function handlePerTakeMaxPicker(client, interaction) {
+  const { ownerId } = parseOwner("gcw_ptm_", interaction.customId);
+  if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "物品上限按鈕");
+
+  const membership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  if (!membership || !guildClubService.isManager(membership.role)) {
+    return interaction.reply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "🚫 僅會長 / 副會長可調設定",
+          body: "請會長或副會長使用。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+  const club = await guildClubService.getClubById(client, membership.guild_club_id);
+  if (!club)
+    return interaction.reply({
+      components: [
+        warehouseView.buildErrorContainer({ title: "❌ 公會資料異常", body: "公會已不存在。" }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+
+  return interaction.reply({
+    components: [
+      warehouseView.buildPerTakeMaxPickerContainer({
+        userId: interaction.user.id,
+        club,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+  });
+}
+
+async function handlePerTakeMaxOpen(client, interaction) {
+  const { ownerId, payload } = parseOwner("gcw_ptmopen_", interaction.customId);
+  if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "物品上限按鈕");
+  const group = payload;
+  if (!warehouseView.PTM_GROUPS[group])
+    return interaction.reply({ content: "❌ 未知分類", flags: MessageFlags.Ephemeral });
+
+  const membership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  if (!membership || !guildClubService.isManager(membership.role)) {
+    return interaction.reply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "🚫 僅會長 / 副會長可調設定",
+          body: "請會長或副會長使用。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+  const club = await guildClubService.getClubById(client, membership.guild_club_id);
+  if (!club)
+    return interaction.reply({
+      components: [
+        warehouseView.buildErrorContainer({ title: "❌ 公會資料異常", body: "公會已不存在。" }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+
+  return interaction.showModal(
+    warehouseView.buildPerTakeMaxModal({ userId: interaction.user.id, club, group })
+  );
+}
+
+async function handlePerTakeMaxSubmit(client, interaction) {
+  const rest = interaction.customId.slice(warehouseView.PTM_MODAL_PREFIX.length);
+  const sepIdx = rest.indexOf("_");
+  if (sepIdx < 0)
+    return interaction.reply({ content: "❌ Modal 格式錯誤", flags: MessageFlags.Ephemeral });
+  const ownerId = rest.slice(0, sepIdx);
+  const group = rest.slice(sepIdx + 1);
+  if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "物品上限視窗");
+  if (!warehouseView.PTM_GROUPS[group])
+    return interaction.reply({ content: "❌ 未知分類", flags: MessageFlags.Ephemeral });
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const inputs = {};
+  for (const itemId of warehouseView.itemsInPtmGroup(group)) {
+    inputs[itemId] = interaction.fields.getTextInputValue(itemId);
+  }
+
+  const result = await warehouseSettingsService.updatePerTakeMax(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    inputs,
+  });
+
+  if (!result.ok) {
+    if (result.reason === "validation_failed") {
+      const lines = result.errors.map((e) => {
+        const d = warehouseSettings.itemDef(e.itemId);
+        const name = d ? `${d.emoji} ${d.name}` : e.itemId;
+        if (e.reason === "not_integer") return `・${name}：請填整數`;
+        if (e.reason === "out_of_range") return `・${name}：請填 ${e.lo}–${e.hi}`;
+        return `・${name}：${e.reason}`;
+      });
+      return interaction.editReply({
+        components: [
+          warehouseView.buildErrorContainer({
+            title: "❌ 設定值不合法",
+            body: lines.join("\n"),
+            hint: "範圍依設計上下限自動 clamp，不能超出。",
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+    if (result.reason === "no_change")
+      return interaction.editReply({
+        components: [
+          warehouseView.buildErrorContainer({
+            title: "🟡 沒有可儲存的變更",
+            body: "你沒有填任何欄位，設定維持原狀。",
+            hint: "想恢復預設？把對應欄位填空白後送出。",
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    return interaction.editReply({
+      components: [
+        warehouseView.buildErrorContainer({
+          title: "❌ 設定更新失敗",
+          body: `原因：${result.reason}`,
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  return interaction.editReply({
+    components: [
+      warehouseView.buildPerTakeMaxUpdatedContainer({
+        club: result.club,
+        applied: result.applied,
+        userId: interaction.user.id,
+        group,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }
 
 async function handleRefresh(client, interaction) {

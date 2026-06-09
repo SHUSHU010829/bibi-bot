@@ -252,6 +252,11 @@ const buildWarehouseContainer = ({
         .setCustomId(`gcw_settings_${viewerId}`)
         .setLabel("倉庫設定")
         .setEmoji("⚙️")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`gcw_ptm_${viewerId}`)
+        .setLabel("物品上限")
+        .setEmoji("🔧")
         .setStyle(ButtonStyle.Secondary)
     );
   }
@@ -434,6 +439,112 @@ const buildTakeModal = ({ userId, club, itemId, maxTake }) => {
         .setValue(String(maxTake))
     )
   );
+  return modal;
+};
+
+const PTM_GROUPS = {
+  mining: { label: "⛏️ 礦石", kind: "backpack" },
+  farming: { label: "🌾 作物", kind: "veggie_bag" },
+  fish: { label: "🎣 魚類", kind: "fish_bag" },
+};
+
+const itemsInPtmGroup = (group) => {
+  const def = PTM_GROUPS[group];
+  if (!def) return [];
+  const { allItemIds } = require("./warehouseSettings");
+  return allItemIds().filter((id) => itemDef(id).kind === def.kind);
+};
+
+const buildPerTakeMaxPickerContainer = ({ userId, club }) => {
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_INFO)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🔧 「${club.name}」物品單次提領上限`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "選擇要編輯的分類，每個物品可獨立設定單次提領上限（受設計範圍 clamp）。\n" +
+          "-# 留空即恢復預設值。"
+      )
+    );
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`gcw_ptmopen_${userId}_mining`)
+      .setLabel("礦石")
+      .setEmoji("⛏️")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`gcw_ptmopen_${userId}_farming`)
+      .setLabel("作物")
+      .setEmoji("🌾")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`gcw_ptmopen_${userId}_fish`)
+      .setLabel("魚類")
+      .setEmoji("🎣")
+      .setStyle(ButtonStyle.Primary)
+  );
+  container.addActionRowComponents(row);
+  return container;
+};
+
+const PTM_MODAL_PREFIX = "gcw_ptmdo_";
+
+const buildPerTakeMaxUpdatedContainer = ({ club, applied, userId, group }) => {
+  const def = PTM_GROUPS[group];
+  const lines = Object.entries(applied).map(([id, v]) => {
+    const d = itemDef(id);
+    const name = d ? `${d.emoji} ${d.name}` : id;
+    return `・${name}：${v == null ? "預設" : v}`;
+  });
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_SUCCESS)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ✅ 「${club.name}」${def?.label || group} 提領上限已更新`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(lines.join("\n") || "-# 沒有變更")
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 由 <@${userId}> 更新。輸入空白即恢復預設。`
+      )
+    );
+};
+
+const buildPerTakeMaxModal = ({ userId, club, group }) => {
+  const def = PTM_GROUPS[group];
+  if (!def) return null;
+  const ids = itemsInPtmGroup(group);
+  const cur = club?.warehouse_settings?.perTakeMax || {};
+  const modal = new ModalBuilder()
+    .setCustomId(`${PTM_MODAL_PREFIX}${userId}_${group}`)
+    .setTitle(`${def.label.replace(/^\S+\s*/, "")}單次提領上限`.slice(0, 45));
+
+  for (const id of ids) {
+    const d = itemDef(id);
+    const [lo, hi] = d.perTakeMaxRange;
+    const current = cur[id];
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId(id)
+          .setLabel(`${d.name}（${lo}–${hi}，留空＝預設）`.slice(0, 45))
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setMaxLength(4)
+          .setPlaceholder(
+            `預設 ${d.perTakeMaxDefault}${current != null ? `，目前 ${current}` : ""}`
+          )
+          .setValue(current != null ? String(current) : "")
+      )
+    );
+  }
   return modal;
 };
 
@@ -702,8 +813,14 @@ module.exports = {
   buildConsignSuccessContainer,
   buildConsignErrorContainer,
   buildConsignModal,
+  buildPerTakeMaxPickerContainer,
+  buildPerTakeMaxModal,
+  buildPerTakeMaxUpdatedContainer,
+  PTM_GROUPS,
+  itemsInPtmGroup,
   SETTINGS_MODAL_PREFIX,
   TAKE_MODAL_PREFIX,
   CONSIGN_MODAL_PREFIX,
+  PTM_MODAL_PREFIX,
   SETTING_LABEL,
 };

@@ -94,9 +94,68 @@ const updateSettings = async (
   return { ok: true, club: after, applied };
 };
 
+const updatePerTakeMax = async (
+  client,
+  { userId, guildId, inputs }
+) => {
+  const m = await guildClubService.getMembership(client, userId, guildId);
+  if (!m) return { ok: false, reason: "not_in_club" };
+  if (!guildClubService.isManager(m.role))
+    return { ok: false, reason: "not_manager" };
+
+  const club = await guildClubService.getClubById(client, m.guild_club_id);
+  if (!club) return { ok: false, reason: "club_missing" };
+
+  const items = guildWarehouse?.items || {};
+  const set = {};
+  const unset = {};
+  const errors = [];
+  const applied = {};
+
+  for (const [itemId, raw] of Object.entries(inputs || {})) {
+    const def = items[itemId];
+    if (!def) continue;
+    const s = (raw || "").trim();
+    if (!s) {
+      unset[`warehouse_settings.perTakeMax.${itemId}`] = "";
+      applied[itemId] = null;
+      continue;
+    }
+    const v = parseInt(s, 10);
+    if (!Number.isInteger(v)) {
+      errors.push({ itemId, reason: "not_integer" });
+      continue;
+    }
+    const [lo, hi] = def.perTakeMaxRange;
+    if (v < lo || v > hi) {
+      errors.push({ itemId, reason: "out_of_range", lo, hi });
+      continue;
+    }
+    set[`warehouse_settings.perTakeMax.${itemId}`] = v;
+    applied[itemId] = v;
+  }
+
+  if (errors.length > 0) return { ok: false, reason: "validation_failed", errors };
+
+  const update = {};
+  if (Object.keys(set).length) update.$set = { ...set, updated_at: new Date() };
+  if (Object.keys(unset).length) update.$unset = unset;
+  if (Object.keys(update).length === 0)
+    return { ok: false, reason: "no_change" };
+
+  await client.guildsClubCollection.updateOne(
+    { guild_club_id: m.guild_club_id, disbanded_at: null },
+    update
+  );
+
+  const after = await guildClubService.getClubById(client, m.guild_club_id);
+  return { ok: true, club: after, applied };
+};
+
 module.exports = {
   SETTING_KEYS,
   cfgRange,
   parseInput,
   updateSettings,
+  updatePerTakeMax,
 };
