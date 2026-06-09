@@ -17,6 +17,7 @@ const { nextPrice, calcMarketDrift } = require("../../features/stock/priceEngine
 const { rollRandomEvent } = require("../../features/stock/eventEngine");
 const { isMarketOpen } = require("../../features/stock/tradeService");
 const { renderMultiLine } = require("../../features/stock/chartRenderer");
+const { getDailyVolume } = require("../../features/stock/volumeService");
 
 const SENTIMENT_LABEL = {
   bull: "🐂 牛市",
@@ -177,10 +178,27 @@ async function postMarketBroadcast(client, guildId) {
     const weekPrices = weekly.map((w) => w.price);
     const wh = weekPrices.length ? Math.max(...weekPrices, s.currentPrice) : s.currentPrice;
     const wl = weekPrices.length ? Math.min(...weekPrices, s.currentPrice) : s.currentPrice;
+
+    let volLine = "";
+    try {
+      const vol = await getDailyVolume(client, { guildId, symbol: s.symbol });
+      if (vol.totalShares > 0) {
+        const net = vol.buyShares - vol.sellShares;
+        const netLabel =
+          net === 0 ? "持平" : net > 0 ? `🟢 淨買 +${net.toLocaleString()}` : `🔴 淨賣 ${net.toLocaleString()}`;
+        volLine = `\n今日量 **${vol.totalShares.toLocaleString()}** 股　買 ${vol.buyShares.toLocaleString()} / 賣 ${vol.sellShares.toLocaleString()}　${netLabel}`;
+      } else {
+        volLine = `\n今日量 —`;
+      }
+    } catch (volErr) {
+      console.log(`[STOCK] broadcast volume fetch failed (${s.symbol}): ${volErr.message}`.yellow);
+    }
+
     stockLines.push(
       `**\`${s.symbol}\` ${s.name}**\n` +
         `現價 **${s.currentPrice.toFixed(1)}**　今日 ${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%\n` +
-        `週高 ${wh.toFixed(1)}　週低 ${wl.toFixed(1)}`,
+        `週高 ${wh.toFixed(1)}　週低 ${wl.toFixed(1)}` +
+        volLine,
     );
   }
 
