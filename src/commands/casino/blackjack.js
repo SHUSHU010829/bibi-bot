@@ -167,13 +167,14 @@ module.exports = {
       }
 
       // 起手就 settled（雙方 BJ 等）的局，牌型已沒人需要查 → 不存進 doc 省 storage
+      const docToInsert = { ...doc };
       if (doc.status === "settled") {
-        delete doc.deck;
-        delete doc.playerHand;
-        delete doc.dealerHand;
-        delete doc.hands;
+        delete docToInsert.deck;
+        delete docToInsert.playerHand;
+        delete docToInsert.dealerHand;
+        delete docToInsert.hands;
       }
-      await client.blackjackGamesCollection.insertOne(doc);
+      await client.blackjackGamesCollection.insertOne(docToInsert);
 
       await saveLastBet(client, {
         userId,
