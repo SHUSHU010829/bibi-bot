@@ -690,6 +690,12 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     const seedBag = farmProfile.seed_bag || {};
     const bp = farmProfile.backpack || {};
     const plotCount = Math.max(1, Math.min(farmProfile.farm_plot_count || 2, farming.maxPlots || 8));
+    const cropMarket = await orePriceEngine.getDailyCropPrices(client).catch(() => ({ prices: {} }));
+    const cropPriceOf = (key) => {
+      const dynamic = cropMarket.prices?.[key];
+      if (typeof dynamic === "number") return dynamic;
+      return orePriceEngine.cropBasePrice(key);
+    };
 
     container.addSeparatorComponents(new SeparatorBuilder());
 
@@ -704,7 +710,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       if (veggieEntries.length > 0) {
         for (const [key, def] of veggieEntries) {
           const qty = veggieBag[key] || 0;
-          const price = (farming.sellPrices || {})[key] || 0;
+          const price = cropPriceOf(key);
           const total = qty * price;
           container.addSectionComponents(
             new SectionBuilder()
@@ -767,8 +773,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       for (const [key, def] of Object.entries(farming.crops || {})) {
         const qty = veggieBag[key] || 0;
         if (qty <= 0) continue;
-        const price = (farming.sellPrices || {})[key] || 0;
-        bagValue += qty * price;
+        bagValue += qty * cropPriceOf(key);
         veggieCompact.push(`${def.emoji} ${def.name}×${qty}`);
       }
       const fertCompact = [];

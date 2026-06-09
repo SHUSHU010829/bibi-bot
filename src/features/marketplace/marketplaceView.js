@@ -13,8 +13,32 @@ const {
   TextInputBuilder,
   TextInputStyle,
 } = require("discord.js");
-const { mining, fishing, guildWarehouse } = require("../../config");
+const { mining, fishing, farming, guildWarehouse } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
+const itemAccess = require("./itemAccess");
+
+// 與 marketplaceService.resolveListingItem 同邏輯，這裡 inline 以避免循環依賴
+function resolveListingItem(listing) {
+  if (!listing) return null;
+  if (listing.item_type === "fish" || listing.fish_key) {
+    return { item_type: "fish", item_key: listing.fish_key || listing.item_key };
+  }
+  if (listing.item_type === "veggie" || listing.veggie_key) {
+    return { item_type: "veggie", item_key: listing.veggie_key || listing.item_key };
+  }
+  return { item_type: "ore", item_key: listing.ore || listing.item_key };
+}
+
+function resolveListingPayItem(listing) {
+  if (!listing) return null;
+  if (listing.pay_item_type) {
+    return { item_type: listing.pay_item_type, item_key: listing.pay_item_key, qty: listing.pay_qty };
+  }
+  if (listing.pay_ore) {
+    return { item_type: "ore", item_key: listing.pay_ore, qty: listing.pay_qty };
+  }
+  return null;
+}
 
 // customId 前綴常數（與 handleMarketInteraction 共用）
 const BUY_PREFIX      = "market_buy_";
@@ -39,18 +63,14 @@ function oreLabel(oreKey) {
   return `${def.emoji || "⛏️"} ${def.name || oreKey || "未知物品"}`;
 }
 
-// 統一 item 顯示：根據 item_type / fish_key 決定顯示礦石、魚或作物
+// 統一 item 顯示：依 item_type 決定礦石/魚/農產品
 function itemLabel(listing) {
-  // 公會寄售：由 item_id + item_kind 查 guild_warehouse config
   if (listing.listing_type === "guild_sell") {
     const def = guildWarehouse?.items?.[listing.item_id] || {};
     return `${def.emoji || "📦"} ${def.name || listing.item_id || "未知物品"}`;
   }
-  if (listing.item_type === "fish" || listing.fish_key) {
-    const def = fishing?.fish?.[listing.fish_key] || {};
-    return `${def.emoji || "🐟"} ${def.name || listing.fish_key || "未知魚種"}`;
-  }
-  return oreLabel(listing.ore);
+  const item = resolveListingItem(listing);
+  return itemAccess.itemLabel(item.item_type, item.item_key);
 }
 
 // 市集篩選器 customId 前綴
@@ -109,16 +129,20 @@ function listingText(l) {
     );
   }
   if (l.listing_type === "want") {
-    const payStr = l.pay_kind === "coin"
-      ? `**${l.pay_coin.toLocaleString()}** ${COIN_EMOJI}`
-      : `${oreLabel(l.pay_ore)} ×${l.pay_qty}`;
+    const wantItem = resolveListingItem(l);
+    const payItem = resolveListingPayItem(l);
+    const wantStr = itemAccess.itemLabel(wantItem.item_type, wantItem.item_key, l.qty);
+    const payStr = payItem
+      ? itemAccess.itemLabel(payItem.item_type, payItem.item_key, payItem.qty)
+      : `**${l.pay_coin.toLocaleString()}** ${COIN_EMOJI}`;
     return (
       `${header}\n` +
-      `徵求 ${oreLabel(l.ore)} ×${l.qty}　付 ${payStr}\n` +
+      `徵求 ${wantStr}　付 ${payStr}\n` +
       `發單：${l.seller_name || "?"}　截止 <t:${expiresEpoch}:R>`
     );
   }
   if (l.listing_type === "auction") {
+    const item = resolveListingItem(l);
     const bidLine = l.current_bid
       ? `目前最高：**${l.current_bid.toLocaleString()}** ${COIN_EMOJI}（${l.bidder_name || "匿名"}）`
       : `起標：**${l.start_price.toLocaleString()}** ${COIN_EMOJI}（尚無人出價）`;
@@ -126,7 +150,7 @@ function listingText(l) {
       ? `　💰 一口價 **${l.buyout_price.toLocaleString()}** ${COIN_EMOJI}` : "";
     return (
       `${header}\n` +
-      `${oreLabel(l.ore)} ×${l.qty}\n` +
+      `${itemAccess.itemLabel(item.item_type, item.item_key, l.qty)}\n` +
       `${bidLine}${buyoutLine}\n` +
       `賣家：${l.seller_name || "?"}　截止 <t:${expiresEpoch}:R>`
     );
@@ -390,12 +414,14 @@ function buildConfirmView(listing, action) {
       `**#${listing.listing_id}** 你給出 ${oreLabel(listing.want_ore)} ×${listing.want_qty}\n` +
       `換取 ${oreLabel(listing.ore)} ×${listing.qty}`;
   } else if (action === "fulfill") {
-    const payStr = listing.pay_kind === "coin"
-      ? `**${listing.pay_coin.toLocaleString()}** ${COIN_EMOJI}`
-      : `${oreLabel(listing.pay_ore)} ×${listing.pay_qty}`;
+    const wantItem = resolveListingItem(listing);
+    const payItem = resolveListingPayItem(listing);
+    const payStr = payItem
+      ? itemAccess.itemLabel(payItem.item_type, payItem.item_key, payItem.qty)
+      : `**${listing.pay_coin.toLocaleString()}** ${COIN_EMOJI}`;
     content =
-      `## 確認賣礦？\n` +
-      `**#${listing.listing_id}** 你給出 ${oreLabel(listing.ore)} ×${listing.qty}\n` +
+      `## 確認賣出？\n` +
+      `**#${listing.listing_id}** 你給出 ${itemAccess.itemLabel(wantItem.item_type, wantItem.item_key, listing.qty)}\n` +
       `收取 ${payStr}`;
   } else if (action === "cancel") {
     content =
