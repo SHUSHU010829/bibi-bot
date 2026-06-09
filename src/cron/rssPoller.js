@@ -13,7 +13,7 @@ const {
 } = require("discord.js");
 
 const { RSS_FEEDS } = require("../config/rssFeeds");
-const { fetchFeedItems } = require("../services/rssFeedService");
+const { fetchFeedItems, isRetryableError } = require("../services/rssFeedService");
 const { getDataFile } = require("../utils/dataPaths");
 const { NEWSPAPER_EMOJI } = require("../constants/emoji");
 
@@ -30,6 +30,11 @@ const SEEN_HISTORY_LIMIT = 200;
 // 設為 0 / 負數可關閉。
 const MAX_ITEM_AGE_MS =
   (Number(process.env.RSS_MAX_ITEM_AGE_HOURS) || 72) * 60 * 60 * 1000;
+
+// 上游 gateway (picnob RSSHub) 偶發 503/timeout 屬正常,連續失敗次數未達門檻時
+// 只記 WARN,避免單次抖動洗成 ERROR;到門檻才升級成 ERROR 提醒人工檢查。
+const FAIL_ERROR_THRESHOLD =
+  Number(process.env.RSS_FAIL_ERROR_THRESHOLD) || 3;
 
 const readState = () => {
   const filePath = getDataFile(STATE_FILE);
@@ -69,6 +74,27 @@ const itemKeys = (item) => {
   // link 是 picnob 的 post permalink,即使 gateway 重生 guid 也應穩定
   if (item.link) keys.push(`l:${item.link}`);
   return keys;
+};
+
+const getFailCount = (state, feedId) => {
+  const entry = state[feedId];
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return 0;
+  const n = Number(entry.failCount);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+const updateFailCount = (feedId, mutate) => {
+  const latest = readState();
+  const entry =
+    latest[feedId] && typeof latest[feedId] === "object" && !Array.isArray(latest[feedId])
+      ? latest[feedId]
+      : { seen: getSeenList(latest, feedId) };
+  const next = mutate(getFailCount(latest, feedId));
+  if (next > 0) entry.failCount = next;
+  else delete entry.failCount;
+  latest[feedId] = entry;
+  writeState(latest);
+  return next;
 };
 
 const mergeSeen = (newKeys, oldKeys) => {
@@ -233,8 +259,20 @@ const pollFeed = async (client, feed) => {
   try {
     items = await fetchFeedItems(feed.url);
   } catch (err) {
-    console.log(`[ERROR] RSS(${feed.id}) 抓取失敗: ${err.message}`.red);
+    const transient = isRetryableError(err);
+    const failCount = updateFailCount(feed.id, (n) => n + 1);
+    const escalate = !transient || failCount >= FAIL_ERROR_THRESHOLD;
+    const tag = escalate ? "[ERROR]" : "[WARN]";
+    const color = escalate ? "red" : "yellow";
+    console.log(
+      `${tag} RSS(${feed.id}) 抓取失敗 (連續 ${failCount} 次): ${err.message}`[color]
+    );
     return;
+  }
+
+  // 抓取成功:重置連續失敗計數
+  if (getFailCount(readState(), feed.id) > 0) {
+    updateFailCount(feed.id, () => 0);
   }
 
   if (!items.length) {
