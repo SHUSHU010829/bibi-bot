@@ -25,7 +25,7 @@ async function notifyNewApplication(
         value: message ? message.slice(0, 1000) : "（未填）",
       })
       .setFooter({
-        text: "用 /公會 申請列表 處理｜不想再收到提醒？/通知設定 即可關閉",
+        text: "用 /公會 資訊 點「待審 N」按鈕處理｜不想再收到提醒？/通知設定 即可關閉",
       });
 
     await user.send({ embeds: [embed] }).catch(() => {});
