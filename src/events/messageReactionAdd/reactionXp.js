@@ -53,57 +53,12 @@ module.exports = async (client, reaction, user) => {
     );
     if (recent) return;
 
-    // 每日 cap：累積今天 author 已經從 reaction 拿了多少 XP
-    const tz = levelSystem.daily?.resetTimezone || "Asia/Taipei";
-    const today = DateTime.now().setZone(tz).toISODate();
-    const cap = cfg.dailyCapPerUser ?? 50;
-
-    const todayAgg = await client.levelTransactionsCollection
-      .aggregate([
-        {
-          $match: {
-            userId: message.author.id,
-            guildId: message.guild.id,
-            source: "reaction",
-            date: today,
-          },
-        },
-        { $group: { _id: null, total: { $sum: "$amount" } } },
-      ])
-      .toArray();
-    const earnedToday = todayAgg[0]?.total || 0;
-    if (earnedToday >= cap) return;
-
-    const xp = Math.min(cfg.xpPerReactionReceived, cap - earnedToday);
-
-    // 給訊息作者 XP
     const authorMember = await message.guild.members
       .fetch(message.author.id)
       .catch(() => null);
 
-    await grantXp(client, {
-      userId: message.author.id,
-      guildId: message.guild.id,
-      username: message.author.username,
-      avatarHash: message.author.avatar,
-      amount: xp,
-      source: "reaction",
-      counterField: "xpFromReaction",
-      incrementReactionsReceived: 1,
-      meta: {
-        channelId: message.channelId,
-        messageId: message.id,
-        reactorId: user.id,
-        emoji: reaction.emoji?.name || "?",
-      },
-      channel: message.channel,
-      member: authorMember,
-    });
-
-    // 反應金幣：每 N 個反應給 1 金幣（counter 存在 userCoinsCollection 上）
-    await tryGrantReactionCoin(client, message, authorMember, today, user, reaction);
-
     // 人氣王任務：作者本週收到反應 +1（已排除自反應 + 同 reactor 30s cooldown）
+    // 必須在 daily XP cap 檢查之前計入，否則 cap 達標後當天剩餘反應不會推進週任務
     if (questSystem?.enabled && client.questProgressCollection) {
       const claimCtx = {
         member: authorMember,
@@ -130,6 +85,51 @@ module.exports = async (client, reaction, user) => {
         })
         .catch((e) => console.log(`[ERROR] quest weekly_popular: ${e}`.red));
     }
+
+    // 每日 cap：累積今天 author 已經從 reaction 拿了多少 XP
+    const tz = levelSystem.daily?.resetTimezone || "Asia/Taipei";
+    const today = DateTime.now().setZone(tz).toISODate();
+    const cap = cfg.dailyCapPerUser ?? 50;
+
+    const todayAgg = await client.levelTransactionsCollection
+      .aggregate([
+        {
+          $match: {
+            userId: message.author.id,
+            guildId: message.guild.id,
+            source: "reaction",
+            date: today,
+          },
+        },
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ])
+      .toArray();
+    const earnedToday = todayAgg[0]?.total || 0;
+    if (earnedToday >= cap) return;
+
+    const xp = Math.min(cfg.xpPerReactionReceived, cap - earnedToday);
+
+    await grantXp(client, {
+      userId: message.author.id,
+      guildId: message.guild.id,
+      username: message.author.username,
+      avatarHash: message.author.avatar,
+      amount: xp,
+      source: "reaction",
+      counterField: "xpFromReaction",
+      incrementReactionsReceived: 1,
+      meta: {
+        channelId: message.channelId,
+        messageId: message.id,
+        reactorId: user.id,
+        emoji: reaction.emoji?.name || "?",
+      },
+      channel: message.channel,
+      member: authorMember,
+    });
+
+    // 反應金幣：每 N 個反應給 1 金幣（counter 存在 userCoinsCollection 上）
+    await tryGrantReactionCoin(client, message, authorMember, today, user, reaction);
   } catch (error) {
     console.log(`[ERROR] reactionXp:\n${error}`.red);
   }
