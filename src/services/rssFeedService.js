@@ -16,8 +16,23 @@ const parser = new Parser({
   },
 });
 
-const MAX_FETCH_ATTEMPTS = Number(process.env.RSS_FETCH_MAX_ATTEMPTS) || 3;
-const INITIAL_RETRY_DELAY_MS = 2000;
+// gateway (RSSHub on Zeabur) 對 picnob 503 會回 `cache-control: max-age=300`,
+// 失敗結果被 cache 5 分鐘,短間隔重試只會打到同一個 cached 503。
+// 預設排程把最後一次 retry 推到 cache 過期之後,讓重試實際有意義。
+const parseRetryDelays = (raw) => {
+  if (!raw) return null;
+  const arr = raw
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n >= 0);
+  return arr.length ? arr : null;
+};
+
+const RETRY_DELAYS_MS = parseRetryDelays(process.env.RSS_FETCH_RETRY_DELAYS_MS) || [
+  30_000,
+  310_000,
+];
+const MAX_FETCH_ATTEMPTS = RETRY_DELAYS_MS.length + 1;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -50,8 +65,7 @@ const parseURLWithRetry = async (url) => {
     } catch (err) {
       lastErr = err;
       if (attempt === MAX_FETCH_ATTEMPTS || !isRetryableError(err)) throw err;
-      const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-      await sleep(delay);
+      await sleep(RETRY_DELAYS_MS[attempt - 1]);
     }
   }
   throw lastErr;
@@ -111,4 +125,4 @@ const fetchFeedItems = async (url) => {
   });
 };
 
-module.exports = { fetchFeedItems };
+module.exports = { fetchFeedItems, isRetryableError };
