@@ -899,6 +899,14 @@ async function _refundEscrow(client, listing) {
     }).catch((e) => console.log(`[ERROR] market refund coin: ${e}`.red));
   }
 
+  // 退公會寄售託管 → 退回公會倉庫 available_qty
+  if (listing.escrow_warehouse) {
+    const guildWarehouseListingService = require("../guild_club/warehouse/guildWarehouseListingService");
+    await guildWarehouseListingService.refundToWarehouse(client, listing).catch(
+      (e) => console.log(`[ERROR] market refund guild_sell: ${e}`.red)
+    );
+  }
+
   // 退付的礦（want 付礦）— 背包放不下的進信箱
   if (listing.escrow_pay_ore) {
     const res = await mailbox.refundOreWithOverflow(client, {
@@ -988,6 +996,8 @@ async function listActive(client, guildId, { page = 0, pageSize = 5, type = null
     filter.item_type = "fish";
   } else if (itemType === "ore") {
     filter.$or = [{ item_type: "ore" }, { item_type: { $exists: false } }];
+  } else if (itemType === "veggie") {
+    filter.item_type = "veggie";
   }
   const total = await client.marketListingsCollection.countDocuments(filter);
   const listings = await client.marketListingsCollection

@@ -18,6 +18,7 @@ const warehouseService = require("../../features/guild_club/warehouse/warehouseS
 const warehouseView = require("../../features/guild_club/warehouse/warehouseView");
 const warehouseSettings = require("../../features/guild_club/warehouse/warehouseSettings");
 const warehouseEligibility = require("../../features/guild_club/warehouse/warehouseEligibility");
+const guildWarehouseListingService = require("../../features/guild_club/warehouse/guildWarehouseListingService");
 
 // 公會指令類別白名單。Thread 走 parent channel 的 parentId（祖父類別）。
 // 空 / 未設定 → 不限制。
@@ -42,6 +43,7 @@ const SUB_RANK = "排行";
 const SUB_WAREHOUSE = "倉庫";
 const SUB_DEPOSIT = "存入";
 const SUB_WITHDRAW = "領取";
+const SUB_CONSIGN = "寄售";
 
 // 解散 / 踢人 / 轉讓 / 指派副會長 / 撤銷副會長 已合併到 /公會 資訊 的「⚙️ 公會管理」按鈕區。
 
@@ -161,25 +163,70 @@ module.exports = {
             .setRequired(true)
             .setMinValue(1)
         )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName(SUB_CONSIGN)
+        .setDescription("會長 / 副會長把倉庫物資上架到市集（成交金額全額進公會金庫）")
+        .addStringOption((opt) =>
+          opt
+            .setName("物品")
+            .setDescription("要寄售的物品")
+            .setRequired(true)
+            .setAutocomplete(true)
+        )
+        .addIntegerOption((opt) =>
+          opt
+            .setName("數量")
+            .setDescription("寄售數量（正整數）")
+            .setRequired(true)
+            .setMinValue(1)
+        )
+        .addIntegerOption((opt) =>
+          opt
+            .setName("售價")
+            .setDescription("總售價（一口價，正整數）")
+            .setRequired(true)
+            .setMinValue(1)
+        )
     ),
 
   autocomplete: async (client, interaction) => {
     const sub = interaction.options.getSubcommand();
-    if (sub !== SUB_DEPOSIT && sub !== SUB_WITHDRAW) return;
+    if (sub !== SUB_DEPOSIT && sub !== SUB_WITHDRAW && sub !== SUB_CONSIGN) return;
     const focused = interaction.options.getFocused(true);
     if (focused.name !== "物品") return;
     const term = (focused.value || "").toLowerCase();
+
+    // 寄售只顯示目前倉庫有 available_qty 的物品
+    let availableMap = null;
+    if (sub === SUB_CONSIGN) {
+      const membership = await guildClubService
+        .getMembership(client, interaction.user.id, interaction.guildId)
+        .catch(() => null);
+      if (membership) {
+        const inv = await warehouseService
+          .getInventory(client, membership.guild_club_id)
+          .catch(() => []);
+        availableMap = {};
+        for (const it of inv) availableMap[it.item_id] = it.available_qty || 0;
+      }
+    }
+
     const choices = warehouseSettings
       .allItemIds()
       .map((id) => ({ id, def: warehouseSettings.itemDef(id) }))
-      .filter(
-        ({ id, def }) =>
-          !term ||
-          id.includes(term) ||
-          def.name.toLowerCase().includes(term)
-      )
+      .filter(({ id, def }) => {
+        if (term && !id.includes(term) && !def.name.toLowerCase().includes(term))
+          return false;
+        if (availableMap && (availableMap[id] || 0) <= 0) return false;
+        return true;
+      })
       .slice(0, 25)
-      .map(({ id, def }) => ({ name: def.name, value: id }));
+      .map(({ id, def }) => {
+        const avail = availableMap ? `（可寄售 ${availableMap[id]}）` : "";
+        return { name: `${def.name}${avail}`, value: id };
+      });
     await interaction.respond(choices).catch(() => {});
   },
 
@@ -225,6 +272,7 @@ module.exports = {
       if (sub === SUB_WAREHOUSE) return runWarehouse(client, interaction);
       if (sub === SUB_DEPOSIT) return runDeposit(client, interaction);
       if (sub === SUB_WITHDRAW) return runWithdraw(client, interaction);
+      if (sub === SUB_CONSIGN) return runConsign(client, interaction);
     } catch (e) {
       console.log(`[GUILD_CLUB] /公會 ${sub} 失敗：${e.stack || e.message}`.red);
       const reply = {
@@ -1126,6 +1174,117 @@ function withdrawErrorView(result, itemId) {
     });
   return warehouseView.buildErrorContainer({
     title: "❌ 領取失敗",
+    body: `原因：${reason}`,
+  });
+}
+
+// ───────── 寄售 ─────────
+
+async function runConsign(client, interaction) {
+  await interaction.deferReply();
+  const itemId = interaction.options.getString("物品", true);
+  const qty = interaction.options.getInteger("數量", true);
+  const price = interaction.options.getInteger("售價", true);
+
+  const result = await guildWarehouseListingService.createListing(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    sellerName: interaction.member?.displayName || interaction.user.username,
+    itemId,
+    qty,
+    price,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({
+      components: [consignErrorView(result, itemId)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  return interaction.editReply({
+    components: [
+      warehouseView.buildConsignSuccessContainer({
+        userId: interaction.user.id,
+        club: result.club,
+        itemDefArg: result.item,
+        listing: result.listing,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+function consignErrorView(result, itemId) {
+  const name = warehouseSettings.itemDef(itemId)?.name || itemId;
+  const { reason } = result;
+  if (reason === "disabled")
+    return warehouseView.buildErrorContainer({
+      title: "🔧 公會寄售未啟用",
+      body: "目前無法使用此功能。",
+    });
+  if (reason === "not_in_club")
+    return warehouseView.buildErrorContainer({
+      title: "🏰 你還沒加入公會",
+      body: "寄售是公會專屬功能。",
+    });
+  if (reason === "not_manager")
+    return warehouseView.buildErrorContainer({
+      title: "🚫 僅會長 / 副會長可上架寄售",
+      body: "請會長或副會長使用。",
+    });
+  if (reason === "club_missing")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 公會資料異常",
+      body: "公會已不存在。",
+    });
+  if (reason === "unknown_item")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 未知物品",
+      body: `「${itemId}」不在倉庫支援清單。`,
+      hint: "請從 autocomplete 選單挑選。",
+    });
+  if (reason === "invalid_qty")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 數量無效",
+      body: "請輸入正整數。",
+    });
+  if (reason === "invalid_price")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 售價無效",
+      body: "請輸入正整數。",
+    });
+  if (reason === "qty_over_limit")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 超過單次上架上限",
+      body: `${name} 單次最多 ${result.limit} 個，你輸入 ${result.asked}。`,
+      hint: "想清更多分多筆上架。",
+    });
+  if (reason === "price_too_low")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 售價過低",
+      body: `${name} 此批最低售價 ${result.minPrice.toLocaleString()} ${COIN_EMOJI}，你出 ${result.asked.toLocaleString()}。`,
+      hint: "防止傾銷的最低保護價（市價 50%）。",
+    });
+  if (reason === "too_many")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 公會寄售已達上限",
+      body: `目前已有 ${result.count}/${result.max} 筆寄售中。`,
+      hint: "等舊單成交、過期或下架後再上新單。",
+    });
+  if (reason === "warehouse_not_enough_available")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 倉庫可上架數量不足",
+      body: `${name} 目前可上架數量不足，可能有保護中庫存或其他寄售佔用。`,
+      hint: "用 /公會 倉庫 查看當前可動用量。",
+    });
+  if (reason === "listing_insert_failed")
+    return warehouseView.buildErrorContainer({
+      title: "❌ 上架失敗",
+      body: "倉庫已自動回滾，請稍後再試。",
+    });
+  return warehouseView.buildErrorContainer({
+    title: "❌ 寄售失敗",
     body: `原因：${reason}`,
   });
 }

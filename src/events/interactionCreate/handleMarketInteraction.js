@@ -11,6 +11,7 @@ const {
 } = require("discord.js");
 const { consume } = require("../../utils/rateLimiter");
 const marketplaceService = require("../../features/marketplace/marketplaceService");
+const guildWarehouseListingService = require("../../features/guild_club/warehouse/guildWarehouseListingService");
 const {
   buildBrowseView,
   buildConfirmView,
@@ -162,13 +163,13 @@ module.exports = async (client, interaction) => {
       const listing = await client.marketListingsCollection.findOne({
         guild_id: interaction.guildId,
         listing_id: listingId,
-        listing_type: "sell",
+        listing_type: { $in: ["sell", "guild_sell"] },
         status: "active",
       });
       if (!listing) {
         return interaction.reply({ content: "❌ 此掛單已不存在或已售出。", flags: MessageFlags.Ephemeral });
       }
-      if (listing.seller_id === interaction.user.id) {
+      if (listing.listing_type === "sell" && listing.seller_id === interaction.user.id) {
         return interaction.reply({ content: "❌ 不能購買自己的掛單。", flags: MessageFlags.Ephemeral });
       }
       const { container, row, flags } = buildConfirmView(listing, "buy");
@@ -287,14 +288,28 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.IsComponentsV2,
       });
       const listingId = cid.slice(CONFIRM_BUY.length);
-      const result = await marketplaceService.buyNow(client, {
-        listingId,
-        buyerId: interaction.user.id,
-        guildId: interaction.guildId,
-        buyerName: interaction.member?.displayName || interaction.user.username,
-        member: interaction.member,
-      });
-      if (result.ok) {
+      // 先看是 sell 還是 guild_sell，分派到不同 service
+      const peek = await client.marketListingsCollection.findOne(
+        { guild_id: interaction.guildId, listing_id: listingId },
+        { projection: { listing_type: 1 } }
+      );
+      const isGuildSell = peek?.listing_type === "guild_sell";
+      const result = isGuildSell
+        ? await guildWarehouseListingService.purchase(client, {
+            listingId,
+            buyerId: interaction.user.id,
+            guildId: interaction.guildId,
+            buyerName: interaction.member?.displayName || interaction.user.username,
+            member: interaction.member,
+          })
+        : await marketplaceService.buyNow(client, {
+            listingId,
+            buyerId: interaction.user.id,
+            guildId: interaction.guildId,
+            buyerName: interaction.member?.displayName || interaction.user.username,
+            member: interaction.member,
+          });
+      if (result.ok && !isGuildSell) {
         const l = result.listing;
         marketplaceService.dmUser(
           client,
@@ -304,7 +319,7 @@ module.exports = async (client, interaction) => {
         );
       }
       return interaction.editReply({
-        components: [statusPanel(formatBuyResult(result))],
+        components: [statusPanel(isGuildSell ? formatGuildSellBuyResult(result) : formatBuyResult(result))],
         flags: MessageFlags.IsComponentsV2,
       });
     }
@@ -413,8 +428,11 @@ module.exports = async (client, interaction) => {
           flags: MessageFlags.IsComponentsV2,
         });
       }
+      const cancelledBack = result.listing.listing_type === "guild_sell"
+        ? "物資已退回公會倉庫"
+        : "託管的礦石／金幣已退回你的帳戶";
       return interaction.editReply({
-        components: [statusPanel(`✅ **#${result.listing.listing_id}** 已下架，託管的礦石／金幣已退回你的帳戶。`)],
+        components: [statusPanel(`✅ **#${result.listing.listing_id}** 已下架，${cancelledBack}。`)],
         flags: MessageFlags.IsComponentsV2,
       });
     }
@@ -530,6 +548,30 @@ function formatBuyResult(result) {
     `**#${l.listing_id}** ${itemLabel(l)} ×${l.qty}\n` +
     `花費 **${l.price.toLocaleString()}** ${COIN_EMOJI}（手續費 ${result.fee || 0}）\n` +
     `${deliveredLine}`
+  );
+}
+
+function formatGuildSellBuyResult(result) {
+  if (!result.ok) {
+    const msgs = {
+      not_found: "❌ 此公會寄售已不存在或已售出。",
+      unknown_kind: "❌ 物品類別異常，請通知管理員。",
+      backpack_full: `🎒 你的背包已滿（${result.used}/${result.cap}），無法收下這批物資！`,
+      insufficient_coins: `💰 餘額不足！你目前 **${(result.balance || 0).toLocaleString()}** ${COIN_EMOJI}（需要 ${(result.need || 0).toLocaleString()}）。`,
+      grant_failed: "🔧 扣款失敗，請稍後再試。",
+      race: "⚡ 剛好有人同時購買，請重試。",
+    };
+    return msgs[result.reason] || "🔧 購買失敗，請稍後再試。";
+  }
+  const l = result.listing;
+  const kind = l.item_kind;
+  const where =
+    kind === "fish_bag" ? "魚袋 🎣" : kind === "veggie_bag" ? "菜籃 🌾" : "背包 🎒";
+  return (
+    `✅ **購買成功！**\n` +
+    `**#${l.listing_id}** ${itemLabel(l)} ×${l.qty}（來自 🏰 ${l.guild_club_name || "公會"}）\n` +
+    `花費 **${l.price.toLocaleString()}** ${COIN_EMOJI}\n` +
+    `物資已放進你的${where}`
   );
 }
 

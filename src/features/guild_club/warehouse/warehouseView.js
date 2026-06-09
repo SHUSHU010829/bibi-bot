@@ -342,7 +342,7 @@ const buildLogContainer = ({ club, entries, isVice }) => {
   const totals = { in: 0, out: 0, leaderNet: 0, leaderFeeBack: 0 };
   for (const e of entries) {
     if (e.action === "deposit") totals.in += e.market_value || 0;
-    else {
+    else if (e.action === "withdraw") {
       totals.out += e.market_value || 0;
       if (e.user_id === leaderId) {
         totals.leaderNet += (e.market_value || 0) - (e.fee || 0);
@@ -364,13 +364,25 @@ const buildLogContainer = ({ club, entries, isVice }) => {
       new TextDisplayBuilder().setContent(`-# 尚無紀錄。`)
     );
   } else {
+    const VERB = {
+      deposit: "📥 存",
+      withdraw: "📤 取",
+      consign_listed: "🏷️ 寄售",
+      consign_sold: "💰 售出",
+      consign_returned: "↩️ 退回",
+    };
     const lines = recent.map((e) => {
       const ts = Math.floor(new Date(e.created_at).getTime() / 1000);
       const def = itemDef(e.item_id);
       const name = def ? `${def.emoji} ${def.name}` : e.item_id;
-      const verb = e.action === "deposit" ? "📥 存" : "📤 取";
-      const tail =
-        e.action === "withdraw" ? `（-${(e.fee || 0).toLocaleString()} 幣手續費）` : "";
+      const verb = VERB[e.action] || "・";
+      let tail = "";
+      if (e.action === "withdraw")
+        tail = `（-${(e.fee || 0).toLocaleString()} 幣手續費）`;
+      else if (e.action === "consign_listed")
+        tail = `（${(e.price || 0).toLocaleString()} 幣標價）`;
+      else if (e.action === "consign_sold")
+        tail = `（+${(e.price || 0).toLocaleString()} 幣入金庫）`;
       return `<t:${ts}:R>　${verb} <@${e.user_id}>　${name} ×${e.qty}${tail}`;
     });
     container.addTextDisplayComponents(
@@ -495,6 +507,45 @@ const buildSettingsUpdatedContainer = ({ club, applied, userId }) => {
     );
 };
 
+const buildConsignSuccessContainer = ({ userId, club, itemDefArg, listing }) => {
+  const expiresEpoch = Math.floor(new Date(listing.expires_at).getTime() / 1000);
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_SUCCESS)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ✅ 已上架到市集：${itemDefArg.emoji} ${itemDefArg.name} ×${listing.qty}`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🏰 ${club.name}　編號 **#${listing.listing_id}**\n` +
+          `售價 **${listing.price.toLocaleString()}** ${COIN_EMOJI}（成交後全額進公會金庫）\n` +
+          `截止 <t:${expiresEpoch}:R>，過期未售出物資自動退回倉庫`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 由 <@${userId}> 上架。需要下架請到 /市集 我的攤位。`
+      )
+    );
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("market_view_browse")
+      .setLabel("查看市集")
+      .setEmoji("🏪")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("market_view_mystall")
+      .setLabel("我的攤位")
+      .setEmoji("📋")
+      .setStyle(ButtonStyle.Secondary)
+  );
+  container.addActionRowComponents(row);
+  return container;
+};
+
 const buildLargeDepositAnnouncement = ({ userId, club, itemDefArg, deposited, marketValueAmount }) =>
   new ContainerBuilder()
     .setAccentColor(COLOR_GOLD)
@@ -538,6 +589,7 @@ module.exports = {
   buildLargeDepositAnnouncement,
   buildWarehouseSummaryBlock,
   buildTakeModal,
+  buildConsignSuccessContainer,
   SETTINGS_MODAL_PREFIX,
   TAKE_MODAL_PREFIX,
   SETTING_LABEL,

@@ -7,8 +7,8 @@
     "depositContributionRate": 0.1,
     "largeDepositAnnounceValue": 10000,
     "withdraw": {
-      "dailyMaxTimesDefault": 2,
-      "dailyMaxTimesRange": [1, 3],
+      "dailyMaxTimesDefault": 3,
+      "dailyMaxTimesRange": [1, 8],
       "feeRateDefault": 0.1,
       "feeRateRange": [0.05, 0.2],
       "feeMinAbsolute": 20,
@@ -43,6 +43,14 @@
       "8": 2.7,
       "9": 2.85,
       "10": 3.0
+    },
+    "consignment": {
+      "enabled": true,
+      "maxActivePerClub": 5,
+      "durationMs": 172800000,
+      "perTakeMaxBackpack": 200,
+      "perTakeMaxFishOrVeggie": 200,
+      "minPriceFactor": 0.5
     }
   }
 }
