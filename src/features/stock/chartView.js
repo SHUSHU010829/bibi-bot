@@ -11,6 +11,7 @@ const {
 } = require("discord.js");
 
 const { renderSingleLine } = require("./chartRenderer");
+const { getBucketedVolume } = require("./volumeService");
 
 const PERIOD_MS = {
   "1d": 24 * 60 * 60 * 1000,
@@ -49,11 +50,19 @@ async function buildChartContainer(client, { guildId, symbol, period }) {
     }
   }
 
+  let volumeData = null;
+  try {
+    volumeData = await getBucketedVolume(client, { guildId, symbol, period });
+  } catch (volErr) {
+    console.log(`[WARN] stock volume fetch failed: ${volErr.message}`);
+  }
+
   let attachment = null;
   let fileName = null;
   try {
     const buf = renderSingleLine(symbol, market.name, sampled, {
       title: `${symbol} ${market.name} ｜ ${period} 走勢(${sampled.length} 點)`,
+      volumeBuckets: volumeData?.buckets,
     });
     fileName = `stock_${symbol}_${period}.png`;
     attachment = new AttachmentBuilder(buf, { name: fileName });
@@ -92,6 +101,25 @@ async function buildChartContainer(client, { guildId, symbol, period }) {
         `**高 / 低**\n${high.toFixed(1)} / ${low.toFixed(1)}`
       )
     );
+
+  if (volumeData?.buckets?.length) {
+    let buy = 0;
+    let sell = 0;
+    for (const b of volumeData.buckets) {
+      buy += b.buyShares || 0;
+      sell += b.sellShares || 0;
+    }
+    const total = buy + sell;
+    const net = buy - sell;
+    const netSign = net > 0 ? "+" : net < 0 ? "" : "";
+    const netLabel =
+      net === 0 ? "持平" : net > 0 ? "🟢 淨買超" : "🔴 淨賣超";
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**期間量**\n${total.toLocaleString()} 股 ・ 買 ${buy.toLocaleString()} / 賣 ${sell.toLocaleString()}\n${netLabel} ${netSign}${net.toLocaleString()}`
+      )
+    );
+  }
 
   if (attachment) {
     container.addMediaGalleryComponents(

@@ -128,10 +128,13 @@ function renderMultiLine(series, opts = {}) {
 }
 
 // 單股 K 線/走勢圖（折線版本，價格直接顯示）
+// opts.volumeBuckets: [{ buyShares, sellShares }, ...] 有給就在下方加副圖區疊量柱。
 function renderSingleLine(symbol, name, points, opts = {}) {
   ensureFonts();
+  const hasVolume =
+    Array.isArray(opts.volumeBuckets) && opts.volumeBuckets.length > 0;
   const W = opts.width || 900;
-  const H = opts.height || 400;
+  const H = opts.height || (hasVolume ? 520 : 400);
   const padL = 64;
   const padR = 24;
   const padT = 40;
@@ -155,6 +158,14 @@ function renderSingleLine(symbol, name, points, opts = {}) {
     return canvas.toBuffer("image/png");
   }
 
+  // 上下分區：價格圖佔 70%，量柱副圖佔 25%，中間留 5% 間距
+  const plotW = W - padL - padR;
+  const totalPlotH = H - padT - padB;
+  const priceH = hasVolume ? Math.floor(totalPlotH * 0.7) : totalPlotH;
+  const gapH = hasVolume ? Math.floor(totalPlotH * 0.05) : 0;
+  const volumeH = hasVolume ? totalPlotH - priceH - gapH : 0;
+  const volumeTop = padT + priceH + gapH;
+
   const prices = pts.map((p) => p.price);
   let minY = Math.min(...prices);
   let maxY = Math.max(...prices);
@@ -166,16 +177,13 @@ function renderSingleLine(symbol, name, points, opts = {}) {
   minY -= yPad;
   maxY += yPad;
 
-  const plotW = W - padL - padR;
-  const plotH = H - padT - padB;
-
   ctx.strokeStyle = "#3a3b46";
   ctx.lineWidth = 1;
   ctx.font = "11px NotoSans, sans-serif";
   ctx.fillStyle = "#7f8c8d";
   const gridLines = 5;
   for (let i = 0; i <= gridLines; i++) {
-    const y = padT + (plotH * i) / gridLines;
+    const y = padT + (priceH * i) / gridLines;
     ctx.beginPath();
     ctx.moveTo(padL, y);
     ctx.lineTo(W - padR, y);
@@ -192,7 +200,7 @@ function renderSingleLine(symbol, name, points, opts = {}) {
   ctx.beginPath();
   pts.forEach((p, i) => {
     const x = padL + (plotW * i) / Math.max(1, pts.length - 1);
-    const y = padT + (plotH * (maxY - p.price)) / (maxY - minY);
+    const y = padT + (priceH * (maxY - p.price)) / (maxY - minY);
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
@@ -205,7 +213,75 @@ function renderSingleLine(symbol, name, points, opts = {}) {
   const sign = pct >= 0 ? "+" : "";
   ctx.fillText(`${last.toFixed(1)} (${sign}${pct.toFixed(2)}%)`, W - padR - 140, 26);
 
+  if (hasVolume) {
+    drawVolumePanel(ctx, opts.volumeBuckets, {
+      x: padL,
+      y: volumeTop,
+      w: plotW,
+      h: volumeH,
+    });
+  }
+
   return canvas.toBuffer("image/png");
+}
+
+function drawVolumePanel(ctx, buckets, { x, y, w, h }) {
+  // 副圖背景與框
+  ctx.strokeStyle = "#3a3b46";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + w, y);
+  ctx.stroke();
+
+  const maxVol = Math.max(
+    1,
+    ...buckets.map((b) => (b.buyShares || 0) + (b.sellShares || 0)),
+  );
+
+  ctx.fillStyle = "#7f8c8d";
+  ctx.font = "10px NotoSans, sans-serif";
+  ctx.fillText("成交量", 8, y + 12);
+  ctx.fillText(maxVol.toLocaleString(), 8, y + 24);
+
+  const n = buckets.length;
+  const slotW = w / n;
+  const barW = Math.max(2, slotW * 0.7);
+  const barOffset = (slotW - barW) / 2;
+
+  buckets.forEach((b, i) => {
+    const total = (b.buyShares || 0) + (b.sellShares || 0);
+    if (total === 0) return;
+    const totalBarH = (h - 4) * (total / maxVol);
+    const buyRatio = (b.buyShares || 0) / total;
+    const buyH = totalBarH * buyRatio;
+    const sellH = totalBarH - buyH;
+    const baseY = y + h;
+    const xPos = x + i * slotW + barOffset;
+
+    if (sellH > 0) {
+      ctx.fillStyle = "#e74c3c";
+      ctx.fillRect(xPos, baseY - sellH, barW, sellH);
+    }
+    if (buyH > 0) {
+      ctx.fillStyle = "#2ecc71";
+      ctx.fillRect(xPos, baseY - sellH - buyH, barW, buyH);
+    }
+  });
+
+  // 量柱 legend
+  ctx.font = "11px NotoSans, sans-serif";
+  let lx = x + w - 130;
+  const ly = y + 12;
+  ctx.fillStyle = "#2ecc71";
+  ctx.fillRect(lx, ly - 9, 10, 10);
+  ctx.fillStyle = "#ecf0f1";
+  ctx.fillText("買", lx + 14, ly);
+  lx += 38;
+  ctx.fillStyle = "#e74c3c";
+  ctx.fillRect(lx, ly - 9, 10, 10);
+  ctx.fillStyle = "#ecf0f1";
+  ctx.fillText("賣", lx + 14, ly);
 }
 
 module.exports = {
