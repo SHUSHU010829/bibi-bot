@@ -1,7 +1,7 @@
 require("colors");
 
 const { DateTime } = require("luxon");
-const { mining, fishing } = require("../../config");
+const { mining, fishing, farming } = require("../../config");
 
 // Phase F — 每日礦石市價波動引擎
 //
@@ -225,16 +225,117 @@ async function getFishPriceHistory(client, fishKey, days = 7) {
     .reverse();
 }
 
+// ── 農產品市價 ─────────────────────────────────────────────────────────────
+// 與礦石／魚類使用同一套 seeded random 機制，key 前綴 "crop_" 隔離。
+// 作物價存於同一份 OreMarketPrices document 的 cropPrices / cropFactors 欄位。
+
+function cropDefs() {
+  return (farming && farming.crops) || {};
+}
+
+function cropBasePrice(key) {
+  const explicit = farming?.sellPrices?.[key];
+  if (typeof explicit === "number") return explicit;
+  const def = cropDefs()[key];
+  if (!def) return 0;
+  const lo = Array.isArray(def.payout) ? def.payout[0] : null;
+  const hi = Array.isArray(def.payout) ? def.payout[1] : null;
+  if (typeof lo === "number" && typeof hi === "number") {
+    return Math.round((lo + hi) / 2);
+  }
+  return 0;
+}
+
+function cropMarketCfg() {
+  return (farming && farming.cropMarket) || marketCfg();
+}
+
+function computeCropPrices(dateStr) {
+  const cfg = cropMarketCfg();
+  const min = typeof cfg.minFactor === "number" ? cfg.minFactor : 0.7;
+  const max = typeof cfg.maxFactor === "number" ? cfg.maxFactor : 1.3;
+  const prices = {};
+  const factors = {};
+  for (const key of Object.keys(cropDefs())) {
+    const base = cropBasePrice(key);
+    const dateInt = parseInt(dateStr, 10) || 0;
+    const seed = (dateInt ^ hashStr(`crop_${key}`)) >>> 0;
+    const rng = mulberry32(seed);
+    const factor = min + rng() * (max - min);
+    prices[key] = Math.max(1, Math.round(base * factor));
+    factors[key] = factor;
+  }
+  return { prices, factors };
+}
+
+async function getDailyCropPrices(client, dateStr = todayDate()) {
+  const computed = computeCropPrices(dateStr);
+  const col = client && client.oreMarketPricesCollection;
+  if (!col) {
+    return { date: dateStr, prices: computed.prices, factors: computed.factors, persisted: false };
+  }
+
+  const existing = await col.findOne({ date: dateStr }).catch(() => null);
+  if (existing && existing.cropPrices) {
+    return {
+      date: dateStr,
+      prices: existing.cropPrices,
+      factors: existing.cropFactors || computed.factors,
+      persisted: true,
+    };
+  }
+
+  await col
+    .updateOne(
+      { date: dateStr },
+      {
+        $setOnInsert: { date: dateStr, createdAt: new Date() },
+        $set: { cropPrices: computed.prices, cropFactors: computed.factors },
+      },
+      { upsert: true }
+    )
+    .catch((e) => console.log(`[MARKET] freeze 農產品行情失敗 date=${dateStr}: ${e.message}`.yellow));
+
+  return { date: dateStr, prices: computed.prices, factors: computed.factors, persisted: true };
+}
+
+async function getCropPrice(client, cropKey, dateStr = todayDate()) {
+  const base = cropBasePrice(cropKey);
+  const { prices } = await getDailyCropPrices(client, dateStr);
+  const price = prices && typeof prices[cropKey] === "number" ? prices[cropKey] : base;
+  return price;
+}
+
+async function getCropPriceHistory(client, cropKey, days = 7) {
+  const col = client && client.oreMarketPricesCollection;
+  if (!col) return [];
+  const docs = await col
+    .find({})
+    .sort({ date: -1 })
+    .limit(days)
+    .toArray()
+    .catch(() => []);
+  return docs
+    .map((d) => ({ date: d.date, price: d.cropPrices ? d.cropPrices[cropKey] : undefined }))
+    .filter((d) => typeof d.price === "number")
+    .reverse();
+}
+
 module.exports = {
   todayDate,
   computePrices,
   computeFishPrices,
+  computeCropPrices,
   factorFor,
   getDailyPrices,
   getDailyFishPrices,
+  getDailyCropPrices,
   getOrePrice,
+  getCropPrice,
+  cropBasePrice,
   getPriceHistory,
   getFishPriceHistory,
+  getCropPriceHistory,
   pruneOld,
   timezone,
 };

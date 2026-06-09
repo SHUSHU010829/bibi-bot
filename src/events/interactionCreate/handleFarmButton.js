@@ -39,6 +39,7 @@ const { buildFarmContainer } = require("../../features/farm/farmView");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const grantCoins = require("../../features/economy/grantCoins");
+const orePriceEngine = require("../../features/market/orePriceEngine");
 const {
   sendFarmAnnouncement,
   buildHarvestAnnouncement,
@@ -1400,11 +1401,10 @@ module.exports = async (client, interaction) => {
     if (action === "sell") {
       const cropKey = payload;
       const def = farming.crops?.[cropKey];
-      const price = (farming.sellPrices || {})[cropKey];
-      if (!def || price == null) {
+      if (!def) {
         return replyEphemeralContainer(
           interaction,
-          errContainer("❌ 無法賣出", "這種蔬菜不收購。", ""),
+          errContainer("❌ 無法賣出", "找不到這種農產品。", ""),
         );
       }
       await interaction.deferReply();
@@ -1416,6 +1416,10 @@ module.exports = async (client, interaction) => {
           errContainer("❌ 沒有庫存", `菜籃裡已經沒有 ${def.emoji} **${def.name}**。`, ""),
         );
       }
+      const cropMarket = await orePriceEngine.getDailyCropPrices(client).catch(() => ({ prices: {} }));
+      const price = typeof cropMarket.prices?.[cropKey] === "number"
+        ? cropMarket.prices[cropKey]
+        : orePriceEngine.cropBasePrice(cropKey);
       const total = have * price;
       await client.miningProfilesCollection.updateOne(
         { userId: interaction.user.id, guildId: interaction.guildId },

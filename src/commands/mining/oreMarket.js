@@ -8,19 +8,23 @@ const {
   InteractionContextType,
 } = require("discord.js");
 
-const { mining, fishing } = require("../../config");
+const { mining, fishing, farming } = require("../../config");
 const orePriceEngine = require("../../features/market/orePriceEngine");
 
-// 礦石 + 魚類選項，value 格式 "ore:<key>" / "fish:<key>"
+// 礦石 + 魚類 + 農產品選項，value 格式 "ore:<key>" / "fish:<key>" / "crop:<key>"
 function itemChoices() {
   const choices = [];
   for (const [key, def] of Object.entries(mining?.ores || {})) {
+    if (!def.price) continue;
     choices.push({ name: `${def.name}（礦石）`, value: `ore:${key}` });
   }
   for (const [key, def] of Object.entries(fishing?.fish || {})) {
     choices.push({ name: `${def.name}（魚類）`, value: `fish:${key}` });
   }
-  return choices;
+  for (const [key, def] of Object.entries(farming?.crops || {})) {
+    choices.push({ name: `${def.name}（農產品）`, value: `crop:${key}` });
+  }
+  return choices.slice(0, 25);
 }
 
 function fmtDate(dateStr) {
@@ -138,18 +142,67 @@ async function renderFishTrend(client, fishKey) {
     );
 }
 
-// ── 今日全礦石 + 全魚類行情 ──────────────────────────────────────────────────
+// ── 單一農產品近 7 天走勢 ────────────────────────────────────────────────────
+async function renderCropTrend(client, cropKey) {
+  const def = farming?.crops?.[cropKey];
+  if (!def) return null;
+
+  const history = await orePriceEngine.getCropPriceHistory(client, cropKey, 7);
+
+  const today = await orePriceEngine.getDailyCropPrices(client);
+  const todayStr = today.date;
+  const todayPrice = today.prices?.[cropKey];
+  if (typeof todayPrice === "number" && !history.some((h) => h.date === todayStr)) {
+    history.push({ date: todayStr, price: todayPrice });
+  }
+
+  const base = orePriceEngine.cropBasePrice(cropKey);
+  if (!history.length) {
+    return new ContainerBuilder()
+      .setAccentColor(0xe67e22)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# ${def.emoji} ${def.name} 價格走勢\n基礎價 **${base.toLocaleString()}** 幣\n\n尚無歷史行情紀錄，明天起會逐日累積 📈`,
+        ),
+      );
+  }
+
+  const lines = history.map((h) => {
+    const tag = h.date === todayStr ? "（今日）" : "";
+    return `\`${fmtDate(h.date)}\`${tag}　${h.price.toLocaleString()} 幣　${trendLabel(h.price, base)}`;
+  });
+
+  return new ContainerBuilder()
+    .setAccentColor(0xe67e22)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ${def.emoji} ${def.name} 價格走勢\n基礎價 **${base.toLocaleString()}** 幣　近 ${history.length} 天`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`${sparkline(history.map((h) => h.price))}\n${lines.join("\n")}`),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# 行情每日 00:00 更新（台北時間）"),
+    );
+}
+
+// ── 今日全礦石 + 全魚類 + 全農產品行情 ───────────────────────────────────────
 async function renderToday(client) {
-  const [oreMarket, fishMarket] = await Promise.all([
+  const [oreMarket, fishMarket, cropMarket] = await Promise.all([
     orePriceEngine.getDailyPrices(client),
     orePriceEngine.getDailyFishPrices(client),
+    orePriceEngine.getDailyCropPrices(client),
   ]);
 
-  const oreLines = Object.entries(mining.ores).map(([key, def]) => {
-    const base = def.price || 0;
-    const cur = typeof oreMarket.prices[key] === "number" ? oreMarket.prices[key] : base;
-    return `${def.emoji || "⛏️"} ${def.name}　${base.toLocaleString()} → **${cur.toLocaleString()}** 幣　${trendLabel(cur, base)}`;
-  });
+  const oreLines = Object.entries(mining.ores)
+    .filter(([, def]) => def.price)
+    .map(([key, def]) => {
+      const base = def.price || 0;
+      const cur = typeof oreMarket.prices[key] === "number" ? oreMarket.prices[key] : base;
+      return `${def.emoji || "⛏️"} ${def.name}　${base.toLocaleString()} → **${cur.toLocaleString()}** 幣　${trendLabel(cur, base)}`;
+    });
 
   const fishLines = Object.entries(fishing?.fish || {}).map(([key, def]) => {
     const base = def.price || 0;
@@ -157,7 +210,13 @@ async function renderToday(client) {
     return `${def.emoji} ${def.name}　${base.toLocaleString()} → **${cur.toLocaleString()}** 幣　${trendLabel(cur, base)}`;
   });
 
-  return new ContainerBuilder()
+  const cropLines = Object.entries(farming?.crops || {}).map(([key, def]) => {
+    const base = orePriceEngine.cropBasePrice(key);
+    const cur = typeof cropMarket.prices[key] === "number" ? cropMarket.prices[key] : base;
+    return `${def.emoji} ${def.name}　${base.toLocaleString()} → **${cur.toLocaleString()}** 幣　${trendLabel(cur, base)}`;
+  });
+
+  const container = new ContainerBuilder()
     .setAccentColor(0xf1c40f)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`# 📊 今日行情 — ${fmtDate(oreMarket.date)}`),
@@ -169,19 +228,29 @@ async function renderToday(client) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`**🐟 魚類**\n${fishLines.join("\n")}`),
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "-# 明日行情將於 00:00 更新　·　/行情 [物品] 看走勢",
-      ),
     );
+
+  if (cropLines.length > 0) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`**🌾 農產品**\n${cropLines.join("\n")}`),
+      );
+  }
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "-# 明日行情將於 00:00 更新　·　/行情 [物品] 看走勢",
+    ),
+  );
+  return container;
 }
 
 module.exports = {
   channelBuckets: ["mining", "marketplace"],
   data: new SlashCommandBuilder()
     .setName("行情")
-    .setDescription("查看今日礦石與魚類收購價，或查看近 7 天走勢 📊")
+    .setDescription("查看今日礦石、魚類與農產品收購價，或查看近 7 天走勢 📊")
     .setContexts(InteractionContextType.Guild)
     .addStringOption((o) =>
       o
@@ -209,6 +278,9 @@ module.exports = {
         if (itemType === "fish") {
           container = await renderFishTrend(client, itemKey);
           if (!container) return interaction.editReply("❌ 找不到這種魚。");
+        } else if (itemType === "crop") {
+          container = await renderCropTrend(client, itemKey);
+          if (!container) return interaction.editReply("❌ 找不到這種農產品。");
         } else {
           container = await renderOreTrend(client, itemKey);
         }

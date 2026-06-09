@@ -11,6 +11,7 @@ const {
 } = require("discord.js");
 const { consume } = require("../../utils/rateLimiter");
 const marketplaceService = require("../../features/marketplace/marketplaceService");
+const itemAccess = require("../../features/marketplace/itemAccess");
 const guildWarehouseListingService = require("../../features/guild_club/warehouse/guildWarehouseListingService");
 const {
   buildBrowseView,
@@ -33,6 +34,7 @@ const {
   VIEW_BROWSE_ID,
   VIEW_MYSTALL_ID,
   VIEW_MYBIDS_ID,
+  VIEW_BARTER_ID,
   BID_MODAL_PREFIX,
   FILTER_TYPE_ID,
   FILTER_ITEM_ID,
@@ -382,14 +384,16 @@ module.exports = async (client, interaction) => {
       });
       if (result.ok) {
         const l = result.listing;
-        const paidStr = l.pay_kind === "coin"
-          ? `**${(l.pay_coin || 0).toLocaleString()}** 🪙`
-          : `${oreLabel(l.pay_ore)} ×${l.pay_qty}`;
+        const wantItem = marketplaceService.resolveListingItem(l);
+        const payItem = marketplaceService.resolveListingPayItem(l);
+        const paidStr = payItem
+          ? itemAccess.itemLabel(payItem.item_type, payItem.item_key, payItem.qty)
+          : `**${(l.pay_coin || 0).toLocaleString()}** 🪙`;
         marketplaceService.dmUser(
           client,
           l.seller_id,
           `📋 你的徵求單 **#${l.listing_id}** 已被滿足！\n` +
-            `你收到 ${oreLabel(l.ore)} ×${l.qty}，付出 ${paidStr}。`
+            `你收到 ${itemAccess.itemLabel(wantItem.item_type, wantItem.item_key, l.qty)}，付出 ${paidStr}。`
         );
       }
       return interaction.editReply({
@@ -513,6 +517,30 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
     }
+
+    // ─── 快捷後續：去看 /交易所 列表（ephemeral） ─────────────────────────────
+    if (interaction.isButton() && cid === VIEW_BARTER_ID) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const barterService = require("../../features/barter/barterService");
+      const { buildBoardContainer } = require("../../features/barter/barterView");
+      const c = barterService.cfg();
+      const pageSize = c.pageSize ?? 5;
+      const { listings, total } = await barterService.listActive(client, interaction.guildId, {
+        limit: pageSize,
+        skip: 0,
+      });
+      const container = buildBoardContainer({
+        listings,
+        viewerId: interaction.user.id,
+        total,
+        page: 1,
+        pageSize,
+      });
+      return interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
   } catch (error) {
     console.log(`[ERROR] handleMarketInteraction:\n${error}\n${error.stack}`.red);
     try {
@@ -540,8 +568,10 @@ function formatBuyResult(result) {
     return msgs[result.reason] || "🔧 購買失敗，請稍後再試。";
   }
   const l = result.listing;
-  const deliveredLine = l.item_type === "fish"
-    ? "魚已放進你的魚袋 🎣"
+  const item = marketplaceService.resolveListingItem(l);
+  const deliveredLine =
+    item.item_type === "fish" ? "魚已放進你的魚袋 🎣"
+    : item.item_type === "veggie" ? "農產品已放進你的菜籃 🌾"
     : "礦石已放進你的背包 🎒";
   return (
     `✅ **購買成功！**\n` +
@@ -600,21 +630,23 @@ function formatFulfillResult(result) {
     const msgs = {
       not_found: "❌ 此徵求單已不存在或已成交。",
       own_listing: "❌ 不能回應自己的徵求單。",
-      insufficient: `🎒 你沒有足夠的 ${result.oreDef?.name || "礦石"}（持有 ${result.have}）。`,
+      insufficient: `📦 你沒有足夠的 ${result.wantDef?.name || "物品"}（持有 ${result.have}）。`,
       buyer_full: "🎒 徵求者的背包已滿，無法接受此交易！",
       seller_full: `🎒 你的背包已滿，無法收下付款！`,
       race: "⚡ 剛好有人同時成交，請重試。",
     };
-    return msgs[result.reason] || "🔧 賣礦失敗，請稍後再試。";
+    return msgs[result.reason] || "🔧 賣出失敗，請稍後再試。";
   }
   const l = result.listing;
-  const receiveStr = l.pay_kind === "coin"
-    ? `**${result.proceeds.toLocaleString()}** ${COIN_EMOJI}（扣除 ${result.fee} 手續費）`
-    : `${oreLabel(l.pay_ore)} ×${l.pay_qty}`;
+  const wantItem = result.wantItem || marketplaceService.resolveListingItem(l);
+  const payItem = result.payItem || marketplaceService.resolveListingPayItem(l);
+  const receiveStr = payItem
+    ? itemAccess.itemLabel(payItem.item_type, payItem.item_key, payItem.qty)
+    : `**${result.proceeds.toLocaleString()}** ${COIN_EMOJI}（扣除 ${result.fee} 手續費）`;
   return (
-    `✅ **賣礦成功！**\n` +
+    `✅ **賣出成功！**\n` +
     `**#${l.listing_id}**\n` +
-    `你賣出 ${oreLabel(l.ore)} ×${l.qty}，收到 ${receiveStr} 🎒`
+    `你賣出 ${itemAccess.itemLabel(wantItem.item_type, wantItem.item_key, l.qty)}，收到 ${receiveStr} 🎒`
   );
 }
 
@@ -711,6 +743,12 @@ function buildBidResultView(result, amount) {
   }
 
   const l = result.listing;
+  const item = marketplaceService.resolveListingItem(l);
+  const itemLabelText = itemAccess.itemLabel(item.item_type, item.item_key, l.qty);
+  const bagPhrase =
+    item.item_type === "fish" ? "魚已放進你的魚袋 🎣"
+    : item.item_type === "veggie" ? "農產品已放進你的菜籃 🌾"
+    : "礦石已放進你的背包 🎒";
   if (result.buyout) {
     const container = new ContainerBuilder()
       .setAccentColor(0x2ecc71)
@@ -718,8 +756,8 @@ function buildBidResultView(result, amount) {
         new TextDisplayBuilder().setContent(
           `# 💰 直接成交！\n` +
             `你以一口價 **${l.current_bid.toLocaleString()}** ${COIN_EMOJI} 買下 ` +
-            `**#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty}！\n` +
-            `礦石已放進你的背包 🎒`
+            `**#${l.listing_id}** ${itemLabelText}！\n` +
+            bagPhrase
         )
       )
       .addActionRowComponents(buyoutSuccessButtons());
@@ -735,7 +773,7 @@ function buildBidResultView(result, amount) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# ✅ 出價成功\n` +
-          `你對 **#${l.listing_id}** ${oreLabel(l.ore)} ×${l.qty} 出價 ` +
+          `你對 **#${l.listing_id}** ${itemLabelText} 出價 ` +
           `**${l.current_bid.toLocaleString()}** ${COIN_EMOJI}，目前最高！\n` +
           `截止 <t:${expiresEpoch}:R>，若被超越會自動退款。${buyoutLine}`
       )

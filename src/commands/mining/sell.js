@@ -27,17 +27,16 @@ const TYPE_UNIT = { ore: "顆", fish: "條", veggie: "個" };
 function sellChoices() {
   const choices = [];
   for (const [key, def] of Object.entries(mining?.ores || {})) {
+    if (!def.price) continue;
     choices.push({ name: `${def.name}（礦石）`, value: `ore:${key}` });
   }
   for (const [key, def] of Object.entries(fishing?.fish || {})) {
     choices.push({ name: `${def.name}（魚類）`, value: `fish:${key}` });
   }
   for (const [key, def] of Object.entries(farming?.crops || {})) {
-    if (farming?.sellPrices?.[key] != null) {
-      choices.push({ name: `${def.name}（蔬菜）`, value: `veggie:${key}` });
-    }
+    choices.push({ name: `${def.name}（農產品）`, value: `veggie:${key}` });
   }
-  return choices;
+  return choices.slice(0, 25);
 }
 
 function trendLabel(price, base) {
@@ -152,9 +151,8 @@ async function previewSell(client, { userId, guildId, itemType, itemKey, qtyArg 
       return { ok: false, error: errorContainer("🔧 農場系統尚未啟動", null, "請稍後再試或聯絡管理員") };
     }
     const def = farming.crops?.[itemKey];
-    const price = farming.sellPrices?.[itemKey];
-    if (!def || price == null) {
-      return { ok: false, error: errorContainer("❌ 這種蔬菜不收購", `key=${itemKey}`, "改用 /烹飪 做成 buff 食物試試") };
+    if (!def) {
+      return { ok: false, error: errorContainer("❌ 找不到這種農產品", `key=${itemKey}`, "請從選單重新選擇") };
     }
     const profile = await getOrCreate(client, userId, guildId);
     const have = (profile.veggie_bag || {})[itemKey] || 0;
@@ -179,11 +177,14 @@ async function previewSell(client, { userId, guildId, itemType, itemKey, qtyArg 
       };
     }
     const qty = qtyArg ? Math.min(qtyArg, have) : have;
+    const market = await orePriceEngine.getDailyCropPrices(client);
+    const base = orePriceEngine.cropBasePrice(itemKey);
+    const price = typeof market.prices?.[itemKey] === "number" ? market.prices[itemKey] : base;
     return {
       ok: true,
       def, qty, have, price,
       total: price * qty,
-      trend: "",
+      trend: trendLabel(price, base),
       emoji: def.emoji || "🥕",
       unit: TYPE_UNIT.veggie,
     };
@@ -341,7 +342,7 @@ async function finalizeFishSell(client, interaction, { userId, guildId, itemKey,
 }
 
 async function finalizeVeggieSell(client, interaction, { userId, guildId, itemKey, preview }) {
-  const { def, qty, price, total } = preview;
+  const { def, qty, price, total, trend } = preview;
 
   await client.miningProfilesCollection.updateOne(
     { userId, guildId },
@@ -362,7 +363,7 @@ async function finalizeVeggieSell(client, interaction, { userId, guildId, itemKe
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# ${COIN_EMOJI} 賣出成功\n` +
-        `${def.emoji} **${def.name}** ×${qty} ＠${price.toLocaleString()}\n` +
+        `${def.emoji} **${def.name}** ×${qty} ＠${price.toLocaleString()}${trend}\n` +
         `→ **+${total.toLocaleString()} ${COIN_EMOJI}**`
       )
     )
@@ -370,7 +371,7 @@ async function finalizeVeggieSell(client, interaction, { userId, guildId, itemKe
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `**目前餘額**　${(grant?.doc?.totalCoins ?? 0).toLocaleString()} ${COIN_EMOJI}\n` +
-        `-# 💡 用 /烹飪 把蔬菜做成 buff 食物，可能比直接賣更值錢`
+        `-# 依今日行情計價・用 /行情 查看當日收購價`
       )
     );
 
