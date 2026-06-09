@@ -730,7 +730,7 @@ module.exports = async (client, interaction) => {
       if (count <= 0) {
         return replyEphemeralContainer(
           interaction,
-          errContainer("❌ 材料不足", `${sourceField === "fish_bag" ? "魚袋" : "背包"}「${fertDef.key}」需要 **${perPlot}**，目前 **${have}**。`, "去 /挖礦、/釣魚、/地下城、/烹飪 收集"),
+          errContainer("❌ 材料不足", `${sourceField === "fish_bag" ? "魚袋" : "背包"}「${fertDef.name}」需要 **${perPlot}**，目前 **${have}**。`, "去 /挖礦、/釣魚、/地下城、/烹飪 收集"),
         );
       }
 
@@ -919,7 +919,7 @@ module.exports = async (client, interaction) => {
       if (preview.willApply <= 0) {
         const body = preview.eligibleCount === 0
           ? "目前沒有任何能用這種肥料的成長中地塊（可能都不適用、或已達加速上限）。"
-          : `需要 ${sourceLabel}「${fertDef.key}」**${preview.eligibleCount * preview.perPlot}**，目前 **${preview.have}**。`;
+          : `需要 ${sourceLabel}「${fertDef.name}」**${preview.eligibleCount * preview.perPlot}**，目前 **${preview.have}**。`;
         return replyEphemeralContainer(
           interaction,
           errContainer("❌ 無法施肥", body, "改用其他肥料或先收集材料"),
@@ -928,7 +928,7 @@ module.exports = async (client, interaction) => {
 
       const lines = [
         `🌾 將對 **${preview.willApply}** 塊成長中地塊各施 1 份 ${fertDef.emoji} **${fertDef.name}**`,
-        `🧪 消耗 ${sourceLabel}「${fertDef.key}」 **${preview.willConsume}**（庫存 ${preview.have} → ${preview.have - preview.willConsume}）`,
+        `🧪 消耗 ${sourceLabel}「${fertDef.name}」 **${preview.willConsume}**（庫存 ${preview.have} → ${preview.have - preview.willConsume}）`,
       ];
       if (fertDef.growReductionPct) lines.push(`⏱️ 每塊成長 -${Math.round(fertDef.growReductionPct * 100)}%（封頂 ${Math.round((farming.growthReductionCapPct || 0.6) * 100)}%）`);
       if (fertDef.yieldBonusPct) lines.push(`🌟 每塊 +${Math.round(fertDef.yieldBonusPct * 100)}% 收成`);
