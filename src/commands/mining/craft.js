@@ -4,6 +4,9 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -141,11 +144,14 @@ module.exports = {
       const resultLabel = `${result.resultEmoji || ""} ${result.resultName}`.trim();
       const isWeapon = result.type === "weapon";
       const isRod = result.type === "rod";
+      const isAppraisalTrigger = result.type === "stone_appraisal_trigger";
       const tail = isWeapon
         ? "-# 帶著武器去 /地下城 打怪吧！用 /裝備 查看裝備"
         : isRod
           ? "-# 帶著新釣竿去 /釣魚 吧！用 /裝備 查看裝備"
-          : "-# 用 /裝備 查看裝備，/挖礦 開挖！";
+          : isAppraisalTrigger
+            ? "-# 10 分鐘內按下方「立刻賭石」開出，過期就失效"
+            : "-# 用 /裝備 查看裝備，/挖礦 開挖！";
       const accent = isWeapon ? 0xe67e22 : isRod ? 0x16a085 : 0x9b59b6;
 
       const container = new ContainerBuilder()
@@ -172,6 +178,18 @@ module.exports = {
           ),
         )
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(tail));
+
+      if (isAppraisalTrigger && result.appraiseTs) {
+        const fee = (mining?.stoneAppraisal?.feePerStone || 0) * (result.appraiseQty || 1);
+        container.addActionRowComponents(
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`mining_appraise_${interaction.user.id}_${result.appraiseTs}`)
+              .setLabel(`🔍 立刻賭石（${result.appraiseQty || 1} 顆・${fee.toLocaleString()} 幣）`)
+              .setStyle(ButtonStyle.Primary),
+          ),
+        );
+      }
 
       await interaction.editReply({
         components: [container],
