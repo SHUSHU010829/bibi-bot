@@ -6,6 +6,7 @@ const { weightedRandom } = require("../mining/weightedRandom");
 const {
   getFoodFishBonus,
   consumeFishFortuneUse,
+  formatFoodBuffLines,
 } = require("./cookService");
 const bus = require("../eventBus");
 
@@ -152,6 +153,7 @@ async function fish(client, { userId, guildId, location = "stream" }) {
       fishCountTotal: profile.fish_count_total || 0,
       droppedNetFragment,
       netActive,
+      foodBuffLines: formatFoodBuffLines(profile, "fish"),
     };
   }
 
@@ -269,6 +271,7 @@ async function fish(client, { userId, guildId, location = "stream" }) {
     droppedNetFragment,
     netActive,
     netUsesAfter: netActive ? (profile.fishing_net_uses || 0) - 1 : (profile.fishing_net_uses || 0),
+    foodBuffLines: formatFoodBuffLines(profile, "fish"),
   };
 }
 

@@ -127,6 +127,56 @@ function consumeMineLuckUse(client, userId, guildId, profile) {
   return consumeFoodBuffUse(client, userId, guildId, profile, "mine_luck");
 }
 
+// 各行為會吃到的食物 buff 類型對照表。all_boost 是全屬性增幅，列入所有行為。
+const FOOD_BUFF_ACTION_TYPES = {
+  mine: ["mine_luck", "all_boost"],
+  fish: ["fish_fortune", "all_boost"],
+  work: ["work_income", "all_boost"],
+  dungeon: ["dungeon_atk", "all_boost"],
+  farm: ["farm_yield", "all_boost"],
+};
+
+// 取得單一 food buff 的顯示資料（emoji / name / desc / expire 子句）。
+function describeFoodBuff(b) {
+  const recipes = fishing?.recipes || {};
+  const recipe =
+    (b.recipeId && recipes[b.recipeId]) ||
+    Object.values(recipes).find(
+      (r) => r.buff?.type === b.type || r.coalBuff?.type === b.type,
+    );
+  const name = recipe?.name || b.type;
+  const emoji = recipe?.emoji || "🍽️";
+  let desc;
+  if (b.type === "work_income") desc = `打工收入 +${Math.round(b.value * 100)}%`;
+  else if (b.type === "dungeon_atk") desc = `地下城 ATK +${Math.round(b.value)}`;
+  else if (b.type === "mine_luck") desc = `挖礦幸運 +${Math.round(b.value * 100)}%`;
+  else if (b.type === "all_boost") desc = `全屬性 +${Math.round(b.value * 100)}%`;
+  else if (b.type === "fish_fortune")
+    desc = `釣魚成功率 +${Math.round(b.value * 100)}% ・ 稀有度提升`;
+  else if (b.type === "farm_yield") desc = `農場收成 +${Math.round(b.value * 100)}%`;
+  else desc = b.type;
+  let expire = "";
+  if (b.uses_left !== null && b.uses_left !== undefined) {
+    expire = `（剩 ${b.uses_left} 次）`;
+  } else if (b.expires_at) {
+    expire = `（<t:${Math.floor(b.expires_at / 1000)}:R>）`;
+  }
+  return { emoji, name, desc, expire };
+}
+
+// 取得在指定行為下生效的食物 buff 顯示行（已過濾相關類型 + 過期清理）。
+// 回傳 ["🐙 **章魚飯**：挖礦幸運 +12%（剩 4 次）", ...]
+function formatFoodBuffLines(profile, action) {
+  const types = FOOD_BUFF_ACTION_TYPES[action];
+  if (!types) return [];
+  return getActiveFoodBuffs(profile)
+    .filter((b) => types.includes(b.type))
+    .map((b) => {
+      const { emoji, name, desc, expire } = describeFoodBuff(b);
+      return `${emoji} **${name}**：${desc}${expire}`;
+    });
+}
+
 // 消耗一次 work_income 的使用次數（打工時呼叫）
 function consumeWorkIncomeUse(client, userId, guildId, profile) {
   return consumeFoodBuffUse(client, userId, guildId, profile, "work_income");
@@ -324,4 +374,6 @@ module.exports = {
   cook,
   useFood,
   previewBuffFromInstance,
+  describeFoodBuff,
+  formatFoodBuffLines,
 };

@@ -290,8 +290,15 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
           new TextDisplayBuilder().setContent(
             `**累積探索**\n${result.dungeonCount.toLocaleString()} 次`,
           ),
-        )
-        .addActionRowComponents(continueRow);
+        );
+      if (result.foodBuffLines?.length) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**🍽️ 食物加成**\n${result.foodBuffLines.join("\n")}`,
+          ),
+        );
+      }
+      container.addActionRowComponents(continueRow);
       appendCombatExtras(container, result, interaction);
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
@@ -370,6 +377,14 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `**目前餘額**\n${result.balance.toLocaleString()} ${COIN_EMOJI}`,
+        ),
+      );
+    }
+
+    if (result.foodBuffLines?.length) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**🍽️ 食物加成**\n${result.foodBuffLines.join("\n")}`,
         ),
       );
     }

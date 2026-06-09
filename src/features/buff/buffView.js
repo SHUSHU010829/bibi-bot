@@ -7,7 +7,7 @@ const {
 } = require("discord.js");
 
 const buffResolver = require("./buffResolver");
-const { getActiveFoodBuffs } = require("../fishing/cookService");
+const { getActiveFoodBuffs, describeFoodBuff } = require("../fishing/cookService");
 const foodBag = require("../fishing/foodBag");
 const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
 const {
@@ -17,7 +17,7 @@ const {
   staminaGuildBonus,
   getMemberClub,
 } = require("../mining/dungeonService");
-const { fishing, dungeon } = require("../../config");
+const { dungeon } = require("../../config");
 
 function pct(mult) {
   return `${Math.round((mult - 1) * 100)}%`;
@@ -155,30 +155,8 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
     if (miningProfileForStamina) {
       const foodBuffs = getActiveFoodBuffs(miningProfileForStamina);
       if (foodBuffs.length > 0) {
-        const recipes = fishing?.recipes || {};
         const foodLines = foodBuffs.map((b) => {
-          const recipe =
-            (b.recipeId && recipes[b.recipeId]) ||
-            Object.values(recipes).find(
-              (r) => r.buff?.type === b.type || r.coalBuff?.type === b.type,
-            );
-          const name = recipe?.name || b.type;
-          const emoji = recipe?.emoji || "🍽️";
-          let desc = "";
-          if (b.type === "work_income") desc = `打工收入 +${Math.round(b.value * 100)}%`;
-          else if (b.type === "dungeon_atk") desc = `地下城 ATK +${b.value}`;
-          else if (b.type === "mine_luck") desc = `挖礦幸運 +${Math.round(b.value * 100)}%`;
-          else if (b.type === "all_boost") desc = `全屬性 +${Math.round(b.value * 100)}%`;
-          else if (b.type === "fish_fortune")
-            desc = `釣魚成功率 +${Math.round(b.value * 100)}% ・ 稀有度提升`;
-          else if (b.type === "farm_yield") desc = `農場收成 +${Math.round(b.value * 100)}%`;
-          else desc = `${b.type}`;
-          let expire = "";
-          if (b.uses_left !== null && b.uses_left !== undefined) {
-            expire = `（剩餘 ${b.uses_left} 次）`;
-          } else if (b.expires_at) {
-            expire = `（<t:${Math.floor(b.expires_at / 1000)}:R>）`;
-          }
+          const { emoji, name, desc, expire } = describeFoodBuff(b);
           return `• ${emoji} **${name}**：${desc}${expire}`;
         });
         container

@@ -304,6 +304,14 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
       );
     }
 
+    if (result.foodBuffLines?.length) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**🍽️ 食物加成**\n${result.foodBuffLines.join("\n")}`,
+        ),
+      );
+    }
+
     if (result.durabilityBroke) {
       const brokeDef = mining?.pickaxes?.[result.pickaxeBefore] || {};
       container.addTextDisplayComponents(
