@@ -3,7 +3,7 @@ const { DateTime } = require("luxon");
 const { work } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 const twitchPerks = require("../mining/twitchPerks");
-const { getFoodWorkBonus, getActiveFoodBuffs, consumeWorkIncomeUse } = require("../fishing/cookService");
+const { getFoodWorkBonus, consumeWorkIncomeUse, formatFoodBuffLines } = require("../fishing/cookService");
 const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
 
 const TZ = "Asia/Taipei";
@@ -142,6 +142,7 @@ async function doWork(client, { userId, guildId, member, username }) {
     amount: grant.granted,
     baseAmount,
     foodWorkBonus,
+    foodBuffLines: miningProfile ? formatFoodBuffLines(miningProfile, "work") : [],
     guildWorkBonus,
     balance: grant.doc?.totalCoins ?? 0,
     newCooldownAt,

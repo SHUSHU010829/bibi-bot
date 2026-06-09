@@ -5,7 +5,7 @@ const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile
 const dropTable = require("./dropTable");
 const unifiedBuffResolver = require("../buff/buffResolver");
 const encounterService = require("./encounterService");
-const { consumeMineLuckUse } = require("../fishing/cookService");
+const { consumeMineLuckUse, formatFoodBuffLines } = require("../fishing/cookService");
 const grantCoins = require("../economy/grantCoins");
 const { priceOf } = require("./overflowConfirm");
 const bus = require("../eventBus");
@@ -143,6 +143,7 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     overflowQty,
     overflowCoins,
     buff,
+    foodBuffLines: formatFoodBuffLines(profile, "mine"),
     newCooldownAt,
     pickaxeBefore: profile.pickaxe,
     durabilityBroke,

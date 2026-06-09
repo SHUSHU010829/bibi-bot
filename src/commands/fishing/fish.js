@@ -301,6 +301,14 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           )
         );
 
+      if (result.foodBuffLines?.length) {
+        failContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**🍽️ 食物加成**\n${result.foodBuffLines.join("\n")}`,
+          ),
+        );
+      }
+
       if (result.droppedNetFragment) {
         failContainer.addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
@@ -374,6 +382,14 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           `⏱️ 下次可釣：<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）`
         )
       );
+
+    if (result.foodBuffLines?.length) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**🍽️ 食物加成**\n${result.foodBuffLines.join("\n")}`,
+        ),
+      );
+    }
 
     if (result.rodBroke) {
       container.addTextDisplayComponents(

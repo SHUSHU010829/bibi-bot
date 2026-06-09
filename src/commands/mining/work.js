@@ -76,7 +76,17 @@ module.exports = {
           new TextDisplayBuilder().setContent(
             `**打工等級**\n${levelLine}\n${progressLine}`,
           ),
-        )
+        );
+
+      if (result.foodBuffLines?.length) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**🍽️ 食物加成**\n${result.foodBuffLines.join("\n")}`,
+          ),
+        );
+      }
+
+      container
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `**目前餘額**\n${result.balance.toLocaleString()} ${COIN_EMOJI}`,

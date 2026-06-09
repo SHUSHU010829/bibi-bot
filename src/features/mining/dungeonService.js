@@ -5,7 +5,7 @@ const { weightedRandom } = require("./weightedRandom");
 const grantCoins = require("../economy/grantCoins");
 const twitchPerks = require("./twitchPerks");
 const encounterService = require("./encounterService");
-const { getFoodAtkBonus } = require("../fishing/cookService");
+const { getFoodAtkBonus, formatFoodBuffLines } = require("../fishing/cookService");
 const bus = require("../eventBus");
 
 // CD 縮短券持有上限（與商店 shop.json maxStack 一致）
@@ -427,6 +427,7 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     weaponBroke,
     weaponDurabilityAfter,
     weaponDurabilityWarnCrossed,
+    foodBuffLines: formatFoodBuffLines(profile, "dungeon"),
   };
 
   bus.emit("dungeon.cleared", {
