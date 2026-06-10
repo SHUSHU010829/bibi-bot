@@ -17,7 +17,7 @@ const MILESTONE_TEMPLATES = {
         `# 🎰 大樂透彩池突破 10,000\n` +
         `當前彩池:**${pool.toLocaleString()}** credits\n` +
         `開獎時間:<t:${drawAt}:R>\n\n` +
-        `購票指令:\`/賭場 樂透 買\``,
+        `購票指令:\`/樂透 買\``,
       accentColor: 0x3d6f6a,
     },
     {
@@ -27,7 +27,7 @@ const MILESTONE_TEMPLATES = {
         `當前彩池:**${pool.toLocaleString()}** credits\n` +
         `頭獎預估:約 ${Math.floor(pool * 0.7).toLocaleString()} credits\n` +
         `開獎時間:<t:${drawAt}:R>\n\n` +
-        `購票指令:\`/賭場 樂透 買\` ・ \`/賭場 樂透 包牌\``,
+        `購票指令:\`/樂透 買\` ・ \`/樂透 包牌\``,
       accentColor: 0xd94c2a,
     },
     {
@@ -37,7 +37,7 @@ const MILESTONE_TEMPLATES = {
         `當前彩池:**${pool.toLocaleString()}** credits\n` +
         `頭獎預估:約 ${Math.floor(pool * 0.7).toLocaleString()} credits\n` +
         `開獎時間:<t:${drawAt}:R>\n\n` +
-        `購票指令:\`/賭場 樂透 買\` ・ \`/賭場 樂透 包牌\``,
+        `購票指令:\`/樂透 買\` ・ \`/樂透 包牌\``,
       accentColor: 0xc9302c,
     },
     {
@@ -47,7 +47,7 @@ const MILESTONE_TEMPLATES = {
         `當前彩池:**${pool.toLocaleString()}** credits\n` +
         `頭獎預估:約 ${Math.floor(pool * 0.7).toLocaleString()} credits\n` +
         `開獎時間:<t:${drawAt}:R>\n\n` +
-        `購票指令:\`/賭場 樂透 買\` ・ \`/賭場 樂透 包牌\``,
+        `購票指令:\`/樂透 買\` ・ \`/樂透 包牌\``,
       accentColor: 0xd4a437,
     },
   ],
@@ -58,7 +58,7 @@ const MILESTONE_TEMPLATES = {
         `# 🎫 小樂透彩池突破 1,000\n` +
         `當前彩池:**${pool.toLocaleString()}** credits\n` +
         `開獎時間:<t:${drawAt}:R>\n\n` +
-        `購票指令:\`/賭場 樂透 買\` 玩法選小樂透`,
+        `購票指令:\`/樂透 買\` 玩法選小樂透`,
       accentColor: 0x3d6f6a,
     },
     {
@@ -67,7 +67,7 @@ const MILESTONE_TEMPLATES = {
         `# 🎫 小樂透彩池達 5,000\n` +
         `當前彩池:**${pool.toLocaleString()}** credits\n` +
         `開獎時間:<t:${drawAt}:R>\n\n` +
-        `購票指令:\`/賭場 樂透 買\` 玩法選小樂透`,
+        `購票指令:\`/樂透 買\` 玩法選小樂透`,
       accentColor: 0xd94c2a,
     },
   ],
