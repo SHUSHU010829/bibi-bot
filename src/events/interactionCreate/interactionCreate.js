@@ -15,6 +15,7 @@ const { getDataFile } = require("../../utils/dataPaths");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
+const closeTicketHandler = require("../../features/ticket/handlers/close");
 
 // 票務面板數據文件路徑
 const PANELS_FILE = getDataFile("ticket-panels.json");
@@ -41,6 +42,7 @@ module.exports = async (client, interaction) => {
     const customId = interaction.customId || "";
     const isHandled =
       customId === "create_ticket" ||
+      customId === "close_ticket" ||
       customId.startsWith("vote_") ||
       customId.startsWith("role_btn_");
     if (isHandled) {
@@ -62,6 +64,12 @@ module.exports = async (client, interaction) => {
     // 處理票務按鈕
     if (interaction.customId === "create_ticket") {
       await handleTicketCreation(client, interaction);
+      return;
+    }
+
+    // 關閉票務（票務頻道歡迎訊息上的按鈕；權限驗證在 handler 內做）
+    if (interaction.customId === "close_ticket") {
+      await closeTicketHandler.run(client, interaction);
       return;
     }
 
@@ -223,6 +231,14 @@ async function handleTicketCreation(client, interaction) {
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+        ),
+      )
+      .addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("close_ticket")
+            .setLabel("🔒 關閉票務")
+            .setStyle(ButtonStyle.Danger),
         ),
       );
 

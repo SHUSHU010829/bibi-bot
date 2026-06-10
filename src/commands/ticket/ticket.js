@@ -6,7 +6,6 @@ const {
 } = require("discord.js");
 
 const setupHandler = require("../../features/ticket/handlers/setup");
-const closeHandler = require("../../features/ticket/handlers/close");
 const suggestionSetupHandler = require("../../features/ticket/handlers/suggestionSetup");
 const proposalHandler = require("../../features/ticket/handlers/proposal");
 const voteHandler = require("../../features/ticket/handlers/vote");
@@ -57,9 +56,6 @@ module.exports = {
             .setDescription("支援團隊身份組（留空使用預設）")
             .setRequired(false)
         )
-    )
-    .addSubcommand((sub) =>
-      sub.setName("close").setDescription("🔒 關閉當前票務")
     )
     .addSubcommand((sub) =>
       sub
@@ -196,8 +192,6 @@ module.exports = {
       switch (sub) {
         case "setup":
           return setupHandler.run(client, interaction);
-        case "close":
-          return closeHandler.run(client, interaction);
         case "suggestion-setup":
           return suggestionSetupHandler.run(client, interaction);
       }

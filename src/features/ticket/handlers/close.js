@@ -11,7 +11,7 @@ async function run(client, interaction) {
   try {
     if (!interaction.channel.name.startsWith("ticket-")) {
       return interaction.reply({
-        content: "❌ 此指令只能在票務頻道中使用！",
+        content: "❌ 只能在票務頻道中關閉票務！",
         flags: MessageFlags.Ephemeral,
       });
     }
