@@ -37,16 +37,16 @@ function effectsSummary(event) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("活動管理")
+    .setName("event-admin")
     .setDescription("[ADMIN] 限時活動 / 節日系統管理")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild)
     .addSubcommand((sub) =>
-      sub.setName("列表").setDescription("列出所有已設定的活動與狀態"),
+      sub.setName("list").setDescription("列出所有已設定的活動與狀態"),
     )
     .addSubcommand((sub) =>
       sub
-        .setName("預覽")
+        .setName("preview")
         .setDescription("預覽單一活動的時間、效果與限定任務")
         .addStringOption((o) =>
           o
@@ -58,7 +58,7 @@ module.exports = {
     )
     .addSubcommand((sub) =>
       sub
-        .setName("強制開始")
+        .setName("force-start")
         .setDescription("強制讓活動立即生效（測試用，重啟後失效）")
         .addStringOption((o) =>
           o
@@ -73,7 +73,7 @@ module.exports = {
     )
     .addSubcommand((sub) =>
       sub
-        .setName("強制結束")
+        .setName("force-end")
         .setDescription("強制讓活動立即結束（測試用，重啟後失效）")
         .addStringOption((o) =>
           o
@@ -88,7 +88,7 @@ module.exports = {
     )
     .addSubcommand((sub) =>
       sub
-        .setName("清除強制")
+        .setName("clear-force")
         .setDescription("清除某活動的強制覆寫，恢復依時間判定")
         .addStringOption((o) =>
           o
@@ -130,13 +130,13 @@ module.exports = {
           flags: MessageFlags.Ephemeral,
         });
       }
-      if (sub === "列表") return runList(interaction);
-      if (sub === "預覽") return runPreview(interaction);
-      if (sub === "強制開始") return runForce(client, interaction, "start");
-      if (sub === "強制結束") return runForce(client, interaction, "end");
-      if (sub === "清除強制") return runClear(interaction);
+      if (sub === "list") return runList(interaction);
+      if (sub === "preview") return runPreview(interaction);
+      if (sub === "force-start") return runForce(client, interaction, "start");
+      if (sub === "force-end") return runForce(client, interaction, "end");
+      if (sub === "clear-force") return runClear(interaction);
     } catch (error) {
-      console.log(`[ERROR] /活動管理 ${sub}:\n${error}\n${error.stack}`.red);
+      console.log(`[ERROR] /event-admin ${sub}:\n${error}\n${error.stack}`.red);
       const reply = { content: "🔧 操作失敗，請呼叫舒舒！", flags: MessageFlags.Ephemeral };
       if (interaction.replied || interaction.deferred) {
         await interaction.editReply(reply).catch(() => {});
@@ -220,7 +220,7 @@ async function runForce(client, interaction, phase) {
   return interaction.reply({
     content:
       `✅ 已強制${phase === "start" ? "開始" : "結束"} **${event.name}**${announceNote}。\n` +
-      `-# 此為進程內覆寫，機器人重啟後恢復依時間判定；可用 \`/活動管理 清除強制\` 還原。`,
+      `-# 此為進程內覆寫，機器人重啟後恢復依時間判定；可用 \`/event-admin clear-force\` 還原。`,
     flags: MessageFlags.Ephemeral,
   });
 }
