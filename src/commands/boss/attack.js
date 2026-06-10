@@ -167,12 +167,14 @@ module.exports = {
         .setMaxValue(5),
     ),
 
+  subcommandOnly: true,
+
   run: async (client, interaction) => {
     await interaction.deferReply();
     try {
       return await runAttack(client, interaction);
     } catch (e) {
-      console.log(`[BOSS] /攻擊 失敗：${e.stack || e.message}`.red);
+      console.log(`[BOSS] /魔王 攻擊 失敗：${e.stack || e.message}`.red);
       return interaction.editReply({
         components: [
           bossView.buildErrorContainer({

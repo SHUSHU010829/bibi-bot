@@ -85,7 +85,7 @@ src/
 │   ├── recommendation/     # /推薦、/recommendation-admin
 │   ├── roles/              # /setup-roles
 │   ├── shop/               # /商店、/背包
-│   ├── stats/              # /stats
+│   ├── stats/              # /統計
 │   ├── stock/              # /股市（買/賣/走勢/配息/報價/持股/紀錄）、/stock-event
 │   ├── ticket/             # /ticket（suggestion-setup / proposal / vote）
 │   └── weather/            # /天氣、/全台天氣
@@ -383,7 +383,7 @@ embed.js → 發送 Embed
 | `/二選一` ~ 五選一 | 提供 2-5 個選項由機器人隨機選 |
 | `/抽籤 [諮詢方向]` | 傳統籤詩風格抽籤（吉凶） |
 | `/我想問 問題:<是非題>` | 問機器人是非題，回 Yes / No / Maybe |
-| `/stats user / channel` | 訊息與語音時長統計（由 `messageStats.js`、`voiceStats.js` 累積） |
+| `/統計 用戶 / 頻道` | 訊息與語音時長統計（由 `messageStats.js`、`voiceStats.js` 累積） |
 | `/排行榜 [類別] [時間]` | 統一排行榜：等級、訊息、語音、頻道熱度、挖礦、賭場贏家／輸家（下拉切類別、按鈕切時間） |
 | `/推薦 查詢 [關鍵字] [類別] [地區]` | 瀏覽 / 搜尋伺服器推薦（餐廳、酒吧、飲料、娛樂） |
 | `/推薦 編輯 訊息連結` | 修改推薦的分類欄位 |

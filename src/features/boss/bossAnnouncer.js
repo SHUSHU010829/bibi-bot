@@ -37,7 +37,7 @@ async function announceSpawn(client, bossDoc) {
       { name: "⏳ 戰鬥結束", value: `<t:${endsAt}:R>`, inline: true },
       { name: "⚔️ 攻擊上限", value: `每人 ${limit} 次`, inline: true },
     )
-    .setFooter({ text: "輸入 /攻擊 一起討伐！" });
+    .setFooter({ text: "輸入 /魔王 攻擊 一起討伐！" });
 
   await ch.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch(() => {});
 }

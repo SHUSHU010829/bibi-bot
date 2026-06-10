@@ -243,7 +243,7 @@ function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive
       const me = ranking[myIdx];
       lines.push(`-# 你目前排第 ${myIdx + 1}：${me.damage.toLocaleString()} 傷害`);
     } else if (myIdx < 0) {
-      lines.push(`-# 你還沒出手，快去 /攻擊！`);
+      lines.push(`-# 你還沒出手，快去 /魔王 攻擊！`);
     }
     container
       .addSeparatorComponents(new SeparatorBuilder())

@@ -13,22 +13,22 @@ const { DateTime } = require("luxon");
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("stats")
+    .setName("統計")
     .setDescription("📊 查看統計資料")
     .setContexts(InteractionContextType.Guild)
     .addSubcommand((subcommand) =>
       subcommand
-        .setName("user")
+        .setName("用戶")
         .setDescription("查看用戶統計")
         .addUserOption((option) =>
           option
-            .setName("target")
+            .setName("目標")
             .setDescription("要查詢的用戶（不填則查詢自己）")
             .setRequired(false)
         )
         .addStringOption((option) =>
           option
-            .setName("period")
+            .setName("期間")
             .setDescription("統計期間")
             .setRequired(false)
             .addChoices(
@@ -41,17 +41,17 @@ module.exports = {
     )
     .addSubcommand((subcommand) =>
       subcommand
-        .setName("channel")
+        .setName("頻道")
         .setDescription("查看頻道統計")
         .addChannelOption((option) =>
           option
-            .setName("target")
+            .setName("目標")
             .setDescription("要查詢的頻道（不填則查詢目前頻道）")
             .setRequired(false)
         )
         .addStringOption((option) =>
           option
-            .setName("period")
+            .setName("期間")
             .setDescription("統計期間")
             .setRequired(false)
             .addChoices(
@@ -68,16 +68,16 @@ module.exports = {
     await interaction.deferReply();
 
     const subcommand = interaction.options.getSubcommand();
-    const period = interaction.options.getString("period") || "today";
+    const period = interaction.options.getString("期間") || "today";
 
     try {
-      if (subcommand === "user") {
+      if (subcommand === "用戶") {
         const targetUser =
-          interaction.options.getUser("target") || interaction.user;
+          interaction.options.getUser("目標") || interaction.user;
         await showUserStats(client, interaction, targetUser, period);
-      } else if (subcommand === "channel") {
+      } else if (subcommand === "頻道") {
         const targetChannel =
-          interaction.options.getChannel("target") || interaction.channel;
+          interaction.options.getChannel("目標") || interaction.channel;
         await showChannelStats(client, interaction, targetChannel, period);
       }
     } catch (error) {
