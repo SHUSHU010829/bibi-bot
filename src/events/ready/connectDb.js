@@ -220,6 +220,12 @@ module.exports = async (client) => {
     // 玩家問卷調查回應（每位玩家每 guild 一筆）
     const surveyResponsesCollection = database.collection("SurveyResponses");
 
+    // 遊戲房討論串（/開房）：threadId 唯一，open 狀態載入記憶體快取
+    const gameRoomsCollection = database.collection("GameRooms");
+
+    // 通用流水號計數器（_id 例：gameRoom:<guildId>）
+    const countersCollection = database.collection("Counters");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -309,6 +315,8 @@ module.exports = async (client) => {
     client.userSettingsCollection = userSettingsCollection;
     client.commandStatsCollection = commandStatsCollection;
     client.surveyResponsesCollection = surveyResponsesCollection;
+    client.gameRoomsCollection = gameRoomsCollection;
+    client.countersCollection = countersCollection;
 
     // 抖內系統索引
     // - code unique：用於 webhook 對應 session
@@ -1264,6 +1272,15 @@ module.exports = async (client) => {
         { user_id: 1, guild_id: 1, created_at: 1 },
         { name: "mailbox_user_guild_time" }
       ).catch((e) => console.log(`[WARN] MarketplaceMailbox user 索引：${e.message}`.yellow));
+
+      await gameRoomsCollection.createIndex(
+        { threadId: 1 },
+        { unique: true, name: "uniq_gameroom_thread" }
+      ).catch((e) => console.log(`[WARN] GameRooms thread 索引：${e.message}`.yellow));
+      await gameRoomsCollection.createIndex(
+        { guildId: 1, ownerId: 1, status: 1 },
+        { name: "gameroom_owner_status" }
+      ).catch((e) => console.log(`[WARN] GameRooms owner 索引：${e.message}`.yellow));
     } catch (indexError) {
       console.log(
         `[WARNING] Failed to create LevelSystem indexes:\n${indexError.message}`.yellow

@@ -36,6 +36,7 @@ const boss = require("./boss.json");
 const guildClub = require("./guild_club.json");
 const guildWarehouse = require("./guild_warehouse.json");
 const survey = require("./survey");
+const gameRoom = require("./gameRoom.json");
 
 module.exports = {
   ...server,
@@ -74,4 +75,5 @@ module.exports = {
   ...guildClub,
   ...guildWarehouse,
   ...survey,
+  ...gameRoom,
 };

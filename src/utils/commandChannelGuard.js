@@ -88,4 +88,4 @@ function allowedChannelsFor(commandObject, restrictions) {
   return Array.isArray(channels) && channels.length ? channels : null;
 }
 
-module.exports = { allowedChannelsFor };
+module.exports = { allowedChannelsFor, isAdminCommand };

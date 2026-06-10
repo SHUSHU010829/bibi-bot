@@ -1,0 +1,7 @@
+{
+  "gameRoom": {
+    "namePrefix": "遊戲房",
+    "autoArchiveDuration": 1440,
+    "adminBlockedNotice": "🚫 遊戲房內不開放管理指令，請回一般頻道使用。"
+  }
+}
