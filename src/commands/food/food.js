@@ -12,7 +12,7 @@ const storesHandler = require("../../features/food/handlers/stores");
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("美食圖鑑")
+    .setName("菜單")
     .setDescription("食物與飲料：清單、排行榜、飲料店 🍽️")
     .addSubcommand((sub) =>
       sub
