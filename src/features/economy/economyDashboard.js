@@ -181,7 +181,7 @@ async function getTopHolders(client, guildId, limit = 10) {
   };
 }
 
-// 當下流通量快照（與 /circulation 同口徑：錢包 + 啟用中存款）
+// 當下流通量快照：錢包 + 啟用中存款
 async function getCirculationNow(client, guildId) {
   const [walletAgg, depositAgg] = await Promise.all([
     client.userCoinsCollection

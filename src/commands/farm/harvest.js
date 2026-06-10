@@ -43,6 +43,8 @@ module.exports = {
         .setMaxValue(farming?.maxPlots || 8),
     ),
 
+  subcommandOnly: true,
+
   run: async (client, interaction) => {
     await interaction.deferReply();
     try {
@@ -95,7 +97,7 @@ module.exports = {
             components: [errorContainer(
               "⏱️ 還沒成熟",
               `這塊地的作物還在成長，成熟時間：<t:${readyEpoch}:R>`,
-              "用 `/施肥` 縮短成長時間",
+              "用 `/農場 施肥` 縮短成長時間",
             )],
             flags: MessageFlags.IsComponentsV2,
           });
@@ -188,7 +190,7 @@ module.exports = {
         hooks,
       ).catch(() => {});
     } catch (error) {
-      console.log(`[ERROR] /收成:\n${error}\n${error.stack}`.red);
+      console.log(`[ERROR] /農場 收成:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 收成失敗，請呼叫舒舒！").catch(() => {});
     }
   },

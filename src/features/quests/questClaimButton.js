@@ -1,6 +1,6 @@
 // /逼幣任務 介面下方「領錢」按鈕。
 //
-// 點擊後等同呼叫 /領錢：補領所有「待入帳」的任務獎勵。
+// 點擊後補領所有「待入帳」的任務獎勵。
 // customId = questclaim_<userId>，僅本人可操作（見 handleQuestClaimButton.js）。
 
 const {

@@ -31,7 +31,7 @@ async function run(client, interaction) {
         .setAccentColor(0x00ae86)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            "# 🥤 飲料店清單\n使用 `/food drink` 指令時可以選擇以下飲料店：",
+            "# 🥤 飲料店清單\n使用 `/吃什麼` 指令時可以選擇以下飲料店：",
           ),
         )
         .addSeparatorComponents(new SeparatorBuilder())
@@ -42,7 +42,7 @@ async function run(client, interaction) {
         )
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            "-# 使用「/food drink」指令，在飲料店選項中輸入店名即可看到下拉選單",
+            "-# 使用「/吃什麼」指令，在飲料店選項中輸入店名即可看到下拉選單",
           ),
         );
 

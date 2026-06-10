@@ -1,6 +1,4 @@
 const {
-  PermissionFlagsBits,
-  ChannelType,
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
@@ -10,37 +8,17 @@ const {
   MessageFlags,
 } = require("discord.js");
 const config = require("../../config");
-const fs = require("fs");
-const { getDataFile } = require("../../utils/dataPaths");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
-
-// 票務面板數據文件路徑
-const PANELS_FILE = getDataFile("ticket-panels.json");
-
-// 讀取面板數據
-function loadPanels() {
-  try {
-    if (fs.existsSync(PANELS_FILE)) {
-      const data = fs.readFileSync(PANELS_FILE, "utf8");
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    logger.error({ source: "ticket-panels-load", err: error.message }, "讀取面板數據失敗");
-    trackError("ticket-panels-load", error);
-  }
-  return { panels: {} };
-}
 
 module.exports = async (client, interaction) => {
   try {
     if (!interaction.isButton()) return;
 
-    // 通用按鈕速率限制：票務 / 投票 / 身份組共用一個冷卻
+    // 通用按鈕速率限制：投票 / 身份組共用一個冷卻
     const customId = interaction.customId || "";
     const isHandled =
-      customId === "create_ticket" ||
       customId.startsWith("vote_") ||
       customId.startsWith("role_btn_");
     if (isHandled) {
@@ -57,12 +35,6 @@ module.exports = async (client, interaction) => {
         } catch (_) { /* noop */ }
         return;
       }
-    }
-
-    // 處理票務按鈕
-    if (interaction.customId === "create_ticket") {
-      await handleTicketCreation(client, interaction);
-      return;
     }
 
     // 處理投票按鈕（新格式：vote_{template}_{button}）
@@ -105,158 +77,6 @@ module.exports = async (client, interaction) => {
     trackError("interaction-dispatch", error, { customId: interaction?.customId });
   }
 };
-
-async function handleTicketCreation(client, interaction) {
-  try {
-    // 獲取此頻道的面板配置（如果存在）
-    const panels = loadPanels();
-    const panelConfig = panels.panels[interaction.channel.id];
-
-    // 使用頻道特定配置或預設配置
-    const ticketConfig = panelConfig ? {
-      categoryId: panelConfig.categoryId,
-      supportRoleId: panelConfig.supportRoleId,
-      ticketNameFormat: config.ticket.ticketNameFormat,
-      welcomeMessage: config.ticket.welcomeMessage,
-      alreadyHasTicket: config.ticket.alreadyHasTicket,
-      ticketCreating: config.ticket.ticketCreating,
-      ticketCreated: config.ticket.ticketCreated,
-    } : config.ticket;
-
-    // 檢查用戶是否已經有票務
-    const existingTicket = interaction.guild.channels.cache.find(
-      (channel) =>
-        channel.name === `ticket-${interaction.user.username.toLowerCase()}` &&
-        channel.type === ChannelType.GuildText
-    );
-
-    if (existingTicket) {
-      return interaction.reply({
-        content: ticketConfig.alreadyHasTicket,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-
-    await interaction.reply({
-      content: ticketConfig.ticketCreating,
-      flags: MessageFlags.Ephemeral,
-    });
-
-    // 驗證並獲取父類別
-    let parentCategory = null;
-    if (ticketConfig.categoryId && ticketConfig.categoryId !== "YOUR_CATEGORY_ID") {
-      const category = interaction.guild.channels.cache.get(ticketConfig.categoryId);
-      if (category && category.type === ChannelType.GuildCategory) {
-        parentCategory = ticketConfig.categoryId;
-      } else {
-        logger.warn(
-          { source: "ticket-create", categoryId: ticketConfig.categoryId },
-          "票務類別 ID 無效或不存在,改用無類別創建"
-        );
-      }
-    }
-
-    // 創建票務頻道
-    const ticketChannel = await interaction.guild.channels.create({
-      name: ticketConfig.ticketNameFormat.replace(
-        "{username}",
-        interaction.user.username.toLowerCase()
-      ),
-      type: ChannelType.GuildText,
-      parent: parentCategory,
-      topic: `票務創建者：${interaction.user.id}`,
-      permissionOverwrites: [
-        {
-          id: interaction.guild.id,
-          deny: [PermissionFlagsBits.ViewChannel],
-        },
-        {
-          id: interaction.user.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ReadMessageHistory,
-          ],
-        },
-        {
-          id: client.user.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ManageChannels,
-          ],
-        },
-      ],
-    });
-
-    // 如果有支援團隊身份組，添加權限
-    if (ticketConfig.supportRoleId && ticketConfig.supportRoleId !== "YOUR_SUPPORT_ROLE_ID") {
-      const supportRole = interaction.guild.roles.cache.get(ticketConfig.supportRoleId);
-      if (supportRole) {
-        await ticketChannel.permissionOverwrites.create(
-          ticketConfig.supportRoleId,
-          {
-            ViewChannel: true,
-            SendMessages: true,
-            ReadMessageHistory: true,
-          }
-        );
-      } else {
-        logger.warn(
-          { source: "ticket-create", supportRoleId: ticketConfig.supportRoleId },
-          "支援團隊身份組 ID 無效或不存在"
-        );
-      }
-    }
-
-    // 發送歡迎訊息
-    const welcomeContainer = new ContainerBuilder()
-      .setAccentColor(0x00ff00)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `${interaction.user}\n# 🎫 票務已創建\n${ticketConfig.welcomeMessage.replace(
-            "{user}",
-            interaction.user.toString(),
-          )}`,
-        ),
-      )
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
-        ),
-      );
-
-    await ticketChannel.send({
-      components: [welcomeContainer],
-      flags: MessageFlags.IsComponentsV2,
-      allowedMentions: { users: [interaction.user.id] },
-    });
-
-    await interaction.editReply({
-      content: ticketConfig.ticketCreated.replace(
-        "{channel}",
-        ticketChannel.toString()
-      ),
-      flags: MessageFlags.Ephemeral,
-    });
-    trackSuccess("ticket-create");
-  } catch (error) {
-    logger.error(
-      { source: "ticket-create", userId: interaction.user?.id, err: error.message, stack: error.stack },
-      "創建票務時出錯"
-    );
-    trackError("ticket-create", error, { userId: interaction.user?.id });
-    try {
-      await interaction.editReply({
-        content: "❌ 創建票務時發生錯誤！請聯絡管理員。",
-        flags: MessageFlags.Ephemeral,
-      });
-    } catch (replyError) {
-      logger.error({ source: "ticket-create", err: replyError.message }, "回覆錯誤訊息失敗");
-      trackError("ticket-create", replyError);
-    }
-  }
-}
 
 async function handleVoteButton(client, interaction) {
   try {

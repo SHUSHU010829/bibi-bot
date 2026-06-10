@@ -33,15 +33,7 @@ const { allowedChannelsFor } = require("../../utils/commandChannelGuard");
 const { recordUsage } = require("../../utils/commandUsageTracker");
 
 // 賭場類指令冷卻較短，避免打斷遊戲節奏
-const CASINO_COMMANDS = new Set([
-  "blackjack",
-  "hilo",
-  "射龍門",
-  "roulette",
-  "slot",
-  "poker",
-  "骰寶",
-]);
+const CASINO_COMMANDS = new Set(["賭場"]);
 
 // Discord 互動 token 只有 3 秒效期；超過就會回 10062 Unknown interaction。
 // 這個錯誤已經無法挽救，記下警告就好，不要再嘗試回覆。

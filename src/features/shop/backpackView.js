@@ -756,7 +756,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       if (fertLines.length > 0) {
         container.addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `**💧 肥料**　${fertLines.join("・")}\n-# 用 \`/施肥\` 加速作物成長`,
+            `**💧 肥料**　${fertLines.join("・")}\n-# 到 /農場 點「施肥」加速作物成長`,
           ),
         );
       }

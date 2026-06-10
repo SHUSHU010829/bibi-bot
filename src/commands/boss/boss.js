@@ -1,8 +1,8 @@
 require("colors");
 const {
-  SlashCommandBuilder,
   InteractionContextType,
   MessageFlags,
+  ApplicationCommandOptionType,
 } = require("discord.js");
 
 const { boss } = require("../../config");
@@ -46,18 +46,45 @@ async function runInfo(client, interaction) {
   });
 }
 
+const attackCmd = require("./attack");
+
+// 把 /攻擊 的 builder 轉成 /魔王 底下的 subcommand
+function toSubcommand(mod) {
+  const json = typeof mod.data.toJSON === "function" ? mod.data.toJSON() : mod.data;
+  return {
+    type: ApplicationCommandOptionType.Subcommand,
+    name: json.name,
+    description: json.description,
+    options: json.options || [],
+  };
+}
+
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName("boss")
-    .setDescription("查看當前 BOSS 戰況 📊")
-    .setContexts(InteractionContextType.Guild),
+  data: {
+    name: "魔王",
+    description: "BOSS 戰：攻擊與戰況 ⚔️",
+    contexts: [InteractionContextType.Guild],
+    options: [
+      toSubcommand(attackCmd),
+      {
+        type: ApplicationCommandOptionType.Subcommand,
+        name: "戰況",
+        description: "查看當前 BOSS 戰況 📊",
+        options: [],
+      },
+    ],
+  },
 
   run: async (client, interaction) => {
+    if (interaction.options.getSubcommand() === "攻擊") {
+      return attackCmd.run(client, interaction);
+    }
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       return await runInfo(client, interaction);
     } catch (e) {
-      console.log(`[BOSS] /boss 失敗：${e.stack || e.message}`.red);
+      console.log(`[BOSS] /魔王 戰況 失敗：${e.stack || e.message}`.red);
       return interaction.editReply({
         components: [
           bossView.buildErrorContainer({

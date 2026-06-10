@@ -256,7 +256,7 @@ async function run(client, interaction) {
       if (btnInteraction.user.id !== interaction.user.id) {
         return btnInteraction.reply({
           content:
-            "這不是你的清單！請使用 /food list 查看你自己的清單。",
+            "這不是你的清單！請使用 /菜單 清單 查看你自己的清單。",
           flags: MessageFlags.Ephemeral,
         });
       }

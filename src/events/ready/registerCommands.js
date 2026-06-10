@@ -14,7 +14,10 @@ module.exports = async (client) => {
     const commandsToRegister = [];
 
     for (const localCommand of localCommands) {
-      const { data, deleted } = localCommand;
+      const { data, deleted, subcommandOnly } = localCommand;
+
+      // 只作為母指令 subcommand 存在的模組（如 /賭場 底下的遊戲）不獨立註冊
+      if (subcommandOnly) continue;
 
       // 將 SlashCommandBuilder 序列化為純 JSON，確保所有 option 都帶有 type 欄位
       const commandJSON =

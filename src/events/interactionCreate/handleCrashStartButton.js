@@ -95,7 +95,7 @@ module.exports = async (client, interaction) => {
     const bet = Number(parts[3]);
     const autoArg = parts[4];
     if (!Number.isInteger(bet) || bet <= 0 || !autoArg) {
-      await replaceWithText(interaction, "🔧 按鈕資料異常，請重新執行 /火箭。");
+      await replaceWithText(interaction, "🔧 按鈕資料異常，請重新執行 /賭場 火箭。");
       return;
     }
     const autocashout = autoArg === "0" ? null : Number(autoArg);

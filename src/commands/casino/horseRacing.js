@@ -32,6 +32,8 @@ module.exports = {
     .setContexts(InteractionContextType.Guild)
     .toJSON(),
 
+  subcommandOnly: true,
+
   run: async (client, interaction) => {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 

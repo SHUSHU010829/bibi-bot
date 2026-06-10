@@ -29,8 +29,8 @@ async function run(client, interaction) {
 
     if (topFoods.length === 0) {
       const msg = category
-        ? `目前還沒有 ${CATEGORY_DISPLAY[category]} 被抽選的記錄。\n快使用 \`/food draw\` 來抽選吧！`
-        : "目前還沒有食物被抽選的記錄。\n快使用 `/food draw` 來抽選吧！";
+        ? `目前還沒有 ${CATEGORY_DISPLAY[category]} 被抽選的記錄。\n快使用 \`/吃什麼\` 來抽選吧！`
+        : "目前還沒有食物被抽選的記錄。\n快使用 `/吃什麼` 來抽選吧！";
       await interaction.editReply(msg);
       return;
     }

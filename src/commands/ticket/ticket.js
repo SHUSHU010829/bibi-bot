@@ -5,8 +5,6 @@ const {
   InteractionContextType,
 } = require("discord.js");
 
-const setupHandler = require("../../features/ticket/handlers/setup");
-const closeHandler = require("../../features/ticket/handlers/close");
 const suggestionSetupHandler = require("../../features/ticket/handlers/suggestionSetup");
 const proposalHandler = require("../../features/ticket/handlers/proposal");
 const voteHandler = require("../../features/ticket/handlers/vote");
@@ -14,53 +12,9 @@ const voteHandler = require("../../features/ticket/handlers/vote");
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("ticket")
-    .setDescription("[ADMIN] 票務、建議、投票管理 🎫")
+    .setDescription("[ADMIN] 建議票務、提案投票管理 🎫")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild)
-    .addSubcommand((sub) =>
-      sub
-        .setName("setup")
-        .setDescription("🎫 設置票務系統面板")
-        .addStringOption((option) =>
-          option
-            .setName("title")
-            .setDescription("票務面板標題（留空使用預設）")
-            .setRequired(false)
-        )
-        .addStringOption((option) =>
-          option
-            .setName("description")
-            .setDescription("票務面板描述（留空使用預設）")
-            .setRequired(false)
-        )
-        .addStringOption((option) =>
-          option
-            .setName("button_label")
-            .setDescription("按鈕標籤（留空使用預設）")
-            .setRequired(false)
-        )
-        .addStringOption((option) =>
-          option
-            .setName("button_emoji")
-            .setDescription("按鈕 emoji（留空使用預設）")
-            .setRequired(false)
-        )
-        .addStringOption((option) =>
-          option
-            .setName("category_id")
-            .setDescription("票務類別 ID（留空使用預設）")
-            .setRequired(false)
-        )
-        .addRoleOption((option) =>
-          option
-            .setName("support_role")
-            .setDescription("支援團隊身份組（留空使用預設）")
-            .setRequired(false)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub.setName("close").setDescription("🔒 關閉當前票務")
-    )
     .addSubcommand((sub) =>
       sub
         .setName("suggestion-setup")
@@ -194,10 +148,6 @@ module.exports = {
 
     if (!group) {
       switch (sub) {
-        case "setup":
-          return setupHandler.run(client, interaction);
-        case "close":
-          return closeHandler.run(client, interaction);
         case "suggestion-setup":
           return suggestionSetupHandler.run(client, interaction);
       }

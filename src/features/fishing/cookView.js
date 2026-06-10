@@ -59,7 +59,7 @@ function buildErrorView({ recipe, result, fishBag, backpack, veggieBag }) {
   if (result.reason === "insufficient_fish" || result.reason === "insufficient_veggies") {
     const materialsText = recipeMaterialsText(recipe, fishBag, backpack, veggieBag);
     const hint = result.reason === "insufficient_veggies"
-      ? "前往 /農場 種植與 /收成 取得蔬菜！"
+      ? "前往 /農場 種植與收成取得蔬菜！"
       : "前往 /釣魚 蒐集更多魚吧！";
     const container = new ContainerBuilder()
       .setAccentColor(0xe74c3c)

@@ -144,7 +144,7 @@ function loadCommandIndex() {
       try {
         const mod = require(path.join(dirPath, file));
         if (!mod || !mod.data || !mod.data.name) continue;
-        if (mod.deleted) continue;
+        if (mod.deleted || mod.subcommandOnly) continue;
         if (mod.data.name === "help") continue;
 
         const cmd = {

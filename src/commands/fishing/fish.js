@@ -425,7 +425,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       for (const drop of result.rareDrops) {
         container.addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `✨ **意外發現**：${drop.emoji || "🎁"} ${drop.name || drop.item} ×1（可用於 /施肥）`
+            `✨ **意外發現**：${drop.emoji || "🎁"} ${drop.name || drop.item} ×1（可到 /農場 施肥用）`
           )
         );
       }

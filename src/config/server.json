@@ -3,23 +3,49 @@
   "createVoiceChannelId": "1444946665541861406",
   "memberCountChannelId": "1232546673448849500",
   "roleMessageChannelId": "1286145970693869568",
-
   "commandChannels": {
-    "general": ["1511655301953228800", "1192666043571773580"],
-    "citizen": ["1192888968748994700", "1192666043571773580"],
-    "casino": ["1500783461831671858", "1504806019610574878", "1192666043571773580"],
-    "stock": ["1505808023933816893", "1192666043571773580"],
-    "mining": ["1509074828206936126", "1192666043571773580"],
-    "marketplace": ["1510657349944344737", "1192666043571773580"],
-    "fishing": ["1510655421302571159", "1192666043571773580"],
-    "farm": ["1511018291026460754", "1192666043571773580"],
-    "boss": ["1511617684532367440", "1192666043571773580"]
+    "general": [
+      "1511655301953228800",
+      "1192666043571773580"
+    ],
+    "citizen": [
+      "1192888968748994700",
+      "1192666043571773580"
+    ],
+    "casino": [
+      "1500783461831671858",
+      "1504806019610574878",
+      "1192666043571773580"
+    ],
+    "stock": [
+      "1505808023933816893",
+      "1192666043571773580"
+    ],
+    "mining": [
+      "1509074828206936126",
+      "1192666043571773580"
+    ],
+    "marketplace": [
+      "1510657349944344737",
+      "1192666043571773580"
+    ],
+    "fishing": [
+      "1510655421302571159",
+      "1192666043571773580"
+    ],
+    "farm": [
+      "1511018291026460754",
+      "1192666043571773580"
+    ],
+    "boss": [
+      "1511617684532367440",
+      "1192666043571773580"
+    ]
   },
-
-  "commandChannelsHidden": ["1192666043571773580"],
-
+  "commandChannelsHidden": [
+    "1192666043571773580"
+  ],
   "memberCountFormat": "😧│很舒禮人數：{count}",
-
   "morningMessage": {
     "cronSchedule": "0 8 * * *",
     "timezone": "Asia/Taipei",
@@ -27,54 +53,31 @@
       "yaa": "<a:yaa:1339068116524732436>"
     }
   },
-
   "weeklyReport": {
     "enabled": true,
     "channelId": "1174352640210124877",
     "cronSchedule": "0 21 * * 0",
     "timezone": "Asia/Taipei"
   },
-
   "voiceChannel": {
     "defaultChannelName": "記得改名喔！",
     "deleteReason": "動態語音頻道已空，自動刪除"
   },
-
   "hostedEvents": {
     "publishChannelId": "1506339475867832330",
     "maxRankCount": 5,
     "refundFeeRate": 0.3
   },
-
-  "ticket": {
-    "categoryId": "1445041268114587779",
-    "supportRoleId": "1174352637295067164",
-    "panelTitle": "🎫 票務系統",
-    "panelDescription": "需要幫助嗎？點擊下方按鈕創建一個票務頻道！\n\n我們的支援團隊將會盡快回覆您。",
-    "buttonLabel": "創建票務",
-    "buttonEmoji": "🎫",
-    "ticketNameFormat": "ticket-{username}",
-    "welcomeMessage": "👋 嗨 {user}！\n\n感謝您創建票務。請描述您的問題，我們的支援團隊會盡快協助您。\n\n完成後，請使用 `/close-ticket` 關閉此票務。",
-    "closeMessage": "✅ 票務已關閉",
-    "closeDescription": "此票務已被 {user} 關閉。\n頻道將在 5 秒後刪除。",
-    "alreadyHasTicket": "❌ 您已經有一個開啟的票務了！\n請先關閉現有的票務再創建新的。",
-    "ticketCreating": "⏳ 正在創建票務...",
-    "ticketCreated": "✅ 票務已創建！\n請前往 {channel}"
-  },
-
   "roles": [
     {
       "id": "1286170878463447133",
       "label": "🎮 LEAGUE OF LEGENDS"
     }
   ],
-
   "roleMessageContent": "想要收到舒舒的開台通知！領取身份組吧！",
-
   "commandEmojis": {
     "hiiiiii": "<:hiiiiii:1191449346777038858>"
   },
-
   "commandMessages": {
     "drawingLot": "抽籤中... 🎰",
     "noFood": "目前沒有可供選擇的食物選項。",

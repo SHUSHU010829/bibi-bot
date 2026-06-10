@@ -62,6 +62,8 @@ module.exports = {
         .setMaxValue(20),
     ),
 
+  subcommandOnly: true,
+
   run: async (client, interaction) => {
     await interaction.deferReply();
     try {
@@ -94,7 +96,7 @@ module.exports = {
             components: [errorContainer(
               "🌟 已可收成",
               `這塊地的作物已經成熟，不需要再施肥。`,
-              "用 `/收成 地塊:" + (plotIndex + 1) + "` 收成",
+              "用 `/農場 收成 地塊:" + (plotIndex + 1) + "` 收成",
             )],
             flags: MessageFlags.IsComponentsV2,
           });
@@ -181,7 +183,7 @@ module.exports = {
         readyAt: nextReadyAt,
       }).catch(() => {});
     } catch (error) {
-      console.log(`[ERROR] /施肥:\n${error}\n${error.stack}`.red);
+      console.log(`[ERROR] /農場 施肥:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 施肥失敗，請呼叫舒舒！").catch(() => {});
     }
   },
