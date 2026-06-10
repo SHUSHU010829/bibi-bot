@@ -41,7 +41,7 @@ const TYPE_META = {
   farm: {
     label: "農場",
     emoji: "🌾",
-    command: "/農場",
+    command: "/農場 查看",
     notifyText: "作物成熟了，快來收成！",
     triggerWord: "作物成熟",
     channelKey: "farm",

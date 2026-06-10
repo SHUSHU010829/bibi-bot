@@ -1,8 +1,8 @@
 require("colors");
 const {
-  SlashCommandBuilder,
   MessageFlags,
   InteractionContextType,
+  ApplicationCommandOptionType,
 } = require("discord.js");
 
 const { farming } = require("../../config");
@@ -11,13 +11,42 @@ const farmService = require("../../features/farm/farmService");
 const { buildFarmContainer } = require("../../features/farm/farmView");
 const { resolveStamina, staminaMax, getMemberClub } = require("../../features/mining/dungeonService");
 
+const harvestCmd = require("./harvest");
+const fertilizeCmd = require("./fertilize");
+
+// 把獨立指令模組的 builder 轉成 /農場 底下的 subcommand
+function toSubcommand(mod) {
+  const json = typeof mod.data.toJSON === "function" ? mod.data.toJSON() : mod.data;
+  return {
+    type: ApplicationCommandOptionType.Subcommand,
+    name: json.name,
+    description: json.description,
+    options: json.options || [],
+  };
+}
+
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName("農場")
-    .setDescription("查看你的農場狀態 🌾")
-    .setContexts(InteractionContextType.Guild),
+  data: {
+    name: "農場",
+    description: "農場：查看狀態、收成、施肥 🌾",
+    contexts: [InteractionContextType.Guild],
+    options: [
+      {
+        type: ApplicationCommandOptionType.Subcommand,
+        name: "查看",
+        description: "查看你的農場狀態 🌾",
+        options: [],
+      },
+      toSubcommand(harvestCmd),
+      toSubcommand(fertilizeCmd),
+    ],
+  },
 
   run: async (client, interaction) => {
+    const sub = interaction.options.getSubcommand();
+    if (sub === "收成") return harvestCmd.run(client, interaction);
+    if (sub === "施肥") return fertilizeCmd.run(client, interaction);
+
     await interaction.deferReply();
     try {
       if (!farming?.enabled) return interaction.editReply("🔧 農場系統尚未啟動！");

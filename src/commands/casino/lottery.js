@@ -78,7 +78,7 @@ module.exports = {
     .setContexts(InteractionContextType.Guild)
     .addSubcommand((s) =>
       s
-        .setName("買")
+        .setName("購買")
         .setDescription("買樂透票 🎟")
         .addStringOption((o) =>
           o
@@ -182,14 +182,14 @@ module.exports = {
       if (sub === "列表") return runSubscriptions(client, interaction);
       if (sub === "關閉") return runUnsubscribeAll(client, interaction);
     }
-    if (sub === "買") return runBuy(client, interaction);
+    if (sub === "購買" || sub === "買") return runBuy(client, interaction);
     if (sub === "包牌") return runWheel(client, interaction);
     if (sub === "資訊") return runStatus(client, interaction);
     if (sub === "歷史") return runHistory(client, interaction);
   },
 };
 
-// ───────────────────────────── /樂透 買 ─────────────────────────────
+// ───────────────────────────── /樂透 購買 ─────────────────────────────
 async function runBuy(client, interaction) {
   await interaction.deferReply();
 
@@ -345,7 +345,7 @@ async function runBuy(client, interaction) {
       game: "lottery",
       payload: {
         options: {
-          __subcommand: "買",
+          __subcommand: "購買",
           玩法: lotteryType,
           張數: ticketCountInput,
           號碼: numbersInput,
@@ -368,7 +368,7 @@ async function runBuy(client, interaction) {
       ],
     });
   } catch (err) {
-    console.log(`[ERROR] /樂透 買:\n${err}\n${err.stack}`.red);
+    console.log(`[ERROR] /樂透 購買:\n${err}\n${err.stack}`.red);
     await interaction
       .editReply("🔧 樂透買票執行失敗,請呼叫舒舒!")
       .catch(() => {});
