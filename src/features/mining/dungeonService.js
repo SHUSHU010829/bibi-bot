@@ -82,7 +82,10 @@ function worldEventPct(type) {
 
 function staminaMax(member, club = null) {
   const base = dungeon?.staminaMax ?? 10;
-  return base + staminaBonus(member) + staminaGuildBonus(club);
+  // 世界事件「聖光降臨」等事件可給 dungeon_stamina_max
+  const worldEventBuffs = require("../world_event/worldEventBuffs");
+  const worldStamina = worldEventBuffs.getCachedBuffs().dungeon_stamina_max || 0;
+  return base + staminaBonus(member) + staminaGuildBonus(club) + worldStamina;
 }
 
 // 惰性回復：依離線時間補體力。回傳 { stamina, updatedAt, nextRegenAt }。

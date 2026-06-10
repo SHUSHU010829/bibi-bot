@@ -16,6 +16,11 @@ const BUFF_META = {
   fishing_success_rate_pct: { label: "釣魚成功率", unit: "+{v}%" },
   farm_yield_count_bonus: { label: "農場額外產出", unit: "+{v} 個" },
   farm_yield_pct: { label: "農場收成", unit: "+{v}%" },
+  ore_sell_price_pct: { label: "礦石賣價", unit: "+{v}%" },
+  fish_sell_price_pct: { label: "魚類賣價", unit: "+{v}%" },
+  work_income_pct: { label: "打工收入", unit: "+{v}%" },
+  dungeon_coin_pct: { label: "地下城金幣", unit: "+{v}%" },
+  xp_boost_pct: { label: "經驗值", unit: "+{v}%" },
 };
 
 const labelOf = (key) => BUFF_META[key]?.label || key;

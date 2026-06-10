@@ -82,6 +82,8 @@ async function getMiningResolve(client, userId, guildId, member) {
   const worldBuffs = worldEventBuffs.getCachedBuffs();
   const worldLuckPct = (worldBuffs.mining_luck_pct || 0) / 100;
   if (worldLuckPct > 0) base.luckBonus += worldLuckPct;
+  const worldQty = worldBuffs.mining_qty_bonus || 0;
+  if (worldQty > 0) base.qtyBonus += worldQty;
   const worldCdPct = worldBuffs.mining_cooldown_pct || 0;
   const totalCdPct = Math.min(70, buildingCdPct + worldCdPct);
   if (totalCdPct > 0) {

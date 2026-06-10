@@ -51,4 +51,26 @@ const refreshCache = async (client) => {
 const getCachedBuffs = () => _cache.buffs;
 const getCachedList = () => _cache.list;
 
-module.exports = { getActiveBuffs, refreshCache, getCachedBuffs, getCachedList };
+module.exports = { getActiveBuffs, refreshCache, getCachedBuffs, getCachedList, getCoinMultiplierForSource, getXpMultiplier };
+
+// 來源 → 對應的 world event buff key。整數百分比，0 = 無加成。
+// 若想新增某 source 的世界事件加成，把 source 加進這個表。
+const SOURCE_TO_KEY = {
+  mining_sell: "ore_sell_price_pct",
+  fish_sell: "fish_sell_price_pct",
+  work: "work_income_pct",
+  dungeon: "dungeon_coin_pct",
+  // farm_harvest 不在此處乘，農場 service 已透過 farm_yield_pct 處理
+};
+
+function getCoinMultiplierForSource(source) {
+  const key = SOURCE_TO_KEY[source];
+  if (!key) return 1;
+  const pct = _cache.buffs[key] || 0;
+  return pct > 0 ? 1 + pct / 100 : 1;
+}
+
+function getXpMultiplier() {
+  const pct = _cache.buffs.xp_boost_pct || 0;
+  return pct > 0 ? 1 + pct / 100 : 1;
+}
