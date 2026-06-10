@@ -70,16 +70,16 @@ src/
 ├── handlers/eventHandler.js
 ├── commands/               # Slash Commands（按功能分子目錄）
 │   ├── ask/                # /我想問
-│   ├── casino/             # /二十一點、/hilo、/拉霸、/賽馬、/火箭、/射龍門、/尋寶、/輪盤、/德州撲克、/樂透買…
+│   ├── casino/             # /賭場（二十一點/猜大小/拉霸/賽馬/火箭/射龍門/尋寶/輪盤/德州撲克/骰寶）、/樂透
 │   ├── currency/           # /加密貨幣、/即時匯率
 │   ├── draw/               # /二選一、/抽籤
-│   ├── economy/            # /轉帳、/存款、/骰寶、/領錢、/逼幣任務、/乞討、/give-coins、/circulation
+│   ├── economy/            # /轉帳、/存款、/逼幣任務、/乞討、/give-coins、/economy-dashboard
 │   ├── event/              # /活動（成員自辦獎金活動）
-│   ├── food/               # /吃什麼、/food、/food-admin
+│   ├── food/               # /吃什麼、/菜單、/food-admin
 │   ├── general/            # /help
 │   ├── leaderboard/        # /排行榜（整合等級、訊息、語音、頻道、挖礦、賭場 7 種排行）
 │   ├── level/              # /每日簽到、/補簽卡、/level-admin、開發者測試指令
-│   ├── mining/             # /挖礦、/賣礦、/合成、/地下城、/決鬥、/裝備、/拍賣、/工作、/背包…
+│   ├── mining/             # /挖礦、/賣出、/合成、/地下城、/決鬥、/裝備、/市集、/打工、/背包…
 │   ├── post/               # /生成情勒文、/新增情勒文
 │   ├── profile/            # /檔案（個人資料聚合）、/稱號（合併稱號＋展示徽章）
 │   ├── quiz/               # /預測、/問答
@@ -88,7 +88,7 @@ src/
 │   ├── shop/               # /商店、/背包
 │   ├── stats/              # /stats
 │   ├── stock/              # /股市（買/賣/走勢/配息/報價/持股/紀錄）、/stock-event
-│   ├── ticket/             # /ticket（setup / close / proposal / suggestion-setup / vote）
+│   ├── ticket/             # /ticket（suggestion-setup / proposal / vote）
 │   └── weather/            # /天氣、/全台天氣
 ├── events/
 │   ├── ready/              # bot 啟動時要做的事（載入 DB、註冊指令、起 cron…）
@@ -205,8 +205,8 @@ bot 自動建立同分類下的新頻道（預設名稱「記得改名喔！」�
 **完整流程**：
 
 ```
-使用者點 Ticket 面板「創建票務」
-   ↓ 自動建立 ticket-{username} 私人頻道
+使用者點建議面板開票
+   ↓ 自動建立私人票務頻道（歡迎訊息附「🔒 關閉票務」按鈕）
 管理員在票務頻道輸入 /ticket proposal start
    ↓ bot 在投票頻道發布投票訊息
 成員按按鈕投票（可改票、有互斥邏輯）
@@ -219,9 +219,7 @@ bot 自動建立同分類下的新頻道（預設名稱「記得改名喔！」�
 
 | 指令 | 權限 | 說明 |
 | --- | --- | --- |
-| `/ticket setup` | 管理員 | 在當前頻道部署 Ticket 面板（可自訂標題 / 描述 / 按鈕 / 類別 / 支援身份組） |
-| `/ticket close` | Ticket 開啟者 / 管理員 | 立即關閉當前 Ticket |
-| `/ticket suggestion-setup` | 管理員 | 部署建議系統面板 |
+| `/ticket suggestion-setup` | 管理員 | 部署建議系統面板（開出的票務頻道內建關閉按鈕） |
 | `/ticket proposal start game:<名稱> type:<create\|archive>` | `ManageChannels` | 在 Ticket 頻道發起遊戲頻道投票 |
 | `/ticket proposal end / cancel message_url:<連結>` | 管理員 | 提早結束 / 取消投票 |
 | `/ticket vote create template:<模板> title:<標題>` | 管理員 | 從模板（遊戲頻道、活動、規則變更、一般提案）發起投票 |
@@ -356,9 +354,9 @@ embed.js → 發送 Embed
 | 指令 | 用途 |
 | --- | --- |
 | `/吃什麼 [類別] [飲料店]` | 隨機抽食物 / 飲料（不選類別則所有品項一起抽） |
-| `/food list [類別]` | 查看食物清單 |
-| `/food ranking [類別] [數量]` | 依抽中次數排行（預設前 10） |
-| `/food stores` | 查看所有飲料店清單 |
+| `/菜單 清單 [類別]` | 查看食物清單 |
+| `/菜單 排行榜 [類別] [數量]` | 依抽中次數排行（預設前 10） |
+| `/菜單 飲料店` | 查看所有飲料店清單 |
 | `/food-admin add` 🔒 | 新增單一食物（管理員） |
 | `/food-admin batch` 🔒 | 一次新增多個食物（用逗號分隔） |
 | `/food-admin import` 🔒 | 匯入整個飲料店菜單 |
@@ -515,11 +513,10 @@ embed.js → 發送 Embed
 | `/存款 開戶 金額 天數` | 開定期存款，到期領回本金 + 利息 |
 | `/存款 查詢` | 查所有未到期 / 已到期的存單 |
 | `/存款 提款 存單` | 領回到期存款（未到期會被扣違約金） |
-| `/逼幣任務` | 查看每日／週常任務進度 📜 |
-| `/領錢` | 補領未入帳的任務獎勵（任務完成時通常會自動入帳）🪙 |
+| `/逼幣任務` | 查看每日／週常任務進度 📜（待入帳獎勵可直接按面板上的「領錢」按鈕補領） |
 | `/乞討` | 破產時領取救濟金，符合資格直接發放 🪙 |
 | `/give-coins user amount [reason]` 🔒 | 管理員：發放或扣除 credits（會記在交易紀錄） |
-| `/circulation` 🔒 | 管理員：查所有伺服器的金幣流通總量 |
+| `/economy-dashboard` 🔒 | 管理員：經濟健康度儀表板（流通量／賭場 Edge／物資流通／集中度） |
 
 #### 12.2 賭場遊戲
 
@@ -529,22 +526,21 @@ embed.js → 發送 Embed
 
 | 指令 | 玩法 | 主要設定 |
 | --- | --- | --- |
-| `/拉霸 下注 [梭哈]` | 五輪滾筒老虎機，含 jackpot 累積彩池（每筆下注 3% 注入彩池），中 jackpot 時 announce 到 `slot.jackpotPool.announceChannelId` | `casino.slot` |
-| `/骰寶 kind 金額` | 三顆骰子，可同時押 3 注。支援 大 / 小 / 單骰 / 對子 / 圍骰（特定 ×180、任意 ×30）/ 總點數（4 或 17 ×60、5 或 16 ×30…） | `casino.sicbo` |
-| `/二十一點 下注 [梭哈]` | 跟莊家比 21 點。莊家 ≥17 必停（含 soft 17）、Blackjack 賠 3:2、玩家過五關（5 張未爆）2:1、莊家過五關則莊家勝、可 Hit / Stand / Double | `casino.blackjack` |
-| `/hilo 下注 [梭哈]` | 猜下一張比底牌 HI / LO / SAME，倍率依剩餘牌堆即時計算（含 5% 房費）；連對倍率累積，至少贏 1 把後可隨時收手；達 `maxRounds` 強制結算 | `casino.hilo` |
-| `/賽馬` | 開一場 10 分鐘售票期賽馬（多人共局）：點按鈕跳 modal 押注、可同時押多匹，到時自動開賽逐幀文字動畫，0 人下注自動取消。賠率 ×3.0（30%）／×4.0（22%）／×5.5（17%）／×7.0（13%）／×9.0（10%）／×11.0（8%）約 10% 房費 | `casino.horseRacing` |
-| `/火箭 下注 [自動收手]` | 🚀 倍率不斷往上衝，按收手鎖定派彩；慢一步就爆炸 | `casino.crash` |
-| `/射龍門` | 🐉 入場費 50。看完柱牌再決定要不要補注射第三張 | `casino.dragonGate` |
-| `/尋寶 下注 [梭哈]` | 💎 從格子裡挑 5 格找寶藏，全中 400 倍 | `casino.keno` |
-| `/輪盤 金額 [梭哈]` | 🎰 押紅黑、奇偶、大小、打、列 | `casino.roulette` |
-| `/德州撲克 開桌 [max_players] [blind]` | 自動建立 thread，桌面在 thread 內進行 | `casino.poker` |
+| `/賭場 拉霸 下注 [梭哈]` | 五輪滾筒老虎機，含 jackpot 累積彩池（每筆下注 3% 注入彩池），中 jackpot 時 announce 到 `slot.jackpotPool.announceChannelId` | `casino.slot` |
+| `/賭場 骰寶 押法 金額` | 三顆骰子，可同時押 3 注。支援 大 / 小 / 單骰 / 對子 / 圍骰（特定 ×180、任意 ×30）/ 總點數（4 或 17 ×60、5 或 16 ×30…） | `casino.sicbo` |
+| `/賭場 二十一點 下注 [梭哈]` | 跟莊家比 21 點。莊家 ≥17 必停（含 soft 17）、Blackjack 賠 3:2、玩家過五關（5 張未爆）2:1、莊家過五關則莊家勝、可 Hit / Stand / Double | `casino.blackjack` |
+| `/賭場 猜大小 下注 [梭哈]` | 猜下一張比底牌 HI / LO / SAME，倍率依剩餘牌堆即時計算（含 5% 房費）；連對倍率累積，至少贏 1 把後可隨時收手；達 `maxRounds` 強制結算 | `casino.hilo` |
+| `/賭場 賽馬` | 開一場 10 分鐘售票期賽馬（多人共局）：點按鈕跳 modal 押注、可同時押多匹，到時自動開賽逐幀文字動畫，0 人下注自動取消。賠率 ×3.0（30%）／×4.0（22%）／×5.5（17%）／×7.0（13%）／×9.0（10%）／×11.0（8%）約 10% 房費 | `casino.horseRacing` |
+| `/賭場 火箭 下注 [自動收手]` | 🚀 倍率不斷往上衝，按收手鎖定派彩；慢一步就爆炸 | `casino.crash` |
+| `/賭場 射龍門` | 🐉 入場費 50。看完柱牌再決定要不要補注射第三張 | `casino.dragonGate` |
+| `/賭場 尋寶 下注 [梭哈]` | 💎 從格子裡挑 5 格找寶藏，全中 400 倍 | `casino.keno` |
+| `/賭場 輪盤 金額 [梭哈]` | 🎰 押紅黑、奇偶、大小、打、列 | `casino.roulette` |
+| `/賭場 德州撲克 開桌 [max_players] [blind]` | 自動建立 thread，桌面在 thread 內進行 | `casino.poker` |
 | `/排行榜 類別:賭場贏家 / 賭場輸家` | 賭場淨輸贏排行榜，預設本週周榜，可切今天 / 本週 / 本月 | — |
 | `/檔案` → 賭場紀錄分頁 | 自己的下注、派彩、RTP、各遊戲分項統計 | — |
-| `/casino-stats game period` 🔒 | 管理員：全伺服器賭場 RTP 統計 | — |
-| `/slottest spin / preview` 🔧 | 開發者：拉霸抽獎 JSON / 圖卡預覽工具 | — |
+| `/dev slot spin / preview` 🔧 | 開發者：拉霸抽獎 JSON / 圖卡預覽工具 | — |
 
-> **共同行為**：每位玩家同 `guildId` 同時只能進行一局 `/二十一點` 或 `/hilo`，避免按鈕局多開互踩。中途離場（按鈕局 5 分鐘無互動）由每分鐘的 cleanup cron 自動處理：21 點直接退本金；HI-LO 沒贏過退本金、有贏過自動 cash out。`/賽馬` channel-scoped，同頻道一次只能有一場進行中；售票期到了由 `horseRaceScheduler` cron 撈出來自動開賽，0 人下注直接取消，比賽中段卡超過 `raceTtlSeconds` 視為中斷全額退款。
+> **共同行為**：每位玩家同 `guildId` 同時只能進行一局 `/賭場 二十一點` 或 `/賭場 猜大小`，避免按鈕局多開互踩。中途離場（按鈕局 5 分鐘無互動）由每分鐘的 cleanup cron 自動處理：21 點直接退本金；HI-LO 沒贏過退本金、有贏過自動 cash out。`/賭場 賽馬` channel-scoped，同頻道一次只能有一場進行中；售票期到了由 `horseRaceScheduler` cron 撈出來自動開賽，0 人下注直接取消，比賽中段卡超過 `raceTtlSeconds` 視為中斷全額退款。
 
 #### 12.3 樂透
 
@@ -554,12 +550,12 @@ embed.js → 發送 Embed
 
 | 指令 | 用途 |
 | --- | --- |
-| `/樂透資訊` | 查當期獎池、開獎時間、剩餘時間 |
-| `/樂透買 玩法 [張數] [號碼]` | 買單張或多張票，可自選號碼或隨機 |
-| `/樂透包牌 玩法 號碼` | 選 7 個以上號碼自動展開所有 6 取 N 組合 |
-| `/樂透訂閱 玩法 期數 每期張數 [號碼]` | 訂閱未來 N 期自動買同組號碼 |
-| `/樂透訂閱列表` | 查 / 取消自己的訂閱 |
-| `/樂透歷史 [筆數]` | 自己最近的中獎紀錄 |
+| `/樂透 資訊` | 查當期獎池、開獎時間、剩餘時間 |
+| `/樂透 購買 玩法 [張數] [號碼]` | 買單張或多張票，可自選號碼或隨機 |
+| `/樂透 包牌 玩法 號碼` | 選 7 個以上號碼自動展開所有 6 取 N 組合 |
+| `/樂透 訂閱 開啟 玩法 期數 [每期張數] [號碼]` | 訂閱未來 N 期自動買同組號碼 |
+| `/樂透 訂閱 列表` | 查 / 取消自己的訂閱 |
+| `/樂透 歷史` | 自己最近的中獎紀錄 |
 | `/lotteryadmin …` 🔒 | 開發者：強制開獎、補建期、跑訂閱扣款、補發提醒 |
 
 **獎池與排程**設定在 `casino.lottery`：
@@ -767,7 +763,7 @@ npm run verify-calendar           # 驗證行事曆 JSON 完整性
 npm run convert-calendar          # 行事曆格式轉換
 
 # 資料修補
-npm run clear-crash-stats         # 清空 /火箭 的賭場統計
+npm run clear-crash-stats         # 清空 /賭場 火箭 的賭場統計
 npm run backfill-recommendations  # 回填推薦系統的歷史資料
 npm run backfill-map-meta         # 回填地圖 / 地點 metadata
 node scripts/migrateFoodData.js   # 一次性食物資料遷移（舊資料 → 新分類結構）
