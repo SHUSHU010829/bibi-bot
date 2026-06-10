@@ -25,11 +25,16 @@ const {
   serverId,
   commandChannels,
   commandChannelsHidden,
+  gameRoom,
 } = require("../../config");
 const mConfig = require("../../messageConfig.json");
 const getLocalCommands = require("../../utils/getLocalCommands");
 const { consume } = require("../../utils/rateLimiter");
-const { allowedChannelsFor } = require("../../utils/commandChannelGuard");
+const {
+  allowedChannelsFor,
+  isAdminCommand,
+} = require("../../utils/commandChannelGuard");
+const { isGameRoom } = require("../../features/gameRoom/service");
 const { recordUsage } = require("../../utils/commandUsageTracker");
 
 // 賭場類指令冷卻較短，避免打斷遊戲節奏
@@ -67,9 +72,18 @@ module.exports = async (client, interaction) => {
     );
     if (!commandObject) return;
 
+    // 遊戲房討論串：所有遊戲指令豁免頻道分流，但管理 / 開發者指令一律擋下。
+    const inGameRoom = isGameRoom(interaction.channelId);
+    if (inGameRoom && (commandObject.devOnly || isAdminCommand(commandObject))) {
+      await safeReply(interaction, {
+        components: [errorContainer(gameRoom.adminBlockedNotice)],
+      });
+      return;
+    }
+
     // 頻道分流：只在主伺服器生效。私人(ephemeral)與管理員/開發者指令豁免。
     // 用錯頻道就回覆一則 ephemeral 提醒，引導到對應頻道。
-    if (interaction.guildId === serverId) {
+    if (interaction.guildId === serverId && !inGameRoom) {
       const allowed = allowedChannelsFor(commandObject, commandChannels);
       if (allowed && !allowed.includes(interaction.channelId)) {
         const hidden = new Set(commandChannelsHidden || []);
