@@ -454,6 +454,13 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     foodBuffLines: formatFoodBuffLines(profile, "dungeon"),
   };
 
+  // 世界事件觸發 roll（僅勝利時觸發）：fire-and-forget
+  if (won) {
+    require("../world_event/worldEventService")
+      .rollTrigger(client, "dungeon_clear", {})
+      .catch(() => {});
+  }
+
   bus.emit("dungeon.cleared", {
     userId,
     guildId,

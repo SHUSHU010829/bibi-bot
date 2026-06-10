@@ -278,6 +278,11 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
     consumeFarmYieldUse(client, userId, guildId, profileForBuff).catch(() => {});
   }
 
+  // 世界事件觸發 roll：fire-and-forget
+  require("../world_event/worldEventService")
+    .rollTrigger(client, "farm_harvest", { crop: plot.crop })
+    .catch(() => {});
+
   bus.emit("harvest.done", {
     userId,
     guildId,

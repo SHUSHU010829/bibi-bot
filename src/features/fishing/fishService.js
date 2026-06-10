@@ -227,6 +227,12 @@ async function fish(client, { userId, guildId, location = "stream" }) {
     .catch((e) => console.log(`[ERROR] insert fish log: ${e}`.red));
 
   const newFishCountTotal = (profile.fish_count_total || 0) + 1;
+
+  // 世界事件觸發 roll：fire-and-forget
+  require("../world_event/worldEventService")
+    .rollTrigger(client, "fish_catch", { fish: fishKey })
+    .catch(() => {});
+
   bus.emit("fish.done", {
     userId,
     guildId,
