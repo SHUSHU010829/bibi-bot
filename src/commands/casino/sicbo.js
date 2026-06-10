@@ -75,6 +75,8 @@ builder.addBooleanOption((opt) =>
 module.exports = {
   data: builder.toJSON(),
 
+  subcommandOnly: true,
+
   run: async (client, interaction) => {
     await interaction.deferReply();
 

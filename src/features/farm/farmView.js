@@ -170,7 +170,7 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapB
   container.addSeparatorComponents(new SeparatorBuilder());
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "-# 💡 `/種植 作物 地塊` 種下、`/收成` 收成、`/施肥 肥料 數量 地塊` 加速、`/農場擴建` 解鎖更多地塊",
+      "-# 💡 點各地塊下方按鈕即可種植／收成／施肥，底部按鈕可一鍵操作與擴建",
     ),
   );
 

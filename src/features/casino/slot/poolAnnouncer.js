@@ -16,7 +16,7 @@ const MILESTONE_TEMPLATES = [
     build: (pool) =>
       `# 🎰 拉霸 Jackpot 突破 10,000\n` +
       `當前彩池:**${pool.toLocaleString()}** credits\n\n` +
-      `想搏一搏?指令:\`/拉霸\``,
+      `想搏一搏?指令:\`/賭場 拉霸\``,
   },
   {
     threshold: 25000,
@@ -25,7 +25,7 @@ const MILESTONE_TEMPLATES = [
       `# 🎰 拉霸 Jackpot 達 25,000\n` +
       `當前彩池:**${pool.toLocaleString()}** credits\n` +
       `中七七七即可獨得整池!\n\n` +
-      `指令:\`/拉霸\``,
+      `指令:\`/賭場 拉霸\``,
   },
   {
     threshold: 50000,
@@ -34,7 +34,7 @@ const MILESTONE_TEMPLATES = [
       `# 🎰 拉霸 Jackpot 達 50,000\n` +
       `當前彩池:**${pool.toLocaleString()}** credits\n` +
       `中七七七即可獨得整池!\n\n` +
-      `指令:\`/拉霸\``,
+      `指令:\`/賭場 拉霸\``,
   },
   {
     threshold: 100000,
@@ -43,7 +43,7 @@ const MILESTONE_TEMPLATES = [
       `# 🎰 拉霸 Jackpot 突破 100,000!\n` +
       `當前彩池:**${pool.toLocaleString()}** credits\n` +
       `史詩級爆池在即!\n\n` +
-      `指令:\`/拉霸\``,
+      `指令:\`/賭場 拉霸\``,
   },
 ];
 

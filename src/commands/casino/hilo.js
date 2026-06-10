@@ -18,8 +18,8 @@ function getHiloConfig() {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("hilo")
-    .setDescription("猜大小！下一張比底牌大、小、還是相同？🎴")
+    .setName("猜大小")
+    .setDescription("下一張比底牌大、小、還是相同？🎴")
     .setContexts(InteractionContextType.Guild)
     .addIntegerOption((opt) =>
       opt
@@ -35,6 +35,8 @@ module.exports = {
         .setRequired(false)
     )
     .toJSON(),
+
+  subcommandOnly: true,
 
   run: async (client, interaction) => {
     await interaction.deferReply();
@@ -161,7 +163,7 @@ module.exports = {
       });
       await interaction.editReply(payload);
     } catch (error) {
-      console.log(`[ERROR] /hilo:\n${error}\n${error.stack}`.red);
+      console.log(`[ERROR] /猜大小:\n${error}\n${error.stack}`.red);
       await interaction
         .editReply("🔧 HI-LO 執行失敗，請呼叫舒舒！")
         .catch(() => {});

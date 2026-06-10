@@ -61,6 +61,8 @@ module.exports = {
     )
     .toJSON(),
 
+  subcommandOnly: true,
+
   run: async (client, interaction) => {
     await interaction.deferReply();
 

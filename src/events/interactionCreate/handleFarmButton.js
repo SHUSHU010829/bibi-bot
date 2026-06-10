@@ -156,7 +156,7 @@ function buildPlantSelector(userId, plotIndex, { profile, coins } = {}) {
   );
 }
 
-// 提供「施肥」select menu（每次施 1 份；想要批量請用 /施肥 次數）
+// 提供「施肥」select menu（每次施 1 份；批量可用施肥後的「再施 N 份」按鈕）
 function buildFertilizerSelector(userId, plotIndex, { profile } = {}) {
   const options = Object.entries(farming.fertilizers || {}).map(([key, def]) => {
     const effects = [];
@@ -633,7 +633,7 @@ module.exports = async (client, interaction) => {
         .addActionRowComponents(buildFertilizerSelector(interaction.user.id, plotIndex, { profile }))
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            "-# 此處每次施一份。要批量施肥請用 `/施肥 次數:<N>`",
+            "-# 此處每次施一份。要批量施肥請用施肥後的「再施 N 份」按鈕",
           ),
         );
       return replyEphemeralContainer(interaction, c);
@@ -675,7 +675,7 @@ module.exports = async (client, interaction) => {
         if (result.reason === "already_ready") {
           return replyEphemeralContainer(
             interaction,
-            errContainer("🌟 已可收成", "這塊地的作物已成熟，無需施肥。", `直接點「收成」或用 /收成 地塊:${plotIndex + 1}`),
+            errContainer("🌟 已可收成", "這塊地的作物已成熟，無需施肥。", "直接點該地塊的「收成」按鈕即可"),
           );
         }
         return replyEphemeralContainer(
@@ -751,7 +751,7 @@ module.exports = async (client, interaction) => {
         if (result.reason === "already_ready") {
           return replyEphemeralContainer(
             interaction,
-            errContainer("🌟 已可收成", "這塊地的作物已成熟，無需施肥。", `直接點「收成」或用 /收成 地塊:${againPlotIndex + 1}`),
+            errContainer("🌟 已可收成", "這塊地的作物已成熟，無需施肥。", "直接點該地塊的「收成」按鈕即可"),
           );
         }
         return replyEphemeralContainer(
@@ -1132,8 +1132,8 @@ module.exports = async (client, interaction) => {
         const map = {
           rotted: ["🥀 作物已枯萎", "已超過保鮮期，地塊已清空。", "下次成熟後盡快收成！"],
           under_raid: ["⚔️ 地塊被入侵", "怪物正在侵擾這塊地。", "回主畫面點「防禦」擊退牠"],
-          not_ready: ["⏱️ 還沒成熟", "作物還在成長中。", "用 /施肥 加速"],
-          empty_plot: ["❌ 空地塊", `地塊 ${plotIndex + 1} 沒種任何東西。`, "用 /種植 種點什麼"],
+          not_ready: ["⏱️ 還沒成熟", "作物還在成長中。", "點地塊下方「施肥」按鈕加速"],
+          empty_plot: ["❌ 空地塊", `地塊 ${plotIndex + 1} 沒種任何東西。`, "點空地塊下方「種植」按鈕種點什麼"],
         };
         const [t, b, h] = map[result.reason] || ["🔧 收成失敗", `原因：\`${result.reason}\``, ""];
         return replyEphemeralContainer(interaction, errContainer(t, b, h));

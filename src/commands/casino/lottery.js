@@ -1,4 +1,4 @@
-// /樂透 — 整合樂透相關子指令（買 / 包牌 / 資訊 / 歷史 / 訂閱 開啟・列表・關閉）。
+// /賭場 樂透 — 整合樂透相關子指令（買 / 包牌 / 資訊 / 歷史 / 訂閱開啟・訂閱列表・訂閱關閉）。
 //
 // 各子指令的實作邏輯維持與原本獨立指令相同；這個檔案只負責 SlashCommandBuilder 與 dispatch。
 
@@ -126,62 +126,56 @@ module.exports = {
     .addSubcommand((s) =>
       s.setName("歷史").setDescription("查看自己全部的樂透紀錄 📚")
     )
-    .addSubcommandGroup((g) =>
-      g
-        .setName("訂閱")
-        .setDescription("樂透訂閱:自動買票 🔁")
-        .addSubcommand((s) =>
-          s
-            .setName("開啟")
-            .setDescription("建立新訂閱,未來 N 期自動買同組號碼")
-            .addStringOption((o) =>
-              o
-                .setName("玩法")
-                .setDescription("玩法")
-                .setRequired(true)
-                .addChoices(...TYPE_CHOICES)
-            )
-            .addIntegerOption((o) =>
-              o
-                .setName("期數")
-                .setDescription("自動買幾期")
-                .setRequired(true)
-                .setMinValue(1)
-                .setMaxValue(12)
-            )
-            .addIntegerOption((o) =>
-              o
-                .setName("每期張數")
-                .setDescription("每期買幾張")
-                .setRequired(false)
-                .setMinValue(1)
-                .setMaxValue(10)
-            )
-            .addStringOption((o) =>
-              o
-                .setName("號碼")
-                .setDescription("自選號碼(空白/逗號分隔,留空則隨機)")
-                .setRequired(false)
-            )
+    .addSubcommand((s) =>
+      s
+        .setName("訂閱開啟")
+        .setDescription("建立新訂閱,未來 N 期自動買同組號碼 🔁")
+        .addStringOption((o) =>
+          o
+            .setName("玩法")
+            .setDescription("玩法")
+            .setRequired(true)
+            .addChoices(...TYPE_CHOICES)
         )
-        .addSubcommand((s) =>
-          s.setName("列表").setDescription("查看與管理自己的樂透訂閱 📋")
+        .addIntegerOption((o) =>
+          o
+            .setName("期數")
+            .setDescription("自動買幾期")
+            .setRequired(true)
+            .setMinValue(1)
+            .setMaxValue(12)
         )
-        .addSubcommand((s) =>
-          s.setName("關閉").setDescription("一次取消所有進行中的訂閱 🛑")
+        .addIntegerOption((o) =>
+          o
+            .setName("每期張數")
+            .setDescription("每期買幾張")
+            .setRequired(false)
+            .setMinValue(1)
+            .setMaxValue(10)
         )
+        .addStringOption((o) =>
+          o
+            .setName("號碼")
+            .setDescription("自選號碼(空白/逗號分隔,留空則隨機)")
+            .setRequired(false)
+        )
+    )
+    .addSubcommand((s) =>
+      s.setName("訂閱列表").setDescription("查看與管理自己的樂透訂閱 📋")
+    )
+    .addSubcommand((s) =>
+      s.setName("訂閱關閉").setDescription("一次取消所有進行中的訂閱 🛑")
     )
     .toJSON(),
 
+  subcommandOnly: true,
+
   run: async (client, interaction) => {
-    const group = interaction.options.getSubcommandGroup(false);
     const sub = interaction.options.getSubcommand();
 
-    if (group === "訂閱") {
-      if (sub === "開啟") return runSubscribe(client, interaction);
-      if (sub === "列表") return runSubscriptions(client, interaction);
-      if (sub === "關閉") return runUnsubscribeAll(client, interaction);
-    }
+    if (sub === "訂閱開啟") return runSubscribe(client, interaction);
+    if (sub === "訂閱列表") return runSubscriptions(client, interaction);
+    if (sub === "訂閱關閉") return runUnsubscribeAll(client, interaction);
     if (sub === "買") return runBuy(client, interaction);
     if (sub === "包牌") return runWheel(client, interaction);
     if (sub === "資訊") return runStatus(client, interaction);
@@ -189,7 +183,7 @@ module.exports = {
   },
 };
 
-// ───────────────────────────── /樂透 買 ─────────────────────────────
+// ───────────────────────────── /賭場 樂透 買 ─────────────────────────────
 async function runBuy(client, interaction) {
   await interaction.deferReply();
 
@@ -368,14 +362,14 @@ async function runBuy(client, interaction) {
       ],
     });
   } catch (err) {
-    console.log(`[ERROR] /樂透 買:\n${err}\n${err.stack}`.red);
+    console.log(`[ERROR] /賭場 樂透 買:\n${err}\n${err.stack}`.red);
     await interaction
       .editReply("🔧 樂透買票執行失敗,請呼叫舒舒!")
       .catch(() => {});
   }
 }
 
-// ───────────────────────────── /樂透 包牌 ─────────────────────────────
+// ───────────────────────────── /賭場 樂透 包牌 ─────────────────────────────
 async function runWheel(client, interaction) {
   await interaction.deferReply();
 
@@ -531,14 +525,14 @@ async function runWheel(client, interaction) {
         `開獎時間:<t:${drawAtUnix}:R>`
     );
   } catch (err) {
-    console.log(`[ERROR] /樂透 包牌:\n${err}\n${err.stack}`.red);
+    console.log(`[ERROR] /賭場 樂透 包牌:\n${err}\n${err.stack}`.red);
     await interaction
       .editReply("🔧 包牌執行失敗,請呼叫舒舒!")
       .catch(() => {});
   }
 }
 
-// ───────────────────────────── /樂透 資訊 ─────────────────────────────
+// ───────────────────────────── /賭場 樂透 資訊 ─────────────────────────────
 async function runStatus(client, interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -573,12 +567,12 @@ async function runStatus(client, interaction) {
 
     await interaction.editReply(lines.join("\n\n"));
   } catch (err) {
-    console.log(`[ERROR] /樂透 資訊:\n${err}\n${err.stack}`.red);
+    console.log(`[ERROR] /賭場 樂透 資訊:\n${err}\n${err.stack}`.red);
     await interaction.editReply("🔧 查詢失敗。").catch(() => {});
   }
 }
 
-// ───────────────────────────── /樂透 歷史 ─────────────────────────────
+// ───────────────────────────── /賭場 樂透 歷史 ─────────────────────────────
 async function runHistory(client, interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -868,7 +862,7 @@ async function runHistory(client, interaction) {
         });
         collector.resetTimer();
       } catch (err) {
-        console.log(`[ERROR] /樂透 歷史 互動處理失敗:${err}`.red);
+        console.log(`[ERROR] /賭場 樂透 歷史 互動處理失敗:${err}`.red);
       }
     });
 
@@ -883,12 +877,12 @@ async function runHistory(client, interaction) {
       }
     });
   } catch (err) {
-    console.log(`[ERROR] /樂透 歷史:\n${err}\n${err.stack}`.red);
+    console.log(`[ERROR] /賭場 樂透 歷史:\n${err}\n${err.stack}`.red);
     await interaction.editReply("🔧 查詢失敗。").catch(() => {});
   }
 }
 
-// ───────────────────────────── /樂透 訂閱 開啟 ─────────────────────────────
+// ───────────────────────────── /賭場 樂透 訂閱開啟 ─────────────────────────────
 async function runSubscribe(client, interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -968,15 +962,15 @@ async function runSubscribe(client, interaction) {
         `期數:${totalDraws} 期 × 每期 ${ticketsPerDraw} 張\n` +
         `每期扣款:${costPerDraw.toLocaleString()} credits(開獎前 30 分鐘)\n` +
         `預期總支出:${(costPerDraw * totalDraws).toLocaleString()} credits\n\n` +
-        `用 \`/樂透 訂閱 列表\` 查看 / 取消。`
+        `用 \`/賭場 樂透 訂閱列表\` 查看 / 取消。`
     );
   } catch (err) {
-    console.log(`[ERROR] /樂透 訂閱 開啟:\n${err}\n${err.stack}`.red);
+    console.log(`[ERROR] /賭場 樂透 訂閱開啟:\n${err}\n${err.stack}`.red);
     await interaction.editReply("🔧 訂閱建立失敗。").catch(() => {});
   }
 }
 
-// ───────────────────────────── /樂透 訂閱 列表 ─────────────────────────────
+// ───────────────────────────── /賭場 樂透 訂閱列表 ─────────────────────────────
 async function runSubscriptions(client, interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -995,7 +989,7 @@ async function runSubscriptions(client, interaction) {
 
     if (subs.length === 0) {
       return interaction.editReply(
-        "你目前沒有進行中的樂透訂閱。用 `/樂透 訂閱 開啟` 建立一筆吧!"
+        "你目前沒有進行中的樂透訂閱。用 `/賭場 樂透 訂閱開啟` 建立一筆吧!"
       );
     }
 
@@ -1022,12 +1016,12 @@ async function runSubscriptions(client, interaction) {
       components: components.slice(0, 5),
     });
   } catch (err) {
-    console.log(`[ERROR] /樂透 訂閱 列表:\n${err}\n${err.stack}`.red);
+    console.log(`[ERROR] /賭場 樂透 訂閱列表:\n${err}\n${err.stack}`.red);
     await interaction.editReply("🔧 查詢失敗。").catch(() => {});
   }
 }
 
-// ───────────────────────────── /樂透 訂閱 關閉 ─────────────────────────────
+// ───────────────────────────── /賭場 樂透 訂閱關閉 ─────────────────────────────
 // 一次取消所有進行中的訂閱;先彈出確認按鈕,避免誤觸。
 async function runUnsubscribeAll(client, interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -1100,7 +1094,7 @@ async function runUnsubscribeAll(client, interaction) {
           components: [],
         });
       } catch (e) {
-        console.log(`[ERROR] /樂透 訂閱 關閉 confirm:\n${e}\n${e.stack}`.red);
+        console.log(`[ERROR] /賭場 樂透 訂閱關閉 confirm:\n${e}\n${e.stack}`.red);
       }
     });
 
@@ -1117,7 +1111,7 @@ async function runUnsubscribeAll(client, interaction) {
       }
     });
   } catch (err) {
-    console.log(`[ERROR] /樂透 訂閱 關閉:\n${err}\n${err.stack}`.red);
+    console.log(`[ERROR] /賭場 樂透 訂閱關閉:\n${err}\n${err.stack}`.red);
     await interaction.editReply("🔧 取消失敗。").catch(() => {});
   }
 }

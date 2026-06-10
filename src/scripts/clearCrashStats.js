@@ -1,5 +1,5 @@
 // 一次性：清掉 CoinTransactions 中 meta.game=crash 的最舊 N 筆 bet/payout 紀錄
-// 用途：火箭調過 RTP 後想讓 /casino-stats 從零開始計算
+// 用途：火箭調過 RTP 後想讓 /economy-dashboard 的賭場 Edge 從零開始計算
 //
 // 使用：node ./src/scripts/clearCrashStats.js [--limit=2000] [--dry-run]
 //   --limit  刪幾筆，預設 2000；想全清傳 0

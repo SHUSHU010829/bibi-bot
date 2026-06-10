@@ -100,7 +100,7 @@ module.exports = {
           option
             .setName("食物名稱")
             .setDescription(
-              "Name of the food to delete (use /food list to look up names)"
+              "Name of the food to delete (use /美食圖鑑 清單 to look up names)"
             )
             .setRequired(true)
             .setAutocomplete(true)

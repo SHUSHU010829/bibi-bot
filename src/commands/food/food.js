@@ -12,11 +12,11 @@ const storesHandler = require("../../features/food/handlers/stores");
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("food")
+    .setName("美食圖鑑")
     .setDescription("食物與飲料：清單、排行榜、飲料店 🍽️")
     .addSubcommand((sub) =>
       sub
-        .setName("list")
+        .setName("清單")
         .setDescription("查看現在食物列表... 📚")
         .addStringOption((option) =>
           option
@@ -27,7 +27,7 @@ module.exports = {
     )
     .addSubcommand((sub) =>
       sub
-        .setName("ranking")
+        .setName("排行榜")
         .setDescription("查看最受歡迎的食物排行榜 🏆")
         .addStringOption((option) =>
           option
@@ -44,17 +44,17 @@ module.exports = {
         )
     )
     .addSubcommand((sub) =>
-      sub.setName("stores").setDescription("查看所有可用的飲料店清單 🥤")
+      sub.setName("飲料店").setDescription("查看所有可用的飲料店清單 🥤")
     ),
 
   run: async (client, interaction) => {
     const sub = interaction.options.getSubcommand();
     switch (sub) {
-      case "list":
+      case "清單":
         return listHandler.run(client, interaction);
-      case "ranking":
+      case "排行榜":
         return rankingHandler.run(client, interaction);
-      case "stores":
+      case "飲料店":
         return storesHandler.run(client, interaction);
     }
   },

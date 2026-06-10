@@ -1,7 +1,7 @@
 // /逼幣任務 介面下方「領錢」按鈕處理器。
 //
 // 按鈕 customId = questclaim_<userId>（見 features/quests/questClaimButton.js）。
-// 確認本人後補領所有「待入帳」獎勵（等同 /領錢），就地重繪任務面板，
+// 確認本人後補領所有「待入帳」獎勵，就地重繪任務面板，
 // 並私訊（followUp）回報這次領到的明細。
 
 const { MessageFlags } = require("discord.js");

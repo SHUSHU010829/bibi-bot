@@ -29,7 +29,7 @@ const TYPE_META = {
   work: { label: "打工", emoji: "💼", command: "/打工", channelKey: "mining" },
   mining: { label: "挖礦", emoji: "⛏️", command: "/挖礦", channelKey: "mining" },
   fish: { label: "釣魚", emoji: "🎣", command: "/釣魚", channelKey: "fishing" },
-  crash: { label: "火箭", emoji: "🚀", command: "/火箭", channelKey: "casino" },
+  crash: { label: "火箭", emoji: "🚀", command: "/賭場 火箭", channelKey: "casino" },
   dungeon: {
     label: "地下城",
     emoji: "🔋",
