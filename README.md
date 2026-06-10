@@ -2,7 +2,7 @@
 
 ![Repobeats](https://repobeats.axiom.co/api/embed/07fb82330959889996315cafa478ae498f152b45.svg "Repobeats analytics image")
 
-一隻為單一 Discord 社群量身打造的多功能機器人，整合社群治理（票務 / 投票 / 動態語音 / 身份組）、生活娛樂（早安卡、抽籤、食物/飲料管理、星座運勢）與外部資訊推播（Steam 特價、喜加一、加密貨幣、匯率、天氣）。
+一隻為單一 Discord 社群量身打造的多功能機器人，整合社群治理（票務 / 投票 / 動態語音 / 身份組）、生活娛樂（早安卡、抽籤、食物/飲料管理、星座運勢）與外部資訊推播（Steam 特價、喜加一、天氣）。
 
 ---
 
@@ -21,7 +21,7 @@
   - [喜加一（限時免費）推播](#6-喜加一限時免費推播)
   - [每日早安卡 / 今日報告](#7-每日早安卡--今日報告)
   - [食物與飲料系統](#8-食物與飲料系統)
-  - [加密貨幣 / 匯率 / 天氣](#9-加密貨幣--匯率--天氣)
+  - [天氣](#9-天氣)
   - [抽籤、統計與其他指令](#10-抽籤統計與其他指令)
   - [等級系統與每日簽到](#11-等級系統與每日簽到)
   - [金幣經濟、賭場、挖礦與商店](#12-金幣經濟賭場挖礦與商店)
@@ -71,7 +71,6 @@ src/
 ├── commands/               # Slash Commands（按功能分子目錄）
 │   ├── ask/                # /我想問
 │   ├── casino/             # /賭場（二十一點/猜大小/拉霸/賽馬/火箭/射龍門/尋寶/輪盤/德州撲克/骰寶）、/樂透
-│   ├── currency/           # /加密貨幣、/即時匯率
 │   ├── draw/               # /二選一、/抽籤
 │   ├── economy/            # /轉帳、/存款、/逼幣任務、/乞討、/give-coins、/economy-dashboard
 │   ├── event/              # /活動（成員自辦獎金活動）
@@ -366,12 +365,10 @@ embed.js → 發送 Embed
 
 ---
 
-### 9. 加密貨幣 / 匯率 / 天氣
+### 9. 天氣
 
-> 📍 **可用頻道**：`/加密貨幣`、`/即時匯率` 屬 `general` 桶（`1511655301953228800`）；`/天氣`、`/全台天氣` 屬 `citizen` 桶（市民服務處 │ 🏢）。
+> 📍 **可用頻道**：`/天氣`、`/全台天氣` 屬 `citizen` 桶（市民服務處 │ 🏢）。
 
-- `/加密貨幣 貨幣代碼:<BTC|ETH|...>`：透過 [cryptocompare](https://min-api.cryptocompare.com/documentation) 查即時美金幣價。
-- `/即時匯率 [欲兌貨幣]`：查貨幣兌新台幣匯率（資料來源 RTER.info），不填則顯示美元對台幣。
 - `/天氣 縣市名稱:<城市>`：查單一縣市今日天氣。
 - `/全台天氣`：查全台天氣總覽。
 
@@ -780,7 +777,6 @@ node src/tool/delete-commands.js  # 清空所有指令（謹慎使用）
 
 | 用途 | URL |
 | --- | --- |
-| 加密貨幣 | <https://min-api.cryptocompare.com/documentation> |
 | 台灣行事曆 | <https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/2025.json> |
 | Steam 特價來源 | 小黑盒 RSS（`https://discord-news.zeabur.app/xiaoheihe/...`） |
 | Steam 商品資訊 | Steam Store API |
