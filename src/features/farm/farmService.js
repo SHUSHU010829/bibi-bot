@@ -228,11 +228,17 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
   const profileForBuff = await getOrCreate(client, userId, guildId);
   const fertBonus = plot.yield_bonus_pct || 0;
   const foodBonus = getFoodFarmYieldBonus(profileForBuff);
-  const yieldBonus = fertBonus + foodBonus;
+  // 世界事件「草莓教祭典」buff：farm_yield_pct（整數百分比） + farm_yield_count_bonus（+N 個）
+  const worldEventBuffs = require("../world_event/worldEventBuffs");
+  const worldBuffs = worldEventBuffs.getCachedBuffs();
+  const worldYieldPct = (worldBuffs.farm_yield_pct || 0) / 100;
+  const worldYieldCountBonus = worldBuffs.farm_yield_count_bonus || 0;
+  const yieldBonus = fertBonus + foodBonus + worldYieldPct;
   const coins = Math.round(baseCoins * (1 + yieldBonus));
 
-  // 寫入 veggie_bag
-  const inc = { [`veggie_bag.${plot.crop}`]: 1, farm_harvest_total: 1 };
+  // 寫入 veggie_bag（含世界事件「+1 個」加成）
+  const harvestCount = 1 + worldYieldCountBonus;
+  const inc = { [`veggie_bag.${plot.crop}`]: harvestCount, farm_harvest_total: 1 };
 
   // 額外掉落（黑玫瑰）
   const bonusDropsResult = [];

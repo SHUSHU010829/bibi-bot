@@ -1,0 +1,54 @@
+{
+  "worldEvents": {
+    "enabled": true,
+    "concurrent": 1,
+    "donation": {
+      "collectWindowHours": 24,
+      "buffDurationHours": 24,
+      "cooldownHours": 168
+    },
+    "events": [
+      {
+        "id": "mine_disaster",
+        "label": "礦災修復",
+        "emoji": "⛏",
+        "color": 14641196,
+        "description": "礦坑遭遇坍塌，需要全服礦工合力修復。",
+        "trigger": { "kind": "mining_drop", "ore": "gold", "chancePct": 5 },
+        "requirements": { "iron": 80, "coal": 100 },
+        "rewards": { "buffs": { "mining_cooldown_pct": 15 } }
+      },
+      {
+        "id": "fishery_supply",
+        "label": "漁港補給",
+        "emoji": "🎣",
+        "color": 3447003,
+        "description": "漁港物資告急，徵集各類魚貨補給。",
+        "trigger": { "kind": "fish_catch", "fish": "shark", "chancePct": 5 },
+        "requirements": { "crucian": 30, "shark": 20, "lava_fish": 10 },
+        "rewards": { "buffs": { "fishing_success_rate_pct": 10 } }
+      },
+      {
+        "id": "expedition",
+        "label": "遠征軍備戰",
+        "emoji": "⚔️",
+        "color": 15158332,
+        "description": "遠征軍需要金屬與黃金補給才能出征。",
+        "trigger": { "kind": "dungeon_clear", "chancePct": 1 },
+        "requirements": { "iron": 100, "gold": 30 },
+        "rewards": { "buffs": { "dungeon_damage_pct": 10, "dungeon_legendary_drop_pct": 5 } }
+      },
+      {
+        "id": "strawberry_festival",
+        "label": "草莓教祭典",
+        "emoji": "🍓",
+        "color": 16711935,
+        "description": "草莓教信徒徵集祭品，舉行盛大祭典。",
+        "trigger": { "kind": "farm_harvest", "crop": "strawberry", "chancePct": 5 },
+        "requirements": { "strawberry": 100 },
+        "rewards": { "buffs": { "farm_yield_count_bonus": 1, "farm_yield_pct": 30 } },
+        "buffDurationHoursOverride": 48
+      }
+    ]
+  }
+}

@@ -12,12 +12,23 @@ const itemDef = (itemId) => guildWarehouse?.items?.[itemId] || null;
 
 const allItemIds = () => Object.keys(guildWarehouse?.items || {});
 
-const capacityFor = (itemId, clubLevel, override) => {
+const capacityFor = (itemId, clubLevel, override, club) => {
   const def = itemDef(itemId);
   if (!def) return 0;
   const base = override?.capacity?.[itemId] ?? def.capacityDefault;
   const mult = guildWarehouse.capacityLevelMultiplier?.[String(clubLevel)] ?? 1.0;
-  return Math.floor(base * mult);
+  const baseCap = Math.floor(base * mult);
+  // 倉庫擴建建築加成：對每個物品額外加 Σ capacity_bonus。
+  // require 放這裡避免 circular（buildingService → warehouseSettings 反向沒問題）。
+  if (club) {
+    try {
+      const buildingService = require("../buildingService");
+      return baseCap + buildingService.warehouseCapacityBonus(club);
+    } catch (_) {
+      return baseCap;
+    }
+  }
+  return baseCap;
 };
 
 const perTakeMaxFor = (itemId, override) => {

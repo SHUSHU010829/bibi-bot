@@ -21,6 +21,8 @@ const twitchPerks = require("../mining/twitchPerks");
 const { getFoodFarmYieldBonus } = require("../fishing/cookService");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { donation, levelSystem, guildClub } = require("../../config");
+const buildingService = require("../guild_club/buildingService");
+const worldEventBuffs = require("../world_event/worldEventBuffs");
 
 // ── 公會共享 buff ────────────────────────────────────
 // 讀取使用者所屬公會 + 等級對應的 buff 清單，回傳結構化資料。
@@ -43,7 +45,12 @@ async function getGuildClubBuffs(client, userId, guildId) {
   for (const b of buffs) {
     buffsByType[b.type] = (buffsByType[b.type] || 0) + (b.value || 0);
   }
-  return { club, level: club.level, buffs, buffsByType };
+  // 疊加公會建築（礦坑 / 訓練場）buff；倉庫擴建另外處理（容量加成）。
+  const fromBuildings = buildingService.buildingsBuffs(club);
+  for (const [k, v] of Object.entries(fromBuildings)) {
+    buffsByType[k] = (buffsByType[k] || 0) + v;
+  }
+  return { club, level: club.level, buffs, buffsByType, buildingBuffs: fromBuildings };
 }
 
 // ── ATK ───────────────────────────────────────────────
@@ -70,6 +77,18 @@ async function getMiningResolve(client, userId, guildId, member) {
   if (guildQty > 0) base.qtyBonus += guildQty;
   base.guildClubLuckBonus = guildLuck;
   base.guildClubQtyBonus = guildQty;
+  // 公會建築 mining_cooldown_pct + 世界事件 mining_cooldown_pct
+  const buildingCdPct = gc.buffsByType.mining_cooldown_pct || 0;
+  const worldBuffs = worldEventBuffs.getCachedBuffs();
+  const worldLuckPct = (worldBuffs.mining_luck_pct || 0) / 100;
+  if (worldLuckPct > 0) base.luckBonus += worldLuckPct;
+  const worldCdPct = worldBuffs.mining_cooldown_pct || 0;
+  const totalCdPct = Math.min(70, buildingCdPct + worldCdPct);
+  if (totalCdPct > 0) {
+    base.actualCdMs = Math.max(60000, Math.floor(base.actualCdMs * (100 - totalCdPct) / 100));
+  }
+  base.guildBuildingCdPct = buildingCdPct;
+  base.worldEventCdPct = worldCdPct;
   base.guildClub = gc.club
     ? { id: gc.club.guild_club_id, name: gc.club.name, level: gc.level }
     : null;
@@ -122,6 +141,11 @@ async function summary(client, userId, guildId, member) {
   const guildStaminaMax = gc.buffsByType.dungeon_stamina_max || 0;
   const guildBossAtk = gc.buffsByType.boss_atk_pct || 0;
   const guildBossAttackLimitBonus = gc.buffsByType.boss_attack_limit_bonus || 0;
+  const guildMiningCdPct = gc.buffsByType.mining_cooldown_pct || 0;
+  const guildDungeonDmgPct = gc.buffsByType.dungeon_damage_pct || 0;
+  const guildCritPct = gc.buffsByType.crit_rate_pct || 0;
+  const guildBossDmgPct = gc.buffsByType.boss_damage_pct || 0;
+  const guildWhBonus = gc.club ? buildingService.warehouseCapacityBonus(gc.club) : 0;
   return {
     atk: atkFromProfile(profile),
     luckBonus: m.luckBonus + guildLuck,
@@ -140,6 +164,11 @@ async function summary(client, userId, guildId, member) {
       luck: Number(e.effects?.miningLuckBonus) || 0,
       qty: Number(e.effects?.miningQtyBonus) || 0,
     })),
+    worldEvents: worldEventBuffs.getCachedList().map((e) => {
+      const { worldEvents } = require("../../config");
+      const cfg = worldEvents?.events?.find((c) => c.id === e.event_id);
+      return { event_id: e.event_id, label: cfg?.label, ends_at: e.ends_at, buffs: e.buffs };
+    }),
     guildClub: gc.club
       ? {
           id: gc.club.guild_club_id,
@@ -152,6 +181,11 @@ async function summary(client, userId, guildId, member) {
           dungeonStaminaMax: guildStaminaMax,
           bossAtkBonus: guildBossAtk,
           bossAttackLimitBonus: guildBossAttackLimitBonus,
+          miningCooldownPct: guildMiningCdPct,
+          dungeonDamagePct: guildDungeonDmgPct,
+          critRatePct: guildCritPct,
+          bossDamagePct: guildBossDmgPct,
+          warehouseCapacityBonus: guildWhBonus,
         }
       : null,
   };

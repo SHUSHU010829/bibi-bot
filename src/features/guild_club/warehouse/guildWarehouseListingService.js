@@ -56,6 +56,7 @@ const createListing = async (
 
   const def = itemDef(itemId);
   if (!def) return { ok: false, reason: "unknown_item" };
+  if (def.craftedOnly) return { ok: false, reason: "crafted_only_no_consign" };
   if (!Number.isInteger(qty) || qty <= 0)
     return { ok: false, reason: "invalid_qty" };
   if (!Number.isInteger(price) || price <= 0)

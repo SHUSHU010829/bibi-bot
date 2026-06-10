@@ -141,6 +141,17 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
       lines.push(`• 🐉 BOSS 戰攻擊力 +${Math.round(s.guildClub.bossAtkBonus * 100)}%`);
     if (s.guildClub.bossAttackLimitBonus > 0)
       lines.push(`• ⚔️ BOSS 戰每場攻擊次數 +${s.guildClub.bossAttackLimitBonus}`);
+    // 公會建築（礦坑 / 訓練場 / 倉庫擴建）buff
+    if (s.guildClub.miningCooldownPct > 0)
+      lines.push(`• ⏱️ 挖礦冷卻 -${s.guildClub.miningCooldownPct}%（礦坑）`);
+    if (s.guildClub.dungeonDamagePct > 0)
+      lines.push(`• ⚔️ 地下城傷害 +${s.guildClub.dungeonDamagePct}%（訓練場）`);
+    if (s.guildClub.critRatePct > 0)
+      lines.push(`• 💥 暴擊率 +${s.guildClub.critRatePct}%（訓練場）`);
+    if (s.guildClub.bossDamagePct > 0)
+      lines.push(`• 🐲 BOSS 傷害 +${s.guildClub.bossDamagePct}%（訓練場）`);
+    if (s.guildClub.warehouseCapacityBonus > 0)
+      lines.push(`• 📦 公會倉庫容量 +${s.guildClub.warehouseCapacityBonus}（倉庫擴建）`);
     if (lines.length === 0) lines.push(`-# 公會升到 Lv.2 起逐步解鎖共享 buff`);
     container
       .addSeparatorComponents(new SeparatorBuilder())
@@ -148,6 +159,22 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
         new TextDisplayBuilder().setContent(
           `### 🏰 公會「${s.guildClub.name}」(Lv.${s.guildClub.level})\n${lines.join("\n")}`,
         ),
+      );
+  }
+
+  if (s.worldEvents && s.worldEvents.length > 0) {
+    const lines = s.worldEvents.map((e) => {
+      const left = e.ends_at ? `<t:${Math.floor(new Date(e.ends_at).getTime() / 1000)}:R>` : "";
+      const buffLines = Object.entries(e.buffs || {}).map(([k, v]) => {
+        const { formatBuff } = require("./buffLabels");
+        return formatBuff(k, v);
+      }).join("・");
+      return `• ${e.label || e.event_id} 結束 ${left}\n  -# ${buffLines}`;
+    });
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`### 🌍 世界事件（全服）\n${lines.join("\n")}`),
       );
   }
 

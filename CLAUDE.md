@@ -56,6 +56,21 @@ Discord bot（discord.js v14，Node 22，MongoDB）。
 - 行動類（挖礦、釣魚、打工、購買）→ 公開訊息（讓頻道看到動態）。
 - 按鈕的 follow-up / 結果訊息：原訊息是 ephemeral → follow-up 也要 ephemeral。
 
+### 8. Discord 元件數量上限：先算再放
+
+- 單一訊息最多 40 個元件（Components v2 包含 Container/Section/Separator/TextDisplay/ActionRow/Button）；單個 ActionRow 最多 5 個 Button。
+- **列表型訊息要先估**：N 個項目 × (1 TextDisplay + 1 ActionRow + 2 Button + 1 Separator) ≈ 5N 元件。超過 7–8 項就會頂到上限。
+- 解法：用 **Select Menu**（一個 ActionRow 內含一個 StringSelect，最多 25 個 option）替代「每項一個按鈕」；或者**分頁**（上一頁/下一頁），首頁 5–6 項。
+- 升級 / 製造類列表（熔爐配方、建築升級）若超過 3 項，優先考慮「Select 選物品 → 確認 Container」兩段式，不要一次塞 N 排按鈕。
+- 寧可一次少顯示幾項+加分頁，也不要冒「Discord 直接拒收」的風險。送出前在腦中數一次元件數，超過 35 就要重構。
+
+### 9. 物品 / 配方 / Buff key 一律中文顯示
+
+- 任何送到 UI 的字串（Container 標題、按鈕 label、Select option name、TextDisplay 內容）**不能出現** `building_material`、`mining_cooldown_pct`、`shark` 這類 snake_case key。
+- 必須查 config 的中文標籤（如 `guildWarehouse.items.building_material.name === "建材"`、`buffLabels.mining_cooldown_pct === "挖礦冷卻"`）。
+- 若 buff key 沒有對應中文標籤，**先加** `src/features/buff/buffLabels.js`（或就近的標籤檔）再用。不要直接 fallback 印 key 名。
+- customId / log 欄位 / DB 欄位 可以維持英文 key（系統內部），但只要會被玩家看到就一定中文。
+
 ---
 
 ## 架構規則
