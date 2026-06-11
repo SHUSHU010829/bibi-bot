@@ -51,6 +51,7 @@
       "maxBet": 5000,
       "houseEdge": 0.02,
       "cooldownSeconds": 300,
+      "notifyChannelId": "1504806019610574878",
       "openingWindow": {
         "timezone": "Asia/Taipei",
         "weekdays": [6, 7]

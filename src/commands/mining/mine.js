@@ -12,7 +12,7 @@ const {
   InteractionContextType,
 } = require("discord.js");
 
-const { mining } = require("../../config");
+const { mining, commandChannels, normalChannelId } = require("../../config");
 const mineService = require("../../features/mining/mineService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
@@ -462,23 +462,66 @@ async function sendLegendaryAnnouncement(client, interaction) {
   }
 }
 
-async function dmPickaxeBroke(interaction, pickaxeBefore) {
-  const def = mining?.pickaxes?.[pickaxeBefore] || {};
-  await interaction.user.send(
-    `⛏️ 你的 **${def.emoji || ""} ${def.name || pickaxeBefore}** 耐久已耗盡，自動退回 **木鎬**。\n` +
-      `想繼續享受加成，到 \`/合成\` 再合成一把吧！`
+function miningChannelButtonRow(guildId, label) {
+  const channelId = commandChannels?.mining?.[0] || normalChannelId;
+  if (!guildId || !channelId) return null;
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setStyle(ButtonStyle.Link)
+      .setLabel(label)
+      .setURL(`https://discord.com/channels/${guildId}/${channelId}`)
   );
 }
 
+async function dmPickaxeBroke(interaction, pickaxeBefore) {
+  const container = new ContainerBuilder()
+    .setAccentColor(0xed4245)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("### 💔 鎬子斷了！")
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `你的 **${pickaxeLabel(pickaxeBefore)}** 耐久已耗盡，自動退回 **${pickaxeLabel("wood")}**。\n` +
+          "-# 想繼續享受加成，到 `/合成` 再合成一把吧！"
+      )
+    );
+  const row = miningChannelButtonRow(interaction.guildId, "前往頻道使用 /合成");
+  if (row) container.addActionRowComponents(row);
+  await interaction.user.send({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
 async function dmPickaxeLowDurability(interaction, pickaxeBefore, durabilityAfter, level) {
-  const def = mining?.pickaxes?.[pickaxeBefore] || {};
-  const head =
-    level === "critical"
-      ? `🚨 你的 **${def.emoji || ""} ${def.name || pickaxeBefore}** 只剩 **${durabilityAfter}** 次耐久，下一次挖礦就會斷！`
-      : `⚠️ 你的 **${def.emoji || ""} ${def.name || pickaxeBefore}** 耐久剩 **${durabilityAfter}** 次，差不多該準備了。`;
-  await interaction.user.send(
-    `${head}\n趁還沒斷，到 \`/合成\` 再做一把、或到 \`/背包\` 用劣質磨鎬石補滿耐久。`
-  );
+  const critical = level === "critical";
+  const container = new ContainerBuilder()
+    .setAccentColor(critical ? 0xed4245 : 0xfaa61a)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        critical ? "### 🚨 鎬子快斷了！" : "### ⚠️ 鎬子耐久偏低"
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        critical
+          ? `你的 **${pickaxeLabel(pickaxeBefore)}** 只剩 **${durabilityAfter}** 次耐久，下一次挖礦就會斷！`
+          : `你的 **${pickaxeLabel(pickaxeBefore)}** 耐久剩 **${durabilityAfter}** 次，差不多該準備了。`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 趁還沒斷，到 `/合成` 再做一把、或到 `/背包` 用劣質磨鎬石補滿耐久。"
+      )
+    );
+  const row = miningChannelButtonRow(interaction.guildId, "前往頻道補救");
+  if (row) container.addActionRowComponents(row);
+  await interaction.user.send({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }
 
 module.exports = {
