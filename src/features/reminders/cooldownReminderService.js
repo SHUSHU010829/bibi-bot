@@ -25,11 +25,18 @@ const CUSTOM_ID_PREFIX = "cdnotify";
 // triggerWord：/通知設定 開啟時面板回覆會用「目前/下次{triggerWord}時會私訊提醒你」，
 // 未指定時預設為「冷卻結束」。
 // channelKey：對應 server.json commandChannels 的分類，DM 用來附上前往該頻道的連結。
+// channelId：直接指定連結頻道，優先於 channelKey（用於活動有專屬頻道的情況）。
 const TYPE_META = {
   work: { label: "打工", emoji: "💼", command: "/打工", channelKey: "mining" },
   mining: { label: "挖礦", emoji: "⛏️", command: "/挖礦", channelKey: "mining" },
   fish: { label: "釣魚", emoji: "🎣", command: "/釣魚", channelKey: "fishing" },
-  crash: { label: "火箭", emoji: "🚀", command: "/賭場 火箭", channelKey: "casino" },
+  crash: {
+    label: "火箭",
+    emoji: "🚀",
+    command: "/賭場 火箭",
+    channelKey: "casino",
+    channelId: casino?.crash?.notifyChannelId,
+  },
   dungeon: {
     label: "地下城",
     emoji: "🔋",
@@ -49,9 +56,11 @@ const TYPE_META = {
 };
 
 // 依活動分類取出該頻道的 Discord 深連結，找不到時退回一般頻道。
-function channelLink(guildId, channelKey) {
+function channelLink(guildId, meta) {
   const channelId =
-    (commandChannels && commandChannels[channelKey]?.[0]) || normalChannelId;
+    meta.channelId ||
+    (commandChannels && commandChannels[meta.channelKey]?.[0]) ||
+    normalChannelId;
   if (!channelId) return null;
   return `https://discord.com/channels/${guildId}/${channelId}`;
 }
@@ -303,7 +312,7 @@ async function scanAndNotify(client) {
         .setDescription(desc);
 
       const components = [];
-      const link = channelLink(r.guildId, meta.channelKey);
+      const link = channelLink(r.guildId, meta);
       if (link) {
         components.push(
           new ActionRowBuilder().addComponents(

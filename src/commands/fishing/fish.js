@@ -13,7 +13,7 @@ const {
   InteractionContextType,
 } = require("discord.js");
 
-const { fishing } = require("../../config");
+const { fishing, commandChannels, normalChannelId } = require("../../config");
 const fishService = require("../../features/fishing/fishService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
@@ -168,14 +168,43 @@ function buildCooldownView({
 }
 
 async function dmRodLowDurability(interaction, rodKey, durabilityAfter, level) {
-  const def = fishing?.rods?.[rodKey] || {};
-  const head =
-    level === "critical"
-      ? `🚨 你的 **${def.emoji || ""} ${def.name || rodKey}** 只剩 **${durabilityAfter}** 次耐久，下一次釣魚就會斷！`
-      : `⚠️ 你的 **${def.emoji || ""} ${def.name || rodKey}** 耐久剩 **${durabilityAfter}** 次，差不多該準備了。`;
-  await interaction.user.send(
-    `${head}\n趁還沒斷，到 \`/合成\` 再做一支吧！`
-  );
+  const critical = level === "critical";
+  const container = new ContainerBuilder()
+    .setAccentColor(critical ? 0xed4245 : 0xfaa61a)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        critical ? "### 🚨 釣竿快斷了！" : "### ⚠️ 釣竿耐久偏低"
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        critical
+          ? `你的 **${rodLabel(rodKey)}** 只剩 **${durabilityAfter}** 次耐久，下一次釣魚就會斷！`
+          : `你的 **${rodLabel(rodKey)}** 耐久剩 **${durabilityAfter}** 次，差不多該準備了。`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 趁還沒斷，到 `/合成` 再做一支吧！"
+      )
+    );
+  // /合成 在挖礦頻道桶，連結導到該頻道才能直接使用
+  const channelId = commandChannels?.mining?.[0] || normalChannelId;
+  if (interaction.guildId && channelId) {
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setStyle(ButtonStyle.Link)
+          .setLabel("前往頻道使用 /合成")
+          .setURL(`https://discord.com/channels/${interaction.guildId}/${channelId}`)
+      )
+    );
+  }
+  await interaction.user.send({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }
 
 async function executeFish(client, interaction, { location = "stream" } = {}) {
