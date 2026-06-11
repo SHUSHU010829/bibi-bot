@@ -339,7 +339,10 @@ const withdraw = async (
   }
   await client.guildsClubCollection.updateOne(
     { guild_club_id: m.guild_club_id, disbanded_at: null },
-    { $inc: { treasury_current: fee }, $set: { updated_at: new Date() } }
+    {
+      $inc: { treasury: fee, treasury_current: fee },
+      $set: { updated_at: new Date() },
+    }
   ).catch(() => {});
 
   // 3) 加成品到玩家的背包/魚袋/菜籃
