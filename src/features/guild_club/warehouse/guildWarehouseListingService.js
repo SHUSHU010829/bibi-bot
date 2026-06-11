@@ -220,7 +220,10 @@ const purchase = async (
   // 全額入公會金庫（無手續費）
   await client.guildsClubCollection.updateOne(
     { guild_club_id: listing.guild_club_id, disbanded_at: null },
-    { $inc: { treasury_current: listing.price }, $set: { updated_at: new Date() } }
+    {
+      $inc: { treasury: listing.price, treasury_current: listing.price },
+      $set: { updated_at: new Date() },
+    }
   ).catch(() => {});
 
   // 交貨到買家對應袋子
