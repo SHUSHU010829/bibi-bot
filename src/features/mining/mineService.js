@@ -1,7 +1,7 @@
 require("colors");
 const { DateTime } = require("luxon");
 const { mining, craft } = require("../../config");
-const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
+const { getOrCreate, backpackCapacity, backpackUsed, ORE_KEYS } = require("./miningProfile");
 const dropTable = require("./dropTable");
 const unifiedBuffResolver = require("../buff/buffResolver");
 const encounterService = require("./encounterService");
@@ -24,6 +24,8 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     const dailyLimit = mining?.cdTicketDailyUseLimit || 0;
     const usedToday =
       profile.cd_ticket_used_date === today ? profile.cd_ticket_used_count || 0 : 0;
+    const cdCap = backpackCapacity(profile, mining);
+    const cdUsed = backpackUsed(profile);
     return {
       ok: false,
       reason: "cooldown",
@@ -36,6 +38,9 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
       pickaxe: profile.pickaxe,
       pickaxeDurability: profile.pickaxe_durability,
       pickaxeMaxDurability: profile.pickaxe_max_durability,
+      backpackCap: cdCap,
+      backpackUsed: cdUsed,
+      backpackFree: Math.max(0, cdCap - cdUsed),
     };
   }
 
@@ -136,6 +141,8 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     consumeMineLuckUse(client, userId, guildId, profile).catch(() => {});
   }
 
+  const backpackUsedAfter = used + (ORE_KEYS.includes(ore) ? qty : 0);
+
   const result = {
     ok: true,
     ore,
@@ -150,6 +157,9 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     durabilityAfter,
     durabilityWarnCrossed,
     mineCountTotal: (profile.mine_count_total || 0) + 1,
+    backpackCap: cap,
+    backpackUsed: backpackUsedAfter,
+    backpackFree: Math.max(0, cap - backpackUsedAfter),
   };
 
   // 提供指令層組「找鑑定師賭石」按鈕所需資訊（ts 要與寫入 DB 的 pending_appraisal 一致）

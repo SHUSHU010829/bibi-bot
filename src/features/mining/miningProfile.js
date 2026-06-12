@@ -174,4 +174,5 @@ module.exports = {
   getOrCreate,
   backpackCapacity,
   backpackUsed,
+  ORE_KEYS,
 };
