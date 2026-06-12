@@ -24,6 +24,8 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     const dailyLimit = mining?.cdTicketDailyUseLimit || 0;
     const usedToday =
       profile.cd_ticket_used_date === today ? profile.cd_ticket_used_count || 0 : 0;
+    const cdCap = backpackCapacity(profile, mining);
+    const cdUsed = backpackUsed(profile);
     return {
       ok: false,
       reason: "cooldown",
@@ -36,6 +38,9 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
       pickaxe: profile.pickaxe,
       pickaxeDurability: profile.pickaxe_durability,
       pickaxeMaxDurability: profile.pickaxe_max_durability,
+      backpackCap: cdCap,
+      backpackUsed: cdUsed,
+      backpackFree: Math.max(0, cdCap - cdUsed),
     };
   }
 

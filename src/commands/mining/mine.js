@@ -98,6 +98,9 @@ function buildCooldownView({
   pickaxe,
   pickaxeDurability,
   pickaxeMaxDurability,
+  backpackFree,
+  backpackUsed,
+  backpackCap,
 }) {
   const readyEpoch = Math.floor(readyAt / 1000);
   const reductionMin = Math.max(1, Math.round((cdTicketReductionMs || 0) / 60000));
@@ -117,6 +120,13 @@ function buildCooldownView({
         pickaxeDurabilityLine(pickaxe, pickaxeDurability, pickaxeMaxDurability),
       ),
     );
+
+  const bpLine = backpackSpaceLine({ backpackFree, backpackUsed, backpackCap });
+  if (bpLine) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(bpLine),
+    );
+  }
 
   if (cdTickets > 0 && !overDailyLimit) {
     container.addSectionComponents(
@@ -214,6 +224,9 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
           pickaxe: result.pickaxe,
           pickaxeDurability: result.pickaxeDurability,
           pickaxeMaxDurability: result.pickaxeMaxDurability,
+          backpackFree: result.backpackFree,
+          backpackUsed: result.backpackUsed,
+          backpackCap: result.backpackCap,
         });
         return interaction.editReply({
           components: [container],
