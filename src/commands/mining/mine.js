@@ -41,6 +41,21 @@ function pickaxeLabel(key) {
   return `${def.emoji || "⛏️"} ${def.name || key}`;
 }
 
+// 挖礦後顯示背包空位剩餘；快滿時提醒清空間，已滿時提示繼續挖會折金幣。
+function backpackSpaceLine({ backpackFree, backpackUsed: used, backpackCap: cap }) {
+  if (typeof backpackFree !== "number" || typeof cap !== "number") return "";
+  if (backpackFree <= 0) {
+    return (
+      `**🎒 背包空位**\n已滿（${used}/${cap}）\n` +
+      "-# 再挖會直接折成金幣，先去 `/賣礦` 或 `/合成` 騰出空間吧！"
+    );
+  }
+  const warn = backpackFree <= 5 ? "（快滿了）" : "";
+  let line = `**🎒 背包空位**\n剩餘 **${backpackFree}**／共 ${cap} 格${warn}`;
+  if (warn) line += "\n-# 快滿了！考慮先去 `/賣礦` 或 `/合成` 清出空間。";
+  return line;
+}
+
 // 「找鑑定師賭石」按鈕 customId 格式：mining_appraise_<ownerId>_<mineTs>
 // mineTs 用來對上 DB 的 pending_appraisal.ts，確保只認最新一次挖礦、且單次有效。
 const APPRAISE_PREFIX = "mining_appraise_";
@@ -277,6 +292,10 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
         ),
       );
     }
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(backpackSpaceLine(result)),
+    );
 
     const buffNotes = [];
     if (result.buff.consume.usePotion) buffNotes.push("🍀 幸運藥水加成");
