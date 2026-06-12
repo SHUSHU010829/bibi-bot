@@ -1,6 +1,15 @@
 require("colors");
 const { DateTime } = require("luxon");
-const { mining, gift } = require("../../config");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  MessageFlags,
+} = require("discord.js");
+const { mining, gift, commandChannels, normalChannelId } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
 const { priceOf } = require("./overflowConfirm");
 const inventory = require("../barter/inventoryAdapter");
@@ -11,13 +20,29 @@ const { COIN_EMOJI } = require("../../constants/coin");
 const TZ = "Asia/Taipei";
 
 // 對方關閉私訊時靜默失敗，不影響贈送流程。
-async function dmRecipient(client, recipientId, content) {
+async function dmRecipient(client, recipientId, payload) {
   try {
     const user = await client.users.fetch(recipientId);
-    await user.send(content);
+    await user.send(payload);
   } catch (err) {
     console.log(`[WARN] gift DM 失敗（${recipientId}）：${err?.message || err}`.yellow);
   }
+}
+
+// 依物品類型回傳對應頻道的「前往頻道」按鈕；找不到頻道則回 null。
+function giftChannelButtonRow(guildId, type) {
+  const channelKey =
+    type === "fish" ? "fishing" : type === "crop" ? "farm" : "mining";
+  const command =
+    type === "fish" ? "/魚袋" : type === "crop" ? "/菜園" : "/背包";
+  const channelId = commandChannels?.[channelKey]?.[0] || normalChannelId;
+  if (!guildId || !channelId) return null;
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setStyle(ButtonStyle.Link)
+      .setLabel(`前往頻道使用 ${command}`)
+      .setURL(`https://discord.com/channels/${guildId}/${channelId}`)
+  );
 }
 
 function giveCfg() {
@@ -108,22 +133,33 @@ async function giveItem(
     client.guilds.cache.get(guildId) ||
     (await client.guilds.fetch(guildId).catch(() => null));
   const guildName = guild?.name || "伺服器";
-  const dmLines = [
-    `🎁 你在 **${guildName}** 收到一份禮物！`,
-    `**${giverName || "某位玩家"}** 送你 **${itemDef.emoji} ${itemDef.name} ×${deliveredQty || qty}**`,
-  ];
+  const container = new ContainerBuilder()
+    .setAccentColor(0xfaa61a)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("### 🎁 收到一份禮物！")
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `你在 **${guildName}** 收到 **${giverName || "某位玩家"}** 送的\n` +
+          `**${itemDef.emoji} ${itemDef.name} ×${deliveredQty || qty}**`
+      )
+    );
   if (overflowQty > 0) {
-    if (deliveredQty > 0) {
-      dmLines.push(
-        `🎒 背包只放得下 **${deliveredQty}** 顆，剩下 **${overflowQty}** 顆折成 **+${overflowCoins.toLocaleString()}** ${COIN_EMOJI} 入帳。`,
-      );
-    } else {
-      dmLines.push(
-        `🎒 背包已滿，全部折成 **+${overflowCoins.toLocaleString()}** ${COIN_EMOJI} 入帳。`,
-      );
-    }
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        deliveredQty > 0
+          ? `🎒 背包只放得下 **${deliveredQty}** 顆，剩下 **${overflowQty}** 顆折成 **+${overflowCoins.toLocaleString()}** ${COIN_EMOJI} 入帳。`
+          : `🎒 背包已滿，全部折成 **+${overflowCoins.toLocaleString()}** ${COIN_EMOJI} 入帳。`
+      )
+    );
   }
-  dmRecipient(client, recipientId, dmLines.join("\n"));
+  const row = giftChannelButtonRow(guildId, type);
+  if (row) container.addActionRowComponents(row);
+  dmRecipient(client, recipientId, {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
 
   return {
     ok: true,

@@ -11,7 +11,7 @@ const {
   ButtonStyle,
 } = require("discord.js");
 
-const { mining, dungeon } = require("../../config");
+const { mining, dungeon, commandChannels, normalChannelId } = require("../../config");
 const dungeonService = require("../../features/mining/dungeonService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
@@ -36,13 +36,43 @@ function weaponLabel(key) {
 
 async function dmWeaponLowDurability(interaction, weaponKey, durabilityAfter, level) {
   const def = (dungeon?.weapons || {})[weaponKey] || {};
-  const head =
-    level === "critical"
-      ? `🚨 你的 **${def.emoji || ""} ${def.name || weaponKey}** 只剩 **${durabilityAfter}** 次耐久，下一次戰鬥就會斷！`
-      : `⚠️ 你的 **${def.emoji || ""} ${def.name || weaponKey}** 耐久剩 **${durabilityAfter}** 次，差不多該準備了。`;
-  await interaction.user.send(
-    `${head}\n趁還沒斷，到 \`/合成\` 再做一把、或到 \`/裝備\` 用礦石修復耐久。`
-  );
+  const critical = level === "critical";
+  const label = `${def.emoji || ""} ${def.name || weaponKey}`.trim();
+  const container = new ContainerBuilder()
+    .setAccentColor(critical ? 0xed4245 : 0xfaa61a)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        critical ? "### 🚨 武器快斷了！" : "### ⚠️ 武器耐久偏低"
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        critical
+          ? `你的 **${label}** 只剩 **${durabilityAfter}** 次耐久，下一次戰鬥就會斷！`
+          : `你的 **${label}** 耐久剩 **${durabilityAfter}** 次，差不多該準備了。`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 趁還沒斷，到 `/合成` 再做一把、或到 `/裝備` 用礦石修復耐久。"
+      )
+    );
+  const channelId = commandChannels?.mining?.[0] || normalChannelId;
+  if (interaction.guildId && channelId) {
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setStyle(ButtonStyle.Link)
+          .setLabel("前往頻道補救")
+          .setURL(`https://discord.com/channels/${interaction.guildId}/${channelId}`)
+      )
+    );
+  }
+  await interaction.user.send({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }
 
 function appendCombatExtras(container, result, interaction) {
