@@ -236,11 +236,40 @@ async function runSetTriggers(client, interaction) {
     const symbol = interaction.options.getString("股票代號").toUpperCase().trim();
     const rawStop = interaction.options.getNumber("停損價");
     const rawTake = interaction.options.getNumber("停利價");
+
     if (rawStop == null && rawTake == null) {
-      return interaction.editReply(
-        "❌ 至少要填一個（停損價或停利價）。想清除已設定的觸發，填 0 即可。",
+      const position = await portfolioService.getPosition(
+        client,
+        interaction.user.id,
+        interaction.guildId,
+        symbol,
       );
+      if (!position || position.shares <= 0) {
+        return interaction.editReply(`❌ 你沒有持有 \`${symbol}\`。`);
+      }
+      const market = await client.stockMarketCollection.findOne({
+        guildId: interaction.guildId,
+        symbol,
+      });
+      const priceLabel = market ? market.currentPrice.toLocaleString() : "—";
+      const stopLabel =
+        position.stopLoss != null
+          ? `**${position.stopLoss.toLocaleString()}**`
+          : "未設定";
+      const takeLabel =
+        position.takeProfit != null
+          ? `**${position.takeProfit.toLocaleString()}**`
+          : "未設定";
+      const lines = [
+        `# 🔔 ${market?.name || symbol}（${symbol}）目前設定`,
+        `現價：${priceLabel} ・ 持股 ${position.shares} 股`,
+        `📉 停損價：${stopLabel}`,
+        `📈 停利價：${takeLabel}`,
+        `-# 要修改：再次執行 \`/股市 停損停利\` 並填入新價（填 0 可清除單一欄位）。`,
+      ];
+      return interaction.editReply(lines.join("\n"));
     }
+
     // 0 = 清除該欄
     const stopLoss = rawStop === 0 ? null : rawStop;
     const takeProfit = rawTake === 0 ? null : rawTake;
