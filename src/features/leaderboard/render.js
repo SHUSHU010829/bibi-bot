@@ -50,11 +50,25 @@ function parsePeriodCustomId(customId) {
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
-function renderRows(rows) {
+// 把 `<@userId>` 換成純文字暱稱，避免在私人房 / 隱藏頻道呼叫排行榜時把
+// 上榜玩家通通 ping 進來。channel mention（<#...>）、role mention（<@&...>）
+// 不動，那些本來就不會把使用者拉進房間。
+function plainifyMention(guild, mention) {
+  if (typeof mention !== "string") return mention;
+  return mention.replace(/<@!?(\d+)>/g, (_, userId) => {
+    const member = guild?.members.cache.get(userId);
+    if (member) return member.displayName;
+    const user = guild?.client?.users?.cache.get(userId);
+    if (user) return user.username;
+    return "未知玩家";
+  });
+}
+
+function renderRows(rows, guild) {
   return rows
     .map((row, idx) => {
       const medal = MEDALS[idx] || `**${idx + 1}.**`;
-      return `${medal} ${row.mention} ・ ${row.detail}`;
+      return `${medal} ${plainifyMention(guild, row.mention)} ・ ${row.detail}`;
     })
     .join("\n");
 }
@@ -89,7 +103,7 @@ function buildPeriodRow(cat, currentPeriod) {
   return new ActionRowBuilder().addComponents(buttons);
 }
 
-function buildContainer({ cat, period, result }) {
+function buildContainer({ cat, period, result, guild }) {
   const container = new ContainerBuilder()
     .setAccentColor(cat.accent)
     .addTextDisplayComponents(
@@ -114,7 +128,7 @@ function buildContainer({ cat, period, result }) {
           ? section.rows
               .map((row, i) => {
                 const medal = row.medal || MEDALS[i] || `**${i + 1}.**`;
-                return `${medal} ${row.mention} ・ ${row.detail}`;
+                return `${medal} ${plainifyMention(guild, row.mention)} ・ ${row.detail}`;
               })
               .join("\n")
           : `-# ${section.emptyHint || "目前還沒有資料"}`;
@@ -132,7 +146,7 @@ function buildContainer({ cat, period, result }) {
     const top3 = result.rows.slice(0, 3);
     const rest = result.rows.slice(3);
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(renderRows(top3))
+      new TextDisplayBuilder().setContent(renderRows(top3, guild))
     );
     if (rest.length > 0) {
       container
@@ -142,7 +156,7 @@ function buildContainer({ cat, period, result }) {
             rest
               .map((row, i) => {
                 const num = i + 3 + 1;
-                return `**${num}.** ${row.mention} ・ ${row.detail}`;
+                return `**${num}.** ${plainifyMention(guild, row.mention)} ・ ${row.detail}`;
               })
               .join("\n")
           )
@@ -191,7 +205,12 @@ async function renderLeaderboard(client, { categoryKey, period, interaction }) {
     result = { rows: [], disabled: "🔧 排行榜載入失敗，請稍後再試。" };
   }
 
-  const container = buildContainer({ cat, period: effPeriod, result });
+  const container = buildContainer({
+    cat,
+    period: effPeriod,
+    result,
+    guild: interaction.guild,
+  });
   const components = [container];
   components.push(buildCategorySelect(cat.key, effPeriod));
   const periodRow = buildPeriodRow(cat, effPeriod);
@@ -200,6 +219,7 @@ async function renderLeaderboard(client, { categoryKey, period, interaction }) {
   return {
     components,
     flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] },
   };
 }
 
