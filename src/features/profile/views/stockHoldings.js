@@ -57,13 +57,30 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
     totalCost += cost;
     totalValue += value;
     const sign = pnl >= 0 ? "+" : "";
+
+    const hasStop = p.stopLoss != null;
+    const hasTake = p.takeProfit != null;
+    let triggerLine;
+    if (hasStop || hasTake) {
+      const stopPart = hasStop
+        ? `📉 停損 **${p.stopLoss.toLocaleString()}**`
+        : "📉 停損 未設定";
+      const takePart = hasTake
+        ? `📈 停利 **${p.takeProfit.toLocaleString()}**`
+        : "📈 停利 未設定";
+      triggerLine = `　🔔 ${stopPart} ｜ ${takePart}`;
+    } else {
+      triggerLine = `　-# 🔔 未設定停損 / 停利　用 \`/股市 停損停利\` 設定`;
+    }
+
     positionViews.push({
       symbol: p.symbol,
       shares: p.shares,
       text:
         `\`${p.symbol}\` ${m.name}\n` +
         `　持股 **${p.shares}** ｜ 均價 ${p.avgCost.toFixed(2)} ｜ 現價 ${price.toFixed(1)}\n` +
-        `　損益 **${sign}${Math.round(pnl).toLocaleString()}**（${sign}${pnlPct.toFixed(2)}%）`,
+        `　損益 **${sign}${Math.round(pnl).toLocaleString()}**（${sign}${pnlPct.toFixed(2)}%）\n` +
+        triggerLine,
     });
     if (!best || pnl > best.pnl) best = { symbol: p.symbol, name: m.name, pnl };
     if (!worst || pnl < worst.pnl)
