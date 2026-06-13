@@ -1,0 +1,179 @@
+require("colors");
+const { EmbedBuilder } = require("discord.js");
+const { mining } = require("../../config");
+const rankService = require("./rankService");
+
+const DEFAULT_FLAVORS = [
+  "礦坑深處震動了一下，傳說又多一筆。",
+  "鑽石的光芒驚動了林中精靈。",
+  "金光黨見了都會嫉妒。",
+  "今日份的「歐皇認證」蓋章完畢。",
+  "礦工協會：請問還缺打雜的嗎？",
+  "據說這顆鑽石還沒落地就被人估了三次價。",
+  "BGM 自動切到「Diamonds」(Rihanna)。",
+];
+
+const SOURCE_LABELS = {
+  mine: { verb: "透過 `/挖礦` 挖到了", icon: "⛏️" },
+  appraise: { verb: "透過 賭石 開出了", icon: "🔍" },
+  dungeon: { verb: "在地下城找到了", icon: "🗡️" },
+  encounter: { verb: "在挖礦奇遇中拾獲了", icon: "✨" },
+};
+
+function pickFlavor({ userDiamonds, rank, todayCount, source }) {
+  if (userDiamonds === 1) return "🎉 人生第一顆鑽石！這手感是不是癢起來想再挖一把？";
+  if (rank === 1) return "👑 目前坐穩全服鑽石榜首！";
+  if (rank && rank <= 3) return `🏆 一舉躍上鑽石獵人榜 第 ${rank} 名！`;
+  if (todayCount === 1) return "💫 今日全服第一顆鑽石，開張大吉！";
+  if (todayCount >= 5) return `🔥 今天礦坑鑽光閃閃，已經第 ${todayCount} 顆！`;
+  if (userDiamonds > 0 && userDiamonds % 10 === 0) {
+    return `🎯 達成累計 **${userDiamonds}** 顆鑽石里程碑！`;
+  }
+  if (source === "appraise") {
+    return "🔍 鑑定師抬頭笑了一下，手沒抖過。";
+  }
+  return DEFAULT_FLAVORS[Math.floor(Math.random() * DEFAULT_FLAVORS.length)];
+}
+
+async function fetchStats(client, { userId, guildId }) {
+  const { start, end } = rankService.periodWindow("today");
+  const [profile, todayCount, totalRow] = await Promise.all([
+    client.miningProfilesCollection
+      .findOne(
+        { userId, guildId },
+        { projection: { "lifetime_ore.diamond": 1 } },
+      )
+      .catch(() => null),
+    client.mineLogsCollection
+      .aggregate([
+        {
+          $match: {
+            guild_id: guildId,
+            ore: "diamond",
+            ts: { $gte: start, $lt: end },
+          },
+        },
+        { $group: { _id: null, total: { $sum: "$qty" } } },
+      ])
+      .toArray()
+      .catch(() => [])
+      .then((rows) => rows[0]?.total || 0),
+    client.miningProfilesCollection
+      .aggregate([
+        { $match: { guildId, "lifetime_ore.diamond": { $gt: 0 } } },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: "$lifetime_ore.diamond" },
+            hunters: { $sum: 1 },
+          },
+        },
+      ])
+      .toArray()
+      .catch(() => [])
+      .then((rows) => rows[0] || { total: 0, hunters: 0 }),
+  ]);
+
+  const userDiamonds = profile?.lifetime_ore?.diamond || 0;
+  let rank = null;
+  if (userDiamonds > 0) {
+    const higher = await client.miningProfilesCollection
+      .countDocuments({
+        guildId,
+        "lifetime_ore.diamond": { $gt: userDiamonds },
+      })
+      .catch(() => null);
+    if (higher != null) rank = higher + 1;
+  }
+
+  return {
+    userDiamonds,
+    todayCount,
+    serverTotal: totalRow.total,
+    hunters: totalRow.hunters,
+    rank,
+  };
+}
+
+async function announceDiamond(client, { user, guildId, source = "mine", fallbackChannel } = {}) {
+  if (!user || !guildId) return;
+  if (!client.miningProfilesCollection || !client.mineLogsCollection) return;
+
+  const diamondDef = mining?.ores?.diamond || {};
+  const diamondEmoji = diamondDef.emoji || "💎";
+
+  let stats;
+  try {
+    stats = await fetchStats(client, { userId: user.id, guildId });
+  } catch (e) {
+    console.log(`[WARN] 鑽石播報統計失敗：${e.message}`.yellow);
+    stats = { userDiamonds: 0, todayCount: 0, serverTotal: 0, hunters: 0, rank: null };
+  }
+
+  const { verb, icon } = SOURCE_LABELS[source] || SOURCE_LABELS.mine;
+  const flavor = pickFlavor({ ...stats, source });
+
+  const rankLine = stats.rank
+    ? `第 **${stats.rank}** / ${stats.hunters} 名`
+    : "尚未上榜";
+
+  const embed = new EmbedBuilder()
+    .setColor(0x67e8f9)
+    .setAuthor({
+      name: user.username || user.globalName || "礦工",
+      iconURL: user.displayAvatarURL?.({ size: 128 }) || undefined,
+    })
+    .setTitle(`${icon}💎 鑽石閃耀全服！`)
+    .setDescription(
+      `<@${user.id}> ${verb} 傳說中的 ${diamondEmoji} **鑽石**！\n` +
+        `-# ${flavor}`,
+    )
+    .addFields(
+      {
+        name: "👤 個人累計",
+        value: `${diamondEmoji} **${stats.userDiamonds.toLocaleString()}** 顆`,
+        inline: true,
+      },
+      {
+        name: "🏆 鑽石獵人榜",
+        value: rankLine,
+        inline: true,
+      },
+      {
+        name: "📅 今日全服挖出",
+        value: `${diamondEmoji} **${stats.todayCount.toLocaleString()}** 顆`,
+        inline: true,
+      },
+      {
+        name: "🌍 全服累計",
+        value: `${diamondEmoji} **${stats.serverTotal.toLocaleString()}** 顆 · 已有 ${stats.hunters} 位獵人`,
+        inline: false,
+      },
+    )
+    .setFooter({ text: "輸入 /排行榜 鑽石獵人 看完整榜單" })
+    .setTimestamp(new Date());
+
+  const payload = {
+    content: `${icon}💎 <@${user.id}> ${verb} 傳說中的 ${diamondEmoji} **鑽石**！`,
+    embeds: [embed],
+    allowedMentions: { users: [user.id] },
+  };
+
+  try {
+    const channelId = mining?.announceChannelId;
+    if (channelId) {
+      const ch = await client.channels.fetch(channelId).catch(() => null);
+      if (ch?.isTextBased?.()) {
+        await ch.send(payload);
+        return;
+      }
+    }
+    if (fallbackChannel?.isTextBased?.()) {
+      await fallbackChannel.send(payload);
+    }
+  } catch (e) {
+    console.log(`[WARN] 鑽石公告送出失敗：${e.message}`.yellow);
+  }
+}
+
+module.exports = { announceDiamond };

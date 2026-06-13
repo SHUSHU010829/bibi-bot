@@ -13,6 +13,7 @@ const {
 
 const { mining, dungeon, commandChannels, normalChannelId } = require("../../config");
 const dungeonService = require("../../features/mining/dungeonService");
+const diamondAnnouncer = require("../../features/mining/diamondAnnouncer");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const { buildOverflowConfirmView } = require("../../features/mining/overflowConfirm");
@@ -357,6 +358,16 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
           `折算成 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}`;
       } else {
         rewardLine = `掉落 **${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty}**！`;
+      }
+      if (result.oreGained.ore === "diamond" && !result.oreOverflowToCoins) {
+        diamondAnnouncer
+          .announceDiamond(client, {
+            user: interaction.user,
+            guildId: interaction.guildId,
+            source: "dungeon",
+            fallbackChannel: interaction.channel,
+          })
+          .catch(() => {});
       }
     } else if (lootKind === "coins") {
       rewardLine = `掉落 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}！`;

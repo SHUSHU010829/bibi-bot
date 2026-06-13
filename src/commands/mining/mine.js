@@ -14,6 +14,7 @@ const {
 
 const { mining, commandChannels, normalChannelId } = require("../../config");
 const mineService = require("../../features/mining/mineService");
+const diamondAnnouncer = require("../../features/mining/diamondAnnouncer");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
@@ -475,23 +476,12 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
 }
 
 async function sendLegendaryAnnouncement(client, interaction) {
-  const content = `✨💎 **${interaction.user}** 挖到了傳說中的 **${oreLabel("diamond")}**！`;
-
-  const channelId = mining?.announceChannelId;
-  try {
-    if (channelId) {
-      const ch = await client.channels.fetch(channelId).catch(() => null);
-      if (ch?.isTextBased()) {
-        await ch.send({ content });
-        return;
-      }
-    }
-    if (interaction.channel?.isTextBased()) {
-      await interaction.channel.send({ content });
-    }
-  } catch (e) {
-    console.log(`[WARN] 彩虹石公告失敗：${e.message}`.yellow);
-  }
+  await diamondAnnouncer.announceDiamond(client, {
+    user: interaction.user,
+    guildId: interaction.guildId,
+    source: "mine",
+    fallbackChannel: interaction.channel,
+  });
 }
 
 function miningChannelButtonRow(guildId, label) {
