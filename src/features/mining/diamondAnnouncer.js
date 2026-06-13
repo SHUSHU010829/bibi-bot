@@ -146,7 +146,7 @@ async function announceDiamond(client, { user, guildId, source = "mine", fallbac
       },
       {
         name: "🌍 全服累計",
-        value: `${diamondEmoji} **${stats.serverTotal.toLocaleString()}** 顆 · 已有 ${stats.hunters} 位獵人`,
+        value: `${diamondEmoji} **${stats.serverTotal.toLocaleString()}** 顆`,
         inline: false,
       },
     )
@@ -154,7 +154,6 @@ async function announceDiamond(client, { user, guildId, source = "mine", fallbac
     .setTimestamp(new Date());
 
   const payload = {
-    content: `${icon}💎 <@${user.id}> ${verb} 傳說中的 ${diamondEmoji} **鑽石**！`,
     embeds: [embed],
     allowedMentions: { users: [user.id] },
   };
