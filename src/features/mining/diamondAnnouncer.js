@@ -1,5 +1,12 @@
 require("colors");
-const { EmbedBuilder } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SectionBuilder,
+  ThumbnailBuilder,
+  MessageFlags,
+} = require("discord.js");
 const { mining } = require("../../config");
 const rankService = require("./rankService");
 
@@ -112,49 +119,42 @@ async function announceDiamond(client, { user, guildId, source = "mine", fallbac
 
   const { verb, icon } = SOURCE_LABELS[source] || SOURCE_LABELS.mine;
   const flavor = pickFlavor({ ...stats, source });
-
   const rankLine = stats.rank
     ? `第 **${stats.rank}** / ${stats.hunters} 名`
     : "尚未上榜";
+  const avatarUrl = user.displayAvatarURL?.({ extension: "png", size: 256 });
 
-  const embed = new EmbedBuilder()
-    .setColor(0x67e8f9)
-    .setAuthor({
-      name: user.username || user.globalName || "礦工",
-      iconURL: user.displayAvatarURL?.({ size: 128 }) || undefined,
-    })
-    .setTitle(`${icon}💎 鑽石閃耀全服！`)
-    .setDescription(
-      `<@${user.id}> ${verb} 傳說中的 ${diamondEmoji} **鑽石**！\n` +
+  const container = new ContainerBuilder().setAccentColor(0x67e8f9);
+
+  const headerSection = new SectionBuilder().addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## ${icon}💎 鑽石閃耀全服！\n` +
+        `<@${user.id}> ${verb} 傳說中的 ${diamondEmoji} **鑽石**！\n` +
         `-# ${flavor}`,
-    )
-    .addFields(
-      {
-        name: "👤 個人累計",
-        value: `${diamondEmoji} **${stats.userDiamonds.toLocaleString()}** 顆`,
-        inline: true,
-      },
-      {
-        name: "🏆 鑽石獵人榜",
-        value: rankLine,
-        inline: true,
-      },
-      {
-        name: "📅 今日全服挖出",
-        value: `${diamondEmoji} **${stats.todayCount.toLocaleString()}** 顆`,
-        inline: true,
-      },
-      {
-        name: "🌍 全服累計",
-        value: `${diamondEmoji} **${stats.serverTotal.toLocaleString()}** 顆`,
-        inline: false,
-      },
-    )
-    .setFooter({ text: "輸入 /排行榜 鑽石獵人 看完整榜單" })
-    .setTimestamp(new Date());
+    ),
+  );
+  if (avatarUrl) {
+    headerSection.setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl));
+  }
+  container.addSectionComponents(headerSection);
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `**👤 個人累計**　${diamondEmoji} **${stats.userDiamonds.toLocaleString()}** 顆\n` +
+        `**🏆 鑽石獵人榜**　${rankLine}\n` +
+        `**📅 今日全服挖出**　${diamondEmoji} **${stats.todayCount.toLocaleString()}** 顆\n` +
+        `**🌍 全服累計**　${diamondEmoji} **${stats.serverTotal.toLocaleString()}** 顆`,
+    ),
+  );
+  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent("-# 輸入 `/排行榜 鑽石獵人` 看完整榜單"),
+  );
 
   const payload = {
-    embeds: [embed],
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
     allowedMentions: { users: [user.id] },
   };
 
