@@ -297,9 +297,16 @@ function previewBuffFromInstance(instance) {
   };
 }
 
+// all_boost 與任一單屬性 buff 互斥；同 type 之間也互斥。
+function isConflictingBuff(newType, existingType) {
+  if (newType === existingType) return true;
+  if (newType === "all_boost" || existingType === "all_boost") return true;
+  return false;
+}
+
 // 使用一份食物。
-//   confirmOverwrite=false 且已有同 type buff → 回 { ok:false, reason:"overwrite_needed", existingBuff, preview }
-//   否則 → 移除 instance、套上新 buff（value 已 × freshness）。
+//   confirmOverwrite=false 且有衝突的 buff → 回 { ok:false, reason:"overwrite_needed", existingBuffs, preview }
+//   否則 → 移除 instance、清掉衝突的 buff、套上新 buff（value 已 × freshness）。
 async function useFood(client, { userId, guildId, instanceId, confirmOverwrite = false }) {
   if (!fishing?.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
@@ -318,9 +325,9 @@ async function useFood(client, { userId, guildId, instanceId, confirmOverwrite =
 
   const now = Date.now();
   const existingBuffs = cleanExpiredBuffs(profile.active_food_buffs || []);
-  const existingBuff = existingBuffs.find((b) => b.type === preview.type);
-  if (existingBuff && !confirmOverwrite) {
-    return { ok: false, reason: "overwrite_needed", existingBuff, preview, instance };
+  const conflictingBuffs = existingBuffs.filter((b) => isConflictingBuff(preview.type, b.type));
+  if (conflictingBuffs.length > 0 && !confirmOverwrite) {
+    return { ok: false, reason: "overwrite_needed", existingBuffs: conflictingBuffs, preview, instance };
   }
 
   let newBuff;
@@ -344,8 +351,8 @@ async function useFood(client, { userId, guildId, instanceId, confirmOverwrite =
     };
   }
 
-  const otherBuffs = existingBuffs.filter((b) => b.type !== newBuff.type);
-  const updatedBuffs = [...otherBuffs, newBuff];
+  const keptBuffs = existingBuffs.filter((b) => !isConflictingBuff(newBuff.type, b.type));
+  const updatedBuffs = [...keptBuffs, newBuff];
 
   const res = await client.miningProfilesCollection.updateOne(
     { userId, guildId, "food_bag.id": instanceId },
@@ -356,7 +363,7 @@ async function useFood(client, { userId, guildId, instanceId, confirmOverwrite =
   );
   if (res.modifiedCount === 0) return { ok: false, reason: "not_found" };
 
-  return { ok: true, instance, preview, newBuff, overwritten: !!existingBuff };
+  return { ok: true, instance, preview, newBuff, overwritten: conflictingBuffs.length > 0 };
 }
 
 module.exports = {

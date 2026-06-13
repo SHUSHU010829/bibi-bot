@@ -46,7 +46,7 @@ async function performUse(client, interaction, userId, guildId, instanceId, conf
       foodBagView.buildOverwriteConfirmView({
         userId,
         instance: result.instance,
-        existingBuff: result.existingBuff,
+        existingBuffs: result.existingBuffs,
         preview: result.preview,
       })
     );
