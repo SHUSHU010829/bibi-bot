@@ -11,6 +11,7 @@ const {
 const { mining } = require("../../config");
 const rankService = require("../../features/mining/rankService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
+const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 
 const KING_TITLE = "mine_king";
 const MEDALS = ["🥇", "🥈", "🥉"];
@@ -23,8 +24,8 @@ async function guildsWithLogs(client, window) {
 }
 
 // 卸下上一任礦坑之王（贏家除外）。解鎖清單存在 UserLevels.gameTitles。
-// 回傳實際被卸任的舊王 userId 陣列（供公告 mention / 已在內部發 DM）。
-async function dethronePrevious(client, guildId, winnerId, winnerMention) {
+// 回傳實際被卸任的舊王 userId 陣列（供公告 / 已在內部發 DM）。
+async function dethronePrevious(client, guildId, winnerId, winnerLabel) {
   if (!client.userLevelsCollection) return [];
   const prev = await client.userLevelsCollection
     .find({ guildId, gameTitles: KING_TITLE })
@@ -44,7 +45,7 @@ async function dethronePrevious(client, guildId, winnerId, winnerMention) {
       if (user) {
         await user
           .send(
-            `👑 你的 **${gameTitleService.label(KING_TITLE)}** 稱號已移交給 ${winnerMention}，期待你下週奪回王座 ⛏️`
+            `👑 你的 **${gameTitleService.label(KING_TITLE)}** 稱號已移交給 ${winnerLabel}，期待你下週奪回王座 ⛏️`
           )
           .catch(() => {});
       }
@@ -55,28 +56,30 @@ async function dethronePrevious(client, guildId, winnerId, winnerMention) {
   return dethroned;
 }
 
-async function announceKing(client, winnerId, ranking, championCount, dethroned = []) {
+async function announceKing(client, guildId, winnerId, ranking, championCount, dethroned = []) {
   const channelId = gameTitleService.announceChannelId();
   if (!channelId) return;
   const channel = await client.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased?.()) return;
 
+  const guild = client.guilds.cache.get(guildId);
+  const nameOf = (id) => plainifyUserMentions(guild, `<@${id}>`);
+
   const top = ranking
     .slice(0, 3)
-    .map((r, i) => `${MEDALS[i]} <@${r.userId}> — **${r.total.toLocaleString()}** 顆`)
+    .map((r, i) => `${MEDALS[i]} ${nameOf(r.userId)} — **${r.total.toLocaleString()}** 顆`)
     .join("\n");
 
   const handoverNote = dethroned.length
-    ? `\n王座由 ${dethroned.map((id) => `<@${id}>`).join("、")} 移交 👑`
+    ? `\n王座由 ${dethroned.map((id) => nameOf(id)).join("、")} 移交 👑`
     : "";
-  const mentionIds = [winnerId, ...dethroned];
 
   const container = new ContainerBuilder()
     .setAccentColor(0xffd700)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# 👑 上週礦坑之王出爐！\n` +
-          `恭喜 <@${winnerId}> 拿下上週挖礦榜冠軍，獲得稱號 **${gameTitleService.label(KING_TITLE)}**！\n` +
+          `恭喜 ${nameOf(winnerId)} 拿下上週挖礦榜冠軍，獲得稱號 **${gameTitleService.label(KING_TITLE)}**！\n` +
           `這是他第 **${championCount}** 次稱王 👑${handoverNote}`,
       ),
     )
@@ -96,7 +99,7 @@ async function announceKing(client, winnerId, ranking, championCount, dethroned 
     .send({
       components: [container],
       flags: MessageFlags.IsComponentsV2,
-      allowedMentions: { users: mentionIds },
+      allowedMentions: { parse: [] },
     })
     .catch(() => {});
 }
@@ -128,8 +131,10 @@ async function processGuild(client, guildId) {
     .catch(() => null);
   const championCount = (updated?.value || updated)?.weekly_champion_count || 1;
 
-  const dethroned = await dethronePrevious(client, guildId, winnerId, `<@${winnerId}>`);
-  await announceKing(client, winnerId, ranking, championCount, dethroned);
+  const guild = client.guilds.cache.get(guildId);
+  const winnerLabel = plainifyUserMentions(guild, `<@${winnerId}>`);
+  const dethroned = await dethronePrevious(client, guildId, winnerId, winnerLabel);
+  await announceKing(client, guildId, winnerId, ranking, championCount, dethroned);
 
   // 新王 DM 通知
   try {

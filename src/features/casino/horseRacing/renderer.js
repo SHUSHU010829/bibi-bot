@@ -9,6 +9,7 @@ const { MONEY_EMOJI } = require("../../../constants/coin");
 
 const { HORSES } = require("./engine");
 const { buildCasinoEmbed } = require("../casinoEmbed");
+const { plainifyUserMentions } = require("../../../utils/plainifyUserMentions");
 
 // 由 state 取出開盤者資訊，當成 embed 的玩家（author + mention）。
 function hostUser(state) {
@@ -136,7 +137,7 @@ function renderRunningPhase(state, { withImage = false } = {}) {
 // ── 結算 ──
 // 圖卡裡已經有領獎台 / 完整名次 / 彩池統計,文字部分只負責「冠軍宣告 + 中獎玩家 mention」。
 // withImage：是否附上結果卡 PNG。
-function renderSettledPhase(state, { withImage = false } = {}) {
+function renderSettledPhase(state, { withImage = false, guild = null } = {}) {
   const rankings = state.rankings || [];
   const winnerHorse = HORSES.find((h) => h.id === rankings[0]);
 
@@ -151,7 +152,7 @@ function renderSettledPhase(state, { withImage = false } = {}) {
     lines.push("**🎉 中獎玩家**");
     for (const w of winners) {
       lines.push(
-        `・<@${w.userId}> 押 ${HORSES.find((h) => h.id === w.horseId)?.name} ${w.amount.toLocaleString()} → +${w.payout.toLocaleString()}`,
+        `・${plainifyUserMentions(guild, `<@${w.userId}>`)} 押 ${HORSES.find((h) => h.id === w.horseId)?.name} ${w.amount.toLocaleString()} → +${w.payout.toLocaleString()}`,
       );
     }
   } else if (settles.length > 0) {
@@ -175,9 +176,9 @@ function renderSettledPhase(state, { withImage = false } = {}) {
   return { content: "", embeds: [embed], components: [] };
 }
 
-function renderCancelled(state, reason = "已取消") {
+function renderCancelled(state, reason = "已取消", { guild = null } = {}) {
   const refunds = (state.bets || []).map(
-    (b) => `・<@${b.userId}> 退款 ${b.amount.toLocaleString()}`,
+    (b) => `・${plainifyUserMentions(guild, `<@${b.userId}>`)} 退款 ${b.amount.toLocaleString()}`,
   );
   const lines = [];
   if (refunds.length > 0) {

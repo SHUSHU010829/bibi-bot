@@ -14,6 +14,11 @@ const {
 
 const { guildClub } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
+const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
+
+function nameOf(guild, userId) {
+  return plainifyUserMentions(guild, `<@${userId}>`);
+}
 const {
   levelDef,
   nextLevelDef,
@@ -52,6 +57,7 @@ function buildInfoContainer({
   bossContributions,
   warehouseSummary,
   pendingApplicationCount,
+  guild,
 }) {
   const def = levelDef(club.level);
   const next = nextLevelDef(club.level);
@@ -69,11 +75,11 @@ function buildInfoContainer({
   const viceLeaders = members.filter((m) => m.role === "vice_leader");
   const viceLine =
     viceLeaders.length > 0
-      ? `\n副會長：${viceLeaders.map((m) => `<@${m.userId}>`).join("、")}`
+      ? `\n副會長：${viceLeaders.map((m) => nameOf(guild, m.userId)).join("、")}`
       : "";
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `會長：<@${club.leader_id}>${viceLine}　成員：${members.length}/${club.max_members}`
+      `會長：${nameOf(guild, club.leader_id)}${viceLine}　成員：${members.length}/${club.max_members}`
     )
   );
 
@@ -173,7 +179,7 @@ function buildInfoContainer({
     const lines = sorted.map((m) => {
       const roleEmoji =
         m.role === "leader" ? "👑" : m.role === "vice_leader" ? "🛡️" : "・";
-      const base = `${roleEmoji} <@${m.userId}>　貢獻 ${contributionOf(m).toLocaleString()}`;
+      const base = `${roleEmoji} ${nameOf(guild, m.userId)}　貢獻 ${contributionOf(m).toLocaleString()}`;
       if (isMember && m.userId === viewerId) {
         const donatedRaw = m.total_donated || 0;
         const warehouseRaw = m.warehouse_donated_value || 0;
@@ -209,7 +215,7 @@ function buildInfoContainer({
     container.addSeparatorComponents(new SeparatorBuilder());
     const lines = bossContributions.slice(0, 5).map((c, i) => {
       const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
-      return `${medal} <@${c.userId}>　${(c.weeklyContribution || 0).toLocaleString()} 點`;
+      return `${medal} ${nameOf(guild, c.userId)}　${(c.weeklyContribution || 0).toLocaleString()} 點`;
     });
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(

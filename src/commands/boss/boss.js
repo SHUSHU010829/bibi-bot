@@ -39,6 +39,7 @@ async function runInfo(client, interaction) {
     ranking: info.ranking,
     totalDamage: info.totalDamage,
     comboActive: info.comboActive,
+    guild: interaction.guild,
   });
   return interaction.editReply({
     components: [container],

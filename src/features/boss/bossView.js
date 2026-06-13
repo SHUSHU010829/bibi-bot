@@ -8,6 +8,11 @@ const {
 } = require("discord.js");
 const { boss } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
+const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
+
+function nameOf(guild, userId) {
+  return plainifyUserMentions(guild, `<@${userId}>`);
+}
 
 const COLOR_NORMAL = 0xe67e22;
 const COLOR_BROKEN = 0xf39c12;
@@ -208,7 +213,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   return { container, killed, phaseChange, comboTriggered };
 }
 
-function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive }) {
+function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive, guild }) {
   const phase = b.phase || "normal";
   const remainMs = Math.max(0, b.ends_at - Date.now());
   const remainMin = Math.floor(remainMs / 60000);
@@ -237,7 +242,7 @@ function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive
     const myIdx = ranking.findIndex((r) => r.userId === userId);
     const lines = top.map((r, i) => {
       const me = r.userId === userId ? "👉 " : "";
-      return `${me}**#${i + 1}** <@${r.userId}> — ${r.damage.toLocaleString()} 傷害`;
+      return `${me}**#${i + 1}** ${nameOf(guild, r.userId)} — ${r.damage.toLocaleString()} 傷害`;
     });
     if (myIdx >= 5) {
       const me = ranking[myIdx];
@@ -271,7 +276,7 @@ function buildErrorContainer({ title, body, hint }) {
 }
 
 function buildSettlementContainer(settlement) {
-  const { bossDoc, killed, payouts, totalDamage, totalPool, killerUserId, killerBonus, killerRare, mvpUserId, comboMvpUserId, punchingBagUserId } = settlement;
+  const { bossDoc, killed, payouts, totalDamage, totalPool, killerUserId, killerBonus, killerRare, mvpUserId, comboMvpUserId, punchingBagUserId, guild } = settlement;
   const color = killed ? COLOR_VICTORY : COLOR_EXPIRED;
   const container = new ContainerBuilder().setAccentColor(color);
   const headline = killed
@@ -289,7 +294,7 @@ function buildSettlementContainer(settlement) {
   if (killed && killerUserId) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `🗡️ **最後一擊**：<@${killerUserId}>　＋${killerBonus.toLocaleString()} ${COIN_EMOJI}　＋✨ ×${killerRare}`,
+        `🗡️ **最後一擊**：${nameOf(guild, killerUserId)}　＋${killerBonus.toLocaleString()} ${COIN_EMOJI}　＋✨ ×${killerRare}`,
       ),
     );
   }
@@ -297,18 +302,18 @@ function buildSettlementContainer(settlement) {
     const mvp = payouts.find((p) => p.userId === mvpUserId);
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `⚔️ **本場 MVP**：<@${mvpUserId}>　傷害 ${mvp?.damage.toLocaleString() || 0}（${mvp?.attacks || 0} 次出手）`,
+        `⚔️ **本場 MVP**：${nameOf(guild, mvpUserId)}　傷害 ${mvp?.damage.toLocaleString() || 0}（${mvp?.attacks || 0} 次出手）`,
       ),
     );
   }
   if (comboMvpUserId) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`🎯 **開團王**：<@${comboMvpUserId}>`),
+      new TextDisplayBuilder().setContent(`🎯 **開團王**：${nameOf(guild, comboMvpUserId)}`),
     );
   }
   if (punchingBagUserId) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`🤡 **被龍揍王**：<@${punchingBagUserId}>`),
+      new TextDisplayBuilder().setContent(`🤡 **被龍揍王**：${nameOf(guild, punchingBagUserId)}`),
     );
   }
 
@@ -319,7 +324,7 @@ function buildSettlementContainer(settlement) {
       if (p.rareReward) extras.push("✨ ×1");
       if (p.killBonus) extras.push(`擊殺 +${p.killBonus}`);
       if (p.guildClubName) extras.push(`🏰 ${p.guildClubName}`);
-      return `**#${i + 1}** <@${p.userId}> — ${p.damage.toLocaleString()} 傷害　→ ${p.share.toLocaleString()} ${COIN_EMOJI}${extras.length ? "（" + extras.join("、") + "）" : ""}`;
+      return `**#${i + 1}** ${nameOf(guild, p.userId)} — ${p.damage.toLocaleString()} 傷害　→ ${p.share.toLocaleString()} ${COIN_EMOJI}${extras.length ? "（" + extras.join("、") + "）" : ""}`;
     });
     container
       .addSeparatorComponents(new SeparatorBuilder())

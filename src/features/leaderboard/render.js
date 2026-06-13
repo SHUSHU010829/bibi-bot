@@ -48,20 +48,12 @@ function parsePeriodCustomId(customId) {
   return { categoryKey: parts[0], period: parts[1] };
 }
 
+const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
+
 const MEDALS = ["🥇", "🥈", "🥉"];
 
-// 把 `<@userId>` 換成純文字暱稱，避免在私人房 / 隱藏頻道呼叫排行榜時把
-// 上榜玩家通通 ping 進來。channel mention（<#...>）、role mention（<@&...>）
-// 不動，那些本來就不會把使用者拉進房間。
 function plainifyMention(guild, mention) {
-  if (typeof mention !== "string") return mention;
-  return mention.replace(/<@!?(\d+)>/g, (_, userId) => {
-    const member = guild?.members.cache.get(userId);
-    if (member) return member.displayName;
-    const user = guild?.client?.users?.cache.get(userId);
-    if (user) return user.username;
-    return "未知玩家";
-  });
+  return plainifyUserMentions(guild, mention);
 }
 
 function renderRows(rows, guild) {
