@@ -36,18 +36,27 @@ function buffShortDesc(type, value) {
   return `${type}`;
 }
 
-function buildOverwriteConfirmView({ userId, instance, existingBuff, preview }) {
+function buildOverwriteConfirmView({ userId, instance, existingBuffs, preview }) {
   const recipe = preview.recipe;
   const newDesc = buffShortDesc(preview.type, preview.value);
-  const existingDesc = buffShortDesc(existingBuff.type, existingBuff.value);
-  const existingDur =
-    existingBuff.uses_left != null
-      ? `剩 ${existingBuff.uses_left} 次`
-      : existingBuff.expires_at
-        ? `<t:${Math.floor(existingBuff.expires_at / 1000)}:R> 到期`
-        : "";
+  const existingLines = existingBuffs.map((b) => {
+    const desc = buffShortDesc(b.type, b.value);
+    const dur =
+      b.uses_left != null
+        ? `剩 ${b.uses_left} 次`
+        : b.expires_at
+          ? `<t:${Math.floor(b.expires_at / 1000)}:R> 到期`
+          : "";
+    return `・${desc}${dur ? `（${dur}）` : ""}`;
+  });
   const baseDesc = buffShortDesc(preview.type, preview.baseValue);
   const freshPct = Math.round(preview.freshness * 100);
+  const isAllBoost = preview.type === "all_boost";
+  const conflictNote = isAllBoost
+    ? "全屬性與其他單屬性 buff 互斥"
+    : existingBuffs.some((b) => b.type === "all_boost")
+      ? "單屬性與全屬性 buff 互斥"
+      : "同類型 buff 互斥";
 
   const container = new ContainerBuilder()
     .setAccentColor(0xe67e22)
@@ -57,10 +66,10 @@ function buildOverwriteConfirmView({ userId, instance, existingBuff, preview }) 
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**目前生效**：${existingDesc}${existingDur ? `（${existingDur}）` : ""}\n` +
+        `**目前生效**：\n${existingLines.join("\n")}\n` +
         `**即將食用**：${recipe.emoji} ${recipe.name} → ${newDesc}\n` +
-        `-# 新鮮度 ${freshPct}%（最強為 ${baseDesc}）\n\n` +
-        `食用後**現有效果會被覆蓋**，要繼續嗎？`
+        `-# 新鮮度 ${freshPct}%（最強為 ${baseDesc}）・${conflictNote}\n\n` +
+        `食用後**上述效果會全部被覆蓋**，要繼續嗎？`
       )
     )
     .addActionRowComponents(
