@@ -17,6 +17,7 @@ const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const mineCmd = require("../../commands/mining/mine");
 const appraisalService = require("../../features/mining/stoneAppraisalService");
+const diamondAnnouncer = require("../../features/mining/diamondAnnouncer");
 const { buildOverflowConfirmView } = require("../../features/mining/overflowConfirm");
 const { COIN_EMOJI } = require("../../constants/coin");
 
@@ -59,22 +60,12 @@ async function replyEphemeral(interaction, content) {
 // 賭石開出鑽石：比照挖到鑽石的全服公告
 async function announceDiamond(client, interaction) {
   if (!mining?.stoneAppraisal?.announceDiamond) return;
-  const content = `🔍💎 **${interaction.user}** 賭石開出了傳說中的 **${oreLabel("diamond")}**！`;
-  try {
-    const channelId = mining?.announceChannelId;
-    if (channelId) {
-      const ch = await client.channels.fetch(channelId).catch(() => null);
-      if (ch?.isTextBased()) {
-        await ch.send({ content });
-        return;
-      }
-    }
-    if (interaction.channel?.isTextBased()) {
-      await interaction.channel.send({ content });
-    }
-  } catch (e) {
-    console.log(`[WARN] 賭石鑽石公告失敗：${e.message}`.yellow);
-  }
+  await diamondAnnouncer.announceDiamond(client, {
+    user: interaction.user,
+    guildId: interaction.guildId,
+    source: "appraise",
+    fallbackChannel: interaction.channel,
+  });
 }
 
 module.exports = async (client, interaction) => {

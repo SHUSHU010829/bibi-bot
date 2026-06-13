@@ -127,6 +127,10 @@ async function appraise(client, { userId, guildId, member, username, ts, allowOv
   for (const [ore, q] of Object.entries(acceptedWinnings)) {
     if (q > 0) inc[`backpack.${ore}`] = (inc[`backpack.${ore}`] || 0) + q;
   }
+  // 全部開出的礦石都計入 lifetime_ore（含折金幣的部分），讓排行榜 / 個人累計反映賭石所得
+  for (const [ore, q] of Object.entries(winnings)) {
+    if (q > 0) inc[`lifetime_ore.${ore}`] = (inc[`lifetime_ore.${ore}`] || 0) + q;
+  }
   const filter = {
     userId,
     guildId,
@@ -154,6 +158,9 @@ async function appraise(client, { userId, guildId, member, username, ts, allowOv
     if (!synthetic) rollback["backpack.stone"] = count;
     for (const [ore, q] of Object.entries(acceptedWinnings)) {
       if (q > 0) rollback[`backpack.${ore}`] = -q;
+    }
+    for (const [ore, q] of Object.entries(winnings)) {
+      if (q > 0) rollback[`lifetime_ore.${ore}`] = -q;
     }
     if (Object.keys(rollback).length > 0) {
       await client.miningProfilesCollection
