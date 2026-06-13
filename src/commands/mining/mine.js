@@ -14,6 +14,7 @@ const {
 
 const { mining, commandChannels, normalChannelId } = require("../../config");
 const mineService = require("../../features/mining/mineService");
+const { getRoom } = require("../../features/gameRoom/service");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
@@ -475,22 +476,37 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
 }
 
 async function sendLegendaryAnnouncement(client, interaction) {
-  const content = `✨💎 **${interaction.user}** 挖到了傳說中的 **${oreLabel("diamond")}**！`;
+  const baseContent = `✨💎 **${interaction.user}** 挖到了傳說中的 **${oreLabel("diamond")}**！`;
+  const announceChannelId = mining?.announceChannelId;
+  const room = getRoom(interaction.channelId);
 
-  const channelId = mining?.announceChannelId;
-  try {
-    if (channelId) {
-      const ch = await client.channels.fetch(channelId).catch(() => null);
+  // 遊戲房（私人 thread）挖到時，母頻道也廣播一份，並標出是哪間房；
+  // 房內訊息維持原樣讓房裡的人看到。
+  const targets = new Map();
+  if (announceChannelId) {
+    targets.set(announceChannelId, baseContent);
+  }
+  if (room?.parentChannelId && !targets.has(room.parentChannelId)) {
+    const roomTag = room.name ? `（🎮 ${room.name}）` : "（🎮 遊戲房）";
+    targets.set(room.parentChannelId, `${baseContent}${roomTag}`);
+  }
+  if (targets.size === 0 && interaction.channel?.isTextBased()) {
+    targets.set(interaction.channelId, baseContent);
+  }
+  // 房內保留一份廣播，讓房裡的人也看到
+  if (room && !targets.has(interaction.channelId)) {
+    targets.set(interaction.channelId, baseContent);
+  }
+
+  for (const [chId, content] of targets) {
+    try {
+      const ch = await client.channels.fetch(chId).catch(() => null);
       if (ch?.isTextBased()) {
         await ch.send({ content });
-        return;
       }
+    } catch (e) {
+      console.log(`[WARN] 彩虹石公告失敗（${chId}）：${e.message}`.yellow);
     }
-    if (interaction.channel?.isTextBased()) {
-      await interaction.channel.send({ content });
-    }
-  } catch (e) {
-    console.log(`[WARN] 彩虹石公告失敗：${e.message}`.yellow);
   }
 }
 
