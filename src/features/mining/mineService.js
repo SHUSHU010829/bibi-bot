@@ -132,9 +132,11 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     }).catch((e) => console.log(`[ERROR] mine overflow grantCoins: ${e}`.red));
   }
 
-  client.mineLogsCollection
-    ?.insertOne({ user_id: userId, guild_id: guildId, ore, qty: qty + overflowQty, ts: new Date() })
-    .catch((e) => console.log(`[ERROR] insert mine log: ${e}`.red));
+  if (client.mineLogsCollection) {
+    await client.mineLogsCollection
+      .insertOne({ user_id: userId, guild_id: guildId, ore, qty: qty + overflowQty, ts: new Date() })
+      .catch((e) => console.log(`[ERROR] insert mine log: ${e}`.red));
+  }
 
   // 食物 buff：若 mine_luck uses 型 buff 生效，異步消耗一次使用次數
   if (buff.foodLuckBonus > 0) {
