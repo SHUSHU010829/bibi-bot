@@ -3,8 +3,6 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
-  SectionBuilder,
-  ThumbnailBuilder,
   MessageFlags,
 } = require("discord.js");
 const { mining } = require("../../config");
@@ -44,7 +42,7 @@ function pickFlavor({ userDiamonds, rank, todayCount, source }) {
 
 async function fetchStats(client, { userId, guildId }) {
   const { start, end } = rankService.periodWindow("today");
-  const [profile, todayCount, totalRow] = await Promise.all([
+  const [profile, todayCount, userTodayCount, totalRow] = await Promise.all([
     client.miningProfilesCollection
       .findOne(
         { userId, guildId },
@@ -56,6 +54,21 @@ async function fetchStats(client, { userId, guildId }) {
         {
           $match: {
             guild_id: guildId,
+            ore: "diamond",
+            ts: { $gte: start, $lt: end },
+          },
+        },
+        { $group: { _id: null, total: { $sum: "$qty" } } },
+      ])
+      .toArray()
+      .catch(() => [])
+      .then((rows) => rows[0]?.total || 0),
+    client.mineLogsCollection
+      .aggregate([
+        {
+          $match: {
+            guild_id: guildId,
+            user_id: userId,
             ore: "diamond",
             ts: { $gte: start, $lt: end },
           },
@@ -95,6 +108,7 @@ async function fetchStats(client, { userId, guildId }) {
 
   return {
     userDiamonds,
+    userTodayCount,
     todayCount,
     serverTotal: totalRow.total,
     hunters: totalRow.hunters,
@@ -114,7 +128,7 @@ async function announceDiamond(client, { user, guildId, source = "mine", fallbac
     stats = await fetchStats(client, { userId: user.id, guildId });
   } catch (e) {
     console.log(`[WARN] 鑽石播報統計失敗：${e.message}`.yellow);
-    stats = { userDiamonds: 0, todayCount: 0, serverTotal: 0, hunters: 0, rank: null };
+    stats = { userDiamonds: 0, userTodayCount: 0, todayCount: 0, serverTotal: 0, hunters: 0, rank: null };
   }
 
   const verb = SOURCE_VERBS[source] || SOURCE_VERBS.mine;
@@ -122,26 +136,21 @@ async function announceDiamond(client, { user, guildId, source = "mine", fallbac
   const rankLine = stats.rank
     ? `第 **${stats.rank}** / ${stats.hunters} 名`
     : "尚未上榜";
-  const avatarUrl = user.displayAvatarURL?.({ extension: "png", size: 256 });
 
   const container = new ContainerBuilder().setAccentColor(0x67e8f9);
 
-  const headerSection = new SectionBuilder().addTextDisplayComponents(
+  container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `## ${diamondEmoji} 鑽石閃耀全服！\n` +
         `<@${user.id}> ${verb}傳說中的 **鑽石**！\n` +
         `-# ${flavor}`,
     ),
   );
-  if (avatarUrl) {
-    headerSection.setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl));
-  }
-  container.addSectionComponents(headerSection);
 
   container.addSeparatorComponents(new SeparatorBuilder());
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `**個人累計**　**${stats.userDiamonds.toLocaleString()}** 顆\n` +
+      `**個人累計**　**${stats.userDiamonds.toLocaleString()}** 顆（今日 **${stats.userTodayCount.toLocaleString()}** 顆）\n` +
         `**鑽石獵人榜**　${rankLine}\n` +
         `**今日全服挖出**　**${stats.todayCount.toLocaleString()}** 顆\n` +
         `**全服累計**　**${stats.serverTotal.toLocaleString()}** 顆`,
