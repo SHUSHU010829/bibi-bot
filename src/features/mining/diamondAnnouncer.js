@@ -155,7 +155,7 @@ async function announceDiamond(client, { user, guildId, source = "mine", fallbac
   const payload = {
     components: [container],
     flags: MessageFlags.IsComponentsV2,
-    allowedMentions: { users: [user.id] },
+    allowedMentions: { parse: [] },
   };
 
   try {
