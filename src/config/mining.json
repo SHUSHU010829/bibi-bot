@@ -24,7 +24,7 @@
     "durabilityWarn": { "low": 5, "critical": 1 },
     "cdTicketReductionMs": 1800000,
     "cdTicketDailyUseLimit": 0,
-    "announceChannelId": "",
+    "announceChannelId": "1511655301953228800",
     "weeklyRank": {
       "cronSchedule": "1 0 * * 1",
       "timezone": "Asia/Taipei"

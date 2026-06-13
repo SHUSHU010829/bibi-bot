@@ -30,16 +30,11 @@ async function primeCache(client) {
   if (!client.gameRoomsCollection) return;
   const rooms = await client.gameRoomsCollection
     .find({ status: "open" })
-    .project({ threadId: 1, ownerId: 1, guildId: 1, parentChannelId: 1, name: 1 })
+    .project({ threadId: 1, ownerId: 1, guildId: 1 })
     .toArray();
   openRooms.clear();
   for (const r of rooms) {
-    openRooms.set(r.threadId, {
-      ownerId: r.ownerId,
-      guildId: r.guildId,
-      parentChannelId: r.parentChannelId,
-      name: r.name,
-    });
+    openRooms.set(r.threadId, { ownerId: r.ownerId, guildId: r.guildId });
   }
   if (rooms.length) {
     console.log(`[GAMEROOM] 載入 ${rooms.length} 間開啟中的遊戲房`.cyan);
@@ -145,12 +140,7 @@ async function createRoom(client, interaction, visibility) {
     createdAt: now,
   };
   await client.gameRoomsCollection.insertOne(room);
-  openRooms.set(thread.id, {
-    ownerId,
-    guildId,
-    parentChannelId: interaction.channelId,
-    name,
-  });
+  openRooms.set(thread.id, { ownerId, guildId });
 
   try {
     const welcome = await thread.send({
