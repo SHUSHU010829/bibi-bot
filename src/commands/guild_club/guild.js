@@ -472,6 +472,7 @@ async function runInfo(client, interaction) {
         bossContributions,
         warehouseSummary,
         pendingApplicationCount,
+        guild: interaction.guild,
       }),
     ],
     flags: MessageFlags.IsComponentsV2,

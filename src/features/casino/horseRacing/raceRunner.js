@@ -66,8 +66,9 @@ async function startRaceIfDue(client, gameId) {
     if (doc) {
       const message = await fetchMessage(client, doc);
       if (message) {
+        const guild = doc.guildId ? client.guilds.cache.get(doc.guildId) : null;
         await message
-          .edit(renderCancelled(doc, "0 人購票，自動取消"))
+          .edit(renderCancelled(doc, "0 人購票，自動取消", { guild }))
           .catch(() => {});
       }
     }
@@ -200,7 +201,8 @@ async function runRaceAnimation(client, state) {
     status: "settled",
   };
 
-  const settledPayload = renderSettledPhase(finalState);
+  const guild = finalState.guildId ? client.guilds.cache.get(finalState.guildId) : null;
+  const settledPayload = renderSettledPhase(finalState, { guild });
   const totalPool = (state.bets || []).reduce((s, b) => s + b.amount, 0);
   const totalPaid = settles.reduce((s, x) => s + (x.payout || 0), 0);
 
@@ -284,8 +286,9 @@ async function cancelRace(client, gameId, reason = "host_cancelled") {
 
   const message = await fetchMessage(client, doc);
   if (message) {
+    const guild = doc.guildId ? client.guilds.cache.get(doc.guildId) : null;
     await message
-      .edit(renderCancelled(doc, reason === "host_cancelled" ? "開盤者取消" : "已取消"))
+      .edit(renderCancelled(doc, reason === "host_cancelled" ? "開盤者取消" : "已取消", { guild }))
       .catch(() => {});
   }
   return doc;
@@ -328,8 +331,9 @@ async function abandonStaleRace(client, gameId) {
 
   const message = await fetchMessage(client, doc);
   if (message) {
+    const guild = doc.guildId ? client.guilds.cache.get(doc.guildId) : null;
     await message
-      .edit(renderCancelled(doc, "比賽中斷，已自動退款"))
+      .edit(renderCancelled(doc, "比賽中斷，已自動退款", { guild }))
       .catch(() => {});
   }
   return doc;

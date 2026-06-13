@@ -60,7 +60,10 @@ async function announceCombo(client, bossDoc, userId) {
 }
 
 async function announceSettlement(client, settlement) {
-  const container = buildSettlementContainer(settlement);
+  const guild = settlement?.bossDoc?.guild_id
+    ? client.guilds.cache.get(settlement.bossDoc.guild_id)
+    : null;
+  const container = buildSettlementContainer({ ...settlement, guild });
   const payload = {
     components: [container],
     flags: MessageFlags.IsComponentsV2,

@@ -12,6 +12,7 @@ const {
 const grantCoins = require("../economy/grantCoins");
 const { computeRefundFee } = require("../economy/refundFee");
 const { hostedEvents: hostedEventsConfig } = require("../../config");
+const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 
 const QUIZ_CHANNEL_ID = hostedEventsConfig?.publishChannelId || "1174352640210124877";
 const MIN_MINUTES = 1;
@@ -72,7 +73,7 @@ function tsEpoch(d) {
   return Math.floor((d ? new Date(d).getTime() : Date.now()) / 1000);
 }
 
-function buildActiveContainer(quizDoc, { intro = "" } = {}) {
+function buildActiveContainer(quizDoc, { intro = "", guild = null } = {}) {
   const { question, options, prizePool, hostId, endsAt, answers = {} } = quizDoc;
   const answerCount = Object.keys(answers).length;
   const prediction = isPrediction(quizDoc);
@@ -100,7 +101,7 @@ function buildActiveContainer(quizDoc, { intro = "" } = {}) {
     : COLOR_ACTIVE;
 
   const infoLines = [
-    `**主辦人**：<@${hostId}>`,
+    `**主辦人**：${plainifyUserMentions(guild, `<@${hostId}>`)}`,
     `**獎金池**：${prizePool.toLocaleString()} credits`,
     `**已作答人數**：${answerCount} 人`,
   ];
@@ -127,7 +128,7 @@ function buildActiveContainer(quizDoc, { intro = "" } = {}) {
     );
 }
 
-function buildLockedContainer(quizDoc) {
+function buildLockedContainer(quizDoc, guild) {
   const { question, options, prizePool, hostId, answers = {}, lockedAt } = quizDoc;
   const answerCount = Object.keys(answers).length;
 
@@ -150,7 +151,7 @@ function buildLockedContainer(quizDoc) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**主辦人**：<@${hostId}>\n` +
+        `**主辦人**：${plainifyUserMentions(guild, `<@${hostId}>`)}\n` +
           `**獎金池**：${prizePool.toLocaleString()} credits\n` +
           `**已作答人數**：${answerCount} 人\n` +
           (ts
@@ -165,7 +166,7 @@ function buildLockedContainer(quizDoc) {
     );
 }
 
-function buildSettledContainer(quizDoc) {
+function buildSettledContainer(quizDoc, guild) {
   const {
     question,
     options,
@@ -197,12 +198,13 @@ function buildSettledContainer(quizDoc) {
     .join("\n");
 
   const solo = isSolo(quizDoc);
+  const nameOf = (id) => plainifyUserMentions(guild, `<@${id}>`);
   const winnersField = winners.length
     ? winners
         .map((w) =>
           solo
-            ? `🏆 <@${w.userId}> 搶答成功 — ${w.prize.toLocaleString()} credits`
-            : `🎉 <@${w.userId}> — ${w.prize.toLocaleString()} credits`,
+            ? `🏆 ${nameOf(w.userId)} 搶答成功 — ${w.prize.toLocaleString()} credits`
+            : `🎉 ${nameOf(w.userId)} — ${w.prize.toLocaleString()} credits`,
         )
         .join("\n")
     : "（無人答對，獎金已退回主辦人）";
@@ -212,7 +214,7 @@ function buildSettledContainer(quizDoc) {
     : `**得獎者**（每人 ${perWinnerPrize.toLocaleString()} credits）`;
 
   const infoLines = [
-    `**主辦人**：<@${hostId}>`,
+    `**主辦人**：${nameOf(hostId)}`,
     `**原始獎金池**：${prizePool.toLocaleString()} credits`,
   ];
   if (!isPrediction(quizDoc)) infoLines.push(`**模式**：${modeLabel(quizDoc)}`);
@@ -253,7 +255,7 @@ function buildSettledContainer(quizDoc) {
   return container;
 }
 
-function buildCancelledContainer(quizDoc) {
+function buildCancelledContainer(quizDoc, guild) {
   const refundFee = quizDoc.refundFee || 0;
   const refundNet =
     quizDoc.refundNet !== undefined
@@ -261,7 +263,7 @@ function buildCancelledContainer(quizDoc) {
       : Math.max(quizDoc.prizePool - refundFee, 0);
 
   const lines = [
-    `**主辦人**：<@${quizDoc.hostId}>`,
+    `**主辦人**：${plainifyUserMentions(guild, `<@${quizDoc.hostId}>`)}`,
     `**獎金已退還**：${refundNet.toLocaleString()} credits`,
   ];
   if (refundFee > 0) {
@@ -520,7 +522,7 @@ async function createQuiz(client, opts) {
       mode === MODE_SOLO
         ? `📣 新${label}（⚡ 搶答獨佔）！首位答對者獨得 **${prizePool.toLocaleString()}** credits！`
         : `📣 新${label}！答對者平分 **${prizePool.toLocaleString()}** credits 獎金池。`;
-    const container = buildActiveContainer(quizDoc, { intro });
+    const container = buildActiveContainer(quizDoc, { intro, guild });
     for (const row of buildActionRow(quizDoc)) {
       container.addActionRowComponents(row);
     }
@@ -555,22 +557,30 @@ async function refreshQuizMessage(client, quizDoc) {
   const msg = await channel.messages.fetch(quizDoc.messageId).catch(() => null);
   if (!msg) return null;
 
+  const guild = quizDoc.guildId
+    ? client.guilds.cache.get(quizDoc.guildId)
+    : channel.guild || null;
+
   let container;
   if (quizDoc.status === "ACTIVE") {
-    container = buildActiveContainer(quizDoc);
+    container = buildActiveContainer(quizDoc, { guild });
   } else if (quizDoc.status === "LOCKED") {
-    container = buildLockedContainer(quizDoc);
+    container = buildLockedContainer(quizDoc, guild);
   } else if (quizDoc.status === "SETTLED") {
-    container = buildSettledContainer(quizDoc);
+    container = buildSettledContainer(quizDoc, guild);
   } else {
-    container = buildCancelledContainer(quizDoc);
+    container = buildCancelledContainer(quizDoc, guild);
   }
   for (const row of buildActionRow(quizDoc)) {
     container.addActionRowComponents(row);
   }
 
   await msg
-    .edit({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .edit({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { parse: [] },
+    })
     .catch(() => {});
   return msg;
 }
@@ -645,12 +655,13 @@ async function trySettleSoloWinner(client, quizDoc, winnerUserId) {
 
   const msg = await refreshQuizMessage(client, doc);
   if (msg) {
+    const guild = doc.guildId ? client.guilds.cache.get(doc.guildId) : null;
     await msg
       .reply({
         content:
           `🏆 問答「${doc.question}」搶答結束！正確答案：**${doc.correctKey}**\n` +
-          `<@${winnerUserId}> 搶答成功，獨得 **${doc.prizePool.toLocaleString()}** credits！`,
-        allowedMentions: { users: [winnerUserId] },
+          `${plainifyUserMentions(guild, `<@${winnerUserId}>`)} 搶答成功，獨得 **${doc.prizePool.toLocaleString()}** credits！`,
+        allowedMentions: { parse: [] },
       })
       .catch(() => {});
   }
@@ -680,6 +691,7 @@ async function lockQuiz(client, quizDoc, reason = "manual") {
 
   const msg = await refreshQuizMessage(client, doc);
   if (msg) {
+    const guild = doc.guildId ? client.guilds.cache.get(doc.guildId) : null;
     const head = reason === "expired" ? "⏰" : "🔒";
     const tip =
       reason === "expired"
@@ -687,7 +699,8 @@ async function lockQuiz(client, quizDoc, reason = "manual") {
         : "主辦人提早截止作答。";
     await msg
       .reply({
-        content: `${head} 預測「${doc.question}」${tip}\n等待主辦人 <@${doc.hostId}> 公布正確答案。`,
+        content: `${head} 預測「${doc.question}」${tip}\n等待主辦人 ${plainifyUserMentions(guild, `<@${doc.hostId}>`)} 公布正確答案。`,
+        allowedMentions: { parse: [] },
       })
       .catch(() => {});
   }
@@ -798,31 +811,39 @@ async function settleQuiz(client, quizDoc, reason = "manual") {
   const msg = await refreshQuizMessage(client, doc);
 
   if (msg) {
+    const guild = doc.guildId ? client.guilds.cache.get(doc.guildId) : null;
+    const hostLabel = plainifyUserMentions(guild, `<@${doc.hostId}>`);
     const label = kindLabel(doc);
     let summary;
     if (winnerCount === 0) {
       const feeNote =
         refundFee > 0
-          ? `系統抽成 ${refundFee.toLocaleString()} credits，退還主辦人 <@${doc.hostId}> ${refundNet.toLocaleString()} credits。`
-          : `獎金 ${refundNet.toLocaleString()} credits 已退還主辦人 <@${doc.hostId}>。`;
+          ? `系統抽成 ${refundFee.toLocaleString()} credits，退還主辦人 ${hostLabel} ${refundNet.toLocaleString()} credits。`
+          : `獎金 ${refundNet.toLocaleString()} credits 已退還主辦人 ${hostLabel}。`;
       summary =
         `🏁 ${label}「${doc.question}」結束\n` +
         `正確答案：**${doc.correctKey}**\n` +
         `沒有人答對，${feeNote}`;
-      await msg.reply({ content: summary }).catch(() => {});
+      await msg
+        .reply({ content: summary, allowedMentions: { parse: [] } })
+        .catch(() => {});
     } else if (isSolo(doc)) {
-      const mentions = winnerIds.map((id) => `<@${id}>`).join(" ");
+      const names = winnerIds
+        .map((id) => plainifyUserMentions(guild, `<@${id}>`))
+        .join("、");
       summary =
         `🏆 ${label}「${doc.question}」搶答結束！正確答案：**${doc.correctKey}**\n` +
-        `${mentions} 搶答成功，獨得 **${perWinnerPrize.toLocaleString()}** credits！`;
+        `${names} 搶答成功，獨得 **${perWinnerPrize.toLocaleString()}** credits！`;
       await msg
         .reply({
           content: summary,
-          allowedMentions: { users: winnerIds },
+          allowedMentions: { parse: [] },
         })
         .catch(() => {});
     } else {
-      const mentions = winnerIds.map((id) => `<@${id}>`).join(" ");
+      const names = winnerIds
+        .map((id) => plainifyUserMentions(guild, `<@${id}>`))
+        .join("、");
       let leftoverNote = "";
       if (unpaid > 0) {
         leftoverNote =
@@ -832,12 +853,12 @@ async function settleQuiz(client, quizDoc, reason = "manual") {
       }
       summary =
         `🎉 ${label}「${doc.question}」結束！正確答案：**${doc.correctKey}**\n` +
-        `${winnerCount} 人答對，每人獲得 **${perWinnerPrize.toLocaleString()}** credits\n${mentions}` +
+        `${winnerCount} 人答對，每人獲得 **${perWinnerPrize.toLocaleString()}** credits\n${names}` +
         leftoverNote;
       await msg
         .reply({
           content: summary,
-          allowedMentions: { users: winnerIds },
+          allowedMentions: { parse: [] },
         })
         .catch(() => {});
     }

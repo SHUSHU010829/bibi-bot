@@ -48,13 +48,19 @@ function parsePeriodCustomId(customId) {
   return { categoryKey: parts[0], period: parts[1] };
 }
 
+const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
+
 const MEDALS = ["🥇", "🥈", "🥉"];
 
-function renderRows(rows) {
+function plainifyMention(guild, mention) {
+  return plainifyUserMentions(guild, mention);
+}
+
+function renderRows(rows, guild) {
   return rows
     .map((row, idx) => {
       const medal = MEDALS[idx] || `**${idx + 1}.**`;
-      return `${medal} ${row.mention} ・ ${row.detail}`;
+      return `${medal} ${plainifyMention(guild, row.mention)} ・ ${row.detail}`;
     })
     .join("\n");
 }
@@ -89,7 +95,7 @@ function buildPeriodRow(cat, currentPeriod) {
   return new ActionRowBuilder().addComponents(buttons);
 }
 
-function buildContainer({ cat, period, result }) {
+function buildContainer({ cat, period, result, guild }) {
   const container = new ContainerBuilder()
     .setAccentColor(cat.accent)
     .addTextDisplayComponents(
@@ -114,7 +120,7 @@ function buildContainer({ cat, period, result }) {
           ? section.rows
               .map((row, i) => {
                 const medal = row.medal || MEDALS[i] || `**${i + 1}.**`;
-                return `${medal} ${row.mention} ・ ${row.detail}`;
+                return `${medal} ${plainifyMention(guild, row.mention)} ・ ${row.detail}`;
               })
               .join("\n")
           : `-# ${section.emptyHint || "目前還沒有資料"}`;
@@ -132,7 +138,7 @@ function buildContainer({ cat, period, result }) {
     const top3 = result.rows.slice(0, 3);
     const rest = result.rows.slice(3);
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(renderRows(top3))
+      new TextDisplayBuilder().setContent(renderRows(top3, guild))
     );
     if (rest.length > 0) {
       container
@@ -142,7 +148,7 @@ function buildContainer({ cat, period, result }) {
             rest
               .map((row, i) => {
                 const num = i + 3 + 1;
-                return `**${num}.** ${row.mention} ・ ${row.detail}`;
+                return `**${num}.** ${plainifyMention(guild, row.mention)} ・ ${row.detail}`;
               })
               .join("\n")
           )
@@ -191,7 +197,12 @@ async function renderLeaderboard(client, { categoryKey, period, interaction }) {
     result = { rows: [], disabled: "🔧 排行榜載入失敗，請稍後再試。" };
   }
 
-  const container = buildContainer({ cat, period: effPeriod, result });
+  const container = buildContainer({
+    cat,
+    period: effPeriod,
+    result,
+    guild: interaction.guild,
+  });
   const components = [container];
   components.push(buildCategorySelect(cat.key, effPeriod));
   const periodRow = buildPeriodRow(cat, effPeriod);
@@ -200,6 +211,7 @@ async function renderLeaderboard(client, { categoryKey, period, interaction }) {
   return {
     components,
     flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] },
   };
 }
 

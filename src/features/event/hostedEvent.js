@@ -16,6 +16,7 @@ const {
 const grantCoins = require("../economy/grantCoins");
 const { computeRefundFee } = require("../economy/refundFee");
 const { hostedEvents: hostedEventsConfig } = require("../../config");
+const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 
 const EVENT_CHANNEL_ID = hostedEventsConfig?.publishChannelId || "1174352640210124877";
 const MAX_RANK_COUNT = hostedEventsConfig?.maxRankCount || 5;
@@ -27,7 +28,7 @@ function newEventId(hostId) {
   return `evt-${Date.now().toString(36)}-${hostId.slice(-5)}`;
 }
 
-function buildActiveContainer(eventDoc) {
+function buildActiveContainer(eventDoc, guild) {
   const {
     name,
     description,
@@ -40,8 +41,10 @@ function buildActiveContainer(eventDoc) {
     recruitmentClosed,
   } = eventDoc;
 
+  const nameOf = (id) => plainifyUserMentions(guild, `<@${id}>`);
+
   const participantLine = participants.length
-    ? participants.map((id) => `<@${id}>`).join(" ")
+    ? participants.map((id) => nameOf(id)).join("、")
     : "（尚無人報名）";
 
   const capacityLabel = maxParticipants
@@ -68,7 +71,7 @@ function buildActiveContainer(eventDoc) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**主辦人**：<@${hostId}>\n` +
+        `**主辦人**：${nameOf(hostId)}\n` +
           `**獎金池**：${prizePool.toLocaleString()} credits\n` +
           `**名次**：${rankCount} 名\n` +
           `**報名人數**：${capacityLabel}`,
@@ -87,14 +90,16 @@ function buildActiveContainer(eventDoc) {
     );
 }
 
-function buildSettledContainer(eventDoc) {
+function buildSettledContainer(eventDoc, guild) {
   const { name, description, hostId, prizePool, winners = [], totalPaid = 0 } = eventDoc;
   const unpaid = prizePool - totalPaid;
   const medals = ["🥇", "🥈", "🥉", "🏅", "🏅"];
 
+  const nameOf = (id) => plainifyUserMentions(guild, `<@${id}>`);
+
   const winnerLines = winners
     .sort((a, b) => a.rank - b.rank)
-    .map((w) => `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 <@${w.userId}> — ${w.prize.toLocaleString()} credits`)
+    .map((w) => `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${nameOf(w.userId)} — ${w.prize.toLocaleString()} credits`)
     .join("\n");
 
   const refundFee = eventDoc.refundFee || 0;
@@ -114,7 +119,7 @@ function buildSettledContainer(eventDoc) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**主辦人**：<@${hostId}>\n**原始獎金池**：${prizePool.toLocaleString()} credits`,
+        `**主辦人**：${nameOf(hostId)}\n**原始獎金池**：${prizePool.toLocaleString()} credits`,
       ),
     )
     .addTextDisplayComponents(
@@ -143,13 +148,13 @@ function buildSettledContainer(eventDoc) {
   return container;
 }
 
-function buildCancelledContainer(eventDoc) {
+function buildCancelledContainer(eventDoc, guild) {
   const refundFee = eventDoc.refundFee || 0;
   const refundNet =
     eventDoc.refundNet !== undefined ? eventDoc.refundNet : Math.max(eventDoc.prizePool - refundFee, 0);
 
   const lines = [
-    `**主辦人**：<@${eventDoc.hostId}>`,
+    `**主辦人**：${plainifyUserMentions(guild, `<@${eventDoc.hostId}>`)}`,
     `**獎金已退還**：${refundNet.toLocaleString()} credits`,
   ];
   if (refundFee > 0) {
@@ -351,12 +356,13 @@ async function createEvent(client, opts) {
   };
 
   try {
-    const container = buildActiveContainer(eventDoc).addActionRowComponents(
+    const container = buildActiveContainer(eventDoc, guild).addActionRowComponents(
       buildActionRow(eventId),
     );
     const msg = await channel.send({
       components: [container],
       flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { parse: [] },
     });
     eventDoc.messageId = msg.id;
     await client.hostedEventsCollection.insertOne(eventDoc);
@@ -379,22 +385,27 @@ async function refreshEventMessage(client, eventDoc) {
   const msg = await channel.messages.fetch(eventDoc.messageId).catch(() => null);
   if (!msg) return null;
 
+  const guild = eventDoc.guildId
+    ? client.guilds.cache.get(eventDoc.guildId)
+    : channel.guild || null;
+
   let container;
   if (eventDoc.status === "RECRUITING") {
-    container = buildActiveContainer(eventDoc).addActionRowComponents(
+    container = buildActiveContainer(eventDoc, guild).addActionRowComponents(
       buildActionRow(eventDoc.eventId, {
         recruitmentClosed: !!eventDoc.recruitmentClosed,
       }),
     );
   } else if (eventDoc.status === "SETTLED") {
-    container = buildSettledContainer(eventDoc);
+    container = buildSettledContainer(eventDoc, guild);
   } else {
-    container = buildCancelledContainer(eventDoc);
+    container = buildCancelledContainer(eventDoc, guild);
   }
 
   await msg.edit({
     components: [container],
     flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] },
   });
   return msg;
 }
@@ -497,15 +508,18 @@ async function cancelEvent(client, eventDoc, actor, channel) {
   const msg = await refreshEventMessage(client, doc);
 
   if (msg && doc.participants.length > 0) {
-    const mentions = doc.participants.map((id) => `<@${id}>`).join(" ");
+    const guild = doc.guildId ? client.guilds.cache.get(doc.guildId) : null;
+    const names = doc.participants
+      .map((id) => plainifyUserMentions(guild, `<@${id}>`))
+      .join("、");
     const feeNote =
       fee > 0
         ? `（系統抽成 ${fee.toLocaleString()} credits，實際退還 ${net.toLocaleString()}）`
         : "";
     await msg
       .reply({
-        content: `🚫 活動「${doc.name}」已由主辦人取消，獎金已退還。${feeNote}\n${mentions}`,
-        allowedMentions: { users: doc.participants },
+        content: `🚫 活動「${doc.name}」已由主辦人取消，獎金已退還。${feeNote}\n${names}`,
+        allowedMentions: { parse: [] },
       })
       .catch(() => {});
   }
@@ -596,10 +610,11 @@ async function settleEvent(client, eventDoc, picks, prizes) {
   const msg = await refreshEventMessage(client, doc);
 
   if (msg) {
+    const guild = doc.guildId ? client.guilds.cache.get(doc.guildId) : null;
     const medals = ["🥇", "🥈", "🥉", "🏅", "🏅"];
     const lines = winners.map(
       (w) =>
-        `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 <@${w.userId}> — ${w.prize.toLocaleString()} credits`
+        `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${plainifyUserMentions(guild, `<@${w.userId}>`)} — ${w.prize.toLocaleString()} credits`
     );
     let tail = "";
     if (unpaid > 0) {
@@ -611,11 +626,10 @@ async function settleEvent(client, eventDoc, picks, prizes) {
       }
       tail += "）";
     }
-    const winnerIds = winners.map((w) => w.userId);
     await msg
       .reply({
         content: `🏆 活動「${doc.name}」結算完成\n${lines.join("\n")}${tail}`,
-        allowedMentions: { users: winnerIds },
+        allowedMentions: { parse: [] },
       })
       .catch(() => {});
   }
