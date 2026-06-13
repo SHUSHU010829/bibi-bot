@@ -24,7 +24,7 @@ async function runAttack(client, interaction) {
     });
   }
 
-  const count = Math.max(1, Math.min(5, interaction.options.getInteger("次數") ?? 1));
+  const count = Math.max(1, Math.min(5, interaction.options?.getInteger?.("次數") ?? 1));
   const params = {
     userId: interaction.user.id,
     guildId: interaction.guildId,
