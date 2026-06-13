@@ -3,13 +3,29 @@ name: Deploy to VPS
 on:
   push:
     branches:
-      - main          # push 到 main 時觸發,你主分支若叫別的名字要改
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH
+      - name: 記錄開始時間
+        id: start
+        run: echo "time=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: 通知開始部署
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          PAYLOAD=$(jq -n \
+            --arg msg "$COMMIT_MSG" \
+            --arg actor "$ACTOR" \
+            '{embeds:[{title:"🚀 開始部署 bibi-bot",color:3447003,fields:[{name:"Commit",value:$msg},{name:"發起人",value:$actor}]}]}')
+          curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK"
+
+      - name: 透過 SSH 部署
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -20,3 +36,31 @@ jobs:
             git pull origin main
             docker compose up -d --build
             docker image prune -f
+
+      - name: 通知部署成功
+        if: success()
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          DURATION=$(( $(date +%s) - ${{ steps.start.outputs.time }} ))
+          PAYLOAD=$(jq -n \
+            --arg msg "$COMMIT_MSG" \
+            --arg dur "${DURATION} 秒" \
+            '{embeds:[{title:"✅ bibi-bot 部署完成",color:5763719,fields:[{name:"Commit",value:$msg},{name:"耗時",value:$dur}]}]}')
+          curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK"
+
+      - name: 通知部署失敗
+        if: failure()
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          DURATION=$(( $(date +%s) - ${{ steps.start.outputs.time }} ))
+          PAYLOAD=$(jq -n \
+            --arg msg "$COMMIT_MSG" \
+            --arg dur "${DURATION} 秒" \
+            --arg url "$RUN_URL" \
+            '{embeds:[{title:"❌ bibi-bot 部署失敗",color:15548997,fields:[{name:"Commit",value:$msg},{name:"耗時",value:$dur},{name:"查看",value:("[Actions 頁面](" + $url + ")")}]}]}')
+          curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK"
