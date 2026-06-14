@@ -125,7 +125,10 @@ const upgradeBuilding = async (client, { userId, guildId, kind }) => {
   const upd = await client.guildsClubCollection.findOneAndUpdate(
     {
       guild_club_id: club.guild_club_id,
-      [`buildings.${kind}`]: currentLv,
+      // currentLv === 0 時要匹配舊公會「buildings.kind 不存在」的文件
+      $or: currentLv === 0
+        ? [{ [`buildings.${kind}`]: 0 }, { [`buildings.${kind}`]: { $exists: false } }]
+        : [{ [`buildings.${kind}`]: currentLv }],
       treasury_current: { $gte: coinsNeed },
     },
     {
