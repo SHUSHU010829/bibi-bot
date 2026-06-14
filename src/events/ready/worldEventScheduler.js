@@ -86,7 +86,7 @@ function buildOpenContainer(event) {
   c.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`we_view_${event.event_db_id}`)
+        .setCustomId(`we_view|${event.event_db_id}`)
         .setLabel(`查看事件 / 捐獻`)
         .setEmoji("🎁")
         .setStyle(ButtonStyle.Primary)

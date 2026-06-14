@@ -1,15 +1,16 @@
 // 公會擴張系統按鈕處理器：熔爐 / 精煉站 / 公會建築
 //
-// customId 命名（prefix gcx_）：
-//   gcx_forge_pick_<viewerId>_<guildClubId>            — Select 選配方 → 顯示數量面板
-//   gcx_forge_make_<viewerId>_<guildClubId>_<recipeKey>_<qty> — 確認製造
-//   gcx_forge_up_<viewerId>_<guildClubId>              — 升級熔爐
-//   gcx_refinery_up_<viewerId>_<guildClubId>           — 升級精煉站
-//   gcx_forge_back_<guildClubId>                       — 回熔爐主面板
-//   gcx_bld_pick_<viewerId>_<guildClubId>              — Select 選建築 → 顯示確認
-//   gcx_bld_confirm_<viewerId>_<guildClubId>_<kind>    — 確認升級建築
-//   gcx_bld_cancel_<viewerId>                          — 取消
-//   gcx_bld_back_<guildClubId>                         — 回建築主面板
+// customId 命名（dispatch prefix 用 _，欄位分隔用 |，因為 guild_club_id /
+// recipeKey 等本身含 _，無法用 _ 安全分割）：
+//   gcx_forge_pick|<viewerId>|<guildClubId>                       — Select 選配方 → 顯示數量面板
+//   gcx_forge_make|<viewerId>|<guildClubId>|<recipeKey>|<qty>     — 確認製造
+//   gcx_forge_up|<viewerId>|<guildClubId>                         — 升級熔爐
+//   gcx_refinery_up|<viewerId>|<guildClubId>                      — 升級精煉站
+//   gcx_forge_back|<guildClubId>                                  — 回熔爐主面板
+//   gcx_bld_pick|<viewerId>|<guildClubId>                         — Select 選建築 → 顯示確認
+//   gcx_bld_confirm|<viewerId>|<guildClubId>|<kind>               — 確認升級建築
+//   gcx_bld_cancel|<viewerId>                                     — 取消
+//   gcx_bld_back|<guildClubId>                                    — 回建築主面板
 
 require("colors");
 const { MessageFlags } = require("discord.js");
@@ -20,6 +21,8 @@ const buildingService = require("../../features/guild_club/buildingService");
 const warehouseService = require("../../features/guild_club/warehouse/warehouseService");
 const expansionView = require("../../features/guild_club/expansionView");
 const { guildForge } = require("../../config");
+
+const splitId = (id) => id.split("|");
 
 const replyEphem = (interaction, c) =>
   interaction.reply({
@@ -76,9 +79,10 @@ async function renderBuildingsPanel(client, interaction, club) {
 }
 
 async function handleForgePick(client, interaction) {
-  const parts = interaction.customId.split("_");
-  const viewerId = parts[3];
-  const guildClubId = parts[4];
+  // gcx_forge_pick|<viewerId>|<guildClubId>
+  const parts = splitId(interaction.customId);
+  const viewerId = parts[1];
+  const guildClubId = parts[2];
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
@@ -111,11 +115,11 @@ async function handleForgePick(client, interaction) {
 }
 
 async function handleForgeMake(client, interaction) {
-  const parts = interaction.customId.split("_");
-  // gcx_forge_make_<viewerId>_<guildClubId>_<recipeKey>_<qty>
-  const viewerId = parts[3];
-  const recipeKey = parts[5];
-  const qty = parseInt(parts[6], 10);
+  // gcx_forge_make|<viewerId>|<guildClubId>|<recipeKey>|<qty>
+  const parts = splitId(interaction.customId);
+  const viewerId = parts[1];
+  const recipeKey = parts[3];
+  const qty = parseInt(parts[4], 10);
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
@@ -144,8 +148,9 @@ async function handleForgeMake(client, interaction) {
 }
 
 async function handleForgeUpgrade(client, interaction) {
-  const parts = interaction.customId.split("_");
-  const viewerId = parts[3];
+  // gcx_forge_up|<viewerId>|<guildClubId>
+  const parts = splitId(interaction.customId);
+  const viewerId = parts[1];
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
@@ -167,8 +172,9 @@ async function handleForgeUpgrade(client, interaction) {
 }
 
 async function handleRefineryUpgrade(client, interaction) {
-  const parts = interaction.customId.split("_");
-  const viewerId = parts[3];
+  // gcx_refinery_up|<viewerId>|<guildClubId>
+  const parts = splitId(interaction.customId);
+  const viewerId = parts[1];
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
@@ -190,17 +196,19 @@ async function handleRefineryUpgrade(client, interaction) {
 }
 
 async function handleForgeBack(client, interaction) {
-  const parts = interaction.customId.split("_");
-  const guildClubId = parts[3];
+  // gcx_forge_back|<guildClubId>
+  const parts = splitId(interaction.customId);
+  const guildClubId = parts[1];
   const club = await loadClub(client, guildClubId);
   if (!club) return;
   return updateMsg(interaction, await renderForgePanel(client, interaction, club));
 }
 
 async function handleBldPick(client, interaction) {
-  const parts = interaction.customId.split("_");
-  const viewerId = parts[3];
-  const guildClubId = parts[4];
+  // gcx_bld_pick|<viewerId>|<guildClubId>
+  const parts = splitId(interaction.customId);
+  const viewerId = parts[1];
+  const guildClubId = parts[2];
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
@@ -223,10 +231,10 @@ async function handleBldPick(client, interaction) {
 }
 
 async function handleBldConfirm(client, interaction) {
-  const parts = interaction.customId.split("_");
-  // gcx_bld_confirm_<viewerId>_<guildClubId>_<kind>
-  const viewerId = parts[3];
-  const kind = parts[5];
+  // gcx_bld_confirm|<viewerId>|<guildClubId>|<kind>
+  const parts = splitId(interaction.customId);
+  const viewerId = parts[1];
+  const kind = parts[3];
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
@@ -258,8 +266,9 @@ async function handleBldCancel(client, interaction) {
 }
 
 async function handleBldBack(client, interaction) {
-  const parts = interaction.customId.split("_");
-  const guildClubId = parts[3];
+  // gcx_bld_back|<guildClubId>
+  const parts = splitId(interaction.customId);
+  const guildClubId = parts[1];
   const club = await loadClub(client, guildClubId);
   if (!club) return;
   return updateMsg(interaction, await renderBuildingsPanel(client, interaction, club));
@@ -269,6 +278,33 @@ async function handleBldBack(client, interaction) {
 
 function forgeErrorView(result) {
   const r = result.reason;
+  const { guildWarehouse } = require("../../config");
+  const itemName = (id) => guildWarehouse?.items?.[id]?.name || id;
+  if (r === "disabled")
+    return expansionView.buildSimpleError({
+      title: "🔧 熔爐功能未啟用",
+      body: "目前管理員未開啟熔爐 / 精煉站。",
+    });
+  if (r === "invalid_qty")
+    return expansionView.buildSimpleError({
+      title: "❌ 數量無效",
+      body: "製造數量必須是正整數。",
+    });
+  if (r === "not_in_club")
+    return expansionView.buildSimpleError({
+      title: "🏰 你還沒加入公會",
+      body: "熔爐是公會專屬功能，請先 /公會 申請 或 /公會 建立。",
+    });
+  if (r === "club_missing")
+    return expansionView.buildSimpleError({
+      title: "❌ 公會資料異常",
+      body: "你所屬的公會已不存在，請聯絡管理員。",
+    });
+  if (r === "unknown_recipe")
+    return expansionView.buildSimpleError({
+      title: "❌ 不明配方",
+      body: "找不到這個熔爐配方。",
+    });
   if (r === "club_level_locked")
     return expansionView.buildSimpleError({
       title: "🔒 公會等級不足",
@@ -285,6 +321,12 @@ function forgeErrorView(result) {
       title: "🔒 配方未解鎖",
       body: `需熔爐 Lv.${result.needForgeLevel}，目前 Lv.${result.haveForgeLevel}。`,
       hint: "再升一級熔爐就會開放此配方。",
+    });
+  if (r === "not_enough_in_warehouse")
+    return expansionView.buildSimpleError({
+      title: "❌ 公會倉庫材料不足",
+      body: `${itemName(result.item_id)} 在製造過程中被其他成員領走，公會倉庫不夠扣。`,
+      hint: "刷新熔爐畫面看實際剩餘量，再決定要做幾個。",
     });
   if (r === "insufficient_inputs") {
     const lines = result.lacks
@@ -338,6 +380,26 @@ function forgeErrorView(result) {
 
 function buildingErrorView(result) {
   const r = result.reason;
+  if (r === "disabled")
+    return expansionView.buildSimpleError({
+      title: "🔧 公會建築未啟用",
+      body: "目前管理員未開啟此功能。",
+    });
+  if (r === "not_in_club")
+    return expansionView.buildSimpleError({
+      title: "🏰 你還沒加入公會",
+      body: "公會建築是公會專屬功能，請先 /公會 申請 或 /公會 建立。",
+    });
+  if (r === "unknown_kind")
+    return expansionView.buildSimpleError({
+      title: "❌ 不明建築",
+      body: "找不到這個建築類型。",
+    });
+  if (r === "club_missing")
+    return expansionView.buildSimpleError({
+      title: "❌ 公會資料異常",
+      body: "你所屬的公會已不存在，請聯絡管理員。",
+    });
   if (r === "not_manager")
     return expansionView.buildSimpleError({
       title: "❌ 權限不足",
@@ -384,20 +446,23 @@ module.exports = async (client, interaction) => {
   const id = interaction.customId || "";
   if (!id.startsWith("gcx_")) return;
 
+  // dispatch 用 prefix（| 之前的部分）；舊版用 _ 分隔的歷史按鈕也兼容
+  const prefix = id.split("|")[0];
+
   try {
     if (interaction.isStringSelectMenu?.()) {
-      if (id.startsWith("gcx_forge_pick_")) return handleForgePick(client, interaction);
-      if (id.startsWith("gcx_bld_pick_")) return handleBldPick(client, interaction);
+      if (prefix === "gcx_forge_pick") return handleForgePick(client, interaction);
+      if (prefix === "gcx_bld_pick") return handleBldPick(client, interaction);
     }
     if (!interaction.isButton()) return;
 
-    if (id.startsWith("gcx_forge_make_")) return handleForgeMake(client, interaction);
-    if (id.startsWith("gcx_forge_up_")) return handleForgeUpgrade(client, interaction);
-    if (id.startsWith("gcx_refinery_up_")) return handleRefineryUpgrade(client, interaction);
-    if (id.startsWith("gcx_forge_back_")) return handleForgeBack(client, interaction);
-    if (id.startsWith("gcx_bld_confirm_")) return handleBldConfirm(client, interaction);
-    if (id.startsWith("gcx_bld_cancel_")) return handleBldCancel(client, interaction);
-    if (id.startsWith("gcx_bld_back_")) return handleBldBack(client, interaction);
+    if (prefix === "gcx_forge_make") return handleForgeMake(client, interaction);
+    if (prefix === "gcx_forge_up") return handleForgeUpgrade(client, interaction);
+    if (prefix === "gcx_refinery_up") return handleRefineryUpgrade(client, interaction);
+    if (prefix === "gcx_forge_back") return handleForgeBack(client, interaction);
+    if (prefix === "gcx_bld_confirm") return handleBldConfirm(client, interaction);
+    if (prefix === "gcx_bld_cancel") return handleBldCancel(client, interaction);
+    if (prefix === "gcx_bld_back") return handleBldBack(client, interaction);
   } catch (e) {
     console.log(`[GUILD_EXPANSION] ${id} 失敗：${e.stack || e.message}`.red);
     try {

@@ -1,10 +1,10 @@
 // 世界事件按鈕處理器
 //
-// customId prefix: we_
-//   we_view_<eventDbId>                       — 從公告點查看（不限 user）
-//   we_donate_<viewerId>_<eventDbId>          — 開啟捐獻選單
-//   we_pick_<viewerId>_<eventDbId>            — Select 選物品
-//   we_give_<viewerId>_<eventDbId>_<itemId>_<qty> — 確認捐獻
+// customId（dispatch 用 _，欄位用 |，因為 eventDbId / itemId 本身含 _）：
+//   we_view|<eventDbId>                       — 從公告點查看（不限 user）
+//   we_donate|<viewerId>|<eventDbId>          — 開啟捐獻選單
+//   we_pick|<viewerId>|<eventDbId>            — Select 選物品
+//   we_give|<viewerId>|<eventDbId>|<itemId>|<qty> — 確認捐獻
 
 require("colors");
 const { MessageFlags } = require("discord.js");
@@ -12,6 +12,8 @@ const { MessageFlags } = require("discord.js");
 const worldEventService = require("../../features/world_event/worldEventService");
 const worldEventView = require("../../features/world_event/worldEventView");
 const { guildWarehouse } = require("../../config");
+
+const splitId = (id) => id.split("|");
 
 const replyEphem = (interaction, c) =>
   interaction.reply({
@@ -63,7 +65,8 @@ async function getGuildQty(client, userId, guildId, itemId) {
 }
 
 async function handleView(client, interaction) {
-  const eventDbId = interaction.customId.split("_")[2];
+  // we_view|<eventDbId>
+  const eventDbId = splitId(interaction.customId)[1];
   const event = await loadEvent(client, eventDbId);
   if (!event) {
     return replyEphem(
@@ -84,9 +87,10 @@ async function handleView(client, interaction) {
 }
 
 async function handleDonate(client, interaction) {
-  const parts = interaction.customId.split("_");
-  const viewerId = parts[2];
-  const eventDbId = parts[3];
+  // we_donate|<viewerId>|<eventDbId>
+  const parts = splitId(interaction.customId);
+  const viewerId = parts[1];
+  const eventDbId = parts[2];
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
@@ -107,9 +111,10 @@ async function handleDonate(client, interaction) {
 }
 
 async function handlePick(client, interaction) {
-  const parts = interaction.customId.split("_");
-  const viewerId = parts[2];
-  const eventDbId = parts[3];
+  // we_pick|<viewerId>|<eventDbId>
+  const parts = splitId(interaction.customId);
+  const viewerId = parts[1];
+  const eventDbId = parts[2];
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
@@ -141,12 +146,12 @@ async function handlePick(client, interaction) {
 }
 
 async function handleGive(client, interaction) {
-  const parts = interaction.customId.split("_");
-  // we_give_<viewerId>_<eventDbId>_<itemId>_<qty>
-  const viewerId = parts[2];
-  const eventDbId = parts[3];
-  const itemId = parts[4];
-  const qty = parseInt(parts[5], 10);
+  // we_give|<viewerId>|<eventDbId>|<itemId>|<qty>
+  const parts = splitId(interaction.customId);
+  const viewerId = parts[1];
+  const eventDbId = parts[2];
+  const itemId = parts[3];
+  const qty = parseInt(parts[4], 10);
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
@@ -211,14 +216,16 @@ module.exports = async (client, interaction) => {
   const id = interaction.customId || "";
   if (!id.startsWith("we_")) return;
 
+  const prefix = id.split("|")[0];
+
   try {
     if (interaction.isStringSelectMenu?.()) {
-      if (id.startsWith("we_pick_")) return handlePick(client, interaction);
+      if (prefix === "we_pick") return handlePick(client, interaction);
     }
     if (!interaction.isButton()) return;
-    if (id.startsWith("we_view_")) return handleView(client, interaction);
-    if (id.startsWith("we_donate_")) return handleDonate(client, interaction);
-    if (id.startsWith("we_give_")) return handleGive(client, interaction);
+    if (prefix === "we_view") return handleView(client, interaction);
+    if (prefix === "we_donate") return handleDonate(client, interaction);
+    if (prefix === "we_give") return handleGive(client, interaction);
   } catch (e) {
     console.log(`[WORLD_EVENT] ${id} 失敗：${e.stack || e.message}`.red);
   }

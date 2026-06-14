@@ -64,7 +64,7 @@ function buildHomePanel({ viewerId, events }) {
       c.addActionRowComponents(
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId(`we_donate_${viewerId}_${e.event_db_id}`)
+            .setCustomId(`we_donate|${viewerId}|${e.event_db_id}`)
             .setLabel(`捐獻物資`)
             .setEmoji("🎁")
             .setStyle(ButtonStyle.Primary)
@@ -102,7 +102,7 @@ function buildDonatePicker({ viewerId, event }) {
   c.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
-        .setCustomId(`we_pick_${viewerId}_${event.event_db_id}`)
+        .setCustomId(`we_pick|${viewerId}|${event.event_db_id}`)
         .setPlaceholder("選一個要捐的物資")
         .addOptions(opts)
     )
@@ -135,7 +135,7 @@ function buildQtyPicker({ viewerId, event, itemId, maxPersonal, maxGuild }) {
   for (const q of choices) {
     row.addComponents(
       new ButtonBuilder()
-        .setCustomId(`we_give_${viewerId}_${event.event_db_id}_${itemId}_${q}`)
+        .setCustomId(`we_give|${viewerId}|${event.event_db_id}|${itemId}|${q}`)
         .setLabel(`捐 ${q}`)
         .setStyle(q === totalAvail ? ButtonStyle.Success : ButtonStyle.Primary)
     );
