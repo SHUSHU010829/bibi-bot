@@ -2,6 +2,8 @@
   "worldEvents": {
     "enabled": true,
     "concurrent": 1,
+    "announceChannelId": "1511610220856475701",
+    "announceRoleId": "1511642998180544592",
     "donation": {
       "collectWindowHours": 24,
       "buffDurationHours": 24,

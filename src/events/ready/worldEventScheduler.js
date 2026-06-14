@@ -27,6 +27,26 @@ function resolveChannelId() {
     || "";
 }
 
+function resolveRoleId() {
+  return config?.worldEvents?.announceRoleId || "";
+}
+
+// 在 Components v2 訊息中加入 role mention：把 <@&ID> 放進 TextDisplay 並
+// 在 send 時帶 allowedMentions.roles 才會真的 ping（否則只顯示文字不通知）。
+function prependRoleMention(container, roleId) {
+  if (!roleId) return container;
+  // 直接 mutate components 陣列：把第一個 TextDisplay 內容前面加上 ping
+  const comps = container.components || [];
+  for (const comp of comps) {
+    if (comp.data?.type === 10 /* TextDisplay */ || comp.constructor?.name === "TextDisplayBuilder") {
+      const current = comp.data?.content || "";
+      comp.setContent(`<@&${roleId}>\n${current}`);
+      return container;
+    }
+  }
+  return container;
+}
+
 async function claimAnnounce(client, eventDbId, phase) {
   if (!client.worldEventAnnouncementsCollection) return false;
   try {
@@ -113,12 +133,18 @@ function buildEndContainer(event, kind) {
   return c;
 }
 
-async function sendAnnounce(client, channelId, container) {
+async function sendAnnounce(client, channelId, container, { ping = false } = {}) {
   if (!channelId) return;
   const ch = await client.channels.fetch(channelId).catch(() => null);
   if (!ch?.isTextBased?.()) return;
+  const roleId = ping ? resolveRoleId() : "";
+  if (roleId) prependRoleMention(container, roleId);
   await ch
-    .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .send({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: roleId ? { roles: [roleId] } : { parse: [] },
+    })
     .catch((e) => console.log(`[WORLD_EVENT] 公告失敗：${e.message}`.yellow));
 }
 
@@ -127,7 +153,7 @@ async function scanOnce(client) {
   if (!client?.worldEventsCollection) return;
   const channelId = resolveChannelId();
 
-  // 1) 收尾過期事件
+  // 1) 收尾過期事件（結束類公告不 ping，避免擾民）
   const settled = await worldEventService.settleExpired(client).catch(() => ({ transitions: [] }));
   for (const t of settled.transitions || []) {
     const kind = t.from === "buffing" ? "buff_ended" : "collect_failed";
@@ -136,16 +162,16 @@ async function scanOnce(client) {
     }
   }
 
-  // 2) 廣播：新開的 collecting + 新進入的 buffing
+  // 2) 廣播：新開的 collecting + 新進入的 buffing（這兩個值得 ping）
   const active = await worldEventService.getActiveEvents(client);
   for (const e of active) {
     if (e.state === "collecting") {
       if (await claimAnnounce(client, e.event_db_id, "open")) {
-        await sendAnnounce(client, channelId, buildOpenContainer(e));
+        await sendAnnounce(client, channelId, buildOpenContainer(e), { ping: true });
       }
     } else if (e.state === "buffing") {
       if (await claimAnnounce(client, e.event_db_id, "buff_started")) {
-        await sendAnnounce(client, channelId, buildBuffStartContainer(e));
+        await sendAnnounce(client, channelId, buildBuffStartContainer(e), { ping: true });
       }
     }
   }
