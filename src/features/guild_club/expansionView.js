@@ -163,7 +163,7 @@ function buildForgePanel({ viewerId, club, warehouseRows, isManager }) {
       row.addComponents(
         new ButtonBuilder()
           .setCustomId(`gcx_forge_up|${viewerId}|${club.guild_club_id}`)
-          .setLabel(`升級熔爐至 Lv.${nextForge.toLevel}（${nextForge.cost.toLocaleString()} ${COIN_EMOJI}）`)
+          .setLabel(`升級熔爐至 Lv.${nextForge.toLevel}（${nextForge.cost.toLocaleString()} 幣）`)
           .setEmoji("🔥")
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(!canPay)
@@ -176,7 +176,7 @@ function buildForgePanel({ viewerId, club, warehouseRows, isManager }) {
         row.addComponents(
           new ButtonBuilder()
             .setCustomId(`gcx_refinery_up|${viewerId}|${club.guild_club_id}`)
-            .setLabel(`升級精煉站至 Lv.${nextRef.toLevel}（${nextRef.cost.toLocaleString()} ${COIN_EMOJI}）`)
+            .setLabel(`升級精煉站至 Lv.${nextRef.toLevel}（${nextRef.cost.toLocaleString()} 幣）`)
             .setEmoji("⚗️")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(!canPay)
