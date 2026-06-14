@@ -11,6 +11,7 @@ const allEventIds = () => (cfg().events || []).map((e) => e.id);
 const collectWindowMs = () => (cfg().donation?.collectWindowHours || 24) * 3600 * 1000;
 const defaultBuffMs = () => (cfg().donation?.buffDurationHours || 24) * 3600 * 1000;
 const cooldownMs = () => (cfg().donation?.cooldownHours || 168) * 3600 * 1000;
+const globalCooldownMs = () => (cfg().donation?.globalCooldownHours || 72) * 3600 * 1000;
 const concurrent = () => cfg().concurrent || 1;
 
 const newEventDbId = () => `we_${crypto.randomBytes(4).toString("hex")}`;
@@ -46,6 +47,20 @@ async function isOnCooldown(client, eventId) {
   return Date.now() - since < cooldownMs();
 }
 
+// 全域冷卻：任何事件觸發後 globalCooldown 內，所有事件都不能再開
+async function isOnGlobalCooldown(client) {
+  if (!client?.worldEventsCollection) return false;
+  const last = await client.worldEventsCollection
+    .find({})
+    .sort({ started_at: -1 })
+    .limit(1)
+    .toArray()
+    .catch(() => []);
+  if (!last[0]?.started_at) return false;
+  const since = new Date(last[0].started_at).getTime();
+  return Date.now() - since < globalCooldownMs();
+}
+
 // 嘗試開啟事件：(1) 並發上限 (2) 冷卻中 (3) trigger 條件
 // 回傳 { opened: bool, event? } — opened=false 時不報錯，呼叫端決定要不要通知。
 async function tryOpenEvent(client, eventId) {
@@ -59,6 +74,7 @@ async function tryOpenEvent(client, eventId) {
   const collecting = active.filter((e) => e.state === "collecting").length;
   if (collecting >= concurrent()) return { opened: false, reason: "concurrent_full" };
 
+  if (await isOnGlobalCooldown(client)) return { opened: false, reason: "global_cooldown" };
   if (await isOnCooldown(client, eventId)) return { opened: false, reason: "cooldown" };
 
   const now = new Date();
@@ -346,9 +362,11 @@ module.exports = {
   collectWindowMs,
   defaultBuffMs,
   cooldownMs,
+  globalCooldownMs,
   getActiveEvents,
   getCollectingEvent,
   isOnCooldown,
+  isOnGlobalCooldown,
   tryOpenEvent,
   rollTrigger,
   donate,

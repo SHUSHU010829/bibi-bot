@@ -7,7 +7,8 @@
     "donation": {
       "collectWindowHours": 24,
       "buffDurationHours": 24,
-      "cooldownHours": 168
+      "cooldownHours": 168,
+      "globalCooldownHours": 72
     },
     "events": [
       {
