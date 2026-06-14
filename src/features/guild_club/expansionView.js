@@ -88,7 +88,7 @@ function buildForgePanel({ viewerId, club, warehouseRows, isManager }) {
       c.addActionRowComponents(
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId(`gcx_forge_up_${viewerId}_${club.guild_club_id}`)
+            .setCustomId(`gcx_forge_up|${viewerId}|${club.guild_club_id}`)
             .setLabel(canPay ? `建造熔爐（-${next.cost.toLocaleString()}）` : `公會資金不足`)
             .setEmoji("🛠️")
             .setStyle(canPay ? ButtonStyle.Primary : ButtonStyle.Secondary)
@@ -147,7 +147,7 @@ function buildForgePanel({ viewerId, club, warehouseRows, isManager }) {
     c.addActionRowComponents(
       new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
-          .setCustomId(`gcx_forge_pick_${viewerId}_${club.guild_club_id}`)
+          .setCustomId(`gcx_forge_pick|${viewerId}|${club.guild_club_id}`)
           .setPlaceholder("選擇要製造的物品")
           .addOptions(options)
       )
@@ -162,7 +162,7 @@ function buildForgePanel({ viewerId, club, warehouseRows, isManager }) {
       const canPay = (club.treasury_current || 0) >= nextForge.cost;
       row.addComponents(
         new ButtonBuilder()
-          .setCustomId(`gcx_forge_up_${viewerId}_${club.guild_club_id}`)
+          .setCustomId(`gcx_forge_up|${viewerId}|${club.guild_club_id}`)
           .setLabel(`升級熔爐至 Lv.${nextForge.toLevel}（${nextForge.cost.toLocaleString()} ${COIN_EMOJI}）`)
           .setEmoji("🔥")
           .setStyle(ButtonStyle.Secondary)
@@ -175,7 +175,7 @@ function buildForgePanel({ viewerId, club, warehouseRows, isManager }) {
         const canPay = (club.treasury_current || 0) >= nextRef.cost;
         row.addComponents(
           new ButtonBuilder()
-            .setCustomId(`gcx_refinery_up_${viewerId}_${club.guild_club_id}`)
+            .setCustomId(`gcx_refinery_up|${viewerId}|${club.guild_club_id}`)
             .setLabel(`升級精煉站至 Lv.${nextRef.toLevel}（${nextRef.cost.toLocaleString()} ${COIN_EMOJI}）`)
             .setEmoji("⚗️")
             .setStyle(ButtonStyle.Secondary)
@@ -220,7 +220,7 @@ function buildForgeQtyPanel({ viewerId, club, recipeKey, maxQty }) {
   for (const q of choices.slice(0, 5)) {
     row.addComponents(
       new ButtonBuilder()
-        .setCustomId(`gcx_forge_make_${viewerId}_${club.guild_club_id}_${recipeKey}_${q}`)
+        .setCustomId(`gcx_forge_make|${viewerId}|${club.guild_club_id}|${recipeKey}|${q}`)
         .setLabel(`製造 ×${q}`)
         .setStyle(q === maxQty ? ButtonStyle.Success : ButtonStyle.Primary)
     );
@@ -297,7 +297,7 @@ function buildBuildingsPanel({ viewerId, club, warehouseRows, isManager }) {
   if (isManager && upgradeRows.length > 0) {
     // 用 Select 收斂可升級項目，避免按鈕爆量
     const sel = new StringSelectMenuBuilder()
-      .setCustomId(`gcx_bld_pick_${viewerId}_${club.guild_club_id}`)
+      .setCustomId(`gcx_bld_pick|${viewerId}|${club.guild_club_id}`)
       .setPlaceholder("選擇要升級的建築");
     for (const u of upgradeRows.slice(0, 25)) {
       sel.addOptions(
@@ -330,12 +330,12 @@ function buildBuildingConfirmPanel({ viewerId, club, kind, next, cost }) {
   c.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`gcx_bld_confirm_${viewerId}_${club.guild_club_id}_${kind}`)
+        .setCustomId(`gcx_bld_confirm|${viewerId}|${club.guild_club_id}|${kind}`)
         .setLabel(`確認升級`)
         .setEmoji("✅")
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setCustomId(`gcx_bld_cancel_${viewerId}`)
+        .setCustomId(`gcx_bld_cancel|${viewerId}`)
         .setLabel(`取消`)
         .setStyle(ButtonStyle.Secondary)
     )
@@ -371,12 +371,12 @@ function buildForgeSuccess({ club, recipe, qty, outputQty, inputsUsed, discountP
   c.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`gcx_forge_back_${club.guild_club_id}`)
+        .setCustomId(`gcx_forge_back|${club.guild_club_id}`)
         .setLabel(`回熔爐`)
         .setEmoji("🔥")
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
-        .setCustomId(`gcx_bld_back_${club.guild_club_id}`)
+        .setCustomId(`gcx_bld_back|${club.guild_club_id}`)
         .setLabel(`查看建築`)
         .setEmoji("🏗️")
         .setStyle(ButtonStyle.Secondary)
@@ -402,7 +402,7 @@ function buildBuildingUpgradeSuccess({ club, kind, fromLevel, toLevel }) {
   c.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`gcx_bld_back_${club.guild_club_id}`)
+        .setCustomId(`gcx_bld_back|${club.guild_club_id}`)
         .setLabel(`回建築面板`)
         .setEmoji("🏗️")
         .setStyle(ButtonStyle.Primary)
@@ -423,7 +423,7 @@ function buildForgeUpgradeSuccess({ club, target, fromLevel, toLevel }) {
   c.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`gcx_forge_back_${club.guild_club_id}`)
+        .setCustomId(`gcx_forge_back|${club.guild_club_id}`)
         .setLabel(`回熔爐`)
         .setEmoji("🔥")
         .setStyle(ButtonStyle.Primary)
