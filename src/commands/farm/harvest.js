@@ -111,7 +111,10 @@ module.exports = {
         : "";
 
       const lines = [
-        `🌾 收成：**${def.emoji} ${def.name}** ×1`,
+        `🌾 收成：**${def.emoji} ${def.name}** ×${result.harvestCount}` +
+          (result.worldYieldCountBonus > 0
+            ? `（含世界事件 +${result.worldYieldCountBonus} 個）`
+            : ""),
         `💰 賣得金幣：**+${result.coins} 幣** ${yieldText}`,
       ];
       if (result.fertilizers.length > 0) {

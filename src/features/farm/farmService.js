@@ -295,7 +295,7 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
     guildId,
     itemType: "veggie",
     itemId: plot.crop,
-    qty: 1,
+    qty: harvestCount,
     source: "harvest",
   });
   for (const drop of bonusDropsResult) {
@@ -318,6 +318,8 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
     yieldBonus,
     fertBonus,
     foodBonus,
+    harvestCount,
+    worldYieldCountBonus,
     bonusDrops: bonusDropsResult,
     fertilizers: plot.fertilizers || [],
   };
