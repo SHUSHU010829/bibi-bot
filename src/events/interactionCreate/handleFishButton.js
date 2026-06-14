@@ -82,13 +82,17 @@ module.exports = async (client, interaction) => {
       });
 
       const balance = grant?.doc?.totalCoins ?? 0;
+      const granted = grant?.granted ?? total;
+      const bonusLine = granted > total
+        ? `\n-# 含倍率加成（基礎 ${total.toLocaleString()} → 實得 ${granted.toLocaleString()}）`
+        : "";
 
       const container = new ContainerBuilder()
         .setAccentColor(0x2ecc71)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `${fishDef.emoji} **${fishDef.name}** ×${have} 賣出！\n` +
-            `${COIN_EMOJI} **+${total.toLocaleString()} 幣**（單價 ${fishDef.price} 幣）\n` +
+            `${COIN_EMOJI} **+${granted.toLocaleString()} 幣**（單價 ${fishDef.price} 幣）${bonusLine}\n` +
             `餘額：${balance.toLocaleString()} 幣`
           )
         );

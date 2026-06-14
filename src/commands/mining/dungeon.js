@@ -365,6 +365,7 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
             user: interaction.user,
             guildId: interaction.guildId,
             source: "dungeon",
+            qty: result.oreGained.qty || 1,
             fallbackChannel: interaction.channel,
           })
           .catch(() => {});

@@ -58,12 +58,13 @@ async function replyEphemeral(interaction, content) {
 }
 
 // 賭石開出鑽石：比照挖到鑽石的全服公告
-async function announceDiamond(client, interaction) {
+async function announceDiamond(client, interaction, qty) {
   if (!mining?.stoneAppraisal?.announceDiamond) return;
   await diamondAnnouncer.announceDiamond(client, {
     user: interaction.user,
     guildId: interaction.guildId,
     source: "appraise",
+    qty,
     fallbackChannel: interaction.channel,
   });
 }
@@ -249,7 +250,7 @@ async function runAppraisal(client, interaction, { ts, allowOverflow }) {
     });
 
     if (result.gainedDiamond) {
-      await announceDiamond(client, interaction).catch(() => {});
+      await announceDiamond(client, interaction, result.winnings?.diamond || 1).catch(() => {});
     }
 
     trackSuccess("stone-appraise");

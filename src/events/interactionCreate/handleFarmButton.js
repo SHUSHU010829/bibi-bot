@@ -1065,11 +1065,13 @@ module.exports = async (client, interaction) => {
 
       const cropAgg = new Map();
       let totalCoins = 0;
+      let totalWorldBonus = 0;
       const bonusAgg = new Map();
       for (const r of results) {
         totalCoins += r.coins || 0;
+        totalWorldBonus += r.worldYieldCountBonus || 0;
         const entry = cropAgg.get(r.crop) || { def: r.cropDef, count: 0, coins: 0 };
-        entry.count += 1;
+        entry.count += r.harvestCount || 1;
         entry.coins += r.coins || 0;
         cropAgg.set(r.crop, entry);
         for (const d of r.bonusDrops || []) {
@@ -1080,6 +1082,9 @@ module.exports = async (client, interaction) => {
       const cropLines = [...cropAgg.values()].map(
         (e) => `${e.def.emoji} **${e.def.name}** ×${e.count}（+${e.coins.toLocaleString()} 幣）`,
       );
+      if (totalWorldBonus > 0) {
+        cropLines.push(`-# 含世界事件額外產出 +${totalWorldBonus} 個`);
+      }
       const bonusLines = [];
       if (bonusAgg.get("fragment")) bonusLines.push(`✨ 傳說碎片 ×${bonusAgg.get("fragment")}`);
       if (bonusAgg.get("rare_bait")) bonusLines.push(`✨ 稀有魚餌 ×${bonusAgg.get("rare_bait")}`);
@@ -1144,7 +1149,10 @@ module.exports = async (client, interaction) => {
         .map((d) => d.kind === "fragment" ? `✨ 傳說碎片 ×${d.amount}` : `✨ 稀有魚餌 ×${d.amount}`)
         .join("、");
       const body = [
-        `🌾 **${def.emoji} ${def.name}** ×1`,
+        `🌾 **${def.emoji} ${def.name}** ×${result.harvestCount}` +
+          (result.worldYieldCountBonus > 0
+            ? `（含世界事件 +${result.worldYieldCountBonus} 個）`
+            : ""),
         `💰 收益 **+${result.coins} 幣** ${yieldText}`,
         bonusText || null,
       ].filter(Boolean).join("\n");
