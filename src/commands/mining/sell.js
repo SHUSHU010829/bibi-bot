@@ -271,13 +271,18 @@ async function finalizeOreSell(client, interaction, { userId, guildId, itemKey, 
     meta: { ores: [{ ore: itemKey, qty }] },
   });
 
+  const granted = grant?.granted ?? total;
+  const bonusLine = granted > total
+    ? `\n-# 含倍率加成（基礎 ${total.toLocaleString()} → 實得 ${granted.toLocaleString()}）`
+    : "";
+
   const container = new ContainerBuilder()
     .setAccentColor(0x2ecc71)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# ${COIN_EMOJI} 賣出成功\n` +
         `${def.emoji || "⛏️"} **${def.name}** ×${qty} ＠${price.toLocaleString()}${trend}\n` +
-        `→ **+${total.toLocaleString()} ${COIN_EMOJI}**`
+        `→ **+${granted.toLocaleString()} ${COIN_EMOJI}**${bonusLine}`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder())
@@ -317,13 +322,18 @@ async function finalizeFishSell(client, interaction, { userId, guildId, itemKey,
     meta: { fish: itemKey, qty },
   });
 
+  const granted = grant?.granted ?? total;
+  const bonusLine = granted > total
+    ? `\n-# 含倍率加成（基礎 ${total.toLocaleString()} → 實得 ${granted.toLocaleString()}）`
+    : "";
+
   const container = new ContainerBuilder()
     .setAccentColor(0x2ecc71)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# ${COIN_EMOJI} 賣出成功\n` +
         `${def.emoji} **${def.name}** ×${qty} ＠${price.toLocaleString()}${trend}\n` +
-        `→ **+${total.toLocaleString()} ${COIN_EMOJI}**`
+        `→ **+${granted.toLocaleString()} ${COIN_EMOJI}**${bonusLine}`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder())

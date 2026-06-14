@@ -410,6 +410,7 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
   );
 
   let balance = null;
+  let coinsGrantedTotal = coinsGained;
   if (coinsGained > 0) {
     const grant = await grantCoins(client, {
       userId,
@@ -421,6 +422,7 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
       meta: { monster: monster.name, overflow: oreOverflowToCoins || undefined },
     });
     balance = grant?.doc?.totalCoins ?? null;
+    if (grant?.granted) coinsGrantedTotal = grant.granted;
   }
 
   const result = {
@@ -432,7 +434,8 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     atk,
     winRate,
     loot,
-    coinsGained,
+    coinsGained: coinsGrantedTotal,
+    coinsBase: coinsGained,
     oreGained,
     oreOverflowToCoins,
     legendaryGained,
