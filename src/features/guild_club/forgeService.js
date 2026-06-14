@@ -230,7 +230,10 @@ const upgradeForge = async (client, { userId, guildId }) => {
   const upd = await client.guildsClubCollection.findOneAndUpdate(
     {
       guild_club_id: club.guild_club_id,
-      forge_level: currentLv,
+      // currentLv === 0 時也要匹配舊公會「欄位不存在」的文件
+      $or: currentLv === 0
+        ? [{ forge_level: 0 }, { forge_level: { $exists: false } }]
+        : [{ forge_level: currentLv }],
       treasury_current: { $gte: upgrade.cost },
     },
     {
@@ -284,7 +287,9 @@ const upgradeRefinery = async (client, { userId, guildId }) => {
   const upd = await client.guildsClubCollection.findOneAndUpdate(
     {
       guild_club_id: club.guild_club_id,
-      refinery_level: currentLv,
+      $or: currentLv === 0
+        ? [{ refinery_level: 0 }, { refinery_level: { $exists: false } }]
+        : [{ refinery_level: currentLv }],
       treasury_current: { $gte: upgrade.cost },
     },
     {
