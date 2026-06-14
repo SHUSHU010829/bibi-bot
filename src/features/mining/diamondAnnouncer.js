@@ -116,7 +116,7 @@ async function fetchStats(client, { userId, guildId }) {
   };
 }
 
-async function announceDiamond(client, { user, guildId, source = "mine", fallbackChannel } = {}) {
+async function announceDiamond(client, { user, guildId, source = "mine", qty = 1, fallbackChannel } = {}) {
   if (!user || !guildId) return;
   if (!client.miningProfilesCollection || !client.mineLogsCollection) return;
 
@@ -129,6 +129,14 @@ async function announceDiamond(client, { user, guildId, source = "mine", fallbac
   } catch (e) {
     console.log(`[WARN] 鑽石播報統計失敗：${e.message}`.yellow);
     stats = { userDiamonds: 0, userTodayCount: 0, todayCount: 0, serverTotal: 0, hunters: 0, rank: null };
+  }
+
+  // 只有 /挖礦 會把得到的鑽石寫進 mineLogs；賭石 / 地下城 / 突發事件 只更新 lifetime_ore，
+  // 所以「今日累計」要把本次新得到的鑽石補上，否則玩家會看到當下這顆沒被算進去。
+  const addQty = Math.max(0, Number(qty) || 0);
+  if (source !== "mine" && addQty > 0) {
+    stats.userTodayCount += addQty;
+    stats.todayCount += addQty;
   }
 
   const verb = SOURCE_VERBS[source] || SOURCE_VERBS.mine;
