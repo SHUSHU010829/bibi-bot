@@ -18,26 +18,13 @@ const {
 } = require("discord.js");
 const { mining, craft, dungeon, fishing } = require("../../config");
 const craftService = require("../../features/mining/craftService");
+const { materialLabel } = require("../../features/mining/craftMaterials");
 const { useRepairTool } = require("../../features/mining/mineService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
 
 const { TAB_PREFIX, CRAFT_SUB_PREFIX, CRAFT_PREFIX, CONFIRM_PREFIX, CANCEL_PREFIX, REPAIR_TOOL_PREFIX, TABS, CRAFT_SUB_IDS } = workshopView;
-
-function isFishMaterial(mat) {
-  return !!(fishing?.fish && fishing.fish[mat]);
-}
-
-function materialLabel(mat, qty) {
-  if (mat === "legendary_fragment") return `✨ 傳說素材碎片 ×${qty}`;
-  if (isFishMaterial(mat)) {
-    const f = fishing.fish[mat];
-    return `${f.emoji || "🐟"} ${f.name || mat} ×${qty}`;
-  }
-  const def = mining?.ores?.[mat] || mining?.specialOres?.[mat] || {};
-  return `${def.emoji || "⛏️"} ${def.name || mat} ×${qty}`;
-}
 
 function gearLabel(type, id) {
   if (type === "weapon") {

@@ -13,23 +13,13 @@ const {
 
 const { mining, craft, dungeon, fishing } = require("../../config");
 const craftService = require("../../features/mining/craftService");
+const { materialLabel } = require("../../features/mining/craftMaterials");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
 
 function recipeChoices() {
   return (craft?.recipes || []).map((r) => ({ name: r.name, value: r.id }));
-}
-
-// 材料標籤：礦石走 mining.ores，魚走 fishing.fish，傳說碎片走獨立顯示。
-function materialLabel(mat, qty) {
-  if (mat === "legendary_fragment") return `✨ 傳說素材碎片 ×${qty}`;
-  if (fishing?.fish?.[mat]) {
-    const f = fishing.fish[mat];
-    return `${f.emoji || "🐟"} ${f.name || mat} ×${qty}`;
-  }
-  const def = mining?.ores?.[mat] || mining?.specialOres?.[mat] || {};
-  return `${def.emoji || "⛏️"} ${def.name || mat} ×${qty}`;
 }
 
 // 裝備標籤：依類型取鎬子 / 武器 / 釣竿定義。

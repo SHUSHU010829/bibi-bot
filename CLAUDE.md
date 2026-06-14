@@ -66,10 +66,17 @@ Discord bot（discord.js v14，Node 22，MongoDB）。
 
 ### 9. 物品 / 配方 / Buff key 一律中文顯示
 
-- 任何送到 UI 的字串（Container 標題、按鈕 label、Select option name、TextDisplay 內容）**不能出現** `building_material`、`mining_cooldown_pct`、`shark` 這類 snake_case key。
-- 必須查 config 的中文標籤（如 `guildWarehouse.items.building_material.name === "建材"`、`buffLabels.mining_cooldown_pct === "挖礦冷卻"`）。
-- 若 buff key 沒有對應中文標籤，**先加** `src/features/buff/buffLabels.js`（或就近的標籤檔）再用。不要直接 fallback 印 key 名。
+- 任何送到 UI 的字串（Container 標題、按鈕 label、Select option name、TextDisplay 內容）**不能出現** `building_material`、`mining_cooldown_pct`、`shark`、`treasure_map_fragment` 這類 snake_case key。
+- 必須查 config 的中文標籤（如 `guildWarehouse.items.building_material.name === "建材"`、`buffLabels.mining_cooldown_pct === "挖礦冷卻"`、`craft.materials.treasure_map_fragment.name === "藏寶圖碎片"`）。
+- 若 key 沒有對應中文標籤，**先加** config / 就近的標籤檔（buff → `src/features/buff/buffLabels.js`、合成材料 → `src/config/craft.json` 的 `materials`）再用。不要直接 fallback 印 key 名。
 - customId / log 欄位 / DB 欄位 可以維持英文 key（系統內部），但只要會被玩家看到就一定中文。
+
+#### 名稱轉換最常漏的地方（這類 bug 反覆出現，務必逐項檢查）
+
+- **錯誤 / 例外路徑也要轉**：happy path（成功訊息）通常記得轉中文，但「材料不足／庫存不足／冷卻中」這些失敗訊息常常直接內插原始 key（例：`broken_trap_fragment ×5`）。送出前把**每一條**失敗訊息也走一次名稱表。
+- **名稱表只能有一份**：同一種物品的 `materialLabel` / `itemLabel` 不要在 command、view、button handler 各自複製一份——其中一份一定會漏更新而印出英文 id。抽成共用模組（例：合成走 `src/features/mining/craftMaterials.js` 的 `materialLabel`），所有路徑共用。
+- **持有量與標籤同源**：顯示「有 X / 需要 Y」時，持有量查詢（`ownedMaterial`）也要跟標籤走同一份來源；特殊材料（碎片）存在 profile 獨立欄位、不在 backpack，讀錯欄位會永遠顯示 0 而誤判為材料不足。
+- **新增材料同步網站**：bot 新增可被玩家看到的材料時，同步 `bibi-website` 的 `src/lib/dashboard/botDefs.ts`，否則網站 fallback 成 `(id)`。
 
 ---
 

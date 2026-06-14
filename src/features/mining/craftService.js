@@ -1,6 +1,7 @@
 require("colors");
 const { mining, craft, dungeon, fishing } = require("../../config");
 const { getOrCreate } = require("./miningProfile");
+const { SPECIAL_MAT_FIELDS, isFishMaterial, ownedMaterial } = require("./craftMaterials");
 
 // 鎬子 / 武器 / 釣竿階級（用於判定升級 / 同級 / 降級）
 const PICKAXE_TIER = { wood: 0, iron: 1, gold: 2, diamond: 3 };
@@ -14,14 +15,8 @@ const WEAPON_TIER = {
 };
 const ROD_TIER = { bamboo: 0, carbon: 1, gold: 2, mythril: 3 };
 
-// 特殊材料：走獨立 profile 欄位、不在 backpack 內。
+// 傳說碎片 key（對外保留）
 const FRAGMENT_KEY = "legendary_fragment";
-const SPECIAL_MAT_FIELDS = {
-  legendary_fragment: "legendary_fragments",
-  broken_net_fragment: "broken_net_fragments",
-  broken_trap_fragment: "broken_trap_fragments",
-  treasure_map_fragment: "treasure_map_fragments",
-};
 
 function getRecipe(recipeId) {
   return (craft?.recipes || []).find((r) => r.id === recipeId) || null;
@@ -58,18 +53,6 @@ function resolveSlot(type) {
     maxDurabilityField: "pickaxe_max_durability",
     defaultId: "wood",
   };
-}
-
-// 某材料是否為魚（魚走 fish_bag，不在礦石 backpack 內）。
-function isFishMaterial(mat) {
-  return !!(fishing?.fish && fishing.fish[mat]);
-}
-
-// 玩家目前持有某材料的數量（特殊材料走獨立欄位、魚走 fish_bag）。
-function ownedMaterial(profile, mat) {
-  if (SPECIAL_MAT_FIELDS[mat]) return profile[SPECIAL_MAT_FIELDS[mat]] || 0;
-  if (isFishMaterial(mat)) return (profile.fish_bag || {})[mat] || 0;
-  return (profile.backpack || {})[mat] || 0;
 }
 
 // 合成裝備（鎬子 / 武器）。confirm=true 時略過「替換仍可用裝備」的二次確認。

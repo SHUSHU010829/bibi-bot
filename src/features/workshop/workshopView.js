@@ -22,6 +22,7 @@ const {
 
 const { mining, craft, dungeon, fishing } = require("../../config");
 const { getOrCreate } = require("../mining/miningProfile");
+const { ownedMaterial, materialLabel } = require("../mining/craftMaterials");
 const { playerAtk } = require("../mining/dungeonService");
 const {
   getPickaxeRepairCost,
@@ -63,34 +64,6 @@ function weaponLabel(key) {
 function rodLabel(key) {
   const def = (fishing?.rods || {})[key] || {};
   return `${def.emoji || "🎣"} ${def.name || key}`;
-}
-
-function isFishMaterial(mat) {
-  return !!(fishing?.fish && fishing.fish[mat]);
-}
-
-function ownedMaterial(profile, mat) {
-  if (mat === "legendary_fragment") return profile.legendary_fragments || 0;
-  if (isFishMaterial(mat)) return (profile.fish_bag || {})[mat] || 0;
-  return (profile.backpack || {})[mat] || 0;
-}
-
-const SPECIAL_MATERIAL_LABELS = {
-  legendary_fragment: "✨ 傳說素材碎片",
-  broken_net_fragment: "🕸️ 破損漁網碎片",
-  broken_trap_fragment: "🪤 破損陷阱碎片",
-  treasure_map_fragment: "🗺️ 藏寶圖碎片",
-  stone_shard: "🪨 碎石",
-};
-
-function materialLabel(mat) {
-  if (SPECIAL_MATERIAL_LABELS[mat]) return SPECIAL_MATERIAL_LABELS[mat];
-  if (isFishMaterial(mat)) {
-    const f = fishing.fish[mat] || {};
-    return `${f.emoji || "🐟"} ${f.name || mat}`;
-  }
-  const def = mining?.ores?.[mat] || mining?.specialOres?.[mat] || {};
-  return `${def.emoji || "⛏️"} ${def.name || mat}`;
 }
 
 function craftSubRow(userId, currentSub) {
