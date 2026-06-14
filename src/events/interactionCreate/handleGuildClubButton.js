@@ -28,17 +28,60 @@
 require("colors");
 const { MessageFlags } = require("discord.js");
 
+const { guildWarehouse } = require("../../config");
 const guildClubService = require("../../features/guild_club/guildClubService");
 const guildClubMembership = require("../../features/guild_club/guildClubMembership");
 const guildClubQuest = require("../../features/guild_club/guildClubQuest");
 const guildClubView = require("../../features/guild_club/guildClubView");
 const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
+const guildClubContribution = require("../../features/guild_club/guildClubContribution");
+const warehouseService = require("../../features/guild_club/warehouse/warehouseService");
 
 async function loadClubAndMembers(client, guild_club_id) {
   const club = await guildClubService.getClubById(client, guild_club_id);
   if (!club) return null;
   const members = await guildClubService.listMembers(client, guild_club_id);
   return { club, members };
+}
+
+// 統一組出 /公會 資訊 首頁元件，讓各按鈕刷新路徑與 slash 指令呈現一致
+// （建築等級 / 公會材料 / 倉庫摘要 / 功能快捷鈕）。
+async function buildInfoView(client, interaction, { club, members, viewerMembership }) {
+  const isMember =
+    !!viewerMembership && viewerMembership.guild_club_id === club.guild_club_id;
+  const viewerRole = isMember ? viewerMembership.role : null;
+  const isLeader = viewerRole === "leader";
+
+  let warehouseSummary = null;
+  let warehouseInventory = null;
+  if (isMember && (club.level || 1) >= (guildWarehouse?.unlockLevel || 2)) {
+    warehouseSummary = await warehouseService
+      .getSummary(client, club.guild_club_id)
+      .catch(() => null);
+    warehouseInventory = await warehouseService
+      .getInventory(client, club.guild_club_id)
+      .catch(() => []);
+  }
+
+  let pendingApplicationCount = 0;
+  if (isLeader || viewerRole === "vice_leader") {
+    pendingApplicationCount = await client.guildClubApplicationsCollection
+      .countDocuments({ guild_club_id: club.guild_club_id, status: "pending" })
+      .catch(() => 0);
+  }
+
+  return guildClubView.buildInfoContainer({
+    viewerId: interaction.user.id,
+    club,
+    members,
+    isMember,
+    isLeader,
+    viewerRole,
+    warehouseSummary,
+    warehouseInventory,
+    pendingApplicationCount,
+    guild: interaction.guild,
+  });
 }
 
 module.exports = async (client, interaction) => {
@@ -83,6 +126,9 @@ module.exports = async (client, interaction) => {
   }
   if (id.startsWith("gc_view_")) {
     return handleQuickView(client, interaction);
+  }
+  if (id.startsWith("gc_contrib_")) {
+    return handleContributionRank(client, interaction);
   }
   if (id.startsWith("gc_rank_")) {
     return handleQuickRank(client, interaction);
@@ -543,13 +589,69 @@ async function handleQuickView(client, interaction) {
 
   return interaction.editReply({
     components: [
-      guildClubView.buildInfoContainer({
+      await buildInfoView(client, interaction, {
+        club,
+        members,
+        viewerMembership: membership,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+async function handleContributionRank(client, interaction) {
+  const ownerId = interaction.customId.slice("gc_contrib_".length);
+  if (interaction.user.id !== ownerId) {
+    return interaction.reply({
+      content: "🚫 這不是你的查看按鈕！",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const membership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  if (!membership) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "🏰 你還沒加入公會",
+          body: "加入公會後才能查看貢獻排行。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  const club = await guildClubService.getClubById(
+    client,
+    membership.guild_club_id
+  );
+  if (!club) {
+    return interaction.editReply({
+      components: [
+        guildClubView.buildErrorContainer({
+          title: "❌ 公會資料異常",
+          body: "你所屬的公會已不存在。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  const members = await guildClubService.listMembers(client, club.guild_club_id);
+  const weeklyTop = await guildClubContribution
+    .getWeeklyTop(client, club.guild_club_id, 10)
+    .catch(() => []);
+
+  return interaction.editReply({
+    components: [
+      guildClubView.buildContributionRankContainer({
         viewerId: interaction.user.id,
         club,
         members,
-        isMember: true,
-        isLeader: membership.role === "leader",
-        viewerRole: membership.role,
+        weeklyTop,
         guild: interaction.guild,
       }),
     ],
@@ -664,20 +766,12 @@ async function handleViewClub(client, interaction) {
     interaction.user.id,
     interaction.guildId
   );
-  const isMember =
-    !!myMembership && myMembership.guild_club_id === loaded.club.guild_club_id;
-  const viewerRole = isMember ? myMembership.role : null;
-  const isLeader = viewerRole === "leader";
   return interaction.editReply({
     components: [
-      guildClubView.buildInfoContainer({
-        viewerId: interaction.user.id,
+      await buildInfoView(client, interaction, {
         club: loaded.club,
         members: loaded.members,
-        isMember,
-        isLeader,
-        viewerRole,
-        guild: interaction.guild,
+        viewerMembership: myMembership,
       }),
     ],
     flags: MessageFlags.IsComponentsV2,
@@ -759,14 +853,10 @@ async function handleQuickKick(client, interaction) {
     );
     return interaction.editReply({
       components: [
-        guildClubView.buildInfoContainer({
-          viewerId: interaction.user.id,
+        await buildInfoView(client, interaction, {
           club: loaded.club,
           members: loaded.members,
-          isMember: true,
-          isLeader: myMembership?.role === "leader",
-          viewerRole: myMembership?.role || null,
-          guild: interaction.guild,
+          viewerMembership: myMembership,
         }),
       ],
       flags: MessageFlags.IsComponentsV2,
