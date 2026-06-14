@@ -184,41 +184,54 @@ const buildWarehouseContainer = ({
         const personalCap = perTakeMaxFor(it.item_id, club.warehouse_settings);
         const maxTake = Math.min(personalCap, it.available_qty);
         const takeable = maxTake > 0 && !todayItemsTaken.includes(it.item_id);
+        const canConsign = isManager && it.available_qty > 0 && !it.def.craftedOnly;
 
-        const mainText = `${it.def.emoji} **${it.def.name}** ${it.qty} / ${cap}${protTail}`;
-        if (takeable) {
-          container.addSectionComponents(
-            new SectionBuilder()
-              .addTextDisplayComponents(new TextDisplayBuilder().setContent(mainText))
-              .setButtonAccessory(
-                new ButtonBuilder()
-                  .setCustomId(`gcw_takeopen_${viewerId}_${it.item_id}_${maxTake}`)
-                  .setLabel(`領取（≤ ${maxTake}）`)
-                  .setStyle(ButtonStyle.Success)
-              )
-          );
-        } else {
-          let tail = "";
+        let tail = "";
+        if (!takeable) {
           if (todayItemsTaken.includes(it.item_id)) tail = "　-# 今日已領";
           else if (it.available_qty === 0) tail = "　-# 可取 0（保護中）";
-          container.addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(mainText + tail)
+        }
+        const mainText = `${it.def.emoji} **${it.def.name}** ${it.qty} / ${cap}${protTail}${tail}`;
+
+        const buttons = [];
+        if (takeable) {
+          buttons.push(
+            new ButtonBuilder()
+              .setCustomId(`gcw_takeopen_${viewerId}_${it.item_id}_${maxTake}`)
+              .setLabel(`領取（≤ ${maxTake}）`)
+              .setStyle(ButtonStyle.Success)
           );
         }
-
-        if (isManager && it.available_qty > 0 && !it.def.craftedOnly) {
+        if (canConsign) {
           const consignMax = Math.min(
             it.available_qty,
             guildWarehouse?.consignment?.perTakeMaxBackpack || 200
           );
+          buttons.push(
+            new ButtonBuilder()
+              .setCustomId(`gcw_consign_${viewerId}_${it.item_id}_${consignMax}`)
+              .setLabel(`寄售（≤ ${consignMax}）`)
+              .setEmoji("🏰")
+              .setStyle(ButtonStyle.Primary)
+          );
+        }
+
+        if (buttons.length === 1) {
+          container.addSectionComponents(
+            new SectionBuilder()
+              .addTextDisplayComponents(new TextDisplayBuilder().setContent(mainText))
+              .setButtonAccessory(buttons[0])
+          );
+        } else if (buttons.length > 1) {
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(mainText)
+          );
           container.addActionRowComponents(
-            new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setCustomId(`gcw_consign_${viewerId}_${it.item_id}_${consignMax}`)
-                .setLabel(`寄售到市集（≤ ${consignMax}）`)
-                .setEmoji("🏰")
-                .setStyle(ButtonStyle.Primary)
-            )
+            new ActionRowBuilder().addComponents(...buttons)
+          );
+        } else {
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(mainText)
           );
         }
       }
