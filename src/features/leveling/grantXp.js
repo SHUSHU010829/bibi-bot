@@ -33,11 +33,16 @@ module.exports = async (client, opts) => {
   const buffMultiplier = skipMultipliers
     ? 1
     : await getActiveBuffMultiplier(client, opts.userId, opts.guildId, "xp_boost").catch(() => 1);
+  // 世界事件 XP 加成（xp_boost_pct）
+  const worldEventXpMult = skipMultipliers
+    ? 1
+    : require("../world_event/worldEventBuffs").getXpMultiplier();
   const totalMultiplier =
     eventInfo.multiplier *
     twitchInfo.multiplier *
     boostInfo.multiplier *
-    buffMultiplier;
+    buffMultiplier *
+    worldEventXpMult;
   if (totalMultiplier > 1) {
     opts.amount = Math.floor(opts.amount * totalMultiplier);
   }

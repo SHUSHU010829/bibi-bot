@@ -188,6 +188,11 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body };
   }
 
+  // 世界事件觸發 roll：fire-and-forget，不阻塞主流程
+  require("../world_event/worldEventService")
+    .rollTrigger(client, "mining_drop", { ore })
+    .catch(() => {});
+
   bus.emit("mine.done", {
     userId,
     guildId,

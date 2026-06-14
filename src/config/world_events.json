@@ -1,0 +1,127 @@
+{
+  "worldEvents": {
+    "enabled": true,
+    "concurrent": 1,
+    "announceChannelId": "1511610220856475701",
+    "announceRoleId": "1511642998180544592",
+    "donation": {
+      "collectWindowHours": 24,
+      "buffDurationHours": 24,
+      "cooldownHours": 168
+    },
+    "events": [
+      {
+        "id": "mine_disaster",
+        "label": "礦災修復",
+        "emoji": "⛏",
+        "color": 14641196,
+        "description": "礦坑遭遇坍塌，需要全服礦工合力修復。",
+        "trigger": { "kind": "mining_drop", "ore": "gold", "chancePct": 5 },
+        "requirements": { "iron": 80, "coal": 100 },
+        "rewards": { "buffs": { "mining_cooldown_pct": 15 } }
+      },
+      {
+        "id": "fishery_supply",
+        "label": "漁港補給",
+        "emoji": "🎣",
+        "color": 3447003,
+        "description": "漁港物資告急，徵集各類魚貨補給。",
+        "trigger": { "kind": "fish_catch", "fish": "shark", "chancePct": 5 },
+        "requirements": { "crucian": 30, "shark": 20, "lava_fish": 10 },
+        "rewards": { "buffs": { "fishing_success_rate_pct": 10 } }
+      },
+      {
+        "id": "expedition",
+        "label": "遠征軍備戰",
+        "emoji": "⚔️",
+        "color": 15158332,
+        "description": "遠征軍需要金屬與黃金補給才能出征。",
+        "trigger": { "kind": "dungeon_clear", "chancePct": 1 },
+        "requirements": { "iron": 100, "gold": 30 },
+        "rewards": { "buffs": { "dungeon_damage_pct": 10, "dungeon_legendary_drop_pct": 5 } }
+      },
+      {
+        "id": "strawberry_festival",
+        "label": "草莓教祭典",
+        "emoji": "🍓",
+        "color": 16711935,
+        "description": "草莓教信徒徵集祭品，舉行盛大祭典。",
+        "trigger": { "kind": "farm_harvest", "crop": "strawberry", "chancePct": 5 },
+        "requirements": { "strawberry": 100 },
+        "rewards": { "buffs": { "farm_yield_count_bonus": 1, "farm_yield_pct": 30 } },
+        "buffDurationHoursOverride": 48
+      },
+      {
+        "id": "lava_eruption",
+        "label": "熔岩噴發",
+        "emoji": "🌋",
+        "color": 15158332,
+        "description": "火山活躍，貴金屬市價暴漲！集合資源穩住經濟，全服礦石賣價暴升。",
+        "trigger": { "kind": "mining_drop", "ore": "diamond", "chancePct": 8 },
+        "requirements": { "gold": 50, "diamond": 5, "steel_ingot": 10 },
+        "rewards": { "buffs": { "ore_sell_price_pct": 30 } }
+      },
+      {
+        "id": "sea_monster",
+        "label": "海怪傳說",
+        "emoji": "🐙",
+        "color": 3447003,
+        "description": "深海騷動！漁港高價收購所有魚貨抵禦海怪。",
+        "trigger": { "kind": "fish_catch", "fish": "octopus", "chancePct": 5 },
+        "requirements": { "octopus": 30, "lava_fish": 15, "shark": 40 },
+        "rewards": { "buffs": { "fish_sell_price_pct": 35 } }
+      },
+      {
+        "id": "work_frenzy",
+        "label": "打工狂熱週",
+        "emoji": "💼",
+        "color": 16766720,
+        "description": "百業興盛，工廠加班補貼！全服打工金幣大幅提升。",
+        "trigger": { "kind": "dungeon_clear", "chancePct": 2 },
+        "requirements": { "iron": 60, "building_material": 10 },
+        "rewards": { "buffs": { "work_income_pct": 25 } }
+      },
+      {
+        "id": "meteor_shower",
+        "label": "流星雨之夜",
+        "emoji": "⭐",
+        "color": 10181046,
+        "description": "天降流星，礦山產出暴增。全服每次挖礦額外多 1 個礦石。",
+        "trigger": { "kind": "mining_drop", "ore": "iron", "chancePct": 3 },
+        "requirements": { "iron": 80, "stone": 300 },
+        "rewards": { "buffs": { "mining_qty_bonus": 1 } }
+      },
+      {
+        "id": "professor_grant",
+        "label": "博士的研究獎金",
+        "emoji": "🧪",
+        "color": 7506394,
+        "description": "實驗室資助全民研究，所有行動都能多賺經驗值。",
+        "trigger": { "kind": "dungeon_clear", "chancePct": 3 },
+        "requirements": { "steel_ingot": 20, "gold": 40, "diamond": 3 },
+        "rewards": { "buffs": { "xp_boost_pct": 50 } }
+      },
+      {
+        "id": "holy_light",
+        "label": "聖光降臨",
+        "emoji": "☀️",
+        "color": 16777153,
+        "description": "神聖之光復甦全民活力，全服地下城體力上限大增 48h。",
+        "trigger": { "kind": "farm_harvest", "crop": "black_rose", "chancePct": 10 },
+        "requirements": { "black_rose": 3, "diamond": 3 },
+        "rewards": { "buffs": { "dungeon_stamina_max": 3 } },
+        "buffDurationHoursOverride": 48
+      },
+      {
+        "id": "midas_touch",
+        "label": "邁達斯之觸",
+        "emoji": "💰",
+        "color": 16766720,
+        "description": "傳說國王的詛咒復甦，凡採集皆變黃金！地下城戰利金幣大躍升。",
+        "trigger": { "kind": "mining_drop", "ore": "gold", "chancePct": 3 },
+        "requirements": { "gold": 100, "building_material": 20, "steel_ingot": 10 },
+        "rewards": { "buffs": { "dungeon_coin_pct": 50 } }
+      }
+    ]
+  }
+}

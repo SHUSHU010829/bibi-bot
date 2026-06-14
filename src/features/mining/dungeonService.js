@@ -24,14 +24,19 @@ function randInt(min, max) {
   return Math.floor(Math.random() * (hi - lo + 1)) + lo;
 }
 
-function rollLoot(profile) {
+function rollLoot(profile, legendaryDropPct = 0) {
   const table = dungeon?.loot || [];
   const clears = profile?.dungeon_count || 0;
   const weights = {};
   for (const l of table) {
     // 戰利品可設 minDungeonClears 門檻（例如黑玫瑰種子需 30 場通關）
     if (l.minDungeonClears && clears < l.minDungeonClears) continue;
-    weights[l.id] = l.weight;
+    let w = l.weight;
+    // 世界事件「遠征軍備戰」buff：提升傳說碎片相對權重
+    if ((l.kind === "fragment" || l.id === "legendary_fragment") && legendaryDropPct > 0) {
+      w = w * (1 + legendaryDropPct / 100);
+    }
+    weights[l.id] = w;
   }
   const id = weightedRandom(weights);
   return table.find((l) => l.id === id) || { id: "nothing", kind: "nothing" };
@@ -63,9 +68,24 @@ function staminaGuildBonus(club) {
     .reduce((s, b) => s + (b.value || 0), 0);
 }
 
+// 公會建築（訓練場）+ 世界事件 的整數百分比加成。
+function clubBuildingPct(club, type) {
+  if (!club) return 0;
+  const buildingService = require("../guild_club/buildingService");
+  const buffs = buildingService.buildingsBuffs(club);
+  return buffs[type] || 0;
+}
+function worldEventPct(type) {
+  const worldEventBuffs = require("../world_event/worldEventBuffs");
+  return worldEventBuffs.getCachedBuffs()[type] || 0;
+}
+
 function staminaMax(member, club = null) {
   const base = dungeon?.staminaMax ?? 10;
-  return base + staminaBonus(member) + staminaGuildBonus(club);
+  // 世界事件「聖光降臨」等事件可給 dungeon_stamina_max
+  const worldEventBuffs = require("../world_event/worldEventBuffs");
+  const worldStamina = worldEventBuffs.getCachedBuffs().dungeon_stamina_max || 0;
+  return base + staminaBonus(member) + staminaGuildBonus(club) + worldStamina;
 }
 
 // 惰性回復：依離線時間補體力。回傳 { stamina, updatedAt, nextRegenAt }。
@@ -253,7 +273,10 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
   const newUpdatedAt = wasFull ? now : st.updatedAt;
 
   const monster = rollMonster();
-  const atk = playerAtk(profile);
+  // 訓練場 + 世界事件 dungeon_damage_pct 把 atk 拉高（兩者皆是「百分比加成」）
+  const dmgPct = clubBuildingPct(club, "dungeon_damage_pct") + worldEventPct("dungeon_damage_pct");
+  const baseAtk = playerAtk(profile);
+  const atk = Math.floor(baseAtk * (100 + dmgPct) / 100);
   // 赤手空拳也能打，但勝率極低（套較低的天花板、且不吃 winRateMin 保底）；
   // 有武器才適用一般的 winRateMin ~ winRateMax 區間。
   const usingFist = !hasWeapon(profile);
@@ -266,7 +289,10 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
       );
   const weapons = dungeon?.weapons || {};
   const wdef = weapons[profile.weapon] || {};
-  const critRate = wdef.critRate || 0;
+  // 訓練場 crit_rate_pct：整數百分比，疊加在武器 critRate（小數 0.1）之上
+  const baseCritRate = wdef.critRate || 0;
+  const critPct = clubBuildingPct(club, "crit_rate_pct");
+  const critRate = baseCritRate + (critPct / 100);
   const crit = Math.random() < critRate; // 暴擊保證命中要害 → 直接獲勝
   const won = Math.random() < winRate || crit;
 
@@ -316,7 +342,8 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
   let seedGained = null; // { seedKey, qty }
 
   if (won) {
-    loot = rollLoot(profile);
+    const legendaryDropPct = worldEventPct("dungeon_legendary_drop_pct");
+    loot = rollLoot(profile, legendaryDropPct);
     const kind = loot.kind || loot.id;
 
     if (kind === "ore" || loot.id === "ore_fragment") {
@@ -429,6 +456,13 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     weaponDurabilityWarnCrossed,
     foodBuffLines: formatFoodBuffLines(profile, "dungeon"),
   };
+
+  // 世界事件觸發 roll（僅勝利時觸發）：fire-and-forget
+  if (won) {
+    require("../world_event/worldEventService")
+      .rollTrigger(client, "dungeon_clear", {})
+      .catch(() => {});
+  }
 
   bus.emit("dungeon.cleared", {
     userId,

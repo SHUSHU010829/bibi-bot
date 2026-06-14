@@ -1,0 +1,40 @@
+{
+  "guildForge": {
+    "enabled": true,
+    "forge": {
+      "label": "熔爐",
+      "emoji": "🔥",
+      "unlockClubLevel": 4,
+      "maxLevel": 2,
+      "upgrades": [
+        { "fromLevel": 0, "toLevel": 1, "cost": 10000, "unlocks": ["building_material"] },
+        { "fromLevel": 1, "toLevel": 2, "cost": 30000, "unlocks": ["steel_ingot"] }
+      ],
+      "recipes": {
+        "building_material": {
+          "label": "建材",
+          "inputs": { "stone": 30, "coal": 1 },
+          "output": 1,
+          "requiresForgeLevel": 1
+        },
+        "steel_ingot": {
+          "label": "鋼錠",
+          "inputs": { "iron": 20, "coal": 10 },
+          "output": 1,
+          "requiresForgeLevel": 2
+        }
+      }
+    },
+    "refinery": {
+      "label": "精煉站",
+      "emoji": "⚗️",
+      "unlockClubLevel": 5,
+      "maxLevel": 3,
+      "upgrades": [
+        { "fromLevel": 0, "toLevel": 1, "cost": 50000, "discountPct": 10 },
+        { "fromLevel": 1, "toLevel": 2, "cost": 100000, "discountPct": 20 },
+        { "fromLevel": 2, "toLevel": 3, "cost": 150000, "discountPct": 30 }
+      ]
+    }
+  }
+}

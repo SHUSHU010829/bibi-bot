@@ -110,9 +110,12 @@ async function fish(client, { userId, guildId, location = "stream" }) {
   const cap = fishing.successCap ?? 0.95;
   const netActive = (profile.fishing_net_uses || 0) > 0;
   const netBonus = netActive ? (craft?.fishingNet?.successBonus ?? 0.1) : 0;
+  // 世界事件「漁港補給」buff：整數百分比 → 小數
+  const worldEventBuffs = require("../world_event/worldEventBuffs");
+  const worldFishSuccess = (worldEventBuffs.getCachedBuffs().fishing_success_rate_pct || 0) / 100;
   const successRate = Math.min(
     cap,
-    base + (rodDef.successBonus || 0) + (foodFish.success || 0) + netBonus
+    base + (rodDef.successBonus || 0) + (foodFish.success || 0) + netBonus + worldFishSuccess
   );
 
   // 釣魚計次都會消耗一次 fish_fortune（不論成功失敗），手感 buff 是「次數制」
@@ -224,6 +227,12 @@ async function fish(client, { userId, guildId, location = "stream" }) {
     .catch((e) => console.log(`[ERROR] insert fish log: ${e}`.red));
 
   const newFishCountTotal = (profile.fish_count_total || 0) + 1;
+
+  // 世界事件觸發 roll：fire-and-forget
+  require("../world_event/worldEventService")
+    .rollTrigger(client, "fish_catch", { fish: fishKey })
+    .catch(() => {});
+
   bus.emit("fish.done", {
     userId,
     guildId,

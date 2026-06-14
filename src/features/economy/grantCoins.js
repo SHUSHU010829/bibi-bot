@@ -109,7 +109,11 @@ module.exports = async (client, opts) => {
     opts.source === "work" && amount > 0
       ? await getGuildWorkMultiplier(client, opts.userId, opts.guildId).catch(() => 1)
       : 1;
-  const totalMultiplier = baseMultiplier * buffMultiplier * guildWorkMultiplier;
+  // 世界事件金幣加成（依 source 對應的 *_price_pct / income_pct / coin_pct）
+  const worldEventMult = skipMultipliers || amount <= 0
+    ? 1
+    : require("../world_event/worldEventBuffs").getCoinMultiplierForSource(opts.source);
+  const totalMultiplier = baseMultiplier * buffMultiplier * guildWorkMultiplier * worldEventMult;
   if (totalMultiplier > 1 && amount > 0) {
     amount = Math.floor(amount * totalMultiplier);
   }

@@ -28,27 +28,31 @@ const COLOR_ERROR = 0xe74c3c;
 const COLOR_INFO = 0x3498db;
 
 const KIND_LABEL = { backpack: "礦石 / 作物", fish_bag: "魚類" };
-const KIND_ORDER = ["backpack_mining", "backpack_farming", "fish_bag"];
+const KIND_ORDER = ["backpack_mining", "backpack_farming", "fish_bag", "guild_only"];
 
 const groupKey = (id, def) => {
   if (def.kind === "fish_bag") return "fish_bag";
   if (def.kind === "veggie_bag") return "backpack_farming";
+  if (def.kind === "guild_only") return "guild_only";
   return "backpack_mining";
 };
 const GROUP_TITLE = {
   backpack_mining: "⛏️ 礦石",
   backpack_farming: "🌾 作物",
   fish_bag: "🎣 魚類",
+  guild_only: "🧱 公會加工品",
 };
 const GROUP_SHORT = {
   backpack_mining: "礦石",
   backpack_farming: "作物",
   fish_bag: "魚類",
+  guild_only: "加工品",
 };
 const GROUP_EMOJI = {
   backpack_mining: "⛏️",
   backpack_farming: "🌾",
   fish_bag: "🎣",
+  guild_only: "🧱",
 };
 
 const VALID_VIEWS = new Set(["home", ...KIND_ORDER]);
@@ -90,7 +94,7 @@ const buildWarehouseContainer = ({
   const container = new ContainerBuilder().setAccentColor(COLOR_GOLD);
   view = normalizeView(view);
 
-  const groups = { backpack_mining: [], backpack_farming: [], fish_bag: [] };
+  const groups = { backpack_mining: [], backpack_farming: [], fish_bag: [], guild_only: [] };
   for (const it of inventory) groups[groupKey(it.item_id, it.def)].push(it);
 
   const totalValue = inventory.reduce(
@@ -172,7 +176,7 @@ const buildWarehouseContainer = ({
       );
     } else {
       for (const it of visible) {
-        const cap = capacityFor(it.item_id, club.level, club.warehouse_settings);
+        const cap = capacityFor(it.item_id, club.level, club.warehouse_settings, club);
         const protTail =
           it.protected_qty > 0 && it.next_unlock_at
             ? `（${it.protected_qty} 保護中，<t:${Math.floor(it.next_unlock_at / 1000)}:R> 解鎖）`
@@ -202,7 +206,7 @@ const buildWarehouseContainer = ({
           );
         }
 
-        if (isManager && it.available_qty > 0) {
+        if (isManager && it.available_qty > 0 && !it.def.craftedOnly) {
           const consignMax = Math.min(
             it.available_qty,
             guildWarehouse?.consignment?.perTakeMaxBackpack || 200

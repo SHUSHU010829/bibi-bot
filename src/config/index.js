@@ -35,6 +35,9 @@ const coinHistory = require("./coinHistory.json");
 const boss = require("./boss.json");
 const guildClub = require("./guild_club.json");
 const guildWarehouse = require("./guild_warehouse.json");
+const guildForge = require("./guild_forge.json");
+const guildBuildings = require("./guild_buildings.json");
+const worldEvents = require("./world_events.json");
 const survey = require("./survey");
 const gameRoom = require("./gameRoom.json");
 
@@ -74,6 +77,9 @@ module.exports = {
   ...boss,
   ...guildClub,
   ...guildWarehouse,
+  ...guildForge,
+  ...guildBuildings,
+  ...worldEvents,
   ...survey,
   ...gameRoom,
 };

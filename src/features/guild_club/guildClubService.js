@@ -21,6 +21,15 @@ const antiLaunderingCfg = () => guildClub?.antiLaundering || {};
 
 const isManager = (role) => role === "leader" || role === "vice_leader";
 
+// 取得擴充欄位的安全 fallback（舊公會沒有 buildings/forge_level 欄位時用）
+const buildingsOf = (club) => ({
+  mine: club?.buildings?.mine || 0,
+  training: club?.buildings?.training || 0,
+  warehouse: club?.buildings?.warehouse || 0,
+});
+const forgeLevelOf = (club) => club?.forge_level || 0;
+const refineryLevelOf = (club) => club?.refinery_level || 0;
+
 const descriptionMaxLength = () =>
   guildClub?.description?.maxLength || 500;
 
@@ -155,6 +164,9 @@ const create = async (client, { userId, guildId, name, member }) => {
     level: 1,
     max_members: lv1.maxMembers,
     description: null,
+    forge_level: 0,
+    refinery_level: 0,
+    buildings: { mine: 0, training: 0, warehouse: 0 },
     created_at: now,
     disbanded_at: null,
     updated_at: now,
@@ -508,4 +520,7 @@ module.exports = {
   isManager,
   setDescription,
   descriptionMaxLength,
+  buildingsOf,
+  forgeLevelOf,
+  refineryLevelOf,
 };

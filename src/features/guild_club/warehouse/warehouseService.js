@@ -113,6 +113,7 @@ const deposit = async (
   if (!guildWarehouse?.enabled) return { ok: false, reason: "disabled" };
   const def = enriched(itemId);
   if (!def) return { ok: false, reason: "unknown_item" };
+  if (def.craftedOnly) return { ok: false, reason: "crafted_only_no_deposit" };
   if (!Number.isInteger(qty) || qty <= 0)
     return { ok: false, reason: "invalid_qty" };
 
@@ -136,7 +137,7 @@ const deposit = async (
     guild_club_id: m.guild_club_id,
     item_id: itemId,
   });
-  const cap = capacityFor(itemId, club.level, club.warehouse_settings);
+  const cap = capacityFor(itemId, club.level, club.warehouse_settings, club);
   const currentTotal = row?.qty || 0;
   if (currentTotal + qty > cap)
     return {
@@ -253,6 +254,7 @@ const withdraw = async (
   if (!guildWarehouse?.enabled) return { ok: false, reason: "disabled" };
   const def = enriched(itemId);
   if (!def) return { ok: false, reason: "unknown_item" };
+  if (def.craftedOnly) return { ok: false, reason: "crafted_only_no_withdraw" };
   if (!Number.isInteger(qty) || qty <= 0)
     return { ok: false, reason: "invalid_qty" };
 

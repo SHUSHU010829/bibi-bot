@@ -146,6 +146,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   const sum = await buffResolver.summary(client, userId, guildId, member).catch(() => null);
   const guildBossAtkPct = sum?.guildClub?.bossAtkBonus || 0;
   const guildAttackLimitBonus = sum?.guildClub?.bossAttackLimitBonus || 0;
+  // 訓練場 boss_damage_pct（整數百分比）— 與既有 bossAtkPct 並存疊加
+  const guildBossDmgPct = sum?.guildClub?.bossDamagePct || 0;
 
   const attackLimit = (cfg().attackLimitPerPlayer ?? 5) + guildAttackLimitBonus;
   const used = (bossDoc.attack_counts || {})[userId] || 0;
@@ -219,7 +221,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     const comboActive = now < comboActiveUntil;
     const comboMult = comboActive ? (comboCfgVal.bonusMult ?? 1.3) : 1;
     const guildMult = 1 + guildBossAtkPct;
-    damage = Math.max(1, Math.floor(base * (phase.damageMult ?? 1) * streakMult * comboMult * guildMult));
+    const buildingMult = 1 + guildBossDmgPct / 100;
+    damage = Math.max(1, Math.floor(base * (phase.damageMult ?? 1) * streakMult * comboMult * guildMult * buildingMult));
   }
 
   // 體力扣除

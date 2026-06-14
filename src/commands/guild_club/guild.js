@@ -19,6 +19,7 @@ const warehouseView = require("../../features/guild_club/warehouse/warehouseView
 const warehouseSettings = require("../../features/guild_club/warehouse/warehouseSettings");
 const warehouseEligibility = require("../../features/guild_club/warehouse/warehouseEligibility");
 const guildWarehouseListingService = require("../../features/guild_club/warehouse/guildWarehouseListingService");
+const expansionView = require("../../features/guild_club/expansionView");
 
 // 公會指令類別白名單。Thread 走 parent channel 的 parentId（祖父類別）。
 // 空 / 未設定 → 不限制。
@@ -44,6 +45,8 @@ const SUB_WAREHOUSE = "倉庫";
 const SUB_DEPOSIT = "存入";
 const SUB_WITHDRAW = "領取";
 const SUB_CONSIGN = "寄售";
+const SUB_FORGE = "熔爐";
+const SUB_BUILDINGS = "建築";
 
 // 解散 / 踢人 / 轉讓 / 指派副會長 / 撤銷副會長 已合併到 /公會 資訊 的「⚙️ 公會管理」按鈕區。
 
@@ -165,6 +168,12 @@ module.exports = {
         )
     )
     .addSubcommand((sub) =>
+      sub.setName(SUB_FORGE).setDescription("熔爐：用礦石製造建材 / 鋼錠（公會 Lv.4 解鎖）")
+    )
+    .addSubcommand((sub) =>
+      sub.setName(SUB_BUILDINGS).setDescription("公會建築：礦坑 / 訓練場 / 倉庫擴建（Lv.2 解鎖）")
+    )
+    .addSubcommand((sub) =>
       sub
         .setName(SUB_CONSIGN)
         .setDescription("會長 / 副會長把倉庫物資上架到市集（成交金額全額進公會金庫）")
@@ -217,6 +226,7 @@ module.exports = {
       .allItemIds()
       .map((id) => ({ id, def: warehouseSettings.itemDef(id) }))
       .filter(({ id, def }) => {
+        if (def?.craftedOnly) return false; // 建材 / 鋼錠 不能存入 / 領取 / 寄售
         if (term && !id.includes(term) && !def.name.toLowerCase().includes(term))
           return false;
         if (availableMap && (availableMap[id] || 0) <= 0) return false;
@@ -273,6 +283,8 @@ module.exports = {
       if (sub === SUB_DEPOSIT) return runDeposit(client, interaction);
       if (sub === SUB_WITHDRAW) return runWithdraw(client, interaction);
       if (sub === SUB_CONSIGN) return runConsign(client, interaction);
+      if (sub === SUB_FORGE) return runForge(client, interaction);
+      if (sub === SUB_BUILDINGS) return runBuildings(client, interaction);
     } catch (e) {
       console.log(`[GUILD_CLUB] /公會 ${sub} 失敗：${e.stack || e.message}`.red);
       const reply = {
@@ -1210,6 +1222,80 @@ async function runConsign(client, interaction) {
         club: result.club,
         itemDefArg: result.item,
         listing: result.listing,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+// ───────── 熔爐 / 建築 ─────────
+
+async function loadClubForViewer(client, interaction) {
+  const membership = await guildClubService.getMembership(
+    client,
+    interaction.user.id,
+    interaction.guildId
+  );
+  if (!membership) return { ok: false, reason: "not_in_club" };
+  const club = await guildClubService.getClubById(client, membership.guild_club_id);
+  if (!club) return { ok: false, reason: "club_missing" };
+  return { ok: true, club, membership, isManager: guildClubService.isManager(membership.role) };
+}
+
+async function runForge(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const ctx = await loadClubForViewer(client, interaction);
+  if (!ctx.ok) {
+    return interaction.editReply({
+      components: [
+        expansionView.buildSimpleError({
+          title: "🏰 你還沒加入公會",
+          body: "請先 /公會 申請 或 /公會 建立。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  const warehouseRows = await warehouseService
+    .getInventory(client, ctx.club.guild_club_id)
+    .catch(() => []);
+  return interaction.editReply({
+    components: [
+      expansionView.buildForgePanel({
+        viewerId: interaction.user.id,
+        club: ctx.club,
+        warehouseRows,
+        isManager: ctx.isManager,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+async function runBuildings(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const ctx = await loadClubForViewer(client, interaction);
+  if (!ctx.ok) {
+    return interaction.editReply({
+      components: [
+        expansionView.buildSimpleError({
+          title: "🏰 你還沒加入公會",
+          body: "請先 /公會 申請 或 /公會 建立。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  const warehouseRows = await warehouseService
+    .getInventory(client, ctx.club.guild_club_id)
+    .catch(() => []);
+  return interaction.editReply({
+    components: [
+      expansionView.buildBuildingsPanel({
+        viewerId: interaction.user.id,
+        club: ctx.club,
+        warehouseRows,
+        isManager: ctx.isManager,
       }),
     ],
     flags: MessageFlags.IsComponentsV2,

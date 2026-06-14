@@ -173,6 +173,11 @@ module.exports = async (client) => {
     const guildClubWarehouseLogsCollection = database.collection("GuildClubWarehouseLogs");
     const guildClubWarehouseDailyCollection = database.collection("GuildClubWarehouseDaily");
 
+    // 世界事件 collections（全服共同目標）
+    const worldEventsCollection = database.collection("WorldEvents");
+    const worldEventContributionsCollection = database.collection("WorldEventContributions");
+    const worldEventAnnouncementsCollection = database.collection("WorldEventAnnouncements");
+
     // 打工系統 collection（記每位玩家的打工冷卻）
     const workProfilesCollection = database.collection("WorkProfiles");
 
@@ -298,6 +303,9 @@ module.exports = async (client) => {
     client.guildClubWarehouseCollection = guildClubWarehouseCollection;
     client.guildClubWarehouseLogsCollection = guildClubWarehouseLogsCollection;
     client.guildClubWarehouseDailyCollection = guildClubWarehouseDailyCollection;
+    client.worldEventsCollection = worldEventsCollection;
+    client.worldEventContributionsCollection = worldEventContributionsCollection;
+    client.worldEventAnnouncementsCollection = worldEventAnnouncementsCollection;
     client.workProfilesCollection = workProfilesCollection;
     client.duelGamesCollection = duelGamesCollection;
     client.marketListingsCollection = marketListingsCollection;
@@ -1180,6 +1188,40 @@ module.exports = async (client) => {
         { updated_at: 1 },
         { expireAfterSeconds: 7 * 24 * 60 * 60, name: "gcwd_ttl_7d" }
       ).catch((e) => console.log(`[WARN] GuildClubWarehouseDaily TTL: ${e.message}`.yellow));
+
+      // 世界事件索引
+      await worldEventsCollection.createIndex(
+        { event_db_id: 1 },
+        { unique: true, name: "uniq_we_event_db_id" }
+      ).catch((e) => console.log(`[WARN] WorldEvents id: ${e.message}`.yellow));
+      await worldEventsCollection.createIndex(
+        { state: 1, ends_at: 1 },
+        { name: "we_state_ends_at" }
+      ).catch((e) => console.log(`[WARN] WorldEvents state: ${e.message}`.yellow));
+      await worldEventsCollection.createIndex(
+        { event_id: 1, ended_at: -1 },
+        { name: "we_event_ended_at" }
+      ).catch((e) => console.log(`[WARN] WorldEvents cooldown: ${e.message}`.yellow));
+      await worldEventContributionsCollection.createIndex(
+        { event_db_id: 1, created_at: -1 },
+        { name: "wec_event_time" }
+      ).catch((e) => console.log(`[WARN] WorldEventContributions idx: ${e.message}`.yellow));
+      await worldEventContributionsCollection.createIndex(
+        { user_id: 1, created_at: -1 },
+        { name: "wec_user_time" }
+      ).catch((e) => console.log(`[WARN] WorldEventContributions user: ${e.message}`.yellow));
+      await worldEventContributionsCollection.createIndex(
+        { created_at: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "wec_ttl_90d" }
+      ).catch((e) => console.log(`[WARN] WorldEventContributions TTL: ${e.message}`.yellow));
+      await worldEventAnnouncementsCollection.createIndex(
+        { event_db_id: 1, phase: 1 },
+        { unique: true, name: "uniq_wea_event_phase" }
+      ).catch((e) => console.log(`[WARN] WorldEventAnnouncements uniq: ${e.message}`.yellow));
+      await worldEventAnnouncementsCollection.createIndex(
+        { created_at: 1 },
+        { expireAfterSeconds: 30 * 24 * 60 * 60, name: "wea_ttl_30d" }
+      ).catch((e) => console.log(`[WARN] WorldEventAnnouncements TTL: ${e.message}`.yellow));
 
       await fishLogsCollection.createIndex(
         { ts: 1 },
