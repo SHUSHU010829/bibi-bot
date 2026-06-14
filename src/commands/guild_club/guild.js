@@ -13,7 +13,6 @@ const guildClubQuest = require("../../features/guild_club/guildClubQuest");
 const guildClubView = require("../../features/guild_club/guildClubView");
 const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
 const guildClubDm = require("../../features/guild_club/guildClubDm");
-const guildClubContribution = require("../../features/guild_club/guildClubContribution");
 const warehouseService = require("../../features/guild_club/warehouse/warehouseService");
 const warehouseView = require("../../features/guild_club/warehouse/warehouseView");
 const warehouseSettings = require("../../features/guild_club/warehouse/warehouseSettings");
@@ -454,15 +453,16 @@ async function runInfo(client, interaction) {
     !!viewerMembership && viewerMembership.guild_club_id === club.guild_club_id;
   const viewerRole = isMember ? viewerMembership.role : null;
   const isLeader = viewerRole === "leader";
-  const bossContributions = await guildClubContribution
-    .getWeeklyTop(client, club.guild_club_id, 5)
-    .catch(() => []);
 
   let warehouseSummary = null;
+  let warehouseInventory = null;
   if (isMember && (club.level || 1) >= (guildWarehouse?.unlockLevel || 2)) {
     warehouseSummary = await warehouseService
       .getSummary(client, club.guild_club_id)
       .catch(() => null);
+    warehouseInventory = await warehouseService
+      .getInventory(client, club.guild_club_id)
+      .catch(() => []);
   }
 
   let pendingApplicationCount = 0;
@@ -481,8 +481,8 @@ async function runInfo(client, interaction) {
         isMember,
         isLeader,
         viewerRole,
-        bossContributions,
         warehouseSummary,
+        warehouseInventory,
         pendingApplicationCount,
         guild: interaction.guild,
       }),

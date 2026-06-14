@@ -12,9 +12,11 @@ const {
   UserSelectMenuBuilder,
 } = require("discord.js");
 
-const { guildClub } = require("../../config");
+const { guildClub, guildWarehouse, guildBuildings } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
+const buildingService = require("./buildingService");
+const buffLabels = require("../buff/buffLabels");
 
 function nameOf(guild, userId) {
   return plainifyUserMentions(guild, `<@${userId}>`);
@@ -24,7 +26,50 @@ const {
   nextLevelDef,
   maxLevel,
   descriptionMaxLength,
+  buildingsOf,
 } = require("./guildClubService");
+
+// 公會建築帶來的共享 buff（礦坑 / 訓練場…）轉成中文行；走 buffLabels 統一名稱表。
+function buildingBuffLines(club) {
+  if (!guildBuildings?.enabled) return [];
+  const buffs = buildingService.buildingsBuffs(club);
+  return Object.entries(buffs).map(
+    ([type, value]) => `・🏗️ ${buffLabels.formatBuff(type, value)}`
+  );
+}
+
+// 各建築目前等級單行：⛏️ 礦坑 Lv.2/3　🏋️ 訓練場 Lv.1/3　📦 倉庫擴建 Lv.0/5
+function buildingLevelsText(club) {
+  const lv = buildingsOf(club);
+  return buildingService
+    .allKinds()
+    .map((kind) => {
+      const def = buildingService.kindDef(kind);
+      return `${def.emoji} ${def.label} Lv.${lv[kind] || 0}/${def.maxLevel}`;
+    })
+    .join("　");
+}
+
+// 公會倉庫可用材料（建材 / 鋼錠等合成材料優先），全部用中文名 + emoji。
+function materialsText(inventory) {
+  const rows = (inventory || []).filter((r) => (r.available_qty || 0) > 0);
+  if (rows.length === 0) return null;
+  const craftedFirst = (id) =>
+    guildWarehouse?.items?.[id]?.craftedOnly ? 0 : 1;
+  rows.sort(
+    (a, b) =>
+      craftedFirst(a.item_id) - craftedFirst(b.item_id) ||
+      (b.available_qty || 0) - (a.available_qty || 0)
+  );
+  return rows
+    .map((r) => {
+      const def = guildWarehouse?.items?.[r.item_id];
+      const name = def?.name || r.item_id;
+      const emoji = def?.emoji ? `${def.emoji} ` : "";
+      return `${emoji}${name} ×${r.available_qty}`;
+    })
+    .join("・");
+}
 
 const EDIT_DESC_MODAL_PREFIX = "gc_desc_modal_";
 
@@ -54,8 +99,8 @@ function buildInfoContainer({
   isMember,
   isLeader,
   viewerRole,
-  bossContributions,
   warehouseSummary,
+  warehouseInventory,
   pendingApplicationCount,
   guild,
 }) {
@@ -141,15 +186,21 @@ function buildInfoContainer({
 
   container.addSeparatorComponents(new SeparatorBuilder());
 
-  if (def.buffs.length === 0) {
+  const bldBuffLines = buildingBuffLines(club);
+  if (def.buffs.length === 0 && bldBuffLines.length === 0) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`**共享 Buff**\n-# 尚未解鎖`)
     );
   } else {
+    const levelLines = def.buffs.map((b) => `・${formatBuff(b)}`);
+    let buffContent = `**共享 Buff**\n${
+      levelLines.length > 0 ? levelLines.join("\n") : "-# 等級加成尚未解鎖"
+    }`;
+    if (bldBuffLines.length > 0) {
+      buffContent += `\n-# ── 公會建築加成 ──\n${bldBuffLines.join("\n")}`;
+    }
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**共享 Buff**\n${def.buffs.map((b) => `・${formatBuff(b)}`).join("\n")}`
-      )
+      new TextDisplayBuilder().setContent(buffContent)
     );
   }
   const lockedBuffs = collectLockedBuffs(club.level);
@@ -158,6 +209,24 @@ function buildInfoContainer({
       new TextDisplayBuilder().setContent(
         `-# 未解鎖：${lockedBuffs.join("・")}`
       )
+    );
+  }
+
+  if (guildBuildings?.enabled) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    const unlockLv = guildBuildings.unlockClubLevel || 2;
+    let bldContent = `**🏗️ 公會建築**\n${buildingLevelsText(club)}`;
+    if ((club.level || 1) < unlockLv) {
+      bldContent += `\n-# 🔒 公會 Lv.${unlockLv} 解鎖建造（目前 Lv.${club.level || 1}）`;
+    }
+    if (isMember) {
+      const mat = materialsText(warehouseInventory);
+      bldContent += `\n**📦 公會材料**（倉庫可用）\n${
+        mat || "-# 倉庫目前沒有可用材料，用 /公會 存入 補貨。"
+      }`;
+    }
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(bldContent)
     );
   }
 
@@ -198,33 +267,38 @@ function buildInfoContainer({
     container.addTextDisplayComponents(
       warehouseView.buildWarehouseSummaryBlock(warehouseSummary)
     );
-    if (isMember) {
-      container.addActionRowComponents(
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`gcw_refresh_${viewerId}`)
-            .setLabel("開啟倉庫")
-            .setEmoji("📦")
-            .setStyle(ButtonStyle.Primary)
-        )
-      );
-    }
   }
 
-  if (bossContributions && bossContributions.length > 0) {
+  // 成員專屬：各功能快捷按鈕（建築 / 熔爐 / 倉庫 / 排行 / 貢獻排行）。
+  if (isMember) {
     container.addSeparatorComponents(new SeparatorBuilder());
-    const lines = bossContributions.slice(0, 5).map((c, i) => {
-      const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
-      return `${medal} ${nameOf(guild, c.userId)}　${(c.weeklyContribution || 0).toLocaleString()} 點`;
-    });
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**🐉 本週 BOSS 貢獻 Top 5**\n${lines.join("\n")}`
-      )
-    );
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# 每場 BOSS 結算時，依造成傷害換算成貢獻點。`
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`gcx_bld_back|${club.guild_club_id}`)
+          .setLabel("建築")
+          .setEmoji("🏗️")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`gcx_forge_back|${club.guild_club_id}`)
+          .setLabel("熔爐")
+          .setEmoji("🔥")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`gcw_refresh_${viewerId}`)
+          .setLabel("倉庫")
+          .setEmoji("📦")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`gc_rank_${viewerId}`)
+          .setLabel("公會排行")
+          .setEmoji("🏆")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`gc_contrib_${viewerId}`)
+          .setLabel("貢獻排行")
+          .setEmoji("📊")
+          .setStyle(ButtonStyle.Secondary)
       )
     );
   }
@@ -1019,6 +1093,82 @@ function buildTransferConfirmContainer({ viewerId, club, targetId }) {
     );
 }
 
+function buildContributionRankContainer({
+  viewerId,
+  club,
+  members,
+  weeklyTop,
+  guild,
+}) {
+  const container = new ContainerBuilder().setAccentColor(COLOR_GOLD);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`# 📊 「${club.name}」貢獻排行`)
+  );
+
+  const contributionOf = (m) =>
+    (m.total_donated || 0) + (m.warehouse_donated_value || 0);
+  const sorted = [...(members || [])]
+    .sort((a, b) => contributionOf(b) - contributionOf(a))
+    .slice(0, 10);
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+  if (sorted.length === 0 || contributionOf(sorted[0]) === 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**🏅 累積貢獻（捐款＋倉庫存入）**\n-# 尚無貢獻紀錄，去 /公會 捐款 或 /公會 存入 累積吧。`
+      )
+    );
+  } else {
+    const lines = sorted.map((m, i) => {
+      const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
+      const mark = m.userId === viewerId ? "👉 " : "";
+      return `${mark}${medal} ${nameOf(guild, m.userId)}　${contributionOf(m).toLocaleString()}`;
+    });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**🏅 累積貢獻（捐款＋倉庫存入）**\n${lines.join("\n")}`
+      )
+    );
+  }
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+  if (weeklyTop && weeklyTop.length > 0) {
+    const lines = weeklyTop.slice(0, 10).map((c, i) => {
+      const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
+      const mark = c.userId === viewerId ? "👉 " : "";
+      return `${mark}${medal} ${nameOf(guild, c.userId)}　${(c.weeklyContribution || 0).toLocaleString()} 點`;
+    });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**🐉 本週 BOSS 貢獻**\n${lines.join("\n")}`
+      )
+    );
+  } else {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**🐉 本週 BOSS 貢獻**\n-# 本週尚無 BOSS 貢獻紀錄。`
+      )
+    );
+  }
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# 累積貢獻影響倉庫領取資格與解散分配；BOSS 貢獻每週重置。`
+    )
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`gc_view_${viewerId}`)
+        .setLabel("回公會首頁")
+        .setEmoji("🏰")
+        .setStyle(ButtonStyle.Secondary)
+    )
+  );
+  return container;
+}
+
 function buildErrorContainer({ title, body, hint }) {
   const c = new ContainerBuilder()
     .setAccentColor(COLOR_ERROR)
@@ -1050,6 +1200,7 @@ module.exports = {
   buildQuestClaimSuccessContainer,
   buildLeaderboardContainer,
   buildQuestRewardAnnouncementContainer,
+  buildContributionRankContainer,
   buildErrorContainer,
   buildEditDescriptionModal,
   buildDescriptionUpdatedContainer,
