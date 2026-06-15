@@ -12,7 +12,7 @@
       "diamond": { "name": "鑽石", "emoji": "<:ore_diamond:1509064761709559818>", "rarity": "傳說", "weight": 1, "luckFactor": 2, "price": 800, "minQty": 1, "maxQty": 1 }
     },
     "specialOres": {
-      "stone_shard": { "name": "碎石", "emoji": "🥌", "price": 0 }
+      "stone_shard": { "name": "碎石", "emoji": "<:crack_stone:1516020350033461348>", "price": 0 }
     },
     "pickaxes": {
       "wood": { "name": "木鎬", "emoji": "<:pickaxe_wood:1509061543055331338>", "cdReductionMs": 0, "luckBonus": 0, "qtyBonus": 0, "durability": null },
