@@ -244,10 +244,12 @@ async function runAppraisal(client, interaction, { ts, allowOverflow }) {
       ),
     );
 
-    await interaction.editReply({
+    // 賭石結果改為公開訊息（行動類），把原本 ephemeral 的等待訊息收掉。
+    await interaction.followUp({
       components: [container],
       flags: MessageFlags.IsComponentsV2,
     });
+    await interaction.deleteReply().catch(() => {});
 
     if (result.gainedDiamond) {
       await announceDiamond(client, interaction, result.winnings?.diamond || 1).catch(() => {});
