@@ -244,12 +244,23 @@ async function runAppraisal(client, interaction, { ts, allowOverflow }) {
       ),
     );
 
-    // 賭石結果改為公開訊息（行動類），把原本 ephemeral 的等待訊息收掉。
-    await interaction.followUp({
-      components: [container],
-      flags: MessageFlags.IsComponentsV2,
-    });
-    await interaction.deleteReply().catch(() => {});
+    // 賭石結果改為公開訊息（行動類）。
+    // 注意：ephemeral defer 之後的 followUp 會被 Discord 強制沿用 ephemeral，
+    // 無法靠拿掉 flag 變公開；改用 channel.send 直接送一則正常公開訊息，
+    // 再把 ephemeral 的等待訊息收掉。
+    const publicTarget = interaction.channel;
+    if (publicTarget?.send) {
+      await publicTarget.send({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      await interaction.deleteReply().catch(() => {});
+    } else {
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
 
     if (result.gainedDiamond) {
       await announceDiamond(client, interaction, result.winnings?.diamond || 1).catch(() => {});
