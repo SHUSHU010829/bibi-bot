@@ -10,6 +10,8 @@ const { getOrCreate } = require("../../features/mining/miningProfile");
 const farmService = require("../../features/farm/farmService");
 const { buildFarmContainer } = require("../../features/farm/farmView");
 const { resolveStamina, staminaMax, getMemberClub } = require("../../features/mining/dungeonService");
+const worldEventBuffs = require("../../features/world_event/worldEventBuffs");
+const { getFoodFarmYieldBonus } = require("../../features/fishing/cookService");
 
 const harvestCmd = require("./harvest");
 const fertilizeCmd = require("./fertilize");
@@ -89,6 +91,9 @@ module.exports = {
       const sMax = staminaMax(interaction.member, club);
       const stamina = resolveStamina(profile, sMax).stamina;
 
+      const worldYieldPct = (worldEventBuffs.getCachedBuffs().farm_yield_pct || 0) / 100;
+      const foodYieldPct = getFoodFarmYieldBonus(profile);
+
       const container = buildFarmContainer({
         plots,
         userId,
@@ -97,6 +102,8 @@ module.exports = {
         stamina,
         trapBlocksRemaining,
         trapBlocksUsedThisOpen,
+        foodYieldPct,
+        worldYieldPct,
       });
 
       await interaction.editReply({

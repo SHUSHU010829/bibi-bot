@@ -100,7 +100,7 @@ function plotButtonRow(plot, userId, { stamina } = {}) {
 }
 
 // 主畫面：每塊地一個獨立區塊 + 緊接該地塊的 ActionRow（符合 UX 規則 #1）
-function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapBlocksRemaining, trapBlocksUsedThisOpen }) {
+function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapBlocksRemaining, trapBlocksUsedThisOpen, foodYieldPct = 0, worldYieldPct = 0 }) {
   const now = Date.now();
   const resolvedPlots = plots.map((p) => resolveLiveStatus(p, now));
   const readyCount = resolvedPlots.filter((p) => p.status === "ready").length;
@@ -114,6 +114,17 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapB
         `# 🌾 你的農場（${plotCount} / ${maxPlots} 格${readyCount > 0 ? ` ・ 🌟 ${readyCount} 塊可收成` : ""}）`,
       ),
     );
+
+  if (foodYieldPct > 0 || worldYieldPct > 0) {
+    const parts = [];
+    if (foodYieldPct > 0) parts.push(`🍱 食物 +${Math.round(foodYieldPct * 100)}%`);
+    if (worldYieldPct > 0) parts.push(`🌍 世界活動 +${Math.round(worldYieldPct * 100)}%`);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 全農場收成加成（疊加在地塊肥料 % 之上）：${parts.join("　・　")}`,
+      ),
+    );
+  }
 
   if ((trapBlocksRemaining || 0) > 0 || (trapBlocksUsedThisOpen || 0) > 0) {
     const lines = [];
