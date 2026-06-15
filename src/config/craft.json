@@ -161,7 +161,7 @@
       "broken_net_fragment": { "name": "破損漁網碎片", "emoji": "🕸️" },
       "broken_trap_fragment": { "name": "破損陷阱碎片", "emoji": "🪤" },
       "treasure_map_fragment": { "name": "藏寶圖碎片", "emoji": "🗺️" },
-      "stone_shard": { "name": "碎石", "emoji": "🪨" }
+      "stone_shard": { "name": "碎石", "emoji": "<:crack_stone:1516020350033461348>" }
     },
     "advancedTrap": {
       "blocksPerCraft": 4,

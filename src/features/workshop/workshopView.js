@@ -330,7 +330,7 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `### 🪨 賭石碎石回收（持有碎石 **${shardCount}**）\n-# 合成完立刻觸發賭石，10 分鐘內按「立刻賭石」開出，過期就失效`,
+            `### <:crack_stone:1516020350033461348> 賭石碎石回收（持有碎石 **${shardCount}**）\n-# 合成完立刻觸發賭石，10 分鐘內按「立刻賭石」開出，過期就失效`,
           ),
         );
       craftableSection(container, appraisalTriggers, profile, "stone_appraisal_trigger", userId);

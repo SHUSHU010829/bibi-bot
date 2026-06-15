@@ -386,7 +386,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         { emoji: "🪨", name: "劣質磨鎬石", qty: inferiorCount },
         { emoji: "🧪", name: "體力藥水", qty: staminaPotionCount },
         { emoji: "✨", name: "傳說素材碎片", qty: fragments },
-        { emoji: "🥌", name: "碎石", qty: stoneShards },
+        { emoji: "<:crack_stone:1516020350033461348>", name: "碎石", qty: stoneShards },
         { emoji: "🪡", name: "漁網碎片", qty: netFrags },
         { emoji: "🪛", name: "陷阱碎片", qty: trapFrags },
         { emoji: "📜", name: "藏寶圖碎片", qty: mapFrags },
@@ -526,8 +526,8 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       const explorerZero = [];
       if (mapFrags > 0) explorerLines.push(`📜 **藏寶圖碎片** ×${mapFrags} / 6\n-# 集滿到工坊合成藏寶圖`);
       else explorerZero.push("📜 藏寶圖碎片");
-      if (stoneShards > 0) explorerLines.push(`🥌 **碎石** ×${stoneShards}\n-# 5 個合成劣質賭石、10 個合成優質賭石`);
-      else explorerZero.push("🥌 碎石");
+      if (stoneShards > 0) explorerLines.push(`<:crack_stone:1516020350033461348> **碎石** ×${stoneShards}\n-# 5 個合成劣質賭石、10 個合成優質賭石`);
+      else explorerZero.push("<:crack_stone:1516020350033461348> 碎石");
       if (netFrags > 0) explorerLines.push(`🪡 **損壞的漁網碎片** ×${netFrags}\n-# 5 個合成 1 張撈網（+10% 釣魚成功率 / 3 次）`);
       else explorerZero.push("🪡 漁網碎片");
       if (trapFrags > 0) explorerLines.push(`🪛 **損壞的陷阱碎片** ×${trapFrags}\n-# 5 個合成 1 張高級陷阱（被動抵擋 4 次 raid）`);
