@@ -231,6 +231,9 @@ module.exports = async (client) => {
     // 通用流水號計數器（_id 例：gameRoom:<guildId>）
     const countersCollection = database.collection("Counters");
 
+    // 周表 RSS 已貼文記錄（避免同一篇貼文重複貼到同一個 thread）
+    const rssWeeklyPostsCollection = database.collection("RssWeeklyPosts");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -325,6 +328,7 @@ module.exports = async (client) => {
     client.surveyResponsesCollection = surveyResponsesCollection;
     client.gameRoomsCollection = gameRoomsCollection;
     client.countersCollection = countersCollection;
+    client.rssWeeklyPostsCollection = rssWeeklyPostsCollection;
 
     // 抖內系統索引
     // - code unique：用於 webhook 對應 session
@@ -509,6 +513,21 @@ module.exports = async (client) => {
       )
       .catch((e) =>
         console.log(`[WARN] EventAnnouncements index 建立失敗：${e.message}`.yellow),
+      );
+
+    // 周表 RSS 已貼文記錄：同 feed × 同貼文 × 同 thread 唯一（跨週貼兩個 thread 各記一筆）
+    await rssWeeklyPostsCollection
+      .createIndex(
+        { feedId: 1, itemKey: 1, threadId: 1 },
+        { unique: true, name: "uniq_weekly_post_thread" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] RssWeeklyPosts uniq index 建立失敗：${e.message}`.yellow),
+      );
+    await rssWeeklyPostsCollection
+      .createIndex({ weekStart: 1 }, { name: "weekly_post_weekStart" })
+      .catch((e) =>
+        console.log(`[WARN] RssWeeklyPosts weekStart index 建立失敗：${e.message}`.yellow),
       );
     await eventAnnouncementsCollection
       .createIndex(
