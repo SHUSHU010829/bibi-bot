@@ -24,7 +24,7 @@ const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
 
-const { TAB_PREFIX, CRAFT_SUB_PREFIX, CRAFT_PREFIX, CONFIRM_PREFIX, CANCEL_PREFIX, REPAIR_TOOL_PREFIX, TABS, CRAFT_SUB_IDS } = workshopView;
+const { TAB_PREFIX, CRAFT_SUB_PREFIX, CRAFT_PREFIX, CRAFT_ALL_PREFIX, CONFIRM_PREFIX, CANCEL_PREFIX, REPAIR_TOOL_PREFIX, TABS, CRAFT_SUB_IDS } = workshopView;
 
 function gearLabel(type, id) {
   if (type === "weapon") {
@@ -104,7 +104,7 @@ function buildSuccessContainer(result, userId) {
     tail = `**效果**　+${result.usesAdded} 次撈網使用次數\n**目前累計可用**　${result.usesTotal} 次\n-# 下次 /釣魚 自動套用 +10% 成功率`;
   } else if (isAppraisalTrigger) {
     const qualityTxt = result.quality === "high" ? "優質（diamond 機率 ×2.5）" : "劣質（與普通賭石同表）";
-    tail = `**已觸發**　${qualityTxt}\n-# 10 分鐘內按「立刻賭石」開出，過期就失效（不退碎石）`;
+    tail = `**已觸發**　${qualityTxt} ×${result.appraiseQty || 1} 顆\n-# 10 分鐘內按「立刻賭石」一次開出全部，過期就失效（不退碎石）`;
   } else if (isAdvancedTrap) {
     const dropped = (result.blocksAdded < (craft?.advancedTrap?.blocksPerCraft ?? 4));
     tail = `**效果**　+${result.blocksAdded} 次被動抵擋\n**目前保護**　${result.blocksAfter} / ${result.maxStack} 次`
@@ -334,6 +334,50 @@ module.exports = async (client, interaction) => {
       postCraftSideEffects(client, interaction);
     } catch (err) {
       console.log(`[ERROR] wsCraft handler:\n${err}\n${err.stack}`.red);
+    }
+    return;
+  }
+
+  // 合成全部：把現有碎石一次換成多顆賭石（僅 stone_appraisal_trigger 用得到）。
+  if (customId.startsWith(CRAFT_ALL_PREFIX)) {
+    const { ownerId, payload: recipeId } = parseOwnerAndPayload(customId, CRAFT_ALL_PREFIX);
+    if (interaction.user.id !== ownerId) {
+      return interaction.reply({
+        content: "❌ 這不是你的工坊！",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    if (!craft?.recipes?.some((r) => r.id === recipeId)) return;
+    await interaction.deferUpdate();
+    try {
+      const result = await craftService.craftItem(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        recipeId,
+        craftAll: true,
+      });
+      if (!result.ok && result.reason === "insufficient") {
+        await interaction.followUp({
+          components: [buildInsufficientContainer(result)],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!result.ok) {
+        await interaction.followUp({
+          content: "🔧 合成失敗，請稍後再試。",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      await interaction.followUp({
+        components: [buildSuccessContainer(result, interaction.user.id)],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+      await refreshWorkshop(client, interaction, "craft", craftSubForRecipe(recipeId)).catch(() => {});
+      postCraftSideEffects(client, interaction);
+    } catch (err) {
+      console.log(`[ERROR] wsCraftAll handler:\n${err}\n${err.stack}`.red);
     }
     return;
   }
