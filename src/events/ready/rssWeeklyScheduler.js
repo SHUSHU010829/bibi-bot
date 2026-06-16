@@ -13,17 +13,19 @@ module.exports = async (client) => {
     return;
   }
 
-  registerCron(client, {
-    name: "rssWeeklyThreads.poll",
-    label: "周表 RSS 巡檢",
-    schedule: rssWeeklySchedule.pollCron,
-    timezone: rssWeeklySchedule.timezone,
-    runner: () => runWeeklyPoll(client),
-  });
+  if (rssWeeklySchedule.pollEnabled) {
+    registerCron(client, {
+      name: "rssWeeklyThreads.poll",
+      label: "周表 RSS 巡檢",
+      schedule: rssWeeklySchedule.pollCron,
+      timezone: rssWeeklySchedule.timezone,
+      runner: () => runWeeklyPoll(client),
+    });
+  }
 
   registerCron(client, {
     name: "rssWeeklyThreads.create",
-    label: "周表預建討論串（每週五）",
+    label: "周表預建討論串（每週三）",
     schedule: rssWeeklySchedule.createThreadCron,
     timezone: rssWeeklySchedule.timezone,
     runner: () => ensureUpcomingWeeklyThread(client),

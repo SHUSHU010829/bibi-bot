@@ -1,10 +1,11 @@
 {
   "rssWeeklySchedule": {
     "enabled": true,
+    "pollEnabled": false,
     "channelId": "1183434782005268520",
     "timezone": "Asia/Taipei",
     "pollCron": "*/10 * * * *",
-    "createThreadCron": "0 9 * * 5",
+    "createThreadCron": "0 9 * * 3",
     "threadAutoArchiveMinutes": 10080,
     "threadNamePrefix": "周表",
     "keywordPattern": "(周|週|課)表",
