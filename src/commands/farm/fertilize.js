@@ -127,7 +127,7 @@ module.exports = {
           return interaction.editReply({
             components: [errorContainer(
               "❌ 材料不足",
-              `需要 ${sourceLabel}「${result.key}」**${result.need}**，但只有 **${result.have}**。`,
+              `需要 ${sourceLabel}「${fertDef.name || result.key}」**${result.need}**，但只有 **${result.have}**。`,
               "去 `/挖礦` `/釣魚` `/地下城` `/烹飪` 收集材料",
             )],
             flags: MessageFlags.IsComponentsV2,
@@ -139,6 +139,16 @@ module.exports = {
               "⛔ 已達加速上限",
               `這塊地的成長時間已縮短到上限（${Math.round((farming.growthReductionCapPct || 0.6) * 100)}%）。`,
               "等待收成或改施提升收成上限的肥料（章魚／月光露水）",
+            )],
+            flags: MessageFlags.IsComponentsV2,
+          });
+        }
+        if (result.reason === "yield_cap_reached") {
+          return interaction.editReply({
+            components: [errorContainer(
+              "⛔ 已達收成加成上限",
+              `這塊地的施肥收成加成已達上限（+${Math.round((result.yieldCap ?? farming.yieldBonusCapPct ?? 2) * 100)}%，目前 +${Math.round((result.currentYield || 0) * 100)}%）。再施 ${fertDef.emoji || ""} **${fertDef.name || fertilizerKey}** 不會再增加收成，已自動擋下、沒有扣材料。`,
+              "直接收成這塊地，或把肥料留給其他地塊",
             )],
             flags: MessageFlags.IsComponentsV2,
           });

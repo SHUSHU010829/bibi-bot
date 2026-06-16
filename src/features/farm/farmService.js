@@ -362,36 +362,45 @@ async function fertilize(client, { userId, guildId, plotIndex, fertilizerKey, co
   const crop = farming.crops?.[plot.crop];
   const cap = farming.growthReductionCapPct ?? 0.6;
   const maxReduction = Math.floor((crop?.growMs || 0) * cap);
+  const yieldCap = farming.yieldBonusCapPct ?? 2;
+  const startYield = plot.yield_bonus_pct || 0;
 
-  // 計算縮短時間（按 count 累加，但封頂於剩餘可縮空間）
+  // 計算縮短時間（按 count 累加，但封頂於剩餘可縮空間）；
+  // 收成加成同步封頂於 yieldCap：塞不下整份就停，不施、不扣，避免浪費章魚／月光。
   const perApply = Math.floor((crop?.growMs || 0) * (fert.growReductionPct || 0));
+  const perYield = fert.yieldBonusPct || 0;
   let appliedReductionMs = 0;
   let appliedCount = 0;
   let yieldAdd = 0;
+  let stopReason = null;
   for (let i = 0; i < count; i++) {
+    if (perYield > 0 && startYield + yieldAdd + perYield > yieldCap) {
+      stopReason = "yield_cap_reached";
+      break;
+    }
     const newReduction = (plot.growth_reduction_ms || 0) + appliedReductionMs + perApply;
     if (perApply > 0 && newReduction > maxReduction) {
       // 超過上限，最後一次只補到上限
       const room = maxReduction - (plot.growth_reduction_ms || 0) - appliedReductionMs;
-      if (room <= 0) break;
+      if (room <= 0) { stopReason = "growth_cap_reached"; break; }
       appliedReductionMs += room;
       appliedCount += 1;
-      yieldAdd += fert.yieldBonusPct || 0;
+      yieldAdd += perYield;
       break;
     }
     appliedReductionMs += perApply;
     appliedCount += 1;
-    yieldAdd += fert.yieldBonusPct || 0;
+    yieldAdd += perYield;
   }
   if (appliedCount === 0) {
-    return { ok: false, reason: "growth_cap_reached" };
+    return { ok: false, reason: stopReason || "growth_cap_reached", yieldCap, currentYield: startYield };
   }
   const consumed = (fert.qty || 1) * appliedCount;
 
   // 更新地塊
   const newReadyAt = Math.max(Date.now(), plot.ready_at - appliedReductionMs);
   const newExpiresAt = newReadyAt + (crop?.rotMs || 0);
-  const newYieldBonus = Math.min(2, (plot.yield_bonus_pct || 0) + yieldAdd);
+  const newYieldBonus = Math.min(yieldCap, startYield + yieldAdd);
 
   await coll(client).updateOne(
     { userId, guildId, plotIndex },
@@ -442,6 +451,7 @@ async function previewFertilizeAll(client, { userId, guildId, fertilizerKey }) {
   const plots = await getPlots(client, userId, guildId, plotCount);
   const now = Date.now();
   const cap = farming.growthReductionCapPct ?? 0.6;
+  const yieldCap = farming.yieldBonusCapPct ?? 2;
 
   const skipped = [];
   const eligible = [];
@@ -454,6 +464,12 @@ async function previewFertilizeAll(client, { userId, guildId, fertilizerKey }) {
     if (live.status !== "growing") continue;
     if (Array.isArray(fert.onlyCrops) && !fert.onlyCrops.includes(live.crop)) {
       skipped.push({ plotIndex: live.plotIndex, reason: "fertilizer_not_applicable" });
+      continue;
+    }
+    // 純收成肥料（章魚）已達收成上限 → 一份都施不下，先跳過
+    if (fert.yieldBonusPct > 0 && !(fert.growReductionPct > 0)
+      && (live.yield_bonus_pct || 0) + fert.yieldBonusPct > yieldCap) {
+      skipped.push({ plotIndex: live.plotIndex, reason: "yield_cap_reached" });
       continue;
     }
     if (fert.growReductionPct > 0 && !(fert.yieldBonusPct > 0)) {
