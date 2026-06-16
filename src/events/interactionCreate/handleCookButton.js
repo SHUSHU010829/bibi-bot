@@ -1,8 +1,10 @@
-// 烹飪工坊按鈕 handler：分類分頁切換 + 按鈕烹飪（可一次多份、煤炭按份數疊加）。
+// 烹飪工坊按鈕 handler：分類分頁切換 + 按鈕烹飪（先確認煤炭烤製＋份數，確認才下鍋）。
 //
 // customId：
-//   cookTab_<userId>_<category>             — 切換效果分類分頁
-//   cookDo_<userId>_<recipeId>_<mode>_<amt> — 烹飪；mode: n(普通)/c(煤炭)，amt: 1/all
+//   cookTab_<userId>_<category>                  — 切換效果分類分頁
+//   cookConfirm_<userId>_<recipeId>_<mode>_<amt> — 開啟確認步驟（選煤炭烤製＋份數）；mode: n(普通)/c(煤炭)，amt: 1/all
+//   cookGo_<userId>_<recipeId>_<mode>_<amt>      — 確認後真正烹飪
+//   cookCancel_<userId>_<category>               — 取消，回到廚房分頁
 
 require("colors");
 const {
@@ -21,7 +23,9 @@ const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 
 const {
   COOK_TAB_PREFIX,
-  COOK_DO_PREFIX,
+  COOK_CONFIRM_PREFIX,
+  COOK_GO_PREFIX,
+  COOK_CANCEL_PREFIX,
   COOK_CUSTOM_PREFIX,
   COOK_MODAL_PREFIX,
   COOK_CAT_IDS,
@@ -204,14 +208,46 @@ module.exports = async (client, interaction) => {
     return;
   }
 
-  // 一鍵烹飪（×1 / 全部）
-  if (customId.startsWith(COOK_DO_PREFIX)) {
-    const { ownerId, rest } = parseOwnerAndRest(customId, COOK_DO_PREFIX);
+  // 確認步驟：按下「烹飪 ×1 / 全部」或切換煤炭烤製 → 顯示確認 Container（尚未下鍋）
+  if (customId.startsWith(COOK_CONFIRM_PREFIX)) {
+    const { ownerId, rest } = parseOwnerAndRest(customId, COOK_CONFIRM_PREFIX);
     if (interaction.user.id !== ownerId) {
       return interaction.reply({ content: "❌ 這不是你的廚房！", flags: MessageFlags.Ephemeral });
     }
     const parts = rest.split("_");
-    const amt = parts.pop();
+    const qtySpec = parts.pop();
+    const mode = parts.pop();
+    const recipeId = parts.join("_");
+    const recipe = fishing?.recipes?.[recipeId];
+    if (!recipe) return;
+
+    await interaction.deferUpdate();
+    try {
+      const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
+      const view = cookView.buildConfirmView({
+        recipe,
+        recipeId,
+        profile,
+        userId: interaction.user.id,
+        category: categoryForRecipe(recipeId),
+        mode,
+        qtySpec,
+      });
+      await interaction.editReply(view);
+    } catch (err) {
+      console.log(`[ERROR] cookConfirm handler:\n${err}\n${err.stack}`.red);
+    }
+    return;
+  }
+
+  // 確認後真正烹飪
+  if (customId.startsWith(COOK_GO_PREFIX)) {
+    const { ownerId, rest } = parseOwnerAndRest(customId, COOK_GO_PREFIX);
+    if (interaction.user.id !== ownerId) {
+      return interaction.reply({ content: "❌ 這不是你的廚房！", flags: MessageFlags.Ephemeral });
+    }
+    const parts = rest.split("_");
+    const qtySpec = parts.pop();
     const mode = parts.pop();
     const recipeId = parts.join("_");
     const recipe = fishing?.recipes?.[recipeId];
@@ -221,13 +257,30 @@ module.exports = async (client, interaction) => {
     try {
       const useCoal = mode === "c";
       let qty = 1;
-      if (amt === "all") {
+      if (qtySpec === "all") {
         const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
         qty = cookService.maxCookable(profile, recipe, { useCoal });
+      } else {
+        qty = Math.max(1, Number.parseInt(qtySpec, 10) || 1);
       }
       await executeCook(client, interaction, recipeId, useCoal, qty);
     } catch (err) {
-      console.log(`[ERROR] cookDo handler:\n${err}\n${err.stack}`.red);
+      console.log(`[ERROR] cookGo handler:\n${err}\n${err.stack}`.red);
+    }
+    return;
+  }
+
+  // 取消確認 → 回到廚房分頁
+  if (customId.startsWith(COOK_CANCEL_PREFIX)) {
+    const { ownerId, rest: category } = parseOwnerAndRest(customId, COOK_CANCEL_PREFIX);
+    if (interaction.user.id !== ownerId) {
+      return interaction.reply({ content: "❌ 這不是你的廚房！", flags: MessageFlags.Ephemeral });
+    }
+    await interaction.deferUpdate();
+    try {
+      await refreshKitchen(client, interaction, COOK_CAT_IDS.includes(category) ? category : undefined);
+    } catch (err) {
+      console.log(`[ERROR] cookCancel handler:\n${err}\n${err.stack}`.red);
     }
     return;
   }
