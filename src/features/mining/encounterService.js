@@ -78,6 +78,7 @@ async function trigger(client, ctx) {
   const lines = [];
   if (enc.text) lines.push(enc.text);
   const patch = {};
+  let diamondGained = 0;
 
   try {
     switch (eff.type) {
@@ -119,6 +120,7 @@ async function trigger(client, ctx) {
               }
             );
             lines.push(`${oreLabel(ore)} ×${granted}（額外獲得）`);
+            if (ore === "diamond") diamondGained += granted;
           }
           // 背包塞不下的部分折算成金幣，不浪費
           const overflow = intended - granted;
@@ -161,6 +163,7 @@ async function trigger(client, ctx) {
             }
           );
           lines.push(`${oreLabel(ore)} ×${qty}（額外獲得）`);
+          if (ore === "diamond") diamondGained += qty;
         } else {
           // 背包滿了折算成等值金幣，避免戰利品憑空消失
           const price = mining?.ores?.[ore]?.price || 0;
@@ -487,6 +490,7 @@ async function trigger(client, ctx) {
     emoji: enc.emoji || "❗",
     body: lines.join("\n"),
     patch,
+    diamondGained,
   };
 }
 

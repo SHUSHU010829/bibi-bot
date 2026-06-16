@@ -547,6 +547,7 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
       result.stamina = enc.patch.staminaAfter;
     }
     result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body };
+    if (enc.diamondGained > 0) result.encounterDiamond = enc.diamondGained;
   }
 
   return result;

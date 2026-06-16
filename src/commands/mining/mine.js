@@ -260,6 +260,18 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
       await sendLegendaryAnnouncement(client, interaction);
     }
 
+    if (result.encounterDiamond > 0) {
+      await diamondAnnouncer
+        .announceDiamond(client, {
+          user: interaction.user,
+          guildId: interaction.guildId,
+          source: "encounter",
+          qty: result.encounterDiamond,
+          fallbackChannel: interaction.channel,
+        })
+        .catch(() => {});
+    }
+
     const isEventOre = !!oreDef?.event;
     const headerTitle =
       result.ore === "diamond"
