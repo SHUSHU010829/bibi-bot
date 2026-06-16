@@ -22,6 +22,16 @@ function getRecipe(recipeId) {
   return (craft?.recipes || []).find((r) => r.id === recipeId) || null;
 }
 
+// 依手上材料算這個配方最多能合成幾次（取各材料 floor(have/need) 的最小值）。
+function maxCraftTimes(profile, recipe) {
+  let times = Infinity;
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    if (need <= 0) continue;
+    times = Math.min(times, Math.floor(ownedMaterial(profile, mat) / need));
+  }
+  return Number.isFinite(times) ? Math.max(0, times) : 0;
+}
+
 // 依裝備類型回傳該裝備的定義表與玩家身上的對應欄位名稱。
 function resolveSlot(type) {
   if (type === "weapon") {
@@ -56,7 +66,7 @@ function resolveSlot(type) {
 }
 
 // 合成裝備（鎬子 / 武器）。confirm=true 時略過「替換仍可用裝備」的二次確認。
-async function craftItem(client, { userId, guildId, recipeId, confirm = false }) {
+async function craftItem(client, { userId, guildId, recipeId, confirm = false, craftAll = false }) {
   if (!mining?.enabled || !craft?.recipes) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
@@ -81,6 +91,7 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false })
     return craftStoneAppraisalTrigger(client, {
       userId, guildId, recipe,
       quality: recipe.result?.quality === "high" ? "high" : "low",
+      craftAll,
     });
   }
 
@@ -260,28 +271,38 @@ async function craftFishingNet(client, { userId, guildId, recipe }) {
   };
 }
 
-async function craftStoneAppraisalTrigger(client, { userId, guildId, recipe, quality }) {
+async function craftStoneAppraisalTrigger(client, { userId, guildId, recipe, quality, craftAll = false }) {
   const profile = await getOrCreate(client, userId, guildId);
+
+  // craftAll：把現有材料一次換成多顆，最多 maxBatch 顆；否則合成 1 顆。
+  const cap = Math.max(1, mining?.stoneAppraisal?.maxBatch || 50);
+  let times = 1;
+  if (craftAll) {
+    times = Math.min(maxCraftTimes(profile, recipe), cap);
+    if (times < 1) times = 1; // 材料不足時 fall through 到下方 insufficient
+  }
 
   const missing = [];
   for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const totalNeed = need * times;
     const have = ownedMaterial(profile, mat);
-    if (have < need) missing.push({ mat, need, have });
+    if (have < totalNeed) missing.push({ mat, need: totalNeed, have });
   }
   if (missing.length > 0) {
     return { ok: false, reason: "insufficient", missing, recipe };
   }
 
   const ts = Date.now();
-  const inc = { craft_count_total: 1 };
+  const inc = { craft_count_total: times };
   for (const [mat, need] of Object.entries(recipe.materials)) {
+    const totalNeed = need * times;
     if (SPECIAL_MAT_FIELDS[mat]) {
       const field = SPECIAL_MAT_FIELDS[mat];
-      inc[field] = (inc[field] || 0) - need;
+      inc[field] = (inc[field] || 0) - totalNeed;
     } else if (isFishMaterial(mat)) {
-      inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+      inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - totalNeed;
     } else {
-      inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+      inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - totalNeed;
     }
   }
   await client.miningProfilesCollection.updateOne(
@@ -289,7 +310,7 @@ async function craftStoneAppraisalTrigger(client, { userId, guildId, recipe, qua
     {
       $inc: inc,
       $set: {
-        pending_appraisal: { qty: 1, ts, quality, synthetic: true },
+        pending_appraisal: { qty: times, ts, quality, synthetic: true },
         updatedAt: new Date(),
       },
     },
@@ -304,8 +325,8 @@ async function craftStoneAppraisalTrigger(client, { userId, guildId, recipe, qua
     resultEmoji: recipe.emoji || (quality === "high" ? "💎" : "🪨"),
     quality,
     appraiseTs: ts,
-    appraiseQty: 1,
-    craftCountTotal: (profile.craft_count_total || 0) + 1,
+    appraiseQty: times,
+    craftCountTotal: (profile.craft_count_total || 0) + times,
   };
 }
 
@@ -415,6 +436,7 @@ module.exports = {
   craftAdvancedTrap,
   craftTreasureMap,
   getRecipe,
+  maxCraftTimes,
   PICKAXE_TIER,
   WEAPON_TIER,
   ROD_TIER,

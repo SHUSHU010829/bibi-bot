@@ -180,10 +180,15 @@ async function runAppraisal(client, interaction, { ts, allowOverflow }) {
       return;
     }
 
-    // 逐顆結果（最多列幾顆，避免過長）
-    const lines = result.rolls.map((r, i) =>
+    // 逐顆結果（數量大時只列前幾顆，其餘以總表呈現，避免訊息過長）
+    const MAX_ROLL_LINES = 30;
+    const shownRolls = result.rolls.slice(0, MAX_ROLL_LINES);
+    const lines = shownRolls.map((r, i) =>
       r ? `${i + 1}. ✨ 開出 ${oreLabel(r.ore)} ×${r.qty}` : `${i + 1}. 💥 碎掉了…`
     );
+    if (result.rolls.length > MAX_ROLL_LINES) {
+      lines.push(`-# …另外 ${result.rolls.length - MAX_ROLL_LINES} 顆，結果併入下方「開出」總表`);
+    }
 
     const gainEntries = Object.entries(result.winnings);
     const gainSummary = gainEntries.length

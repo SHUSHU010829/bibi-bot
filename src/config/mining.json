@@ -43,6 +43,7 @@
       "feePerStone": 120,
       "windowMs": 600000,
       "announceDiamond": true,
+      "maxBatch": 50,
       "outcomes": [
         { "ore": "stone_shard", "weight": 50, "minQty": 1, "maxQty": 1 },
         { "ore": "coal", "weight": 22, "minQty": 1, "maxQty": 3 },

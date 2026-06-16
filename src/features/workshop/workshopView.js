@@ -23,6 +23,7 @@ const {
 const { mining, craft, dungeon, fishing } = require("../../config");
 const { getOrCreate } = require("../mining/miningProfile");
 const { ownedMaterial, materialLabel } = require("../mining/craftMaterials");
+const { maxCraftTimes } = require("../mining/craftService");
 const { playerAtk } = require("../mining/dungeonService");
 const {
   getPickaxeRepairCost,
@@ -38,6 +39,7 @@ const {
 const TAB_PREFIX = "wsTab_";
 const CRAFT_SUB_PREFIX = "wsCraftSub_";
 const CRAFT_PREFIX = "wsCraft_";
+const CRAFT_ALL_PREFIX = "wsCraftAll_";
 const CONFIRM_PREFIX = "wsConfirm_";
 const CANCEL_PREFIX = "wsCancel_";
 const REPAIR_TOOL_PREFIX = "wsRepairTool_";
@@ -181,8 +183,8 @@ function buildEquipmentTab(container, { userId, displayName, profile }) {
 }
 
 // ─── 合成分頁 ────────────────────────────────────────────────────────────────
-function craftableSection(container, recipes, profile, type, userId) {
-  for (const recipe of recipes) {
+// 組一個配方的說明文字（材料盤點 + 屬性／效果），合成與合成全部共用。
+function recipeBodyText(recipe, profile, type) {
     const matParts = Object.entries(recipe.materials).map(([mat, need]) => {
       const have = ownedMaterial(profile, mat);
       const ok = have >= need;
@@ -240,7 +242,12 @@ function craftableSection(container, recipes, profile, type, userId) {
       `**${recipe.name}${craftable ? "（可合成）" : ""}**\n` +
       matParts.join("\n") +
       `\n-# ${propLine}`;
+    return { body, craftable };
+}
 
+function craftableSection(container, recipes, profile, type, userId) {
+  for (const recipe of recipes) {
+    const { body, craftable } = recipeBodyText(recipe, profile, type);
     container.addSectionComponents(
       new SectionBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(body))
@@ -253,6 +260,33 @@ function craftableSection(container, recipes, profile, type, userId) {
             .setDisabled(!craftable),
         ),
     );
+  }
+}
+
+// 賭石碎石回收專用：每個配方一段文字 + 一排「合成（1 顆）／合成全部（N 顆）」按鈕。
+function appraisalCraftSection(container, recipes, profile, userId) {
+  const cap = Math.max(1, mining?.stoneAppraisal?.maxBatch || 50);
+  for (const recipe of recipes) {
+    const { body, craftable } = recipeBodyText(recipe, profile, "stone_appraisal_trigger");
+    const maxTimes = Math.min(maxCraftTimes(profile, recipe), cap);
+    container
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(body))
+      .addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${CRAFT_PREFIX}${userId}_${recipe.id}`)
+            .setLabel("合成 1 顆")
+            .setEmoji("🔨")
+            .setStyle(craftable ? ButtonStyle.Success : ButtonStyle.Secondary)
+            .setDisabled(!craftable),
+          new ButtonBuilder()
+            .setCustomId(`${CRAFT_ALL_PREFIX}${userId}_${recipe.id}`)
+            .setLabel(maxTimes > 1 ? `合成全部（${maxTimes} 顆）` : "合成全部")
+            .setEmoji("✨")
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(maxTimes <= 1),
+        ),
+      );
   }
 }
 
@@ -330,10 +364,10 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `### <:crack_stone:1516055109199597708> 賭石碎石回收（持有碎石 **${shardCount}**）\n-# 合成完立刻觸發賭石，10 分鐘內按「立刻賭石」開出，過期就失效`,
+            `### <:crack_stone:1516055109199597708> 賭石碎石回收（持有碎石 **${shardCount}**）\n-# 「合成全部」把現有碎石一次換成多顆賭石；合成完 10 分鐘內按「立刻賭石」一次開出，過期就失效`,
           ),
         );
-      craftableSection(container, appraisalTriggers, profile, "stone_appraisal_trigger", userId);
+      appraisalCraftSection(container, appraisalTriggers, profile, userId);
     }
     if (farmTools.length) {
       const trapCfg = craft?.advancedTrap || {};
@@ -560,6 +594,7 @@ module.exports = {
   TAB_PREFIX,
   CRAFT_SUB_PREFIX,
   CRAFT_PREFIX,
+  CRAFT_ALL_PREFIX,
   CONFIRM_PREFIX,
   CANCEL_PREFIX,
   REPAIR_TOOL_PREFIX,
