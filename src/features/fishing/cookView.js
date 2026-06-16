@@ -15,12 +15,16 @@ const cookService = require("./cookService");
 const { COAL_EMOJI, fishLabel, veggieLabel } = require("./cookMaterials");
 
 // customId 規約：
-//   cookTab_<userId>_<category>                   — 切換效果分類分頁
-//   cookDo_<userId>_<recipeId>_<mode>_<amt>       — 烹飪；mode: n(普通)/c(煤炭)，amt: 1/all
-//   cookCustom_<userId>_<recipeId>                — 開啟「自訂份數」modal
-//   cookModal_<recipeId>                          — modal 送出（份數 + 煤炭烤製）
+//   cookTab_<userId>_<category>                       — 切換效果分類分頁
+//   cookConfirm_<userId>_<recipeId>_<mode>_<amt>      — 開啟確認步驟（先選煤炭烤製＋份數）；mode: n(普通)/c(煤炭)，amt: 1/all
+//   cookGo_<userId>_<recipeId>_<mode>_<amt>           — 確認後真正烹飪
+//   cookCancel_<userId>_<category>                    — 取消確認，回到廚房分頁
+//   cookCustom_<userId>_<recipeId>                    — 開啟「自訂份數」modal
+//   cookModal_<recipeId>                              — modal 送出（份數 + 煤炭烤製）
 const COOK_TAB_PREFIX = "cookTab_";
-const COOK_DO_PREFIX = "cookDo_";
+const COOK_CONFIRM_PREFIX = "cookConfirm_";
+const COOK_GO_PREFIX = "cookGo_";
+const COOK_CANCEL_PREFIX = "cookCancel_";
 const COOK_CUSTOM_PREFIX = "cookCustom_";
 const COOK_MODAL_PREFIX = "cookModal_";
 
@@ -117,7 +121,7 @@ function renderRecipe(container, { id, recipe }, profile, userId) {
   const row = new ActionRowBuilder();
   row.addComponents(
     new ButtonBuilder()
-      .setCustomId(`${COOK_DO_PREFIX}${userId}_${id}_n_1`)
+      .setCustomId(`${COOK_CONFIRM_PREFIX}${userId}_${id}_n_1`)
       .setLabel("烹飪 ×1")
       .setEmoji("🍳")
       .setStyle(ButtonStyle.Success)
@@ -126,7 +130,7 @@ function renderRecipe(container, { id, recipe }, profile, userId) {
   if (normalMax >= 2) {
     row.addComponents(
       new ButtonBuilder()
-        .setCustomId(`${COOK_DO_PREFIX}${userId}_${id}_n_all`)
+        .setCustomId(`${COOK_CONFIRM_PREFIX}${userId}_${id}_n_all`)
         .setLabel(`全部（${normalMax} 份）`)
         .setEmoji("🍳")
         .setStyle(ButtonStyle.Success),
@@ -159,7 +163,7 @@ async function buildWorkshopView(client, { userId, guildId, displayName, categor
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 「×1 / 全部」一鍵下鍋；「🔢 自訂份數」可輸入指定份數並選擇煤炭烤製（效果更強，煤炭按份數疊加）",
+        "-# 「×1 / 全部」會先讓你確認是否煤炭烤製與份數再下鍋；「🔢 自訂份數」可輸入指定份數並選擇煤炭烤製（效果更強，煤炭按份數疊加）",
       ),
     )
     .addSeparatorComponents(new SeparatorBuilder());
@@ -178,6 +182,97 @@ async function buildWorkshopView(client, { userId, guildId, displayName, categor
       "-# 魚來自 /釣魚、蔬菜來自 /農場、煤炭來自 /挖礦。煮好的食物進食物倉庫，用 `/食物` 食用。",
     ),
   );
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+  };
+}
+
+// ─── 確認步驟（先選煤炭烤製 + 份數，確認才烹飪）─────────────────────────────────
+function buildConfirmView({ recipe, recipeId, profile, userId, category, mode, qtySpec }) {
+  const hasCoal = (recipe.coalFuel || 0) > 0;
+  const useCoal = mode === "c" && hasCoal;
+  const max = cookService.maxCookable(profile, recipe, { useCoal });
+
+  const qty =
+    qtySpec === "all"
+      ? Math.max(1, max)
+      : Math.max(1, Math.floor(Number(qtySpec) || 1));
+  const enough = max >= qty;
+
+  const buffDef = useCoal && recipe.coalBuff ? recipe.coalBuff : recipe.buff;
+  const effect = describeBuff(buffDef);
+
+  const costLines = [];
+  for (const [key, need] of Object.entries(recipe.materials || {})) {
+    costLines.push(`${fishLabel(key)} ×${need * qty}`);
+  }
+  for (const [key, need] of Object.entries(recipe.veggies || {})) {
+    costLines.push(`${veggieLabel(key)} ×${need * qty}`);
+  }
+  if (useCoal) costLines.push(`${COAL_EMOJI} 煤炭 ×${recipe.coalFuel * qty}`);
+
+  const modeLabel = useCoal ? "🔥 煤炭烤製（效果加強・保鮮更久）" : "🍳 普通烤製";
+
+  const container = new ContainerBuilder()
+    .setAccentColor(useCoal ? 0xff6b35 : 0xe67e22)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ${recipe.emoji} ${recipe.name}\n下鍋前先確認烤製方式與份數`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**烤製方式**：${modeLabel}\n` +
+          `**份數**：${qty} 份${qtySpec === "all" ? "（目前可做的全部）" : ""}\n` +
+          `**消耗材料**：${costLines.join("・") || "—"}\n` +
+          `**食用效果**：${effect}`,
+      ),
+    );
+
+  if (!enough) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ⚠️ 材料${useCoal ? "／煤炭" : ""}不足，目前最多只能做 ${max} 份。`,
+      ),
+    );
+  }
+
+  const row = new ActionRowBuilder();
+  if (hasCoal) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${COOK_CONFIRM_PREFIX}${userId}_${recipeId}_${useCoal ? "n" : "c"}_${qtySpec}`)
+        .setLabel(useCoal ? "改用普通烤製" : "改用煤炭烤製")
+        .setEmoji(useCoal ? "🍳" : "🔥")
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${COOK_GO_PREFIX}${userId}_${recipeId}_${useCoal ? "c" : "n"}_${qtySpec}`)
+      .setLabel(`確認製作 ×${qty}`)
+      .setEmoji("✅")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!enough),
+  );
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${COOK_CUSTOM_PREFIX}${userId}_${recipeId}`)
+      .setLabel("自訂份數")
+      .setEmoji("🔢")
+      .setStyle(ButtonStyle.Primary),
+  );
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${COOK_CANCEL_PREFIX}${userId}_${category}`)
+      .setLabel("取消")
+      .setEmoji("↩️")
+      .setStyle(ButtonStyle.Secondary),
+  );
+  container.addActionRowComponents(row);
 
   return {
     components: [container],
@@ -289,12 +384,15 @@ function buildSuccessView({ recipe, result, userId }) {
 
 module.exports = {
   COOK_TAB_PREFIX,
-  COOK_DO_PREFIX,
+  COOK_CONFIRM_PREFIX,
+  COOK_GO_PREFIX,
+  COOK_CANCEL_PREFIX,
   COOK_CUSTOM_PREFIX,
   COOK_MODAL_PREFIX,
   COOK_CAT_IDS,
   COOK_CATS,
   buildWorkshopView,
+  buildConfirmView,
   buildErrorView,
   buildSuccessView,
 };
