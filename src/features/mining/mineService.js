@@ -186,6 +186,7 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
       result.newCooldownAt = enc.patch.newCooldownAt;
     }
     result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body };
+    if (enc.diamondGained > 0) result.encounterDiamond = enc.diamondGained;
   }
 
   // 世界事件觸發 roll：fire-and-forget，不阻塞主流程

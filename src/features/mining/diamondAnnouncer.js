@@ -123,20 +123,29 @@ async function announceDiamond(client, { user, guildId, source = "mine", qty = 1
   const diamondDef = mining?.ores?.diamond || {};
   const diamondEmoji = diamondDef.emoji || "💎";
 
+  // 只有 /挖礦 會在 mineService 把鑽石寫進 mineLogs；賭石 / 地下城 / 突發事件 只更新
+  // lifetime_ore。這裡為非 mine 來源補寫一筆 mineLogs，讓「今日全服挖出」等每日聚合
+  // 真正累計進去（之前只在當下訊息加數字，沒落地，所以下一則公告就消失了）。
+  const addQty = Math.max(0, Math.floor(Number(qty) || 0));
+  if (source !== "mine" && addQty > 0) {
+    await client.mineLogsCollection
+      .insertOne({
+        user_id: user.id,
+        guild_id: guildId,
+        ore: "diamond",
+        qty: addQty,
+        ts: new Date(),
+        source,
+      })
+      .catch((e) => console.log(`[WARN] 鑽石寫入 mineLogs 失敗：${e.message}`.yellow));
+  }
+
   let stats;
   try {
     stats = await fetchStats(client, { userId: user.id, guildId });
   } catch (e) {
     console.log(`[WARN] 鑽石播報統計失敗：${e.message}`.yellow);
     stats = { userDiamonds: 0, userTodayCount: 0, todayCount: 0, serverTotal: 0, hunters: 0, rank: null };
-  }
-
-  // 只有 /挖礦 會把得到的鑽石寫進 mineLogs；賭石 / 地下城 / 突發事件 只更新 lifetime_ore，
-  // 所以「今日累計」要把本次新得到的鑽石補上，否則玩家會看到當下這顆沒被算進去。
-  const addQty = Math.max(0, Number(qty) || 0);
-  if (source !== "mine" && addQty > 0) {
-    stats.userTodayCount += addQty;
-    stats.todayCount += addQty;
   }
 
   const verb = SOURCE_VERBS[source] || SOURCE_VERBS.mine;

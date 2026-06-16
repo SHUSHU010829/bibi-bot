@@ -293,6 +293,18 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
       return interaction.editReply("🔧 進地下城失敗，請稍後再試。");
     }
 
+    if (result.encounterDiamond > 0) {
+      diamondAnnouncer
+        .announceDiamond(client, {
+          user: interaction.user,
+          guildId: interaction.guildId,
+          source: "encounter",
+          qty: result.encounterDiamond,
+          fallbackChannel: interaction.channel,
+        })
+        .catch(() => {});
+    }
+
     const m = result.monster;
     const winPct = Math.round(result.winRate * 100);
     const subTag = result.staminaBonus > 0
