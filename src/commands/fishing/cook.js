@@ -1,73 +1,20 @@
 require("colors");
 const {
   SlashCommandBuilder,
-  ContainerBuilder,
-  TextDisplayBuilder,
-  SeparatorBuilder,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 
 const { fishing } = require("../../config");
 const cookService = require("../../features/fishing/cookService");
-const { getFishingProfile } = require("../../features/fishing/fishService");
 const cookView = require("../../features/fishing/cookView");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
-
-const VEGGIE_LABELS = {
-  carrot: { emoji: "🥕", name: "紅蘿蔔" },
-  corn: { emoji: "🌽", name: "玉米" },
-  strawberry: { emoji: "🍓", name: "草莓" },
-  black_rose: { emoji: "🌹", name: "黑玫瑰" },
-};
 
 function recipeChoices() {
   return Object.entries(fishing?.recipes || {}).map(([key, def]) => ({
     name: `${def.emoji} ${def.name}`,
     value: key,
   }));
-}
-
-// 顯示所有食譜一覽
-function buildRecipeListView() {
-  const fish = fishing.fish || {};
-  const recipes = fishing.recipes || {};
-
-  const container = new ContainerBuilder()
-    .setAccentColor(0x3498db)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("# 🍳 烹飪食譜一覽")
-    )
-    .addSeparatorComponents(new SeparatorBuilder());
-
-  for (const [, recipe] of Object.entries(recipes)) {
-    const matLines = Object.entries(recipe.materials || {}).map(([key, qty]) => {
-      const def = fish[key] || {};
-      return `${def.emoji || "🐟"} ${def.name || key} ×${qty}`;
-    });
-    for (const [key, qty] of Object.entries(recipe.veggies || {})) {
-      const def = VEGGIE_LABELS[key] || {};
-      matLines.push(`${def.emoji || "🌱"} ${def.name || key} ×${qty}`);
-    }
-    if (recipe.coalFuel > 0) {
-      matLines.push(`<:ore_coal:1509063448481366106> 煤炭 ×${recipe.coalFuel}（煤炭烤製，可選）`);
-    }
-
-    const normalLabel = recipe.buff?.label || "";
-    const coalLabel = recipe.coalBuff?.label || "";
-
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `## ${recipe.emoji} ${recipe.name}\n` +
-        `**材料**：${matLines.join("、")}\n` +
-        `**效果**：${normalLabel}\n` +
-        (coalLabel ? `**煤炭加強**：${coalLabel}\n` : "") +
-        `-# ${recipe.description || ""}`
-      )
-    );
-  }
-
-  return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 module.exports = {
@@ -79,9 +26,16 @@ module.exports = {
     .addStringOption((o) =>
       o
         .setName("食物")
-        .setDescription("要製作的食物（不填則顯示所有食譜）")
+        .setDescription("直接製作的食物（不填則打開廚房，用按鈕分類烹飪）")
         .setRequired(false)
         .addChoices(...recipeChoices())
+    )
+    .addIntegerOption((o) =>
+      o
+        .setName("份數")
+        .setDescription("一次製作幾份（預設 1，煤炭與材料按份數疊加）")
+        .setMinValue(1)
+        .setRequired(false)
     )
     .addBooleanOption((o) =>
       o
@@ -99,14 +53,24 @@ module.exports = {
 
       const recipeId = interaction.options.getString("食物");
 
+      // 不指定食物 → 打開廚房（分類分頁，按鈕烹飪，ephemeral）
       if (!recipeId) {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        return interaction.editReply(buildRecipeListView());
+        const view = await cookView.buildWorkshopView(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          displayName:
+            interaction.member?.displayName ||
+            interaction.user.displayName ||
+            interaction.user.username,
+        });
+        return interaction.editReply(view);
       }
 
       await interaction.deferReply();
 
       const useCoal = interaction.options.getBoolean("煤炭烤製") ?? false;
+      const qty = interaction.options.getInteger("份數") ?? 1;
 
       const recipe = fishing.recipes?.[recipeId];
       if (!recipe) {
@@ -115,24 +79,17 @@ module.exports = {
 
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
-      const profile = await getFishingProfile(client, userId, guildId);
 
       const result = await cookService.cook(client, {
         userId,
         guildId,
         recipeId,
         useCoal,
+        qty,
       });
 
       if (!result.ok) {
-        const view = cookView.buildErrorView({
-          recipe,
-          result,
-          fishBag: profile.fish_bag || {},
-          backpack: profile.backpack || {},
-          veggieBag: profile.veggie_bag || {},
-        });
-        return interaction.editReply(view);
+        return interaction.editReply(cookView.buildErrorView({ recipe, result }));
       }
 
       await interaction.editReply(cookView.buildSuccessView({ recipe, result, userId }));
@@ -147,7 +104,7 @@ module.exports = {
           member: interaction.member,
           username: interaction.user.username,
         },
-        [{ questId: "weekly_cook_50" }],
+        [{ questId: "weekly_cook_50", delta: result.qty }],
       ).catch(() => {});
     } catch (error) {
       console.log(`[ERROR] /烹飪:\n${error}\n${error.stack}`.red);
