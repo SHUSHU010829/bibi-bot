@@ -187,14 +187,40 @@ function consumeFishFortuneUse(client, userId, guildId, profile) {
   return consumeFoodBuffUse(client, userId, guildId, profile, "fish_fortune");
 }
 
-// 執行一次烹飪。產出進 food_bag（不立即套 buff，使用時才生效）。
-async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
+// 以目前材料計算某食譜最多可烹飪幾份。
+// useCoal=true 時，煤炭也納入限制（每份消耗 recipe.coalFuel）。
+function maxCookable(profile, recipe, { useCoal = false } = {}) {
+  if (!recipe) return 0;
+  const fishBag = profile?.fish_bag || {};
+  const veggieBag = profile?.veggie_bag || {};
+  const backpack = profile?.backpack || {};
+
+  let max = Infinity;
+  for (const [fishKey, need] of Object.entries(recipe.materials || {})) {
+    if (need > 0) max = Math.min(max, Math.floor((fishBag[fishKey] || 0) / need));
+  }
+  for (const [veggieKey, need] of Object.entries(recipe.veggies || {})) {
+    if (need > 0) max = Math.min(max, Math.floor((veggieBag[veggieKey] || 0) / need));
+  }
+  if (max === Infinity) max = 0;
+
+  if (useCoal && (recipe.coalFuel || 0) > 0) {
+    max = Math.min(max, Math.floor((backpack.coal || 0) / recipe.coalFuel));
+  }
+  return Math.max(0, max);
+}
+
+// 執行烹飪，一次可烹飪 qty 份。產出進 food_bag（不立即套 buff，使用時才生效）。
+// 煤炭、材料、副產品皆按份數疊加。
+async function cook(client, { userId, guildId, recipeId, useCoal = false, qty = 1 }) {
   if (!fishing?.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
   const recipes = fishing.recipes || {};
   const recipe = recipes[recipeId];
   if (!recipe) return { ok: false, reason: "invalid_recipe" };
+
+  qty = Math.max(1, Math.floor(Number(qty) || 1));
 
   const profile = await getOrCreate(client, userId, guildId);
   const fishBag = profile.fish_bag || {};
@@ -203,63 +229,71 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
 
   const missingFish = [];
   for (const [fishKey, need] of Object.entries(recipe.materials || {})) {
+    const total = need * qty;
     const have = fishBag[fishKey] || 0;
-    if (have < need) missingFish.push({ fish: fishKey, need, have });
+    if (have < total) missingFish.push({ fish: fishKey, need: total, have });
   }
   if (missingFish.length > 0) {
-    return { ok: false, reason: "insufficient_fish", missingFish };
+    return { ok: false, reason: "insufficient_fish", missingFish, qty };
   }
 
   const missingVeggies = [];
   for (const [veggieKey, need] of Object.entries(recipe.veggies || {})) {
+    const total = need * qty;
     const have = veggieBag[veggieKey] || 0;
-    if (have < need) missingVeggies.push({ veggie: veggieKey, need, have });
+    if (have < total) missingVeggies.push({ veggie: veggieKey, need: total, have });
   }
   if (missingVeggies.length > 0) {
-    return { ok: false, reason: "insufficient_veggies", missingVeggies };
+    return { ok: false, reason: "insufficient_veggies", missingVeggies, qty };
   }
 
-  const coalNeeded = useCoal ? (recipe.coalFuel || 0) : 0;
+  const coalPerPortion = useCoal ? (recipe.coalFuel || 0) : 0;
+  const coalNeeded = coalPerPortion * qty;
   if (coalNeeded > 0 && (backpack.coal || 0) < coalNeeded) {
     return {
       ok: false,
       reason: "insufficient_coal",
       coalNeeded,
       coalHave: backpack.coal || 0,
+      qty,
     };
   }
 
-  const isCoalEnhanced = useCoal && coalNeeded > 0 && !!recipe.coalBuff;
+  const isCoalEnhanced = useCoal && coalPerPortion > 0 && !!recipe.coalBuff;
   const buffDef = isCoalEnhanced ? recipe.coalBuff : recipe.buff;
 
-  const instance = {
-    id: foodBag.newId(),
-    recipeId,
-    cookedAt: Date.now(),
-    useCoal: isCoalEnhanced,
-  };
+  const now = Date.now();
+  const instances = [];
+  for (let i = 0; i < qty; i++) {
+    instances.push({
+      id: foodBag.newId(),
+      recipeId,
+      cookedAt: now,
+      useCoal: isCoalEnhanced,
+    });
+  }
 
-  // 原子更新：扣材料 + 扣煤炭 + 入食物倉庫 + 烹飪副產廚餘堆肥 + byproduct
+  // 原子更新：扣材料 + 扣煤炭 + 入食物倉庫 + 烹飪副產廚餘堆肥 + byproduct（全部 × qty）
   const inc = {};
   for (const [fishKey, need] of Object.entries(recipe.materials || {})) {
-    inc[`fish_bag.${fishKey}`] = -need;
+    inc[`fish_bag.${fishKey}`] = -need * qty;
   }
   for (const [veggieKey, need] of Object.entries(recipe.veggies || {})) {
-    inc[`veggie_bag.${veggieKey}`] = -need;
+    inc[`veggie_bag.${veggieKey}`] = -need * qty;
   }
   if (coalNeeded > 0) {
     inc["backpack.coal"] = -coalNeeded;
   }
-  inc["backpack.compost"] = (inc["backpack.compost"] || 0) + 1;
+  inc["backpack.compost"] = (inc["backpack.compost"] || 0) + qty;
   if (recipe.byproduct?.field && recipe.byproduct?.qty) {
-    inc[recipe.byproduct.field] = (inc[recipe.byproduct.field] || 0) + recipe.byproduct.qty;
+    inc[recipe.byproduct.field] = (inc[recipe.byproduct.field] || 0) + recipe.byproduct.qty * qty;
   }
 
   await client.miningProfilesCollection.updateOne(
     { userId, guildId },
     {
       $inc: inc,
-      $push: { food_bag: instance },
+      $push: { food_bag: { $each: instances } },
       $set: { updatedAt: new Date() },
     }
   );
@@ -271,7 +305,9 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false }) {
     buffDef,
     isCoalEnhanced,
     coalUsed: coalNeeded,
-    instance,
+    qty,
+    instances,
+    instance: instances[0],
   };
 }
 
@@ -378,6 +414,7 @@ module.exports = {
   consumeWorkIncomeUse,
   consumeFishFortuneUse,
   consumeFarmYieldUse,
+  maxCookable,
   cook,
   useFood,
   previewBuffFromInstance,
