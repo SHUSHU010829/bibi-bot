@@ -1,11 +1,15 @@
-# 逼逼機器人 — 新階段企劃書（問卷高期待三玩法）
+# 逼逼機器人 — 新階段企劃書（問卷高期待玩法）
 
-> 紀錄日期：2026-06-09
-> 背景：以問卷統計挑出期待值最高的三個玩法，從 `PLAN_BRAINSTORM.md`
+> 紀錄日期：2026-06-09（2026-06-16 增補 Phase K / L）
+> 背景：以問卷統計挑出期待值最高的玩法，從 `PLAN_BRAINSTORM.md`
 > 中對應條目展開為完整 Phase 規劃。
-> 涵蓋：**Phase H 寵物 / 夥伴養成**（對應 brainstorm A1）、
-> **Phase I 文字冒險（森林 / 廢墟 / 深海）**（對應 brainstorm C1）、
-> **Phase J 轉職 / 職業系統**（對應 brainstorm G2）。
+> 涵蓋：
+> - **Phase H 寵物 / 夥伴養成**（brainstorm A1）
+> - **Phase I 文字冒險（森林 / 廢墟 / 深海）**（brainstorm C1）
+> - **Phase J 轉職 / 職業系統**（brainstorm G2）
+> - **Phase K 神祕黑市**（brainstorm B3）— 增補
+> - **Phase L 流浪商人**（新提案）— 增補
+>
 > 銜接於 `PLAN_INTEGRATED.md` 之後，作為下一波主開發路線。
 
 ---
@@ -18,10 +22,12 @@
 4. [Phase H — 寵物 / 夥伴養成](#phase-h--寵物--夥伴養成)
 5. [Phase I — 文字冒險（森林 / 廢墟 / 深海）](#phase-i--文字冒險森林--廢墟--深海)
 6. [Phase J — 轉職 / 職業系統](#phase-j--轉職--職業系統)
-7. [跨 Phase 整合](#跨-phase-整合)
-8. [開發時程總覽](#開發時程總覽)
-9. [新增檔案索引](#新增檔案索引)
-10. [通用驗收清單](#通用驗收清單)
+7. [Phase K — 神祕黑市](#phase-k--神祕黑市)
+8. [Phase L — 流浪商人](#phase-l--流浪商人)
+9. [跨 Phase 整合](#跨-phase-整合)
+10. [開發時程總覽](#開發時程總覽)
+11. [新增檔案索引](#新增檔案索引)
+12. [通用驗收清單](#通用驗收清單)
 
 ---
 
@@ -43,9 +49,13 @@
 | **H 寵物 / 夥伴養成** | brainstorm A1 ⭐⭐⭐ | 高 | 每日回流、跨系統消耗出口、最強留存 |
 | **I 文字冒險** | brainstorm C1 ⭐⭐⭐ | 高 | 補敘事性玩法缺口、單人 / 公會組隊皆可 |
 | **J 轉職 / 職業系統** | brainstorm G2 ⭐⭐ | 高 | 玩家身份感、與 S3 技能樹差異化、季賽節奏 |
+| **K 神祕黑市** | brainstorm B3 ⭐⭐ | 高 | 稀有道具流通出口、驚喜感、賭性玩家 |
+| **L 流浪商人** | 新提案 | 中—高 | 隨機限量限時商店、補日常驚喜、低風險友善版 |
 
-三者覆蓋 **養成 / 探險 / 身份** 三個玩家動機面向，彼此正交、且可串接：
-- 寵物提供出戰 buff → 文字冒險可帶寵物 → 不同職業冒險路線不同。
+前三者覆蓋 **養成 / 探險 / 身份** 三個玩家動機面向，後兩者作為 **限時商店雙生 Phase**
+（K 高風險 / 高稀有，L 低風險 / 高便利）共用商店引擎：
+- 寵物提供出戰 buff → 文字冒險可帶寵物 → 不同職業冒險路線不同
+- 黑市 / 流浪商人是新生產（罕見道具入口）與消耗（金幣 sink）的雙向出口。
 
 ---
 
@@ -91,17 +101,29 @@
              └─────────────┴─────────────┘
                            │
                            ▼
+                    ┌──────────────┐
+                    │ shopEngine   │（K / L 共用）
+                    └──┬────────┬──┘
+                       ▼        ▼
+                  ┌────────┐ ┌──────────┐
+                  │Phase K │ │ Phase L  │
+                  │神祕黑市│ │ 流浪商人 │
+                  └────┬───┘ └────┬─────┘
+                       └────┬─────┘
+                            ▼
                   ┌────────────────────┐
                   │ 經濟儀表板（平衡） │
                   └────────────────────┘
 ```
 
-**建議順序**：`eventBus → Phase H 寵物 → Phase J 轉職 → Phase I 文字冒險 → 經濟儀表板覆盤`
+**建議順序**：`eventBus → Phase H 寵物 → Phase J 轉職 → Phase I 文字冒險 → Phase K 黑市 → Phase L 流浪商人 → 經濟儀表板覆盤`
 
 理由：
-- 寵物先做，因為它是 fishing / farm 產出的天然 sink，能立即消化 過剩產出
+- 寵物先做，因為它是 fishing / farm 產出的天然 sink，能立即消化過剩產出
 - 轉職放第二，給玩家身份感後再進冒險，職業會影響冒險選擇分支
-- 文字冒險最後，因為它要吃前兩個 Phase 的 buff / 寵物出戰能力
+- 文字冒險第三，因為它要吃前兩個 Phase 的 buff / 寵物出戰能力
+- 黑市 (K) 排在寵物 / 冒險之後，因為它的商品池要連動 寵物蛋 / 進化石 / 轉職石
+- 流浪商人 (L) 緊接 K 上線，**直接復用** K 的 `shopEngine`，開發成本減半
 
 ---
 
@@ -622,6 +644,398 @@ src/config/adventure/
 
 ---
 
+## Phase K — 神祕黑市
+
+> **前置需求**：Phase 1（挖礦）✅、Phase 5（拍賣行）✅、Phase H 寵物（部分商品連動）、eventBus 地基
+> **預估時間**：3–4 天
+> **定位**：稀有道具流通出口 + 高風險金幣 sink，製造驚喜感與賭性張力
+
+### 核心機制
+
+- 每日隨機 **1 小時** 在 `#神祕黑市` 頻道開張（seeded random，可預測但不公開）
+- 商人 NPC（系統訊息）擺出 **3–5 件** 商品，每件**全服限量**（通常 1–3 份）
+- 商品涵蓋：稀有素材、限定寵物蛋、轉職石、進化石、限定外觀道具
+- 購買時 **10% 機率被查緝**：罰金（商品 ×3）+ 沒收 + 公告通緝公頻
+- 商人離開後留下殘留地圖碎片（彩蛋）
+- **查緝率**會根據玩家當日購買次數遞增（第 1 次 10% / 第 2 次 25% / 第 3 次 50%）
+
+### 商品池設定
+
+依稀有度分四檔（config 驅動），每次開張隨機抽：
+
+| 稀有度 | 出現權重 | 售價區間 | 範例商品 |
+|---|---|---|---|
+| 罕見 | 50% | 500–2,000 幣 | 限定礦石、加溫石、料理稀有食材 |
+| 珍貴 | 30% | 3,000–10,000 幣 | 轉職石、寵物蛋（稀有）、限定釣餌 |
+| 傳奇 | 15% | 20,000–60,000 幣 | 進化石、寵物蛋（傳說）、限定稱號券 |
+| 違禁 | 5% | 100,000–300,000 幣 | 永久 buff 卷軸、跳過試煉券、稀有外觀 |
+
+> 「違禁」級商品 = 一定被查緝率 +5%（暗示其黑市性），但若**成功買到**獎勵巨大。
+
+### 查緝風險機制
+
+```
+baseRate     = 0.10
+buyCountToday = 玩家當日已成功購買次數
+escalationRate = 0.15 × buyCountToday
+itemPenalty  = (商品.tier === '違禁') ? 0.05 : 0
+finalRate    = min(baseRate + escalationRate + itemPenalty, 0.80)
+```
+
+被查緝後果：
+- 購買失敗，幣 **被扣** 商品標價 ×3（最低 1,000 幣）
+- 商品**未獲得**
+- 玩家進入「通緝名單」24h（無法再買、且訊息公頻發 `🚨 XXX 被黑市查緝了！罰款 N 幣！`）
+- 通緝期間其他玩家可 `/黑市 檢舉 [玩家]` 領小額賞金（500 幣 / 24h 內 1 次）
+
+### 出現排程
+
+```
+// 每日 00:00 用 seeded random 排定當日黑市時段
+seed       = parseInt(today)
+openHour   = rng() * 22 + 1  // 1:00 ~ 23:00（避開深夜）
+durationHr = 1
+
+// 開張前 5 分鐘在「逼逼特報站」放出暗號（不直接說頻道）
+"📜 某處傳來低聲叫賣的聲音... 5 分鐘後揭曉"
+```
+
+不公開時段是設計重點 — 製造「正好遇到」的驚喜感，避免變成例行公事。
+
+### 消耗出口（必填段落）
+
+| 入口 | 出口 |
+|---|---|
+| 黑市賣稀有道具（產出） | 高價金幣消耗（500–300,000 幣）；查緝罰金（金幣銷毀） |
+| 限定寵物蛋 / 進化石 | 平衡 Phase H 寵物進化的供給節奏 |
+| 違禁級永久 buff 卷軸 | 對應賽季 / 抖內 buff 的稀缺對沖 |
+
+### UX 設計重點
+
+依 `CLAUDE.md` 七項檢查：
+
+- **開張公告**：在 `#神祕黑市` 用 ContainerBuilder（accent 紫色），列出 3–5 件商品
+  - 每件商品**獨立 Section**：商品圖 + 描述 + 剩餘庫存 + 「購買（N 幣，⚠️ 風險 X%）」按鈕
+  - 按鈕**就在該商品下方**，禁止集中底部
+- **購買確認 modal**：點按鈕 → 二次確認（顯示「目前查緝率 X%」+「罰金將為 N 幣」）
+- **被查緝**：紅色 accent Container「🚨 你被警察抓了！」+ 罰金明細 + -# 解決提示「24h 後通緝解除」
+- **賣完 / 結束**：商品 sold out → 訊息更新為刪除線；商人離場 → 全部按鈕 disabled、留「下次再會」
+- **owner 驗證**：購買按鈕 customId `bm_buy_<userId>_<itemId>`，必驗
+
+### 指令
+
+| 指令 | 說明 | 類別 |
+|---|---|---|
+| `/黑市` | 查看當前黑市狀態（開張中？商品？）；未開張時顯示「下次預估時段」（粗略區間） | ephemeral |
+| `/黑市 紀錄` | 個人購買 / 被查緝歷史 | ephemeral |
+| `/黑市 通緝` | 當前通緝名單 | ephemeral |
+| `/黑市 檢舉 [玩家]` | 檢舉通緝名單上的玩家，領賞金 | 公開 |
+| `/blackmarket-admin force-open` 🔒 | 管理員強制開市（測試 / 活動） | — |
+| `/blackmarket-admin set-pool` 🔒 | 重抽當日商品池 | — |
+
+### DB 新增
+
+```js
+// black_market_sessions
+{
+  session_id:   String,
+  guild_id:     String,
+  date:         String,           // 'YYYYMMDD'
+  opens_at:     Number,
+  closes_at:    Number,
+  items: [
+    {
+      item_id:    String,
+      tier:       String,         // 'rare' | 'precious' | 'legendary' | 'contraband'
+      price:      Number,
+      stock_init: Number,
+      stock_left: Number,
+    }
+  ],
+  status:       String,           // 'scheduled' | 'open' | 'closed'
+  announce_msg_id: String,
+}
+
+// black_market_transactions
+{
+  user_id:    String,
+  guild_id:   String,
+  session_id: String,
+  item_id:    String,
+  price_paid: Number,
+  result:     String,             // 'success' | 'busted'
+  penalty:    Number,             // 被查緝時的罰金
+  ts:         Number,
+}
+
+// black_market_wanted
+{
+  user_id:     String,
+  guild_id:    String,
+  busted_at:   Number,
+  expires_at:  Number,             // busted_at + 24h
+  reported_by: [String],           // 已被檢舉過的玩家（防重複領賞）
+}
+```
+
+索引：
+- `black_market_sessions`：`{ guild_id: 1, date: 1 }` unique
+- `black_market_transactions`：`{ user_id: 1, ts: -1 }`、TTL 90 天
+- `black_market_wanted`：`{ expires_at: 1 }`（過期清理）
+
+### Config 驅動（`src/config/black_market.json`）
+
+```json
+{
+  "scheduling": {
+    "minHour": 1,
+    "maxHour": 23,
+    "durationHr": 1,
+    "preAnnounceMin": 5,
+    "announceChannelId": "CHANNEL_ID_特報站",
+    "marketChannelId": "CHANNEL_ID_黑市"
+  },
+  "itemsPerSession": { "min": 3, "max": 5 },
+  "tiers": {
+    "rare":       { "weight": 50, "priceRange": [500, 2000] },
+    "precious":   { "weight": 30, "priceRange": [3000, 10000] },
+    "legendary":  { "weight": 15, "priceRange": [20000, 60000] },
+    "contraband": { "weight": 5,  "priceRange": [100000, 300000], "bustPenalty": 0.05 }
+  },
+  "bustRate": {
+    "base": 0.10,
+    "escalation": 0.15,
+    "cap": 0.80
+  },
+  "penaltyMultiplier": 3,
+  "wantedDurationHr": 24,
+  "reportBounty": 500,
+  "itemPool": [
+    { "id": "snow_crystal", "tier": "rare", "stock": [1, 3] },
+    { "id": "pet_egg_rare", "tier": "precious", "stock": [1, 1] },
+    { "id": "career_stone", "tier": "legendary", "stock": [1, 2] },
+    { "id": "permanent_luck_scroll", "tier": "contraband", "stock": [1, 1] }
+  ]
+}
+```
+
+### 與現有系統的接點
+
+- **共用商店引擎**：與 Phase L 流浪商人共用 `src/features/shop/shopEngine.js`（限量、限時、購買事務）
+- **公告頻道**：開張 / 結束公告至「逼逼特報站」+「逼逼黑市站」（新頻道）
+- **金幣扣款**：透過 `userCoinsCollection`，source 標 `black_market_buy` / `black_market_penalty`
+- **道具入庫**：寵物蛋寫 `user_pet_eggs`、其他寫 `UserInventory`
+- **eventBus**：emit `blackmarket.busted`、`blackmarket.purchased`（給未來圖鑑 / 季賽用）
+
+### 新增檔案
+
+| 檔案 | 內容 |
+|---|---|
+| `src/config/black_market.json` | 排程、商品池、查緝率 |
+| `src/features/shop/shopEngine.js` | 限量 / 限時商店引擎（與 L 共用） |
+| `src/features/blackmarket/blackMarketService.js` | 黑市專屬：查緝計算、通緝名單 |
+| `src/events/ready/blackMarketScheduler.js` | 每日排程 + 開張公告 cron |
+| `src/commands/blackmarket/blackMarket.js` | `/黑市` 指令群 |
+| `src/commands/blackmarket/blackMarketAdmin.js` | `/blackmarket-admin` |
+| `src/events/interactionCreate/handleBlackMarketButton.js` | 購買按鈕（含確認 modal） |
+
+---
+
+## Phase L — 流浪商人
+
+> **前置需求**：Phase K 神祕黑市（共用商店引擎）、Phase 5（拍賣行）✅
+> **預估時間**：2–3 天（共用 K 的引擎，主要新增資料與表現層）
+> **定位**：低風險友善版的限時商店，補日常驚喜、給愛逛街的玩家
+
+### 與黑市的差異
+
+| 維度 | K 神祕黑市 | L 流浪商人 |
+|---|---|---|
+| 風險 | 有查緝（10–80%） | 無風險 |
+| 商品調性 | 稀有 / 限定 / 違禁 | 折扣 / 便利 / 平價限定 |
+| 出現頻率 | 每日 1 小時 | 隨機 1–3 天出現一次、停留 6 小時 |
+| 商品數量 | 3–5 件 | 5–8 件 |
+| 庫存 | 全服限量（搶） | 個人限量（每人各買各的） |
+| 價格 | 標價販售 | 帶折扣（原價 70–85%） |
+| 玩家心態 | 賭一把、搶限定 | 順便逛逛、撿便宜 |
+
+> 兩者**不會同時開張**（黑市開時流浪商人讓位），避免分散注意力。
+
+### 商人個性（NPC 設定）
+
+流浪商人有 **3 種隨機個性**，每次出現抽一種，影響商品偏好：
+
+| 個性 | 偏好商品 | 額外效果 |
+|---|---|---|
+| 🧙 古怪藥師 | 食譜材料、藥水、烹飪稀有食材 | 全商品再 −5% |
+| 🛡️ 退役騎士 | 強化券、戰鬥道具、體力藥水 | 額外送 1 個小道具（首購） |
+| 🌸 花匠少女 | 作物種子、肥料、農場道具 | 寵物餵食道具 +1（限定品） |
+
+開張公告寫商人名字（如：「🧙 古怪藥師艾莉莎」），讓玩家有「下次又是誰？」的記憶點。
+
+### 商品策略
+
+- 每次帶 **5–8 件** 商品，其中：
+  - **3 件主打**：日常消耗品（藥水、肥料、釣餌）打 7–85 折
+  - **1 件限定**：每商人特定的稀有道具（每 5 次出現一輪）
+  - **1–2 件常規**：基礎物資補貨
+- 個人限量：每件商品 **每位玩家限買 1–3 個**（避免囤積）
+- 價格寫死於 config，不隨機 — 玩家可清楚比價
+
+### 出現排程
+
+```
+// 每日 00:00 判斷今日是否出現
+appearanceRate = 0.5   // 50% 機率出現
+if (rng() < appearanceRate) {
+  arriveHour = rng() * 16 + 6   // 6:00 ~ 22:00
+  duration   = 6   // 停留 6 小時
+  personality = pickRandom(personalities)
+}
+
+// 出現前 10 分鐘預告（特報站）
+"🛒 一位流浪商人正往這走來... 10 分鐘後抵達"
+```
+
+> **與黑市互斥**：今日已排定黑市 → 流浪商人本日不出現。
+
+### 消耗出口（必填段落）
+
+| 入口 | 出口 |
+|---|---|
+| 折扣便利商品 | 拉動日常消耗品的金幣流動（小額頻繁 sink） |
+| 限定道具 | 給高活躍玩家提供 「全收集」目標（圖鑑連動） |
+
+### UX 設計重點
+
+- **抵達公告**：在 `#流浪商人` 頻道用 ContainerBuilder（accent 綠色暖色），呈現商人形象 + 個性介紹 + 商品清單
+- **每件商品 Section**：圖示 + 描述 + 折扣前後價（劃線價）+ 我的剩餘可購買數 + 「購買」按鈕（緊接下方）
+- **離場提示**：剩餘 30 / 10 / 1 分鐘時自動更新公告
+  - 30 分：「⏰ 商人即將離開（30 分鐘）」
+  - 10 分：「⏰ 商人準備收拾行李了！」
+  - 1 分：「⏰ 最後 1 分鐘！」
+- **owner 驗證**：customId `wm_buy_<userId>_<itemId>`
+- **個人限量**：玩家已買達上限 → 按鈕變灰 + 提示「你今日已買過」
+
+### 指令
+
+| 指令 | 說明 | 類別 |
+|---|---|---|
+| `/流浪商人` | 查看當前商人狀態 / 下次預估出現時段 | ephemeral |
+| `/流浪商人 紀錄` | 個人購買歷史 | ephemeral |
+| `/流浪商人 圖鑑` | 已遇過的商人個性收集 | ephemeral |
+| `/wanderer-admin force-arrive [personality]` 🔒 | 管理員強制出現 | — |
+
+### DB 新增
+
+```js
+// wandering_merchant_sessions
+{
+  session_id:   String,
+  guild_id:     String,
+  date:         String,
+  personality:  String,         // 'alchemist' | 'knight' | 'gardener'
+  arrives_at:   Number,
+  leaves_at:    Number,
+  items: [
+    {
+      item_id:        String,
+      original_price: Number,
+      discount_price: Number,
+      per_user_limit: Number,
+    }
+  ],
+  status:       String,         // 'scheduled' | 'arrived' | 'left'
+  announce_msg_id: String,
+}
+
+// wandering_merchant_purchases
+{
+  user_id:    String,
+  guild_id:   String,
+  session_id: String,
+  item_id:    String,
+  qty:        Number,
+  price_paid: Number,
+  ts:         Number,
+}
+
+// wandering_merchant_encounters
+{
+  user_id:     String,
+  guild_id:    String,
+  personality: String,
+  first_met_at: Number,
+}
+```
+
+索引：
+- `wandering_merchant_sessions`：`{ guild_id: 1, date: 1 }`
+- `wandering_merchant_purchases`：`{ user_id: 1, session_id: 1, item_id: 1 }`、TTL 90 天
+- `wandering_merchant_encounters`：`{ user_id: 1, personality: 1 }` unique
+
+### Config 驅動（`src/config/wandering_merchant.json`）
+
+```json
+{
+  "scheduling": {
+    "appearanceRate": 0.5,
+    "minHour": 6,
+    "maxHour": 22,
+    "durationHr": 6,
+    "preAnnounceMin": 10,
+    "announceChannelId": "CHANNEL_ID_特報站",
+    "shopChannelId": "CHANNEL_ID_流浪商人"
+  },
+  "personalities": [
+    {
+      "id": "alchemist",
+      "name": "古怪藥師艾莉莎",
+      "emoji": "🧙",
+      "globalDiscountPct": 0.05,
+      "itemTags": ["potion", "ingredient", "cook_rare"]
+    },
+    {
+      "id": "knight",
+      "name": "退役騎士哈洛德",
+      "emoji": "🛡️",
+      "firstBuyBonus": "small_item",
+      "itemTags": ["buff_scroll", "stamina_potion"]
+    },
+    {
+      "id": "gardener",
+      "name": "花匠少女小百合",
+      "emoji": "🌸",
+      "bonusItem": "pet_treat",
+      "itemTags": ["seed", "fertilizer", "farm_tool"]
+    }
+  ],
+  "itemsPerSession": { "min": 5, "max": 8 },
+  "discountRange": [0.70, 0.85],
+  "perUserLimit": { "min": 1, "max": 3 }
+}
+```
+
+### 與現有系統的接點
+
+- **共用商店引擎**：`src/features/shop/shopEngine.js`（Phase K 已建立）
+- **互斥檢查**：排程器先查當日是否有黑市，有則略過
+- **金幣扣款**：source 標 `wandering_merchant_buy`
+- **物品入庫**：複用 `UserInventory`、`farm_inventory`
+- **eventBus**：emit `wanderer.purchased`、`wanderer.encountered`
+
+### 新增檔案
+
+| 檔案 | 內容 |
+|---|---|
+| `src/config/wandering_merchant.json` | 個性、商品、排程 |
+| `src/features/wanderer/wandererService.js` | 商人邏輯（個性選擇、限量檢查） |
+| `src/events/ready/wandererScheduler.js` | 排程 + 到達 / 離場公告 cron |
+| `src/commands/wanderer/wanderer.js` | `/流浪商人` 指令群 |
+| `src/events/interactionCreate/handleWandererButton.js` | 購買按鈕 |
+
+---
+
 ## 跨 Phase 整合
 
 ### buffResolver 來源新增
@@ -653,6 +1067,10 @@ final = base
 | `adventure.cleared` | adventure engine | pet exp、profession exp、稱號候選 |
 | `pet.hatched`   | pet service | 圖鑑（未來） |
 | `profession.switched` | profession service | 公告（可選） |
+| `blackmarket.purchased` | black market service | 圖鑑、季賽、經濟儀表板 |
+| `blackmarket.busted` | black market service | 公頻通緝公告、檢舉系統 |
+| `wanderer.encountered` | wanderer service | 商人圖鑑、稱號候選（集滿三種商人） |
+| `wanderer.purchased` | wanderer service | 經濟儀表板 |
 
 ### 消耗出口檢查總覽
 
@@ -661,6 +1079,8 @@ final = base
 | 寵物蛋掉落 | 飢餓度餵食消化魚 / 作物 ✅ |
 | 冒險產幣 / 道具 | 體力消耗、組隊費、失敗扣資源 ✅ |
 | 轉職強化產出 | 季賽轉職石需求、主動指令日限 ✅ |
+| 黑市稀有道具入口 | 高價金幣消耗 + 查緝罰金（強力 sink） ✅ |
+| 流浪商人折扣品 | 雖然便宜但個人限量；日常消耗品流動性 sink ✅ |
 
 ---
 
@@ -672,17 +1092,21 @@ final = base
 | Phase H 寵物 | 6–8 d | eventBus | 含孵化、餵食、進化、出戰、圖鑑 |
 | Phase J 轉職 | 5–6 d | eventBus、Phase H（可選） | 六職業 + 試煉 + 季賽 |
 | Phase I 文字冒險 | 7–9 d | eventBus、Phase H | 框架 5d + 三場景各 1–2d |
+| Phase K 神祕黑市 | 3–4 d | Phase H / J（道具池連動）、eventBus | 含 `shopEngine` 共用引擎 |
+| Phase L 流浪商人 | 2–3 d | Phase K 的 `shopEngine` | 共用引擎、新增 3 種商人個性 |
 | 地基：經濟儀表板 | 2–3 d | — | 與 Phase 平行可做 |
-| **合計** | **22–28 d** | | |
+| **合計** | **27–35 d** | | |
 
-**建議啟動順序**：`eventBus → Phase H → Phase J → Phase I → 經濟儀表板`
+**建議啟動順序**：`eventBus → Phase H → Phase J → Phase I → Phase K → Phase L → 經濟儀表板`
 
 里程碑：
 - **M1**（+2d）：eventBus 上線、既有 service 開始 emit 事件
 - **M2**（+8–10d）：Phase H 寵物上線，首批玩家開始養寵物
 - **M3**（+13–16d）：Phase J 轉職上線，配合本季季首
 - **M4**（+20–25d）：Phase I 文字冒險完整三場景上線
-- **M5**（+22–28d）：經濟儀表板覆盤前 4 週數據
+- **M5**（+23–29d）：Phase K 神祕黑市上線（含 `shopEngine`）
+- **M6**（+25–32d）：Phase L 流浪商人上線（復用 `shopEngine`）
+- **M7**（+27–35d）：經濟儀表板覆盤前 4 週數據
 
 ---
 
@@ -712,6 +1136,31 @@ final = base
 | `src/commands/profession/active/*.js` | 六職業專屬主動指令 | J |
 | `src/events/ready/professionSeasonChecker.js` | 季賽結算 cron | J |
 | `src/events/interactionCreate/handleProfessionButton.js` | 轉職按鈕 | J |
+| `src/features/shop/shopEngine.js` | 限量 / 限時商店引擎（K / L 共用） | K |
+| `src/config/black_market.json` | 黑市排程、商品池、查緝率 | K |
+| `src/features/blackmarket/blackMarketService.js` | 黑市邏輯（查緝、通緝） | K |
+| `src/events/ready/blackMarketScheduler.js` | 黑市排程 cron | K |
+| `src/commands/blackmarket/blackMarket.js` | `/黑市` 指令群 | K |
+| `src/commands/blackmarket/blackMarketAdmin.js` | `/blackmarket-admin` | K |
+| `src/events/interactionCreate/handleBlackMarketButton.js` | 黑市購買按鈕 + 確認 modal | K |
+| `src/config/wandering_merchant.json` | 流浪商人個性、商品、排程 | L |
+| `src/features/wanderer/wandererService.js` | 流浪商人邏輯 | L |
+| `src/events/ready/wandererScheduler.js` | 流浪商人排程 cron | L |
+| `src/commands/wanderer/wanderer.js` | `/流浪商人` 指令群 | L |
+| `src/events/interactionCreate/handleWandererButton.js` | 流浪商人購買按鈕 | L |
+
+---
+
+## 頻道命名建議（K / L 新增）
+
+延續 `PLAN_INTEGRATED.md` 五字場所感原則：
+
+| 功能 | 頻道名 | 性質 |
+|---|---|---|
+| 神祕黑市 | **黑街交易所** | 開市公告 + 商品展示 |
+| 流浪商人 | **流浪商人街** | 商人抵達公告 + 商品展示 |
+
+兩個頻道都列在「公告區（唯讀）」Category 下，禁止玩家發言，只透過按鈕互動。
 
 ---
 
@@ -730,4 +1179,4 @@ final = base
 
 ---
 
-_Last updated: 2026-06-09_
+_Last updated: 2026-06-16 — 增補 Phase K（神祕黑市）、Phase L（流浪商人）_
