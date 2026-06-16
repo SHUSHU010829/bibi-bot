@@ -17,8 +17,12 @@ const { COAL_EMOJI, fishLabel, veggieLabel } = require("./cookMaterials");
 // customId 規約：
 //   cookTab_<userId>_<category>                   — 切換效果分類分頁
 //   cookDo_<userId>_<recipeId>_<mode>_<amt>       — 烹飪；mode: n(普通)/c(煤炭)，amt: 1/all
+//   cookCustom_<userId>_<recipeId>                — 開啟「自訂份數」modal
+//   cookModal_<recipeId>                          — modal 送出（份數 + 煤炭烤製）
 const COOK_TAB_PREFIX = "cookTab_";
 const COOK_DO_PREFIX = "cookDo_";
+const COOK_CUSTOM_PREFIX = "cookCustom_";
+const COOK_MODAL_PREFIX = "cookModal_";
 
 // 依 buff.type 分類食譜（一種食譜只屬一類）。
 const COOK_CATS = [
@@ -128,16 +132,14 @@ function renderRecipe(container, { id, recipe }, profile, userId) {
         .setStyle(ButtonStyle.Success),
     );
   }
-  if (hasCoal) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${COOK_DO_PREFIX}${userId}_${id}_c_all`)
-        .setLabel(coalMax >= 1 ? `煤炭烤製（${coalMax} 份）` : "煤炭不足")
-        .setEmoji("🔥")
-        .setStyle(ButtonStyle.Primary)
-        .setDisabled(coalMax < 1),
-    );
-  }
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${COOK_CUSTOM_PREFIX}${userId}_${id}`)
+      .setLabel("自訂份數")
+      .setEmoji("🔢")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(normalMax < 1),
+  );
   container.addActionRowComponents(row);
 }
 
@@ -157,7 +159,7 @@ async function buildWorkshopView(client, { userId, guildId, displayName, categor
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 點「烹飪」即下鍋；「全部」一次煮滿、「煤炭烤製」效果更強且煤炭按份數疊加",
+        "-# 「×1 / 全部」一鍵下鍋；「🔢 自訂份數」可輸入指定份數並選擇煤炭烤製（效果更強，煤炭按份數疊加）",
       ),
     )
     .addSeparatorComponents(new SeparatorBuilder());
@@ -288,6 +290,8 @@ function buildSuccessView({ recipe, result, userId }) {
 module.exports = {
   COOK_TAB_PREFIX,
   COOK_DO_PREFIX,
+  COOK_CUSTOM_PREFIX,
+  COOK_MODAL_PREFIX,
   COOK_CAT_IDS,
   COOK_CATS,
   buildWorkshopView,
