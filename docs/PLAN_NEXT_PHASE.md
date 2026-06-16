@@ -672,6 +672,28 @@ src/config/adventure/
 
 > 「違禁」級商品 = 一定被查緝率 +5%（暗示其黑市性），但若**成功買到**獎勵巨大。
 
+### 暗號交易（黑市版以物易物）
+
+黑市除標價販售外，**每場固定有 1–2 件「暗號交易」**：
+不收幣、只收「黑市指定的特殊組合」物品，但**依然有查緝風險**。
+
+設計重點：
+- 商品 `mode = 'barter'`，`cost.items` 寫死於 config（如「3 顆鯊魚 + 1 顆熔岩魚 + 5 顆鐵礦」）
+- 查緝率與一般商品**相同**（仍可能被沒收且罰款 — 罰款為等值幣 ×3）
+- 暗號商品**通常更稀有**，是違禁級道具的另一條取得管道
+- 適合不想花大錢、但有大量囤物的玩家
+
+範例：
+
+| 暗號需求 | 換取物 | 查緝風險 |
+|---|---|---|
+| 鯊魚 ×10 + 熔岩魚 ×3 | 寵物蛋（傳說） | 普通查緝率 |
+| 彩虹石 ×5 + 黑玫瑰 ×3 | 永久 luck +0.5% 卷軸 | 違禁級（+5%） |
+| 古文物 ×1（冒險產出） | 跳過職業試煉券 | 違禁級 |
+
+> 重要：以物易物**不**降低查緝率，玩家不能用「我沒花錢」當理由逃避風險。
+> 被查緝時罰款依「等值金幣 ×3」計算（每樣 cost item 取系統收購價加總）。
+
 ### 查緝風險機制
 
 ```
@@ -709,6 +731,7 @@ durationHr = 1
 | 黑市賣稀有道具（產出） | 高價金幣消耗（500–300,000 幣）；查緝罰金（金幣銷毀） |
 | 限定寵物蛋 / 進化石 | 平衡 Phase H 寵物進化的供給節奏 |
 | 違禁級永久 buff 卷軸 | 對應賽季 / 抖內 buff 的稀缺對沖 |
+| 暗號交易產出 | **囤積資源的非幣 sink**（魚 / 礦 / 作物 / 古文物） |
 
 ### UX 設計重點
 
@@ -796,6 +819,7 @@ durationHr = 1
     "marketChannelId": "CHANNEL_ID_黑市"
   },
   "itemsPerSession": { "min": 3, "max": 5 },
+  "barterRatio": { "min": 1, "max": 2 },
   "tiers": {
     "rare":       { "weight": 50, "priceRange": [500, 2000] },
     "precious":   { "weight": 30, "priceRange": [3000, 10000] },
@@ -815,17 +839,43 @@ durationHr = 1
     { "id": "pet_egg_rare", "tier": "precious", "stock": [1, 1] },
     { "id": "career_stone", "tier": "legendary", "stock": [1, 2] },
     { "id": "permanent_luck_scroll", "tier": "contraband", "stock": [1, 1] }
+  ],
+  "barterPool": [
+    {
+      "id": "shark_lava_to_egg",
+      "give": { "type": "pet_egg", "rarity": "legendary" },
+      "cost": { "items": [
+        { "id": "shark", "qty": 10 },
+        { "id": "lava_fish", "qty": 3 }
+      ]},
+      "tier": "legendary",
+      "stock": [1, 1]
+    },
+    {
+      "id": "rainbow_rose_to_scroll",
+      "give": { "type": "item", "id": "permanent_luck_scroll" },
+      "cost": { "items": [
+        { "id": "rainbow_stone", "qty": 5 },
+        { "id": "black_rose", "qty": 3 }
+      ]},
+      "tier": "contraband",
+      "stock": [1, 1]
+    }
   ]
 }
 ```
 
 ### 與現有系統的接點
 
-- **共用商店引擎**：與 Phase L 流浪商人共用 `src/features/shop/shopEngine.js`（限量、限時、購買事務）
+- **共用商店引擎**：與 Phase L 流浪商人共用 `src/features/shop/shopEngine.js`
+  - 統一 `item.cost` 介面：`{ coin: N }` / `{ items: [...] }` / `{ coin: N, items: [...] }`
+  - 統一交易事務：先檢查 → 全部扣 → 全部給 → 失敗 rollback
+  - 兩個 Phase 共用 barter 邏輯，避免重複實作
 - **公告頻道**：開張 / 結束公告至「逼逼特報站」+「逼逼黑市站」（新頻道）
-- **金幣扣款**：透過 `userCoinsCollection`，source 標 `black_market_buy` / `black_market_penalty`
+- **金幣扣款**：透過 `userCoinsCollection`，source 標 `black_market_buy` / `black_market_penalty` / `black_market_barter`
+- **物品消耗**：barter 模式呼叫 `inventoryService.consumeMany()`（含魚 / 礦 / 作物 / 古文物各自 collection 的彙整介面）
 - **道具入庫**：寵物蛋寫 `user_pet_eggs`、其他寫 `UserInventory`
-- **eventBus**：emit `blackmarket.busted`、`blackmarket.purchased`（給未來圖鑑 / 季賽用）
+- **eventBus**：emit `blackmarket.busted`、`blackmarket.purchased`、`blackmarket.barter_traded`
 
 ### 新增檔案
 
@@ -879,8 +929,63 @@ durationHr = 1
   - **3 件主打**：日常消耗品（藥水、肥料、釣餌）打 7–85 折
   - **1 件限定**：每商人特定的稀有道具（每 5 次出現一輪）
   - **1–2 件常規**：基礎物資補貨
+  - **1–2 件以物易物**：不收幣，只收特定物品交換（見下節）
 - 個人限量：每件商品 **每位玩家限買 1–3 個**（避免囤積）
 - 價格寫死於 config，不隨機 — 玩家可清楚比價
+
+### 以物易物（barter）⭐
+
+流浪商人的招牌玩法 — 「我這有 X，能換你的 Y 嗎？」
+讓玩家有用囤積資源換稀有道具的出口，也順便消化過剩產出。
+
+**設計重點**
+
+- 商品 `cost` 不是幣，而是 **一組物品需求**（可同時要求多項）
+- 不同商人個性偏好不同物品（藥師收魚、騎士收礦、花匠收作物）
+- 玩家背包不足時按鈕 disabled、顯示缺項
+- 兌換完成後雙方扣 / 加，走原子事務避免拆單
+
+**範例 barter trade**
+
+| 商人 | 出 | 收（barter） | 設計意圖 |
+|---|---|---|---|
+| 🧙 古怪藥師 | 限定料理「龍息湯」食譜 | 熔岩魚 ×2 + 黑玫瑰 ×1 | 消化高階釣魚 / 農場 |
+| 🛡️ 退役騎士 | 進化石 ×1 | 彩虹石 ×3 + 鯊魚 ×5 | 礦業 → 寵物進化 |
+| 🌸 花匠少女 | 寵物餵食特餐（飽足度 +50）×3 | 玉米 ×10 | 玉米 sink |
+| 🧙 古怪藥師 | 永久 luck +1% 卷軸（單次性、稀有） | 鯊魚 ×10 + 章魚 ×5 + 鐵礦 ×20 | 跨生產線整合 sink |
+| 🛡️ 退役騎士 | 騎士轉職石 | 戰鬥相關物品（之後定義） | 為轉職 Phase J 提供另一條取得管道 |
+| 🌸 花匠少女 | 稀有寵物蛋（保底品種） | 紅蘿蔔 ×30 + 玉米 ×15 + 草莓 ×8 | 低門檻 / 高累積、適合農場玩家 |
+
+**Config 寫法**（`cost` 支援 `coin` / `items` / 混合）：
+
+```json
+{
+  "id": "evolution_stone_barter",
+  "tier": "limited",
+  "display": "進化石",
+  "cost": {
+    "items": [
+      { "id": "rainbow_stone", "qty": 3 },
+      { "id": "shark",         "qty": 5 }
+    ]
+  },
+  "perUserLimit": 1
+}
+```
+
+混合範例（既要幣也要物品）：
+
+```json
+{
+  "id": "rare_recipe_combo",
+  "cost": {
+    "coin": 2000,
+    "items": [ { "id": "lava_fish", "qty": 1 } ]
+  }
+}
+```
+
+> 純幣交易仍用 `{ "coin": N }`，barter 改成 `{ "items": [...] }`，shopEngine 自動辨識。
 
 ### 出現排程
 
@@ -910,11 +1015,16 @@ if (rng() < appearanceRate) {
 
 - **抵達公告**：在 `#流浪商人` 頻道用 ContainerBuilder（accent 綠色暖色），呈現商人形象 + 個性介紹 + 商品清單
 - **每件商品 Section**：圖示 + 描述 + 折扣前後價（劃線價）+ 我的剩餘可購買數 + 「購買」按鈕（緊接下方）
+- **barter 商品的特殊表現**：
+  - 價格欄不寫幣數，改寫「🔄 以物易物」+ 所需物品 emoji 串（如 `🌶️ ×3・🐟 ×5`）
+  - 按鈕文字：「以物換取」而非「購買」
+  - 玩家**背包不足**時：按鈕 disabled，hover 顯示缺項；同時在 Section 內 -# 標「目前你有 🌶️ ×1 / 🐟 ×5（缺 🌶️ ×2）」
+  - 按下後**二次確認 modal**：明列「將消耗 X / Y、獲得 Z」，避免誤點
 - **離場提示**：剩餘 30 / 10 / 1 分鐘時自動更新公告
   - 30 分：「⏰ 商人即將離開（30 分鐘）」
   - 10 分：「⏰ 商人準備收拾行李了！」
   - 1 分：「⏰ 最後 1 分鐘！」
-- **owner 驗證**：customId `wm_buy_<userId>_<itemId>`
+- **owner 驗證**：customId `wm_buy_<userId>_<itemId>` / `wm_barter_<userId>_<itemId>`
 - **個人限量**：玩家已買達上限 → 按鈕變灰 + 提示「你今日已買過」
 
 ### 指令
@@ -922,8 +1032,9 @@ if (rng() < appearanceRate) {
 | 指令 | 說明 | 類別 |
 |---|---|---|
 | `/流浪商人` | 查看當前商人狀態 / 下次預估出現時段 | ephemeral |
-| `/流浪商人 紀錄` | 個人購買歷史 | ephemeral |
+| `/流浪商人 紀錄` | 個人購買 / 兌換歷史（區分幣 / barter） | ephemeral |
 | `/流浪商人 圖鑑` | 已遇過的商人個性收集 | ephemeral |
+| `/流浪商人 兌換預覽 [商品]` | 列出 barter 需求 + 我的目前持有量 | ephemeral |
 | `/wanderer-admin force-arrive [personality]` 🔒 | 管理員強制出現 | — |
 
 ### DB 新增
@@ -940,8 +1051,12 @@ if (rng() < appearanceRate) {
   items: [
     {
       item_id:        String,
-      original_price: Number,
-      discount_price: Number,
+      mode:           String,   // 'coin' | 'barter' | 'mixed'
+      original_price: Number,   // mode=coin/mixed 才有
+      discount_price: Number,   // 同上
+      barter_cost: [            // mode=barter/mixed 才有
+        { item_id: String, qty: Number }
+      ],
       per_user_limit: Number,
     }
   ],
@@ -955,8 +1070,12 @@ if (rng() < appearanceRate) {
   guild_id:   String,
   session_id: String,
   item_id:    String,
+  mode:       String,           // 'coin' | 'barter' | 'mixed'
   qty:        Number,
-  price_paid: Number,
+  price_paid: Number,           // 幣部分
+  items_paid: [                 // 物品部分
+    { item_id: String, qty: Number }
+  ],
   ts:         Number,
 }
 
@@ -1011,18 +1130,60 @@ if (rng() < appearanceRate) {
     }
   ],
   "itemsPerSession": { "min": 5, "max": 8 },
+  "barterRatio": { "min": 1, "max": 2 },
   "discountRange": [0.70, 0.85],
-  "perUserLimit": { "min": 1, "max": 3 }
+  "perUserLimit": { "min": 1, "max": 3 },
+  "barterPool": {
+    "alchemist": [
+      {
+        "id": "dragon_breath_recipe",
+        "give": { "type": "recipe", "id": "dragon_breath" },
+        "cost": { "items": [
+          { "id": "lava_fish", "qty": 2 },
+          { "id": "black_rose", "qty": 1 }
+        ]},
+        "perUserLimit": 1
+      }
+    ],
+    "knight": [
+      {
+        "id": "evolution_stone_barter",
+        "give": { "type": "item", "id": "evolution_stone", "qty": 1 },
+        "cost": { "items": [
+          { "id": "rainbow_stone", "qty": 3 },
+          { "id": "shark", "qty": 5 }
+        ]},
+        "perUserLimit": 1
+      }
+    ],
+    "gardener": [
+      {
+        "id": "pet_egg_barter",
+        "give": { "type": "pet_egg", "rarity": "rare" },
+        "cost": { "items": [
+          { "id": "carrot",     "qty": 30 },
+          { "id": "corn",       "qty": 15 },
+          { "id": "strawberry", "qty": 8 }
+        ]},
+        "perUserLimit": 1
+      }
+    ]
+  }
 }
 ```
 
 ### 與現有系統的接點
 
 - **共用商店引擎**：`src/features/shop/shopEngine.js`（Phase K 已建立）
+  - `shopEngine.tryPurchase(userId, item)` 內部依 `item.cost` 結構分派：
+    - `coin` → 走 `userCoinsCollection.debit()`
+    - `items` → 走 `inventoryService.consumeMany()`（原子事務）
+    - `mixed` → 兩者皆檢查後一起扣
+  - 任一步失敗 → rollback、回傳 `{ ok: false, reason }` 給 UX 層
 - **互斥檢查**：排程器先查當日是否有黑市，有則略過
 - **金幣扣款**：source 標 `wandering_merchant_buy`
-- **物品入庫**：複用 `UserInventory`、`farm_inventory`
-- **eventBus**：emit `wanderer.purchased`、`wanderer.encountered`
+- **物品消耗**：複用 `UserInventory.removeItems()`、魚 / 作物分別走各自 collection
+- **eventBus**：emit `wanderer.purchased`、`wanderer.barter_traded`、`wanderer.encountered`
 
 ### 新增檔案
 
@@ -1081,6 +1242,38 @@ final = base
 | 轉職強化產出 | 季賽轉職石需求、主動指令日限 ✅ |
 | 黑市稀有道具入口 | 高價金幣消耗 + 查緝罰金（強力 sink） ✅ |
 | 流浪商人折扣品 | 雖然便宜但個人限量；日常消耗品流動性 sink ✅ |
+| **以物易物（K 暗號 / L barter）** | **非幣 sink：消化魚 / 礦 / 作物 / 古文物囤積，不通膨 ✅** |
+
+### shopEngine 共用合約（Phase K / L）
+
+`src/features/shop/shopEngine.js` 對外提供統一購買 API：
+
+```js
+// 商品定義
+type ShopItem = {
+  id: string
+  display: string
+  cost:
+    | { coin: number }
+    | { items: Array<{ id: string, qty: number }> }
+    | { coin: number, items: Array<{ id: string, qty: number }> }
+  give: ItemGrant            // 寵物蛋 / 物品 / 卷軸 / 食譜...
+  stock: number              // 全服或個人剩餘
+  perUserLimit: number
+}
+
+// 購買 API（黑市 / 流浪商人都呼叫這個）
+shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
+  → { ok: true, granted: ItemGrant }
+  → { ok: false, reason: 'insufficient_coin' | 'insufficient_items' | 'out_of_stock' | 'over_limit' | 'busted' }
+```
+
+關鍵設計：
+- **原子事務**：cost 與 give 同一個 MongoDB transaction，失敗 rollback
+- **barter 缺料**：回 `insufficient_items` + 缺項清單，給 UX 層 disable 按鈕用
+- **黑市專屬 hook**：`opts.bustCheck` 傳入 callback，shopEngine 在扣物前呼叫；callback 回 `true` 則扣 cost 但不 give（被查緝模式）
+- **流浪商人專屬 hook**：`opts.firstBuyBonus`，首購送額外小物
+- 兩 Phase 共用一套引擎、各自 service 只負責商品池排程與 UX
 
 ---
 
@@ -1136,8 +1329,9 @@ final = base
 | `src/commands/profession/active/*.js` | 六職業專屬主動指令 | J |
 | `src/events/ready/professionSeasonChecker.js` | 季賽結算 cron | J |
 | `src/events/interactionCreate/handleProfessionButton.js` | 轉職按鈕 | J |
-| `src/features/shop/shopEngine.js` | 限量 / 限時商店引擎（K / L 共用） | K |
-| `src/config/black_market.json` | 黑市排程、商品池、查緝率 | K |
+| `src/features/shop/shopEngine.js` | 限量 / 限時商店引擎（K / L 共用，支援 coin / barter / mixed） | K |
+| `src/features/inventory/inventoryService.js` | 跨 collection 的物品消耗 / 入庫彙整介面（barter 用） | K |
+| `src/config/black_market.json` | 黑市排程、商品池、查緝率、暗號交易池 | K |
 | `src/features/blackmarket/blackMarketService.js` | 黑市邏輯（查緝、通緝） | K |
 | `src/events/ready/blackMarketScheduler.js` | 黑市排程 cron | K |
 | `src/commands/blackmarket/blackMarket.js` | `/黑市` 指令群 | K |
@@ -1179,4 +1373,4 @@ final = base
 
 ---
 
-_Last updated: 2026-06-16 — 增補 Phase K（神祕黑市）、Phase L（流浪商人）_
+_Last updated: 2026-06-16 — 增補 Phase K（神祕黑市）、Phase L（流浪商人）、以物易物機制_
