@@ -293,6 +293,7 @@ function skippedSummaryLine(skipped) {
     under_raid: "被入侵",
     fertilizer_not_applicable: "肥料不適用",
     growth_cap_reached: "已達加速上限",
+    yield_cap_reached: "已達收成上限",
   };
   const counts = new Map();
   for (const s of skipped) {
@@ -657,13 +658,19 @@ module.exports = async (client, interaction) => {
           const src = result.source === "fish_bag" ? "魚袋" : "背包";
           return replyEphemeralContainer(
             interaction,
-            errContainer("❌ 材料不足", `${src}「${result.key}」需要 **${result.need}**，目前 **${result.have}**。`, "去 /挖礦、/釣魚、/地下城、/烹飪 收集"),
+            errContainer("❌ 材料不足", `${src}「${fertDef.name || result.key}」需要 **${result.need}**，目前 **${result.have}**。`, "去 /挖礦、/釣魚、/地下城、/烹飪 收集"),
           );
         }
         if (result.reason === "growth_cap_reached") {
           return replyEphemeralContainer(
             interaction,
             errContainer("⛔ 已達加速上限", `這塊地的成長時間已縮短到上限（${Math.round((farming.growthReductionCapPct || 0.6) * 100)}%）。`, "改施提升收成上限的肥料（章魚／月光露水）"),
+          );
+        }
+        if (result.reason === "yield_cap_reached") {
+          return replyEphemeralContainer(
+            interaction,
+            errContainer("⛔ 已達收成加成上限", `這塊地的施肥收成加成已達上限（+${Math.round((result.yieldCap ?? farming.yieldBonusCapPct ?? 2) * 100)}%，目前 +${Math.round((result.currentYield || 0) * 100)}%）。再施 ${fertDef.emoji || ""} **${fertDef.name || fertilizerKey}** 不會再增加收成，已自動擋下、沒有扣材料。`, "直接收成這塊地，或把肥料留給其他地塊"),
           );
         }
         if (result.reason === "fertilizer_not_applicable") {
@@ -748,6 +755,12 @@ module.exports = async (client, interaction) => {
             errContainer("⛔ 已達加速上限", `這塊地的成長時間已縮短到上限（${Math.round((farming.growthReductionCapPct || 0.6) * 100)}%）。`, "改施提升收成上限的肥料（章魚／月光露水）"),
           );
         }
+        if (result.reason === "yield_cap_reached") {
+          return replyEphemeralContainer(
+            interaction,
+            errContainer("⛔ 已達收成加成上限", `這塊地的施肥收成加成已達上限（+${Math.round((result.yieldCap ?? farming.yieldBonusCapPct ?? 2) * 100)}%，目前 +${Math.round((result.currentYield || 0) * 100)}%）。再施 ${fertDef.emoji || ""} **${fertDef.name || fertilizerKey}** 不會再增加收成，已自動擋下、沒有扣材料。`, "直接收成這塊地，或把肥料留給其他地塊"),
+          );
+        }
         if (result.reason === "already_ready") {
           return replyEphemeralContainer(
             interaction,
@@ -803,7 +816,7 @@ module.exports = async (client, interaction) => {
       if (!result.ok) {
         return replyEphemeralContainer(
           interaction,
-          errContainer("🌱 沒有可施肥的地塊", "其他成長中的地塊不適用此肥料、或都已達加速上限。", "改用其他肥料試試"),
+          errContainer("🌱 沒有可施肥的地塊", "其他成長中的地塊不適用此肥料、或都已達加速／收成上限。", "改用其他肥料試試"),
         );
       }
 
@@ -919,7 +932,7 @@ module.exports = async (client, interaction) => {
       const sourceLabel = preview.sourceField === "fish_bag" ? "魚袋" : "背包";
       if (preview.willApply <= 0) {
         const body = preview.eligibleCount === 0
-          ? "目前沒有任何能用這種肥料的成長中地塊（可能都不適用、或已達加速上限）。"
+          ? "目前沒有任何能用這種肥料的成長中地塊（可能都不適用、或已達加速／收成上限）。"
           : `需要 ${sourceLabel}「${fertDef.name}」**${preview.eligibleCount * preview.perPlot}**，目前 **${preview.have}**。`;
         return replyEphemeralContainer(
           interaction,
@@ -932,7 +945,7 @@ module.exports = async (client, interaction) => {
         `🧪 消耗 ${sourceLabel}「${fertDef.name}」 **${preview.willConsume}**（庫存 ${preview.have} → ${preview.have - preview.willConsume}）`,
       ];
       if (fertDef.growReductionPct) lines.push(`⏱️ 每塊成長 -${Math.round(fertDef.growReductionPct * 100)}%（封頂 ${Math.round((farming.growthReductionCapPct || 0.6) * 100)}%）`);
-      if (fertDef.yieldBonusPct) lines.push(`🌟 每塊 +${Math.round(fertDef.yieldBonusPct * 100)}% 收成`);
+      if (fertDef.yieldBonusPct) lines.push(`🌟 每塊 +${Math.round(fertDef.yieldBonusPct * 100)}% 收成（封頂 +${Math.round((farming.yieldBonusCapPct ?? 2) * 100)}%）`);
       if (preview.materialShort) lines.push(`-# ⚠️ 材料只夠 ${preview.willApply}/${preview.eligibleCount} 塊`);
       const skipLine = skippedSummaryLine(preview.skipped);
       if (skipLine) lines.push(skipLine);
@@ -991,7 +1004,7 @@ module.exports = async (client, interaction) => {
       if (!result.ok) {
         return replyEphemeralContainer(
           interaction,
-          errContainer("🌱 沒有可施肥的地塊", "成長中地塊不適用此肥料、或都已達加速上限。", "改用其他肥料試試"),
+          errContainer("🌱 沒有可施肥的地塊", "成長中地塊不適用此肥料、或都已達加速／收成上限。", "改用其他肥料試試"),
         );
       }
 
