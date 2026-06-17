@@ -184,6 +184,9 @@ module.exports = async (client) => {
     // 地下城決鬥對局狀態
     const duelGamesCollection = database.collection("DuelGames");
 
+    // 地下城戰鬥紀錄（Phase H+ 多回合 HP 戰鬥日誌）：30 天 TTL
+    const dungeonRunsCollection = database.collection("DungeonRuns");
+
     // 市集掛單（擺攤/換礦/徵求/競標）
     const marketListingsCollection = database.collection("MarketListings");
 
@@ -311,6 +314,7 @@ module.exports = async (client) => {
     client.worldEventAnnouncementsCollection = worldEventAnnouncementsCollection;
     client.workProfilesCollection = workProfilesCollection;
     client.duelGamesCollection = duelGamesCollection;
+    client.dungeonRunsCollection = dungeonRunsCollection;
     client.marketListingsCollection = marketListingsCollection;
     client.barterListingsCollection = barterListingsCollection;
     client.marketplaceMailboxCollection = marketplaceMailboxCollection;
@@ -1283,6 +1287,33 @@ module.exports = async (client) => {
         { updated_at: 1 },
         { expireAfterSeconds: 7 * 24 * 60 * 60, name: "duel_ttl_7d" }
       );
+
+      // 地下城戰鬥紀錄索引（Phase H+）：玩家近期戰鬥 / 主題統計 / TTL 30 天
+      await dungeonRunsCollection.createIndex(
+        { user_id: 1, ended_at: -1 },
+        { name: "dungeon_runs_user_time" }
+      ).catch((e) => console.log(`[WARN] DungeonRuns user_time: ${e.message}`.yellow));
+      await dungeonRunsCollection.createIndex(
+        { user_id: 1, theme: 1, floor: 1, ended_at: -1 },
+        { name: "dungeon_runs_user_theme_floor" }
+      ).catch((e) => console.log(`[WARN] DungeonRuns user_theme_floor: ${e.message}`.yellow));
+      await dungeonRunsCollection.createIndex(
+        { guild_id: 1, theme: 1, floor: 1, ended_at: -1 },
+        { name: "dungeon_runs_guild_theme_floor" }
+      ).catch((e) => console.log(`[WARN] DungeonRuns guild_theme_floor: ${e.message}`.yellow));
+      await dungeonRunsCollection.createIndex(
+        { run_id: 1 },
+        { unique: true, name: "uniq_dungeon_run_id" }
+      ).catch((e) => console.log(`[WARN] DungeonRuns run_id: ${e.message}`.yellow));
+      // mini-BOSS 戰鬥用 is_milestone 標記，TTL 跳過（紀念意義 1 年由 cron 自行清）
+      await dungeonRunsCollection.createIndex(
+        { ended_at: 1 },
+        {
+          expireAfterSeconds: 30 * 24 * 60 * 60,
+          name: "dungeon_runs_ttl_30d",
+          partialFilterExpression: { is_milestone: { $ne: true } },
+        }
+      ).catch((e) => console.log(`[WARN] DungeonRuns TTL: ${e.message}`.yellow));
 
       // 市集索引：(guild, listing_id) 唯一；cron 用 (status, expires_at)；type 篩選
       await marketListingsCollection.createIndex(

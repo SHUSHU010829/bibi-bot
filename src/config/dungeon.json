@@ -1,7 +1,8 @@
 {
   "dungeon": {
     "enabled": true,
-    "staminaMax": 10,
+    "channelId": "1511617684532367440",
+    "staminaMax": 12,
     "staminaRegenMs": 3600000,
     "baseAtk": 20,
     "monsterHpMin": 60,
@@ -9,13 +10,90 @@
     "winRateMin": 0.2,
     "winRateMax": 0.9,
     "fistWinRateMax": 0.1,
+    "maxBattleTurns": 20,
+    "hp": {
+      "baseMax": 100,
+      "levelBonus": 2,
+      "naturalRegenPer10Min": 5,
+      "naturalRegenIntervalMs": 600000,
+      "escapeRefundPct": 0.5,
+      "lowHpRatio": 0.3,
+      "criticalHpRatio": 0.2,
+      "autoPotionTriggerRatio": 0.3,
+      "deathDropChance": 0.25
+    },
     "weapons": {
-      "fist": { "name": "赤手空拳", "emoji": "👊", "atk": 0, "critRate": 0, "durability": null },
-      "iron_sword": { "name": "鐵劍", "emoji": "🗡️", "atk": 25, "critRate": 0, "durability": 40 },
-      "steel_sword": { "name": "鋼劍", "emoji": "⚔️", "atk": 50, "critRate": 0.03, "durability": 45 },
-      "gold_sword": { "name": "黃金劍", "emoji": "🌟", "atk": 80, "critRate": 0.06, "durability": 60 },
-      "diamond_sword": { "name": "鑽石劍", "emoji": "💎", "atk": 120, "critRate": 0.1, "durability": 80 },
-      "legendary_sword": { "name": "傳說之劍", "emoji": "🔥", "atk": 180, "critRate": 0.2, "durability": 80 }
+      "fist": { "name": "赤手空拳", "emoji": "👊", "atk": 0, "def": 0, "critRate": 0, "durability": null },
+      "iron_sword": { "name": "鐵劍", "emoji": "🗡️", "atk": 25, "def": 5, "critRate": 0, "durability": 40 },
+      "steel_sword": { "name": "鋼劍", "emoji": "⚔️", "atk": 50, "def": 10, "critRate": 0.03, "durability": 45 },
+      "gold_sword": { "name": "黃金劍", "emoji": "🌟", "atk": 80, "def": 18, "critRate": 0.06, "durability": 60 },
+      "diamond_sword": { "name": "鑽石劍", "emoji": "💎", "atk": 120, "def": 28, "critRate": 0.1, "durability": 80 },
+      "legendary_sword": { "name": "傳說之劍", "emoji": "🔥", "atk": 180, "def": 40, "critRate": 0.2, "durability": 120 }
+    },
+    "shields": {
+      "iron_shield": {
+        "name": "鐵盾",
+        "emoji": "🪨",
+        "def": 10,
+        "blockRate": 0.25,
+        "reflectRate": 0,
+        "durability": 50,
+        "unlockLevel": 5,
+        "tier": "v1",
+        "recipe": { "iron": 5, "coal": 2 }
+      },
+      "steel_shield": {
+        "name": "鋼盾",
+        "emoji": "⚙️",
+        "def": 18,
+        "blockRate": 0.30,
+        "reflectRate": 0,
+        "durability": 60,
+        "unlockLevel": 15,
+        "tier": "v1",
+        "recipe": { "iron": 10, "coal": 5 }
+      },
+      "gold_shield": {
+        "name": "黃金盾",
+        "emoji": "🟡",
+        "def": 28,
+        "blockRate": 0.35,
+        "reflectRate": 0.05,
+        "durability": 70,
+        "unlockLevel": 30,
+        "tier": "v2",
+        "enabled": false,
+        "recipe": { "gold": 8, "iron": 15 }
+      },
+      "diamond_shield": {
+        "name": "鑽石盾",
+        "emoji": "💠",
+        "def": 42,
+        "blockRate": 0.45,
+        "reflectRate": 0.10,
+        "durability": 90,
+        "unlockLevel": 50,
+        "tier": "v2",
+        "enabled": false,
+        "recipe": { "diamond": 5, "gold": 15 }
+      },
+      "legendary_shield": {
+        "name": "傳說之盾",
+        "emoji": "🔥",
+        "def": 65,
+        "blockRate": 0.60,
+        "reflectRate": 0.20,
+        "statusImmunity": ["poison", "burn", "paralyze"],
+        "durability": 120,
+        "unlockLevel": 75,
+        "tier": "v2",
+        "enabled": false,
+        "recipe": { "legendary_fragment": 3, "diamond": 10, "gold": 20 }
+      }
+    },
+    "shieldDurability": {
+      "maxConsumePerBattle": 5,
+      "maxConsumePerMiniBoss": 8
     },
     "durabilityWarn": { "low": 5, "critical": 1 },
     "monsters": [
@@ -27,6 +105,160 @@
       { "name": "深淵骷髏", "emoji": "💀" },
       { "name": "暗影狼", "emoji": "🐺" }
     ],
+    "monsterDefs": {
+      "cave_bat":      { "name": "洞窟蝙蝠",   "emoji": "🦇", "skills": ["poison"] },
+      "stone_slime":   { "name": "石化史萊姆", "emoji": "🪨", "skills": ["poison"] },
+      "crypt_spider":  { "name": "地穴蜘蛛",   "emoji": "🕷️", "skills": [] },
+      "mine_goblin":   { "name": "礦坑哥布林", "emoji": "👺", "skills": [] },
+      "lava_giant":    { "name": "熔岩巨人",   "emoji": "🗿", "skills": ["burn"] },
+      "abyss_skeleton":{ "name": "深淵骷髏",   "emoji": "💀", "skills": [] },
+      "shadow_wolf":   { "name": "暗影狼",     "emoji": "🐺", "skills": ["stun"] }
+    },
+    "themes": [
+      { "id": "mine",  "name": "礦坑", "emoji": "⛏️", "unlock": null },
+      { "id": "ruins", "name": "廢墟", "emoji": "🏛️", "unlock": { "level": 35, "prereqFloor": { "mine": 3 }, "prereqClears": 15 } },
+      { "id": "ice",   "name": "冰窟", "emoji": "❄️", "unlock": { "level": 60, "prereqFloor": { "ruins": 3 }, "prereqClears": 15 } }
+    ],
+    "floors": [
+      {
+        "floor": 1,
+        "name": "廢棄礦坑",
+        "emoji": "🏚️",
+        "unlockLevel": 1,
+        "staminaCost": 1,
+        "weaponDurabilityCost": 1,
+        "monsterHpRange": [100, 200],
+        "monsterAtkRange": [8, 12],
+        "expectedTurns": [3, 5],
+        "rewardMultiplier": 1.0,
+        "encounterRatePct": 20,
+        "monsterPool": ["cave_bat", "stone_slime"],
+        "petExp": 10
+      },
+      {
+        "floor": 2,
+        "name": "礦工迷宮",
+        "emoji": "⛏️",
+        "unlockLevel": 15,
+        "prereqClears": { "floor": 1, "count": 5 },
+        "staminaCost": 1,
+        "weaponDurabilityCost": 1,
+        "monsterHpRange": [250, 400],
+        "monsterAtkRange": [12, 18],
+        "expectedTurns": [4, 6],
+        "rewardMultiplier": 1.3,
+        "encounterRatePct": 20,
+        "monsterPool": ["stone_slime", "crypt_spider"],
+        "petExp": 18
+      },
+      {
+        "floor": 3,
+        "name": "古遺跡",
+        "emoji": "🏛️",
+        "unlockLevel": 30,
+        "prereqClears": { "floor": 2, "count": 10 },
+        "staminaCost": 2,
+        "weaponDurabilityCost": 2,
+        "monsterHpRange": [500, 800],
+        "monsterAtkRange": [18, 25],
+        "expectedTurns": [6, 8],
+        "rewardMultiplier": 1.7,
+        "encounterRatePct": 25,
+        "monsterPool": ["crypt_spider", "mine_goblin", "abyss_skeleton"],
+        "petExp": 28
+      },
+      {
+        "floor": 4,
+        "name": "熔岩深淵",
+        "emoji": "🔥",
+        "unlockLevel": 50,
+        "prereqClears": { "floor": 3, "count": 15 },
+        "staminaCost": 2,
+        "weaponDurabilityCost": 2,
+        "monsterHpRange": [1000, 1500],
+        "monsterAtkRange": [25, 35],
+        "expectedTurns": [8, 10],
+        "rewardMultiplier": 2.2,
+        "encounterRatePct": 25,
+        "monsterPool": ["mine_goblin", "lava_giant", "abyss_skeleton"],
+        "petExp": 38
+      },
+      {
+        "floor": 5,
+        "name": "虛空之門",
+        "emoji": "🌌",
+        "unlockLevel": 75,
+        "prereqClears": { "floor": 4, "count": 25 },
+        "staminaCost": 3,
+        "weaponDurabilityCost": 3,
+        "monsterHpRange": [1800, 2500],
+        "monsterAtkRange": [25, 35],
+        "expectedTurns": [10, 15],
+        "rewardMultiplier": 3.0,
+        "encounterRatePct": 15,
+        "monsterPool": ["lava_giant", "shadow_wolf"],
+        "petExp": 50,
+        "miniBossUnlock": { "floor": 5, "clears": 5 }
+      }
+    ],
+    "miniBosses": {
+      "mine":  {
+        "id": "mine_tyrant",
+        "name": "礦坑暴君",
+        "emoji": "👹",
+        "hp": 3500,
+        "atk": 35,
+        "staminaCost": 3,
+        "weaponDurabilityCost": 4,
+        "phase2HpRatio": 0.5,
+        "phase2AtkMult": 2.0,
+        "petExp": 80
+      },
+      "ruins": {
+        "id": "ruins_sleeper",
+        "name": "永眠守衛",
+        "emoji": "💀",
+        "hp": 4000,
+        "atk": 30,
+        "staminaCost": 3,
+        "weaponDurabilityCost": 4,
+        "armorTurns": 3,
+        "petExp": 80
+      },
+      "ice":   {
+        "id": "ice_queen",
+        "name": "冰晶女王",
+        "emoji": "❄️",
+        "hp": 4500,
+        "atk": 28,
+        "staminaCost": 3,
+        "weaponDurabilityCost": 4,
+        "paralyzeChance": 0.3,
+        "petExp": 80
+      }
+    },
+    "statusEffects": {
+      "poison":   { "name": "中毒", "emoji": "🐍", "tickPct": 0.05, "turns": 3 },
+      "stun":     { "name": "暈眩", "emoji": "💫", "skipTurns": 1 },
+      "armor":    { "name": "護甲", "emoji": "🛡️", "damageReductionPct": 0.5, "turns": 2 },
+      "burn":     { "name": "燃燒", "emoji": "🔥", "tickFlat": 8, "turns": 2 },
+      "paralyze": { "name": "麻痺", "emoji": "⚡", "critMult": 0.5, "turns": 3 }
+    },
+    "hpPotions": {
+      "small":  { "name": "生命藥水（小）", "emoji": "💊", "restore": 20,   "price": 200,   "stackMax": 99 },
+      "medium": { "name": "生命藥水（中）", "emoji": "💊", "restore": 50,   "price": 500,   "stackMax": 99 },
+      "large":  { "name": "生命藥水（大）", "emoji": "💊", "restore": 9999, "price": 1500,  "stackMax": 99 }
+    },
+    "petAssist": {
+      "combat":   { "triggerChance": 0.20, "extraDamagePct": 0.5 },
+      "healer":   { "triggerChance": 0.20, "healMin": 5, "healMax": 10 },
+      "gather":   { "lootBonusPct": 5 },
+      "commerce": { "coinBonusPct": 10 }
+    },
+    "petHunger": {
+      "triggered": 5,
+      "untriggered": 3
+    },
     "loot": [
       { "id": "ore_iron", "kind": "ore", "ore": "iron", "qty": 3, "weight": 22 },
       { "id": "ore_coal", "kind": "ore", "ore": "coal", "qty": 4, "weight": 12 },
