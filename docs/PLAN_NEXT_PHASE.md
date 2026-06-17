@@ -1163,7 +1163,7 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 > 黑市 / 流浪商人的商品池**改以非寵物道具為主**（HP 藥水、武器強化卷軸、轉職石、限定釣餌、限定外觀 等）。
 > Phase H+ 地下城已預留寵物協戰 hook 介面（`petResolver` stub），未來實作寵物可直接接上。
 
-### B.1.5 Phase H+ 副本進階相關（共 8 種，新增）
+### B.1.5 Phase H+ 副本進階相關（共 10 種，新增）
 
 | ID | 名稱 | 功用 | 取得 |
 |---|---|---|---|
@@ -1175,6 +1175,10 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | `burn_resist` | 🔥 燃燒抵抗劑 | 戰鬥中免疫燃燒 | 商城 350 幣 |
 | `escape_token` | 🏃 逃離符 | 戰鬥中可逃離且不扣體力 | 黑市珍貴 / 流浪商人 |
 | `weapon_enhance_scroll` | ⚔️ 武器強化卷軸 | 鑑定後永久 +5 ATK（最多 3 次）| 黑市傳奇 / 流浪商人 barter |
+| `iron_shield` | 🪨 鐵盾 | DEF +10、格擋 25% | 合成（鐵 ×5 + 煤炭 ×2）/ 未來商城 |
+| `steel_shield` | ⚙️ 鋼盾 | DEF +18、格擋 30% | 合成（鐵 ×10 + 煤炭 ×5）/ 未來商城 |
+
+> 盾牌 v2（黃金盾 / 鑽石盾 / 傳說盾）設計已定案於 `PHASE_H_PLUS_DUNGEON_REFINEMENT.md`，等 v1 數據觀察後再開放。
 
 ### B.2 Phase I 冒險相關（本次延後）
 
@@ -1227,9 +1231,9 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 |---|---|---|---|
 | 石頭 | 賭石、肥料、賣 | 🟢 OK | — |
 | 煤炭 | 合成、賣 | 🟢 OK | — |
-| 鐵礦 | 合成、賣 | 🟢 OK | — |
-| 黃金 | 合成、賣 | 🟢 OK | 新合成：武器強化卷軸 |
-| 鑽石 | 合成、賣 | 🟢 OK | 新合成：武器強化卷軸 |
+| 鐵礦 | 合成、賣 | 🟢 OK | **新合成：鐵盾 / 鋼盾**（Phase H+ v1）|
+| 黃金 | 合成、賣 | 🟢 OK | 新合成：武器強化卷軸（v2 黃金盾未來追加）|
+| 鑽石 | 合成、賣 | 🟢 OK | 新合成：武器強化卷軸（v2 鑽石盾未來追加）|
 | 小雜魚 | 烹飪、肥料 | 🟢 OK | — |
 | 鯊魚 | 合成釣竿、烹飪 | 🟢 OK | 黑市暗號 / 武器強化 barter |
 | 熔岩魚 | 限定料理 | 🟡 出口少 | 流浪商人 barter（食譜換）|
@@ -1244,6 +1248,16 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 ├─ 黃金 ×3 + 鑽石 ×1 + 靈魂碎片 ×2          ← 給靈魂碎片出口
 ├─ 流浪商人騎士款 barter：鑽石 ×3 + 鯊魚 ×5
 └─ 黑市傳奇級購買：40,000 幣
+
+鐵盾（Phase H+ v1，Lv.5 解鎖）
+├─ 鐵 ×5 + 煤炭 ×2                          ← 鐵礦新出口
+└─ 商城（未來追加）
+
+鋼盾（Phase H+ v1，Lv.15 解鎖）
+├─ 鐵 ×10 + 煤炭 ×5                         ← 鐵礦中量消耗
+└─ 商城（未來追加）
+
+> 盾牌 v2（黃金盾 / 鑽石盾 / 傳說盾）設計已定案，等 v1 數據觀察後再開放。
 
 護盾卷軸（Phase H+ 副本消耗品，第一次受擊減 50%）
 ├─ 黑玫瑰 ×2 + 靈魂碎片 ×1 + 鐵 ×3
