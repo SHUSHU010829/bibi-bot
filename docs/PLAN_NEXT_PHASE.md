@@ -1,16 +1,18 @@
 # 逼逼機器人 — 新階段企劃書（問卷高期待玩法）
 
-> 紀錄日期：2026-06-09（2026-06-16 增補 Phase K / L、移除 Phase I 文字冒險）
+> 紀錄日期：2026-06-09（2026-06-16 增補 Phase K / L、移除 Phase I 文字冒險、移除 Phase H 寵物）
 > 背景：以問卷統計挑出期待值最高的玩法，從 `PLAN_BRAINSTORM.md`
 > 中對應條目展開為完整 Phase 規劃。
 > 涵蓋：
-> - **Phase H 寵物 / 夥伴養成**（brainstorm A1）
+> - **Phase H+ 地下城副本進階**（HP 系統 / 樓層 / 主題）
 > - **Phase J 轉職 / 職業系統**（brainstorm G2）
-> - **Phase K 神祕黑市**（brainstorm B3）— 增補
-> - **Phase L 流浪商人**（新提案）— 增補
+> - **Phase K 神祕黑市**（brainstorm B3）
+> - **Phase L 流浪商人**（新提案）
 >
-> **本次延後**：Phase I 文字冒險（brainstorm C1 ⭐⭐⭐）已從本計畫移除，
-> 留待下一波再開。
+> **本次延後**：
+> - Phase I 文字冒險（brainstorm C1 ⭐⭐⭐）— 留待下一波再開
+> - Phase H 寵物 / 夥伴養成（brainstorm A1 ⭐⭐⭐）— 留待下一波再開，
+>   但 Phase H+ 地下城進階已**預留寵物協戰 hook 介面**，未來實作寵物可直接接上
 >
 > 銜接於 `PLAN_INTEGRATED.md` 之後，作為下一波主開發路線。
 
@@ -22,14 +24,13 @@
 2. [設計原則與共同地基](#2-設計原則與共同地基)
 3. [Phase 排程與依賴關係](#3-phase-排程與依賴關係)
 4. [Phase H+ — 地下城副本進階](#phase-h--地下城副本進階)
-5. [Phase H — 寵物 / 夥伴養成](#phase-h--寵物--夥伴養成)
-6. [Phase J — 轉職 / 職業系統](#phase-j--轉職--職業系統)
-7. [Phase K — 神祕黑市](#phase-k--神祕黑市)
-8. [Phase L — 流浪商人](#phase-l--流浪商人)
-9. [跨 Phase 整合](#跨-phase-整合)
-10. [開發時程總覽](#開發時程總覽)
-11. [新增檔案索引](#新增檔案索引)
-12. [通用驗收清單](#通用驗收清單)
+5. [Phase J — 轉職 / 職業系統](#phase-j--轉職--職業系統)
+6. [Phase K — 神祕黑市](#phase-k--神祕黑市)
+7. [Phase L — 流浪商人](#phase-l--流浪商人)
+8. [跨 Phase 整合](#跨-phase-整合)
+9. [開發時程總覽](#開發時程總覽)
+10. [新增檔案索引](#新增檔案索引)
+11. [通用驗收清單](#通用驗收清單)
 
 ---
 
@@ -42,24 +43,24 @@
 | `PLAN_INTEGRATED.md` | Phase 8 / A–G / S3–S5 | 除 S3 外皆已完成 |
 | `PLAN_OPTIMIZATION.md` | 既有功能優化（Opt-1～Opt-5） | 平行進行 |
 | `PLAN_BRAINSTORM.md` | 30 個玩法候選 | 腦力激盪存檔 |
-| **`PLAN_NEXT_PHASE.md`（本文件）** | **問卷高期待玩法（H / J / K / L）** | **主開發路線** |
+| **`PLAN_NEXT_PHASE.md`（本文件）** | **問卷高期待玩法（H+ / J / K / L）** | **主開發路線** |
 
 ### 1.2 為什麼是這四個
 
 | Phase | 對應條目 | 問卷期待值 | 核心價值 |
 |---|---|---|---|
-| **H 寵物 / 夥伴養成** | brainstorm A1 ⭐⭐⭐ | 高 | 每日回流、跨系統消耗出口、最強留存 |
+| **H+ 地下城副本進階** | 既有 Phase 4 擴充 | — | 副本系統 2.0，補戰鬥深度，為未來寵物協戰預留 hook |
 | **J 轉職 / 職業系統** | brainstorm G2 ⭐⭐ | 高 | 玩家身份感、與 S3 技能樹差異化、季賽節奏 |
 | **K 神祕黑市** | brainstorm B3 ⭐⭐ | 高 | 稀有道具流通出口、驚喜感、賭性玩家 |
 | **L 流浪商人** | 新提案 | 中—高 | 隨機限量限時商店、補日常驚喜、低風險友善版 |
 
-前兩者覆蓋 **養成 / 身份** 兩個玩家動機面向，後兩者作為 **限時商店雙生 Phase**
-（K 高風險 / 高稀有，L 低風險 / 高便利）共用商店引擎：
-- 寵物提供出戰 buff，不同職業可搭配對應品種的 buff 偏好
-- 黑市 / 流浪商人是新生產（罕見道具入口）與消耗（金幣 sink）的雙向出口。
+H+ 補戰鬥深度、J 給身份感，K / L 作為 **限時商店雙生 Phase**（K 高風險 / 高稀有，L 低風險 / 高便利）共用商店引擎。
 
-> Phase I 文字冒險延後說明：原本作為冒險道具來源（古文物 / 深海珍珠 / 守衛核心 等）
-> 已從本次商品池移除；黑市與流浪商人的 barter 收料改以**既有資源**（魚 / 礦 / 作物 / 黑玫瑰副產）為主。
+> **本次延後說明**：
+> - Phase H 寵物：原作為「最強留存系統」，但因 v1 roster 規劃需求複雜（素材授權、20 隻品種、飾品 / 親密度 / 飢餓系統），暫不列入本次。
+>   Phase H+ 地下城已預留 `petResolver` hook 介面，未來補做時可直接接上。
+> - Phase I 文字冒險：原本作為冒險道具來源（古文物 / 深海珍珠 / 守衛核心 等），已從商品池移除；
+>   黑市與流浪商人的 barter 收料改以**既有資源**（魚 / 礦 / 作物 / 黑玫瑰副產）為主。
 
 ---
 
@@ -69,7 +70,7 @@
 
 | 原則 | 說明 |
 |---|---|
-| **生產 ↔ 消耗對稱** | 寵物餵食消化 fishing / farm 產出；冒險消耗體力與消耗品；轉職費用銷毀幣 |
+| **生產 ↔ 消耗對稱** | 副本副本耗 HP 藥水 / 武器耐久；轉職費用銷毀幣；黑市 / 流浪商人 barter 消化魚 / 礦 / 作物囤積 |
 | **eventBus 優先** | 三 Phase 之間的觸發改用 `src/features/eventBus`（見 brainstorm I3）統一訂閱 |
 | **buff 統一彙整** | 所有加成走 `buffResolver`，新增 `pet`、`profession` 兩個來源 |
 | **config 驅動** | 寵物品種、冒險事件樹、職業效果全部放 JSON |
@@ -95,22 +96,16 @@
                        │ eventBus（地基 2d）   │
                        └─────┬────────────────┘
                              │
-                             ▼
-                     ┌─────────────────┐
-                     │ Phase H+ 地下城  │
-                     │ HP 系統 + 樓層   │
-                     └────────┬────────┘
+                ┌────────────┴────────────┐
+                ▼                         ▼
+        ┌─────────────────┐         ┌──────────┐
+        │ Phase H+ 地下城  │         │ Phase J  │
+        │ HP 系統 + 樓層   │         │ 轉職     │
+        └────────┬────────┘         └────┬─────┘
+                 │                       │
+                 └────────────┬──────────┘
                               │
-                ┌─────────────┴─────────────┐
-                ▼                           ▼
-          ┌─────────┐                 ┌──────────┐
-          │ Phase H │                 │ Phase J  │
-          │ 寵物 v1 │                 │ 轉職     │
-          └────┬────┘                 └────┬─────┘
-               │                           │
-               └─────────────┬─────────────┘
-                             │
-                             ▼
+                              ▼
                       ┌──────────────┐
                       │ shopEngine   │（K / L 共用）
                       └──┬────────┬──┘
@@ -126,14 +121,15 @@
                     └────────────────────┘
 ```
 
-**建議順序**：`eventBus → Phase H+ → Phase H → Phase J → Phase K → Phase L → 經濟儀表板覆盤`
+**建議順序**：`eventBus → Phase H+ → Phase J → Phase K → Phase L → 經濟儀表板覆盤`
 
 理由：
-- **Phase H+ 地下城進階** 先做：提供 HP 系統、寵物協戰 hook 給 Phase H 用，又獨立完整
-- 寵物 (H) 跟進：吃 H+ 的協戰介面，同時是 fishing / farm 產出的天然 sink
-- 轉職 (J)：給玩家身份感，職業 buff 與寵物 / 副本搭配
-- 黑市 (K)：排在 H / J 之後，商品池連動寵物蛋 / 進化材 / 轉職石
+- **Phase H+ 地下城進階** 先做：補戰鬥深度（多回合 HP / 樓層 / 主題），同時預留寵物協戰 hook 給未來
+- 轉職 (J) 跟進：給玩家身份感，職業 buff 與新副本主題搭配
+- 黑市 (K)：排在 J 之後，商品池連動轉職石
 - 流浪商人 (L)：緊接 K，**直接復用** K 的 `shopEngine`，開發成本減半
+
+> Phase H+ 與 Phase J 之間**可平行開發**（無共用 critical path），若團隊允許可同時推進。
 
 ---
 
@@ -167,184 +163,6 @@
 - `petResolver.getCombatPetType()` — 寵物協戰類型判定
 
 詳細設計（戰鬥引擎、樓層、主題、狀態效果、HP 藥水、突發事件、寵物協戰、mini-BOSS、DB 變動、Config、與既有系統接點、細節設計補充等）請見獨立文件。
-
-## Phase H — 寵物 / 夥伴養成
-
-> **前置需求**：Phase S4（釣魚）✅、Phase D（農場）✅、Opt-5（buffResolver）、eventBus 地基
-> **預估時間**：6–8 天
-> **定位**：最強留存系統，跨生產線消耗出口
-
-### 核心機制
-
-- 玩家從 **BOSS 戰結算 / 釣魚稀有抽 / 農場黑玫瑰收成** 機率掉「寵物蛋」
-- 蛋有孵化倒數（4 / 12 / 24 小時依稀有度），孵化期可加速（餵食 / 加溫道具）
-- 孵出寵物 → **三條軸**：等級（exp） / 親密度（互動） / 飢餓度（每 12h −10）
-- 飢餓度 0 → 寵物罷工，不提供 buff
-- 玩家可同時擁有多隻，但 **一次只能出戰一隻**
-
-### 寵物品種（config 驅動，初版 10 隻）
-
-| 品種 | 稀有度 | 出戰 buff | 取得來源 |
-|---|---|---|---|
-| 🐹 小礦鼠 | 普通 | 挖礦 qty +1 | 蛋（普通） |
-| 🐟 小水靈 | 普通 | 釣魚 luck +5% | 蛋（普通） |
-| 🌱 種苗精 | 普通 | 農場成熟時間 −10% | 蛋（普通） |
-| 🐺 礦坑狼 | 稀有 | 挖礦 luck +5%、ATK +20 | 蛋（稀有） |
-| 🦅 海鷹 | 稀有 | 釣魚 CD −15% | 蛋（稀有） |
-| 🦄 守庫獸 | 稀有 | 賣礦 / 賣魚收入 +10% | 蛋（稀有） |
-| 🐉 小火龍 | 傳說 | BOSS 傷害 +25% | 蛋（傳說 / BOSS 尾刀掉） |
-| 🦊 商賈狐 | 傳說 | 拍賣手續費 −2%、打工收入 +20% | 蛋（傳說） |
-| 🎄 雪精靈 | 限定 | 全屬性 +8% | 聖誕活動 / 抖內 |
-| 🌟 抖內龍 | 限定 | 全屬性 +10% | 至尊抖內專屬 |
-
-### 親密度系統
-
-| 互動 | 親密度 +/- | 冷卻 |
-|---|---|---|
-| 餵食（魚 / 作物） | +5 ~ +15（依稀有度） | 每隻每日 5 次 |
-| 撫摸 `/寵物 互動` | +2 | 每隻每日 3 次 |
-| 出戰陪同（BOSS / 冒險） | +1 per 次 | — |
-| 飢餓度歸 0 | −20（一次性） | — |
-
-| 親密度等級 | 門檻 | 解鎖 |
-|---|---|---|
-| 生疏 | 0–99 | buff 效果 ×0.7 |
-| 熟悉 | 100–299 | buff 效果 ×1.0 |
-| 親密 | 300–699 | buff 效果 ×1.1 + 解鎖第二技能槽 |
-| 摯友 | 700+ | buff 效果 ×1.25 + 出戰時 5% 機率觸發雙倍掉落 |
-
-### 等級與進化
-
-- 出戰時自動獲得 exp（挖礦 / 釣魚 / 農場 / BOSS / 冒險 都觸發）
-- Lv.10、Lv.25 可進化（稀有度 +1 階、外觀變化、buff 數值 +20% / +40%）
-- 進化需消耗「進化石」（BOSS 尾刀獎勵 / 抖內 / 限時活動掉）
-
-### 消耗出口（必填段落）
-
-| 入口 | 出口 |
-|---|---|
-| 蛋掉落 → 寵物 | 飢餓度需持續餵食（魚 / 作物消耗） |
-| BOSS / 冒險 exp | 進化石需求（推動 BOSS 參與） |
-| 多隻寵物 | 出戰切換 CD（避免無痛切換）+ 收養上限（初始 3 隻、可花幣擴充至 10 隻） |
-
-### UX 設計重點
-
-依 `CLAUDE.md` 七項檢查：
-
-- **`/寵物 列表`**（查詢類 → ephemeral）：每隻寵物獨立 TextDisplay + 緊接 ActionRow（餵食 / 互動 / 出戰）
-- **餵食成功**：成功訊息附「再餵一隻 / 查看魚袋」快捷按鈕
-- **飢餓度警告**：飢餓 ≤ 20 時，下次 `/挖礦` 等行動完成訊息加 -# 提示「⚠️ 你的小火龍快餓了」
-- **未孵化的蛋**：值為 0 的品種不顯示佔位，統一以 -# 顯示「尚未擁有：…」
-
-### 指令
-
-| 指令 | 說明 | 類別 |
-|---|---|---|
-| `/寵物 列表` | 查看擁有的寵物 / 蛋 | ephemeral |
-| `/寵物 出戰 [pet_id]` | 切換出戰寵物 | ephemeral |
-| `/寵物 餵食 [pet_id] [食材]` | 餵食 | 公開 |
-| `/寵物 互動 [pet_id]` | 撫摸 / 玩耍 | 公開 |
-| `/寵物 進化 [pet_id]` | 進化（需材料） | 公開 |
-| `/寵物 圖鑑` | 已收集品種 + 解鎖獎勵 | ephemeral |
-| `/寵物 改名 [pet_id] [名稱]` | 自訂名稱（30 字內） | ephemeral |
-| `/寵物 放生 [pet_id]` | 放生（二次確認），返還少量幣 | ephemeral |
-
-### DB 新增
-
-```js
-// user_pets
-{
-  pet_id:           String,    // uuid
-  owner_id:         String,
-  guild_id:         String,
-  species:          String,    // 品種 id
-  rarity:           String,    // 'common' | 'rare' | 'legendary' | 'limited'
-  name:             String,    // 玩家自訂（預設＝品種名）
-  level:            Number,
-  exp:              Number,
-  affection:        Number,    // 親密度
-  hunger:           Number,    // 0 ~ 100
-  last_fed_at:      Number,
-  evolution_stage:  Number,    // 0 / 1 / 2
-  active:           Boolean,   // 是否出戰中
-  obtained_at:      Number,
-  obtained_from:    String,    // 'boss' | 'fishing' | 'farm' | 'event' | 'donation'
-}
-
-// user_pet_eggs
-{
-  egg_id:       String,
-  owner_id:     String,
-  guild_id:     String,
-  rarity:       String,
-  hatches_at:   Number,
-  obtained_at:  Number,
-  obtained_from:String,
-}
-```
-
-索引：
-- `user_pets`：`{ owner_id: 1, guild_id: 1 }`、`{ owner_id: 1, active: 1 }`
-- `user_pet_eggs`：`{ hatches_at: 1 }`（孵化排程掃描）
-
-### Config 驅動（`src/config/pet.json`）
-
-```json
-{
-  "species": [
-    {
-      "id": "mine_mouse", "name": "小礦鼠", "emoji": "🐹", "rarity": "common",
-      "baseBuff": { "miningQty": 1 },
-      "evolutionTo": "iron_mouse",
-      "favoriteFood": ["small_fish", "carrot"]
-    }
-  ],
-  "egg": {
-    "hatchHours": { "common": 4, "rare": 12, "legendary": 24 },
-    "speedupItem": "warming_stone",
-    "speedupReductionPct": 0.5
-  },
-  "hunger": {
-    "decayPerHour": 0.83,
-    "thresholdWorking": 1,
-    "warningAt": 20
-  },
-  "affection": {
-    "tiers": [
-      { "name": "生疏", "min": 0,   "buffMult": 0.7 },
-      { "name": "熟悉", "min": 100, "buffMult": 1.0 },
-      { "name": "親密", "min": 300, "buffMult": 1.1 },
-      { "name": "摯友", "min": 700, "buffMult": 1.25 }
-    ]
-  },
-  "dropSources": {
-    "bossKill":     { "rate": 0.15, "rarityPool": { "common": 0.6, "rare": 0.35, "legendary": 0.05 } },
-    "fishingRare":  { "rate": 0.02, "rarityPool": { "common": 0.7, "rare": 0.30 } },
-    "farmBlackRose":{ "rate": 0.10, "rarityPool": { "common": 0.5, "rare": 0.5 } }
-  }
-}
-```
-
-### 與現有系統的接點
-
-- **掉蛋 hook**：訂閱 `boss.killed` / `fish.done` / `harvest.done`（eventBus）→ 機率寫入 `user_pet_eggs`
-- **餵食扣物**：扣 `UserInventory`（魚）/ `farm_inventory`（作物）
-- **出戰 buff**：`buffResolver` 新增 `pet` 來源，讀 `user_pets.active=true`
-- **孵化排程**：新增 `src/events/ready/petHatchChecker.js`（每分鐘）
-- **飢餓排程**：併入既有 `farmDecayChecker.js`（節省 cron 數量），每小時 −0.83
-
-### 新增檔案
-
-| 檔案 | 內容 |
-|---|---|
-| `src/config/pet.json` | 品種、稀有度、buff 數值 |
-| `src/features/pet/petService.js` | 蛋孵化、餵食、進化、出戰切換 |
-| `src/features/pet/petResolver.js` | 出戰 buff 給 buffResolver 呼叫 |
-| `src/events/ready/petHatchChecker.js` | 孵化排程 |
-| `src/commands/pet/pet.js` | `/寵物` 指令群 |
-| `src/events/interactionCreate/handlePetButton.js` | 按鈕處理（owner 驗證） |
-
----
 
 ## Phase J — 轉職 / 職業系統
 
@@ -502,7 +320,7 @@
 
 ## Phase K — 神祕黑市
 
-> **前置需求**：Phase 1（挖礦）✅、Phase 5（拍賣行）✅、Phase H 寵物 / Phase J 轉職（商品池連動）、eventBus 地基
+> **前置需求**：Phase 1（挖礦）✅、Phase 5（拍賣行）✅、Phase J 轉職（轉職石商品池連動）、eventBus 地基
 > **預估時間**：3–4 天
 > **定位**：稀有道具流通出口 + 高風險金幣 sink，製造驚喜感與賭性張力
 
@@ -510,7 +328,7 @@
 
 - 每日隨機 **1 小時** 在 `#神祕黑市` 頻道開張（seeded random，可預測但不公開）
 - 商人 NPC（系統訊息）擺出 **3–5 件** 商品，每件**全服限量**（通常 1–3 份）
-- 商品涵蓋：稀有素材、限定寵物蛋、轉職石、進化石、限定外觀道具
+- 商品涵蓋：稀有素材、轉職石、武器強化卷軸、HP 藥水、限定外觀道具
 - 購買時 **10% 機率被查緝**：罰金（商品 ×3）+ 沒收 + 公告通緝公頻
 - 商人離開後留下殘留地圖碎片（彩蛋）
 - **查緝率**會根據玩家當日購買次數遞增（第 1 次 10% / 第 2 次 25% / 第 3 次 50%）
@@ -521,10 +339,10 @@
 
 | 稀有度 | 出現權重 | 售價區間 | 範例商品 |
 |---|---|---|---|
-| 罕見 | 50% | 500–2,000 幣 | 限定礦石、加溫石、料理稀有食材 |
-| 珍貴 | 30% | 3,000–10,000 幣 | 轉職石、寵物蛋（稀有）、限定釣餌 |
-| 傳奇 | 15% | 20,000–60,000 幣 | 進化石、寵物蛋（傳說）、限定稱號券 |
-| 違禁 | 5% | 100,000–300,000 幣 | 永久 buff 卷軸、跳過試煉券、稀有外觀 |
+| 罕見 | 50% | 500–2,000 幣 | 限定礦石、限定釣餌、料理稀有食材、HP 藥水（小） |
+| 珍貴 | 30% | 3,000–10,000 幣 | 轉職石、武器強化卷軸、HP 藥水（中）、限定外觀 |
+| 傳奇 | 15% | 20,000–60,000 幣 | 高階藏寶圖、HP 藥水（大）、限定稱號券 |
+| 違禁 | 5% | 100,000–300,000 幣 | 永久 buff 卷軸、試煉減半券、稀有外觀 |
 
 > 「違禁」級商品 = 一定被查緝率 +5%（暗示其黑市性），但若**成功買到**獎勵巨大。
 
@@ -543,7 +361,7 @@
 
 | 暗號需求 | 換取物 | 查緝風險 |
 |---|---|---|
-| 鯊魚 ×10 + 熔岩魚 ×3 | 寵物蛋（傳說） | 普通查緝率 |
+| 鯊魚 ×10 + 熔岩魚 ×3 | 高階藏寶圖 ×1 + 鑽石 ×3 | 普通查緝率 |
 | 彩虹石 ×5 + 黑玫瑰 ×3 | 永久 luck +0.5% 卷軸 | 違禁級（+5%） |
 | 古文物 ×1（冒險產出） | 跳過職業試煉券 | 違禁級 |
 
@@ -585,7 +403,7 @@ durationHr = 1
 | 入口 | 出口 |
 |---|---|
 | 黑市賣稀有道具（產出） | 高價金幣消耗（500–300,000 幣）；查緝罰金（金幣銷毀） |
-| 限定寵物蛋 / 進化石 | 平衡 Phase H 寵物進化的供給節奏 |
+| 限定稱號券 / 高階藏寶圖 | 給高活躍玩家「全收集」目標 |
 | 違禁級永久 buff 卷軸 | 對應賽季 / 抖內 buff 的稀缺對沖 |
 | 暗號交易產出 | **囤積資源的非幣 sink**（魚 / 礦 / 作物 / 古文物） |
 
@@ -730,7 +548,7 @@ durationHr = 1
 - **公告頻道**：開張 / 結束公告至「逼逼特報站」+「逼逼黑市站」（新頻道）
 - **金幣扣款**：透過 `userCoinsCollection`，source 標 `black_market_buy` / `black_market_penalty` / `black_market_barter`
 - **物品消耗**：barter 模式呼叫 `inventoryService.consumeMany()`（含魚 / 礦 / 作物 / 古文物各自 collection 的彙整介面）
-- **道具入庫**：寵物蛋寫 `user_pet_eggs`、其他寫 `UserInventory`
+- **道具入庫**：寫 `UserInventory`（既有結構）
 - **eventBus**：emit `blackmarket.busted`、`blackmarket.purchased`、`blackmarket.barter_traded`
 
 ### 新增檔案
@@ -775,7 +593,7 @@ durationHr = 1
 |---|---|---|
 | 🧙 古怪藥師 | 食譜材料、藥水、烹飪稀有食材 | 全商品再 −5% |
 | 🛡️ 退役騎士 | 強化券、戰鬥道具、體力藥水 | 額外送 1 個小道具（首購） |
-| 🌸 花匠少女 | 作物種子、肥料、農場道具 | 寵物餵食道具 +1（限定品） |
+| 🌸 花匠少女 | 作物種子、肥料、農場道具 | 高級肥料 +1（限定品） |
 
 開張公告寫商人名字（如：「🧙 古怪藥師艾莉莎」），讓玩家有「下次又是誰？」的記憶點。
 
@@ -806,11 +624,11 @@ durationHr = 1
 | 商人 | 出 | 收（barter） | 設計意圖 |
 |---|---|---|---|
 | 🧙 古怪藥師 | 限定料理「龍息湯」食譜 | 熔岩魚 ×2 + 黑玫瑰 ×1 | 消化高階釣魚 / 農場 |
-| 🛡️ 退役騎士 | 進化石 ×1 | 彩虹石 ×3 + 鯊魚 ×5 | 礦業 → 寵物進化 |
-| 🌸 花匠少女 | 寵物餵食特餐（飽足度 +50）×3 | 玉米 ×10 | 玉米 sink |
+| 🛡️ 退役騎士 | 武器強化卷軸 ×1 | 鑽石 ×3 + 鯊魚 ×5 | 礦業 → 武器升級 |
+| 🌸 花匠少女 | 高級肥料 ×10 | 玉米 ×10 | 玉米 sink |
 | 🧙 古怪藥師 | 永久 luck +1% 卷軸（單次性、稀有） | 鯊魚 ×10 + 章魚 ×5 + 鐵礦 ×20 | 跨生產線整合 sink |
 | 🛡️ 退役騎士 | 騎士轉職石 | 戰鬥相關物品（之後定義） | 為轉職 Phase J 提供另一條取得管道 |
-| 🌸 花匠少女 | 稀有寵物蛋（保底品種） | 紅蘿蔔 ×30 + 玉米 ×15 + 草莓 ×8 | 低門檻 / 高累積、適合農場玩家 |
+| 🌸 花匠少女 | 限定稱號券 「農場大師」 | 紅蘿蔔 ×30 + 玉米 ×15 + 草莓 ×8 | 低門檻 / 高累積、適合農場玩家 |
 
 **Config 寫法**（`cost` 支援 `coin` / `items` / 混合）：
 
@@ -1066,8 +884,8 @@ final = base
       × guildBuff     (Phase A)
       × eventBuff     (Phase S5)
       × donationBuff  (Phase 8)
-      × petBuff       (Phase H ★ new)
       × professionBuff(Phase J ★ new)
+      × petBuff       (Phase H 未來)
       × skillTree     (Phase S3)
 ```
 
@@ -1077,13 +895,15 @@ final = base
 
 | 事件 | 發佈者 | 訂閱者 |
 |---|---|---|
-| `mine.done`     | mining service | pet exp、profession exp、季賽 |
-| `fish.done`     | fishing service | pet exp、profession exp、egg drop |
-| `harvest.done`  | farm service | pet exp、profession exp、egg drop |
-| `boss.killed`   | boss engine | pet egg drop、profession exp |
-| `pet.hatched`   | pet service | 圖鑑（未來） |
+| `mine.done`     | mining service | profession exp、季賽 |
+| `fish.done`     | fishing service | profession exp |
+| `harvest.done`  | farm service | profession exp |
+| `boss.killed`   | boss engine | profession exp |
+| `dungeon.cleared` | dungeon service | profession exp、季賽 |
+| `dungeon.floor_unlocked` | dungeon service | 稱號候選 |
+| `dungeon.mini_boss_defeated` | dungeon service | 屠龍累積（給未來寵物 / 稱號用）|
 | `profession.switched` | profession service | 公告（可選） |
-| `blackmarket.purchased` | black market service | 圖鑑、季賽、經濟儀表板 |
+| `blackmarket.purchased` | black market service | 季賽、經濟儀表板 |
 | `blackmarket.busted` | black market service | 公頻通緝公告、檢舉系統 |
 | `wanderer.encountered` | wanderer service | 商人圖鑑、稱號候選（集滿三種商人） |
 | `wanderer.purchased` | wanderer service | 經濟儀表板 |
@@ -1092,7 +912,7 @@ final = base
 
 | 新生產 | 消耗匹配 |
 |---|---|
-| 寵物蛋掉落 | 飢餓度餵食消化魚 / 作物 ✅ |
+| 副本進階產出（HP 戰鬥）| HP 藥水 / 武器耐久消耗（強化金幣 sink）✅ |
 | 轉職強化產出 | 季賽轉職石需求、主動指令日限 ✅ |
 | 黑市稀有道具入口 | 高價金幣消耗 + 查緝罰金（強力 sink） ✅ |
 | 流浪商人折扣品 | 雖然便宜但個人限量；日常消耗品流動性 sink ✅ |
@@ -1111,7 +931,7 @@ type ShopItem = {
     | { coin: number }
     | { items: Array<{ id: string, qty: number }> }
     | { coin: number, items: Array<{ id: string, qty: number }> }
-  give: ItemGrant            // 寵物蛋 / 物品 / 卷軸 / 食譜...
+  give: ItemGrant            // 物品 / 卷軸 / 食譜 / 稱號券 / 外觀...
   stock: number              // 全服或個人剩餘
   perUserLimit: number
 }
@@ -1136,27 +956,24 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | 項目 | 時間 | 前置 | 備註 |
 |---|---|---|---|
 | 地基：eventBus | 2 d | — | 新玩法上線前必做 |
-| **Phase H+ 地下城進階** | **5–7 d** | eventBus | HP 系統 / 樓層 / 副本主題 / 寵物協戰 hook（先於 Phase H）|
-| Phase H 寵物 v1（12 隻貓狗）| 6–8 d | eventBus、Phase H+ | 含孵化、餵食、飾品、出戰、圖鑑 |
-| Phase J 轉職 | 5–6 d | eventBus、Phase H（可選） | 六職業 + 試煉 + 季賽 |
-| Phase K 神祕黑市 | 3–4 d | Phase H / J（道具池連動）、eventBus | 含 `shopEngine` 共用引擎 |
+| **Phase H+ 地下城進階** | **5–7 d** | eventBus | HP 系統 / 樓層 / 副本主題 / 寵物協戰 hook（為未來預留）|
+| Phase J 轉職 | 5–6 d | eventBus | 六職業 + 試煉 + 季賽 |
+| Phase K 神祕黑市 | 3–4 d | Phase J（道具池連動）、eventBus | 含 `shopEngine` 共用引擎 |
 | Phase L 流浪商人 | 2–3 d | Phase K 的 `shopEngine` | 共用引擎、新增 3 種商人個性 |
 | 地基：經濟儀表板 | 2–3 d | — | 與 Phase 平行可做 |
-| **合計** | **25–33 d** | | |
+| **合計** | **19–25 d** | | |
 
-**建議啟動順序**：`eventBus → Phase H+ → Phase H → Phase J → Phase K → Phase L → 經濟儀表板`
+**建議啟動順序**：`eventBus → Phase H+ → Phase J → Phase K → Phase L → 經濟儀表板`
 
 里程碑：
 - **M1**（+2d）：eventBus 上線、既有 service 開始 emit 事件
 - **M2**（+7–9d）：Phase H+ 地下城副本進階上線（HP 系統 + 樓層 + 主題）
-- **M3**（+13–17d）：Phase H 寵物 v1 上線，首批玩家開始養寵物（含協戰）
-- **M4**（+18–23d）：Phase J 轉職上線，配合本季季首
-- **M5**（+21–27d）：Phase K 神祕黑市上線（含 `shopEngine`）
-- **M6**（+23–30d）：Phase L 流浪商人上線（復用 `shopEngine`）
-- **M7**（+25–33d）：經濟儀表板覆盤前 4 週數據
+- **M3**（+12–15d）：Phase J 轉職上線，配合本季季首
+- **M4**（+15–19d）：Phase K 神祕黑市上線（含 `shopEngine`）
+- **M5**（+17–22d）：Phase L 流浪商人上線（復用 `shopEngine`）
+- **M6**（+19–25d）：經濟儀表板覆盤前 4 週數據
 
-> **寵物 v2/v3** 延後：8 條龍系寵物中部分（赤焰龍王 / 黑曜霸主等）依賴本 Phase H+ 的屠龍累積與 HP 系統；
-> 銀月騎士 / 青銅將軍依賴未來圖鑑系統（brainstorm A2）與拍賣曝光擴充，列入下一波。
+> **Phase H 寵物延後**：Phase H+ 已預留 `petResolver` hook 介面（`isCounterImmune` / `getFailStaminaSaveRate` / `getPostBattleHpRegenPct` / `getCombatPetType`），未來實作寵物時可直接接上，不需重構 H+。
 
 ---
 
@@ -1165,12 +982,7 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | 檔案 | 內容 | Phase |
 |---|---|---|
 | `src/features/eventBus/index.js` | 跨系統事件匯流排 | 地基 |
-| `src/config/pet.json` | 寵物品種、稀有度、buff | H |
-| `src/features/pet/petService.js` | 寵物核心邏輯 | H |
-| `src/features/pet/petResolver.js` | 出戰寵物 buff 整合 | H |
-| `src/events/ready/petHatchChecker.js` | 蛋孵化排程 | H |
-| `src/commands/pet/pet.js` | `/寵物` 指令群 | H |
-| `src/events/interactionCreate/handlePetButton.js` | 寵物按鈕處理 | H |
+| `src/features/pet/petResolver.js` | **空殼 stub**（只回傳 false / 0 / null），給 H+ hook 介面用；Phase H 上線時實作 | H+ |
 | `src/config/profession.json` | 職業定義 + 試煉 + 季賽 | J |
 | `src/features/profession/professionService.js` | 轉職核心 | J |
 | `src/features/profession/professionResolver.js` | 職業 buff 整合 | J |
@@ -1345,21 +1157,24 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 > 給 Phase H / I / J / K / L 上線時所需新增的道具目錄。
 > 上線前需在對應 config 註冊，並對齊既有命名風格（snake_case ID、繁中名）。
 
-### B.1 Phase H 寵物相關（共 14 種，預估）
+### B.1 Phase H 寵物相關（本次延後）
+
+> Phase H 寵物已從本次計畫移除。原規劃的 14 種寵物道具（4 階寵物蛋、加溫石、進化石、餵食餅乾、寵物皮膚、改名卡、復甦藥）一併延後。
+> 黑市 / 流浪商人的商品池**改以非寵物道具為主**（HP 藥水、武器強化卷軸、轉職石、限定釣餌、限定外觀 等）。
+> Phase H+ 地下城已預留寵物協戰 hook 介面（`petResolver` stub），未來實作寵物可直接接上。
+
+### B.1.5 Phase H+ 副本進階相關（共 8 種，新增）
 
 | ID | 名稱 | 功用 | 取得 |
 |---|---|---|---|
-| `pet_egg_common` | 普通寵物蛋 | 孵化 4h → 普通寵物 | BOSS / 釣魚稀有 / 黑玫瑰 |
-| `pet_egg_rare` | 稀有寵物蛋 | 孵化 12h → 稀有寵物 | BOSS / 黑市 / 流浪商人 barter |
-| `pet_egg_legendary` | 傳說寵物蛋 | 孵化 24h → 傳說寵物 | BOSS 尾刀 / 黑市違禁 / 抖內 |
-| `pet_egg_limited` | 限定寵物蛋 | 限定品種 | 季節活動 / 至尊抖內 |
-| `warming_stone` | 🔥 加溫石 | 蛋孵化時間 −50% | 商城 600 幣 / 黑市 / 流浪商人 |
-| `evolution_stone` | ✨ 進化石 | 寵物 Lv.10/25 進化材料 | BOSS 尾刀 / 黑市傳奇級 / 流浪商人 barter |
-| `pet_treat_basic` | 🍪 基礎餵食餅乾 | 飽足度 +20 | 商城 100 幣 |
-| `pet_treat_premium` | 🍰 高級餵食餐 | 飽足度 +50 | 流浪商人花匠款 |
-| `pet_skin_*` | 🎨 寵物皮膚 | 純外觀 | 抖內 / 季節活動 |
-| `pet_rename_card` | 📝 寵物改名卡 | 自訂名稱（30 字）| 商城 500 幣 |
-| `pet_revive_potion` | 💧 寵物復甦藥 | 飢餓 0 罷工狀態回滿 | 商城 800 幣 / 流浪商人 |
+| `hp_potion_small` | 💊 生命藥水（小）| +20 HP | 商城 200 幣 / 黑市 / 流浪商人 |
+| `hp_potion_medium` | 💊 生命藥水（中）| +50 HP | 商城 500 幣 / 黑市 |
+| `hp_potion_large` | 💊 生命藥水（大）| 滿 HP | 商城 1,500 幣 / 黑市傳奇 |
+| `antidote` | 🧪 解毒劑 | 戰鬥中免疫中毒 | 商城 300 幣 |
+| `shield_scroll` | 🛡️ 護盾卷軸 | 第一次受擊減 50% | 商城 400 幣 |
+| `burn_resist` | 🔥 燃燒抵抗劑 | 戰鬥中免疫燃燒 | 商城 350 幣 |
+| `escape_token` | 🏃 逃離符 | 戰鬥中可逃離且不扣體力 | 黑市珍貴 / 流浪商人 |
+| `weapon_enhance_scroll` | ⚔️ 武器強化卷軸 | 鑑定後永久 +5 ATK（最多 3 次）| 黑市傳奇 / 流浪商人 barter |
 
 ### B.2 Phase I 冒險相關（本次延後）
 
@@ -1413,26 +1228,26 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | 石頭 | 賭石、肥料、賣 | 🟢 OK | — |
 | 煤炭 | 合成、賣 | 🟢 OK | — |
 | 鐵礦 | 合成、賣 | 🟢 OK | — |
-| 黃金 | 合成、賣 | 🟢 OK | 新合成：進化石 |
-| 鑽石 | 合成、賣 | 🟢 OK | 新合成：進化石 |
-| 小雜魚 | 烹飪、肥料 | 🟢 OK | 寵物餵食 |
-| 鯊魚 | 合成釣竿、烹飪 | 🟢 OK | 黑市暗號 |
+| 黃金 | 合成、賣 | 🟢 OK | 新合成：武器強化卷軸 |
+| 鑽石 | 合成、賣 | 🟢 OK | 新合成：武器強化卷軸 |
+| 小雜魚 | 烹飪、肥料 | 🟢 OK | — |
+| 鯊魚 | 合成釣竿、烹飪 | 🟢 OK | 黑市暗號 / 武器強化 barter |
 | 熔岩魚 | 限定料理 | 🟡 出口少 | 流浪商人 barter（食譜換）|
 | 黑玫瑰 | 烹飪、副產靈魂碎片 | 🟢 OK | — |
-| **靈魂碎片** | （無用途）| 🔴 孤兒 | **新合成：進化石、寵物玩具** |
+| **靈魂碎片** | （無用途）| 🔴 孤兒 | **新合成：武器強化卷軸、護盾卷軸** |
 | **賭石（劣質）** | 鑑定師開獎 | 🟡 易囤積 | **流浪商人收料（barter）** |
 
 ### C.2 新道具合成樹（建議納入 `craft.json`）
 
 ```
-進化石（Phase H 核心消耗品）
+武器強化卷軸（Phase H+ 核心消耗品，永久 +5 ATK，單一武器上限 3 次）
 ├─ 黃金 ×3 + 鑽石 ×1 + 靈魂碎片 ×2          ← 給靈魂碎片出口
-├─ 流浪商人騎士款 barter：彩虹石 ×3 + 鯊魚 ×5
-└─ 黑市傳奇級購買：60,000 幣
+├─ 流浪商人騎士款 barter：鑽石 ×3 + 鯊魚 ×5
+└─ 黑市傳奇級購買：40,000 幣
 
-寵物玩具（提升親密度互動上限）
-├─ 黑玫瑰 ×2 + 靈魂碎片 ×3 + 鐵 ×5
-└─ 商城 1,500 幣
+護盾卷軸（Phase H+ 副本消耗品，第一次受擊減 50%）
+├─ 黑玫瑰 ×2 + 靈魂碎片 ×1 + 鐵 ×3
+└─ 商城 400 幣
 
 戰鬥藥水（提升地下城 / BOSS ATK）
 ├─ 煤炭 ×3 + 鐵 ×2 + 鯊魚 ×1
@@ -1444,15 +1259,16 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 
 > 註：原規劃中需要冒險產出（古文物 / 守衛核心 / 海妖之淚 等）的合成項目
 > （完整護符 / 深海稱號券 / 傳說劍）一併延後至 Phase I 上線後再開。
+> 寵物相關合成（進化石 / 寵物玩具）延後至 Phase H 上線後再開。
 ```
 
 ### C.3 補出口的合成項目（解決孤兒問題）
 
 | 道具 | 之前狀態 | 新出口 |
 |---|---|---|
-| 靈魂碎片 | 🔴 孤兒（黑玫瑰副產但無用）| 進化石、寵物玩具材料 |
+| 靈魂碎片 | 🔴 孤兒（黑玫瑰副產但無用）| 武器強化卷軸、護盾卷軸材料 |
 | 賭石（劣質）| 🟡 易囤積 | 流浪商人收 20 個 + 鐵 ×30 → 隨機罕見道具 |
-| 雪晶石（限定）| 🟡 限定礦只能賣 | 進化石替代材料（黃金 ×3 替換為雪晶石 ×1）|
+| 雪晶石（限定）| 🟡 限定礦只能賣 | 武器強化卷軸替代材料（黃金 ×3 替換為雪晶石 ×1）|
 
 ### C.4 跨 Phase 材料流向
 
@@ -1471,17 +1287,15 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
         └──────┬───┴────┬───────┘           │
                │        │                   │
                ▼        ▼                   ▼
-         🍱 烹飪    🦴 工具          ✨ 進化石（NEW）
+         🍱 烹飪    🦴 工具         ⚔️ 武器強化卷軸（NEW）
             │         │                   │
             ▼         ▼                   ▼
-       😋 buff     ⚒️ 修耐久          🐉 寵物進化
-                                          │
-                                          ▼
-                                    🦄 強化 buff
+       😋 buff     ⚒️ 修耐久         💪 永久 ATK +5（×3 上限）
 ```
 
 > 設計原則：**每條既有產線都有「賣 / 合成 / barter」三條出口**，避免囤積。
-> Phase I 冒險上線後再補「冒險產出 → 鍊金 / 稱號 / 限定食譜」這條支線。
+> 未來 Phase I 冒險上線後再補「冒險產出 → 鍊金 / 稱號 / 限定食譜」這條支線。
+> 未來 Phase H 寵物上線後再補「寵物蛋 / 進化石 / 寵物玩具」這條支線。
 
 ---
 
@@ -1494,30 +1308,30 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | 商品 | 售價 | 全服庫存 | 備註 |
 |---|---|---|---|
 | 雪晶石 ×3 | 1,200 | 2 | 聖誕限定 |
-| 加溫石 ×2 | 800 | 3 | 寵物孵化加速 |
 | 限定釣餌 ×5 | 1,500 | 3 | luck +30% / 釣 |
 | 高級肥料 ×5 | 600 | 2 | 農場加速 |
 | 戰鬥藥水 ×2 | 900 | 2 | 地下城 / BOSS ATK +20 |
+| 生命藥水（小）×3 | 550 | 3 | 副本回 +20 HP |
 
 **珍貴級（precious，權重 30）**
 
 | 商品 | 售價 | 全服庫存 | 備註 |
 |---|---|---|---|
-| 稀有寵物蛋 ×1 | 8,000 | 1 | 12h 孵化 |
 | 轉職石 ×1 | 6,000 | 2 | 額外轉職 |
 | 30 天 luck +1% 卷軸 | 5,500 | 2 | 受 luckCap |
-| 寵物皮膚（基礎款）| 4,000 | 1 | 純外觀 |
-| 高級餵食餐 ×3 | 3,500 | 2 | 飽足 +50 ×3 |
+| 限定外觀（基礎款）| 4,000 | 1 | 純外觀（玩家頭像 / 卡面）|
+| 生命藥水（中）×3 | 1,400 | 2 | 副本回 +50 HP |
+| 護盾卷軸 ×3 | 1,100 | 3 | 戰前自動施用 |
 
 **傳奇級（legendary，權重 15）**
 
 | 商品 | 售價 | 全服庫存 | 備註 |
 |---|---|---|---|
-| 進化石 ×1 | 40,000 | 1 | 寵物進化 |
-| 傳說寵物蛋 ×1 | 55,000 | 1 | 24h 孵化 |
+| 武器強化卷軸 ×1 | 40,000 | 1 | 永久 +5 ATK（單一武器上限 3 次）|
+| 高階藏寶圖 | 25,000 | 1 | 觸發稀有寶藏 |
 | 限定稱號券 | 30,000 | 2 | 30 天時效 |
 | 龍息湯食譜 | 35,000 | 1 | 解鎖限定料理 |
-| 高階藏寶圖 | 25,000 | 1 | 觸發稀有寶藏 |
+| 生命藥水（大）×3 | 4,200 | 1 | 副本滿 HP |
 
 **違禁級（contraband，權重 5，查緝率 +5%）**
 
@@ -1525,17 +1339,17 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 |---|---|---|---|
 | 永久 luck +0.5% 卷軸 | 200,000 | 1 | 個人累計上限 +3% |
 | 試煉減半券 | 150,000 | 1 | 取代「跳過試煉券」 |
-| 限定寵物蛋（季限） | 280,000 | 1 | 抖內以外的取得管道 |
-| 稀有寵物皮膚 | 120,000 | 1 | 純外觀 |
+| 限定外觀（季限稀有款）| 280,000 | 1 | 限定卡面 / 頭像皮膚 |
+| 永久 ATK +10 卷軸 | 120,000 | 1 | 個人累計上限 +30 |
 
 ### D.2 黑市 barterPool（每場 1–2 件，**有查緝風險**）
 
 | 暗號需求 | 換取物 | 等值幣（罰款計算用）|
 |---|---|---|
-| 鯊魚 ×10 + 熔岩魚 ×3 | 傳說寵物蛋 ×1 | ~2,400 |
+| 鯊魚 ×10 + 熔岩魚 ×3 | 高階藏寶圖 ×1 + 鑽石 ×3 | ~2,400 |
 | 彩虹石 ×5 + 黑玫瑰 ×3 | 永久 luck +0.5% 卷軸 | ~7,500 |
 | 黑玫瑰 ×8 + 鑽石 ×3 | 試煉減半券 | ~6,400 |
-| 靈魂碎片 ×10 + 鑽石 ×3 | 進化石 ×2 | ~6,400 |
+| 靈魂碎片 ×10 + 鑽石 ×3 | 武器強化卷軸 ×2 | ~6,400 |
 | 賭石（劣質）×20 + 鐵 ×30 | 隨機 1 件罕見級道具 | ~3,800 |
 | 章魚 ×8 + 鯊魚 ×3 | 限定稱號券 | ~1,400 |
 
@@ -1550,7 +1364,7 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | 幸運藥水 | coin | 240（原 300） | 3 |
 | 戰鬥藥水 ×1 | coin | 850 | 1 |
 | XP 藥水 ×1 | coin | 380 | 2 |
-| 高級餵食餐 ×1 | coin | 1,200 | 1 |
+| 生命藥水（中）×1 | coin | 480（原 500）| 3 |
 | 龍息湯食譜 | **barter** | 熔岩魚 ×2 + 黑玫瑰 ×1 + 黃金 ×3 | 1（每人一生一次）|
 | 永久 luck +1% 卷軸 | **barter** | 鯊魚 ×10 + 章魚 ×5 + 鐵 ×20 | 1 |
 
@@ -1558,22 +1372,22 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 
 | 商品 | 模式 | 價格 / 需求 | 個人限購 |
 |---|---|---|---|
-| 體力藥水 | coin | 480（原 600） | 3 |
+| 精力藥水（原體力藥水）| coin | 480（原 600） | 3 |
 | 磨鎬石 | coin | 220（原 250）| 2 |
 | 30 天 luck +0.5% 卷軸 | coin | 4,200 | 1 |
-| 寵物玩具 | coin | 1,100 | 1 |
-| 進化石 ×1 | **barter** | 鑽石 ×3 + 鯊魚 ×5 | 1 |
+| 護盾卷軸 ×2 | coin | 720 | 2 |
+| 武器強化卷軸 ×1 | **barter** | 鑽石 ×3 + 鯊魚 ×5 | 1 |
 | 試煉減半券 | **barter** | 黃金 ×10 + 章魚 ×5 + 靈魂碎片 ×3 | 1 |
 
-**🌸 花匠少女小百合（送「寵物餵食特餐 ×1」）**
+**🌸 花匠少女小百合（送「高級肥料 ×1」）**
 
 | 商品 | 模式 | 價格 / 需求 | 個人限購 |
 |---|---|---|---|
 | 高級肥料券 | coin | 600 | 2 |
-| 加溫石 ×1 | coin | 720（原 800） | 2 |
-| 寵物玩具 | coin | 1,200 | 1 |
+| 解毒劑 ×2 | coin | 540（原 600）| 2 |
+| XP 藥水 ×1 | coin | 380 | 1 |
 | 限定釣餌 ×3 | coin | 1,000 | 2 |
-| 稀有寵物蛋 ×1 | **barter** | 紅蘿蔔 ×30 + 玉米 ×15 + 草莓 ×8 | 1 |
+| 限定稱號券 「農場大師」 | **barter** | 紅蘿蔔 ×30 + 玉米 ×15 + 草莓 ×8 | 1 |
 | 賭石換罕見 | **barter** | 賭石（劣質）×20 + 鐵 ×30 | 1 |
 
 ### D.4 商品池輪替機制
@@ -1581,7 +1395,7 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 - **每場**從上述池隨機抽（依 weight 與個性偏好）
 - **黑市違禁品**：每週**全服總出現次數**上限 3 次（避免快速通膨）
 - **流浪商人 barter 名額**：每個商人每次出現帶 1–2 件 barter（從該個性 barter 池抽）
-- **限定季節商品**（雪晶石 / 季節寵物蛋）：只在對應月份的商品池內
+- **限定季節商品**（雪晶石 / 季節限定外觀）：只在對應月份的商品池內
 
 ### D.5 商品池版本管理
 
@@ -1592,4 +1406,4 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 
 ---
 
-_Last updated: 2026-06-16 — 增補 Phase K（神祕黑市）、Phase L（流浪商人）、以物易物機制、現有道具盤點（附錄 A / B / C / D）；移除 Phase I 文字冒險（延後）_
+_Last updated: 2026-06-16 — 增補 Phase H+ 地下城副本進階（獨立檔 PHASE_H_PLUS_DUNGEON_REFINEMENT.md）、Phase K（神祕黑市）、Phase L（流浪商人）、以物易物機制、現有道具盤點（附錄 A / B / C / D）；移除 Phase I 文字冒險（延後）、移除 Phase H 寵物（延後）_
