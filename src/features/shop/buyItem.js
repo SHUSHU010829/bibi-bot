@@ -13,6 +13,9 @@ const MINING_ITEM_TYPES = [
   "mining_backpack",
   "mining_stamina_potion",
   "mining_whetstone_inferior",
+  "mining_hp_potion_small",
+  "mining_hp_potion_medium",
+  "mining_hp_potion_large",
 ];
 
 // 持有上限需在扣款前檢查的挖礦道具：type → 對應 miningProfile 欄位
@@ -20,12 +23,18 @@ const MINING_STACK_LIMIT_MAP = {
   mining_cd_ticket: "cd_ticket_count",
   mining_whetstone_inferior: "whetstone_inferior_count",
   mining_stamina_potion: "stamina_potion_count",
+  mining_hp_potion_small: "hp_potion_small",
+  mining_hp_potion_medium: "hp_potion_medium",
+  mining_hp_potion_large: "hp_potion_large",
 };
 
 // 每日購買上限的數量單位（純文案用）。
 const DAILY_LIMIT_UNIT = {
   mining_cd_ticket: "張",
   mining_stamina_potion: "瓶",
+  mining_hp_potion_small: "瓶",
+  mining_hp_potion_medium: "瓶",
+  mining_hp_potion_large: "瓶",
 };
 
 // 處理一筆購買：扣款 → 寫入 inventory → 對特殊 type 立即生效（buff/casino_token）
@@ -226,6 +235,9 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
       mining_backpack:    { field: "backpack_bonus_slots", payloadKey: "slots" },
       mining_whetstone_inferior: { field: "whetstone_inferior_count", payloadKey: "qty" },
       mining_stamina_potion: { field: "stamina_potion_count", payloadKey: "qty" },
+      mining_hp_potion_small: { field: "hp_potion_small", payloadKey: "qty" },
+      mining_hp_potion_medium: { field: "hp_potion_medium", payloadKey: "qty" },
+      mining_hp_potion_large: { field: "hp_potion_large", payloadKey: "qty" },
     };
     const mapping = MINING_FIELD_MAP[item.type];
     const incField = mapping?.field || "luck_potion_uses";
