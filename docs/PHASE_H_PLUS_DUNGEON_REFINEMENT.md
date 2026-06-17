@@ -541,6 +541,7 @@ v1 主要消化**鐵礦 / 煤炭**囤積（兩個都是中低階礦石）。黃�
 
 ```json
 {
+  "channelId": "1511617684532367440",
   "stamina": { "max": 12, "rechargeMs": 3600000 },
   "hp": {
     "baseMax": 100,
@@ -659,6 +660,15 @@ v1 主要消化**鐵礦 / 煤炭**囤積（兩個都是中低階礦石）。黃�
 | `src/events/interactionCreate/handleDungeonButton.js` | **新增**：戰鬥中按鈕（逃離 / 喝藥水）|
 
 ### 細節設計補充
+
+#### 戰鬥頻道綁定
+
+地下城操作**綁定唯一頻道 ID `1511617684532367440`**：
+
+- 設定於 `dungeon.json` 的 `channelId` 欄位（既有 `mining.oreMarket.announceChannelId` 同模式）
+- 玩家在其他頻道輸入 `/地下城` → 回 ephemeral 錯誤訊息「請至 <#1511617684532367440> 使用此指令」
+- 公開播報訊息也只發到此頻道（不污染其他頻道）
+- 管理員可透過 `/dungeon-admin set-channel [id]` 改設定（測試用）
 
 #### 戰鬥呈現：雙軌制（公開播報 + ephemeral 戰鬥介面）
 
