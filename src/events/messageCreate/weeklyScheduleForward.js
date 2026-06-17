@@ -77,7 +77,8 @@ module.exports = async (client, message) => {
   const cfg = rssWeeklySchedule?.discordForward;
   if (!cfg?.enabled) return;
   if (message.channelId !== cfg.sourceChannelId) return;
-  if (message.author?.id === client.user?.id) return;
+  // 只處理追蹤(Follow)轉貼進來的訊息（webhook 發送）；自己手動發的一般貼文不碰
+  if (!message.webhookId) return;
 
   const firstLine = (message.content || "").split("\n")[0]?.trim();
   if (!firstLine) return;
