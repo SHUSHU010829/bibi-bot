@@ -204,13 +204,20 @@
 | 樓層 | 解鎖條件 | 體力 | 武器耐久 | 怪物 HP / ATK | 預期回合 | 推薦裝備 | 獎勵倍率 |
 |---|---|---|---|---|---|---|---|
 | 🏚️ 1F 廢棄礦坑 | 預設 | 1 | −1 | 100–200 / 8–12 | 3–5 | 拳頭 / 鐵劍 | ×1.0 |
-| ⛏️ 2F 礦工迷宮 | Lv.10 + 通關 1F ×3 | 1 | −1 | 250–400 / 12–18 | 4–6 | 鐵劍 / 鋼劍 | ×1.3 |
-| 🏛️ 3F 古遺跡 | Lv.20 + 通關 2F ×5 | 2 | −2 | 500–800 / 18–25 | 6–8 | 鋼劍 / 黃金劍 | ×1.7 |
-| 🔥 4F 熔岩深淵 | Lv.35 + 通關 3F ×8 | 2 | −2 | 1,000–1,500 / 25–35 | 8–10 | 黃金劍 / 鑽石劍 | ×2.2 |
-| 🌌 5F 虛空之門 | Lv.50 + 通關 4F ×10 | **3** | **−3** | 1,800–2,500 / 25–35 | 10–15 | 鑽石劍 / 傳說劍 | ×3.0 |
-| 👹 5F mini-BOSS | 解鎖 5F 後 | 3（不疊加）| **−4** | 3,000–4,500（兩階段）/ 30–45 | 15–20 | 鑽石劍 / 傳說劍 | ×4.0 |
+| ⛏️ 2F 礦工迷宮 | **Lv.15** + 通關 1F ×**5** | 1 | −1 | 250–400 / 12–18 | 4–6 | 鐵劍 / 鋼劍 | ×1.3 |
+| 🏛️ 3F 古遺跡 | **Lv.30** + 通關 2F ×**10** | 2 | −2 | 500–800 / 18–25 | 6–8 | 鋼劍 / 黃金劍 | ×1.7 |
+| 🔥 4F 熔岩深淵 | **Lv.50** + 通關 3F ×**15** | 2 | −2 | 1,000–1,500 / 25–35 | 8–10 | 黃金劍 / 鑽石劍 | ×2.2 |
+| 🌌 5F 虛空之門 | **Lv.75** + 通關 4F ×**25** | **3** | **−3** | 1,800–2,500 / 25–35 | 10–15 | 鑽石劍 / 傳說劍 | ×3.0 |
+| 👹 5F mini-BOSS | **通關 5F ×5** | 3（不疊加）| **−4** | 3,000–4,500（兩階段）/ 30–45 | 15–20 | 鑽石劍 / 傳說劍 | ×4.0 |
 
-> 5F mini-BOSS = 房間版的固定 BOSS，獎勵含寵物蛋 / 傳說碎片 / **屠龍累積 +1**（連動 Phase H 黑曜霸主解鎖）。
+> **解鎖節奏設計**：
+> - 1F → 2F：Week 1–2 達成（輕鬆入門）
+> - 2F → 3F：Month 1（真實里程碑）
+> - 3F → 4F：Month 2–3（中階分水嶺）
+> - 4F → 5F：Month 4+ （5F = 中後期內容）
+> - 5F → mini-BOSS：Month 6+ （需先 5F 熟練 5 場，**儀式感解鎖**）
+>
+> 5F mini-BOSS = 房間版固定 BOSS，獎勵含寵物蛋 / 傳說碎片 / **屠龍累積 +1**（連動 Phase H 黑曜霸主解鎖，需 ×10 次擊殺）
 > 怪物 HP 範圍經過調整，確保中階玩家進場有 3–5 回合的戰術空間，高階玩家也能在 5F 打到 10 回合以上。
 
 ### 武器耐久消耗對照（依實際 `dungeon.json` 數值）
@@ -230,8 +237,8 @@
 | 主題 | 解鎖條件 | 偏好職業（連動 Phase J）| 限定掉落 |
 |---|---|---|---|
 | ⛏️ 礦坑（預設）| 從一開始 | 礦工 / 戰士 | 礦石、鎬子碎片、賭石 |
-| 🏛️ 廢墟 | Lv.25 + 礦坑 3F 通關 ×10 | 騎士 / 學者 | 古錢幣、殘破護符、知識卷軸 |
-| ❄️ 冰窟 | Lv.40 + 廢墟 3F 通關 ×10 | 漁夫 / 商人 | 冰晶魚、雪晶石、冷凍藥水 |
+| 🏛️ 廢墟 | **Lv.35** + 礦坑 3F 通關 ×**15** | 騎士 / 學者 | 古錢幣、殘破護符、知識卷軸 |
+| ❄️ 冰窟 | **Lv.60** + 廢墟 3F 通關 ×**15** | 漁夫 / 商人 | 冰晶魚、雪晶石、冷凍藥水 |
 
 > 三個主題共用 5F 樓層架構（每主題各有 5 樓），玩家可平行解鎖、依職業 / buff 選擇主場。
 > 未來 Phase I 文字冒險可重用「主題 / 樓層」框架。
@@ -460,8 +467,8 @@
   },
   "themes": [
     { "id": "mine", "name": "礦坑", "unlock": null },
-    { "id": "ruins", "name": "廢墟", "unlock": { "level": 25, "prereqFloor": { "mine": 3 }, "prereqClears": 10 } },
-    { "id": "ice", "name": "冰窟", "unlock": { "level": 40, "prereqFloor": { "ruins": 3 }, "prereqClears": 10 } }
+    { "id": "ruins", "name": "廢墟", "unlock": { "level": 35, "prereqFloor": { "mine": 3 }, "prereqClears": 15 } },
+    { "id": "ice", "name": "冰窟", "unlock": { "level": 60, "prereqFloor": { "ruins": 3 }, "prereqClears": 15 } }
   ],
   "floors": [
     {
@@ -477,8 +484,8 @@
     {
       "floor": 2,
       "name": "礦工迷宮",
-      "unlockLevel": 10,
-      "prereqClears": { "floor": 1, "count": 3 },
+      "unlockLevel": 15,
+      "prereqClears": { "floor": 1, "count": 5 },
       "staminaCost": 1,
       "weaponDurabilityCost": 1,
       "monsterHpRange": [250, 400],
@@ -488,8 +495,8 @@
     {
       "floor": 3,
       "name": "古遺跡",
-      "unlockLevel": 20,
-      "prereqClears": { "floor": 2, "count": 5 },
+      "unlockLevel": 30,
+      "prereqClears": { "floor": 2, "count": 10 },
       "staminaCost": 2,
       "weaponDurabilityCost": 2,
       "monsterHpRange": [500, 800],
@@ -499,8 +506,8 @@
     {
       "floor": 4,
       "name": "熔岩深淵",
-      "unlockLevel": 35,
-      "prereqClears": { "floor": 3, "count": 8 },
+      "unlockLevel": 50,
+      "prereqClears": { "floor": 3, "count": 15 },
       "staminaCost": 2,
       "weaponDurabilityCost": 2,
       "monsterHpRange": [1000, 1500],
@@ -510,14 +517,14 @@
     {
       "floor": 5,
       "name": "虛空之門",
-      "unlockLevel": 50,
-      "prereqClears": { "floor": 4, "count": 10 },
+      "unlockLevel": 75,
+      "prereqClears": { "floor": 4, "count": 25 },
       "staminaCost": 3,
       "weaponDurabilityCost": 3,
       "monsterHpRange": [1800, 2500],
-      "monsterAtkRange": [35, 50],
+      "monsterAtkRange": [25, 35],
       "rewardMultiplier": 3.0,
-      "miniBossOption": true
+      "miniBossUnlock": { "floor": 5, "clears": 5 }
     }
   ],
   "miniBosses": {
