@@ -338,17 +338,17 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**選擇樓層挑戰**（${curTheme.emoji || ""} ${curTheme.name}主題）`));
 
-  // 主題切換按鈕（依解鎖狀態 disable）
+  // 主題切換按鈕（依解鎖狀態 disable，鎖定者加 🔒 emoji）
   const themeRow = new ActionRowBuilder();
   for (const ts of themesAll) {
     const t = ts.theme;
-    themeRow.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${RAID_PANEL_PREFIX}${interaction.user.id}_${t.id}`)
-        .setLabel(`${t.emoji || ""} ${t.name}`)
-        .setStyle(t.id === themeId ? ButtonStyle.Primary : ts.unlocked ? ButtonStyle.Secondary : ButtonStyle.Secondary)
-        .setDisabled(!ts.unlocked || t.id === themeId),
-    );
+    const btn = new ButtonBuilder()
+      .setCustomId(`${RAID_PANEL_PREFIX}${interaction.user.id}_${t.id}`)
+      .setLabel(`${t.emoji || ""} ${t.name}`)
+      .setStyle(t.id === themeId ? ButtonStyle.Primary : ButtonStyle.Secondary)
+      .setDisabled(!ts.unlocked || t.id === themeId);
+    if (!ts.unlocked) btn.setEmoji("🔒");
+    themeRow.addComponents(btn);
   }
 
   const lines = [];
@@ -423,6 +423,21 @@ function oreLabel(key) {
   return `${def.emoji || "⛏️"} ${def.name || key}`;
 }
 
+// 死亡懲罰掉物名稱（依 kind 走 mining/fishing/farming 名稱表，避免印出原始 key — CLAUDE.md #9）
+function deathDropLabel(drop) {
+  const { farming, fishing } = require("../../config");
+  if (drop.kind === "ore") return oreLabel(drop.key);
+  if (drop.kind === "fish") {
+    const f = fishing?.fish?.[drop.key] || {};
+    return `${f.emoji || "🐟"} ${f.name || drop.key}`;
+  }
+  if (drop.kind === "veggie") {
+    const c = farming?.crops?.[drop.key] || {};
+    return `${c.emoji || "🌱"} ${c.name || drop.key}`;
+  }
+  return drop.key;
+}
+
 function buildBattleResultPanel(ownerId, result) {
   const container = new ContainerBuilder();
   const isWin = result.won;
@@ -486,7 +501,7 @@ function buildBattleResultPanel(ownerId, result) {
   } else if (result.deathDrop) {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`-# 死亡懲罰：背包遺失 ${result.deathDrop.key} ×${result.deathDrop.qty}`),
+      new TextDisplayBuilder().setContent(`-# 死亡懲罰：背包遺失 ${deathDropLabel(result.deathDrop)} ×${result.deathDrop.qty}`),
     );
   }
 
@@ -546,7 +561,9 @@ function publicBroadcastContent(displayName, result) {
   const f = `${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""}`.trim();
   if (result.isMiniBoss) {
     if (result.won) {
-      return `🏆 **${displayName}** 擊敗 ${result.monster.emoji || ""} ${result.monster.name}！屠龍累積 +1`;
+      const total = result.dragonSlayerTotal ?? null;
+      const tail = total != null ? `屠龍累積 **${total}/10**` : `屠龍累積 +1`;
+      return `🏆 **${displayName}** 擊敗 ${result.monster.emoji || ""} ${result.monster.name}！${tail}`;
     }
     return `💀 **${displayName}** 挑戰 ${result.monster.emoji || ""} ${result.monster.name} 失敗，撐了 ${result.turns} 回合`;
   }

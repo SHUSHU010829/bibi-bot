@@ -909,9 +909,13 @@ async function enterDungeonHp(client, {
     }
 
     if (isMiniBoss) {
-      // mini-BOSS 必掉 1 傳說碎片 + 屠龍累積 + 主題擊殺
-      legendaryGained = Math.max(legendaryGained, 1);
-      inc.legendary_fragments = (inc.legendary_fragments || 0) + 1;
+      // mini-BOSS 必掉 ≥ 1 傳說碎片 + 屠龍累積 + 主題擊殺
+      // C3 修正：如果 loot 已經給 1 個碎片就不再額外 +1，否則補到 1（避免雙計）
+      if (legendaryGained < 1) {
+        const need = 1 - legendaryGained;
+        legendaryGained = 1;
+        inc.legendary_fragments = (inc.legendary_fragments || 0) + need;
+      }
       inc[`mini_boss_kills.${themeId}`] = (inc[`mini_boss_kills.${themeId}`] || 0) + 1;
       inc.dragon_slayer_kills = (inc.dragon_slayer_kills || 0) + 1;
       var floorEvents = [];
@@ -1001,6 +1005,10 @@ async function enterDungeonHp(client, {
     floor,
     floorName: f.name,
     isMiniBoss,
+    // H7：mini-BOSS 勝利後算屠龍累積（含本次擊殺）
+    dragonSlayerTotal: isMiniBoss && won
+      ? (profile.dragon_slayer_kills || 0) + 1
+      : null,
     floorEmoji: f.emoji,
     won,
     battleResult: battle.result,
@@ -1109,6 +1117,7 @@ async function enterDungeonHp(client, {
       },
       encounterRatePct: f.encounterRatePct,
       themeId,
+      battleResult: battle.result, // C2: 戰敗時略過 HP 回復類事件
     })
     .catch(() => null);
   if (enc) {
@@ -1129,9 +1138,11 @@ async function getDungeonStatus(client, { userId, guildId, member }) {
   const level = await getPlayerLevel(client, userId, guildId);
   const profile = await getOrCreate(client, userId, guildId);
   const st = resolveStamina(profile, staMaxV);
-  // 與 enterDungeonHp 同口徑：把世界事件 dungeon_hp_max 也加上，避免面板與實戰數值不一致
+  // 與 enterDungeonHp 同口徑：把世界事件 + 公會 buff dungeon_hp_max 都加上，避免面板與實戰數值不一致
   const hpMaxV = hpService.hpMax(level, {
     food: getFoodHpMaxBonus(profile),
+    guild: clubBuildingPct(club, "dungeon_hp_max"),
+    pet: 0,
   }) + (worldEventPct("dungeon_hp_max") || 0);
   const hpSt = hpService.resolveHp(profile, hpMaxV);
   const themes = floorService.listThemes(profile, level);

@@ -44,10 +44,15 @@ function weaponLabel(profile) {
 // Phase H+：地下城突發事件依當前主題過濾。
 // e.theme === null/undefined 表示任何主題都會觸發；
 // e.theme === "mine"/"ruins"/"ice" 表示只在該主題觸發。
-function pickEncounter(context, themeId = null) {
+// 戰敗後過濾「HP 回復類」事件（避免死人被救活；C2 修正）。
+const HP_RESTORE_EFFECTS = new Set(["restore_hp", "restore_full", "gift_hp_potion"]);
+
+function pickEncounter(context, themeId = null, battleResult = null) {
   const list = (randomEncounters?.[context] || []).filter((e) => {
-    if (!e.theme) return true;
-    return e.theme === themeId;
+    if (e.theme && e.theme !== themeId) return false;
+    // 戰敗（HP=0）時跳過 HP 回復類事件
+    if (battleResult === "lose" && HP_RESTORE_EFFECTS.has(e.effect?.type)) return false;
+    return true;
   });
   if (!list.length) return null;
   const weights = {};
@@ -82,7 +87,7 @@ async function trigger(client, ctx) {
   }
   if (!(Math.random() < (chance || 0))) return null;
 
-  const enc = pickEncounter(context, ctx.themeId || null);
+  const enc = pickEncounter(context, ctx.themeId || null, ctx.battleResult || null);
   if (!enc) return null;
 
   const eff = enc.effect || {};
