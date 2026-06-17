@@ -21,14 +21,15 @@
 1. [文件目的與範圍](#1-文件目的與範圍)
 2. [設計原則與共同地基](#2-設計原則與共同地基)
 3. [Phase 排程與依賴關係](#3-phase-排程與依賴關係)
-4. [Phase H — 寵物 / 夥伴養成](#phase-h--寵物--夥伴養成)
-5. [Phase J — 轉職 / 職業系統](#phase-j--轉職--職業系統)
-6. [Phase K — 神祕黑市](#phase-k--神祕黑市)
-7. [Phase L — 流浪商人](#phase-l--流浪商人)
-8. [跨 Phase 整合](#跨-phase-整合)
-9. [開發時程總覽](#開發時程總覽)
-10. [新增檔案索引](#新增檔案索引)
-11. [通用驗收清單](#通用驗收清單)
+4. [Phase H+ — 地下城副本進階](#phase-h--地下城副本進階)
+5. [Phase H — 寵物 / 夥伴養成](#phase-h--寵物--夥伴養成)
+6. [Phase J — 轉職 / 職業系統](#phase-j--轉職--職業系統)
+7. [Phase K — 神祕黑市](#phase-k--神祕黑市)
+8. [Phase L — 流浪商人](#phase-l--流浪商人)
+9. [跨 Phase 整合](#跨-phase-整合)
+10. [開發時程總覽](#開發時程總覽)
+11. [新增檔案索引](#新增檔案索引)
+12. [通用驗收清單](#通用驗收清單)
 
 ---
 
@@ -90,42 +91,451 @@
 ## 3. Phase 排程與依賴關係
 
 ```
-                      ┌──────────────────────┐
-                      │ eventBus（地基 2d）   │
-                      └─────┬────────────────┘
-                            │
-                ┌───────────┴───────────┐
-                ▼                       ▼
-          ┌─────────┐             ┌──────────┐
-          │ Phase H │             │ Phase J  │
-          │ 寵物    │             │ 轉職     │
-          └────┬────┘             └────┬─────┘
-               │                       │
-               └──────────┬────────────┘
-                          │
-                          ▼
-                   ┌──────────────┐
-                   │ shopEngine   │（K / L 共用）
-                   └──┬────────┬──┘
-                      ▼        ▼
-                 ┌────────┐ ┌──────────┐
-                 │Phase K │ │ Phase L  │
-                 │神祕黑市│ │ 流浪商人 │
-                 └────┬───┘ └────┬─────┘
-                      └────┬─────┘
-                           ▼
-                 ┌────────────────────┐
-                 │ 經濟儀表板（平衡） │
-                 └────────────────────┘
+                       ┌──────────────────────┐
+                       │ eventBus（地基 2d）   │
+                       └─────┬────────────────┘
+                             │
+                             ▼
+                     ┌─────────────────┐
+                     │ Phase H+ 地下城  │
+                     │ HP 系統 + 樓層   │
+                     └────────┬────────┘
+                              │
+                ┌─────────────┴─────────────┐
+                ▼                           ▼
+          ┌─────────┐                 ┌──────────┐
+          │ Phase H │                 │ Phase J  │
+          │ 寵物 v1 │                 │ 轉職     │
+          └────┬────┘                 └────┬─────┘
+               │                           │
+               └─────────────┬─────────────┘
+                             │
+                             ▼
+                      ┌──────────────┐
+                      │ shopEngine   │（K / L 共用）
+                      └──┬────────┬──┘
+                         ▼        ▼
+                    ┌────────┐ ┌──────────┐
+                    │Phase K │ │ Phase L  │
+                    │神祕黑市│ │ 流浪商人 │
+                    └────┬───┘ └────┬─────┘
+                         └────┬─────┘
+                              ▼
+                    ┌────────────────────┐
+                    │ 經濟儀表板（平衡） │
+                    └────────────────────┘
 ```
 
-**建議順序**：`eventBus → Phase H 寵物 → Phase J 轉職 → Phase K 黑市 → Phase L 流浪商人 → 經濟儀表板覆盤`
+**建議順序**：`eventBus → Phase H+ → Phase H → Phase J → Phase K → Phase L → 經濟儀表板覆盤`
 
 理由：
-- 寵物先做，因為它是 fishing / farm 產出的天然 sink，能立即消化過剩產出
-- 轉職放第二，給玩家身份感，新的職業 buff 與寵物搭配也有空間
-- 黑市 (K) 排在寵物 / 轉職之後，商品池要連動寵物蛋 / 進化石 / 轉職石
-- 流浪商人 (L) 緊接 K 上線，**直接復用** K 的 `shopEngine`，開發成本減半
+- **Phase H+ 地下城進階** 先做：提供 HP 系統、寵物協戰 hook 給 Phase H 用，又獨立完整
+- 寵物 (H) 跟進：吃 H+ 的協戰介面，同時是 fishing / farm 產出的天然 sink
+- 轉職 (J)：給玩家身份感，職業 buff 與寵物 / 副本搭配
+- 黑市 (K)：排在 H / J 之後，商品池連動寵物蛋 / 進化材 / 轉職石
+- 流浪商人 (L)：緊接 K，**直接復用** K 的 `shopEngine`，開發成本減半
+
+---
+
+## Phase H+ — 地下城副本進階
+
+> **前置需求**：eventBus 地基、既有 Phase 4 地下城 ✅
+> **預估時間**：5–7 天
+> **定位**：副本系統 2.0 — 從單回合骰子升級為多回合 HP 戰鬥；作為 Phase H 寵物部分 buff（救命阿伯失敗保體力、黑曜霸主戰後 HP +50%、寵物協戰）的依賴
+>
+> **開發順序**：本 Phase **先於 Phase H 寵物**，因為部分寵物 buff 直接讀取本 Phase 新增的欄位與 hook。
+
+### 核心改造
+
+| 維度 | 既有（Phase 4） | 進階版（Phase H+） |
+|---|---|---|
+| 戰鬥判定 | binary 勝率（`ATK ÷ 怪物HP`）骰一次 | 多回合 HP 對打、後端模擬整場 |
+| 玩家屬性 | 武器 ATK + 暴擊 | + **HP**（自然回復）+ **DEF**（武器副屬性 + buff）|
+| 怪物 | 7 種固定，HP 60–280 隨機 | 7 種按樓層分配 + **ATK 屬性** + **技能**（中毒 / 暈眩等）|
+| 樓層 / 副本 | 無 | **1F–5F 樓層** + **3 種副本主題**（礦坑 / 廢墟 / 冰窟）|
+| 結果呈現 | 單行勝負 | **戰鬥日誌**（多回合演進，一次回傳）|
+
+關鍵設計：**戰鬥多回合，互動仍單次**。後端跑完整場戰鬥，前端用 ContainerBuilder 呈現戰鬥日誌 + 結算 — 不變 Discord 互動次數。
+
+### 戰鬥引擎（HP 對打）
+
+```
+每回合流程（後端模擬）：
+1. 玩家攻擊 → damage = playerAtk × (1 + critBonus) − monsterDef
+2. 怪物 HP −= damage
+3. 怪物 HP ≤ 0 → break（勝利）
+4. 怪物攻擊 → damage = monsterAtk × statusEffectMult − playerDef
+5. 玩家 HP −= damage
+6. 玩家 HP ≤ 0 → break（失敗）
+7. 結算狀態效果 tick（中毒扣血、護甲倒數）
+8. 寵物協戰判定（依寵物類型機率觸發）
+9. 下一回合
+
+最多 20 回合上限 → 平局視同失敗（避免無限循環）
+```
+
+戰鬥日誌（玩家看到的訊息）：
+
+```
+🗡️ 第 1 回合：你揮砍洞窟蝙蝠 → 28 傷害（暴擊！）
+🦇 蝙蝠尖叫反咬 → 12 傷害（你 HP 88/100）
+🐶 救命阿伯吠叫 → 回復 5 HP（你 HP 93/100）
+
+🗡️ 第 2 回合：你揮砍 → 25 傷害
+🐍 蝙蝠注入毒液 → 你陷入中毒（2 回合）
+
+🗡️ 第 3 回合：你揮砍 → 27 傷害（致命一擊！）
+
+✅ 勝利！剩餘 HP：80/100、體力 −1
+🎁 戰利品：💎 鑽石 ×1、🪙 +450 幣
+```
+
+### 玩家屬性新增
+
+| 屬性 | 來源 | 範圍 |
+|---|---|---|
+| **hp_max** | 100（基準）+ Lv ×2 + 食物 buff + 公會 buff + 寵物 buff | 100–250 |
+| **hp_current** | 動態（自然回復 / 道具 / 寵物 / 戰鬥扣）| 0 – hp_max |
+| **def** | 武器副屬性 + 食物 buff + 寵物 buff | 0–50 |
+| **critRate** | 武器（既有）+ 寵物 buff | 0–20% |
+
+### 樓層系統（1F–5F 初版，可擴 10F）
+
+| 樓層 | 解鎖條件 | 體力 | 武器耐久 | 怪物 HP / ATK | 預期回合 | 推薦裝備 | 獎勵倍率 |
+|---|---|---|---|---|---|---|---|
+| 🏚️ 1F 廢棄礦坑 | 預設 | 1 | −1 | 100–200 / 8–12 | 3–5 | 拳頭 / 鐵劍 | ×1.0 |
+| ⛏️ 2F 礦工迷宮 | Lv.10 + 通關 1F ×3 | 1 | −1 | 250–400 / 12–18 | 4–6 | 鐵劍 / 鋼劍 | ×1.3 |
+| 🏛️ 3F 古遺跡 | Lv.20 + 通關 2F ×5 | 2 | −2 | 500–800 / 18–25 | 6–8 | 鋼劍 / 黃金劍 | ×1.7 |
+| 🔥 4F 熔岩深淵 | Lv.35 + 通關 3F ×8 | 2 | −2 | 1,000–1,500 / 25–35 | 8–10 | 黃金劍 / 鑽石劍 | ×2.2 |
+| 🌌 5F 虛空之門 | Lv.50 + 通關 4F ×10 | **3** | **−3** | 1,800–2,500 / 25–35 | 10–15 | 鑽石劍 / 傳說劍 | ×3.0 |
+| 👹 5F mini-BOSS | 解鎖 5F 後 | 3（不疊加）| **−4** | 3,000–4,500（兩階段）/ 30–45 | 15–20 | 鑽石劍 / 傳說劍 | ×4.0 |
+
+> 5F mini-BOSS = 房間版的固定 BOSS，獎勵含寵物蛋 / 傳說碎片 / **屠龍累積 +1**（連動 Phase H 黑曜霸主解鎖）。
+> 怪物 HP 範圍經過調整，確保中階玩家進場有 3–5 回合的戰術空間，高階玩家也能在 5F 打到 10 回合以上。
+
+### 武器耐久消耗對照（依實際 `dungeon.json` 數值）
+
+| 武器 | ATK | 耐久 | 純跑 1F 場次 | 純跑 5F 場次 | 連續 mini-BOSS |
+|---|---|---|---|---|---|
+| 鐵劍 | 25 | 40 | 40 | 13 | 10 |
+| 鋼劍 | 50 | 45 | 45 | 15 | 11 |
+| 黃金劍 | 80 | 60 | 60 | 20 | 15 |
+| 鑽石劍 | 120 | 80 | 80 | 26 | 20 |
+| 傳說劍 | 180 | **120** ⚠️ | 120 | 40 | 30 |
+
+> ⚠️ **建議調整**：既有 `dungeon.json` 中 **傳說劍與鑽石劍耐久相同（80）** — 配合新系統，建議將傳說劍耐久從 80 提升至 **120**，讓「鑽石 → 傳說」升級有耐久誘因（搭配 ATK +60、暴擊 +10%，符合終局武器定位）。
+
+### 副本主題（樓層的橫向擴展，每個 3 樓共用）
+
+| 主題 | 解鎖條件 | 偏好職業（連動 Phase J）| 限定掉落 |
+|---|---|---|---|
+| ⛏️ 礦坑（預設）| 從一開始 | 礦工 / 戰士 | 礦石、鎬子碎片、賭石 |
+| 🏛️ 廢墟 | Lv.25 + 礦坑 3F 通關 ×10 | 騎士 / 學者 | 古錢幣、殘破護符、知識卷軸 |
+| ❄️ 冰窟 | Lv.40 + 廢墟 3F 通關 ×10 | 漁夫 / 商人 | 冰晶魚、雪晶石、冷凍藥水 |
+
+> 三個主題共用 5F 樓層架構（每主題各有 5 樓），玩家可平行解鎖、依職業 / buff 選擇主場。
+> 未來 Phase I 文字冒險可重用「主題 / 樓層」框架。
+
+### 戰鬥狀態效果
+
+**怪物施加（玩家受影響）**
+
+| 效果 | 來源怪物 | 影響 |
+|---|---|---|
+| 🐍 中毒 | 蝙蝠 / 史萊姆 | 每回合扣 5% HP（最多 3 回合）|
+| 💫 暈眩 | 暗影狼 | 跳過 1 回合（無法攻擊）|
+| 🛡️ 護甲 | 守衛獸 | 自身減傷 50%（持續 2 回合，玩家視角是傷害降低）|
+| 🔥 燃燒 | 火焰精靈 | 每回合扣 8 HP（最多 2 回合）|
+| ⚡ 麻痺 | 雷晶怪 | 暴擊率 ×0.5（持續 3 回合）|
+
+**玩家道具（戰鬥前自動施用）**
+
+| 道具 | 效果 | 取得 |
+|---|---|---|
+| 🧪 解毒劑 | 戰鬥中免疫中毒 | 商城 300 幣 / 鍊金合成 |
+| 🛡️ 護盾卷軸 | 第一次受擊減 50% | 商城 400 幣 |
+| 💊 治療藥水（小 / 中 / 大）| 戰鬥中自動觸發回 20 / 50 / 100 HP | 商城 200 / 500 / 1,500 幣 |
+| 🔥 燃燒抵抗劑 | 戰鬥中免疫燃燒 | 商城 350 幣 |
+
+### 體力消耗規則
+
+| 情況 | 體力 | 武器耐久 |
+|---|---|---|
+| 戰鬥勝利 / 失敗 / 逃離（1F–2F）| 1 | −1 |
+| 戰鬥勝利 / 失敗 / 逃離（3F–4F）| 2 | −2 |
+| 戰鬥勝利 / 失敗 / 逃離（5F 一般）| 3 | −3 |
+| **5F mini-BOSS** | 3（不額外）| **−4**（額外懲罰）|
+| **主動逃離（新增 `/地下城 逃離`）**| **退還 50%**（向下取整）| **耐久不退**（進場就磨損）|
+| 系統錯誤 | 全退 | 全退（既有 rollback 保留）|
+
+體力上限同步調整：
+- 基準 **10 → 12**（補償高樓層耗量）
+- 回復速度不變（每小時 +1）
+- Twitch / 公會 buff 照舊累加
+
+### 武器耐久規則（為什麼按樓層而非回合）
+
+- ✅ **按樓層扣**：直觀、與體力規則對稱、好記
+- ❌ **不按回合扣**：戰鬥多回合是「後端模擬」，玩家只點一次，按回合扣會讓玩家無感且容易誤解
+- ⚔️ **暴擊不額外扣**（玩家獎勵）
+- 💀 **失敗仍扣**（風險不變）
+- 🛠️ **維修工具**回滿（既有機制保留）
+- 💎 **武器耐久歸零**：仍可進場，但戰鬥力降為「拳頭」級（既有降級邏輯保留）
+- 🐉 **mini-BOSS −4 耐久**：高難度高消耗，逼玩家在打 mini-BOSS 前先維修，建立「儀式感」
+- ⚠️ **建議同步調整 `dungeon.json`**：傳說劍耐久從 80 → 120，讓鑽石→傳說有耐久升級誘因
+
+### HP 回復機制
+
+| 來源 | 速率 / 條件 |
+|---|---|
+| 🌿 自然回復 | 每 10 分鐘 +5 HP（離線也算）|
+| 💊 HP 藥水（小）| +20 HP，商城 200 幣 |
+| 💊 HP 藥水（中）| +50 HP，商城 500 幣 |
+| 💊 HP 藥水（大）| 滿 HP，商城 1,500 幣 |
+| 🍱 食物 buff：HP 增益料理 | 戰前自動補滿 + Max HP +20（時效）|
+| 🐶 寵物 buff（救命阿伯）| 戰後 25% 機率多回 10 HP |
+| 🐉 寵物 buff（黑曜霸主）| 戰後固定 HP +50% |
+
+### 寵物協戰（連動 Phase H）
+
+出戰寵物每回合有機率協助，依寵物 buff 類型分流：
+
+| 寵物類型 | 協戰機率 | 效果 |
+|---|---|---|
+| 戰鬥型（斑斑騎士 / 赤焰龍王）| 20% | 追擊一次，半傷 |
+| 治癒型（救命阿伯 / 棉花糖公主）| 20% | 回 5–10 HP |
+| 採集型（黃金獵人 / 翠林大師）| 戰後 | 寶箱 / 戰利品機率 +5% |
+| 商業型（金幣社長 / 黃金大帝）| 戰後 | 金幣獎勵額外 +10% |
+| 一般 / 無對應類型 | — | 不協戰，但仍掉飢餓 −5 |
+
+戰鬥結束後：
+- 寵物獲得 exp（依樓層 1F=10 / 5F=50）
+- 飢餓度 −5（協戰）/ −3（陪同未觸發）
+
+### 樓層 BOSS（5F 限定）
+
+每副本主題的 5F 房間有 mini-BOSS，固定機制：
+
+| 副本 | mini-BOSS | 特殊機制 |
+|---|---|---|
+| ⛏️ 礦坑 | 礦坑暴君 | HP 500、第二階段（HP < 50%）攻擊翻倍 |
+| 🏛️ 廢墟 | 永眠守衛 | 護甲 3 回合內無法被打破 |
+| ❄️ 冰窟 | 冰晶女王 | 每回合 30% 機率麻痺玩家 |
+
+擊敗 mini-BOSS：
+- 必掉 1 個寵物蛋（稀有 ↑ 機率）
+- 100% 傳說碎片 ×1
+- 屠龍累積 +1（5 場後玩家可解鎖黑曜霸主候選）
+- 月榜稱號候選「副本征服者」
+
+### 消耗出口（必填段落）
+
+| 入口 | 出口 |
+|---|---|
+| 更高樓層獎勵倍率 | 高樓層耗體力多、需要 HP 藥水才能連戰 |
+| 寵物協戰加成 | 寵物飢餓度持續扣（推動餵食、消化魚 / 作物）|
+| mini-BOSS 稀有掉落 | 高階武器 / HP 藥水 / 解毒劑等耗材 |
+| 自然回復慢 | 推動 HP 藥水購買（金幣 sink）|
+
+### UX 設計重點
+
+依 `CLAUDE.md` 七項檢查：
+
+- **`/地下城` 進場前**：用 ContainerBuilder 顯示當前 HP / 體力 / 推薦樓層 + 三個樓層按鈕（依解鎖狀態顯示）
+- **未解鎖樓層**（UX 檢查 #6）：
+  > `🔒 3F 古遺跡 尚未解鎖！\n解鎖條件：等級 20 + 通關 2F ×5 次\n目前：Lv.17・通關 2F ×3 次`
+- **戰鬥日誌**：每回合一行 TextDisplay，限制最多 20 行避免 Container 過長；超過則摘要顯示
+- **HP 低警告**：戰前若 HP < 30% → Container 紅 accent「⚠️ HP 偏低，建議先休息或喝藥水」+ 三個按鈕（喝藥水 / 強制進場 / 取消）
+- **逃離按鈕**：戰鬥日誌呈現時，HP 仍 > 0 但已扣下回合，給玩家「立刻逃離（退 50% 體力）」按鈕
+- **owner 驗證**：所有按鈕 customId `dgn_<userId>_<action>` 必驗
+- **成功訊息快捷**：戰利品下方放「再戰一場 / 查看背包 / 找鑑定師（若挖到石頭）」
+
+### 指令
+
+| 指令 | 說明 | 類別 |
+|---|---|---|
+| `/地下城` | 入口（顯示 HP / 體力 / 樓層選單）| ephemeral |
+| `/地下城 挑戰 [主題] [樓層]` | 直接進指定樓層 | 公開（戰鬥訊息）|
+| `/地下城 逃離 [run_id]` | 戰鬥中逃離（退 50% 體力） | 公開 |
+| `/地下城 紀錄` | 通關紀錄 + 樓層解鎖進度 | ephemeral |
+| `/地下城 狀態` | 查 HP / 體力 / 加成 / Buff | ephemeral |
+| `/dungeon-admin reset-floor [user] [theme] [floor]` 🔒 | 重置玩家解鎖（測試用）| — |
+
+### DB 變動
+
+**修改既有 `MiningProfiles`**（`miningProfile.js` 的 `normalize()` 自動補欄位，**無需 migration**）：
+
+```js
+{
+  // 既有欄位保留 (stamina / weapon / dungeon_count ...)
+  hp_max:            Number,    // 新增，預設 100
+  hp_current:        Number,    // 新增，預設 100
+  hp_updated_at:     Number,    // 新增，自然回復計算
+  def:               Number,    // 新增，預設 0
+  floor_unlocks: {              // 新增，樓層解鎖
+    mine:   { max_floor: 1, clears: { 1: 0, 2: 0, ... } },
+    ruins:  { max_floor: 0, clears: {} },
+    ice:    { max_floor: 0, clears: {} }
+  }
+}
+```
+
+**新增 collection**：
+
+```js
+// dungeon_runs（戰鬥紀錄）
+{
+  run_id:       String,
+  user_id:      String,
+  guild_id:     String,
+  theme:        String,    // 'mine' | 'ruins' | 'ice'
+  floor:        Number,
+  monster_id:   String,
+  result:       String,    // 'win' | 'lose' | 'escape'
+  battle_log:   [Object],  // 每回合日誌（用於圖鑑 / 回放）
+  damage_dealt: Number,
+  damage_taken: Number,
+  stamina_cost: Number,
+  pet_id:       String,    // 出戰寵物
+  rewards:      Object,
+  started_at:   Number,
+  ended_at:     Number,
+}
+```
+
+索引：
+- `dungeon_runs`：`{ user_id: 1, ended_at: -1 }`、TTL 30 天
+
+### Config 擴充（`src/config/dungeon.json`）
+
+```json
+{
+  "stamina": { "max": 12, "rechargeMs": 3600000 },
+  "hp": {
+    "baseMax": 100,
+    "levelBonus": 2,
+    "naturalRegenPer10Min": 5,
+    "escapeRefundPct": 0.5
+  },
+  "themes": [
+    { "id": "mine", "name": "礦坑", "unlock": null },
+    { "id": "ruins", "name": "廢墟", "unlock": { "level": 25, "prereqFloor": { "mine": 3 }, "prereqClears": 10 } },
+    { "id": "ice", "name": "冰窟", "unlock": { "level": 40, "prereqFloor": { "ruins": 3 }, "prereqClears": 10 } }
+  ],
+  "floors": [
+    {
+      "floor": 1,
+      "name": "廢棄礦坑",
+      "unlockLevel": 1,
+      "staminaCost": 1,
+      "weaponDurabilityCost": 1,
+      "monsterHpRange": [100, 200],
+      "monsterAtkRange": [8, 12],
+      "rewardMultiplier": 1.0
+    },
+    {
+      "floor": 2,
+      "name": "礦工迷宮",
+      "unlockLevel": 10,
+      "prereqClears": { "floor": 1, "count": 3 },
+      "staminaCost": 1,
+      "weaponDurabilityCost": 1,
+      "monsterHpRange": [250, 400],
+      "monsterAtkRange": [12, 18],
+      "rewardMultiplier": 1.3
+    },
+    {
+      "floor": 3,
+      "name": "古遺跡",
+      "unlockLevel": 20,
+      "prereqClears": { "floor": 2, "count": 5 },
+      "staminaCost": 2,
+      "weaponDurabilityCost": 2,
+      "monsterHpRange": [500, 800],
+      "monsterAtkRange": [18, 25],
+      "rewardMultiplier": 1.7
+    },
+    {
+      "floor": 4,
+      "name": "熔岩深淵",
+      "unlockLevel": 35,
+      "prereqClears": { "floor": 3, "count": 8 },
+      "staminaCost": 2,
+      "weaponDurabilityCost": 2,
+      "monsterHpRange": [1000, 1500],
+      "monsterAtkRange": [25, 35],
+      "rewardMultiplier": 2.2
+    },
+    {
+      "floor": 5,
+      "name": "虛空之門",
+      "unlockLevel": 50,
+      "prereqClears": { "floor": 4, "count": 10 },
+      "staminaCost": 3,
+      "weaponDurabilityCost": 3,
+      "monsterHpRange": [1800, 2500],
+      "monsterAtkRange": [35, 50],
+      "rewardMultiplier": 3.0,
+      "miniBossOption": true
+    }
+  ],
+  "miniBosses": {
+    "mine_5f":  { "id": "tyrant",  "hp": 3500, "atk": 35, "weaponDurabilityCost": 4, "phase2HpRatio": 0.5, "phase2AtkMult": 2.0 },
+    "ruins_5f": { "id": "sleeper", "hp": 4000, "atk": 30, "weaponDurabilityCost": 4, "armorTurns": 3 },
+    "ice_5f":   { "id": "queen",   "hp": 4500, "atk": 28, "weaponDurabilityCost": 4, "paralyzeChance": 0.3 }
+  },
+  "statusEffects": {
+    "poison":   { "tickPct": 0.05, "turns": 3 },
+    "stun":     { "skipTurns": 1 },
+    "armor":    { "damageReductionPct": 0.5, "turns": 2 },
+    "burn":     { "tickFlat": 8, "turns": 2 },
+    "paralyze": { "critMult": 0.5, "turns": 3 }
+  }
+}
+```
+
+### 與現有系統的接點
+
+- **既有怪物**：保留 7 種，依 HP / ATK 重新分配到對應樓層（高 HP 改 4F-5F）
+- **既有掉落表**：依樓層加權，獎勵倍率自動套用（不重寫 `rollLoot`）
+- **既有食物 buff**：`dungeon_atk` / `all_boost` 仍有效；新增 `dungeon_def` / `dungeon_hp_max` 兩個 type
+- **`MiningProfiles.normalize()`**：自動補 hp / def 欄位（無 migration）
+- **eventBus**：保留 `dungeon.cleared`，新增：
+  - `dungeon.floor_unlocked` { userId, theme, floor }
+  - `dungeon.mini_boss_defeated` { userId, theme, killCount }
+  - `dungeon.fled` { userId, theme, floor, stamina_refunded }
+- **稱號**：「副本征服者」（月榜，5F 通關次數最多）
+- **任務**：既有 `daily_dungeon_win` 加 `theme` 過濾選項（如「冰窟通關 3 次」）
+- **Phase H 寵物 hook**：本 Phase 提供以下介面給寵物 buff 讀取：
+  - `petResolver.isCounterImmune()` — 黑曜霸主：BOSS 反擊免疫
+  - `petResolver.getFailStaminaSaveRate()` — 救命阿伯：失敗保體力機率
+  - `petResolver.getPostBattleHpRegenPct()` — 黑曜霸主：戰後 HP +50%
+  - `petResolver.getCombatPetType()` — 寵物協戰類型判定
+
+### 新增 / 修改檔案
+
+| 檔案 | 變動 |
+|---|---|
+| `src/config/dungeon.json` | **大改**：加 `themes[]` / `floors[]` / `miniBosses` / `statusEffects` / `hp` 區塊 |
+| `src/features/dungeon/battleEngine.js` | **新增**：多回合戰鬥模擬器、狀態效果引擎、戰鬥日誌生成 |
+| `src/features/dungeon/dungeonService.js` | 改：呼叫 battleEngine、整合寵物協戰、HP 扣加、逃離 |
+| `src/features/dungeon/floorService.js` | **新增**：樓層解鎖檢查 |
+| `src/features/dungeon/hpService.js` | **新增**：自然回復、藥水使用 |
+| `src/features/mining/miningProfile.js` | 改：加 hp_max / hp_current / def / floor_unlocks 欄位 |
+| `src/commands/dungeon/dungeon.js` | 改：加 主題 / 樓層 子指令、逃離 |
+| `src/events/interactionCreate/handleDungeonButton.js` | **新增**：戰鬥中按鈕（逃離 / 喝藥水）|
+
+### 預估時程：5–7 天
+
+| 項目 | 時間 |
+|---|---|
+| HP 戰鬥引擎（含戰鬥日誌呈現）| 2d |
+| 樓層 / 主題 config + 解鎖機制 | 1d |
+| 狀態效果系統 | 1d |
+| 寵物協戰介面（給 Phase H 用，本 Phase 先預留 hook）| 0.5d |
+| HP 藥水 / 自然回復 / 逃離機制 | 0.5d |
+| mini-BOSS 機制 | 0.5d |
+| 測試 / 平衡微調 | 1d |
 
 ---
 
@@ -1097,22 +1507,27 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | 項目 | 時間 | 前置 | 備註 |
 |---|---|---|---|
 | 地基：eventBus | 2 d | — | 新玩法上線前必做 |
-| Phase H 寵物 | 6–8 d | eventBus | 含孵化、餵食、進化、出戰、圖鑑 |
+| **Phase H+ 地下城進階** | **5–7 d** | eventBus | HP 系統 / 樓層 / 副本主題 / 寵物協戰 hook（先於 Phase H）|
+| Phase H 寵物 v1（12 隻貓狗）| 6–8 d | eventBus、Phase H+ | 含孵化、餵食、飾品、出戰、圖鑑 |
 | Phase J 轉職 | 5–6 d | eventBus、Phase H（可選） | 六職業 + 試煉 + 季賽 |
 | Phase K 神祕黑市 | 3–4 d | Phase H / J（道具池連動）、eventBus | 含 `shopEngine` 共用引擎 |
 | Phase L 流浪商人 | 2–3 d | Phase K 的 `shopEngine` | 共用引擎、新增 3 種商人個性 |
 | 地基：經濟儀表板 | 2–3 d | — | 與 Phase 平行可做 |
-| **合計** | **20–26 d** | | |
+| **合計** | **25–33 d** | | |
 
-**建議啟動順序**：`eventBus → Phase H → Phase J → Phase K → Phase L → 經濟儀表板`
+**建議啟動順序**：`eventBus → Phase H+ → Phase H → Phase J → Phase K → Phase L → 經濟儀表板`
 
 里程碑：
 - **M1**（+2d）：eventBus 上線、既有 service 開始 emit 事件
-- **M2**（+8–10d）：Phase H 寵物上線，首批玩家開始養寵物
-- **M3**（+13–16d）：Phase J 轉職上線，配合本季季首
-- **M4**（+16–20d）：Phase K 神祕黑市上線（含 `shopEngine`）
-- **M5**（+18–23d）：Phase L 流浪商人上線（復用 `shopEngine`）
-- **M6**（+20–26d）：經濟儀表板覆盤前 4 週數據
+- **M2**（+7–9d）：Phase H+ 地下城副本進階上線（HP 系統 + 樓層 + 主題）
+- **M3**（+13–17d）：Phase H 寵物 v1 上線，首批玩家開始養寵物（含協戰）
+- **M4**（+18–23d）：Phase J 轉職上線，配合本季季首
+- **M5**（+21–27d）：Phase K 神祕黑市上線（含 `shopEngine`）
+- **M6**（+23–30d）：Phase L 流浪商人上線（復用 `shopEngine`）
+- **M7**（+25–33d）：經濟儀表板覆盤前 4 週數據
+
+> **寵物 v2/v3** 延後：8 條龍系寵物中部分（赤焰龍王 / 黑曜霸主等）依賴本 Phase H+ 的屠龍累積與 HP 系統；
+> 銀月騎士 / 青銅將軍依賴未來圖鑑系統（brainstorm A2）與拍賣曝光擴充，列入下一波。
 
 ---
 
