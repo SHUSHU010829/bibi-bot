@@ -287,25 +287,17 @@ function buildActionsRow(ownerId, status) {
   const small = status.potions.small;
   const medium = status.potions.medium;
   const large = status.potions.large;
-  const tier = large > 0 ? "large" : medium > 0 ? "medium" : small > 0 ? "small" : null;
-  if (tier) {
-    const label = tier === "large" ? `💊 喝大瓶（${large}）` : tier === "medium" ? `💊 喝中瓶（${medium}）` : `💊 喝小瓶（${small}）`;
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_${tier}`)
-        .setLabel(label)
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(status.hp >= status.hpMax),
-    );
-  } else {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_none`)
-        .setLabel("💊 沒有生命藥水")
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(true),
-    );
-  }
+  const full = status.hp >= status.hpMax;
+  // 三瓶各一個按鈕，玩家自己選；沒持有的 disable。HP 滿時全 disable。
+  const mkBtn = (tier, emoji, name, count) =>
+    new ButtonBuilder()
+      .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_${tier}`)
+      .setLabel(`${emoji} ${name}（${count}）`)
+      .setStyle(count > 0 && !full ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setDisabled(count <= 0 || full);
+  row.addComponents(mkBtn("small", "💊", "小", small));
+  row.addComponents(mkBtn("medium", "💊", "中", medium));
+  row.addComponents(mkBtn("large", "💊", "大", large));
   row.addComponents(
     new ButtonBuilder()
       .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}`)
@@ -440,6 +432,10 @@ function buildBattleResultPanel(ownerId, result) {
     );
   }
 
+  const potionsAfter = result.potionsAfter || { small: 0, medium: 0, large: 0 };
+  const hasPotion = (potionsAfter.small + potionsAfter.medium + potionsAfter.large) > 0;
+  // 補血預設用最小可用瓶（與戰中自動藥水規則一致，避免浪費）
+  const healTier = potionsAfter.small > 0 ? "small" : potionsAfter.medium > 0 ? "medium" : potionsAfter.large > 0 ? "large" : null;
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${RAID_AGAIN_PREFIX}${ownerId}_${result.theme}_${result.floor}`)
@@ -449,6 +445,11 @@ function buildBattleResultPanel(ownerId, result) {
       .setCustomId(`${RAID_LOG_PREFIX}${ownerId}_${result.runId}`)
       .setLabel("📜 戰鬥日誌")
       .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_${healTier || "none"}`)
+      .setLabel(hasPotion ? `💊 補血（最小瓶）` : "💊 無生命藥水")
+      .setStyle(hasPotion && result.hpAfter < result.hpMax ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setDisabled(!hasPotion || result.hpAfter >= result.hpMax),
     new ButtonBuilder()
       .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}`)
       .setLabel("⚙️ 換樓層")
