@@ -31,6 +31,7 @@ const RAID_LOG_PREFIX = "raid_log_";           // 看日誌：raid_log_<ownerId>
 const RAID_HEAL_PREFIX = "raid_heal_";         // 補血：raid_heal_<ownerId>_<tier>
 const RAID_AGAIN_PREFIX = "raid_again_";       // 再戰：raid_again_<ownerId>_<theme>_<floor>
 const RAID_FORCE_PREFIX = "raid_force_";       // 強制進場（低 HP 確認後）：raid_force_<ownerId>_<theme>_<floor>
+const RAID_BOSS_PREFIX = "raid_boss_";         // 挑戰 mini-BOSS：raid_boss_<ownerId>_<theme>
 
 const MAX_LABEL_LEN = 80;
 
@@ -352,6 +353,35 @@ async function buildEntryPanel(client, interaction) {
   container.addActionRowComponents(buildFloorActionRow(interaction.user.id, floorStates));
   container.addActionRowComponents(buildActionsRow(interaction.user.id, status));
 
+  // Phase H+ mini-BOSS（解鎖時才顯示按鈕；門檻：5F 通關 ×5）
+  const mbState = floorService.miniBossUnlockState(status.profile, status.level, "mine");
+  if (mbState.unlocked) {
+    const mb = mbState.miniBoss;
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 👹 mini-BOSS：${mb.emoji || ""} ${mb.name}（HP ${mb.hp.toLocaleString()} ・ ATK ${mb.atk}）\n-# 體力 -${mb.staminaCost || 3} ・ 武器耐久 -${mb.weaponDurabilityCost || 4} ・ 必掉傳說碎片 ×1 ・ 屠龍累積 +1`,
+        ),
+      )
+      .addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${RAID_BOSS_PREFIX}${interaction.user.id}_mine`)
+            .setLabel(`⚔️ 挑戰 ${mb.name}`)
+            .setStyle(ButtonStyle.Danger),
+        ),
+      );
+  } else if (mbState.reason === "prereq_clears") {
+    const p = mbState.progress || {};
+    const r = mbState.requirement || {};
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 👹 mini-BOSS：5F 通關 ${r.clears} 次解鎖（目前 ${p.cleared} 次）`,
+      ),
+    );
+  }
+
   // 主題鎖定提示（v1 只開礦坑）
   const themeStates = floorService.listThemes(status.profile, status.level);
   const lockedThemes = themeStates.filter((t) => !t.unlocked && t.reason !== "unknown_theme");
@@ -378,11 +408,12 @@ function buildBattleResultPanel(ownerId, result) {
   const isWin = result.won;
   container.setAccentColor(isWin ? 0x2ecc71 : 0xe74c3c);
 
+  const bossPrefix = result.isMiniBoss ? "🏆 mini-BOSS " : "";
   const title = isWin
-    ? `## ⚔️ ${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""} — ✅ 勝利！（${result.turns} 回合）`
+    ? `## ⚔️ ${bossPrefix}${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""} — ✅ 勝利！（${result.turns} 回合）`
     : result.battleResult === "draw"
-      ? `## ⏳ ${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""} — 戰鬥逾時（${result.turns} 回合，視同失敗）`
-      : `## 💀 ${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""} — 戰鬥失敗（${result.turns} 回合）`;
+      ? `## ⏳ ${bossPrefix}${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""} — 戰鬥逾時（${result.turns} 回合，視同失敗）`
+      : `## 💀 ${bossPrefix}${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""} — 戰鬥失敗（${result.turns} 回合）`;
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(`${title}\n你${isWin ? "擊敗" : "不敵"} **${result.monster.emoji} ${result.monster.name}**`),
@@ -452,10 +483,14 @@ function buildBattleResultPanel(ownerId, result) {
   const hasPotion = (potionsAfter.small + potionsAfter.medium + potionsAfter.large) > 0;
   // 補血預設用最小可用瓶（與戰中自動藥水規則一致，避免浪費）
   const healTier = potionsAfter.small > 0 ? "small" : potionsAfter.medium > 0 ? "medium" : potionsAfter.large > 0 ? "large" : null;
+  const againCustomId = result.isMiniBoss
+    ? `${RAID_BOSS_PREFIX}${ownerId}_${result.theme}`
+    : `${RAID_AGAIN_PREFIX}${ownerId}_${result.theme}_${result.floor}`;
+  const againLabel = result.isMiniBoss ? `⚔️ 再戰 mini-BOSS` : `⚔️ 再戰 ${result.floor}F`;
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`${RAID_AGAIN_PREFIX}${ownerId}_${result.theme}_${result.floor}`)
-      .setLabel(`⚔️ 再戰 ${result.floor}F`)
+      .setCustomId(againCustomId)
+      .setLabel(againLabel)
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`${RAID_LOG_PREFIX}${ownerId}_${result.runId}`)
@@ -489,6 +524,12 @@ function buildBattleResultPanel(ownerId, result) {
 // 公開精簡播報（dungeon.json.channelId 頻道）。一行訊息，不洗版。
 function publicBroadcastContent(displayName, result) {
   const f = `${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""}`.trim();
+  if (result.isMiniBoss) {
+    if (result.won) {
+      return `🏆 **${displayName}** 擊敗 ${result.monster.emoji || ""} ${result.monster.name}！屠龍累積 +1`;
+    }
+    return `💀 **${displayName}** 挑戰 ${result.monster.emoji || ""} ${result.monster.name} 失敗，撐了 ${result.turns} 回合`;
+  }
   if (result.won) {
     const lootBrief = [];
     if (result.oreGained && !result.oreOverflowToCoins) lootBrief.push(`${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty}`);
@@ -875,6 +916,7 @@ module.exports = {
   RAID_HEAL_PREFIX,
   RAID_AGAIN_PREFIX,
   RAID_FORCE_PREFIX,
+  RAID_BOSS_PREFIX,
   buildEntryPanel,
   buildBattleResultPanel,
   buildLowHpConfirmPanel,

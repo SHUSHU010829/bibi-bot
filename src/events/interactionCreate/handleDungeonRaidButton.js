@@ -25,6 +25,7 @@ const PREFIXES = [
   dungeonCmd.RAID_ENTER_PREFIX,
   dungeonCmd.RAID_AGAIN_PREFIX,
   dungeonCmd.RAID_FORCE_PREFIX,
+  dungeonCmd.RAID_BOSS_PREFIX,
   dungeonCmd.RAID_LOG_PREFIX,
   dungeonCmd.RAID_HEAL_PREFIX,
 ];
@@ -49,7 +50,7 @@ async function replyEphemeral(interaction, content) {
 }
 
 // 戰鬥結果 → 同訊息更新為結算面板 + 公開精簡播報
-async function runBattleAndRender(client, interaction, { themeId, floor }) {
+async function runBattleAndRender(client, interaction, { themeId, floor, isMiniBoss = false }) {
   const result = await dungeonService.enterDungeonHp(client, {
     userId: interaction.user.id,
     guildId: interaction.guildId,
@@ -57,11 +58,26 @@ async function runBattleAndRender(client, interaction, { themeId, floor }) {
     username: interaction.user.username,
     themeId,
     floor,
+    isMiniBoss,
   });
 
   if (!result.ok) {
     const container = new ContainerBuilder().setAccentColor(0xe74c3c);
-    if (result.reason === "floor_locked") {
+    if (result.reason === "mini_boss_locked") {
+      const ms = result.miniBossState;
+      const r = ms?.requirement || {};
+      const p = ms?.progress || {};
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## 🔒 mini-BOSS 未解鎖"));
+      container.addSeparatorComponents(new SeparatorBuilder());
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `解鎖條件：${p.floor || 5}F 通關 ${r.clears || 5} 次\n目前：${p.cleared || 0} 次`,
+        ),
+      );
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("-# 多打 5F 累積通關次數。"),
+      );
+    } else if (result.reason === "floor_locked") {
       const fs = result.floorState;
       const f = fs?.floor;
       const r = fs?.requirement || {};
@@ -266,6 +282,32 @@ module.exports = async (client, interaction) => {
       await interaction.deferUpdate();
       await showEntryPanelOnSameMessage(client, interaction);
       trackSuccess("raid-panel");
+      return;
+    }
+
+    if (m.prefix === dungeonCmd.RAID_BOSS_PREFIX) {
+      // payload = <ownerId>_<theme>
+      const parts = m.payload.split("_");
+      const themeId = parts[1];
+      if (!themeId) return replyEphemeral(interaction, "🔧 主題參數錯誤。");
+      await interaction.deferUpdate();
+      // mini-BOSS 也走低 HP 確認
+      const status = await dungeonService.getDungeonStatus(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+      });
+      if (status.hpLow) {
+        const container = dungeonCmd.buildLowHpConfirmPanel(interaction.user.id, status, themeId, 5);
+        await interaction.editReply({
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        });
+        trackSuccess("raid-boss-confirm");
+        return;
+      }
+      await runBattleAndRender(client, interaction, { themeId, floor: 5, isMiniBoss: true });
+      trackSuccess("raid-boss");
       return;
     }
 

@@ -655,6 +655,7 @@ async function getPlayerLevel(client, userId, guildId) {
 async function enterDungeonHp(client, {
   userId, guildId, member, username,
   themeId = "mine", floor = 1,
+  isMiniBoss = false,
   allowOverflow = false,
 }) {
   if (!dungeon?.enabled) return { ok: false, reason: "disabled" };
@@ -665,12 +666,34 @@ async function enterDungeonHp(client, {
   const level = await getPlayerLevel(client, userId, guildId);
   const profile = await getOrCreate(client, userId, guildId);
 
-  // 1) 解鎖檢查（樓層、主題）— 失敗回完整原因供 UX 顯示
-  const floorState = floorService.floorUnlockState(profile, level, themeId, floor);
-  if (!floorState.unlocked) {
-    return { ok: false, reason: "floor_locked", floorState, level };
+  // mini-BOSS 路徑：解鎖檢查走 floorService.miniBossUnlockState；非樓層解鎖。
+  let miniBossDef = null;
+  let f;
+  if (isMiniBoss) {
+    const mbState = floorService.miniBossUnlockState(profile, level, themeId);
+    if (!mbState.unlocked) {
+      return { ok: false, reason: "mini_boss_locked", miniBossState: mbState, level };
+    }
+    miniBossDef = mbState.miniBoss;
+    // 體力 / 武器耐久消耗依 mini-BOSS def，無 prereqClears 更新
+    f = {
+      floor: 5,
+      name: miniBossDef.name,
+      emoji: miniBossDef.emoji || "👹",
+      staminaCost: miniBossDef.staminaCost || 3,
+      weaponDurabilityCost: miniBossDef.weaponDurabilityCost || 4,
+      rewardMultiplier: 4.0,
+      encounterRatePct: 0, // mini-BOSS 不觸發隨機事件，避免戲劇性失焦
+      monsterPool: [],
+    };
+  } else {
+    // 1) 解鎖檢查（樓層、主題）— 失敗回完整原因供 UX 顯示
+    const floorState = floorService.floorUnlockState(profile, level, themeId, floor);
+    if (!floorState.unlocked) {
+      return { ok: false, reason: "floor_locked", floorState, level };
+    }
+    f = floorState.floor;
   }
-  const f = floorState.floor;
 
   // 2) 體力檢查
   const st = resolveStamina(profile, staMaxV);
@@ -712,8 +735,28 @@ async function enterDungeonHp(client, {
   const critRate = (wdef.critRate || 0) + (critPct / 100);
   const def = (wdef.def || 0) + (sdef.def || 0) + getFoodDefBonus(profile);
 
-  const monster = pickMonsterForFloor(themeId, floor);
-  if (!monster) return { ok: false, reason: "no_monster" };
+  let monster;
+  let miniBossArg = null;
+  if (isMiniBoss && miniBossDef) {
+    monster = {
+      id: miniBossDef.id,
+      name: miniBossDef.name,
+      emoji: miniBossDef.emoji || "👹",
+      hp: miniBossDef.hp,
+      atk: miniBossDef.atk,
+      skills: [],
+      def: 0,
+    };
+    miniBossArg = {
+      phase2HpRatio: miniBossDef.phase2HpRatio,
+      phase2AtkMult: miniBossDef.phase2AtkMult,
+      armorTurns: miniBossDef.armorTurns,
+      paralyzeChance: miniBossDef.paralyzeChance,
+    };
+  } else {
+    monster = pickMonsterForFloor(themeId, floor);
+    if (!monster) return { ok: false, reason: "no_monster" };
+  }
 
   // 5) 跑戰鬥引擎
   const battle = battleEngine.simulate({
@@ -734,6 +777,7 @@ async function enterDungeonHp(client, {
       petType: "none", // Phase H 寵物接上後改傳 petResolver.getCombatPetType(...)
     },
     monster,
+    miniBoss: miniBossArg,
   });
 
   const won = battle.result === "win";
@@ -857,14 +901,23 @@ async function enterDungeonHp(client, {
       }
     }
 
-    // 樓層通關推進
-    const upd = floorService.buildClearedUpdate(profile, themeId, floor);
-    for (const [k, v] of Object.entries(upd.inc)) {
-      inc[k] = (inc[k] || 0) + v;
+    if (isMiniBoss) {
+      // mini-BOSS 必掉 1 傳說碎片 + 屠龍累積 + 主題擊殺
+      legendaryGained = Math.max(legendaryGained, 1);
+      inc.legendary_fragments = (inc.legendary_fragments || 0) + 1;
+      inc[`mini_boss_kills.${themeId}`] = (inc[`mini_boss_kills.${themeId}`] || 0) + 1;
+      inc.dragon_slayer_kills = (inc.dragon_slayer_kills || 0) + 1;
+      var floorEvents = [];
+    } else {
+      // 樓層通關推進
+      const upd = floorService.buildClearedUpdate(profile, themeId, floor);
+      for (const [k, v] of Object.entries(upd.inc)) {
+        inc[k] = (inc[k] || 0) + v;
+      }
+      Object.assign(set, upd.set);
+      // upd.events 包含 floor_unlocked 事件，戰後再 emit
+      var floorEvents = upd.events;
     }
-    Object.assign(set, upd.set);
-    // upd.events 包含 floor_unlocked 事件，戰後再 emit
-    var floorEvents = upd.events;
   } else {
     // 失敗：25% 機率隨機掉 1 個非工具類道具（魚/礦/作物等，不掉裝備）
     const dropChance = dungeon?.hp?.deathDropChance ?? 0.25;
@@ -927,6 +980,7 @@ async function enterDungeonHp(client, {
       damage_taken: battle.damageTaken,
       stamina_cost: staCost,
       pet_id: null,
+      is_milestone: !!isMiniBoss, // mini-BOSS 紀念紀錄不走 30 天 TTL
       rewards: { coinsGained: coinsGrantedTotal, oreGained, legendaryGained, slimeGained, seedGained },
       started_at: startedAt,
       ended_at: Date.now(),
@@ -939,6 +993,7 @@ async function enterDungeonHp(client, {
     theme: themeId,
     floor,
     floorName: f.name,
+    isMiniBoss,
     floorEmoji: f.emoji,
     won,
     battleResult: battle.result,
@@ -1004,6 +1059,11 @@ async function enterDungeonHp(client, {
 
   for (const ev of result.floorEvents) {
     bus.emit("dungeon.floor_unlocked", { userId, guildId, theme: ev.theme, floor: ev.floor });
+  }
+
+  if (won && isMiniBoss) {
+    const killCount = ((profile.mini_boss_kills || {})[themeId] || 0) + 1;
+    bus.emit("dungeon.mini_boss_defeated", { userId, guildId, theme: themeId, killCount });
   }
 
   if (won) {
