@@ -1027,6 +1027,30 @@ async function enterDungeonHp(client, {
     }
   }
 
+  // 突發事件（依樓層 encounterRatePct 觸發）：戰後寫庫已完成，事件再對 HP / 體力 / 庫存做變動
+  const enc = await encounterService
+    .trigger(client, {
+      context: "dungeon",
+      userId,
+      guildId,
+      member,
+      username,
+      baseResult: {
+        ...result,
+        stamina: result.staminaAfter,
+        staminaMax: result.staminaMax,
+      },
+      encounterRatePct: f.encounterRatePct,
+    })
+    .catch(() => null);
+  if (enc) {
+    if (typeof enc.patch?.staminaAfter === "number") {
+      result.staminaAfter = enc.patch.staminaAfter;
+    }
+    result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body };
+    if (enc.diamondGained > 0) result.encounterDiamond = enc.diamondGained;
+  }
+
   return result;
 }
 

@@ -24,6 +24,7 @@ const PREFIXES = [
   dungeonCmd.RAID_PANEL_PREFIX,
   dungeonCmd.RAID_ENTER_PREFIX,
   dungeonCmd.RAID_AGAIN_PREFIX,
+  dungeonCmd.RAID_FORCE_PREFIX,
   dungeonCmd.RAID_LOG_PREFIX,
   dungeonCmd.RAID_HEAL_PREFIX,
 ];
@@ -268,7 +269,11 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    if (m.prefix === dungeonCmd.RAID_ENTER_PREFIX || m.prefix === dungeonCmd.RAID_AGAIN_PREFIX) {
+    if (
+      m.prefix === dungeonCmd.RAID_ENTER_PREFIX ||
+      m.prefix === dungeonCmd.RAID_AGAIN_PREFIX ||
+      m.prefix === dungeonCmd.RAID_FORCE_PREFIX
+    ) {
       // payload = <ownerId>_<theme>_<floor>
       const parts = m.payload.split("_");
       const themeId = parts[1];
@@ -277,6 +282,25 @@ module.exports = async (client, interaction) => {
         return replyEphemeral(interaction, "🔧 樓層參數錯誤。");
       }
       await interaction.deferUpdate();
+      // 戰前低 HP 確認（強制進場 prefix 跳過）
+      if (m.prefix !== dungeonCmd.RAID_FORCE_PREFIX) {
+        const status = await dungeonService.getDungeonStatus(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+        });
+        if (status.hpLow) {
+          const container = dungeonCmd.buildLowHpConfirmPanel(
+            interaction.user.id, status, themeId, floor,
+          );
+          await interaction.editReply({
+            components: [container],
+            flags: MessageFlags.IsComponentsV2,
+          });
+          trackSuccess("raid-enter-confirm");
+          return;
+        }
+      }
       await runBattleAndRender(client, interaction, { themeId, floor });
       trackSuccess("raid-enter");
       return;

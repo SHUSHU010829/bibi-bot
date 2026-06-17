@@ -65,10 +65,15 @@ async function trigger(client, ctx) {
   if (!randomEncounters?.enabled) return null;
   if (!coll(client)) return null;
 
-  const chance =
-    context === "mining"
-      ? randomEncounters.miningChance
-      : randomEncounters.dungeonChance;
+  // Phase H+：地下城樓層可在 floors[].encounterRatePct 覆寫全域機率（1F-2F 20%、3F-4F 25%、5F 15%）
+  let chance;
+  if (context === "mining") {
+    chance = randomEncounters.miningChance;
+  } else if (typeof ctx.encounterRatePct === "number") {
+    chance = ctx.encounterRatePct / 100;
+  } else {
+    chance = randomEncounters.dungeonChance;
+  }
   if (!(Math.random() < (chance || 0))) return null;
 
   const enc = pickEncounter(context);
@@ -258,7 +263,7 @@ async function trigger(client, ctx) {
       case "restore_stamina":
       case "lose_stamina": {
         const max =
-          baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 10);
+          baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 12);
         const cur =
           typeof baseResult?.stamina === "number" ? baseResult.stamina : max;
         const delta =
@@ -269,11 +274,115 @@ async function trigger(client, ctx) {
         const set = { stamina: next, updatedAt: new Date() };
         if (next >= max) set.stamina_updated_at = 0;
         else if (cur >= max) set.stamina_updated_at = Date.now();
+
+        // Phase H+ lose_stamina 可選附加 hp 扣血（陷阱 / 毒霧用）
+        if (eff.type === "lose_stamina" && eff.hp > 0) {
+          const profile = await getOrCreate(client, userId, guildId);
+          const hpCur = typeof profile.hp_current === "number" ? profile.hp_current : 100;
+          const hpAfter = Math.max(0, hpCur - eff.hp);
+          set.hp_current = hpAfter;
+          set.hp_updated_at = hpAfter > 0 ? Date.now() : 0;
+          lines.push(`❤️ HP -${hpCur - hpAfter}（${hpAfter}）`);
+        }
+
         await coll(client).updateOne({ userId, guildId }, { $set: set });
         patch.staminaAfter = next;
         const diff = next - cur;
         if (diff !== 0) {
           lines.push(`🔋 體力 ${diff > 0 ? "+" : ""}${diff}（${next}/${max}）`);
+        }
+        break;
+      }
+
+      case "restore_hp": {
+        const profile = await getOrCreate(client, userId, guildId);
+        const hpService = require("../dungeon/hpService");
+        const { getFoodHpMaxBonus } = require("../fishing/cookService");
+        const level = await (async () => {
+          if (!client?.userLevelsCollection) return 0;
+          const doc = await client.userLevelsCollection
+            .findOne({ userId, guildId })
+            .catch(() => null);
+          if (!doc) return 0;
+          if (typeof doc.level === "number") return doc.level;
+          try {
+            const { getLevelProgress } = require("../../utils/levelMath");
+            return getLevelProgress(doc.totalXp || 0).level || 0;
+          } catch { return 0; }
+        })();
+        const hpMaxV = hpService.hpMax(level, { food: getFoodHpMaxBonus(profile) });
+        const cur = typeof profile.hp_current === "number" ? profile.hp_current : hpMaxV;
+        const amount = Math.max(0, eff.amount || 0);
+        const next = Math.min(hpMaxV, cur + amount);
+        await coll(client).updateOne(
+          { userId, guildId },
+          {
+            $set: {
+              hp_current: next,
+              hp_updated_at: next >= hpMaxV ? 0 : Date.now(),
+              updatedAt: new Date(),
+            },
+          },
+        );
+        lines.push(`❤️ HP +${next - cur}（${next}/${hpMaxV}）`);
+        break;
+      }
+
+      case "restore_full": {
+        // 隱士庇護：滿 HP + 體力 +N
+        const profile = await getOrCreate(client, userId, guildId);
+        const hpService = require("../dungeon/hpService");
+        const { getFoodHpMaxBonus } = require("../fishing/cookService");
+        const level = await (async () => {
+          if (!client?.userLevelsCollection) return 0;
+          const doc = await client.userLevelsCollection
+            .findOne({ userId, guildId })
+            .catch(() => null);
+          if (!doc) return 0;
+          if (typeof doc.level === "number") return doc.level;
+          try {
+            const { getLevelProgress } = require("../../utils/levelMath");
+            return getLevelProgress(doc.totalXp || 0).level || 0;
+          } catch { return 0; }
+        })();
+        const hpMaxV = hpService.hpMax(level, { food: getFoodHpMaxBonus(profile) });
+        const max = baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 12);
+        const cur = typeof baseResult?.stamina === "number" ? baseResult.stamina : max;
+        const staPlus = eff.staminaPlus || 1;
+        const nextSta = Math.min(max, cur + staPlus);
+        const set = {
+          hp_current: hpMaxV,
+          hp_updated_at: 0,
+          stamina: nextSta,
+          updatedAt: new Date(),
+        };
+        if (nextSta >= max) set.stamina_updated_at = 0;
+        else if (cur >= max) set.stamina_updated_at = Date.now();
+        await coll(client).updateOne({ userId, guildId }, { $set: set });
+        patch.staminaAfter = nextSta;
+        lines.push(`❤️ HP 補滿（${hpMaxV}/${hpMaxV}）`);
+        if (nextSta > cur) lines.push(`🔋 體力 +${nextSta - cur}（${nextSta}/${max}）`);
+        break;
+      }
+
+      case "gift_hp_potion": {
+        // 戰士遺骸：贈送 1 瓶生命藥水（依 tier）
+        const tier = (eff.tier === "medium" || eff.tier === "large") ? eff.tier : "small";
+        const field = `hp_potion_${tier}`;
+        const qty = Math.max(1, eff.qty || 1);
+        const stackMax = dungeon?.hpPotions?.[tier]?.stackMax || 99;
+        const profile = await getOrCreate(client, userId, guildId);
+        const owned = profile[field] || 0;
+        const give = Math.min(qty, Math.max(0, stackMax - owned));
+        if (give > 0) {
+          await coll(client).updateOne(
+            { userId, guildId },
+            { $inc: { [field]: give }, $set: { updatedAt: new Date() } },
+          );
+          const tierName = dungeon?.hpPotions?.[tier]?.name || `生命藥水（${tier}）`;
+          lines.push(`💊 ${tierName} ×${give}`);
+        } else {
+          lines.push("你的生命藥水已達持有上限，這次沒拿到。");
         }
         break;
       }

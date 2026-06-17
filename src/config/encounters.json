@@ -121,8 +121,40 @@
         "name": "陷阱",
         "emoji": "⚠️",
         "weight": 12,
-        "effect": { "type": "lose_stamina", "amount": 1 },
-        "text": "你踩中了一個陷阱，慌亂中多耗了一點體力。"
+        "effect": { "type": "lose_stamina", "amount": 1, "hp": 10 },
+        "text": "你踩中了一個陷阱，慌亂中多耗了一點體力、還被尖刺刮傷。"
+      },
+      {
+        "id": "mystic_spring",
+        "name": "神祕泉水",
+        "emoji": "🌿",
+        "weight": 12,
+        "effect": { "type": "restore_hp", "amount": 30 },
+        "text": "你撥開藤蔓發現一池清澈泉水，掬起一口喝下，傷口瞬間癒合不少。"
+      },
+      {
+        "id": "poison_mist",
+        "name": "毒霧瀰漫",
+        "emoji": "☠️",
+        "weight": 8,
+        "effect": { "type": "lose_stamina", "amount": 0, "hp": 20 },
+        "text": "一股暗綠毒霧從牆縫滲出，你掩著鼻倉皇衝過，仍中了不少毒。"
+      },
+      {
+        "id": "fallen_warrior",
+        "name": "戰士遺骸",
+        "emoji": "🪦",
+        "weight": 10,
+        "effect": { "type": "gift_hp_potion", "tier": "small", "qty": 1 },
+        "text": "你在牆角看見一具枯骨，他懷裡還握著一瓶未喝完的生命藥水。"
+      },
+      {
+        "id": "hermit_shelter",
+        "name": "隱士庇護",
+        "emoji": "🧘",
+        "weight": 5,
+        "effect": { "type": "restore_full", "staminaPlus": 1 },
+        "text": "你撞見一位隱士的小屋，他為你包紮傷口、補滿水壺，還塞了一份乾糧。"
       },
       {
         "id": "elite_monster",

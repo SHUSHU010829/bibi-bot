@@ -30,6 +30,7 @@ const RAID_ENTER_PREFIX = "raid_enter_";       // 進入戰鬥：raid_enter_<own
 const RAID_LOG_PREFIX = "raid_log_";           // 看日誌：raid_log_<ownerId>_<runId>
 const RAID_HEAL_PREFIX = "raid_heal_";         // 補血：raid_heal_<ownerId>_<tier>
 const RAID_AGAIN_PREFIX = "raid_again_";       // 再戰：raid_again_<ownerId>_<theme>_<floor>
+const RAID_FORCE_PREFIX = "raid_force_";       // 強制進場（低 HP 確認後）：raid_force_<ownerId>_<theme>_<floor>
 
 const MAX_LABEL_LEN = 80;
 
@@ -438,6 +439,15 @@ function buildBattleResultPanel(ownerId, result) {
     );
   }
 
+  if (result.encounter) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${result.encounter.emoji} **突發事件：${result.encounter.name}**\n${result.encounter.body}`,
+      ),
+    );
+  }
+
   const potionsAfter = result.potionsAfter || { small: 0, medium: 0, large: 0 };
   const hasPotion = (potionsAfter.small + potionsAfter.medium + potionsAfter.large) > 0;
   // 補血預設用最小可用瓶（與戰中自動藥水規則一致，避免浪費）
@@ -491,6 +501,50 @@ function publicBroadcastContent(displayName, result) {
     return `⏳ **${displayName}** 在 ${f} 戰鬥逾時撤退（${result.turns} 回合）`;
   }
   return `💀 **${displayName}** 在 ${f} 倒下了（撐了 ${result.turns} 回合）`;
+}
+
+// 戰前低 HP 確認面板：HP < 30% 時點樓層按鈕觸發，避免新手不小心送頭。
+function buildLowHpConfirmPanel(ownerId, status, themeId, floor) {
+  const f = (dungeon?.floors || []).find((x) => x.floor === floor) || {};
+  const container = new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("## ⚠️ HP 偏低，建議先補血"))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `目前 ❤️ HP **${status.hp}/${status.hpMax}**（${Math.round(status.hp / status.hpMax * 100)}%）` +
+        `\n進入 ${f.emoji || ""} ${f.floor}F ${f.name || ""} 風險高，怪物 ATK 約 ${f.monsterAtkRange?.[0] || "?"}–${f.monsterAtkRange?.[1] || "?"}。`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 重傷狀態下 ATK ×0.8、暴擊率 ×0.5。建議先補血、或回換樓層改打低樓層。",
+      ),
+    );
+
+  const small = status.potions.small;
+  const medium = status.potions.medium;
+  const large = status.potions.large;
+  const hasPotion = (small + medium + large) > 0;
+  const healTier = small > 0 ? "small" : medium > 0 ? "medium" : large > 0 ? "large" : null;
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_${healTier || "none"}`)
+      .setLabel(hasPotion ? "💊 補血（最小瓶）" : "💊 無生命藥水")
+      .setStyle(hasPotion ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setDisabled(!hasPotion),
+    new ButtonBuilder()
+      .setCustomId(`${RAID_FORCE_PREFIX}${ownerId}_${themeId}_${floor}`)
+      .setLabel(`⚠️ 強制進場 ${floor}F`)
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}`)
+      .setLabel("❌ 取消（回面板）")
+      .setStyle(ButtonStyle.Secondary),
+  );
+  container.addActionRowComponents(row);
+  return container;
 }
 
 async function showEntryPanel(client, interaction) {
@@ -779,6 +833,25 @@ module.exports = {
 
   run: async (client, interaction) => {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    // 頻道綁定：規格要求只允許在 dungeon.channelId 使用，其他頻道回 ephemeral 提示
+    const boundChannel = dungeon?.channelId;
+    if (boundChannel && interaction.channelId !== boundChannel) {
+      const container = new ContainerBuilder()
+        .setAccentColor(0xfaa61a)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("## 🔒 請至指定頻道使用"),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `/地下城 副本面板僅限在 <#${boundChannel}> 使用。\n戰鬥結果會公開播報到該頻道，避免洗版其他頻道。`,
+          ),
+        );
+      return interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
     try {
       return await showEntryPanel(client, interaction);
     } catch (err) {
@@ -801,8 +874,10 @@ module.exports = {
   RAID_LOG_PREFIX,
   RAID_HEAL_PREFIX,
   RAID_AGAIN_PREFIX,
+  RAID_FORCE_PREFIX,
   buildEntryPanel,
   buildBattleResultPanel,
+  buildLowHpConfirmPanel,
   publicBroadcastContent,
   showEntryPanel,
 };
