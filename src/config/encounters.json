@@ -184,16 +184,90 @@
         "name": "晶洞密室",
         "emoji": "💠",
         "weight": 6,
+        "theme": "mine",
         "effect": { "type": "bonus_ore", "ore": "diamond", "min": 1, "max": 1 },
         "text": "你鑿開一塊奇怪的石板，後面竟藏著一個小晶洞！鑽石就躺在裡面。"
+      },
+      {
+        "id": "runaway_minecart",
+        "name": "礦車失控",
+        "emoji": "🛒",
+        "weight": 7,
+        "theme": "mine",
+        "effect": { "type": "gamble_coins", "winChance": 0.7, "winMin": 300, "winMax": 600, "loseStamina": 0, "loseHp": 25 },
+        "text": "一台失控礦車從坡道衝下！你勉強跳上去，可能撞傷也可能翻出寶箱。"
+      },
+      {
+        "id": "bat_swarm",
+        "name": "蝙蝠群驚擾",
+        "emoji": "🦇",
+        "weight": 8,
+        "theme": "mine",
+        "effect": { "type": "lose_stamina", "amount": 0, "hp": 12 },
+        "text": "一群蝙蝠驟然從岩縫飛出，你揮舞武器驅趕，仍被抓傷了幾道。"
       },
       {
         "id": "cursed_altar",
         "name": "詛咒祭壇",
         "emoji": "⚖️",
         "weight": 8,
+        "theme": "ruins",
         "effect": { "type": "gamble_coins", "winChance": 0.6, "winMin": 300, "winMax": 700, "loseStamina": 1 },
         "text": "你發現一座詛咒祭壇，上面擺著一個閃閃發光的寶箱……"
+      },
+      {
+        "id": "guardian_statue",
+        "name": "守衛雕像",
+        "emoji": "📿",
+        "weight": 6,
+        "theme": "ruins",
+        "effect": { "type": "restore_hp", "amount": 30 },
+        "text": "巨石守衛雕像散發溫和的光輝，你佇足片刻，傷口悄悄癒合。"
+      },
+      {
+        "id": "collapsed_pillar",
+        "name": "倒塌石柱",
+        "emoji": "🏛️",
+        "weight": 6,
+        "theme": "ruins",
+        "effect": { "type": "lose_stamina", "amount": 1, "hp": 8 },
+        "text": "一根古老石柱無預警倒塌，你閃身翻滾，耗了不少氣力。"
+      },
+      {
+        "id": "ghoul_bite",
+        "name": "屍鬼咬擊",
+        "emoji": "💀",
+        "weight": 7,
+        "theme": "ruins",
+        "effect": { "type": "lose_stamina", "amount": 0, "hp": 18 },
+        "text": "陰影裡竄出一隻屍鬼咬上你的小腿，你掙脫後傷口隱隱發黑。"
+      },
+      {
+        "id": "biting_wind",
+        "name": "寒風刺骨",
+        "emoji": "🥶",
+        "weight": 8,
+        "theme": "ice",
+        "effect": { "type": "lose_stamina", "amount": 1, "hp": 10 },
+        "text": "穿堂寒風刺骨刮過，你縮起身子，凍得手腳發麻、體力下降。"
+      },
+      {
+        "id": "ice_fish_school",
+        "name": "冰下魚群",
+        "emoji": "🐟",
+        "weight": 7,
+        "theme": "ice",
+        "effect": { "type": "gift_hp_potion", "tier": "small", "qty": 1 },
+        "text": "冰層下游動著魚群，你鑿洞取暖之餘，順手撈起一瓶遺落在岸邊的生命藥水。"
+      },
+      {
+        "id": "snowstorm",
+        "name": "暴風雪",
+        "emoji": "🌨️",
+        "weight": 5,
+        "theme": "ice",
+        "effect": { "type": "restore_stamina", "amount": 1 },
+        "text": "暴風雪席捲而來，你縮在洞中喘息，反而養回一點體力，準備下一場戰鬥。"
       },
       {
         "id": "forgotten_forge",

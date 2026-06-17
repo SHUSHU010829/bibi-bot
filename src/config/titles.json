@@ -47,7 +47,10 @@
       "dragon_heir": { "name": "龍裔", "emoji": "🐲", "category": "boss", "desc": "累積擊殺 BOSS 達 10 次", "req": { "bossKills": 10 } },
       "boss_mvp": { "name": "萬人敵", "emoji": "⚔️", "category": "boss", "desc": "單場 BOSS 戰傷害第一（每月輪替）", "monthly": true },
       "combo_starter": { "name": "開團王", "emoji": "🎯", "category": "boss", "desc": "觸發 Combo 滿格的最後一棒（每月輪替）", "monthly": true },
-      "punching_bag": { "name": "被龍揍王", "emoji": "🤡", "category": "boss", "desc": "單場 BOSS 戰被反擊次數最多且 ≥ 3 次（每月輪替）", "monthly": true }
+      "punching_bag": { "name": "被龍揍王", "emoji": "🤡", "category": "boss", "desc": "單場 BOSS 戰被反擊次數最多且 ≥ 3 次（每月輪替）", "monthly": true },
+      "dungeon_conqueror": { "name": "副本征服者", "emoji": "🏆", "category": "dungeon", "desc": "當月 5F 通關次數第一（每月輪替）", "monthly": true },
+      "frozen_hero":       { "name": "冰封英雄",   "emoji": "❄️", "category": "dungeon", "desc": "冰窟 1F–5F 全部通關過 ≥ 1 次", "req": { "iceFloorsClearedAll": true } },
+      "ruins_scholar":     { "name": "廢墟學者",   "emoji": "🏛️", "category": "dungeon", "desc": "廢墟 1F–5F 全部通關過 ≥ 1 次", "req": { "ruinsFloorsClearedAll": true } }
     }
   }
 }

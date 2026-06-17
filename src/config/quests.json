@@ -99,6 +99,13 @@
         "target": 15
       },
       {
+        "id": "daily_dungeon_floor3",
+        "name": "深淵探索",
+        "description": "當日通關 3F 以上樓層 ≥ 3 次",
+        "reward": 400,
+        "target": 3
+      },
+      {
         "id": "daily_farm_harvest",
         "name": "今日豐收",
         "description": "當日從農場收成 ≥ 4 次",
@@ -176,6 +183,20 @@
         "description": "本週地下城戰鬥勝利 ≥ 20 次",
         "reward": 1800,
         "target": 20
+      },
+      {
+        "id": "weekly_mini_boss",
+        "name": "屠龍週",
+        "description": "本週擊敗 mini-BOSS ≥ 1 次（5F 通關 5 次後解鎖挑戰）",
+        "reward": 2500,
+        "target": 1
+      },
+      {
+        "id": "weekly_dungeon_ice",
+        "name": "冰窟洗禮",
+        "description": "本週冰窟通關 ≥ 3 次（需先解鎖冰窟主題）",
+        "reward": 2200,
+        "target": 3
       },
       {
         "id": "weekly_farm_harvest",

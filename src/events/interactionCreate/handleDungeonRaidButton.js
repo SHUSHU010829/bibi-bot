@@ -137,7 +137,7 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
   }
   await pubChannel?.send({ content }).catch(() => {});
 
-  // 3) 任務 / 通知補登（fire-and-forget）
+  // 3) 任務 / 通知 / 稱號補登（fire-and-forget）
   (async () => {
     try {
       const applyQuestHooks = require("../../features/quests/applyQuestHooks");
@@ -145,6 +145,10 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
       if (result.won) {
         hooks.push({ questId: "daily_dungeon_win" });
         hooks.push({ questId: "weekly_dungeon_win" });
+        // Phase H+ 新增任務鉤點
+        if (result.floor >= 3) hooks.push({ questId: "daily_dungeon_floor3" });
+        if (result.isMiniBoss) hooks.push({ questId: "weekly_mini_boss" });
+        if (result.theme === "ice") hooks.push({ questId: "weekly_dungeon_ice" });
       }
       await applyQuestHooks(
         client,
@@ -158,6 +162,21 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
         },
         hooks,
       );
+      // 稱號自動檢查（dungeon 類）
+      if (result.won) {
+        const gameTitleService = require("../../features/gameTitles/gameTitleService");
+        gameTitleService
+          .check(
+            client,
+            {
+              userId: interaction.user.id,
+              guildId: interaction.guildId,
+              member: interaction.member,
+            },
+            ["dungeon"],
+          )
+          .catch(() => {});
+      }
     } catch (e) {
       console.log(`[WARN] /地下城 panel 事後補登：${e?.message || e}`.yellow);
     }

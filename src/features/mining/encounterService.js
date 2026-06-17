@@ -41,8 +41,14 @@ function weaponLabel(profile) {
 }
 
 // 依情境抽一個突發事件（已套機率門檻）。回傳 def 或 null。
-function pickEncounter(context) {
-  const list = randomEncounters?.[context] || [];
+// Phase H+：地下城突發事件依當前主題過濾。
+// e.theme === null/undefined 表示任何主題都會觸發；
+// e.theme === "mine"/"ruins"/"ice" 表示只在該主題觸發。
+function pickEncounter(context, themeId = null) {
+  const list = (randomEncounters?.[context] || []).filter((e) => {
+    if (!e.theme) return true;
+    return e.theme === themeId;
+  });
   if (!list.length) return null;
   const weights = {};
   for (const e of list) weights[e.id] = e.weight || 0;
@@ -76,7 +82,7 @@ async function trigger(client, ctx) {
   }
   if (!(Math.random() < (chance || 0))) return null;
 
-  const enc = pickEncounter(context);
+  const enc = pickEncounter(context, ctx.themeId || null);
   if (!enc) return null;
 
   const eff = enc.effect || {};
@@ -388,7 +394,7 @@ async function trigger(client, ctx) {
       }
 
       case "gamble_coins": {
-        // 詛咒祭壇：依 winChance 賭一把，勝得金幣，敗扣體力
+        // 詛咒祭壇 / 礦車失控等：依 winChance 賭一把，勝得金幣，敗扣體力（+ 可選 HP）
         const won = Math.random() < (eff.winChance ?? 0.6);
         if (won) {
           const coins = randInt(eff.winMin ?? 300, eff.winMax ?? 700);
@@ -401,17 +407,32 @@ async function trigger(client, ctx) {
             member,
             meta: { encounter: enc.id, result: "win" },
           });
-          lines.push(`⚖️ 你鼓起勇氣打開寶箱，奪得 +${coins.toLocaleString()} ${COIN_EMOJI}！`);
+          lines.push(`⚖️ 你鼓起勇氣抓住機會，奪得 +${coins.toLocaleString()} ${COIN_EMOJI}！`);
         } else {
-          const max = baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 10);
+          const max = baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 12);
           const cur = typeof baseResult?.stamina === "number" ? baseResult.stamina : max;
-          const lose = eff.loseStamina || 1;
+          const lose = eff.loseStamina || 0;
           const next = clamp(cur - lose, 0, max);
           const set = { stamina: next, updatedAt: new Date() };
-          if (cur >= max) set.stamina_updated_at = Date.now();
+          if (cur >= max && lose > 0) set.stamina_updated_at = Date.now();
+
+          // Phase H+：可選 loseHp（礦車失控撞傷）
+          if (eff.loseHp > 0) {
+            const profile = await getOrCreate(client, userId, guildId);
+            const hpCur = typeof profile.hp_current === "number" ? profile.hp_current : 100;
+            const hpAfter = Math.max(0, hpCur - eff.loseHp);
+            set.hp_current = hpAfter;
+            set.hp_updated_at = hpAfter > 0 ? Date.now() : 0;
+            lines.push(`💥 你被撞傷，HP -${hpCur - hpAfter}（${hpAfter}）`);
+          }
+
           await coll(client).updateOne({ userId, guildId }, { $set: set });
           patch.staminaAfter = next;
-          lines.push(`⚖️ 你伸手觸碰寶箱，機關觸發！損失 ${lose} 點體力。`);
+          if (lose > 0) {
+            lines.push(`⚖️ 機關觸發！損失 ${lose} 點體力。`);
+          } else if (!eff.loseHp) {
+            lines.push("⚖️ 機關觸發！但沒造成實際損失，下次注意點。");
+          }
         }
         break;
       }

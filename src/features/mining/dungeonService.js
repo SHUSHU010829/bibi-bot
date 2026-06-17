@@ -1108,6 +1108,7 @@ async function enterDungeonHp(client, {
         staminaMax: result.staminaMax,
       },
       encounterRatePct: f.encounterRatePct,
+      themeId,
     })
     .catch(() => null);
   if (enc) {
