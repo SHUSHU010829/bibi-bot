@@ -96,7 +96,7 @@ function normalize(doc) {
   doc.pickaxe ??= "wood";
   if (doc.pickaxe_durability === undefined) doc.pickaxe_durability = null;
   // 回填 pickaxe_max_durability：舊文件若持有非木鎬但缺此欄位，從設定補齊
-  // 避免劣質磨鎬石「補滿到 max=null」把鎬子變磚。
+  // 避免磨石「補滿到 max=null」把鎬子變磚。
   if (doc.pickaxe_max_durability === undefined || doc.pickaxe_max_durability === null) {
     if (doc.pickaxe && doc.pickaxe !== "wood" && typeof doc.pickaxe_durability === "number") {
       const configMax = mining?.pickaxes?.[doc.pickaxe]?.durability ?? null;

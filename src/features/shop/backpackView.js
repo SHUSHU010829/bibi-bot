@@ -41,13 +41,45 @@ function capacityBar(used, cap, width = 12) {
   return { bar, pct, mark };
 }
 
-// 劣質磨鎬石「使用」按鈕：mining_use_whetstone_inferior_<ownerId>
+// 磨石「使用」按鈕：mining_use_whetstone_inferior_<ownerId>（修鎬）
 // 確認按鈕：mining_use_whetstone_inferior_confirm_<ownerId>
-// 注意：_inferior_ 是 _whetstone_ 的超集，handler 內先比長的 prefix。
+// Phase H+ 加入：磨武器 / 磨盾
+//   mining_use_whetstone_weapon_<ownerId> / _confirm_<ownerId>
+//   mining_use_whetstone_shield_<ownerId> / _confirm_<ownerId>
 const USE_WHETSTONE_INFERIOR_PREFIX = "mining_use_whetstone_inferior_";
 const USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX = "mining_use_whetstone_inferior_confirm_";
+const USE_WHETSTONE_WEAPON_PREFIX = "mining_use_whetstone_weapon_";
+const USE_WHETSTONE_WEAPON_CONFIRM_PREFIX = "mining_use_whetstone_weapon_confirm_";
+const USE_WHETSTONE_SHIELD_PREFIX = "mining_use_whetstone_shield_";
+const USE_WHETSTONE_SHIELD_CONFIRM_PREFIX = "mining_use_whetstone_shield_confirm_";
 
-// 體力藥水「使用」按鈕：mining_use_stamina_potion_<ownerId>
+function parseUseWhetstoneWeaponId(customId) {
+  if (!customId) return null;
+  if (customId.startsWith(USE_WHETSTONE_WEAPON_CONFIRM_PREFIX)) {
+    const ownerId = customId.slice(USE_WHETSTONE_WEAPON_CONFIRM_PREFIX.length);
+    return ownerId ? { ownerId, confirm: true } : null;
+  }
+  if (customId.startsWith(USE_WHETSTONE_WEAPON_PREFIX)) {
+    const ownerId = customId.slice(USE_WHETSTONE_WEAPON_PREFIX.length);
+    return ownerId ? { ownerId, confirm: false } : null;
+  }
+  return null;
+}
+
+function parseUseWhetstoneShieldId(customId) {
+  if (!customId) return null;
+  if (customId.startsWith(USE_WHETSTONE_SHIELD_CONFIRM_PREFIX)) {
+    const ownerId = customId.slice(USE_WHETSTONE_SHIELD_CONFIRM_PREFIX.length);
+    return ownerId ? { ownerId, confirm: true } : null;
+  }
+  if (customId.startsWith(USE_WHETSTONE_SHIELD_PREFIX)) {
+    const ownerId = customId.slice(USE_WHETSTONE_SHIELD_PREFIX.length);
+    return ownerId ? { ownerId, confirm: false } : null;
+  }
+  return null;
+}
+
+// 精力藥水「使用」按鈕：mining_use_stamina_potion_<ownerId>
 const USE_STAMINA_POTION_PREFIX = "mining_use_stamina_potion_";
 
 const USE_TREASURE_MAP_PREFIX = "use_treasure_map_";
@@ -383,8 +415,8 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       const toolItems = [
         { emoji: "🍀", name: "幸運藥水", qty: luckUses },
         { emoji: "🎫", name: "CD 縮短券", qty: ticketCount },
-        { emoji: "🪨", name: "劣質磨鎬石", qty: inferiorCount },
-        { emoji: "🧪", name: "體力藥水", qty: staminaPotionCount },
+        { emoji: "🪨", name: "磨石", qty: inferiorCount },
+        { emoji: "🧪", name: "精力藥水", qty: staminaPotionCount },
         { emoji: "✨", name: "傳說素材碎片", qty: fragments },
         { emoji: "<:crack_stone:1516055109199597708>", name: "碎石", qty: stoneShards },
         { emoji: "🪡", name: "漁網碎片", qty: netFrags },
@@ -452,7 +484,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         new SectionBuilder()
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              `🧪 **體力藥水** ×${staminaPotionCount}\n-# 立即恢復 ${staminaPotionRestore} 點地下城體力（不超過上限）`
+              `🧪 **精力藥水** ×${staminaPotionCount}\n-# 立即恢復 ${staminaPotionRestore} 點地下城體力（不超過上限）`
             )
           )
           .setButtonAccessory(
@@ -464,29 +496,42 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           )
       );
       {
-        const maxDur = profile.pickaxe_max_durability;
-        const inferiorCanUse =
-          inferiorCount > 0 &&
-          profile.pickaxe !== "wood" &&
-          typeof maxDur === "number" &&
-          maxDur >= 20;
-        const inferiorHint = inferiorCount > 0 && typeof maxDur === "number" && maxDur < 20
-          ? "\n-# ⚠️ 鎬子最大耐久不足 20，無法使用"
-          : `\n-# 補滿耐久，最大耐久 -10（目前上限 ${typeof maxDur === "number" ? maxDur : "—"}）`;
-        container.addSectionComponents(
-          new SectionBuilder()
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                `🪨 **劣質磨鎬石** ×${inferiorCount}${inferiorHint}`
-              )
-            )
-            .setButtonAccessory(
-              new ButtonBuilder()
-                .setCustomId(`${USE_WHETSTONE_INFERIOR_PREFIX}${userId}`)
-                .setLabel("使用")
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(!inferiorCanUse)
-            )
+        const pickaxeMax = profile.pickaxe_max_durability;
+        const weaponMax = profile.weapon_max_durability;
+        const shieldMax = profile.shield_max_durability;
+        const canPickaxe = inferiorCount > 0 && profile.pickaxe !== "wood" && typeof pickaxeMax === "number" && pickaxeMax >= 20;
+        const canWeapon = inferiorCount > 0 && profile.weapon !== "fist" && typeof weaponMax === "number" && weaponMax >= 20;
+        const canShield = inferiorCount > 0 && !!profile.shield && typeof shieldMax === "number" && shieldMax >= 20;
+
+        const hintLines = [`🪨 **磨石** ×${inferiorCount}`];
+        hintLines.push("-# 通用修復 — 補滿耐久，該裝備最大耐久 -10（max < 20 時無法使用）");
+        const slots = [];
+        if (profile.pickaxe !== "wood") slots.push(`鎬 max ${pickaxeMax ?? "—"}`);
+        if (profile.weapon !== "fist") slots.push(`武 max ${weaponMax ?? "—"}`);
+        if (profile.shield) slots.push(`盾 max ${shieldMax ?? "—"}`);
+        if (slots.length) hintLines.push(`-# 目前：${slots.join(" ・ ")}`);
+
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(hintLines.join("\n")),
+        );
+        container.addActionRowComponents(
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`${USE_WHETSTONE_INFERIOR_PREFIX}${userId}`)
+              .setLabel("🛠️ 修鎬")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(!canPickaxe),
+            new ButtonBuilder()
+              .setCustomId(`${USE_WHETSTONE_WEAPON_PREFIX}${userId}`)
+              .setLabel("⚔️ 修武器")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(!canWeapon),
+            new ButtonBuilder()
+              .setCustomId(`${USE_WHETSTONE_SHIELD_PREFIX}${userId}`)
+              .setLabel("🛡️ 修盾")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(!canShield),
+          ),
         );
       }
       {
@@ -543,7 +588,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
             new SectionBuilder()
               .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                  `🗺️ **藏寶圖** ×${treasureMaps}\n-# 撕開觸發隨機事件：藏寶箱 / 體力藥水 / 寶箱怪 / 惡作劇紙條`,
+                  `🗺️ **藏寶圖** ×${treasureMaps}\n-# 撕開觸發隨機事件：藏寶箱 / 精力藥水 / 寶箱怪 / 惡作劇紙條`,
                 ),
               )
               .setButtonAccessory(
@@ -897,6 +942,12 @@ module.exports = {
   USE_WHETSTONE_INFERIOR_PREFIX,
   USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX,
   parseUseWhetstoneInferiorId,
+  USE_WHETSTONE_WEAPON_PREFIX,
+  USE_WHETSTONE_WEAPON_CONFIRM_PREFIX,
+  parseUseWhetstoneWeaponId,
+  USE_WHETSTONE_SHIELD_PREFIX,
+  USE_WHETSTONE_SHIELD_CONFIRM_PREFIX,
+  parseUseWhetstoneShieldId,
   REPAIR_MATERIAL_PREFIX,
   REPAIR_MATERIAL_CONFIRM_PREFIX,
   parseRepairMaterialId,

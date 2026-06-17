@@ -417,7 +417,7 @@ async function trigger(client, ctx) {
       }
 
       case "gift_whetstone_inferior": {
-        // 遺忘的鍛爐：贈送一塊劣質磨鎬石（遵守持有上限 20）
+        // 遺忘的鍛爐：贈送一塊磨石（遵守持有上限 20）
         const WHETSTONE_INFERIOR_MAX = 20;
         const profile = await getOrCreate(client, userId, guildId);
         const owned = profile.whetstone_inferior_count || 0;
@@ -427,9 +427,9 @@ async function trigger(client, ctx) {
             { userId, guildId },
             { $inc: { whetstone_inferior_count: give }, $set: { updatedAt: new Date() } }
           );
-          lines.push(`🪨 劣質磨鎬石 ×${give}（可在 /背包 使用）`);
+          lines.push(`🪨 磨石 ×${give}（可在 /背包 使用）`);
         } else {
-          lines.push("你的劣質磨鎬石已達持有上限，這次沒拿到。");
+          lines.push("你的磨石已達持有上限，這次沒拿到。");
         }
         break;
       }

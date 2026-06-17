@@ -600,7 +600,7 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
             new ActionRowBuilder().addComponents(
               new ButtonBuilder()
                 .setCustomId(`mining_use_stamina_potion_${interaction.user.id}`)
-                .setLabel(`🧪 補充體力藥水（剩 ${potionCount} 瓶）`)
+                .setLabel(`🧪 補充精力藥水（剩 ${potionCount} 瓶）`)
                 .setStyle(ButtonStyle.Success),
             ),
           );
@@ -612,7 +612,7 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
         } else {
           container.addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              "-# 想立刻續命？到 /商店 → 挖礦道具 買體力藥水（每日上限 3 瓶）。",
+              "-# 想立刻續命？到 /商店 → 挖礦道具 買精力藥水（每日上限 3 瓶）。",
             ),
           );
         }

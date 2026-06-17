@@ -1214,7 +1214,7 @@ module.exports = async (client, interaction) => {
       if (!result.ok) {
         const map = {
           no_raid: ["⚠️ 沒有入侵中", "這塊地沒有怪物正在侵擾。", "回主畫面重新整理狀態"],
-          no_stamina: ["🔋 體力不足", "防禦需要 1 點地下城體力。", "等體力回復或用體力藥水"],
+          no_stamina: ["🔋 體力不足", "防禦需要 1 點地下城體力。", "等體力回復或用精力藥水"],
           no_weapon: ["🗡️ 沒有武器", "防禦怪物需要持有武器。", "去 /合成 打造一把劍"],
         };
         const [t, b, h] = map[result.reason] || ["🔧 防禦失敗", `原因：\`${result.reason}\``, ""];

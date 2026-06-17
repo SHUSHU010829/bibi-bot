@@ -1,4 +1,4 @@
-// 體力藥水「使用」按鈕處理器：customId = mining_use_stamina_potion_<ownerId>
+// 精力藥水「使用」按鈕處理器：customId = mining_use_stamina_potion_<ownerId>
 //
 // 從 /背包 點擊「使用」→ 扣 1 罐 + 補體力。體力滿時用 Container 提示，不扣藥水。
 
@@ -66,12 +66,12 @@ module.exports = async (client, interaction) => {
         const c = new ContainerBuilder()
           .setAccentColor(0xe74c3c)
           .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent("## 🧪 沒有體力藥水")
+            new TextDisplayBuilder().setContent("## 🧪 沒有精力藥水")
           )
           .addSeparatorComponents(new SeparatorBuilder())
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              "你目前持有 0 瓶體力藥水。\n-# 到 /商店 → 挖礦道具 購買（每日上限 3 瓶）"
+              "你目前持有 0 瓶精力藥水。\n-# 到 /商店 → 挖礦道具 購買（每日上限 3 瓶）"
             )
           );
         await interaction.reply({
@@ -112,7 +112,7 @@ module.exports = async (client, interaction) => {
     const c = new ContainerBuilder()
       .setAccentColor(0x2ecc71)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("## 🧪 體力藥水使用成功！")
+        new TextDisplayBuilder().setContent("## 🧪 精力藥水使用成功！")
       )
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
@@ -133,7 +133,7 @@ module.exports = async (client, interaction) => {
         err: err.message,
         stack: err.stack,
       },
-      "體力藥水按鈕出錯"
+      "精力藥水按鈕出錯"
     );
     trackError("mining-use-stamina-potion", err, {
       customId: interaction?.customId,
