@@ -52,6 +52,26 @@ function getFoodAtkBonus(profile, baseAtk = 0) {
   return bonus;
 }
 
+// Phase H+：取得食物 buff 對地下城 DEF 的加成（dungeon_def + all_boost × baseDef）
+function getFoodDefBonus(profile, baseDef = 0) {
+  let bonus = 0;
+  for (const b of getActiveFoodBuffs(profile)) {
+    if (b.type === "dungeon_def") bonus += Number(b.value) || 0;
+    if (b.type === "all_boost") bonus += Math.round(baseDef * (Number(b.value) || 0));
+  }
+  return bonus;
+}
+
+// Phase H+：取得食物 buff 對 HP 上限的加成（dungeon_hp_max + all_boost × 100）
+function getFoodHpMaxBonus(profile) {
+  let bonus = 0;
+  for (const b of getActiveFoodBuffs(profile)) {
+    if (b.type === "dungeon_hp_max") bonus += Number(b.value) || 0;
+    if (b.type === "all_boost") bonus += Math.round(100 * (Number(b.value) || 0));
+  }
+  return bonus;
+}
+
 // 取得食物 buff 對打工收入的倍率加成（work_income + all_boost）
 // 回傳 0.XX（額外加成量，不是最終倍率）
 function getFoodWorkBonus(profile) {
@@ -407,6 +427,8 @@ module.exports = {
   getActiveFoodBuffs,
   getFoodLuckBonus,
   getFoodAtkBonus,
+  getFoodDefBonus,
+  getFoodHpMaxBonus,
   getFoodWorkBonus,
   getFoodFishBonus,
   getFoodFarmYieldBonus,

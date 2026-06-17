@@ -13,6 +13,7 @@ const {
 
 const { mining, dungeon, commandChannels, normalChannelId } = require("../../config");
 const dungeonService = require("../../features/mining/dungeonService");
+const floorService = require("../../features/dungeon/floorService");
 const diamondAnnouncer = require("../../features/mining/diamondAnnouncer");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
@@ -22,6 +23,13 @@ const { COIN_EMOJI } = require("../../constants/coin");
 const CONTINUE_PREFIX = "dungeon_continue_";
 const DUNGEON_OVERFLOW_CONFIRM_PREFIX = "dungeon_overflow_confirm_";
 const DUNGEON_OVERFLOW_CANCEL_PREFIX = "dungeon_overflow_cancel_";
+
+// Phase H+ 新面板 button prefix
+const RAID_PANEL_PREFIX = "raid_panel_";       // 重整面板：raid_panel_<ownerId>
+const RAID_ENTER_PREFIX = "raid_enter_";       // 進入戰鬥：raid_enter_<ownerId>_<theme>_<floor>
+const RAID_LOG_PREFIX = "raid_log_";           // 看日誌：raid_log_<ownerId>_<runId>
+const RAID_HEAL_PREFIX = "raid_heal_";         // 補血：raid_heal_<ownerId>_<tier>
+const RAID_AGAIN_PREFIX = "raid_again_";       // 再戰：raid_again_<ownerId>_<theme>_<floor>
 
 const MAX_LABEL_LEN = 80;
 
@@ -212,6 +220,284 @@ function parseContinueId(customId) {
   if (!customId || !customId.startsWith(CONTINUE_PREFIX)) return null;
   const ownerId = customId.slice(CONTINUE_PREFIX.length);
   return ownerId ? { ownerId } : null;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase H+ 入口面板 / 戰鬥結算 builders
+// ────────────────────────────────────────────────────────────────────────────
+
+function shieldLabel(key) {
+  if (!key) return "—";
+  const def = (dungeon?.shields || {})[key] || {};
+  return `${def.emoji || "🛡️"} ${def.name || key}`;
+}
+function themeLabel(t) {
+  return `${t.emoji || ""} ${t.name}`.trim();
+}
+function hpBar(cur, max, width = 10) {
+  const pct = Math.max(0, Math.min(1, cur / max));
+  const filled = Math.round(pct * width);
+  return `${"█".repeat(filled)}${"░".repeat(width - filled)}`;
+}
+
+function statusLines(status) {
+  const lines = [];
+  lines.push(`❤️ HP：**${status.hp} / ${status.hpMax}** \`${hpBar(status.hp, status.hpMax)}\``);
+  lines.push(`🔋 體力：**${status.stamina} / ${status.staminaMax}**`);
+  const w = dungeon?.weapons?.[status.weapon] || {};
+  const weaponLine =
+    `${weaponLabel(status.weapon)} ・ ATK ${w.atk || 0} ・ DEF ${w.def || 0}` +
+    (status.weaponDurability != null ? ` ・ 耐久 ${status.weaponDurability}/${status.weaponMaxDurability || w.durability || "?"}` : "");
+  lines.push(`🗡️ 武器：${weaponLine}`);
+  if (status.shield) {
+    const sd = dungeon?.shields?.[status.shield] || {};
+    lines.push(
+      `🛡️ 盾：${shieldLabel(status.shield)} ・ DEF ${sd.def || 0} ・ 格擋 ${Math.round((sd.blockRate || 0) * 100)}%` +
+        ` ・ 耐久 ${status.shieldDurability}/${status.shieldMaxDurability || sd.durability || "?"}`,
+    );
+  }
+  if (status.hpCritical) {
+    lines.push("-# 💔 重傷狀態：ATK ×0.8、暴擊率 ×0.5（HP 回到 20% 即解除）");
+  } else if (status.hpLow) {
+    lines.push("-# ⚠️ HP 偏低，建議補血或先休息再戰。");
+  }
+  return lines;
+}
+
+function buildFloorActionRow(ownerId, floorStates, themeId = "mine") {
+  const row = new ActionRowBuilder();
+  for (const fs of floorStates) {
+    const f = fs.floor;
+    if (!f) continue;
+    let label = `${f.emoji || ""} ${f.floor}F`;
+    if (label.length > 80) label = label.slice(0, 80);
+    const btn = new ButtonBuilder()
+      .setCustomId(`${RAID_ENTER_PREFIX}${ownerId}_${themeId}_${f.floor}`)
+      .setLabel(label)
+      .setStyle(fs.unlocked ? ButtonStyle.Primary : ButtonStyle.Secondary)
+      .setDisabled(!fs.unlocked);
+    if (!fs.unlocked) btn.setEmoji("🔒");
+    row.addComponents(btn);
+  }
+  return row;
+}
+
+function buildActionsRow(ownerId, status) {
+  const row = new ActionRowBuilder();
+  const small = status.potions.small;
+  const medium = status.potions.medium;
+  const large = status.potions.large;
+  const tier = large > 0 ? "large" : medium > 0 ? "medium" : small > 0 ? "small" : null;
+  if (tier) {
+    const label = tier === "large" ? `💊 喝大瓶（${large}）` : tier === "medium" ? `💊 喝中瓶（${medium}）` : `💊 喝小瓶（${small}）`;
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_${tier}`)
+        .setLabel(label)
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(status.hp >= status.hpMax),
+    );
+  } else {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_none`)
+        .setLabel("💊 沒有生命藥水")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true),
+    );
+  }
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}`)
+      .setLabel("🔄 重整")
+      .setStyle(ButtonStyle.Secondary),
+  );
+  return row;
+}
+
+async function buildEntryPanel(client, interaction) {
+  const status = await dungeonService.getDungeonStatus(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    member: interaction.member,
+  });
+  const floorStates = floorService.listFloors(status.profile, status.level, "mine");
+
+  const container = new ContainerBuilder()
+    .setAccentColor(status.hpCritical ? 0xe74c3c : status.hpLow ? 0xfaa61a : 0x3498db)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("## ⚔️ 地下城副本"))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(statusLines(status).join("\n")))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("**選擇樓層挑戰**（礦坑主題）"));
+
+  const lines = [];
+  for (const fs of floorStates) {
+    const f = fs.floor;
+    if (!f) continue;
+    if (fs.unlocked) {
+      lines.push(`${f.emoji || ""} **${f.floor}F ${f.name}** ・ 體力 -${f.staminaCost} ・ 獎勵 ×${f.rewardMultiplier}`);
+    } else {
+      const r = fs.requirement;
+      const progress = fs.progress || {};
+      if (fs.reason === "level") {
+        lines.push(`🔒 ${f.emoji || ""} ${f.floor}F ${f.name} — 解鎖：等級 ${r.level}（目前 Lv.${progress.level}）`);
+      } else if (fs.reason === "prereq_clears") {
+        lines.push(`🔒 ${f.emoji || ""} ${f.floor}F ${f.name} — 解鎖：${progress.floor}F 通關 ${r.count} 次（目前 ${progress.cleared} 次）`);
+      } else {
+        lines.push(`🔒 ${f.emoji || ""} ${f.floor}F ${f.name} — 未解鎖`);
+      }
+    }
+  }
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+  container.addActionRowComponents(buildFloorActionRow(interaction.user.id, floorStates));
+  container.addActionRowComponents(buildActionsRow(interaction.user.id, status));
+
+  // 主題鎖定提示（v1 只開礦坑）
+  const themeStates = floorService.listThemes(status.profile, status.level);
+  const lockedThemes = themeStates.filter((t) => !t.unlocked && t.reason !== "unknown_theme");
+  if (lockedThemes.length) {
+    const tlines = lockedThemes.map((ts) => {
+      const t = ts.theme;
+      const r = ts.requirement;
+      if (ts.reason === "level") return `-# 🔒 ${themeLabel(t)} — 等級 ${r.level}`;
+      if (ts.reason === "prereq_clears") return `-# 🔒 ${themeLabel(t)} — ${ts.progress?.preTheme} 主題 ${ts.progress?.preFloor}F 通關 ${r.prereqClears} 次`;
+      return `-# 🔒 ${themeLabel(t)}`;
+    });
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(tlines.join("\n")));
+  }
+  return container;
+}
+
+function oreLabel(key) {
+  const def = (mining?.ores || {})[key] || {};
+  return `${def.emoji || "⛏️"} ${def.name || key}`;
+}
+
+function buildBattleResultPanel(ownerId, result) {
+  const container = new ContainerBuilder();
+  const isWin = result.won;
+  container.setAccentColor(isWin ? 0x2ecc71 : 0xe74c3c);
+
+  const title = isWin
+    ? `## ⚔️ ${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""} — ✅ 勝利！（${result.turns} 回合）`
+    : result.battleResult === "draw"
+      ? `## ⏳ ${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""} — 戰鬥逾時（${result.turns} 回合，視同失敗）`
+      : `## 💀 ${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""} — 戰鬥失敗（${result.turns} 回合）`;
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`${title}\n你${isWin ? "擊敗" : "不敵"} **${result.monster.emoji} ${result.monster.name}**`),
+  );
+  container.addSeparatorComponents(new SeparatorBuilder());
+
+  const stateLines = [];
+  stateLines.push(`❤️ HP：${result.hpBefore} → **${result.hpAfter}/${result.hpMax}** \`${hpBar(result.hpAfter, result.hpMax)}\``);
+  if (result.shieldBefore != null) stateLines.push(`🛡️ 盾耐久：${result.shieldBefore} → ${result.shieldAfter}`);
+  stateLines.push(`🔋 體力：${result.staminaBefore} → ${result.staminaAfter}/${result.staminaMax}`);
+  if (result.weaponDurabilityAfter != null) {
+    stateLines.push(`⚔️ 武器耐久：${weaponLabel(result.weaponBefore)} 剩 ${result.weaponDurabilityAfter}（-${result.weaponDurabilityCost}）`);
+  } else if (result.weaponBroke) {
+    stateLines.push(`⚔️ ${weaponLabel(result.weaponBefore)} 耐久耗盡，已退回赤手空拳！`);
+  }
+  if (result.damageDealt) stateLines.push(`-# 造成 ${result.damageDealt} 傷害・受 ${result.damageTaken} 傷害・暴擊 ${result.critCount} 次・格擋 ${result.blockCount} 次`);
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(stateLines.join("\n")));
+
+  if (isWin) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    const lootLines = [];
+    if (result.oreGained) {
+      lootLines.push(
+        result.oreOverflowToCoins
+          ? `背包已滿：${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty} 折算為 +${result.coinsGained.toLocaleString()} ${COIN_EMOJI}`
+          : `${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty}`,
+      );
+    }
+    if (result.legendaryGained) lootLines.push(`✨ 傳說素材碎片 ×${result.legendaryGained}`);
+    if (result.potionGained) lootLines.push(`🍀 幸運藥水 ×${result.potionGained}`);
+    if (result.ticketGained) lootLines.push(`🎫 CD 縮短券 ×${result.ticketGained}`);
+    if (result.slimeGained) lootLines.push(`💧 怪物黏液 ×${result.slimeGained}`);
+    if (result.seedGained?.qty) {
+      const seedName =
+        result.seedGained.seedKey === "seed_strawberry" ? "🍓 草莓種子"
+        : result.seedGained.seedKey === "seed_black_rose" ? "🌹 黑玫瑰種子"
+        : `🌱 ${result.seedGained.seedKey}`;
+      lootLines.push(`${seedName} ×${result.seedGained.qty}`);
+    }
+    if (!result.oreGained && result.coinsGained > 0) lootLines.push(`+${result.coinsGained.toLocaleString()} ${COIN_EMOJI}`);
+    if (!lootLines.length) lootLines.push("這次什麼都沒掉落…");
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`✨ **戰利品**\n${lootLines.join("\n")}`));
+    if (result.floorEvents?.length) {
+      for (const ev of result.floorEvents) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`🎉 **新樓層解鎖！** ${ev.floor}F 已開放挑戰`),
+        );
+      }
+    }
+  } else if (result.deathDrop) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# 死亡懲罰：背包遺失 ${result.deathDrop.key} ×${result.deathDrop.qty}`),
+    );
+  }
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${RAID_AGAIN_PREFIX}${ownerId}_${result.theme}_${result.floor}`)
+      .setLabel(`⚔️ 再戰 ${result.floor}F`)
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`${RAID_LOG_PREFIX}${ownerId}_${result.runId}`)
+      .setLabel("📜 戰鬥日誌")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}`)
+      .setLabel("⚙️ 換樓層")
+      .setStyle(ButtonStyle.Secondary),
+  );
+  container.addActionRowComponents(row);
+
+  if (result.weaponBroke) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# 你的武器斷了！到 /合成 打一把新的，或到 /裝備 用磨石修復。"),
+    );
+  }
+  if (result.hpAfter < result.hpMax * 0.3) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# ❤️ HP 偏低，建議補血或先休息再戰。/商店 → 挖礦道具 有生命藥水。"),
+    );
+  }
+  return container;
+}
+
+// 公開精簡播報（dungeon.json.channelId 頻道）。一行訊息，不洗版。
+function publicBroadcastContent(displayName, result) {
+  const f = `${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""}`.trim();
+  if (result.won) {
+    const lootBrief = [];
+    if (result.oreGained && !result.oreOverflowToCoins) lootBrief.push(`${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty}`);
+    if (result.legendaryGained) lootBrief.push(`✨碎片×${result.legendaryGained}`);
+    if (result.coinsGained > 0) lootBrief.push(`+${result.coinsGained.toLocaleString()} ${COIN_EMOJI}`);
+    const tail = lootBrief.length ? ` ・ ${lootBrief.join("、")}` : "";
+    return `⚔️ **${displayName}** 通過 ${f}（${result.turns} 回合）${tail}`;
+  }
+  if (result.battleResult === "draw") {
+    return `⏳ **${displayName}** 在 ${f} 戰鬥逾時撤退（${result.turns} 回合）`;
+  }
+  return `💀 **${displayName}** 在 ${f} 倒下了（撐了 ${result.turns} 回合）`;
+}
+
+async function showEntryPanel(client, interaction) {
+  const container = await buildEntryPanel(client, interaction);
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  return interaction.reply({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+  });
 }
 
 // 統一的地下城執行流程；/地下城、「繼續探索」、「繼續（折金幣）」共用。
@@ -481,18 +767,35 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("地下城")
-    .setDescription("消耗體力深入地下城戰鬥，勝利可獲得礦石、金幣或傳說素材 ⚔️")
+    .setDescription("⚔️ 進入副本面板挑樓層挑戰，HP 多回合戰鬥（體力 / 戰利品 / 解鎖進度都在面板看）")
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {
-    await interaction.deferReply();
-    return executeDungeon(client, interaction, { allowOverflow: false });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      return await showEntryPanel(client, interaction);
+    } catch (err) {
+      console.log(`[ERROR] /地下城 panel: ${err}\n${err.stack}`.red);
+      return interaction.editReply("🔧 副本面板載入失敗，請呼叫舒舒！");
+    }
   },
 
+  // 既有：給 handleDungeonContinue.js 用（「繼續探索」舊訊息按鈕仍可運作）
   CONTINUE_PREFIX,
   buildContinueRow,
   parseContinueId,
   executeDungeon,
   DUNGEON_OVERFLOW_CONFIRM_PREFIX,
   DUNGEON_OVERFLOW_CANCEL_PREFIX,
+
+  // Phase H+：給 handleDungeonRaidButton.js 用
+  RAID_PANEL_PREFIX,
+  RAID_ENTER_PREFIX,
+  RAID_LOG_PREFIX,
+  RAID_HEAL_PREFIX,
+  RAID_AGAIN_PREFIX,
+  buildEntryPanel,
+  buildBattleResultPanel,
+  publicBroadcastContent,
+  showEntryPanel,
 };
