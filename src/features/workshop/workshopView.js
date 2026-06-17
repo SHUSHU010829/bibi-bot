@@ -49,7 +49,8 @@ const TABS = ["equipment", "craft", "repair"];
 const CRAFT_SUBS = [
   { id: "pickaxe", label: "鎬子", emoji: "⛏️", types: ["pickaxe"] },
   { id: "repair", label: "維修", emoji: "🛠️", types: ["repair_tool"] },
-  { id: "battle", label: "武器", emoji: "⚔️", types: ["weapon"] },
+  // Phase H+ 武器分頁加入盾牌；都是地下城戰鬥裝備，併在同一頁省 Tab
+  { id: "battle", label: "武器/盾", emoji: "⚔️", types: ["weapon", "shield"] },
   { id: "fish", label: "釣魚", emoji: "🎣", types: ["rod", "fishing_net"] },
   { id: "misc", label: "其他", emoji: "🪨", types: ["stone_appraisal_trigger", "advanced_trap", "treasure_map"] },
 ];
@@ -153,9 +154,35 @@ function buildEquipmentTab(container, { userId, displayName, profile }) {
     new TextDisplayBuilder().setContent(
       `⚔️ **武器**：${weaponLabel(wKey)}（耐久 ${weaponDurability}）${weaponNote}\n` +
         `-# 戰鬥力 **${atk}**` +
+        (wdef.def ? ` ・ 🛡️ DEF ${wdef.def}` : "") +
         (critPct > 0 ? ` ・ ⚡ 暴擊 ${critPct}%` : ""),
     ),
   );
+
+  // Phase H+ 盾牌
+  const sKey = profile.shield;
+  if (sKey) {
+    const sdef = (dungeon?.shields || {})[sKey] || {};
+    const shieldDurability =
+      profile.shield_durability == null
+        ? "—"
+        : `${profile.shield_durability}/${profile.shield_max_durability ?? "?"} 次`;
+    const blockPct = Math.round((sdef.blockRate || 0) * 100);
+    const refPct = Math.round((sdef.reflectRate || 0) * 100);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🛡️ **盾**：${sdef.emoji || "🛡️"} ${sdef.name || sKey}（耐久 ${shieldDurability}）\n` +
+          `-# DEF +${sdef.def || 0} ・ 格擋 ${blockPct}%` +
+          (refPct > 0 ? ` ・ 反射 ${refPct}%` : ""),
+      ),
+    );
+  } else {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🛡️ **盾**：—\n-# 還沒裝盾。Lv.5 起可到「合成 → 武器/盾」打一面 🪨 鐵盾（DEF +10、格擋 25%）`,
+      ),
+    );
+  }
 
   const rodKey = profile.fishing_rod || "bamboo";
   const rdef = (fishing?.rods || {})[rodKey] || {};
@@ -220,10 +247,19 @@ function recipeBodyText(recipe, profile, type) {
       const wdef = (dungeon?.weapons || {})[resultId] || {};
       const totalAtk = (dungeon?.baseAtk ?? 20) + (wdef.atk || 0);
       const critPct = Math.round((wdef.critRate || 0) * 100);
+      const defAttr = wdef.def ? ` ・ 🛡️ DEF ${wdef.def}` : "";
       propLine =
-        `屬性：⚔️ 戰鬥力 ${totalAtk}` +
+        `屬性：⚔️ 戰鬥力 ${totalAtk}${defAttr}` +
         (critPct > 0 ? ` ・ ⚡ 暴擊 ${critPct}%` : "") +
         ` ・ 耐久 ${wdef.durability ?? "永久"}`;
+    } else if (type === "shield") {
+      const sdef = (dungeon?.shields || {})[resultId] || {};
+      const blockPct = Math.round((sdef.blockRate || 0) * 100);
+      const refPct = Math.round((sdef.reflectRate || 0) * 100);
+      propLine =
+        `屬性：🛡️ DEF +${sdef.def || 0} ・ 格擋 ${blockPct}%` +
+        (refPct > 0 ? ` ・ 反射 ${refPct}%` : "") +
+        ` ・ 耐久 ${sdef.durability ?? "永久"}`;
     } else if (type === "rod") {
       const rdef = (fishing?.rods || {})[resultId] || {};
       propLine =
@@ -308,6 +344,7 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
   const recipes = craft?.recipes || [];
   const pickaxes = recipes.filter((r) => (r.result?.type || "pickaxe") === "pickaxe");
   const weapons = recipes.filter((r) => r.result?.type === "weapon");
+  const shields = recipes.filter((r) => r.result?.type === "shield");
   const rods = recipes.filter((r) => r.result?.type === "rod");
   const repairTools = recipes.filter((r) => r.result?.type === "repair_tool");
   const consumables = recipes.filter((r) => r.result?.type === "fishing_net");
@@ -339,6 +376,16 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(new TextDisplayBuilder().setContent("### ⚔️ 武器（戰鬥）"));
       craftableSection(container, weapons, profile, "weapon", userId);
+    }
+    if (shields.length) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "### 🛡️ 盾牌（地下城戰鬥）\n-# 盾本身不扣耐久，戰鬥觸發格擋 / 反射才磨損；歸零仍可裝備但所有判定失效",
+          ),
+        );
+      craftableSection(container, shields, profile, "shield", userId);
     }
   } else if (craftSub === "fish") {
     if (rods.length) {
@@ -487,6 +534,30 @@ function buildRepairTab(container, { userId, displayName, profile }) {
       );
     } else {
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+    }
+  }
+
+  // Phase H+ 盾牌（沒有材料修復配方，只能用磨石；提示玩家到 /背包 點修盾）
+  {
+    const sKey = profile.shield;
+    if (sKey) {
+      const sdef = (dungeon?.shields || {})[sKey] || {};
+      const dura =
+        profile.shield_durability == null
+          ? "—"
+          : `${profile.shield_durability}/${profile.shield_max_durability ?? "?"} 次`;
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🛡️ **盾**：${sdef.emoji || "🛡️"} ${sdef.name || sKey}（耐久 ${dura}）\n` +
+            `-# 盾無材料修復配方，到 /背包 用磨石修盾（補滿耐久，盾最大耐久 -10）`,
+        ),
+      );
+    } else {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🛡️ **盾**：—\n-# 還沒裝盾。先到「合成 → 武器/盾」打一面盾再回來修。`,
+        ),
+      );
     }
   }
 
