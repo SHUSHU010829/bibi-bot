@@ -152,7 +152,8 @@ const FOOD_BUFF_ACTION_TYPES = {
   mine: ["mine_luck", "all_boost"],
   fish: ["fish_fortune", "all_boost"],
   work: ["work_income", "all_boost"],
-  dungeon: ["dungeon_atk", "all_boost"],
+  // Phase H+ 新增 dungeon_def / dungeon_hp_max 也吃進地下城分類
+  dungeon: ["dungeon_atk", "dungeon_def", "dungeon_hp_max", "all_boost"],
   farm: ["farm_yield", "all_boost"],
 };
 
@@ -169,6 +170,8 @@ function describeFoodBuff(b) {
   let desc;
   if (b.type === "work_income") desc = `打工收入 +${Math.round(b.value * 100)}%`;
   else if (b.type === "dungeon_atk") desc = `地下城 ATK +${Math.round(b.value)}`;
+  else if (b.type === "dungeon_def") desc = `地下城 DEF +${Math.round(b.value)}`;
+  else if (b.type === "dungeon_hp_max") desc = `地下城 HP 上限 +${Math.round(b.value)}`;
   else if (b.type === "mine_luck") desc = `挖礦幸運 +${Math.round(b.value * 100)}%`;
   else if (b.type === "all_boost") desc = `全屬性 +${Math.round(b.value * 100)}%`;
   else if (b.type === "fish_fortune")

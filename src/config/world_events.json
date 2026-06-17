@@ -122,6 +122,28 @@
         "trigger": { "kind": "mining_drop", "ore": "gold", "chancePct": 3 },
         "requirements": { "gold": 100, "building_material": 20, "steel_ingot": 10 },
         "rewards": { "buffs": { "dungeon_coin_pct": 50 } }
+      },
+      {
+        "id": "iron_wall",
+        "label": "鋼鐵防線",
+        "emoji": "🛡️",
+        "color": 9807270,
+        "description": "鐵匠公會大量打造鎧甲，全服地下城 DEF 提升 — 連赤手都更耐打了。",
+        "trigger": { "kind": "dungeon_clear", "chancePct": 3 },
+        "requirements": { "iron": 120, "coal": 60 },
+        "rewards": { "buffs": { "dungeon_def": 12 } },
+        "buffDurationHoursOverride": 24
+      },
+      {
+        "id": "spring_of_life",
+        "label": "生命之泉",
+        "emoji": "💧",
+        "color": 1752220,
+        "description": "綠洲噴湧治癒泉水，全服地下城 HP 上限暫時上修 — 高樓層連刷的好時機。",
+        "trigger": { "kind": "dungeon_clear", "chancePct": 2 },
+        "requirements": { "moonlight_dew": 5, "shark": 30, "diamond": 3 },
+        "rewards": { "buffs": { "dungeon_hp_max": 40 } },
+        "buffDurationHoursOverride": 24
       }
     ]
   }

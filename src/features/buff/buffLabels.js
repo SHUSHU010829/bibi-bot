@@ -9,6 +9,8 @@ const BUFF_META = {
   dungeon_stamina_max: { label: "地下城體力上限", unit: "+{v}" },
   dungeon_damage_pct: { label: "地下城傷害", unit: "+{v}%" },
   dungeon_legendary_drop_pct: { label: "地下城傳說掉率", unit: "+{v}%" },
+  dungeon_def: { label: "地下城 DEF", unit: "+{v}" },
+  dungeon_hp_max: { label: "地下城 HP 上限", unit: "+{v}" },
   crit_rate_pct: { label: "暴擊率", unit: "+{v}%" },
   boss_atk_pct: { label: "BOSS 攻擊", unit: "+{vp}%" },
   boss_damage_pct: { label: "BOSS 傷害", unit: "+{v}%" },

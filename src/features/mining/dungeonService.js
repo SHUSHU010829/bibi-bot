@@ -718,10 +718,12 @@ async function enterDungeonHp(client, {
     return { ok: false, reason: "backpack_full", used, cap };
   }
 
-  // 4) 組玩家戰鬥屬性
+  // 4) 組玩家戰鬥屬性（食物 + 世界事件 + 公會 buff 全部疊上）
   const hpMaxV = hpService.hpMax(level, {
     food: getFoodHpMaxBonus(profile),
-  });
+    guild: clubBuildingPct(club, "dungeon_hp_max"), // 公會訓練場若有此 buff（暫無，留 hook）
+    pet: 0, // Phase H 寵物 hp_max bonus 留 hook
+  }) + (worldEventPct("dungeon_hp_max") || 0);
   const hpSt = hpService.resolveHp(profile, hpMaxV);
   const dmgPct = clubBuildingPct(club, "dungeon_damage_pct") + worldEventPct("dungeon_damage_pct");
   const baseAtk = playerAtk(profile);
@@ -734,7 +736,11 @@ async function enterDungeonHp(client, {
 
   const critPct = clubBuildingPct(club, "crit_rate_pct");
   const critRate = (wdef.critRate || 0) + (critPct / 100);
-  const def = (wdef.def || 0) + (sdef.def || 0) + getFoodDefBonus(profile);
+  const def =
+    (wdef.def || 0) +
+    (sdef.def || 0) +
+    getFoodDefBonus(profile, (wdef.def || 0) + (sdef.def || 0)) +
+    (worldEventPct("dungeon_def") || 0); // 世界事件「鋼鐵防線」
 
   let monster;
   let miniBossArg = null;
@@ -1122,9 +1128,10 @@ async function getDungeonStatus(client, { userId, guildId, member }) {
   const level = await getPlayerLevel(client, userId, guildId);
   const profile = await getOrCreate(client, userId, guildId);
   const st = resolveStamina(profile, staMaxV);
+  // 與 enterDungeonHp 同口徑：把世界事件 dungeon_hp_max 也加上，避免面板與實戰數值不一致
   const hpMaxV = hpService.hpMax(level, {
     food: getFoodHpMaxBonus(profile),
-  });
+  }) + (worldEventPct("dungeon_hp_max") || 0);
   const hpSt = hpService.resolveHp(profile, hpMaxV);
   const themes = floorService.listThemes(profile, level);
   return {
