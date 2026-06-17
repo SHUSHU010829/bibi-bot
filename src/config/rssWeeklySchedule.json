@@ -9,6 +9,10 @@
     "threadAutoArchiveMinutes": 10080,
     "threadNamePrefix": "周表",
     "keywordPattern": "(周|週|課)表",
+    "discordForward": {
+      "enabled": true,
+      "sourceChannelId": "1516628327899861092"
+    },
     "maxItemAgeHours": 168,
     "concurrency": 3,
     "rsshubBase": "https://rsshub.app",
