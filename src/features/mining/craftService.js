@@ -14,6 +14,14 @@ const WEAPON_TIER = {
   legendary_sword: 5,
 };
 const ROD_TIER = { bamboo: 0, carbon: 1, gold: 2, mythril: 3 };
+// Phase H+ 盾牌階級（v1：鐵盾 / 鋼盾；v2：黃金 / 鑽石 / 傳說）
+const SHIELD_TIER = {
+  iron_shield: 1,
+  steel_shield: 2,
+  gold_shield: 3,
+  diamond_shield: 4,
+  legendary_shield: 5,
+};
 
 // 傳說碎片 key（對外保留）
 const FRAGMENT_KEY = "legendary_fragment";
@@ -52,6 +60,16 @@ function resolveSlot(type) {
       durabilityField: "rod_durability",
       maxDurabilityField: "rod_max_durability",
       defaultId: "bamboo",
+    };
+  }
+  if (type === "shield") {
+    return {
+      defs: dungeon?.shields || {},
+      tiers: SHIELD_TIER,
+      equippedField: "shield",
+      durabilityField: "shield_durability",
+      maxDurabilityField: "shield_max_durability",
+      defaultId: null, // 沒裝盾代表赤手 — defaultId 為 null
     };
   }
   // 預設視為鎬子

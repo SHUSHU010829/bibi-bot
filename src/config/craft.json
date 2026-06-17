@@ -79,6 +79,20 @@
         "result": { "type": "weapon", "id": "legendary_sword" }
       },
       {
+        "id": "shield_iron",
+        "name": "鐵盾",
+        "emoji": "🪨",
+        "materials": { "iron": 5, "coal": 2 },
+        "result": { "type": "shield", "id": "iron_shield" }
+      },
+      {
+        "id": "shield_steel",
+        "name": "鋼盾",
+        "emoji": "⚙️",
+        "materials": { "iron": 10, "coal": 5 },
+        "result": { "type": "shield", "id": "steel_shield" }
+      },
+      {
         "id": "repair_tool_iron",
         "name": "鐵製維修工具",
         "emoji": "🔩",

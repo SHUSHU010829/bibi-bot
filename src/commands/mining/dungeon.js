@@ -261,6 +261,12 @@ function statusLines(status) {
   } else if (status.hpLow) {
     lines.push("-# ⚠️ HP 偏低，建議補血或先休息再戰。");
   }
+  if (status.weapon === "fist") {
+    lines.push("-# 👊 你還沒武器！先 /挖礦 累積鐵礦，再到 /合成 打一把 🗡️ 鐵劍（ATK +25 / DEF +5）。");
+  }
+  if (!status.shield) {
+    lines.push("-# 🛡️ 還沒盾？Lv.5 起可到 /合成 打一面 🪨 鐵盾（DEF +10、格擋 25%）。");
+  }
   return lines;
 }
 
