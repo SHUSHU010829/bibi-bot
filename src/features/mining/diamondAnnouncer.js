@@ -185,7 +185,7 @@ async function announceDiamond(client, { user, guildId, source = "mine", qty = 1
   };
 
   try {
-    const channelId = mining?.announceChannelId;
+    const channelId = mining?.diamondAnnounceChannelId || mining?.announceChannelId;
     if (channelId) {
       const ch = await client.channels.fetch(channelId).catch(() => null);
       if (ch?.isTextBased?.()) {

@@ -25,6 +25,7 @@
     "cdTicketReductionMs": 1800000,
     "cdTicketDailyUseLimit": 0,
     "announceChannelId": "1511655301953228800",
+    "diamondAnnounceChannelId": "1509074828206936126",
     "weeklyRank": {
       "cronSchedule": "1 0 * * 1",
       "timezone": "Asia/Taipei"
