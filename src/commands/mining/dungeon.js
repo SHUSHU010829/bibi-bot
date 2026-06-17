@@ -315,13 +315,20 @@ function buildActionsRow(ownerId, status) {
   return row;
 }
 
-async function buildEntryPanel(client, interaction) {
+async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
   const status = await dungeonService.getDungeonStatus(client, {
     userId: interaction.user.id,
     guildId: interaction.guildId,
     member: interaction.member,
   });
-  const floorStates = floorService.listFloors(status.profile, status.level, "mine");
+  // 防呆：選了未解鎖的主題就 fallback 回礦坑
+  const requested = floorService.themeUnlockState(status.profile, status.level, themeId);
+  if (!requested.unlocked) themeId = "mine";
+  const floorStates = floorService.listFloors(status.profile, status.level, themeId);
+
+  // 當前主題的中文標題
+  const themesAll = floorService.listThemes(status.profile, status.level);
+  const curTheme = (dungeon?.themes || []).find((t) => t.id === themeId) || { id: "mine", name: "礦坑", emoji: "⛏️" };
 
   const container = new ContainerBuilder()
     .setAccentColor(status.hpCritical ? 0xe74c3c : status.hpLow ? 0xfaa61a : 0x3498db)
@@ -329,7 +336,20 @@ async function buildEntryPanel(client, interaction) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(statusLines(status).join("\n")))
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent("**選擇樓層挑戰**（礦坑主題）"));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**選擇樓層挑戰**（${curTheme.emoji || ""} ${curTheme.name}主題）`));
+
+  // 主題切換按鈕（依解鎖狀態 disable）
+  const themeRow = new ActionRowBuilder();
+  for (const ts of themesAll) {
+    const t = ts.theme;
+    themeRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${RAID_PANEL_PREFIX}${interaction.user.id}_${t.id}`)
+        .setLabel(`${t.emoji || ""} ${t.name}`)
+        .setStyle(t.id === themeId ? ButtonStyle.Primary : ts.unlocked ? ButtonStyle.Secondary : ButtonStyle.Secondary)
+        .setDisabled(!ts.unlocked || t.id === themeId),
+    );
+  }
 
   const lines = [];
   for (const fs of floorStates) {
@@ -350,11 +370,12 @@ async function buildEntryPanel(client, interaction) {
     }
   }
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
-  container.addActionRowComponents(buildFloorActionRow(interaction.user.id, floorStates));
+  container.addActionRowComponents(buildFloorActionRow(interaction.user.id, floorStates, themeId));
+  container.addActionRowComponents(themeRow);
   container.addActionRowComponents(buildActionsRow(interaction.user.id, status));
 
-  // Phase H+ mini-BOSS（解鎖時才顯示按鈕；門檻：5F 通關 ×5）
-  const mbState = floorService.miniBossUnlockState(status.profile, status.level, "mine");
+  // Phase H+ mini-BOSS（解鎖時才顯示按鈕；門檻：當前主題 5F 通關 ×5）
+  const mbState = floorService.miniBossUnlockState(status.profile, status.level, themeId);
   if (mbState.unlocked) {
     const mb = mbState.miniBoss;
     container
@@ -367,7 +388,7 @@ async function buildEntryPanel(client, interaction) {
       .addActionRowComponents(
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId(`${RAID_BOSS_PREFIX}${interaction.user.id}_mine`)
+            .setCustomId(`${RAID_BOSS_PREFIX}${interaction.user.id}_${themeId}`)
             .setLabel(`⚔️ 挑戰 ${mb.name}`)
             .setStyle(ButtonStyle.Danger),
         ),
@@ -377,14 +398,13 @@ async function buildEntryPanel(client, interaction) {
     const r = mbState.requirement || {};
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 👹 mini-BOSS：5F 通關 ${r.clears} 次解鎖（目前 ${p.cleared} 次）`,
+        `-# 👹 mini-BOSS：當前主題 5F 通關 ${r.clears} 次解鎖（目前 ${p.cleared} 次）`,
       ),
     );
   }
 
-  // 主題鎖定提示（v1 只開礦坑）
-  const themeStates = floorService.listThemes(status.profile, status.level);
-  const lockedThemes = themeStates.filter((t) => !t.unlocked && t.reason !== "unknown_theme");
+  // 主題鎖定條件提示（顯示尚未解鎖的主題該怎麼解）
+  const lockedThemes = themesAll.filter((t) => !t.unlocked && t.reason !== "unknown_theme");
   if (lockedThemes.length) {
     const tlines = lockedThemes.map((ts) => {
       const t = ts.theme;

@@ -625,8 +625,9 @@ const { ObjectId } = require("mongodb");
 function pickMonsterForFloor(theme, floor) {
   const f = (dungeon?.floors || []).find((x) => x.floor === floor);
   if (!f) return null;
-  // 主題影響怪物池（v1：礦坑用 monsterPool；廢墟 / 冰窟 待 Phase C 主題化）
-  const pool = f.monsterPool || [];
+  // 主題影響怪物池：themeMonsterOverrides[theme][floor] 優先，沒設定 fallback 到 floor.monsterPool
+  const overrides = dungeon?.themeMonsterOverrides?.[theme];
+  const pool = (overrides && overrides[String(floor)]) || f.monsterPool || [];
   const id = pool[Math.floor(Math.random() * pool.length)];
   const def = dungeon?.monsterDefs?.[id];
   if (!def) return { id, name: id, emoji: "👾" };

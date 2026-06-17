@@ -112,7 +112,21 @@
       "mine_goblin":   { "name": "礦坑哥布林", "emoji": "👺", "skills": [] },
       "lava_giant":    { "name": "熔岩巨人",   "emoji": "🗿", "skills": ["burn"] },
       "abyss_skeleton":{ "name": "深淵骷髏",   "emoji": "💀", "skills": [] },
-      "shadow_wolf":   { "name": "暗影狼",     "emoji": "🐺", "skills": ["stun"] }
+      "shadow_wolf":   { "name": "暗影狼",     "emoji": "🐺", "skills": ["stun"] },
+      "ice_crystal":   { "name": "冰晶怪",     "emoji": "❄️", "skills": ["paralyze"] },
+      "frost_spirit":  { "name": "霜息精靈",   "emoji": "🌨️", "skills": ["paralyze"] }
+    },
+    "themeMonsterOverrides": {
+      "ruins": {
+        "3": ["abyss_skeleton", "abyss_skeleton", "mine_goblin"],
+        "4": ["abyss_skeleton", "abyss_skeleton", "lava_giant"],
+        "5": ["abyss_skeleton", "shadow_wolf"]
+      },
+      "ice": {
+        "3": ["ice_crystal", "crypt_spider"],
+        "4": ["ice_crystal", "frost_spirit", "mine_goblin"],
+        "5": ["frost_spirit", "ice_crystal", "shadow_wolf"]
+      }
     },
     "themes": [
       { "id": "mine",  "name": "礦坑", "emoji": "⛏️", "unlock": null },

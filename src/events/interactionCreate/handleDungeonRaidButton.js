@@ -164,8 +164,8 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
   })();
 }
 
-async function showEntryPanelOnSameMessage(client, interaction) {
-  const container = await dungeonCmd.buildEntryPanel(client, interaction);
+async function showEntryPanelOnSameMessage(client, interaction, opts = {}) {
+  const container = await dungeonCmd.buildEntryPanel(client, interaction, opts);
   return interaction.editReply({
     components: [container],
     flags: MessageFlags.IsComponentsV2,
@@ -279,8 +279,11 @@ module.exports = async (client, interaction) => {
     }
 
     if (m.prefix === dungeonCmd.RAID_PANEL_PREFIX) {
+      // payload = <ownerId> 或 <ownerId>_<theme>
+      const parts = m.payload.split("_");
+      const themeArg = parts[1]; // 可選
       await interaction.deferUpdate();
-      await showEntryPanelOnSameMessage(client, interaction);
+      await showEntryPanelOnSameMessage(client, interaction, themeArg ? { themeId: themeArg } : {});
       trackSuccess("raid-panel");
       return;
     }
