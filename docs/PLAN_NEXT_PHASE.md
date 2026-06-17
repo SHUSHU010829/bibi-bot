@@ -1,14 +1,16 @@
 # 逼逼機器人 — 新階段企劃書（問卷高期待玩法）
 
-> 紀錄日期：2026-06-09（2026-06-16 增補 Phase K / L）
+> 紀錄日期：2026-06-09（2026-06-16 增補 Phase K / L、移除 Phase I 文字冒險）
 > 背景：以問卷統計挑出期待值最高的玩法，從 `PLAN_BRAINSTORM.md`
 > 中對應條目展開為完整 Phase 規劃。
 > 涵蓋：
 > - **Phase H 寵物 / 夥伴養成**（brainstorm A1）
-> - **Phase I 文字冒險（森林 / 廢墟 / 深海）**（brainstorm C1）
 > - **Phase J 轉職 / 職業系統**（brainstorm G2）
 > - **Phase K 神祕黑市**（brainstorm B3）— 增補
 > - **Phase L 流浪商人**（新提案）— 增補
+>
+> **本次延後**：Phase I 文字冒險（brainstorm C1 ⭐⭐⭐）已從本計畫移除，
+> 留待下一波再開。
 >
 > 銜接於 `PLAN_INTEGRATED.md` 之後，作為下一波主開發路線。
 
@@ -20,14 +22,13 @@
 2. [設計原則與共同地基](#2-設計原則與共同地基)
 3. [Phase 排程與依賴關係](#3-phase-排程與依賴關係)
 4. [Phase H — 寵物 / 夥伴養成](#phase-h--寵物--夥伴養成)
-5. [Phase I — 文字冒險（森林 / 廢墟 / 深海）](#phase-i--文字冒險森林--廢墟--深海)
-6. [Phase J — 轉職 / 職業系統](#phase-j--轉職--職業系統)
-7. [Phase K — 神祕黑市](#phase-k--神祕黑市)
-8. [Phase L — 流浪商人](#phase-l--流浪商人)
-9. [跨 Phase 整合](#跨-phase-整合)
-10. [開發時程總覽](#開發時程總覽)
-11. [新增檔案索引](#新增檔案索引)
-12. [通用驗收清單](#通用驗收清單)
+5. [Phase J — 轉職 / 職業系統](#phase-j--轉職--職業系統)
+6. [Phase K — 神祕黑市](#phase-k--神祕黑市)
+7. [Phase L — 流浪商人](#phase-l--流浪商人)
+8. [跨 Phase 整合](#跨-phase-整合)
+9. [開發時程總覽](#開發時程總覽)
+10. [新增檔案索引](#新增檔案索引)
+11. [通用驗收清單](#通用驗收清單)
 
 ---
 
@@ -40,22 +41,24 @@
 | `PLAN_INTEGRATED.md` | Phase 8 / A–G / S3–S5 | 除 S3 外皆已完成 |
 | `PLAN_OPTIMIZATION.md` | 既有功能優化（Opt-1～Opt-5） | 平行進行 |
 | `PLAN_BRAINSTORM.md` | 30 個玩法候選 | 腦力激盪存檔 |
-| **`PLAN_NEXT_PHASE.md`（本文件）** | **問卷三高期待玩法（H / I / J）** | **主開發路線** |
+| **`PLAN_NEXT_PHASE.md`（本文件）** | **問卷高期待玩法（H / J / K / L）** | **主開發路線** |
 
-### 1.2 為什麼是這三個
+### 1.2 為什麼是這四個
 
 | Phase | 對應條目 | 問卷期待值 | 核心價值 |
 |---|---|---|---|
 | **H 寵物 / 夥伴養成** | brainstorm A1 ⭐⭐⭐ | 高 | 每日回流、跨系統消耗出口、最強留存 |
-| **I 文字冒險** | brainstorm C1 ⭐⭐⭐ | 高 | 補敘事性玩法缺口、單人 / 公會組隊皆可 |
 | **J 轉職 / 職業系統** | brainstorm G2 ⭐⭐ | 高 | 玩家身份感、與 S3 技能樹差異化、季賽節奏 |
 | **K 神祕黑市** | brainstorm B3 ⭐⭐ | 高 | 稀有道具流通出口、驚喜感、賭性玩家 |
 | **L 流浪商人** | 新提案 | 中—高 | 隨機限量限時商店、補日常驚喜、低風險友善版 |
 
-前三者覆蓋 **養成 / 探險 / 身份** 三個玩家動機面向，後兩者作為 **限時商店雙生 Phase**
+前兩者覆蓋 **養成 / 身份** 兩個玩家動機面向，後兩者作為 **限時商店雙生 Phase**
 （K 高風險 / 高稀有，L 低風險 / 高便利）共用商店引擎：
-- 寵物提供出戰 buff → 文字冒險可帶寵物 → 不同職業冒險路線不同
+- 寵物提供出戰 buff，不同職業可搭配對應品種的 buff 偏好
 - 黑市 / 流浪商人是新生產（罕見道具入口）與消耗（金幣 sink）的雙向出口。
+
+> Phase I 文字冒險延後說明：原本作為冒險道具來源（古文物 / 深海珍珠 / 守衛核心 等）
+> 已從本次商品池移除；黑市與流浪商人的 barter 收料改以**既有資源**（魚 / 礦 / 作物 / 黑玫瑰副產）為主。
 
 ---
 
@@ -91,38 +94,37 @@
                       │ eventBus（地基 2d）   │
                       └─────┬────────────────┘
                             │
-              ┌─────────────┼─────────────┐
-              ▼             ▼             ▼
-        ┌─────────┐   ┌──────────┐  ┌──────────┐
-        │ Phase H │   │ Phase J  │  │ Phase I  │
-        │ 寵物    │   │ 轉職     │  │ 文字冒險 │
-        └────┬────┘   └────┬─────┘  └────┬─────┘
-             │             │             │
-             └─────────────┴─────────────┘
-                           │
+                ┌───────────┴───────────┐
+                ▼                       ▼
+          ┌─────────┐             ┌──────────┐
+          │ Phase H │             │ Phase J  │
+          │ 寵物    │             │ 轉職     │
+          └────┬────┘             └────┬─────┘
+               │                       │
+               └──────────┬────────────┘
+                          │
+                          ▼
+                   ┌──────────────┐
+                   │ shopEngine   │（K / L 共用）
+                   └──┬────────┬──┘
+                      ▼        ▼
+                 ┌────────┐ ┌──────────┐
+                 │Phase K │ │ Phase L  │
+                 │神祕黑市│ │ 流浪商人 │
+                 └────┬───┘ └────┬─────┘
+                      └────┬─────┘
                            ▼
-                    ┌──────────────┐
-                    │ shopEngine   │（K / L 共用）
-                    └──┬────────┬──┘
-                       ▼        ▼
-                  ┌────────┐ ┌──────────┐
-                  │Phase K │ │ Phase L  │
-                  │神祕黑市│ │ 流浪商人 │
-                  └────┬───┘ └────┬─────┘
-                       └────┬─────┘
-                            ▼
-                  ┌────────────────────┐
-                  │ 經濟儀表板（平衡） │
-                  └────────────────────┘
+                 ┌────────────────────┐
+                 │ 經濟儀表板（平衡） │
+                 └────────────────────┘
 ```
 
-**建議順序**：`eventBus → Phase H 寵物 → Phase J 轉職 → Phase I 文字冒險 → Phase K 黑市 → Phase L 流浪商人 → 經濟儀表板覆盤`
+**建議順序**：`eventBus → Phase H 寵物 → Phase J 轉職 → Phase K 黑市 → Phase L 流浪商人 → 經濟儀表板覆盤`
 
 理由：
 - 寵物先做，因為它是 fishing / farm 產出的天然 sink，能立即消化過剩產出
-- 轉職放第二，給玩家身份感後再進冒險，職業會影響冒險選擇分支
-- 文字冒險第三，因為它要吃前兩個 Phase 的 buff / 寵物出戰能力
-- 黑市 (K) 排在寵物 / 冒險之後，因為它的商品池要連動 寵物蛋 / 進化石 / 轉職石
+- 轉職放第二，給玩家身份感，新的職業 buff 與寵物搭配也有空間
+- 黑市 (K) 排在寵物 / 轉職之後，商品池要連動寵物蛋 / 進化石 / 轉職石
 - 流浪商人 (L) 緊接 K 上線，**直接復用** K 的 `shopEngine`，開發成本減半
 
 ---
@@ -305,191 +307,6 @@
 
 ---
 
-## Phase I — 文字冒險（森林 / 廢墟 / 深海）
-
-> **前置需求**：Phase 4（地下城）✅、Phase H 寵物（可選同時出戰）、eventBus 地基
-> **預估時間**：7–9 天（框架 5d + 三場景各 1–2d）
-> **定位**：補敘事性玩法缺口，單人 / 公會組隊皆可
-
-### 核心機制
-
-- text-based choice adventure，**事件樹用 JSON 定義**，未來加新場景只改設定檔
-- 三場景：🌲 **暗影森林**（低階）、🏛️ **沉沒廢墟**（中階）、🌊 **深海裂谷**（高階）
-- 每場 3–5 個 node（事件節點），玩家用按鈕選擇分支
-- 消耗體力（5 / 8 / 12 點，與地下城共用體力池）
-- 結果：幣 / 道具 / 寵物蛋 / 限定稀有素材 / 稱號候選
-- **可帶出戰寵物**：寵物 buff 影響選項成功率
-- **可公會組隊**（2–4 人）：分擔風險、提高高階場景生還率
-
-### 場景定位
-
-| 場景 | 解鎖 | 體力消耗 | 平均單場時長 | 預期報酬 |
-|---|---|---|---|---|
-| 🌲 暗影森林 | Lv.10 | 5 | 3–5 分鐘 | 200–500 幣 + 普通寵物蛋（5%） |
-| 🏛️ 沉沒廢墟 | Lv.25 + 森林通關 3 次 | 8 | 5–8 分鐘 | 600–1,500 幣 + 限定「古文物」 |
-| 🌊 深海裂谷 | Lv.45 + 廢墟通關 5 次 | 12 | 8–12 分鐘 | 2,000–5,000 幣 + 稀有寵物蛋（10%） |
-
-### 事件節點機制
-
-每個 node 是一個 JSON 物件：
-
-```json
-{
-  "id": "forest_n1",
-  "scene": "forest",
-  "text": "你走到一條岔路，左邊傳來奇怪的低吼聲，右邊則是寧靜的溪流。",
-  "image": null,
-  "choices": [
-    {
-      "label": "🗡️ 朝低吼聲走過去",
-      "checks": [{ "type": "atk", "min": 80 }],
-      "petBonus": { "species": "mine_wolf", "successPct": 15 },
-      "outcomes": {
-        "success":  { "rate": 0.6, "next": "forest_n2_combat",  "reward": { "coin": 150 } },
-        "fail":     { "rate": 0.4, "next": "forest_n2_retreat", "penalty": { "stamina": 2 } }
-      }
-    },
-    {
-      "label": "🐟 朝溪流走過去",
-      "outcomes": {
-        "success": { "rate": 1.0, "next": "forest_n2_fish", "reward": { "item": { "small_fish": 3 } } }
-      }
-    }
-  ]
-}
-```
-
-關鍵設計：
-- `checks`：玩家屬性門檻（ATK / luck / level / 寵物出戰），低於門檻則 `success.rate` 降低
-- `petBonus`：特定品種寵物出戰時，提高成功率 X%
-- `outcomes.next`：可指向下一 node、結算 node、或迴圈 node（迷路機制）
-- `outcomes.reward / penalty`：幣 / 物品 / 體力 / 寵物 exp
-
-### 場景事件樹概覽
-
-> 完整事件樹放 `src/config/adventure/<scene>.json`，每場景 15–25 個 node 組成樹狀分支。
-
-**🌲 暗影森林**（3 主分支 × 平均 4 nodes）：
-- 戰士路線：遭遇野獸 → BOSS 路線（小狼王）
-- 探索路線：發現遺跡入口（為 廢墟解鎖鋪伏筆）
-- 採集路線：撿藥草 / 釣魚 / 採蘑菇
-
-**🏛️ 沉沒廢墟**（4 主分支 × 平均 4 nodes）：
-- 機關解謎：成功 → 古文物；失敗 → 落石扣血
-- 守衛戰鬥：機關獸戰，配合寵物效率倍增
-- 古文物收集：考古路線（為 brainstorm C2 鋪路）
-- 隱藏分支：找到「廢墟之心」→ 解鎖深海
-
-**🌊 深海裂谷**（5 主分支 × 平均 5 nodes）：
-- 深淵釣魚：稀有魚 +「深海珍珠」
-- 海怪戰：擊敗 → 稀有寵物蛋（10%）
-- 探險路線：傳說地圖碎片（連動既有藏寶圖系統）
-- 失蹤者線：救援 NPC → 解鎖「深海守衛」永久稱號
-- 死亡分支：滅頂 → 全部獎勵歸 0、體力扣光（高風險）
-
-### 公會組隊規則
-
-- 隊長發起：`/冒險 組隊 [場景]` → 公會頻道發出按鈕，會員按下加入
-- 2–4 人，所有成員體力消耗 −20%
-- 每個 node 選項由「當前回合玩家」決定，下個 node 換下一位（輪流主控）
-- 報酬均分，但**寵物蛋給機率最高那位**（避免拆裂）
-
-### 消耗出口（必填段落）
-
-| 入口 | 出口 |
-|---|---|
-| 冒險產出（幣 / 文物 / 蛋） | 體力消耗（5–12 點 / 場）、失敗節點消耗藥水 / 道具 |
-| 寵物 exp 加速 | 帶寵物提高成功率，但寵物會掉飢餓度 |
-| 公會組隊 | 隊長付組隊費 100 幣 / 場（防濫開） |
-
-### UX 設計重點
-
-- **冒險中訊息**：每個 node 用 **ContainerBuilder** 呈現
-  - Header：場景 emoji + 進度（Node 2 / 5）
-  - Body：node text（敘事文字）
-  - Separator
-  - 寵物 / 同伴狀態小字 -#
-  - ActionRow：選項按鈕（最多 4 個）
-- **結算訊息**：成功訊息附「再玩一場 / 查看冒險紀錄 / 進入下個場景」按鈕
-- **未解鎖場景**（UX 檢查 #6）：
-  > `🔒 沉沒廢墟 尚未解鎖！\n解鎖條件：等級 25 + 暗影森林通關 3 次\n目前：Lv.18・通關 1 次`
-- **按鈕 owner**：node 選項按鈕 customId `adv_<userId>_<runId>_<choiceIdx>`，owner 驗證必做（組隊模式下還需驗證「當前回合 ID」）
-
-### 指令
-
-| 指令 | 說明 |
-|---|---|
-| `/冒險` | 顯示三場景入口、解鎖狀態 |
-| `/冒險 進入 [場景]` | 進入冒險（觸發 node 0） |
-| `/冒險 組隊 [場景]` | 公會組隊（發起頻道訊息） |
-| `/冒險 紀錄` | 查看歷史通關紀錄 |
-| `/冒險 圖鑑` | 各場景結局收集進度 |
-| `/adventure-admin reload` 🔒 | 重新載入事件樹 JSON（不重啟） |
-
-### DB 新增
-
-```js
-// adventure_runs
-{
-  run_id:        String,
-  user_id:       String,        // 單人 / 隊長
-  guild_id:      String,
-  scene:         String,        // 'forest' | 'ruins' | 'abyss'
-  party:         [String],      // 組隊成員 user_ids（含隊長），單人＝[user_id]
-  current_node:  String,
-  visited_nodes: [String],
-  pet_id:        String,        // 出戰寵物（隊長的）
-  status:        String,        // 'active' | 'cleared' | 'failed' | 'expired'
-  started_at:    Number,
-  ended_at:      Number,
-  ending_id:     String,        // 結局 id（用於圖鑑）
-  rewards:       Object,        // 結算獎勵明細
-}
-
-// adventure_ending_unlocks
-{
-  user_id:    String,
-  guild_id:   String,
-  scene:      String,
-  ending_id:  String,
-  unlocked_at:Number,
-}
-```
-
-索引：
-- `adventure_runs`：`{ user_id: 1, status: 1 }`、TTL 30 天
-- `adventure_ending_unlocks`：`{ user_id: 1, guild_id: 1, scene: 1, ending_id: 1 }` unique
-
-### Config 結構
-
-```
-src/config/adventure/
-  ├── forest.json    // 森林事件樹
-  ├── ruins.json     // 廢墟事件樹
-  ├── abyss.json     // 深海事件樹
-  └── common.json    // 共用：解鎖條件、結局稱號清單
-```
-
-### 與現有系統的接點
-
-- **體力消耗**：扣 `MiningProfiles.stamina`（與地下城 / BOSS 共用）
-- **戰鬥節點**：複用 `bossEngine` 的 ATK 計算（傷害公式抽出共用）
-- **寵物加成**：透過 `petResolver` 讀出戰寵物 species
-- **掉落寵物蛋**：emit `pet.egg.gained` → `petService` 寫入 `user_pet_eggs`
-- **公會頻道發訊**：複用既有公會頻道綁定
-
-### 新增檔案
-
-| 檔案 | 內容 |
-|---|---|
-| `src/config/adventure/*.json` | 三場景事件樹 + common |
-| `src/features/adventure/adventureEngine.js` | run 狀態機、node 跳轉、屬性檢查 |
-| `src/features/adventure/partyService.js` | 公會組隊輪流邏輯 |
-| `src/commands/adventure/adventure.js` | `/冒險` 指令群 |
-| `src/events/interactionCreate/handleAdventureButton.js` | 節點選擇按鈕 |
-
----
-
 ## Phase J — 轉職 / 職業系統
 
 > **前置需求**：Phase 1–4 完成 ✅、Opt-5（buffResolver）、eventBus 地基
@@ -646,7 +463,7 @@ src/config/adventure/
 
 ## Phase K — 神祕黑市
 
-> **前置需求**：Phase 1（挖礦）✅、Phase 5（拍賣行）✅、Phase H 寵物（部分商品連動）、eventBus 地基
+> **前置需求**：Phase 1（挖礦）✅、Phase 5（拍賣行）✅、Phase H 寵物 / Phase J 轉職（商品池連動）、eventBus 地基
 > **預估時間**：3–4 天
 > **定位**：稀有道具流通出口 + 高風險金幣 sink，製造驚喜感與賭性張力
 
@@ -1225,7 +1042,6 @@ final = base
 | `fish.done`     | fishing service | pet exp、profession exp、egg drop |
 | `harvest.done`  | farm service | pet exp、profession exp、egg drop |
 | `boss.killed`   | boss engine | pet egg drop、profession exp |
-| `adventure.cleared` | adventure engine | pet exp、profession exp、稱號候選 |
 | `pet.hatched`   | pet service | 圖鑑（未來） |
 | `profession.switched` | profession service | 公告（可選） |
 | `blackmarket.purchased` | black market service | 圖鑑、季賽、經濟儀表板 |
@@ -1238,11 +1054,10 @@ final = base
 | 新生產 | 消耗匹配 |
 |---|---|
 | 寵物蛋掉落 | 飢餓度餵食消化魚 / 作物 ✅ |
-| 冒險產幣 / 道具 | 體力消耗、組隊費、失敗扣資源 ✅ |
 | 轉職強化產出 | 季賽轉職石需求、主動指令日限 ✅ |
 | 黑市稀有道具入口 | 高價金幣消耗 + 查緝罰金（強力 sink） ✅ |
 | 流浪商人折扣品 | 雖然便宜但個人限量；日常消耗品流動性 sink ✅ |
-| **以物易物（K 暗號 / L barter）** | **非幣 sink：消化魚 / 礦 / 作物 / 古文物囤積，不通膨 ✅** |
+| **以物易物（K 暗號 / L barter）** | **非幣 sink：消化魚 / 礦 / 作物 / 黑玫瑰副產，不通膨 ✅** |
 
 ### shopEngine 共用合約（Phase K / L）
 
@@ -1284,22 +1099,20 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | 地基：eventBus | 2 d | — | 新玩法上線前必做 |
 | Phase H 寵物 | 6–8 d | eventBus | 含孵化、餵食、進化、出戰、圖鑑 |
 | Phase J 轉職 | 5–6 d | eventBus、Phase H（可選） | 六職業 + 試煉 + 季賽 |
-| Phase I 文字冒險 | 7–9 d | eventBus、Phase H | 框架 5d + 三場景各 1–2d |
 | Phase K 神祕黑市 | 3–4 d | Phase H / J（道具池連動）、eventBus | 含 `shopEngine` 共用引擎 |
 | Phase L 流浪商人 | 2–3 d | Phase K 的 `shopEngine` | 共用引擎、新增 3 種商人個性 |
 | 地基：經濟儀表板 | 2–3 d | — | 與 Phase 平行可做 |
-| **合計** | **27–35 d** | | |
+| **合計** | **20–26 d** | | |
 
-**建議啟動順序**：`eventBus → Phase H → Phase J → Phase I → Phase K → Phase L → 經濟儀表板`
+**建議啟動順序**：`eventBus → Phase H → Phase J → Phase K → Phase L → 經濟儀表板`
 
 里程碑：
 - **M1**（+2d）：eventBus 上線、既有 service 開始 emit 事件
 - **M2**（+8–10d）：Phase H 寵物上線，首批玩家開始養寵物
 - **M3**（+13–16d）：Phase J 轉職上線，配合本季季首
-- **M4**（+20–25d）：Phase I 文字冒險完整三場景上線
-- **M5**（+23–29d）：Phase K 神祕黑市上線（含 `shopEngine`）
-- **M6**（+25–32d）：Phase L 流浪商人上線（復用 `shopEngine`）
-- **M7**（+27–35d）：經濟儀表板覆盤前 4 週數據
+- **M4**（+16–20d）：Phase K 神祕黑市上線（含 `shopEngine`）
+- **M5**（+18–23d）：Phase L 流浪商人上線（復用 `shopEngine`）
+- **M6**（+20–26d）：經濟儀表板覆盤前 4 週數據
 
 ---
 
@@ -1314,14 +1127,6 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | `src/events/ready/petHatchChecker.js` | 蛋孵化排程 | H |
 | `src/commands/pet/pet.js` | `/寵物` 指令群 | H |
 | `src/events/interactionCreate/handlePetButton.js` | 寵物按鈕處理 | H |
-| `src/config/adventure/forest.json` | 暗影森林事件樹 | I |
-| `src/config/adventure/ruins.json` | 沉沒廢墟事件樹 | I |
-| `src/config/adventure/abyss.json` | 深海裂谷事件樹 | I |
-| `src/config/adventure/common.json` | 共用：解鎖條件、結局稱號 | I |
-| `src/features/adventure/adventureEngine.js` | 冒險狀態機 | I |
-| `src/features/adventure/partyService.js` | 公會組隊邏輯 | I |
-| `src/commands/adventure/adventure.js` | `/冒險` 指令群 | I |
-| `src/events/interactionCreate/handleAdventureButton.js` | 節點選擇按鈕 | I |
 | `src/config/profession.json` | 職業定義 + 試煉 + 季賽 | J |
 | `src/features/profession/professionService.js` | 轉職核心 | J |
 | `src/features/profession/professionResolver.js` | 職業 buff 整合 | J |
@@ -1512,49 +1317,12 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | `pet_rename_card` | 📝 寵物改名卡 | 自訂名稱（30 字）| 商城 500 幣 |
 | `pet_revive_potion` | 💧 寵物復甦藥 | 飢餓 0 罷工狀態回滿 | 商城 800 幣 / 流浪商人 |
 
-### B.2 Phase I 冒險相關（共 22 種）
+### B.2 Phase I 冒險相關（本次延後）
 
-**🌲 暗影森林專屬（6 種）**
-
-| ID | 名稱 | 功用 | 取得 |
-|---|---|---|---|
-| `forest_herb` | 🌿 森林藥草 | 烹飪 / 鍊金材料 | 森林採集分支 |
-| `wild_berry` | 🍒 野莓 | 烹飪 / 寵物零食材料 | 森林採集分支 |
-| `wolf_fang` | 🦷 狼牙 | 鍊金（戰鬥藥水）/ 賣 | 森林戰士分支（小狼王掉落）|
-| `bird_feather` | 🪶 鳥羽 | 寵物玩具材料 | 森林採集（隨機）|
-| `mushroom` | 🍄 蘑菇 | 烹飪 / 黑市暗號收料 | 森林採集 |
-| `forest_relic_shard` | 🗝️ 森林遺跡碎片 | 集滿 3 個解鎖廢墟 | 森林探索分支 |
-
-**🏛️ 沉沒廢墟專屬（6 種）**
-
-| ID | 名稱 | 功用 | 取得 |
-|---|---|---|---|
-| `artifact_ruin` | 🏺 古文物 | 高價賣 / 黑市暗號 / 未來小屋展示 | 廢墟機關解謎成功 |
-| `ancient_coin` | 🪙 古錢幣 | 賣 80 幣 / 5 個換新台幣稱號 | 廢墟採集 |
-| `broken_amulet` | 📿 殘破護符 | 合成完整護符（給寵物穿戴）| 廢墟掉落 |
-| `guardian_core` | 💠 守衛核心 | 鍊金（高階戰鬥藥水）| 廢墟守衛戰勝利 |
-| `ruin_map_piece` | 🗺️ 廢墟地圖碎片 | 集滿 4 片解鎖深海 | 廢墟隱藏分支 |
-| `mystery_key` | 🔑 神祕鑰匙 | 開啟廢墟祕寶箱（高機率傳奇寵物蛋）| 廢墟全收集 |
-
-**🌊 深海裂谷專屬（6 種）**
-
-| ID | 名稱 | 功用 | 取得 |
-|---|---|---|---|
-| `deep_sea_pearl` | 🦪 深海珍珠 | 鍊金（永久 buff 卷軸材料）/ 賣 1,500 幣 | 深海釣魚分支 |
-| `abyss_scale` | 🐉 深淵鱗片 | 合成傳說劍 / 賣 800 幣 | 深海海怪戰 |
-| `siren_tear` | 💧 海妖之淚 | 鍊金（限定料理材料）/ 寵物親密度 +50 | 深海罕見掉落 |
-| `coral_shard` | 🪸 珊瑚碎片 | 合成深海稱號 / 流浪商人收料 | 深海採集 |
-| `sunken_treasure` | 💰 沉船寶藏 | 直接 +5,000 幣 | 深海寶藏分支 |
-| `lost_diary` | 📕 失蹤者日記 | 解鎖永久稱號「深海守衛」| 深海救援分支 |
-
-**通用 / 工具（4 種）**
-
-| ID | 名稱 | 功用 | 取得 |
-|---|---|---|---|
-| `adventure_stamina_potion` | 🧪 冒險體力藥 | 體力 +8（冒險專用）| 商城 600 幣 / 黑市 / 流浪商人 |
-| `escape_scroll` | 📜 逃離卷軸 | 冒險中緊急脫離（不扣失敗懲罰）| 流浪商人 / 黑市 |
-| `party_horn` | 📯 集結號角 | 公會組隊免 100 幣組隊費 | 公會升級獎勵 |
-| `explorer_pack` | 🎒 探險背包 | 單次冒險 +2 物品攜帶上限 | 商城 1,200 幣 |
+> Phase I 文字冒險已從本次計畫移除。原規劃的森林 / 廢墟 / 深海 22 種道具
+> （古文物、深海珍珠、守衛核心、海妖之淚 等）一併延後。
+> 黑市 / 流浪商人的商品池**改以既有資源為主**（魚 / 礦 / 作物 / 黑玫瑰副產 等）。
+> 若 Phase I 後續上線，再從 PR 歷史回復道具清單即可。
 
 ### B.3 Phase J 轉職相關（共 6 種，預估）
 
@@ -1618,29 +1386,20 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 ├─ 流浪商人騎士款 barter：彩虹石 ×3 + 鯊魚 ×5
 └─ 黑市傳奇級購買：60,000 幣
 
-戰鬥藥水（提升地下城 / BOSS / 冒險 ATK）
-├─ 狼牙 ×3 + 煤炭 ×2 + 森林藥草 ×1           ← 森林產出消耗
-└─ 鍊金 NPC 製作（未來）
-
 寵物玩具（提升親密度互動上限）
-├─ 鳥羽 ×5 + 黑玫瑰 ×1 + 靈魂碎片 ×1          ← 多 sink
+├─ 黑玫瑰 ×2 + 靈魂碎片 ×3 + 鐵 ×5
 └─ 商城 1,500 幣
 
-完整護符（寵物穿戴 +5% all buff）
-├─ 殘破護符 ×3 + 守衛核心 ×1
-└─ 廢墟全收集獎勵
-
-深海稱號券「深淵之主」
-├─ 珊瑚碎片 ×10 + 深淵鱗片 ×3 + 深海珍珠 ×1
-└─ 純收集成就
-
-傳說劍（Phase J 騎士進階武器）
-├─ 鑽石 ×5 + 深淵鱗片 ×2 + 傳說劍胚 ×1
-└─ Lv.50 騎士限定合成
+戰鬥藥水（提升地下城 / BOSS ATK）
+├─ 煤炭 ×3 + 鐵 ×2 + 鯊魚 ×1
+└─ 鍊金 NPC 製作（未來）
 
 龍息湯（限定料理，全屬性 +15% / 4h）
-├─ 熔岩魚 ×2 + 黑玫瑰 ×1 + 海妖之淚 ×1
+├─ 熔岩魚 ×2 + 黑玫瑰 ×1 + 黃金 ×3
 └─ 需先學會食譜（流浪商人 barter）
+
+> 註：原規劃中需要冒險產出（古文物 / 守衛核心 / 海妖之淚 等）的合成項目
+> （完整護符 / 深海稱號券 / 傳說劍）一併延後至 Phase I 上線後再開。
 ```
 
 ### C.3 補出口的合成項目（解決孤兒問題）
@@ -1649,7 +1408,6 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 |---|---|---|
 | 靈魂碎片 | 🔴 孤兒（黑玫瑰副產但無用）| 進化石、寵物玩具材料 |
 | 賭石（劣質）| 🟡 易囤積 | 流浪商人收 20 個 + 鐵 ×30 → 隨機罕見道具 |
-| 古錢幣（新）| — | 5 個 → 限定稱號「新台幣」（搞笑稱號）|
 | 雪晶石（限定）| 🟡 限定礦只能賣 | 進化石替代材料（黃金 ×3 替換為雪晶石 ×1）|
 
 ### C.4 跨 Phase 材料流向
@@ -1676,25 +1434,10 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
                                           │
                                           ▼
                                     🦄 強化 buff
-
-      ┌────────────────────┐
-      │   冒險產出（NEW）   │
-      └────────┬───────────┘
-               │
-   ┌───────────┼────────────┐
-   ▼           ▼            ▼
-🌲 森林     🏛️ 廢墟      🌊 深海
-   │           │            │
-   ├─🌿 藥草   ├─🏺 古文物  ├─🦪 珍珠
-   ├─🦷 狼牙   ├─💠 守衛核  ├─🐉 鱗片
-   └─🍄 蘑菇   └─🔑 鑰匙    └─💧 海妖淚
-       │           │            │
-       └───┬───────┴────────────┘
-           ▼
-    🧪 鍊金消耗品 / 🏷️ 稱號 / 📖 限定食譜
 ```
 
-> 設計原則：**每條冒險場景都有「賣 / 合成 / barter」三條出口**，避免囤積。
+> 設計原則：**每條既有產線都有「賣 / 合成 / barter」三條出口**，避免囤積。
+> Phase I 冒險上線後再補「冒險產出 → 鍊金 / 稱號 / 限定食譜」這條支線。
 
 ---
 
@@ -1709,8 +1452,8 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | 雪晶石 ×3 | 1,200 | 2 | 聖誕限定 |
 | 加溫石 ×2 | 800 | 3 | 寵物孵化加速 |
 | 限定釣餌 ×5 | 1,500 | 3 | luck +30% / 釣 |
-| 森林藥草 ×10 | 600 | 2 | 鍊金材料 |
-| 蘑菇 ×8 | 500 | 3 | 烹飪稀有食材 |
+| 高級肥料 ×5 | 600 | 2 | 農場加速 |
+| 戰鬥藥水 ×2 | 900 | 2 | 地下城 / BOSS ATK +20 |
 
 **珍貴級（precious，權重 30）**
 
@@ -1747,10 +1490,10 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 |---|---|---|
 | 鯊魚 ×10 + 熔岩魚 ×3 | 傳說寵物蛋 ×1 | ~2,400 |
 | 彩虹石 ×5 + 黑玫瑰 ×3 | 永久 luck +0.5% 卷軸 | ~7,500 |
-| 古文物 ×1 | 試煉減半券 | ~50,000 |
+| 黑玫瑰 ×8 + 鑽石 ×3 | 試煉減半券 | ~6,400 |
 | 靈魂碎片 ×10 + 鑽石 ×3 | 進化石 ×2 | ~6,400 |
 | 賭石（劣質）×20 + 鐵 ×30 | 隨機 1 件罕見級道具 | ~3,800 |
-| 守衛核心 ×1 + 深淵鱗片 ×1 | 限定稱號券 | ~1,600 |
+| 章魚 ×8 + 鯊魚 ×3 | 限定稱號券 | ~1,400 |
 
 > 罰款 = 等值幣 ×3（被查緝時）。
 
@@ -1761,10 +1504,10 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | 商品 | 模式 | 價格 / 需求 | 個人限購 |
 |---|---|---|---|
 | 幸運藥水 | coin | 240（原 300） | 3 |
-| 森林藥草 ×5 | coin | 380 | 2 |
-| 蘑菇 ×3 | coin | 220 | 3 |
 | 戰鬥藥水 ×1 | coin | 850 | 1 |
-| 龍息湯食譜 | **barter** | 熔岩魚 ×2 + 黑玫瑰 ×1 | 1（每人一生一次）|
+| XP 藥水 ×1 | coin | 380 | 2 |
+| 高級餵食餐 ×1 | coin | 1,200 | 1 |
+| 龍息湯食譜 | **barter** | 熔岩魚 ×2 + 黑玫瑰 ×1 + 黃金 ×3 | 1（每人一生一次）|
 | 永久 luck +1% 卷軸 | **barter** | 鯊魚 ×10 + 章魚 ×5 + 鐵 ×20 | 1 |
 
 **🛡️ 退役騎士哈洛德（首購送「磨鎬石 ×1」）**
@@ -1772,11 +1515,11 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | 商品 | 模式 | 價格 / 需求 | 個人限購 |
 |---|---|---|---|
 | 體力藥水 | coin | 480（原 600） | 3 |
-| 冒險體力藥 | coin | 700 | 2 |
+| 磨鎬石 | coin | 220（原 250）| 2 |
 | 30 天 luck +0.5% 卷軸 | coin | 4,200 | 1 |
-| 探險背包 | coin | 1,100 | 1 |
-| 進化石 ×1 | **barter** | 彩虹石 ×3 + 鯊魚 ×5 | 1 |
-| 試煉減半券 | **barter** | 狼牙 ×5 + 守衛核心 ×1 | 1 |
+| 寵物玩具 | coin | 1,100 | 1 |
+| 進化石 ×1 | **barter** | 鑽石 ×3 + 鯊魚 ×5 | 1 |
+| 試煉減半券 | **barter** | 黃金 ×10 + 章魚 ×5 + 靈魂碎片 ×3 | 1 |
 
 **🌸 花匠少女小百合（送「寵物餵食特餐 ×1」）**
 
@@ -1787,7 +1530,7 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 | 寵物玩具 | coin | 1,200 | 1 |
 | 限定釣餌 ×3 | coin | 1,000 | 2 |
 | 稀有寵物蛋 ×1 | **barter** | 紅蘿蔔 ×30 + 玉米 ×15 + 草莓 ×8 | 1 |
-| 寵物皮膚（花朵款）| **barter** | 黑玫瑰 ×5 + 珊瑚碎片 ×3 | 1 |
+| 賭石換罕見 | **barter** | 賭石（劣質）×20 + 鐵 ×30 | 1 |
 
 ### D.4 商品池輪替機制
 
@@ -1801,7 +1544,8 @@ shopEngine.tryPurchase(userId, guildId, sessionId, item, opts?)
 - 商品池放 `src/config/black_market.json` 與 `src/config/wandering_merchant.json` 的 `itemPool` / `barterPool`
 - 季賽 / 大改版時可單獨增刪商品，不需動程式
 - 季賽結束舊限定品自動從池內移除（透過 `availableUntil` 欄位）
+- Phase I 文字冒險上線後，再追加冒險產出（古文物 / 守衛核心 / 海妖之淚 等）對應的 barter 條目
 
 ---
 
-_Last updated: 2026-06-16 — 增補 Phase K（神祕黑市）、Phase L（流浪商人）、以物易物機制、現有道具盤點（附錄 A / B / C / D）_
+_Last updated: 2026-06-16 — 增補 Phase K（神祕黑市）、Phase L（流浪商人）、以物易物機制、現有道具盤點（附錄 A / B / C / D）；移除 Phase I 文字冒險（延後）_
