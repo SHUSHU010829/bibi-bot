@@ -6,6 +6,8 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
   MessageFlags,
 } = require("discord.js");
 
@@ -80,24 +82,24 @@ function materialsText(recipe, profile) {
   return lines.join("\n");
 }
 
-// ─── 分類分頁列 ────────────────────────────────────────────────────────────────
-function tabRows(userId, current) {
-  const rows = [];
-  for (let i = 0; i < COOK_CATS.length; i += 3) {
-    const row = new ActionRowBuilder();
-    for (const cat of COOK_CATS.slice(i, i + 3)) {
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId(`${COOK_TAB_PREFIX}${userId}_${cat.id}`)
-          .setLabel(cat.label)
+// ─── 分類分頁選單 ──────────────────────────────────────────────────────────────
+// 用一個 StringSelectMenu 取代 6 顆按鈕，省下 6 個元件，避免「全能」分類
+// 6 道食譜時撞到 Discord 40 元件上限。
+function tabSelectRow(userId, current) {
+  const currentCat = COOK_CATS.find((c) => c.id === current) || COOK_CATS[0];
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(`${COOK_TAB_PREFIX}${userId}`)
+    .setPlaceholder(`${currentCat.emoji} ${currentCat.label}加成料理`)
+    .addOptions(
+      COOK_CATS.map((cat) =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(`${cat.label}加成料理`)
+          .setValue(cat.id)
           .setEmoji(cat.emoji)
-          .setStyle(current === cat.id ? ButtonStyle.Primary : ButtonStyle.Secondary)
-          .setDisabled(current === cat.id),
-      );
-    }
-    rows.push(row);
-  }
-  return rows;
+          .setDefault(cat.id === current),
+      ),
+    );
+  return new ActionRowBuilder().addComponents(select);
 }
 
 function renderRecipe(container, { id, recipe }, profile, userId) {
@@ -154,7 +156,7 @@ async function buildWorkshopView(client, { userId, guildId, displayName, categor
 
   const cat = COOK_CATS.find((c) => c.id === category);
   const container = new ContainerBuilder().setAccentColor(0xe67e22);
-  for (const row of tabRows(userId, category)) container.addActionRowComponents(row);
+  container.addActionRowComponents(tabSelectRow(userId, category));
   container
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
