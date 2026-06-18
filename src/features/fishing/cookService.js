@@ -52,6 +52,26 @@ function getFoodAtkBonus(profile, baseAtk = 0) {
   return bonus;
 }
 
+// Phase H+：取得食物 buff 對地下城 DEF 的加成（dungeon_def + all_boost × baseDef）
+function getFoodDefBonus(profile, baseDef = 0) {
+  let bonus = 0;
+  for (const b of getActiveFoodBuffs(profile)) {
+    if (b.type === "dungeon_def") bonus += Number(b.value) || 0;
+    if (b.type === "all_boost") bonus += Math.round(baseDef * (Number(b.value) || 0));
+  }
+  return bonus;
+}
+
+// Phase H+：取得食物 buff 對 HP 上限的加成（dungeon_hp_max + all_boost × 100）
+function getFoodHpMaxBonus(profile) {
+  let bonus = 0;
+  for (const b of getActiveFoodBuffs(profile)) {
+    if (b.type === "dungeon_hp_max") bonus += Number(b.value) || 0;
+    if (b.type === "all_boost") bonus += Math.round(100 * (Number(b.value) || 0));
+  }
+  return bonus;
+}
+
 // 取得食物 buff 對打工收入的倍率加成（work_income + all_boost）
 // 回傳 0.XX（額外加成量，不是最終倍率）
 function getFoodWorkBonus(profile) {
@@ -132,7 +152,8 @@ const FOOD_BUFF_ACTION_TYPES = {
   mine: ["mine_luck", "all_boost"],
   fish: ["fish_fortune", "all_boost"],
   work: ["work_income", "all_boost"],
-  dungeon: ["dungeon_atk", "all_boost"],
+  // Phase H+ 新增 dungeon_def / dungeon_hp_max 也吃進地下城分類
+  dungeon: ["dungeon_atk", "dungeon_def", "dungeon_hp_max", "all_boost"],
   farm: ["farm_yield", "all_boost"],
 };
 
@@ -149,6 +170,8 @@ function describeFoodBuff(b) {
   let desc;
   if (b.type === "work_income") desc = `打工收入 +${Math.round(b.value * 100)}%`;
   else if (b.type === "dungeon_atk") desc = `地下城 ATK +${Math.round(b.value)}`;
+  else if (b.type === "dungeon_def") desc = `地下城 DEF +${Math.round(b.value)}`;
+  else if (b.type === "dungeon_hp_max") desc = `地下城 HP 上限 +${Math.round(b.value)}`;
   else if (b.type === "mine_luck") desc = `挖礦幸運 +${Math.round(b.value * 100)}%`;
   else if (b.type === "all_boost") desc = `全屬性 +${Math.round(b.value * 100)}%`;
   else if (b.type === "fish_fortune")
@@ -407,6 +430,8 @@ module.exports = {
   getActiveFoodBuffs,
   getFoodLuckBonus,
   getFoodAtkBonus,
+  getFoodDefBonus,
+  getFoodHpMaxBonus,
   getFoodWorkBonus,
   getFoodFishBonus,
   getFoodFarmYieldBonus,

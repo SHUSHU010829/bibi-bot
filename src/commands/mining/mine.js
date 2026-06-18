@@ -80,10 +80,10 @@ function pickaxeDurabilityLine(pickaxe, durability, maxDurability) {
   const label = pickaxeLabel(pickaxe);
   const maxText = typeof maxDurability === "number" ? `/${maxDurability}` : "";
   if (typeof warn.critical === "number" && durability <= warn.critical) {
-    return `🚨 **鎬子快斷了！**\n${label} 只剩 **${durability}**${maxText} 次，再挖就會斷裂退回木鎬。\n-# 快去 \`/合成\` 一把新的、或到 \`/背包\` 用劣質磨鎬石補耐久！`;
+    return `🚨 **鎬子快斷了！**\n${label} 只剩 **${durability}**${maxText} 次，再挖就會斷裂退回木鎬。\n-# 快去 \`/合成\` 一把新的、或到 \`/背包\` 用劣質磨石補耐久！`;
   }
   if (typeof warn.low === "number" && durability <= warn.low) {
-    return `⚠️ **鎬子耐久偏低**\n${label} 剩 **${durability}**${maxText} 次\n-# 建議先去 \`/合成\` 備一把、或到 \`/背包\` 用劣質磨鎬石補耐久。`;
+    return `⚠️ **鎬子耐久偏低**\n${label} 剩 **${durability}**${maxText} 次\n-# 建議先去 \`/合成\` 備一把、或到 \`/背包\` 用劣質磨石補耐久。`;
   }
   return `🪓 **目前鎬子**\n${label}・耐久 ${durability}${maxText} 次`;
 }
@@ -371,9 +371,9 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
       const label = pickaxeLabel(result.pickaxeBefore);
       let line;
       if (typeof warn.critical === "number" && after <= warn.critical) {
-        line = `🚨 **鎬子快斷了！**\n${label} 只剩 **${after}** 次，再挖就會斷裂退回木鎬。快去 \`/合成\` 一把新的、或到 \`/背包\` 用劣質磨鎬石補耐久！`;
+        line = `🚨 **鎬子快斷了！**\n${label} 只剩 **${after}** 次，再挖就會斷裂退回木鎬。快去 \`/合成\` 一把新的、或到 \`/背包\` 用劣質磨石補耐久！`;
       } else if (typeof warn.low === "number" && after <= warn.low) {
-        line = `⚠️ **鎬子耐久偏低**\n${label} 剩 **${after}** 次，建議先去 \`/合成\` 備一把、或到 \`/背包\` 用劣質磨鎬石補耐久。`;
+        line = `⚠️ **鎬子耐久偏低**\n${label} 剩 **${after}** 次，建議先去 \`/合成\` 備一把、或到 \`/背包\` 用劣質磨石補耐久。`;
       } else {
         line = `**鎬子耐久**\n${label} 剩 ${after} 次`;
       }
@@ -547,7 +547,7 @@ async function dmPickaxeLowDurability(interaction, pickaxeBefore, durabilityAfte
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 趁還沒斷，到 `/合成` 再做一把、或到 `/背包` 用劣質磨鎬石補滿耐久。"
+        "-# 趁還沒斷，到 `/合成` 再做一把、或到 `/背包` 用劣質磨石補滿耐久。"
       )
     );
   const row = miningChannelButtonRow(interaction.guildId, "前往頻道補救");

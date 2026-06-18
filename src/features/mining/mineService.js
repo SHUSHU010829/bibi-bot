@@ -375,7 +375,7 @@ function getRodRepairCost(profile) {
   return cost;
 }
 
-// 使用一個劣質磨鎬石：補滿鎬子耐久到目前 pickaxe_max_durability，然後 max -10。
+// 使用一個劣質磨石：補滿鎬子耐久到目前 pickaxe_max_durability，然後 max -10。
 // max < 20 時拒用（避免降至 10 以下，讓玩家知道是最終次數）。
 async function useInferiorWhetstone(client, { userId, guildId }) {
   if (!mining?.enabled || !client.miningProfilesCollection) {
@@ -397,7 +397,7 @@ async function useInferiorWhetstone(client, { userId, guildId }) {
     return { ok: false, reason: "max_too_low", maxDurability: profile.pickaxe_max_durability };
   }
 
-  // 原子更新：補滿耐久到新 max（舊 max - 10），扣一顆磨鎬石
+  // 原子更新：補滿耐久到新 max（舊 max - 10），扣一顆劣質磨石
   // pipeline $set 內所有運算式都參照「更新前」的文件值。
   //
   // 舊存檔玩家 DB 文件可能沒有 pickaxe_max_durability 欄位（miningProfile.normalize
@@ -441,6 +441,103 @@ async function useInferiorWhetstone(client, { userId, guildId }) {
     durabilityAfter: newMax,
     maxAfter: newMax,
     inferiorLeft: (profile.whetstone_inferior_count || 0) - 1,
+  };
+}
+
+// Phase H+ 劣質磨石對武器：補滿武器耐久、武器 max -10、扣一顆劣質磨石。
+// max < 20 時拒用（同鎬子規則，避免上限掉到負值）。
+async function useInferiorWhetstoneOnWeapon(client, { userId, guildId }) {
+  if (!mining?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+  const profile = await getOrCreate(client, userId, guildId);
+  if ((profile.whetstone_inferior_count || 0) <= 0) return { ok: false, reason: "no_whetstone" };
+  if (!profile.weapon || profile.weapon === "fist") return { ok: false, reason: "no_weapon" };
+  if (typeof profile.weapon_max_durability !== "number") return { ok: false, reason: "no_weapon" };
+  if (profile.weapon_max_durability < 20) {
+    return { ok: false, reason: "max_too_low", maxDurability: profile.weapon_max_durability };
+  }
+
+  const fallbackMax = profile.weapon_max_durability;
+  const res = await client.miningProfilesCollection.updateOne(
+    {
+      userId,
+      guildId,
+      whetstone_inferior_count: { $gte: 1 },
+      weapon: { $ne: "fist" },
+    },
+    [
+      {
+        $set: {
+          weapon_max_durability: {
+            $add: [{ $ifNull: ["$weapon_max_durability", fallbackMax] }, -10],
+          },
+          weapon_durability: {
+            $add: [{ $ifNull: ["$weapon_max_durability", fallbackMax] }, -10],
+          },
+          whetstone_inferior_count: { $add: ["$whetstone_inferior_count", -1] },
+          updatedAt: "$$NOW",
+        },
+      },
+    ],
+  );
+
+  if (res.modifiedCount === 0) return { ok: false, reason: "retry" };
+  const newMax = profile.weapon_max_durability - 10;
+  return {
+    ok: true,
+    durabilityAfter: newMax,
+    maxAfter: newMax,
+    inferiorLeft: (profile.whetstone_inferior_count || 0) - 1,
+    weaponKey: profile.weapon,
+  };
+}
+
+// Phase H+ 劣質磨石對盾：補滿盾耐久、盾 max -10、扣一顆劣質磨石。
+async function useInferiorWhetstoneOnShield(client, { userId, guildId }) {
+  if (!mining?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+  const profile = await getOrCreate(client, userId, guildId);
+  if ((profile.whetstone_inferior_count || 0) <= 0) return { ok: false, reason: "no_whetstone" };
+  if (!profile.shield) return { ok: false, reason: "no_shield" };
+  if (typeof profile.shield_max_durability !== "number") return { ok: false, reason: "no_shield" };
+  if (profile.shield_max_durability < 20) {
+    return { ok: false, reason: "max_too_low", maxDurability: profile.shield_max_durability };
+  }
+
+  const fallbackMax = profile.shield_max_durability;
+  const res = await client.miningProfilesCollection.updateOne(
+    {
+      userId,
+      guildId,
+      whetstone_inferior_count: { $gte: 1 },
+      shield: { $ne: null },
+    },
+    [
+      {
+        $set: {
+          shield_max_durability: {
+            $add: [{ $ifNull: ["$shield_max_durability", fallbackMax] }, -10],
+          },
+          shield_durability: {
+            $add: [{ $ifNull: ["$shield_max_durability", fallbackMax] }, -10],
+          },
+          whetstone_inferior_count: { $add: ["$whetstone_inferior_count", -1] },
+          updatedAt: "$$NOW",
+        },
+      },
+    ],
+  );
+
+  if (res.modifiedCount === 0) return { ok: false, reason: "retry" };
+  const newMax = profile.shield_max_durability - 10;
+  return {
+    ok: true,
+    durabilityAfter: newMax,
+    maxAfter: newMax,
+    inferiorLeft: (profile.whetstone_inferior_count || 0) - 1,
+    shieldKey: profile.shield,
   };
 }
 
@@ -695,6 +792,8 @@ module.exports = {
   getWeaponRepairCost,
   getRodRepairCost,
   useInferiorWhetstone,
+  useInferiorWhetstoneOnWeapon,
+  useInferiorWhetstoneOnShield,
   useRepairTool,
   repairPickaxeWithMaterials,
   repairWeaponWithMaterials,

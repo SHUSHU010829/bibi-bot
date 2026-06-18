@@ -22,7 +22,7 @@ function recipeChoices() {
   return (craft?.recipes || []).map((r) => ({ name: r.name, value: r.id }));
 }
 
-// 裝備標籤：依類型取鎬子 / 武器 / 釣竿定義。
+// 裝備標籤：依類型取鎬子 / 武器 / 釣竿 / 盾定義。
 function gearLabel(type, id) {
   if (type === "weapon") {
     const d = (dungeon?.weapons || {})[id] || {};
@@ -31,6 +31,11 @@ function gearLabel(type, id) {
   if (type === "rod") {
     const d = (fishing?.rods || {})[id] || {};
     return `${d.emoji || "🎣"} ${d.name || id}`;
+  }
+  if (type === "shield") {
+    if (!id) return "🛡️ （未裝盾）";
+    const d = (dungeon?.shields || {})[id] || {};
+    return `${d.emoji || "🛡️"} ${d.name || id}`;
   }
   const d = (mining?.pickaxes || {})[id] || {};
   return `${d.emoji || "⛏️"} ${d.name || id}`;
@@ -134,15 +139,18 @@ module.exports = {
       const resultLabel = `${result.resultEmoji || ""} ${result.resultName}`.trim();
       const isWeapon = result.type === "weapon";
       const isRod = result.type === "rod";
+      const isShield = result.type === "shield";
       const isAppraisalTrigger = result.type === "stone_appraisal_trigger";
       const tail = isWeapon
         ? "-# 帶著武器去 /地下城 打怪吧！用 /裝備 查看裝備"
         : isRod
           ? "-# 帶著新釣竿去 /釣魚 吧！用 /裝備 查看裝備"
-          : isAppraisalTrigger
-            ? "-# 10 分鐘內按下方「立刻賭石」開出，過期就失效"
-            : "-# 用 /裝備 查看裝備，/挖礦 開挖！";
-      const accent = isWeapon ? 0xe67e22 : isRod ? 0x16a085 : 0x9b59b6;
+          : isShield
+            ? "-# 帶著盾去 /地下城 地下城面板挑樓層！盾在戰鬥中觸發格擋才扣耐久"
+            : isAppraisalTrigger
+              ? "-# 10 分鐘內按下方「立刻賭石」開出，過期就失效"
+              : "-# 用 /裝備 查看裝備，/挖礦 開挖！";
+      const accent = isWeapon ? 0xe67e22 : isRod ? 0x16a085 : isShield ? 0x95a5a6 : 0x9b59b6;
 
       const container = new ContainerBuilder()
         .setAccentColor(accent)

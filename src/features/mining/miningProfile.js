@@ -53,6 +53,25 @@ function defaultProfile(userId, guildId) {
     rod_max_durability: null,
     active_food_buffs: [],
     food_bag: [],
+    hp_max: dungeon?.hp?.baseMax ?? 100,
+    hp_current: dungeon?.hp?.baseMax ?? 100,
+    hp_updated_at: 0,
+    def: 0,
+    shield: null,
+    shield_durability: null,
+    shield_max_durability: null,
+    hp_potion_small: 0,
+    hp_potion_medium: 0,
+    hp_potion_large: 0,
+    floor_unlocks: {
+      mine:  { max_floor: 1, clears: {} },
+      ruins: { max_floor: 0, clears: {} },
+      ice:   { max_floor: 0, clears: {} },
+    },
+    mini_boss_kills: { mine: 0, ruins: 0, ice: 0 },
+    dragon_slayer_kills: 0,
+    dungeon_auto_potion: true,
+    dungeon_auto_potion_tier: "smallest",
     createdAt: new Date(),
   };
 }
@@ -79,7 +98,7 @@ function normalize(doc) {
   doc.pickaxe ??= "wood";
   if (doc.pickaxe_durability === undefined) doc.pickaxe_durability = null;
   // 回填 pickaxe_max_durability：舊文件若持有非木鎬但缺此欄位，從設定補齊
-  // 避免劣質磨鎬石「補滿到 max=null」把鎬子變磚。
+  // 避免劣質磨石「補滿到 max=null」把鎬子變磚。
   if (doc.pickaxe_max_durability === undefined || doc.pickaxe_max_durability === null) {
     if (doc.pickaxe && doc.pickaxe !== "wood" && typeof doc.pickaxe_durability === "number") {
       const configMax = mining?.pickaxes?.[doc.pickaxe]?.durability ?? null;
@@ -139,6 +158,48 @@ function normalize(doc) {
   }
   if (!Array.isArray(doc.active_food_buffs)) doc.active_food_buffs = [];
   if (!Array.isArray(doc.food_bag)) doc.food_bag = [];
+
+  // Phase H+ 地下城進階：HP / DEF / 盾 / 樓層解鎖
+  const hpBase = dungeon?.hp?.baseMax ?? 100;
+  if (typeof doc.hp_max !== "number") doc.hp_max = hpBase;
+  if (typeof doc.hp_current !== "number") doc.hp_current = doc.hp_max;
+  doc.hp_updated_at ??= 0;
+  if (typeof doc.def !== "number") doc.def = 0;
+  if (doc.shield === undefined) doc.shield = null;
+  if (doc.shield_durability === undefined) doc.shield_durability = null;
+  if (doc.shield_max_durability === undefined || doc.shield_max_durability === null) {
+    if (doc.shield && typeof doc.shield_durability === "number") {
+      const configMax = dungeon?.shields?.[doc.shield]?.durability ?? null;
+      doc.shield_max_durability = configMax != null
+        ? Math.max(doc.shield_durability, configMax)
+        : null;
+    } else {
+      doc.shield_max_durability = null;
+    }
+  }
+  doc.hp_potion_small ??= 0;
+  doc.hp_potion_medium ??= 0;
+  doc.hp_potion_large ??= 0;
+  doc.floor_unlocks = {
+    mine:  { max_floor: 1, clears: {}, ...(doc.floor_unlocks?.mine || {}) },
+    ruins: { max_floor: 0, clears: {}, ...(doc.floor_unlocks?.ruins || {}) },
+    ice:   { max_floor: 0, clears: {}, ...(doc.floor_unlocks?.ice || {}) },
+  };
+  for (const theme of ["mine", "ruins", "ice"]) {
+    if (!doc.floor_unlocks[theme].clears || typeof doc.floor_unlocks[theme].clears !== "object") {
+      doc.floor_unlocks[theme].clears = {};
+    }
+  }
+  doc.mini_boss_kills = { mine: 0, ruins: 0, ice: 0, ...(doc.mini_boss_kills || {}) };
+  doc.dragon_slayer_kills ??= 0;
+
+  // Phase H+ 自動藥水偏好：開關 + 用哪瓶優先
+  if (typeof doc.dungeon_auto_potion !== "boolean") doc.dungeon_auto_potion = true;
+  const VALID_TIERS = ["smallest", "largest", "small", "medium", "large"];
+  if (!VALID_TIERS.includes(doc.dungeon_auto_potion_tier)) {
+    doc.dungeon_auto_potion_tier = "smallest";
+  }
+
   return doc;
 }
 

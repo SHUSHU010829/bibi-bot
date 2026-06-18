@@ -41,8 +41,19 @@ function weaponLabel(profile) {
 }
 
 // 依情境抽一個突發事件（已套機率門檻）。回傳 def 或 null。
-function pickEncounter(context) {
-  const list = randomEncounters?.[context] || [];
+// Phase H+：地下城突發事件依當前主題過濾。
+// e.theme === null/undefined 表示任何主題都會觸發；
+// e.theme === "mine"/"ruins"/"ice" 表示只在該主題觸發。
+// 戰敗後過濾「HP 回復類」事件（避免死人被救活；C2 修正）。
+const HP_RESTORE_EFFECTS = new Set(["restore_hp", "restore_full", "gift_hp_potion"]);
+
+function pickEncounter(context, themeId = null, battleResult = null) {
+  const list = (randomEncounters?.[context] || []).filter((e) => {
+    if (e.theme && e.theme !== themeId) return false;
+    // 戰敗（HP=0）時跳過 HP 回復類事件
+    if (battleResult === "lose" && HP_RESTORE_EFFECTS.has(e.effect?.type)) return false;
+    return true;
+  });
   if (!list.length) return null;
   const weights = {};
   for (const e of list) weights[e.id] = e.weight || 0;
@@ -65,13 +76,18 @@ async function trigger(client, ctx) {
   if (!randomEncounters?.enabled) return null;
   if (!coll(client)) return null;
 
-  const chance =
-    context === "mining"
-      ? randomEncounters.miningChance
-      : randomEncounters.dungeonChance;
+  // Phase H+：地下城樓層可在 floors[].encounterRatePct 覆寫全域機率（1F-2F 20%、3F-4F 25%、5F 15%）
+  let chance;
+  if (context === "mining") {
+    chance = randomEncounters.miningChance;
+  } else if (typeof ctx.encounterRatePct === "number") {
+    chance = ctx.encounterRatePct / 100;
+  } else {
+    chance = randomEncounters.dungeonChance;
+  }
   if (!(Math.random() < (chance || 0))) return null;
 
-  const enc = pickEncounter(context);
+  const enc = pickEncounter(context, ctx.themeId || null, ctx.battleResult || null);
   if (!enc) return null;
 
   const eff = enc.effect || {};
@@ -258,7 +274,7 @@ async function trigger(client, ctx) {
       case "restore_stamina":
       case "lose_stamina": {
         const max =
-          baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 10);
+          baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 12);
         const cur =
           typeof baseResult?.stamina === "number" ? baseResult.stamina : max;
         const delta =
@@ -269,6 +285,17 @@ async function trigger(client, ctx) {
         const set = { stamina: next, updatedAt: new Date() };
         if (next >= max) set.stamina_updated_at = 0;
         else if (cur >= max) set.stamina_updated_at = Date.now();
+
+        // Phase H+ lose_stamina 可選附加 hp 扣血（陷阱 / 毒霧用）
+        if (eff.type === "lose_stamina" && eff.hp > 0) {
+          const profile = await getOrCreate(client, userId, guildId);
+          const hpCur = typeof profile.hp_current === "number" ? profile.hp_current : 100;
+          const hpAfter = Math.max(0, hpCur - eff.hp);
+          set.hp_current = hpAfter;
+          set.hp_updated_at = hpAfter > 0 ? Date.now() : 0;
+          lines.push(`❤️ HP -${hpCur - hpAfter}（${hpAfter}）`);
+        }
+
         await coll(client).updateOne({ userId, guildId }, { $set: set });
         patch.staminaAfter = next;
         const diff = next - cur;
@@ -278,8 +305,101 @@ async function trigger(client, ctx) {
         break;
       }
 
+      case "restore_hp": {
+        const profile = await getOrCreate(client, userId, guildId);
+        const hpService = require("../dungeon/hpService");
+        const { getFoodHpMaxBonus } = require("../fishing/cookService");
+        const level = await (async () => {
+          if (!client?.userLevelsCollection) return 0;
+          const doc = await client.userLevelsCollection
+            .findOne({ userId, guildId })
+            .catch(() => null);
+          if (!doc) return 0;
+          if (typeof doc.level === "number") return doc.level;
+          try {
+            const { getLevelProgress } = require("../../utils/levelMath");
+            return getLevelProgress(doc.totalXp || 0).level || 0;
+          } catch { return 0; }
+        })();
+        const hpMaxV = hpService.hpMax(level, { food: getFoodHpMaxBonus(profile) });
+        const cur = typeof profile.hp_current === "number" ? profile.hp_current : hpMaxV;
+        const amount = Math.max(0, eff.amount || 0);
+        const next = Math.min(hpMaxV, cur + amount);
+        await coll(client).updateOne(
+          { userId, guildId },
+          {
+            $set: {
+              hp_current: next,
+              hp_updated_at: next >= hpMaxV ? 0 : Date.now(),
+              updatedAt: new Date(),
+            },
+          },
+        );
+        lines.push(`❤️ HP +${next - cur}（${next}/${hpMaxV}）`);
+        break;
+      }
+
+      case "restore_full": {
+        // 隱士庇護：滿 HP + 體力 +N
+        const profile = await getOrCreate(client, userId, guildId);
+        const hpService = require("../dungeon/hpService");
+        const { getFoodHpMaxBonus } = require("../fishing/cookService");
+        const level = await (async () => {
+          if (!client?.userLevelsCollection) return 0;
+          const doc = await client.userLevelsCollection
+            .findOne({ userId, guildId })
+            .catch(() => null);
+          if (!doc) return 0;
+          if (typeof doc.level === "number") return doc.level;
+          try {
+            const { getLevelProgress } = require("../../utils/levelMath");
+            return getLevelProgress(doc.totalXp || 0).level || 0;
+          } catch { return 0; }
+        })();
+        const hpMaxV = hpService.hpMax(level, { food: getFoodHpMaxBonus(profile) });
+        const max = baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 12);
+        const cur = typeof baseResult?.stamina === "number" ? baseResult.stamina : max;
+        const staPlus = eff.staminaPlus || 1;
+        const nextSta = Math.min(max, cur + staPlus);
+        const set = {
+          hp_current: hpMaxV,
+          hp_updated_at: 0,
+          stamina: nextSta,
+          updatedAt: new Date(),
+        };
+        if (nextSta >= max) set.stamina_updated_at = 0;
+        else if (cur >= max) set.stamina_updated_at = Date.now();
+        await coll(client).updateOne({ userId, guildId }, { $set: set });
+        patch.staminaAfter = nextSta;
+        lines.push(`❤️ HP 補滿（${hpMaxV}/${hpMaxV}）`);
+        if (nextSta > cur) lines.push(`🔋 體力 +${nextSta - cur}（${nextSta}/${max}）`);
+        break;
+      }
+
+      case "gift_hp_potion": {
+        // 戰士遺骸：贈送 1 瓶生命藥水（依 tier）
+        const tier = (eff.tier === "medium" || eff.tier === "large") ? eff.tier : "small";
+        const field = `hp_potion_${tier}`;
+        const qty = Math.max(1, eff.qty || 1);
+        const stackMax = dungeon?.hpPotions?.[tier]?.stackMax || 99;
+        const profile = await getOrCreate(client, userId, guildId);
+        const owned = profile[field] || 0;
+        const give = Math.min(qty, Math.max(0, stackMax - owned));
+        if (give > 0) {
+          await coll(client).updateOne(
+            { userId, guildId },
+            { $inc: { [field]: give }, $set: { updatedAt: new Date() } },
+          );
+          const tierName = dungeon?.hpPotions?.[tier]?.name || `生命藥水（${tier}）`;
+          lines.push(`💊 ${tierName} ×${give}`);
+        } else {
+          lines.push("你的生命藥水已達持有上限，這次沒拿到。");
+        }
+        break;
+      }
+
       case "gamble_coins": {
-        // 詛咒祭壇：依 winChance 賭一把，勝得金幣，敗扣體力
+        // 詛咒祭壇 / 礦車失控等：依 winChance 賭一把，勝得金幣，敗扣體力（+ 可選 HP）
         const won = Math.random() < (eff.winChance ?? 0.6);
         if (won) {
           const coins = randInt(eff.winMin ?? 300, eff.winMax ?? 700);
@@ -292,23 +412,38 @@ async function trigger(client, ctx) {
             member,
             meta: { encounter: enc.id, result: "win" },
           });
-          lines.push(`⚖️ 你鼓起勇氣打開寶箱，奪得 +${coins.toLocaleString()} ${COIN_EMOJI}！`);
+          lines.push(`⚖️ 你鼓起勇氣抓住機會，奪得 +${coins.toLocaleString()} ${COIN_EMOJI}！`);
         } else {
-          const max = baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 10);
+          const max = baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 12);
           const cur = typeof baseResult?.stamina === "number" ? baseResult.stamina : max;
-          const lose = eff.loseStamina || 1;
+          const lose = eff.loseStamina || 0;
           const next = clamp(cur - lose, 0, max);
           const set = { stamina: next, updatedAt: new Date() };
-          if (cur >= max) set.stamina_updated_at = Date.now();
+          if (cur >= max && lose > 0) set.stamina_updated_at = Date.now();
+
+          // Phase H+：可選 loseHp（礦車失控撞傷）
+          if (eff.loseHp > 0) {
+            const profile = await getOrCreate(client, userId, guildId);
+            const hpCur = typeof profile.hp_current === "number" ? profile.hp_current : 100;
+            const hpAfter = Math.max(0, hpCur - eff.loseHp);
+            set.hp_current = hpAfter;
+            set.hp_updated_at = hpAfter > 0 ? Date.now() : 0;
+            lines.push(`💥 你被撞傷，HP -${hpCur - hpAfter}（${hpAfter}）`);
+          }
+
           await coll(client).updateOne({ userId, guildId }, { $set: set });
           patch.staminaAfter = next;
-          lines.push(`⚖️ 你伸手觸碰寶箱，機關觸發！損失 ${lose} 點體力。`);
+          if (lose > 0) {
+            lines.push(`⚖️ 機關觸發！損失 ${lose} 點體力。`);
+          } else if (!eff.loseHp) {
+            lines.push("⚖️ 機關觸發！但沒造成實際損失，下次注意點。");
+          }
         }
         break;
       }
 
       case "gift_whetstone_inferior": {
-        // 遺忘的鍛爐：贈送一塊劣質磨鎬石（遵守持有上限 20）
+        // 遺忘的鍛爐：贈送一塊劣質磨石（遵守持有上限 20）
         const WHETSTONE_INFERIOR_MAX = 20;
         const profile = await getOrCreate(client, userId, guildId);
         const owned = profile.whetstone_inferior_count || 0;
@@ -318,9 +453,9 @@ async function trigger(client, ctx) {
             { userId, guildId },
             { $inc: { whetstone_inferior_count: give }, $set: { updatedAt: new Date() } }
           );
-          lines.push(`🪨 劣質磨鎬石 ×${give}（可在 /背包 使用）`);
+          lines.push(`🪨 劣質磨石 ×${give}（可在 /背包 使用）`);
         } else {
-          lines.push("你的劣質磨鎬石已達持有上限，這次沒拿到。");
+          lines.push("你的劣質磨石已達持有上限，這次沒拿到。");
         }
         break;
       }

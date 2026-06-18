@@ -113,7 +113,7 @@ function resolveStamina(profile, max = staminaMax()) {
   return { stamina, updatedAt, nextRegenAt: updatedAt + regenMs };
 }
 
-// 立即恢復體力（體力藥水用）。回傳恢復前後數值；已滿時 full=true 不寫庫。
+// 立即恢復體力（精力藥水用）。回傳恢復前後數值；已滿時 full=true 不寫庫。
 async function restoreStamina(client, { userId, guildId, member, amount }) {
   if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
   const club = await getMemberClub(client, userId, guildId);
@@ -149,7 +149,7 @@ async function restoreStamina(client, { userId, guildId, member, amount }) {
   };
 }
 
-// 使用一瓶體力藥水：扣 1 罐 + 補體力。庫存或體力滿時各自回傳對應 reason。
+// 使用一瓶精力藥水：扣 1 罐 + 補體力。庫存或體力滿時各自回傳對應 reason。
 async function useStaminaPotion(client, { userId, guildId, member }) {
   if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
@@ -612,8 +612,591 @@ async function rollbackDungeon(client, { userId, guildId, username, member }, re
   }
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Phase H+：HP 多回合戰鬥入口（與既有 enterDungeon 並存，玩家用 subcommand 選擇）。
+// ────────────────────────────────────────────────────────────────────────────
+
+const battleEngine = require("../dungeon/battleEngine");
+const floorService = require("../dungeon/floorService");
+const hpService = require("../dungeon/hpService");
+const { getFoodDefBonus, getFoodHpMaxBonus } = require("../fishing/cookService");
+const { ObjectId } = require("mongodb");
+
+function pickMonsterForFloor(theme, floor) {
+  const f = (dungeon?.floors || []).find((x) => x.floor === floor);
+  if (!f) return null;
+  // 主題影響怪物池：themeMonsterOverrides[theme][floor] 優先，沒設定 fallback 到 floor.monsterPool
+  const overrides = dungeon?.themeMonsterOverrides?.[theme];
+  const pool = (overrides && overrides[String(floor)]) || f.monsterPool || [];
+  const id = pool[Math.floor(Math.random() * pool.length)];
+  const def = dungeon?.monsterDefs?.[id];
+  if (!def) return { id, name: id, emoji: "👾" };
+  const hp = randInt(f.monsterHpRange?.[0] || 100, f.monsterHpRange?.[1] || 200);
+  const atk = randInt(f.monsterAtkRange?.[0] || 10, f.monsterAtkRange?.[1] || 15);
+  return { id, name: def.name, emoji: def.emoji, hp, atk, skills: def.skills || [], def: 0 };
+}
+
+async function getPlayerLevel(client, userId, guildId) {
+  if (!client?.userLevelsCollection) return 0;
+  const doc = await client.userLevelsCollection
+    .findOne({ userId, guildId })
+    .catch(() => null);
+  if (!doc) return 0;
+  if (typeof doc.level === "number") return doc.level;
+  try {
+    const { getLevelProgress } = require("../../utils/levelMath");
+    return getLevelProgress(doc.totalXp || 0).level || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// 進入 HP 多回合戰鬥。回傳給呼叫端（指令層）一份完整結果，含戰鬥日誌。
+// 體力 / 武器耐久 / 盾耐久 / HP / 戰利品 / DB 寫入 / event / quest 一次處理完。
+async function enterDungeonHp(client, {
+  userId, guildId, member, username,
+  themeId = "mine", floor = 1,
+  isMiniBoss = false,
+  allowOverflow = false,
+}) {
+  if (!dungeon?.enabled) return { ok: false, reason: "disabled" };
+  if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
+
+  const club = await getMemberClub(client, userId, guildId);
+  const staMaxV = staminaMax(member, club);
+  const level = await getPlayerLevel(client, userId, guildId);
+  const profile = await getOrCreate(client, userId, guildId);
+
+  // mini-BOSS 路徑：解鎖檢查走 floorService.miniBossUnlockState；非樓層解鎖。
+  let miniBossDef = null;
+  let f;
+  if (isMiniBoss) {
+    const mbState = floorService.miniBossUnlockState(profile, level, themeId);
+    if (!mbState.unlocked) {
+      return { ok: false, reason: "mini_boss_locked", miniBossState: mbState, level };
+    }
+    miniBossDef = mbState.miniBoss;
+    // 體力 / 武器耐久消耗依 mini-BOSS def，無 prereqClears 更新
+    f = {
+      floor: 5,
+      name: miniBossDef.name,
+      emoji: miniBossDef.emoji || "👹",
+      staminaCost: miniBossDef.staminaCost || 3,
+      weaponDurabilityCost: miniBossDef.weaponDurabilityCost || 4,
+      rewardMultiplier: 4.0,
+      encounterRatePct: 0, // mini-BOSS 不觸發隨機事件，避免戲劇性失焦
+      monsterPool: [],
+    };
+  } else {
+    // 1) 解鎖檢查（樓層、主題）— 失敗回完整原因供 UX 顯示
+    const floorState = floorService.floorUnlockState(profile, level, themeId, floor);
+    if (!floorState.unlocked) {
+      return { ok: false, reason: "floor_locked", floorState, level };
+    }
+    f = floorState.floor;
+  }
+
+  // 2) 體力檢查
+  const st = resolveStamina(profile, staMaxV);
+  const staCost = f.staminaCost || 1;
+  if (st.stamina < staCost) {
+    return {
+      ok: false,
+      reason: "no_stamina",
+      nextRegenAt: st.nextRegenAt,
+      max: staMaxV,
+      staminaBonus: staminaBonus(member),
+      potionCount: profile.stamina_potion_count || 0,
+      staCost,
+    };
+  }
+
+  // 3) 背包檢查（戰利品掉到礦會折金幣，但封頂時還是先警告一次）
+  const cap = backpackCapacity(profile, mining);
+  const used = backpackUsed(profile);
+  if (used >= cap && !allowOverflow) {
+    return { ok: false, reason: "backpack_full", used, cap };
+  }
+
+  // 4) 組玩家戰鬥屬性（食物 + 世界事件 + 公會 buff 全部疊上）
+  const hpMaxV = hpService.hpMax(level, {
+    food: getFoodHpMaxBonus(profile),
+    guild: clubBuildingPct(club, "dungeon_hp_max"), // 公會訓練場若有此 buff（暫無，留 hook）
+    pet: 0, // Phase H 寵物 hp_max bonus 留 hook
+  }) + (worldEventPct("dungeon_hp_max") || 0);
+  const hpSt = hpService.resolveHp(profile, hpMaxV);
+  const dmgPct = clubBuildingPct(club, "dungeon_damage_pct") + worldEventPct("dungeon_damage_pct");
+  const baseAtk = playerAtk(profile);
+  const atk = Math.floor(baseAtk * (100 + dmgPct) / 100);
+
+  const weapons = dungeon?.weapons || {};
+  const wdef = weapons[profile.weapon] || weapons.fist || {};
+  const shields = dungeon?.shields || {};
+  const sdef = shields[profile.shield] || {};
+
+  const critPct = clubBuildingPct(club, "crit_rate_pct");
+  const critRate = (wdef.critRate || 0) + (critPct / 100);
+  const def =
+    (wdef.def || 0) +
+    (sdef.def || 0) +
+    getFoodDefBonus(profile, (wdef.def || 0) + (sdef.def || 0)) +
+    (worldEventPct("dungeon_def") || 0); // 世界事件「鋼鐵防線」
+
+  let monster;
+  let miniBossArg = null;
+  if (isMiniBoss && miniBossDef) {
+    monster = {
+      id: miniBossDef.id,
+      name: miniBossDef.name,
+      emoji: miniBossDef.emoji || "👹",
+      hp: miniBossDef.hp,
+      atk: miniBossDef.atk,
+      skills: [],
+      def: 0,
+    };
+    miniBossArg = {
+      phase2HpRatio: miniBossDef.phase2HpRatio,
+      phase2AtkMult: miniBossDef.phase2AtkMult,
+      armorTurns: miniBossDef.armorTurns,
+      paralyzeChance: miniBossDef.paralyzeChance,
+    };
+  } else {
+    monster = pickMonsterForFloor(themeId, floor);
+    if (!monster) return { ok: false, reason: "no_monster" };
+  }
+
+  // 5) 跑戰鬥引擎
+  const battle = battleEngine.simulate({
+    player: {
+      atk,
+      def,
+      critRate,
+      hp_max: hpMaxV,
+      hp_current: hpSt.hp,
+      weapon: profile.weapon,
+      shield: profile.shield,
+      shield_durability: profile.shield_durability || 0,
+      potions: {
+        small: profile.hp_potion_small || 0,
+        medium: profile.hp_potion_medium || 0,
+        large: profile.hp_potion_large || 0,
+      },
+      petType: "none", // Phase H 寵物接上後改傳 petResolver.getCombatPetType(...)
+      autoPotion: profile.dungeon_auto_potion !== false,
+      potionTier: profile.dungeon_auto_potion_tier || "smallest",
+    },
+    monster,
+    miniBoss: miniBossArg,
+  });
+
+  const won = battle.result === "win";
+
+  // 6) 武器耐久（按樓層階梯扣，與既有同模式）
+  let weaponBroke = false;
+  let weaponDurabilityAfter = null;
+  let weaponDurabilityWarnCrossed = null;
+  const weaponBefore = profile.weapon;
+  const wdurCost = f.weaponDurabilityCost || 1;
+  const hasWeaponDurability =
+    profile.weapon !== "fist" && typeof profile.weapon_durability === "number";
+
+  // 7) 戰利品（僅勝利時，套樓層倍率）
+  let loot = { id: "nothing", kind: "nothing" };
+  let coinsGained = 0;
+  let oreGained = null;
+  let oreOverflowToCoins = false;
+  let legendaryGained = 0;
+  let potionGained = 0;
+  let ticketGained = 0;
+  let ticketOverflowToCoins = false;
+  let slimeGained = 0;
+  // C1：把這兩個變數提到 outer scope（原本 var 在分支裡 hoist，雖能跑但 ESLint 會 warn）
+  let floorEvents = [];
+  let deathDrop = null;
+  let seedGained = null;
+
+  const inc = { dungeon_count: 1 };
+  const set = {
+    stamina: st.stamina - staCost,
+    stamina_updated_at: st.stamina >= staMaxV ? Date.now() : st.updatedAt,
+    hp_current: Math.max(0, battle.playerEnd.hp_current),
+    hp_updated_at: battle.playerEnd.hp_current >= hpMaxV ? 0 : Date.now(),
+    updatedAt: new Date(),
+  };
+
+  // 盾耐久：戰鬥中扣的次數已在 battle.playerEnd.shield_durability
+  if (profile.shield && typeof profile.shield_durability === "number") {
+    set.shield_durability = Math.max(0, battle.playerEnd.shield_durability);
+  }
+
+  // 藥水：戰鬥中自動使用的扣量寫回
+  if (battle.playerEnd.potions.small !== profile.hp_potion_small) {
+    set.hp_potion_small = battle.playerEnd.potions.small;
+  }
+  if (battle.playerEnd.potions.medium !== profile.hp_potion_medium) {
+    set.hp_potion_medium = battle.playerEnd.potions.medium;
+  }
+  if (battle.playerEnd.potions.large !== profile.hp_potion_large) {
+    set.hp_potion_large = battle.playerEnd.potions.large;
+  }
+
+  if (hasWeaponDurability) {
+    const before = profile.weapon_durability;
+    weaponDurabilityAfter = before - wdurCost;
+    if (weaponDurabilityAfter <= 0) {
+      weaponBroke = true;
+      weaponDurabilityAfter = null;
+      set.weapon = "fist";
+      set.weapon_durability = null;
+    } else {
+      inc.weapon_durability = -wdurCost;
+      const warn = dungeon?.durabilityWarn || {};
+      if (typeof warn.critical === "number" && before > warn.critical && weaponDurabilityAfter <= warn.critical) {
+        weaponDurabilityWarnCrossed = "critical";
+      } else if (typeof warn.low === "number" && before > warn.low && weaponDurabilityAfter <= warn.low) {
+        weaponDurabilityWarnCrossed = "low";
+      }
+    }
+  }
+
+  if (won) {
+    const legendaryDropPct = worldEventPct("dungeon_legendary_drop_pct");
+    loot = rollLoot(profile, legendaryDropPct);
+    const kind = loot.kind || loot.id;
+    const mult = f.rewardMultiplier || 1;
+
+    if (kind === "ore" || loot.id === "ore_fragment") {
+      const oreKey = loot.ore || "iron";
+      const qty = Math.max(1, Math.floor((loot.qty || 1) * mult));
+      const space = Math.max(0, cap - used);
+      if (space >= qty) {
+        inc[`backpack.${oreKey}`] = (inc[`backpack.${oreKey}`] || 0) + qty;
+        inc[`lifetime_ore.${oreKey}`] = (inc[`lifetime_ore.${oreKey}`] || 0) + qty;
+        oreGained = { ore: oreKey, qty };
+      } else {
+        const price = mining?.ores?.[oreKey]?.price || 0;
+        coinsGained += price * qty;
+        oreOverflowToCoins = true;
+        oreGained = { ore: oreKey, qty };
+      }
+    } else if (kind === "coins") {
+      const lo = loot.minCoins ?? 150;
+      const hi = loot.maxCoins ?? 300;
+      coinsGained += Math.floor(randInt(lo, hi) * mult);
+    } else if (kind === "fragment" || loot.id === "legendary_fragment") {
+      legendaryGained = loot.qty || 1;
+      inc.legendary_fragments = (inc.legendary_fragments || 0) + legendaryGained;
+    } else if (kind === "luck_potion") {
+      potionGained = loot.qty || 1;
+      inc.luck_potion_uses = (inc.luck_potion_uses || 0) + potionGained;
+    } else if (kind === "cd_ticket") {
+      const owned = profile.cd_ticket_count || 0;
+      const want = loot.qty || 1;
+      ticketGained = Math.min(want, Math.max(0, CD_TICKET_MAX - owned));
+      if (ticketGained > 0) {
+        inc.cd_ticket_count = (inc.cd_ticket_count || 0) + ticketGained;
+      }
+      const overflow = want - ticketGained;
+      if (overflow > 0) {
+        coinsGained += overflow * cdTicketCoinValue();
+        ticketOverflowToCoins = true;
+      }
+    } else if (kind === "slime") {
+      slimeGained = loot.qty || 1;
+      inc["backpack.monster_slime"] = (inc["backpack.monster_slime"] || 0) + slimeGained;
+    } else if (kind === "seed") {
+      const seedKey = loot.seedKey;
+      const qty = loot.qty || 1;
+      if (seedKey) {
+        seedGained = { seedKey, qty };
+        inc[`seed_bag.${seedKey}`] = (inc[`seed_bag.${seedKey}`] || 0) + qty;
+      }
+    }
+
+    if (isMiniBoss) {
+      // mini-BOSS 必掉 ≥ 1 傳說碎片 + 屠龍累積 + 主題擊殺
+      // C3 修正：如果 loot 已經給 1 個碎片就不再額外 +1，否則補到 1（避免雙計）
+      if (legendaryGained < 1) {
+        const need = 1 - legendaryGained;
+        legendaryGained = 1;
+        inc.legendary_fragments = (inc.legendary_fragments || 0) + need;
+      }
+      inc[`mini_boss_kills.${themeId}`] = (inc[`mini_boss_kills.${themeId}`] || 0) + 1;
+      inc.dragon_slayer_kills = (inc.dragon_slayer_kills || 0) + 1;
+      // floorEvents 已預設 []
+    } else {
+      // 樓層通關推進
+      const upd = floorService.buildClearedUpdate(profile, themeId, floor);
+      for (const [k, v] of Object.entries(upd.inc)) {
+        inc[k] = (inc[k] || 0) + v;
+      }
+      Object.assign(set, upd.set);
+      floorEvents = upd.events;
+    }
+  } else {
+    // 失敗：25% 機率隨機掉 1 個非工具類道具（魚/礦/作物等，不掉裝備）
+    const dropChance = dungeon?.hp?.deathDropChance ?? 0.25;
+    if (Math.random() < dropChance) {
+      const candidates = [];
+      const bp = profile.backpack || {};
+      for (const k of ["stone", "coal", "iron", "gold", "diamond", "monster_slime"]) {
+        if ((bp[k] || 0) > 0) candidates.push({ kind: "ore", key: k });
+      }
+      const vb = profile.veggie_bag || {};
+      for (const k of ["carrot", "corn", "strawberry", "black_rose"]) {
+        if ((vb[k] || 0) > 0) candidates.push({ kind: "veggie", key: k });
+      }
+      const fb = profile.fish_bag || {};
+      for (const k of ["small_fish", "crucian", "shark", "octopus", "lava_fish"]) {
+        if ((fb[k] || 0) > 0) candidates.push({ kind: "fish", key: k });
+      }
+      if (candidates.length) {
+        const pick = candidates[Math.floor(Math.random() * candidates.length)];
+        const path = pick.kind === "ore" ? "backpack" : pick.kind === "veggie" ? "veggie_bag" : "fish_bag";
+        inc[`${path}.${pick.key}`] = (inc[`${path}.${pick.key}`] || 0) - 1;
+        deathDrop = { kind: pick.kind, key: pick.key, qty: 1 };
+      }
+    }
+  }
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: inc, $set: set },
+  );
+
+  let balance = null;
+  let coinsGrantedTotal = coinsGained;
+  if (coinsGained > 0) {
+    const grant = await grantCoins(client, {
+      userId, guildId, username,
+      amount: coinsGained,
+      source: "dungeon",
+      member,
+      meta: { theme: themeId, floor, monster: monster.name, overflow: oreOverflowToCoins || undefined },
+    });
+    balance = grant?.doc?.totalCoins ?? null;
+    if (grant?.granted) coinsGrantedTotal = grant.granted;
+  }
+
+  // 戰鬥紀錄寫入 DungeonRuns（給玩家查紀錄 / mini-BOSS milestone）
+  const runId = new ObjectId().toString();
+  if (client.dungeonRunsCollection) {
+    // started_at / ended_at 改存 BSON Date（原本 number 會讓 connectDb.js
+    // 的 dungeon_runs_ttl_30d TTL 索引靜默失效，資料累積不會自動清）
+    const endedAt = new Date();
+    const startedAt = new Date(endedAt.getTime() - battle.turns * 1000); // 估算
+    client.dungeonRunsCollection.insertOne({
+      run_id: runId,
+      user_id: userId,
+      guild_id: guildId,
+      theme: themeId,
+      floor,
+      monster_id: monster.id,
+      result: battle.result,
+      battle_log: battle.log.slice(0, 100),
+      damage_dealt: battle.damageDealt,
+      damage_taken: battle.damageTaken,
+      stamina_cost: staCost,
+      pet_id: null,
+      is_milestone: !!isMiniBoss, // mini-BOSS 紀念紀錄不走 30 天 TTL
+      rewards: { coinsGained: coinsGrantedTotal, oreGained, legendaryGained, slimeGained, seedGained },
+      started_at: startedAt,
+      ended_at: endedAt,
+    }).catch((e) => console.log(`[WARN] DungeonRuns insert: ${e.message}`.yellow));
+  }
+
+  const result = {
+    ok: true,
+    runId,
+    theme: themeId,
+    floor,
+    floorName: f.name,
+    isMiniBoss,
+    // H7：mini-BOSS 勝利後算屠龍累積（含本次擊殺）
+    dragonSlayerTotal: isMiniBoss && won
+      ? (profile.dragon_slayer_kills || 0) + 1
+      : null,
+    floorEmoji: f.emoji,
+    won,
+    battleResult: battle.result,
+    turns: battle.turns,
+    log: battle.log,
+    monster,
+    atk,
+    def,
+    critRate,
+    hpBefore: hpSt.hp,
+    hpAfter: battle.playerEnd.hp_current,
+    hpMax: hpMaxV,
+    damageDealt: battle.damageDealt,
+    damageTaken: battle.damageTaken,
+    critCount: battle.critCount,
+    blockCount: battle.blockCount,
+    shieldBefore: profile.shield_durability,
+    shieldAfter: battle.playerEnd.shield_durability,
+    potionsAfter: battle.playerEnd.potions,
+    staminaBefore: st.stamina,
+    staminaAfter: st.stamina - staCost,
+    staminaMax: staMaxV,
+    staminaBonus: staminaBonus(member),
+    staminaCost: staCost,
+    weaponBefore,
+    weaponBroke,
+    weaponDurabilityAfter,
+    weaponDurabilityWarnCrossed,
+    weaponDurabilityCost: wdurCost,
+    loot,
+    coinsGained: coinsGrantedTotal,
+    coinsBase: coinsGained,
+    oreGained,
+    oreOverflowToCoins,
+    legendaryGained,
+    potionGained,
+    ticketGained,
+    ticketOverflowToCoins,
+    slimeGained,
+    seedGained,
+    deathDrop,
+    floorEvents,
+    balance,
+    dungeonCount: (profile.dungeon_count || 0) + 1,
+    foodBuffLines: formatFoodBuffLines(profile, "dungeon"),
+  };
+
+  // 事件 / 世界事件
+  if (won) {
+    require("../world_event/worldEventService")
+      .rollTrigger(client, "dungeon_clear", { theme: themeId, floor })
+      .catch(() => {});
+  }
+
+  bus.emit("dungeon.cleared", {
+    userId, guildId,
+    won,
+    theme: themeId,
+    floor,
+    monster: monster.name,
+    dungeonCount: result.dungeonCount,
+  });
+
+  for (const ev of result.floorEvents) {
+    bus.emit("dungeon.floor_unlocked", { userId, guildId, theme: ev.theme, floor: ev.floor });
+  }
+
+  if (won && isMiniBoss) {
+    const killCount = ((profile.mini_boss_kills || {})[themeId] || 0) + 1;
+    bus.emit("dungeon.mini_boss_defeated", { userId, guildId, theme: themeId, killCount });
+  }
+
+  if (won) {
+    if (oreGained?.qty > 0 && !oreOverflowToCoins) {
+      bus.emit("item.gained", { userId, guildId, itemType: "ore", itemId: oreGained.ore, qty: oreGained.qty, source: "dungeon" });
+    }
+    if (legendaryGained > 0) {
+      bus.emit("item.gained", { userId, guildId, itemType: "fragment", itemId: "legendary_fragment", qty: legendaryGained, source: "dungeon" });
+    }
+    if (potionGained > 0) {
+      bus.emit("item.gained", { userId, guildId, itemType: "potion", itemId: "luck_potion", qty: potionGained, source: "dungeon" });
+    }
+    if (ticketGained > 0) {
+      bus.emit("item.gained", { userId, guildId, itemType: "ticket", itemId: "cd_ticket", qty: ticketGained, source: "dungeon" });
+    }
+    if (slimeGained > 0) {
+      bus.emit("item.gained", { userId, guildId, itemType: "monster_drop", itemId: "monster_slime", qty: slimeGained, source: "dungeon" });
+    }
+    if (seedGained?.qty > 0) {
+      bus.emit("item.gained", { userId, guildId, itemType: "seed", itemId: seedGained.seedKey, qty: seedGained.qty, source: "dungeon" });
+    }
+  }
+
+  // 突發事件（依樓層 encounterRatePct 觸發）：戰後寫庫已完成，事件再對 HP / 體力 / 庫存做變動
+  const enc = await encounterService
+    .trigger(client, {
+      context: "dungeon",
+      userId,
+      guildId,
+      member,
+      username,
+      baseResult: {
+        ...result,
+        stamina: result.staminaAfter,
+        staminaMax: result.staminaMax,
+      },
+      encounterRatePct: f.encounterRatePct,
+      themeId,
+      battleResult: battle.result, // C2: 戰敗時略過 HP 回復類事件
+    })
+    .catch(() => null);
+  if (enc) {
+    if (typeof enc.patch?.staminaAfter === "number") {
+      result.staminaAfter = enc.patch.staminaAfter;
+    }
+    result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body };
+    if (enc.diamondGained > 0) result.encounterDiamond = enc.diamondGained;
+  }
+
+  return result;
+}
+
+// 查 HP 狀態（給 /地下城 狀態、entry 面板用）
+async function getDungeonStatus(client, { userId, guildId, member }) {
+  const club = await getMemberClub(client, userId, guildId);
+  const staMaxV = staminaMax(member, club);
+  const level = await getPlayerLevel(client, userId, guildId);
+  const profile = await getOrCreate(client, userId, guildId);
+  const st = resolveStamina(profile, staMaxV);
+  // 與 enterDungeonHp 同口徑：把世界事件 + 公會 buff dungeon_hp_max 都加上，避免面板與實戰數值不一致
+  const hpMaxV = hpService.hpMax(level, {
+    food: getFoodHpMaxBonus(profile),
+    guild: clubBuildingPct(club, "dungeon_hp_max"),
+    pet: 0,
+  }) + (worldEventPct("dungeon_hp_max") || 0);
+  const hpSt = hpService.resolveHp(profile, hpMaxV);
+  const themes = floorService.listThemes(profile, level);
+  return {
+    profile, level, club,
+    stamina: st.stamina,
+    staminaMax: staMaxV,
+    staminaNextRegenAt: st.nextRegenAt,
+    hp: hpSt.hp,
+    hpMax: hpMaxV,
+    hpNextRegenAt: hpSt.nextRegenAt,
+    themes,
+    hpLow: hpService.isLowHp(hpSt.hp, hpMaxV),
+    hpCritical: hpService.isCriticalHp(hpSt.hp, hpMaxV),
+    potions: {
+      small: profile.hp_potion_small || 0,
+      medium: profile.hp_potion_medium || 0,
+      large: profile.hp_potion_large || 0,
+    },
+    weapon: profile.weapon,
+    weaponDurability: profile.weapon_durability,
+    weaponMaxDurability: profile.weapon_max_durability,
+    shield: profile.shield,
+    shieldDurability: profile.shield_durability,
+    shieldMaxDurability: profile.shield_max_durability,
+    autoPotion: profile.dungeon_auto_potion !== false,
+    autoPotionTier: profile.dungeon_auto_potion_tier || "smallest",
+  };
+}
+
+// Phase H+ 設定面板：寫入自動藥水偏好。
+async function setAutoPotionPref(client, { userId, guildId, autoPotion, tier }) {
+  if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
+  const set = { updatedAt: new Date() };
+  if (typeof autoPotion === "boolean") set.dungeon_auto_potion = autoPotion;
+  const VALID_TIERS = ["smallest", "largest", "small", "medium", "large"];
+  if (tier && VALID_TIERS.includes(tier)) set.dungeon_auto_potion_tier = tier;
+  if (Object.keys(set).length <= 1) return { ok: false, reason: "no_change" };
+  await client.miningProfilesCollection.updateOne({ userId, guildId }, { $set: set });
+  return { ok: true };
+}
+
 module.exports = {
   enterDungeon,
+  enterDungeonHp,
+  getDungeonStatus,
+  setAutoPotionPref,
   rollbackDungeon,
   resolveStamina,
   restoreStamina,

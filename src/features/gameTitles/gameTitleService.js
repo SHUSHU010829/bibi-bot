@@ -291,6 +291,17 @@ const RESOLVERS = {
     const baseline = await cache.legacyAuctionBaseline();
     return current + baseline >= req.soldCount;
   },
+  // Phase H+ 地下城稱號：冰窟 / 廢墟 1F–5F 各通關 ≥ 1 次
+  frozen_hero: async (cache, ctx) => {
+    const m = await cache.mining();
+    const clears = m?.floor_unlocks?.ice?.clears || {};
+    return [1, 2, 3, 4, 5].every((f) => (clears[String(f)] || 0) >= 1);
+  },
+  ruins_scholar: async (cache, ctx) => {
+    const m = await cache.mining();
+    const clears = m?.floor_unlocks?.ruins?.clears || {};
+    return [1, 2, 3, 4, 5].every((f) => (clears[String(f)] || 0) >= 1);
+  },
 };
 
 // 檢查並解鎖達標稱號。categories 限制範圍（預設全部）。weekly 型不在此處理。
@@ -437,6 +448,20 @@ async function progress(client, { userId, guildId }) {
         });
         const baseline = await cache.legacyAuctionBaseline();
         push("成交件數", current + baseline, req.soldCount);
+        break;
+      }
+      case "frozen_hero": {
+        const m = await cache.mining();
+        const clears = m?.floor_unlocks?.ice?.clears || {};
+        const done = [1, 2, 3, 4, 5].filter((f) => (clears[String(f)] || 0) >= 1).length;
+        push("冰窟通關樓層", done, 5);
+        break;
+      }
+      case "ruins_scholar": {
+        const m = await cache.mining();
+        const clears = m?.floor_unlocks?.ruins?.clears || {};
+        const done = [1, 2, 3, 4, 5].filter((f) => (clears[String(f)] || 0) >= 1).length;
+        push("廢墟通關樓層", done, 5);
         break;
       }
     }

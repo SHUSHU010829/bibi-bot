@@ -7,6 +7,9 @@ const STACKABLE_TYPES = [
   "mining_backpack",
   "mining_whetstone_inferior",
   "mining_stamina_potion",
+  "mining_hp_potion_small",
+  "mining_hp_potion_medium",
+  "mining_hp_potion_large",
   "casino_token",
 ];
 
