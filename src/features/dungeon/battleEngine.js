@@ -373,15 +373,18 @@ function simulate({ player, monster, miniBoss = null }) {
       applyStatusToPlayer(p, "paralyze", log, turn);
     }
 
+    // H4：怪物攻擊後立刻試藥水（HP ≤ 30% 時自動觸發，避免下一回合大傷直接送命）
+    tryAutoPotion(p, log, turn);
+
     if (p.hp_current <= 0) break;
 
     // -- 5) 玩家狀態 tick（中毒、燃燒、護甲倒數）
     tickPlayerStatus(p, log, turn);
 
-    if (p.hp_current <= 0) break;
-
-    // -- 6) HP 低自動藥水
+    // H4：tick 致命前再試一次藥水（中毒 / 燃燒 tick 可能把已低 HP 玩家直接打到 0）
     tryAutoPotion(p, log, turn);
+
+    if (p.hp_current <= 0) break;
   }
 
   let result;

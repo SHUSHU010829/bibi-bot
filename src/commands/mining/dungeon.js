@@ -443,15 +443,22 @@ function buildBattleResultPanel(ownerId, result) {
   const isWin = result.won;
   container.setAccentColor(isWin ? 0x2ecc71 : 0xe74c3c);
 
-  const bossPrefix = result.isMiniBoss ? "🏆 mini-BOSS " : "";
+  // H6：mini-BOSS 標題不重複 emoji。普通樓層仍走「樓層 emoji + 樓層名 + 主題」格式。
+  const headLabel = result.isMiniBoss
+    ? `🏆 mini-BOSS：${result.monster.emoji} ${result.monster.name}`
+    : `${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""}`.trim();
   const title = isWin
-    ? `## ⚔️ ${bossPrefix}${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""} — ✅ 勝利！（${result.turns} 回合）`
+    ? `## ⚔️ ${headLabel} — ✅ 勝利！（${result.turns} 回合）`
     : result.battleResult === "draw"
-      ? `## ⏳ ${bossPrefix}${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""} — 戰鬥逾時（${result.turns} 回合，視同失敗）`
-      : `## 💀 ${bossPrefix}${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""} — 戰鬥失敗（${result.turns} 回合）`;
+      ? `## ⏳ ${headLabel} — 戰鬥逾時（${result.turns} 回合，視同失敗）`
+      : `## 💀 ${headLabel} — 戰鬥失敗（${result.turns} 回合）`;
 
+  // 副標：mini-BOSS 已在頭部寫過怪物名，這裡不重複；一般樓層顯示怪物。
+  const subline = result.isMiniBoss
+    ? ""
+    : `\n你${isWin ? "擊敗" : "不敵"} **${result.monster.emoji} ${result.monster.name}**`;
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`${title}\n你${isWin ? "擊敗" : "不敵"} **${result.monster.emoji} ${result.monster.name}**`),
+    new TextDisplayBuilder().setContent(`${title}${subline}`),
   );
   container.addSeparatorComponents(new SeparatorBuilder());
 
