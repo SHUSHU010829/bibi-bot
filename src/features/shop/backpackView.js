@@ -41,7 +41,7 @@ function capacityBar(used, cap, width = 12) {
   return { bar, pct, mark };
 }
 
-// 磨石「使用」按鈕：mining_use_whetstone_inferior_<ownerId>（修鎬）
+// 劣質磨石「使用」按鈕：mining_use_whetstone_inferior_<ownerId>（修鎬）
 // 確認按鈕：mining_use_whetstone_inferior_confirm_<ownerId>
 // Phase H+ 加入：磨武器 / 磨盾
 //   mining_use_whetstone_weapon_<ownerId> / _confirm_<ownerId>
@@ -415,7 +415,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       const toolItems = [
         { emoji: "🍀", name: "幸運藥水", qty: luckUses },
         { emoji: "🎫", name: "CD 縮短券", qty: ticketCount },
-        { emoji: "🪨", name: "磨石", qty: inferiorCount },
+        { emoji: "🪨", name: "劣質磨石", qty: inferiorCount },
         { emoji: "🧪", name: "精力藥水", qty: staminaPotionCount },
         { emoji: "✨", name: "傳說素材碎片", qty: fragments },
         { emoji: "<:crack_stone:1516055109199597708>", name: "碎石", qty: stoneShards },
@@ -503,7 +503,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         const canWeapon = inferiorCount > 0 && profile.weapon !== "fist" && typeof weaponMax === "number" && weaponMax >= 20;
         const canShield = inferiorCount > 0 && !!profile.shield && typeof shieldMax === "number" && shieldMax >= 20;
 
-        const hintLines = [`🪨 **磨石** ×${inferiorCount}`];
+        const hintLines = [`🪨 **劣質磨石** ×${inferiorCount}`];
         hintLines.push("-# 通用修復 — 補滿耐久，該裝備最大耐久 -10（max < 20 時無法使用）");
         const slots = [];
         if (profile.pickaxe !== "wood") slots.push(`鎬 max ${pickaxeMax ?? "—"}`);

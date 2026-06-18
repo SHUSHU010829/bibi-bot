@@ -552,7 +552,7 @@ function buildBattleResultPanel(ownerId, result) {
 
   if (result.weaponBroke) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# 你的武器斷了！到 /合成 打一把新的，或到 /裝備 用磨石修復。"),
+      new TextDisplayBuilder().setContent("-# 你的武器斷了！到 /合成 打一把新的，或到 /裝備 用劣質磨石修復。"),
     );
   }
   if (result.hpAfter < result.hpMax * 0.3) {

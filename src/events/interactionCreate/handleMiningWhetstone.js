@@ -1,7 +1,7 @@
-// 裝備修復按鈕處理器：磨石 + 鎬子/武器/釣竿材料修復（預覽→確認）。
+// 裝備修復按鈕處理器：劣質磨石 + 鎬子/武器/釣竿材料修復（預覽→確認）。
 //
 // 按鈕 customId：
-//   mining_use_whetstone_inferior_<ownerId>     — 磨石一鍵使用
+//   mining_use_whetstone_inferior_<ownerId>     — 劣質磨石一鍵使用
 //   mining_repair_material_<ownerId>            — 鎬子材料修復（預覽 / 確認）
 //   mining_repair_weapon_<ownerId>              — 武器材料修復（預覽 / 確認）
 //   mining_repair_rod_<ownerId>                 — 釣竿材料修復（預覽 / 確認）
@@ -65,7 +65,7 @@ module.exports = async (client, interaction) => {
 
     const customId = interaction.customId || "";
 
-    // ── 磨石（預覽 → 確認）─────────────────────────────────────────────
+    // ── 劣質磨石（預覽 → 確認）─────────────────────────────────────────────
     const parsedInferior = parseUseWhetstoneInferiorId(customId);
     if (parsedInferior) {
       const { ownerId, confirm } = parsedInferior;
@@ -89,7 +89,7 @@ module.exports = async (client, interaction) => {
         const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
         const maxDur = profile.pickaxe_max_durability;
         if ((profile.whetstone_inferior_count || 0) <= 0) {
-          await replyEphemeral(interaction, "🪨 你沒有磨石，可到 /商店 購買。");
+          await replyEphemeral(interaction, "🪨 你沒有劣質磨石，可到 /商店 購買。");
           return;
         }
         if (profile.pickaxe === "wood") {
@@ -99,7 +99,7 @@ module.exports = async (client, interaction) => {
         if (typeof maxDur !== "number" || maxDur < 20) {
           await replyEphemeral(
             interaction,
-            `⛏️ 鎬子最大耐久只剩 ${maxDur ?? "—"}，不足 20 無法使用磨石。`
+            `⛏️ 鎬子最大耐久只剩 ${maxDur ?? "—"}，不足 20 無法使用劣質磨石。`
           );
           return;
         }
@@ -111,7 +111,7 @@ module.exports = async (client, interaction) => {
 
         await interaction.reply({
           content:
-            `🪨 確認要對 **${pickDef.name || profile.pickaxe}** 使用磨石？\n` +
+            `🪨 確認要對 **${pickDef.name || profile.pickaxe}** 使用劣質磨石？\n` +
             `・耐久：${profile.pickaxe_durability} → ${maxDur}（補滿）\n` +
             `・最大耐久上限：${maxDur} → **${maxDur - 10}**（-10）\n\n` +
             `-# 此操作無法撤回，最大耐久下降後無法回復。`,
@@ -133,9 +133,9 @@ module.exports = async (client, interaction) => {
       if (!result.ok) {
         const messages = {
           disabled: "🔧 挖礦系統尚未啟動！",
-          no_whetstone: "🪨 你沒有磨石，可到 /商店 購買。",
+          no_whetstone: "🪨 你沒有劣質磨石，可到 /商店 購買。",
           no_pickaxe: "⛏️ 你目前沒有可修復的鎬子（木鎬不需修復）。",
-          max_too_low: `⛏️ 鎬子最大耐久只剩 ${result.maxDurability}，不足 20 無法再使用磨石。快去 /合成 一把新的吧！`,
+          max_too_low: `⛏️ 鎬子最大耐久只剩 ${result.maxDurability}，不足 20 無法再使用劣質磨石。快去 /合成 一把新的吧！`,
           retry: "⏳ 操作衝突，請再試一次。",
         };
         await interaction.editReply({
@@ -146,14 +146,14 @@ module.exports = async (client, interaction) => {
       }
 
       await interaction.editReply({
-        content: `🪨 已使用磨石！鎬子耐久補滿至 **${result.durabilityAfter}**，最大耐久上限降至 ${result.maxAfter}。（剩餘 ×${result.inferiorLeft}）\n\n-# 重新打開 /背包 可看到最新狀態。`,
+        content: `🪨 已使用劣質磨石！鎬子耐久補滿至 **${result.durabilityAfter}**，最大耐久上限降至 ${result.maxAfter}。（剩餘 ×${result.inferiorLeft}）\n\n-# 重新打開 /背包 可看到最新狀態。`,
         components: [],
       });
       trackSuccess("mining-use-whetstone-inferior");
       return;
     }
 
-    // ── Phase H+ 磨石對武器（預覽 → 確認）──────────────────────────────────────
+    // ── Phase H+ 劣質磨石對武器（預覽 → 確認）──────────────────────────────────────
     const parsedWeaponWS = parseUseWhetstoneWeaponId(customId);
     if (parsedWeaponWS) {
       const { ownerId, confirm } = parsedWeaponWS;
@@ -169,7 +169,7 @@ module.exports = async (client, interaction) => {
       if (!confirm) {
         const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
         if ((profile.whetstone_inferior_count || 0) <= 0) {
-          await replyEphemeral(interaction, "🪨 你沒有磨石，可到 /商店 購買。");
+          await replyEphemeral(interaction, "🪨 你沒有劣質磨石，可到 /商店 購買。");
           return;
         }
         if (!profile.weapon || profile.weapon === "fist") {
@@ -178,7 +178,7 @@ module.exports = async (client, interaction) => {
         }
         const maxDur = profile.weapon_max_durability;
         if (typeof maxDur !== "number" || maxDur < 20) {
-          await replyEphemeral(interaction, `⚔️ 武器最大耐久只剩 ${maxDur ?? "—"}，不足 20 無法使用磨石。`);
+          await replyEphemeral(interaction, `⚔️ 武器最大耐久只剩 ${maxDur ?? "—"}，不足 20 無法使用劣質磨石。`);
           return;
         }
         const wdef = dungeon?.weapons?.[profile.weapon] || {};
@@ -188,7 +188,7 @@ module.exports = async (client, interaction) => {
           .setStyle(ButtonStyle.Danger);
         await interaction.reply({
           content:
-            `🪨 確認要對 **${wdef.name || profile.weapon}** 使用磨石？\n` +
+            `🪨 確認要對 **${wdef.name || profile.weapon}** 使用劣質磨石？\n` +
             `・耐久：${profile.weapon_durability} → ${maxDur}（補滿）\n` +
             `・最大耐久上限：${maxDur} → **${maxDur - 10}**（-10）\n\n` +
             `-# 此操作無法撤回，最大耐久下降後無法回復。`,
@@ -204,9 +204,9 @@ module.exports = async (client, interaction) => {
       if (!result.ok) {
         const messages = {
           disabled: "🔧 挖礦系統尚未啟動！",
-          no_whetstone: "🪨 你沒有磨石，可到 /商店 購買。",
+          no_whetstone: "🪨 你沒有劣質磨石，可到 /商店 購買。",
           no_weapon: "⚔️ 你目前沒有可修復的武器。",
-          max_too_low: `⚔️ 武器最大耐久只剩 ${result.maxDurability}，不足 20 無法再使用磨石。快去 /合成 一把新的吧！`,
+          max_too_low: `⚔️ 武器最大耐久只剩 ${result.maxDurability}，不足 20 無法再使用劣質磨石。快去 /合成 一把新的吧！`,
           retry: "⏳ 操作衝突，請再試一次。",
         };
         await interaction.editReply({ content: messages[result.reason] || "🔧 使用失敗，請稍後再試。", components: [] });
@@ -214,14 +214,14 @@ module.exports = async (client, interaction) => {
       }
       const wdef = dungeon?.weapons?.[result.weaponKey] || {};
       await interaction.editReply({
-        content: `🪨 已使用磨石！**${wdef.name || result.weaponKey}** 耐久補滿至 **${result.durabilityAfter}**，最大耐久上限降至 ${result.maxAfter}。（剩餘 ×${result.inferiorLeft}）\n\n-# 重新打開 /背包 可看到最新狀態。`,
+        content: `🪨 已使用劣質磨石！**${wdef.name || result.weaponKey}** 耐久補滿至 **${result.durabilityAfter}**，最大耐久上限降至 ${result.maxAfter}。（剩餘 ×${result.inferiorLeft}）\n\n-# 重新打開 /背包 可看到最新狀態。`,
         components: [],
       });
       trackSuccess("mining-use-whetstone-weapon");
       return;
     }
 
-    // ── Phase H+ 磨石對盾（預覽 → 確認）──────────────────────────────────────
+    // ── Phase H+ 劣質磨石對盾（預覽 → 確認）──────────────────────────────────────
     const parsedShieldWS = parseUseWhetstoneShieldId(customId);
     if (parsedShieldWS) {
       const { ownerId, confirm } = parsedShieldWS;
@@ -237,7 +237,7 @@ module.exports = async (client, interaction) => {
       if (!confirm) {
         const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
         if ((profile.whetstone_inferior_count || 0) <= 0) {
-          await replyEphemeral(interaction, "🪨 你沒有磨石，可到 /商店 購買。");
+          await replyEphemeral(interaction, "🪨 你沒有劣質磨石，可到 /商店 購買。");
           return;
         }
         if (!profile.shield) {
@@ -246,7 +246,7 @@ module.exports = async (client, interaction) => {
         }
         const maxDur = profile.shield_max_durability;
         if (typeof maxDur !== "number" || maxDur < 20) {
-          await replyEphemeral(interaction, `🛡️ 盾最大耐久只剩 ${maxDur ?? "—"}，不足 20 無法使用磨石。`);
+          await replyEphemeral(interaction, `🛡️ 盾最大耐久只剩 ${maxDur ?? "—"}，不足 20 無法使用劣質磨石。`);
           return;
         }
         const sdef = dungeon?.shields?.[profile.shield] || {};
@@ -256,7 +256,7 @@ module.exports = async (client, interaction) => {
           .setStyle(ButtonStyle.Danger);
         await interaction.reply({
           content:
-            `🪨 確認要對 **${sdef.name || profile.shield}** 使用磨石？\n` +
+            `🪨 確認要對 **${sdef.name || profile.shield}** 使用劣質磨石？\n` +
             `・耐久：${profile.shield_durability} → ${maxDur}（補滿）\n` +
             `・最大耐久上限：${maxDur} → **${maxDur - 10}**（-10）\n\n` +
             `-# 此操作無法撤回，最大耐久下降後無法回復。`,
@@ -272,9 +272,9 @@ module.exports = async (client, interaction) => {
       if (!result.ok) {
         const messages = {
           disabled: "🔧 挖礦系統尚未啟動！",
-          no_whetstone: "🪨 你沒有磨石，可到 /商店 購買。",
+          no_whetstone: "🪨 你沒有劣質磨石，可到 /商店 購買。",
           no_shield: "🛡️ 你目前沒有裝備盾牌。",
-          max_too_low: `🛡️ 盾最大耐久只剩 ${result.maxDurability}，不足 20 無法再使用磨石。快去 /合成 一面新盾吧！`,
+          max_too_low: `🛡️ 盾最大耐久只剩 ${result.maxDurability}，不足 20 無法再使用劣質磨石。快去 /合成 一面新盾吧！`,
           retry: "⏳ 操作衝突，請再試一次。",
         };
         await interaction.editReply({ content: messages[result.reason] || "🔧 使用失敗，請稍後再試。", components: [] });
@@ -282,7 +282,7 @@ module.exports = async (client, interaction) => {
       }
       const sdef = dungeon?.shields?.[result.shieldKey] || {};
       await interaction.editReply({
-        content: `🪨 已使用磨石！**${sdef.name || result.shieldKey}** 耐久補滿至 **${result.durabilityAfter}**，最大耐久上限降至 ${result.maxAfter}。（剩餘 ×${result.inferiorLeft}）\n\n-# 重新打開 /背包 可看到最新狀態。`,
+        content: `🪨 已使用劣質磨石！**${sdef.name || result.shieldKey}** 耐久補滿至 **${result.durabilityAfter}**，最大耐久上限降至 ${result.maxAfter}。（剩餘 ×${result.inferiorLeft}）\n\n-# 重新打開 /背包 可看到最新狀態。`,
         components: [],
       });
       trackSuccess("mining-use-whetstone-shield");

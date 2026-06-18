@@ -537,7 +537,7 @@ function buildRepairTab(container, { userId, displayName, profile }) {
     }
   }
 
-  // Phase H+ 盾牌（沒有材料修復配方，只能用磨石；提示玩家到 /背包 點修盾）
+  // Phase H+ 盾牌（沒有材料修復配方，只能用劣質磨石；提示玩家到 /背包 點修盾）
   {
     const sKey = profile.shield;
     if (sKey) {
@@ -549,7 +549,7 @@ function buildRepairTab(container, { userId, displayName, profile }) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `🛡️ **盾**：${sdef.emoji || "🛡️"} ${sdef.name || sKey}（耐久 ${dura}）\n` +
-            `-# 盾無材料修復配方，到 /背包 用磨石修盾（補滿耐久，盾最大耐久 -10）`,
+            `-# 盾無材料修復配方，到 /背包 用劣質磨石修盾（補滿耐久，盾最大耐久 -10）`,
         ),
       );
     } else {
