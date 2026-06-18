@@ -28,6 +28,9 @@ const PREFIXES = [
   dungeonCmd.RAID_BOSS_PREFIX,
   dungeonCmd.RAID_LOG_PREFIX,
   dungeonCmd.RAID_HEAL_PREFIX,
+  dungeonCmd.RAID_SETTINGS_PREFIX,
+  dungeonCmd.RAID_PREF_TOGGLE_PREFIX,
+  dungeonCmd.RAID_PREF_TIER_PREFIX,
 ];
 
 function matchAction(cid) {
@@ -292,7 +295,10 @@ async function doHeal(client, interaction, tier) {
 
 module.exports = async (client, interaction) => {
   try {
-    if (!interaction.isButton()) return;
+    // 同時接 button 與 string select menu（設定面板用 select）
+    const isBtn = interaction.isButton?.() === true;
+    const isSel = interaction.isStringSelectMenu?.() === true;
+    if (!isBtn && !isSel) return;
     const cid = interaction.customId;
     const m = matchAction(cid);
     if (!m) return;
@@ -396,6 +402,66 @@ module.exports = async (client, interaction) => {
       await interaction.deferUpdate();
       await doHeal(client, interaction, tier);
       trackSuccess("raid-heal");
+      return;
+    }
+
+    if (m.prefix === dungeonCmd.RAID_SETTINGS_PREFIX) {
+      await interaction.deferUpdate();
+      const status = await dungeonService.getDungeonStatus(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+      });
+      const container = dungeonCmd.buildSettingsPanel(interaction.user.id, status);
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      trackSuccess("raid-settings-open");
+      return;
+    }
+
+    if (m.prefix === dungeonCmd.RAID_PREF_TOGGLE_PREFIX) {
+      // StringSelect 值：'on' / 'off'
+      const value = interaction.values?.[0];
+      await interaction.deferUpdate();
+      await dungeonService.setAutoPotionPref(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        autoPotion: value === "on",
+      });
+      // 重新渲染設定面板（讓 setDefault 反映新值）
+      const status = await dungeonService.getDungeonStatus(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+      });
+      await interaction.editReply({
+        components: [dungeonCmd.buildSettingsPanel(interaction.user.id, status)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      trackSuccess("raid-pref-toggle");
+      return;
+    }
+
+    if (m.prefix === dungeonCmd.RAID_PREF_TIER_PREFIX) {
+      const value = interaction.values?.[0];
+      await interaction.deferUpdate();
+      await dungeonService.setAutoPotionPref(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        tier: value,
+      });
+      const status = await dungeonService.getDungeonStatus(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+      });
+      await interaction.editReply({
+        components: [dungeonCmd.buildSettingsPanel(interaction.user.id, status)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      trackSuccess("raid-pref-tier");
       return;
     }
   } catch (err) {

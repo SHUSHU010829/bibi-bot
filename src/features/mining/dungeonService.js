@@ -782,6 +782,8 @@ async function enterDungeonHp(client, {
         large: profile.hp_potion_large || 0,
       },
       petType: "none", // Phase H 寵物接上後改傳 petResolver.getCombatPetType(...)
+      autoPotion: profile.dungeon_auto_potion !== false,
+      potionTier: profile.dungeon_auto_potion_tier || "smallest",
     },
     monster,
     miniBoss: miniBossArg,
@@ -1173,13 +1175,28 @@ async function getDungeonStatus(client, { userId, guildId, member }) {
     shield: profile.shield,
     shieldDurability: profile.shield_durability,
     shieldMaxDurability: profile.shield_max_durability,
+    autoPotion: profile.dungeon_auto_potion !== false,
+    autoPotionTier: profile.dungeon_auto_potion_tier || "smallest",
   };
+}
+
+// Phase H+ 設定面板：寫入自動藥水偏好。
+async function setAutoPotionPref(client, { userId, guildId, autoPotion, tier }) {
+  if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
+  const set = { updatedAt: new Date() };
+  if (typeof autoPotion === "boolean") set.dungeon_auto_potion = autoPotion;
+  const VALID_TIERS = ["smallest", "largest", "small", "medium", "large"];
+  if (tier && VALID_TIERS.includes(tier)) set.dungeon_auto_potion_tier = tier;
+  if (Object.keys(set).length <= 1) return { ok: false, reason: "no_change" };
+  await client.miningProfilesCollection.updateOne({ userId, guildId }, { $set: set });
+  return { ok: true };
 }
 
 module.exports = {
   enterDungeon,
   enterDungeonHp,
   getDungeonStatus,
+  setAutoPotionPref,
   rollbackDungeon,
   resolveStamina,
   restoreStamina,

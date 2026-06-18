@@ -70,6 +70,8 @@ function defaultProfile(userId, guildId) {
     },
     mini_boss_kills: { mine: 0, ruins: 0, ice: 0 },
     dragon_slayer_kills: 0,
+    dungeon_auto_potion: true,
+    dungeon_auto_potion_tier: "smallest",
     createdAt: new Date(),
   };
 }
@@ -190,6 +192,13 @@ function normalize(doc) {
   }
   doc.mini_boss_kills = { mine: 0, ruins: 0, ice: 0, ...(doc.mini_boss_kills || {}) };
   doc.dragon_slayer_kills ??= 0;
+
+  // Phase H+ 自動藥水偏好：開關 + 用哪瓶優先
+  if (typeof doc.dungeon_auto_potion !== "boolean") doc.dungeon_auto_potion = true;
+  const VALID_TIERS = ["smallest", "largest", "small", "medium", "large"];
+  if (!VALID_TIERS.includes(doc.dungeon_auto_potion_tier)) {
+    doc.dungeon_auto_potion_tier = "smallest";
+  }
 
   return doc;
 }

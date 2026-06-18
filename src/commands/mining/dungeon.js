@@ -9,6 +9,8 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
 } = require("discord.js");
 
 const { mining, dungeon, commandChannels, normalChannelId } = require("../../config");
@@ -32,6 +34,9 @@ const RAID_HEAL_PREFIX = "raid_heal_";         // 補血：raid_heal_<ownerId>_<
 const RAID_AGAIN_PREFIX = "raid_again_";       // 再戰：raid_again_<ownerId>_<theme>_<floor>
 const RAID_FORCE_PREFIX = "raid_force_";       // 強制進場（低 HP 確認後）：raid_force_<ownerId>_<theme>_<floor>
 const RAID_BOSS_PREFIX = "raid_boss_";         // 挑戰 mini-BOSS：raid_boss_<ownerId>_<theme>
+const RAID_SETTINGS_PREFIX = "raid_settings_"; // 開設定面板：raid_settings_<ownerId>
+const RAID_PREF_TOGGLE_PREFIX = "raid_pref_toggle_"; // SelectMenu：自動藥水開關
+const RAID_PREF_TIER_PREFIX = "raid_pref_tier_";     // SelectMenu：用哪瓶偏好
 
 const MAX_LABEL_LEN = 80;
 
@@ -312,7 +317,72 @@ function buildActionsRow(ownerId, status) {
       .setLabel("🔄 重整")
       .setStyle(ButtonStyle.Secondary),
   );
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${RAID_SETTINGS_PREFIX}${ownerId}`)
+      .setLabel("⚙️ 設定")
+      .setStyle(ButtonStyle.Secondary),
+  );
   return row;
+}
+
+// Phase H+ 設定面板：自動藥水開關 + 用哪瓶優先
+function buildSettingsPanel(ownerId, status) {
+  const autoPotion = status.autoPotion !== false;
+  const tier = status.autoPotionTier || "smallest";
+  const tierLabel = {
+    smallest: "最小可用瓶（最省，預設）",
+    largest: "最大可用瓶（救急）",
+    small: "只用 💊 小瓶",
+    medium: "只用 💊 中瓶",
+    large: "只用 💊 大瓶",
+  }[tier] || tier;
+  const stateLines = [
+    `自動藥水：**${autoPotion ? "✅ 開啟" : "⛔ 關閉"}**`,
+    `優先順序：**${tierLabel}**`,
+    "-# HP ≤ 30% 時觸發；開關關閉時戰鬥中完全不自動吃，請在面板上手動補血。",
+  ];
+
+  const toggleSelect = new StringSelectMenuBuilder()
+    .setCustomId(`${RAID_PREF_TOGGLE_PREFIX}${ownerId}`)
+    .setPlaceholder("自動藥水：開 / 關")
+    .addOptions(
+      new StringSelectMenuOptionBuilder()
+        .setLabel("✅ 開啟自動藥水（HP ≤ 30% 自動吃）")
+        .setValue("on")
+        .setDefault(autoPotion),
+      new StringSelectMenuOptionBuilder()
+        .setLabel("⛔ 關閉自動藥水（完全手動補血）")
+        .setValue("off")
+        .setDefault(!autoPotion),
+    );
+  const tierSelect = new StringSelectMenuBuilder()
+    .setCustomId(`${RAID_PREF_TIER_PREFIX}${ownerId}`)
+    .setPlaceholder("用哪瓶優先")
+    .addOptions(
+      new StringSelectMenuOptionBuilder().setLabel("最小可用瓶（小→中→大，最省）").setValue("smallest").setDefault(tier === "smallest"),
+      new StringSelectMenuOptionBuilder().setLabel("最大可用瓶（大→中→小，救急）").setValue("largest").setDefault(tier === "largest"),
+      new StringSelectMenuOptionBuilder().setLabel("只用 💊 小瓶").setValue("small").setDefault(tier === "small"),
+      new StringSelectMenuOptionBuilder().setLabel("只用 💊 中瓶").setValue("medium").setDefault(tier === "medium"),
+      new StringSelectMenuOptionBuilder().setLabel("只用 💊 大瓶").setValue("large").setDefault(tier === "large"),
+    );
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x3498db)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("## ⚙️ 副本設定"))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(stateLines.join("\n")))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(toggleSelect))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(tierSelect))
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}`)
+          .setLabel("⬅️ 回主面板")
+          .setStyle(ButtonStyle.Primary),
+      ),
+    );
+  return container;
 }
 
 async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
@@ -961,9 +1031,13 @@ module.exports = {
   RAID_AGAIN_PREFIX,
   RAID_FORCE_PREFIX,
   RAID_BOSS_PREFIX,
+  RAID_SETTINGS_PREFIX,
+  RAID_PREF_TOGGLE_PREFIX,
+  RAID_PREF_TIER_PREFIX,
   buildEntryPanel,
   buildBattleResultPanel,
   buildLowHpConfirmPanel,
+  buildSettingsPanel,
   publicBroadcastContent,
   showEntryPanel,
 };

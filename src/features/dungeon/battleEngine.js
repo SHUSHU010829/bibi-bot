@@ -214,11 +214,21 @@ function woundedMultipliers(player) {
   return { atkMult: 1.0, critMult: 1.0, wounded: false };
 }
 
-// 自動藥水判定：HP ≤ 30% 時，先吃最小的（避免浪費）
+// 自動藥水判定：HP ≤ 30% 時觸發。
+// 依玩家偏好 (player.autoPotion / player.potionTier) 決定是否吃 / 吃哪瓶。
+// potionTier:
+//   - "smallest"（預設）：依小→中→大，先用最小可用瓶（最省）
+//   - "largest"          ：依大→中→小，優先大瓶救急
+//   - "small"/"medium"/"large"：只吃指定瓶
 function tryAutoPotion(player, log, turn) {
+  if (player.autoPotion === false) return false;
   const trigger = dungeon?.hp?.autoPotionTriggerRatio ?? 0.3;
   if (player.hp_current / player.hp_max > trigger) return false;
-  const order = ["small", "medium", "large"];
+  const pref = player.potionTier || "smallest";
+  let order;
+  if (pref === "largest") order = ["large", "medium", "small"];
+  else if (pref === "small" || pref === "medium" || pref === "large") order = [pref];
+  else order = ["small", "medium", "large"]; // smallest（預設）
   for (const tier of order) {
     if ((player.potions[tier] || 0) > 0) {
       const def = dungeon?.hpPotions?.[tier];
