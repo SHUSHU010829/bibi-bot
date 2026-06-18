@@ -15,6 +15,7 @@ const { MessageFlags, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, Ac
 const dungeonCmd = require("../../commands/mining/dungeon");
 const dungeonService = require("../../features/mining/dungeonService");
 const hpService = require("../../features/dungeon/hpService");
+const { isGameRoom } = require("../../features/gameRoom/service");
 const { dungeon } = require("../../config");
 const { consume } = require("../../utils/rateLimiter");
 const logger = require("../../utils/logger");
@@ -144,11 +145,12 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
   });
 
   // 2) 公開精簡播報（送到 dungeon.channelId，沒設或頻道不可用則 fallback 當前頻道）
+  //    在個人遊戲房內觸發時，播報保留在房內，不外送到公開地下城頻道。
   const displayName = interaction.member?.displayName || interaction.user.username;
   const content = dungeonCmd.publicBroadcastContent(displayName, result);
   const channelId = dungeon?.channelId;
   let pubChannel = interaction.channel;
-  if (channelId) {
+  if (channelId && !isGameRoom(interaction.channelId)) {
     try {
       const c = await interaction.client.channels.fetch(channelId).catch(() => null);
       if (c?.isTextBased?.()) pubChannel = c;
