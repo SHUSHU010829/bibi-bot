@@ -34,6 +34,7 @@ const RAID_HEAL_PREFIX = "raid_heal_";         // 補血：raid_heal_<ownerId>_<
 const RAID_AGAIN_PREFIX = "raid_again_";       // 再戰：raid_again_<ownerId>_<theme>_<floor>
 const RAID_FORCE_PREFIX = "raid_force_";       // 強制進場（低 HP 確認後）：raid_force_<ownerId>_<theme>_<floor>
 const RAID_BOSS_PREFIX = "raid_boss_";         // 挑戰 mini-BOSS：raid_boss_<ownerId>_<theme>
+const RAID_USE_STAMINA_PREFIX = "raid_use_stamina_"; // 體力耗盡時喝精力藥水：raid_use_stamina_<ownerId>
 const RAID_SETTINGS_PREFIX = "raid_settings_"; // 開設定面板：raid_settings_<ownerId>
 const RAID_PREF_TOGGLE_PREFIX = "raid_pref_toggle_"; // SelectMenu：自動藥水開關
 const RAID_PREF_TIER_PREFIX = "raid_pref_tier_";     // SelectMenu：用哪瓶偏好
@@ -1031,6 +1032,7 @@ module.exports = {
   RAID_AGAIN_PREFIX,
   RAID_FORCE_PREFIX,
   RAID_BOSS_PREFIX,
+  RAID_USE_STAMINA_PREFIX,
   RAID_SETTINGS_PREFIX,
   RAID_PREF_TOGGLE_PREFIX,
   RAID_PREF_TIER_PREFIX,

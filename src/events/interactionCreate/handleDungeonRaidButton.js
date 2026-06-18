@@ -10,7 +10,7 @@
 // 所有按鈕必驗 owner。
 
 require("colors");
-const { MessageFlags, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder } = require("discord.js");
+const { MessageFlags, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 
 const dungeonCmd = require("../../commands/mining/dungeon");
 const dungeonService = require("../../features/mining/dungeonService");
@@ -26,6 +26,7 @@ const PREFIXES = [
   dungeonCmd.RAID_AGAIN_PREFIX,
   dungeonCmd.RAID_FORCE_PREFIX,
   dungeonCmd.RAID_BOSS_PREFIX,
+  dungeonCmd.RAID_USE_STAMINA_PREFIX,
   dungeonCmd.RAID_LOG_PREFIX,
   dungeonCmd.RAID_HEAL_PREFIX,
   dungeonCmd.RAID_SETTINGS_PREFIX,
@@ -102,11 +103,26 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
         `🔋 體力剩 0/${result.max}（需要 ${result.staCost} 點才能進場）`,
       ];
       if (result.nextRegenAt) lines.push(`下一點體力：<t:${Math.floor(result.nextRegenAt / 1000)}:R>（每小時 +1）`);
-      if (result.potionCount > 0) lines.push(`-# 你有 ${result.potionCount} 瓶精力藥水，到 /背包 使用後再來。`);
-      else lines.push("-# 到 /商店 → 挖礦道具 補精力藥水（每日上限 3 瓶）");
+      if (result.potionCount > 0) lines.push(`-# 你有 ${result.potionCount} 瓶精力藥水，按下方按鈕直接喝。`);
+      else lines.push("-# 到 /商店 → 地下城道具 補精力藥水（每日上限 3 瓶）");
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## 😮‍💨 體力耗盡"));
       container.addSeparatorComponents(new SeparatorBuilder());
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+      // 直接喝精力藥水（持有時才顯示）
+      if (result.potionCount > 0) {
+        container.addActionRowComponents(
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`${dungeonCmd.RAID_USE_STAMINA_PREFIX}${interaction.user.id}`)
+              .setLabel(`🥤 喝精力藥水（剩 ${result.potionCount}）`)
+              .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+              .setCustomId(`${dungeonCmd.RAID_PANEL_PREFIX}${interaction.user.id}`)
+              .setLabel("⬅️ 回主面板")
+              .setStyle(ButtonStyle.Secondary),
+          ),
+        );
+      }
     } else if (result.reason === "backpack_full") {
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## 🎒 背包已滿"));
       container.addSeparatorComponents(new SeparatorBuilder());
@@ -393,6 +409,28 @@ module.exports = async (client, interaction) => {
       const runId = parts.slice(1).join("_");
       await showBattleLog(interaction, runId);
       trackSuccess("raid-log");
+      return;
+    }
+
+    if (m.prefix === dungeonCmd.RAID_USE_STAMINA_PREFIX) {
+      await interaction.deferUpdate();
+      const result = await dungeonService.useStaminaPotion(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+      });
+      if (!result.ok) {
+        const msg = {
+          no_potion: "🥤 你沒有精力藥水了，到 /商店 → 地下城道具 補貨。",
+          full: "🔋 體力已滿，不需要喝。",
+          disabled: "🔧 系統暫時無法使用。",
+          retry: "⏳ 操作衝突，請再試一次。",
+        }[result.reason] || "🔧 使用失敗，請稍後再試。";
+        return replyEphemeral(interaction, msg);
+      }
+      // 喝完後直接回主面板
+      await showEntryPanelOnSameMessage(client, interaction);
+      trackSuccess("raid-use-stamina");
       return;
     }
 
