@@ -15,6 +15,7 @@ const { MessageFlags, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, Ac
 const dungeonCmd = require("../../commands/mining/dungeon");
 const dungeonService = require("../../features/mining/dungeonService");
 const hpService = require("../../features/dungeon/hpService");
+const reminder = require("../../features/reminders/cooldownReminderService");
 const { isGameRoom } = require("../../features/gameRoom/service");
 const { dungeon } = require("../../config");
 const { consume } = require("../../utils/rateLimiter");
@@ -161,6 +162,25 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
   // 3) 任務 / 通知 / 稱號補登（fire-and-forget）
   (async () => {
     try {
+      // 體力剛被扣，若玩家有開地下城體力到點通知，refresh readyAt 為
+      // 「打完這場後的剩餘體力補滿時間」；否則 cron 會用打前算的舊時間 DM，
+      // 提早通知玩家體力補滿。
+      const fullAt = await dungeonService
+        .staminaFullAt(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+        })
+        .catch(() => 0);
+      await reminder
+        .refreshIfEnabled(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          type: "dungeon",
+          readyAt: fullAt,
+        })
+        .catch(() => {});
+
       const applyQuestHooks = require("../../features/quests/applyQuestHooks");
       const hooks = [{ questId: "daily_dungeon_10" }, { questId: "weekly_dungeon" }];
       if (result.won) {
@@ -432,6 +452,21 @@ module.exports = async (client, interaction) => {
       }
       // 喝完後直接回主面板
       await showEntryPanelOnSameMessage(client, interaction);
+      // 體力上升 → 補滿時間提前，refresh reminder readyAt（無訂閱時 no-op）
+      reminder
+        .refreshIfEnabled(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          type: "dungeon",
+          readyAt: await dungeonService
+            .staminaFullAt(client, {
+              userId: interaction.user.id,
+              guildId: interaction.guildId,
+              member: interaction.member,
+            })
+            .catch(() => 0),
+        })
+        .catch(() => {});
       trackSuccess("raid-use-stamina");
       return;
     }
