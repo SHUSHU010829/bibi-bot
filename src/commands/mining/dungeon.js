@@ -986,6 +986,10 @@ module.exports = {
     .setDescription("⚔️ 進入地下城面板挑樓層挑戰，HP 多回合戰鬥（體力 / 戰利品 / 解鎖進度都在面板看）")
     .setContexts(InteractionContextType.Guild),
 
+  // 地下城頻道綁定改由 dungeon.json 的 channelId 決定（見 run() 內檢查），
+  // 跳過依資料夾分流的 channelGuard，避免雙重檢查衝突（mining bucket 不含此頻道）。
+  skipChannelGuard: true,
+
   run: async (client, interaction) => {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     // 頻道綁定：規格要求只允許在 dungeon.channelId 使用，其他頻道回 ephemeral 提示
