@@ -459,7 +459,7 @@
       "raid_supper": {
         "name": "戰前晚餐",
         "emoji": "🍱",
-        "description": "戰前一定要吃飽 — ATK / DEF / HP 三項小幅暫時提升，撐過硬骨頭副本",
+        "description": "戰前一定要吃飽 — ATK / DEF / HP 三項小幅暫時提升，撐過硬骨頭地下城",
         "materials": { "shark": 1, "octopus": 1 },
         "veggies": { "corn": 2 },
         "coalFuel": 8,

@@ -369,7 +369,7 @@ function buildSettingsPanel(ownerId, status) {
 
   const container = new ContainerBuilder()
     .setAccentColor(0x3498db)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent("## ⚙️ 副本設定"))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("## ⚙️ 地下城設定"))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(stateLines.join("\n")))
     .addActionRowComponents(new ActionRowBuilder().addComponents(toggleSelect))
@@ -402,7 +402,7 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
 
   const container = new ContainerBuilder()
     .setAccentColor(status.hpCritical ? 0xe74c3c : status.hpLow ? 0xfaa61a : 0x3498db)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent("## ⚔️ 地下城副本"))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("## ⚔️ 地下城"))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(statusLines(status).join("\n")))
     .addSeparatorComponents(new SeparatorBuilder())
@@ -983,7 +983,7 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("地下城")
-    .setDescription("⚔️ 進入副本面板挑樓層挑戰，HP 多回合戰鬥（體力 / 戰利品 / 解鎖進度都在面板看）")
+    .setDescription("⚔️ 進入地下城面板挑樓層挑戰，HP 多回合戰鬥（體力 / 戰利品 / 解鎖進度都在面板看）")
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {
@@ -999,7 +999,7 @@ module.exports = {
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `/地下城 副本面板僅限在 <#${boundChannel}> 使用。\n戰鬥結果會公開播報到該頻道，避免洗版其他頻道。`,
+            `/地下城 面板僅限在 <#${boundChannel}> 使用。\n戰鬥結果會公開播報到該頻道，避免洗版其他頻道。`,
           ),
         );
       return interaction.editReply({
@@ -1011,7 +1011,7 @@ module.exports = {
       return await showEntryPanel(client, interaction);
     } catch (err) {
       console.log(`[ERROR] /地下城 panel: ${err}\n${err.stack}`.red);
-      return interaction.editReply("🔧 副本面板載入失敗，請呼叫舒舒！");
+      return interaction.editReply("🔧 地下城面板載入失敗，請呼叫舒舒！");
     }
   },
 

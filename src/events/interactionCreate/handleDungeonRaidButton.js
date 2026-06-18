@@ -307,7 +307,7 @@ module.exports = async (client, interaction) => {
     const firstUnderscore = m.payload.indexOf("_");
     const ownerId = firstUnderscore === -1 ? m.payload : m.payload.slice(0, firstUnderscore);
     if (interaction.user.id !== ownerId) {
-      return replyEphemeral(interaction, "🚫 這不是你的副本面板！");
+      return replyEphemeral(interaction, "🚫 這不是你的地下城面板！");
     }
     // 限流
     const rl = consume(interaction.user.id, "btn:raid", { windowMs: 1500, max: 1 });
@@ -472,9 +472,9 @@ module.exports = async (client, interaction) => {
         err: err.message,
         stack: err.stack,
       },
-      "副本面板按鈕處理失敗",
+      "地下城面板按鈕處理失敗",
     );
     trackError("dungeon-raid", err, { customId: interaction?.customId });
-    await replyEphemeral(interaction, "🔧 副本操作失敗，請呼叫舒舒！");
+    await replyEphemeral(interaction, "🔧 地下城操作失敗，請呼叫舒舒！");
   }
 };
