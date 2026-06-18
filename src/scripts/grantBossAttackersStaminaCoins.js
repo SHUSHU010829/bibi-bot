@@ -1,4 +1,4 @@
-// 補發「打過最近一場 boss」的玩家等值精力藥水的金幣（預設 1800 = 3 罐 × 600）。
+// 補發「打過最近一場 boss」的玩家等值體力藥水的金幣（預設 1800 = 3 罐 × 600）。
 //
 // 用法:
 //   node src/scripts/grantBossAttackersStaminaCoins.js               # dry-run
@@ -44,7 +44,7 @@ async function main() {
   }
 
   const mode = args.apply ? "APPLY（會寫入）".red : "DRY-RUN（不寫入）".green;
-  console.log(`\n=== Boss 攻擊者精力藥水補償 — ${mode} ===\n`.cyan);
+  console.log(`\n=== Boss 攻擊者體力藥水補償 — ${mode} ===\n`.cyan);
 
   const mongo = new MongoClient(process.env.MONGO_URI);
   await mongo.connect();

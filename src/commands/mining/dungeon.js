@@ -34,7 +34,7 @@ const RAID_HEAL_PREFIX = "raid_heal_";         // 補血：raid_heal_<ownerId>_<
 const RAID_AGAIN_PREFIX = "raid_again_";       // 再戰：raid_again_<ownerId>_<theme>_<floor>
 const RAID_FORCE_PREFIX = "raid_force_";       // 強制進場（低 HP 確認後）：raid_force_<ownerId>_<theme>_<floor>
 const RAID_BOSS_PREFIX = "raid_boss_";         // 挑戰 mini-BOSS：raid_boss_<ownerId>_<theme>
-const RAID_USE_STAMINA_PREFIX = "raid_use_stamina_"; // 體力耗盡時喝精力藥水：raid_use_stamina_<ownerId>
+const RAID_USE_STAMINA_PREFIX = "raid_use_stamina_"; // 體力耗盡時喝體力藥水：raid_use_stamina_<ownerId>
 const RAID_SETTINGS_PREFIX = "raid_settings_"; // 開設定面板：raid_settings_<ownerId>
 const RAID_PREF_TOGGLE_PREFIX = "raid_pref_toggle_"; // SelectMenu：自動藥水開關
 const RAID_PREF_TIER_PREFIX = "raid_pref_tier_";     // SelectMenu：用哪瓶偏好
@@ -756,7 +756,7 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
             new ActionRowBuilder().addComponents(
               new ButtonBuilder()
                 .setCustomId(`mining_use_stamina_potion_${interaction.user.id}`)
-                .setLabel(`🧪 補充精力藥水（剩 ${potionCount} 瓶）`)
+                .setLabel(`🧪 補充體力藥水（剩 ${potionCount} 瓶）`)
                 .setStyle(ButtonStyle.Success),
             ),
           );
@@ -768,7 +768,7 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
         } else {
           container.addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              "-# 想立刻續命？到 /商店 → 挖礦道具 買精力藥水（每日上限 3 瓶）。",
+              "-# 想立刻續命？到 /商店 → 挖礦道具 買體力藥水（每日上限 3 瓶）。",
             ),
           );
         }

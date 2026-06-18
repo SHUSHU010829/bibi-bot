@@ -80,7 +80,7 @@ function parseUseWhetstoneShieldId(customId) {
   return null;
 }
 
-// 精力藥水「使用」按鈕：mining_use_stamina_potion_<ownerId>
+// 體力藥水「使用」按鈕：mining_use_stamina_potion_<ownerId>
 const USE_STAMINA_POTION_PREFIX = "mining_use_stamina_potion_";
 
 const USE_TREASURE_MAP_PREFIX = "use_treasure_map_";
@@ -418,7 +418,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         { emoji: "🍀", name: "幸運藥水", qty: luckUses },
         { emoji: "🎫", name: "CD 縮短券", qty: ticketCount },
         { emoji: "🪨", name: "劣質磨石", qty: inferiorCount },
-        { emoji: "🧪", name: "精力藥水", qty: staminaPotionCount },
+        { emoji: "🧪", name: "體力藥水", qty: staminaPotionCount },
         { emoji: "✨", name: "傳說素材碎片", qty: fragments },
         { emoji: "<:crack_stone:1516055109199597708>", name: "碎石", qty: stoneShards },
         { emoji: "🪡", name: "漁網碎片", qty: netFrags },
@@ -482,7 +482,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           `🎫 **CD 縮短券** ×${ticketCount}\n-# 立即 -${reductionMin} 分・在 \`/挖礦\` 或 \`/釣魚\` 冷卻訊息上按使用`
         )
       );
-      // 精力藥水已移到「⚔️ 地下城」分類顯示，這裡不再重複
+      // 體力藥水已移到「⚔️ 地下城」分類顯示，這裡不再重複
       {
         const pickaxeMax = profile.pickaxe_max_durability;
         const weaponMax = profile.weapon_max_durability;
@@ -576,7 +576,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
             new SectionBuilder()
               .addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(
-                  `🗺️ **藏寶圖** ×${treasureMaps}\n-# 撕開觸發隨機事件：藏寶箱 / 精力藥水 / 寶箱怪 / 惡作劇紙條`,
+                  `🗺️ **藏寶圖** ×${treasureMaps}\n-# 撕開觸發隨機事件：藏寶箱 / 體力藥水 / 寶箱怪 / 惡作劇紙條`,
                 ),
               )
               .setButtonAccessory(
@@ -855,7 +855,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     }).catch(() => null);
 
     if (status) {
-      // 精力藥水欄位 / 商店 restore 值（dungeon block 自帶，與 mine block 局部變數不共用）
+      // 體力藥水欄位 / 商店 restore 值（dungeon block 自帶，與 mine block 局部變數不共用）
       const stPotionCount = status.profile?.stamina_potion_count || 0;
       const stPotionItem = (shop?.items || []).find((it) => it.type === "mining_stamina_potion");
       const stPotionRestore = stPotionItem?.payload?.restore || 5;
@@ -880,12 +880,12 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           new TextDisplayBuilder().setContent(headLines.join("\n")),
         );
 
-        // 精力藥水（移動自挖礦道具）
+        // 體力藥水（移動自挖礦道具）
         container.addSectionComponents(
           new SectionBuilder()
             .addTextDisplayComponents(
               new TextDisplayBuilder().setContent(
-                `🥤 **精力藥水** ×${stPotionCount}\n-# 立即恢復 ${stPotionRestore} 點地下城體力（不超過上限）`,
+                `🥤 **體力藥水** ×${stPotionCount}\n-# 立即恢復 ${stPotionRestore} 點地下城體力（不超過上限）`,
               ),
             )
             .setButtonAccessory(
