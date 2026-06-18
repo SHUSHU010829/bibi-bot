@@ -138,9 +138,9 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
     if (s.guildClub.dungeonStaminaMax > 0)
       lines.push(`• 🔋 地下城體力上限 +${s.guildClub.dungeonStaminaMax}`);
     if (s.guildClub.bossAtkBonus > 0)
-      lines.push(`• 🐉 BOSS 戰攻擊力 +${Math.round(s.guildClub.bossAtkBonus * 100)}%`);
+      lines.push(`• 🐉 世界王攻擊力 +${Math.round(s.guildClub.bossAtkBonus * 100)}%`);
     if (s.guildClub.bossAttackLimitBonus > 0)
-      lines.push(`• ⚔️ BOSS 戰每場攻擊次數 +${s.guildClub.bossAttackLimitBonus}`);
+      lines.push(`• ⚔️ 世界王每場攻擊次數 +${s.guildClub.bossAttackLimitBonus}`);
     // 公會建築（礦坑 / 訓練場 / 倉庫擴建）buff
     if (s.guildClub.miningCooldownPct > 0)
       lines.push(`• ⏱️ 挖礦冷卻 -${s.guildClub.miningCooldownPct}%（礦坑）`);
@@ -149,7 +149,7 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
     if (s.guildClub.critRatePct > 0)
       lines.push(`• 💥 暴擊率 +${s.guildClub.critRatePct}%（訓練場）`);
     if (s.guildClub.bossDamagePct > 0)
-      lines.push(`• 🐲 BOSS 傷害 +${s.guildClub.bossDamagePct}%（訓練場）`);
+      lines.push(`• 🐲 世界王傷害 +${s.guildClub.bossDamagePct}%（訓練場）`);
     if (s.guildClub.warehouseCapacityBonus > 0)
       lines.push(`• 📦 公會倉庫容量 +${s.guildClub.warehouseCapacityBonus}（倉庫擴建）`);
     if (lines.length === 0) lines.push(`-# 公會升到 Lv.2 起逐步解鎖共享 buff`);

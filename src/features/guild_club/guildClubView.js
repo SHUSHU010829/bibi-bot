@@ -83,8 +83,8 @@ const BUFF_LABELS = {
   mining_luck_pct: (v) => `挖礦 luck +${Math.round(v * 100)}%（吃 luckCap）`,
   work_income_multiplier: (v) => `打工收入 +${Math.round(v * 100)}%`,
   dungeon_stamina_max: (v) => `地下城體力上限 +${v}`,
-  boss_atk_pct: (v) => `BOSS 戰攻擊力 +${Math.round(v * 100)}%`,
-  boss_attack_limit_bonus: (v) => `BOSS 戰每場攻擊次數 +${v}`,
+  boss_atk_pct: (v) => `世界王攻擊力 +${Math.round(v * 100)}%`,
+  boss_attack_limit_bonus: (v) => `世界王每場攻擊次數 +${v}`,
 };
 
 const formatBuff = (b) => {
