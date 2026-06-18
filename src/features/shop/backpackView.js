@@ -9,7 +9,7 @@ const {
   ButtonStyle,
   MessageFlags,
 } = require("discord.js");
-const { mining, shop, fishing, farming } = require("../../config");
+const { mining, shop, fishing, farming, dungeon } = require("../../config");
 const {
   getOrCreate,
   backpackCapacity,
@@ -21,6 +21,7 @@ const {
   CARDNO_OPEN_ID,
 } = require("../donation/customCardNumber");
 const { getPickaxeRepairCost } = require("../mining/mineService");
+const dungeonService = require("../mining/dungeonService");
 const orePriceEngine = require("../market/orePriceEngine");
 
 function trendLabel(price, base) {
@@ -238,12 +239,13 @@ function buildUnifiedEquipMenu(grouped) {
 
 // 背包分類常數
 const BACKPACK_CATEGORIES = [
-  { value: "all",  label: "🎒 全部" },
-  { value: "ore",  label: "⛏️ 礦石" },
-  { value: "mine", label: "🪓 挖礦道具" },
-  { value: "fish", label: "🎣 釣魚" },
-  { value: "farm", label: "🌾 農場" },
-  { value: "shop", label: "🛍️ 商店道具" },
+  { value: "all",     label: "🎒 全部" },
+  { value: "ore",     label: "⛏️ 礦石" },
+  { value: "mine",    label: "🪓 挖礦道具" },
+  { value: "fish",    label: "🎣 釣魚" },
+  { value: "farm",    label: "🌾 農場" },
+  { value: "dungeon", label: "⚔️ 地下城" },
+  { value: "shop",    label: "🛍️ 商店道具" },
 ];
 
 // 統一背包：礦石 / 挖礦道具 / 釣魚 / 農場 / 商店合在同一張卡片。
@@ -438,7 +440,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       }
       const buffLines = [];
       if (netUses > 0) buffLines.push(`🕸️ 撈網剩 ${netUses} 次`);
-      if (trapUses > 0) buffLines.push(`🪤 陷阱保護剩 ${trapUses} 次`);
+      // 高級陷阱保護移到農場區塊顯示（自動抵擋農場 raid）
       if (buffLines.length > 0) {
         lines.push(`-# 生效中：${buffLines.join("・")}`);
       }
@@ -480,21 +482,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           `🎫 **CD 縮短券** ×${ticketCount}\n-# 立即 -${reductionMin} 分・在 \`/挖礦\` 或 \`/釣魚\` 冷卻訊息上按使用`
         )
       );
-      container.addSectionComponents(
-        new SectionBuilder()
-          .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              `🧪 **精力藥水** ×${staminaPotionCount}\n-# 立即恢復 ${staminaPotionRestore} 點地下城體力（不超過上限）`
-            )
-          )
-          .setButtonAccessory(
-            new ButtonBuilder()
-              .setCustomId(`${USE_STAMINA_POTION_PREFIX}${userId}`)
-              .setLabel("使用")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(staminaPotionCount <= 0)
-          )
-      );
+      // 精力藥水已移到「⚔️ 地下城」分類顯示，這裡不再重複
       {
         const pickaxeMax = profile.pickaxe_max_durability;
         const weaponMax = profile.weapon_max_durability;
@@ -613,14 +601,13 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         }
       }
 
-      // 生效中的 buff（撈網 / 高級陷阱），方便玩家確認剩餘次數
-      if (netUses > 0 || trapUses > 0) {
-        const buffLines = [];
-        if (netUses > 0) buffLines.push(`🕸️ **撈網生效中**：剩 ${netUses} 次（+10% 釣魚成功率）`);
-        if (trapUses > 0) buffLines.push(`🪤 **高級陷阱保護中**：剩 ${trapUses} 次（自動抵擋農場 raid）`);
+      // 撈網 buff（仍與挖礦/釣魚相關保留在此）；高級陷阱保護已移到農場區塊
+      if (netUses > 0) {
         container.addSeparatorComponents(new SeparatorBuilder());
         container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`### ✨ 自動生效 buff\n${buffLines.join("\n")}`),
+          new TextDisplayBuilder().setContent(
+            `### ✨ 自動生效 buff\n🕸️ **撈網生效中**：剩 ${netUses} 次（+10% 釣魚成功率）`,
+          ),
         );
       }
     }
@@ -812,6 +799,15 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           ),
         );
       }
+      // 高級陷阱保護中（自動抵擋農場 raid，與農場 raid 系統強相關，放這裡）
+      const farmTrapUses = farmProfile.advanced_trap_uses || 0;
+      if (farmTrapUses > 0) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `🪤 **高級陷阱保護中**：剩 ${farmTrapUses} 次\n-# 自動抵擋鄰居對你農場的 raid`,
+          ),
+        );
+      }
     } else {
       let bagValue = 0;
       const veggieCompact = [];
@@ -842,9 +838,112 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       }
       if (fertCompact.length > 0) lines.push(`💧 肥料：${fertCompact.join("・")}`);
       if (seedCompact.length > 0) lines.push(`🌱 種子：${seedCompact.join("・")}`);
+      const farmTrapUsesCompact = farmProfile.advanced_trap_uses || 0;
+      if (farmTrapUsesCompact > 0) {
+        lines.push(`-# 🪤 高級陷阱保護剩 ${farmTrapUsesCompact} 次（抵擋 raid）`);
+      }
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(lines.join("\n"))
       );
+    }
+  }
+
+  // ── 地下城區 ──
+  if ((category === "all" || category === "dungeon") && dungeon?.enabled && client.miningProfilesCollection) {
+    const status = await dungeonService.getDungeonStatus(client, {
+      userId, guildId, member,
+    }).catch(() => null);
+
+    if (status) {
+      // 精力藥水欄位 / 商店 restore 值（dungeon block 自帶，與 mine block 局部變數不共用）
+      const stPotionCount = status.profile?.stamina_potion_count || 0;
+      const stPotionItem = (shop?.items || []).find((it) => it.type === "mining_stamina_potion");
+      const stPotionRestore = stPotionItem?.payload?.restore || 5;
+
+      container.addSeparatorComponents(new SeparatorBuilder());
+
+      if (category === "dungeon") {
+        // 詳細頁
+        const wdef = (dungeon?.weapons || {})[status.weapon] || {};
+        const sdef = status.shield ? (dungeon?.shields || {})[status.shield] || {} : null;
+        const headLines = [`### ⚔️ 地下城`];
+        headLines.push(`❤️ HP：**${status.hp}/${status.hpMax}**　🔋 體力：**${status.stamina}/${status.staminaMax}**`);
+        const weaponLine = status.weapon === "fist"
+          ? "👊 赤手空拳（先 /合成 一把劍）"
+          : `${wdef.emoji || "🗡️"} ${wdef.name || status.weapon}（耐久 ${status.weaponDurability ?? "—"}/${status.weaponMaxDurability ?? "—"}）`;
+        const shieldLine = sdef
+          ? `${sdef.emoji || "🛡️"} ${sdef.name}（耐久 ${status.shieldDurability ?? "—"}/${status.shieldMaxDurability ?? "—"}・格擋 ${Math.round((sdef.blockRate || 0) * 100)}%）`
+          : "—（未裝盾）";
+        headLines.push(`⚔️ 武器：${weaponLine}`);
+        headLines.push(`🛡️ 盾：${shieldLine}`);
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(headLines.join("\n")),
+        );
+
+        // 精力藥水（移動自挖礦道具）
+        container.addSectionComponents(
+          new SectionBuilder()
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                `🥤 **精力藥水** ×${stPotionCount}\n-# 立即恢復 ${stPotionRestore} 點地下城體力（不超過上限）`,
+              ),
+            )
+            .setButtonAccessory(
+              new ButtonBuilder()
+                .setCustomId(`${USE_STAMINA_POTION_PREFIX}${userId}`)
+                .setLabel("使用")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(stPotionCount <= 0),
+            ),
+        );
+
+        // 生命藥水（戰中自動、戰前 / 戰後在 /地下城 面板用補血鈕；這邊只顯示庫存）
+        const potionLines = [];
+        potionLines.push(`### 💊 生命藥水`);
+        potionLines.push(`💊 小（+20 HP）×${status.potions.small}・💊 中（+50 HP）×${status.potions.medium}・💊 大（補滿）×${status.potions.large}`);
+        const autoLabel = status.autoPotion === false
+          ? "⛔ 自動藥水關閉"
+          : `✅ 自動藥水開啟（${
+              { smallest: "最小可用", largest: "最大可用", small: "只用小瓶", medium: "只用中瓶", large: "只用大瓶" }[status.autoPotionTier] || "最小可用"
+            }）`;
+        potionLines.push(`-# ${autoLabel}・到 /地下城 面板「💊 補血」可手動使用，或點「⚙️ 設定」改偏好`);
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(potionLines.join("\n")),
+        );
+
+        // 樓層解鎖進度
+        const floorLines = ["### 🏚️ 樓層解鎖進度"];
+        for (const ts of status.themes) {
+          const t = ts.theme;
+          if (!t) continue;
+          if (ts.unlocked) {
+            const maxFloor = status.profile?.floor_unlocks?.[t.id]?.max_floor || 0;
+            floorLines.push(`${t.emoji || ""} ${t.name}：最高 ${maxFloor}F 可挑戰`);
+          } else {
+            floorLines.push(`🔒 ${t.emoji || ""} ${t.name}：未解鎖`);
+          }
+        }
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(floorLines.join("\n")),
+        );
+      } else {
+        // 全部模式 — 精簡顯示
+        const lines = [`### ⚔️ 地下城`];
+        lines.push(`❤️ HP **${status.hp}/${status.hpMax}**　🔋 體力 **${status.stamina}/${status.staminaMax}**`);
+        const potionsCompact = [];
+        if (stPotionCount > 0) potionsCompact.push(`🥤 精力×${stPotionCount}`);
+        if (status.potions.small > 0) potionsCompact.push(`💊 小×${status.potions.small}`);
+        if (status.potions.medium > 0) potionsCompact.push(`💊 中×${status.potions.medium}`);
+        if (status.potions.large > 0) potionsCompact.push(`💊 大×${status.potions.large}`);
+        if (potionsCompact.length > 0) {
+          lines.push(`藥水：${potionsCompact.join("・")}`);
+        } else {
+          lines.push(`-# 尚無藥水，到 /商店 → 地下城道具 補貨`);
+        }
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(lines.join("\n")),
+        );
+      }
     }
   }
 
