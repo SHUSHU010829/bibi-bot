@@ -14,6 +14,7 @@ const {
 } = require("discord.js");
 
 const { mining, dungeon, commandChannels, normalChannelId } = require("../../config");
+const { isGameRoom } = require("../../features/gameRoom/service");
 const dungeonService = require("../../features/mining/dungeonService");
 const floorService = require("../../features/dungeon/floorService");
 const diamondAnnouncer = require("../../features/mining/diamondAnnouncer");
@@ -994,8 +995,10 @@ module.exports = {
   run: async (client, interaction) => {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     // 頻道綁定：規格要求只允許在 dungeon.channelId 使用，其他頻道回 ephemeral 提示
+    // 例外：個人遊戲房豁免，讓玩家可以在自己房間裡玩。
     const boundChannel = dungeon?.channelId;
-    if (boundChannel && interaction.channelId !== boundChannel) {
+    const inGameRoom = isGameRoom(interaction.channelId);
+    if (boundChannel && interaction.channelId !== boundChannel && !inGameRoom) {
       const container = new ContainerBuilder()
         .setAccentColor(0xfaa61a)
         .addTextDisplayComponents(
