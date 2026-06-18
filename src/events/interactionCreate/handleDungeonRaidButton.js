@@ -103,18 +103,18 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
         `🔋 體力剩 0/${result.max}（需要 ${result.staCost} 點才能進場）`,
       ];
       if (result.nextRegenAt) lines.push(`下一點體力：<t:${Math.floor(result.nextRegenAt / 1000)}:R>（每小時 +1）`);
-      if (result.potionCount > 0) lines.push(`-# 你有 ${result.potionCount} 瓶精力藥水，按下方按鈕直接喝。`);
-      else lines.push("-# 到 /商店 → 地下城道具 補精力藥水（每日上限 3 瓶）");
+      if (result.potionCount > 0) lines.push(`-# 你有 ${result.potionCount} 瓶體力藥水，按下方按鈕直接喝。`);
+      else lines.push("-# 到 /商店 → 地下城道具 補體力藥水（每日上限 3 瓶）");
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## 😮‍💨 體力耗盡"));
       container.addSeparatorComponents(new SeparatorBuilder());
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
-      // 直接喝精力藥水（持有時才顯示）
+      // 直接喝體力藥水（持有時才顯示）
       if (result.potionCount > 0) {
         container.addActionRowComponents(
           new ActionRowBuilder().addComponents(
             new ButtonBuilder()
               .setCustomId(`${dungeonCmd.RAID_USE_STAMINA_PREFIX}${interaction.user.id}`)
-              .setLabel(`🥤 喝精力藥水（剩 ${result.potionCount}）`)
+              .setLabel(`🥤 喝體力藥水（剩 ${result.potionCount}）`)
               .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
               .setCustomId(`${dungeonCmd.RAID_PANEL_PREFIX}${interaction.user.id}`)
@@ -421,7 +421,7 @@ module.exports = async (client, interaction) => {
       });
       if (!result.ok) {
         const msg = {
-          no_potion: "🥤 你沒有精力藥水了，到 /商店 → 地下城道具 補貨。",
+          no_potion: "🥤 你沒有體力藥水了，到 /商店 → 地下城道具 補貨。",
           full: "🔋 體力已滿，不需要喝。",
           disabled: "🔧 系統暫時無法使用。",
           retry: "⏳ 操作衝突，請再試一次。",

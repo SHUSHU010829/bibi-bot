@@ -20,11 +20,11 @@
       },
       {
         "id": "stamina_potion",
-        "name": "精力藥水",
+        "name": "體力藥水",
         "emoji": "🩹",
         "weight": 15,
         "effect": { "type": "restore_stamina", "amount": 3 },
-        "text": "你在地下室找到一瓶慢慢流失的精力藥水，當場喝下後體力回復了 3 點。"
+        "text": "你在地下室找到一瓶慢慢流失的體力藥水，當場喝下後體力回復了 3 點。"
       },
       {
         "id": "mimic",

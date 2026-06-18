@@ -113,7 +113,7 @@ function resolveStamina(profile, max = staminaMax()) {
   return { stamina, updatedAt, nextRegenAt: updatedAt + regenMs };
 }
 
-// 立即恢復體力（精力藥水用）。回傳恢復前後數值；已滿時 full=true 不寫庫。
+// 立即恢復體力（體力藥水用）。回傳恢復前後數值；已滿時 full=true 不寫庫。
 async function restoreStamina(client, { userId, guildId, member, amount }) {
   if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
   const club = await getMemberClub(client, userId, guildId);
@@ -149,7 +149,7 @@ async function restoreStamina(client, { userId, guildId, member, amount }) {
   };
 }
 
-// 使用一瓶精力藥水：扣 1 罐 + 補體力。庫存或體力滿時各自回傳對應 reason。
+// 使用一瓶體力藥水：扣 1 罐 + 補體力。庫存或體力滿時各自回傳對應 reason。
 async function useStaminaPotion(client, { userId, guildId, member }) {
   if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
