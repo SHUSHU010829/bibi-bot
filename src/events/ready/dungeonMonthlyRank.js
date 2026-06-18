@@ -29,9 +29,10 @@ const TZ = "Asia/Taipei";
 
 function previousMonthWindow() {
   const monthStart = DateTime.now().setZone(TZ).startOf("month");
+  // ended_at 是 BSON Date，window 也用 Date 比對（不能用 number）
   return {
-    start: monthStart.minus({ months: 1 }).toMillis(),
-    end: monthStart.toMillis(),
+    start: monthStart.minus({ months: 1 }).toJSDate(),
+    end: monthStart.toJSDate(),
     label: monthStart.minus({ months: 1 }).toFormat("yyyy 年 M 月"),
   };
 }

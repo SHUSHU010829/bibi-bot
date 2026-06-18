@@ -196,40 +196,52 @@ async function showBattleLog(interaction, runId) {
   if (!client.dungeonRunsCollection) {
     return replyEphemeral(interaction, "🔧 戰鬥日誌系統未啟動。");
   }
+  // M5 修正：先 defer 避免 Mongo 查詢慢時超過 3s 互動視窗
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
   const doc = await client.dungeonRunsCollection.findOne({ run_id: runId, user_id: interaction.user.id }).catch(() => null);
-  if (!doc) return replyEphemeral(interaction, "找不到這場戰鬥的紀錄（或已過期）。");
+  if (!doc) return interaction.editReply("找不到這場戰鬥的紀錄（或已過期）。").catch(() => {});
 
   const log = doc.battle_log || [];
+  // L2 修正：把怪物名 / mini-BOSS 中文名帶進日誌格式器，避免一直印「怪物反擊」
+  const monsterDef = dungeon?.monsterDefs?.[doc.monster_id]
+    || dungeon?.miniBosses?.[doc.theme]
+    || null;
+  const monsterLabel = monsterDef
+    ? `${monsterDef.emoji || "👹"} ${monsterDef.name}`
+    : "👹 怪物";
   const lines = [];
-  // 最多 20 行（前 10 + 後 10），中段摘要（若超過）
   const maxLines = 20;
   if (log.length <= maxLines) {
-    for (const e of log) lines.push(formatLogEntry(e));
+    for (const e of log) lines.push(formatLogEntry(e, monsterLabel));
   } else {
-    for (let i = 0; i < 10; i += 1) lines.push(formatLogEntry(log[i]));
+    for (let i = 0; i < 10; i += 1) lines.push(formatLogEntry(log[i], monsterLabel));
     lines.push(`-# … 中段 ${log.length - 20} 條省略 …`);
-    for (let i = log.length - 10; i < log.length; i += 1) lines.push(formatLogEntry(log[i]));
+    for (let i = log.length - 10; i < log.length; i += 1) lines.push(formatLogEntry(log[i], monsterLabel));
   }
+
+  // doc.theme 是 system key，UI 要顯示中文（CLAUDE.md #9）
+  const themeDef = (dungeon?.themes || []).find((t) => t.id === doc.theme);
+  const themeLabel = themeDef ? `${themeDef.emoji || ""} ${themeDef.name}` : doc.theme;
 
   const container = new ContainerBuilder()
     .setAccentColor(doc.result === "win" ? 0x2ecc71 : 0xe74c3c)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 📜 戰鬥日誌 — ${doc.theme} ${doc.floor}F`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 📜 戰鬥日誌 — ${themeLabel} ${doc.floor}F`))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n") || "（無）"));
-  return interaction.reply({
+  return interaction.editReply({
     components: [container],
-    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    flags: MessageFlags.IsComponentsV2,
   });
 }
 
-function formatLogEntry(e) {
+function formatLogEntry(e, monsterLabel = "👹 怪物") {
   if (!e) return "";
   const turn = e.turn ? `第 ${e.turn} 回合：` : "";
   switch (e.type) {
     case "player_attack":
       return `🗡️ ${turn}你揮砍 → ${e.damage} 傷害${e.crit ? "（暴擊！）" : ""}${e.wounded ? "（重傷狀態）" : ""}`;
     case "monster_attack":
-      return `👹 ${turn}怪物反擊 ${e.raw_damage} → ${e.blocked ? "🛡️ 格擋！" : ""}受 ${e.damage} 傷（HP ${e.hp_after}${e.shield_after != null ? `，盾 ${e.shield_after}` : ""}）`;
+      return `${monsterLabel} ${turn}反擊 ${e.raw_damage} → ${e.blocked ? "🛡️ 格擋！" : ""}受 ${e.damage} 傷（HP ${e.hp_after}${e.shield_after != null ? `，盾 ${e.shield_after}` : ""}）`;
     case "status_apply":
       return `${turn}${e.note || `${e.target} 陷入${e.status}`}`;
     case "status_tick":

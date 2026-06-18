@@ -808,6 +808,9 @@ async function enterDungeonHp(client, {
   let ticketGained = 0;
   let ticketOverflowToCoins = false;
   let slimeGained = 0;
+  // C1：把這兩個變數提到 outer scope（原本 var 在分支裡 hoist，雖能跑但 ESLint 會 warn）
+  let floorEvents = [];
+  let deathDrop = null;
   let seedGained = null;
 
   const inc = { dungeon_count: 1 };
@@ -918,7 +921,7 @@ async function enterDungeonHp(client, {
       }
       inc[`mini_boss_kills.${themeId}`] = (inc[`mini_boss_kills.${themeId}`] || 0) + 1;
       inc.dragon_slayer_kills = (inc.dragon_slayer_kills || 0) + 1;
-      var floorEvents = [];
+      // floorEvents 已預設 []
     } else {
       // 樓層通關推進
       const upd = floorService.buildClearedUpdate(profile, themeId, floor);
@@ -926,8 +929,7 @@ async function enterDungeonHp(client, {
         inc[k] = (inc[k] || 0) + v;
       }
       Object.assign(set, upd.set);
-      // upd.events 包含 floor_unlocked 事件，戰後再 emit
-      var floorEvents = upd.events;
+      floorEvents = upd.events;
     }
   } else {
     // 失敗：25% 機率隨機掉 1 個非工具類道具（魚/礦/作物等，不掉裝備）
@@ -950,7 +952,7 @@ async function enterDungeonHp(client, {
         const pick = candidates[Math.floor(Math.random() * candidates.length)];
         const path = pick.kind === "ore" ? "backpack" : pick.kind === "veggie" ? "veggie_bag" : "fish_bag";
         inc[`${path}.${pick.key}`] = (inc[`${path}.${pick.key}`] || 0) - 1;
-        var deathDrop = { kind: pick.kind, key: pick.key, qty: 1 };
+        deathDrop = { kind: pick.kind, key: pick.key, qty: 1 };
       }
     }
   }
@@ -977,7 +979,10 @@ async function enterDungeonHp(client, {
   // 戰鬥紀錄寫入 DungeonRuns（給玩家查紀錄 / mini-BOSS milestone）
   const runId = new ObjectId().toString();
   if (client.dungeonRunsCollection) {
-    const startedAt = Date.now() - (battle.turns * 1000); // 估算
+    // started_at / ended_at 改存 BSON Date（原本 number 會讓 connectDb.js
+    // 的 dungeon_runs_ttl_30d TTL 索引靜默失效，資料累積不會自動清）
+    const endedAt = new Date();
+    const startedAt = new Date(endedAt.getTime() - battle.turns * 1000); // 估算
     client.dungeonRunsCollection.insertOne({
       run_id: runId,
       user_id: userId,
@@ -994,7 +999,7 @@ async function enterDungeonHp(client, {
       is_milestone: !!isMiniBoss, // mini-BOSS 紀念紀錄不走 30 天 TTL
       rewards: { coinsGained: coinsGrantedTotal, oreGained, legendaryGained, slimeGained, seedGained },
       started_at: startedAt,
-      ended_at: Date.now(),
+      ended_at: endedAt,
     }).catch((e) => console.log(`[WARN] DungeonRuns insert: ${e.message}`.yellow));
   }
 
@@ -1049,8 +1054,8 @@ async function enterDungeonHp(client, {
     ticketOverflowToCoins,
     slimeGained,
     seedGained,
-    deathDrop: typeof deathDrop !== "undefined" ? deathDrop : null,
-    floorEvents: typeof floorEvents !== "undefined" ? floorEvents : [],
+    deathDrop,
+    floorEvents,
     balance,
     dungeonCount: (profile.dungeon_count || 0) + 1,
     foodBuffLines: formatFoodBuffLines(profile, "dungeon"),
