@@ -418,9 +418,9 @@
         }
       },
       "turtle_stew": {
-        "name": "龜殼濃湯",
-        "emoji": "🥘",
-        "description": "厚實湯底像龜殼裹住身軀，進地下城更耐打（Phase H+ HP 戰鬥用）",
+        "name": "章魚鎧甲鍋",
+        "emoji": "🐙",
+        "description": "章魚 8 隻腳熬煮成稠湯，吃下去像把鎧甲穿在身上，進地下城更耐打（Phase H+ HP 戰鬥用）",
         "materials": { "octopus": 1, "crucian": 3 },
         "coalFuel": 4,
         "buff": {
