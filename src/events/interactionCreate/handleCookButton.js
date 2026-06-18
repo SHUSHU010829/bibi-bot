@@ -175,15 +175,16 @@ module.exports = async (client, interaction) => {
     return;
   }
 
-  if (!interaction.isButton()) return;
-  const { customId } = interaction;
-
-  // 分類分頁切換
-  if (customId.startsWith(COOK_TAB_PREFIX)) {
-    const { ownerId, rest: category } = parseOwnerAndRest(customId, COOK_TAB_PREFIX);
+  // 分類分頁切換（StringSelectMenu）
+  if (
+    interaction.isStringSelectMenu?.() &&
+    interaction.customId.startsWith(COOK_TAB_PREFIX)
+  ) {
+    const ownerId = interaction.customId.slice(COOK_TAB_PREFIX.length);
     if (interaction.user.id !== ownerId) {
       return interaction.reply({ content: "❌ 這不是你的廚房！", flags: MessageFlags.Ephemeral });
     }
+    const category = interaction.values?.[0];
     if (!COOK_CAT_IDS.includes(category)) return;
     await interaction.deferUpdate();
     try {
@@ -193,6 +194,9 @@ module.exports = async (client, interaction) => {
     }
     return;
   }
+
+  if (!interaction.isButton()) return;
+  const { customId } = interaction;
 
   // 自訂份數 → 開 modal（不可先 defer，showModal 必須是首個回應）
   if (customId.startsWith(COOK_CUSTOM_PREFIX)) {
