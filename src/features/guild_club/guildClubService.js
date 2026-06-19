@@ -2,6 +2,7 @@ require("colors");
 const crypto = require("crypto");
 const { guildClub } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
+const guildClubChat = require("./guildClubChat");
 
 const newGuildClubId = () =>
   `gc_${crypto.randomBytes(4).toString("hex")}`;
@@ -221,6 +222,10 @@ const create = async (client, { userId, guildId, name, member }) => {
     createdAt: now,
   });
 
+  guildClubChat
+    .addMemberWithWelcome(client, { club: doc, userId, source: "create" })
+    .catch(() => {});
+
   return { ok: true, club: doc, cost };
 };
 
@@ -340,6 +345,8 @@ const disband = async (client, { userId, guildId, member }) => {
   await client.guildClubMembersCollection.deleteMany({
     guild_club_id: club.guild_club_id,
   });
+
+  guildClubChat.archiveOnDisband(client, beforeDoc).catch(() => {});
 
   return {
     ok: true,
