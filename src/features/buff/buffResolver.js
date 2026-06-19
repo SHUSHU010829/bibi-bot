@@ -50,7 +50,23 @@ async function getGuildClubBuffs(client, userId, guildId) {
   for (const [k, v] of Object.entries(fromBuildings)) {
     buffsByType[k] = (buffsByType[k] || 0) + v;
   }
-  return { club, level: club.level, buffs, buffsByType, buildingBuffs: fromBuildings };
+  // 公會宴會：時效內把宴會的 buff 加進來，過期就忽略。
+  const banquet = club.active_banquet;
+  let activeBanquet = null;
+  if (banquet && typeof banquet.expires_at === "number" && banquet.expires_at > Date.now()) {
+    for (const b of banquet.buffs || []) {
+      buffsByType[b.type] = (buffsByType[b.type] || 0) + (b.value || 0);
+    }
+    activeBanquet = banquet;
+  }
+  return {
+    club,
+    level: club.level,
+    buffs,
+    buffsByType,
+    buildingBuffs: fromBuildings,
+    activeBanquet,
+  };
 }
 
 // ── ATK ───────────────────────────────────────────────

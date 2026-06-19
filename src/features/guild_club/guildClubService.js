@@ -27,6 +27,8 @@ const buildingsOf = (club) => ({
   mine: club?.buildings?.mine || 0,
   training: club?.buildings?.training || 0,
   warehouse: club?.buildings?.warehouse || 0,
+  farm_kitchen: club?.buildings?.farm_kitchen || 0,
+  blacksmith: club?.buildings?.blacksmith || 0,
 });
 const forgeLevelOf = (club) => club?.forge_level || 0;
 const refineryLevelOf = (club) => club?.refinery_level || 0;

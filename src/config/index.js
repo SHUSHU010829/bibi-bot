@@ -37,6 +37,7 @@ const guildClub = require("./guild_club.json");
 const guildWarehouse = require("./guild_warehouse.json");
 const guildForge = require("./guild_forge.json");
 const guildBuildings = require("./guild_buildings.json");
+const guildBanquet = require("./guild_banquet.json");
 const worldEvents = require("./world_events.json");
 const survey = require("./survey");
 const gameRoom = require("./gameRoom.json");
@@ -80,6 +81,7 @@ module.exports = {
   ...guildWarehouse,
   ...guildForge,
   ...guildBuildings,
+  ...guildBanquet,
   ...worldEvents,
   ...survey,
   ...gameRoom,

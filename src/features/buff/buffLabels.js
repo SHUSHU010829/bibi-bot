@@ -23,6 +23,13 @@ const BUFF_META = {
   work_income_pct: { label: "打工收入", unit: "+{v}%" },
   dungeon_coin_pct: { label: "地下城金幣", unit: "+{v}%" },
   xp_boost_pct: { label: "經驗值", unit: "+{v}%" },
+  farm_growth_reduction_pct: { label: "農作成長時間", unit: "-{v}%" },
+  harvest_coin_pct: { label: "收成金幣", unit: "+{v}%" },
+  cooking_crit_pct: { label: "烹飪美味暴擊", unit: "+{v}%" },
+  farm_low_tier_extra_count: { label: "低階作物額外產出", unit: "+{v} 個（限紅蘿蔔/玉米）" },
+  weapon_max_durability_pct: { label: "武器耐久上限", unit: "+{v}%" },
+  equipment_repair_discount_pct: { label: "裝備修復材料", unit: "-{v}%（武器/鎬/釣竿）" },
+  combat_durability_save_pct: { label: "戰鬥耐久節省", unit: "+{v}%（武器/盾）" },
 };
 
 const labelOf = (key) => BUFF_META[key]?.label || key;

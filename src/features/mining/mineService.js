@@ -8,6 +8,7 @@ const encounterService = require("./encounterService");
 const { consumeMineLuckUse, formatFoodBuffLines } = require("../fishing/cookService");
 const grantCoins = require("../economy/grantCoins");
 const { priceOf } = require("./overflowConfirm");
+const buildingService = require("../guild_club/buildingService");
 const bus = require("../eventBus");
 
 // 執行一次挖礦。回傳結果物件交由指令層呈現（含彩虹石公告與耐久 DM 所需資料）。
@@ -325,6 +326,19 @@ async function useCdTicket(client, { userId, guildId }) {
 // bottleneck 級材料：修理時跳過（傳說碎片極稀缺、熔岩魚需 Lv.40 + 通關 10 次解鎖）
 const REPAIR_SKIP_MATERIALS = new Set(["legendary_fragment", "lava_fish"]);
 
+// 公會鐵匠鋪：對 cost 套整數百分比折扣，最低 1 個。
+// 折扣為 0 / null 時直接回原 cost。
+function applyRepairDiscount(cost, pct) {
+  if (!cost) return null;
+  const p = Number(pct) || 0;
+  if (p <= 0) return cost;
+  const out = {};
+  for (const [mat, qty] of Object.entries(cost)) {
+    out[mat] = Math.max(1, Math.ceil(qty * (1 - p / 100)));
+  }
+  return out;
+}
+
 function getPickaxeRepairCost(profile) {
   const { craft } = require("../../config");
   const pickaxeId = profile?.pickaxe;
@@ -620,8 +634,15 @@ async function repairPickaxeWithMaterials(client, { userId, guildId }) {
     return { ok: false, reason: "already_full", durability: profile.pickaxe_durability };
   }
 
-  const cost = getPickaxeRepairCost(profile);
-  if (!cost) return { ok: false, reason: "no_recipe" };
+  const baseCost = getPickaxeRepairCost(profile);
+  if (!baseCost) return { ok: false, reason: "no_recipe" };
+  const guildBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const cost = applyRepairDiscount(
+    baseCost,
+    guildBuffs.equipment_repair_discount_pct || 0
+  );
 
   // 檢查背包足量
   const bp = profile.backpack || {};
@@ -680,8 +701,15 @@ async function repairWeaponWithMaterials(client, { userId, guildId }) {
     return { ok: false, reason: "already_full", durability: profile.weapon_durability };
   }
 
-  const cost = getWeaponRepairCost(profile);
-  if (!cost) return { ok: false, reason: "no_recipe" };
+  const baseCost = getWeaponRepairCost(profile);
+  if (!baseCost) return { ok: false, reason: "no_recipe" };
+  const guildBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const cost = applyRepairDiscount(
+    baseCost,
+    guildBuffs.equipment_repair_discount_pct || 0
+  );
 
   const bp = profile.backpack || {};
   const missing = [];
@@ -740,8 +768,15 @@ async function repairRodWithMaterials(client, { userId, guildId }) {
     return { ok: false, reason: "already_full", durability: profile.rod_durability };
   }
 
-  const cost = getRodRepairCost(profile);
-  if (!cost) return { ok: false, reason: "no_recipe" };
+  const baseCost = getRodRepairCost(profile);
+  if (!baseCost) return { ok: false, reason: "no_recipe" };
+  const guildBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const cost = applyRepairDiscount(
+    baseCost,
+    guildBuffs.equipment_repair_discount_pct || 0
+  );
 
   const bp = profile.backpack || {};
   const fb = profile.fish_bag || {};
@@ -791,6 +826,7 @@ module.exports = {
   getPickaxeRepairCost,
   getWeaponRepairCost,
   getRodRepairCost,
+  applyRepairDiscount,
   useInferiorWhetstone,
   useInferiorWhetstoneOnWeapon,
   useInferiorWhetstoneOnShield,

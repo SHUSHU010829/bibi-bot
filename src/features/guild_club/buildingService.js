@@ -1,5 +1,5 @@
 require("colors");
-const { guildBuildings } = require("../../config");
+const { guildBuildings, dungeon } = require("../../config");
 const guildClubService = require("./guildClubService");
 
 const buildingCfg = () => guildBuildings || {};
@@ -9,6 +9,26 @@ const levelRow = (kind, level) =>
   (kindDef(kind)?.levels || []).find((l) => l.level === level) || null;
 const nextLevelRow = (kind, currentLevel) =>
   (kindDef(kind)?.levels || []).find((l) => l.level === currentLevel + 1) || null;
+
+// 每種建築可獨立設 unlockClubLevel；缺則 fallback 到 root 設定。
+const unlockClubLevelOf = (kind) =>
+  kindDef(kind)?.unlockClubLevel || buildingCfg().unlockClubLevel || 2;
+
+// 查使用者所屬公會的建築 buff（給 farmService / cookService / mineService 等呼叫）。
+// 沒公會或公會解散 → 空物件。所有非主要流程 catch 吞掉，不擋玩家動作。
+async function getMemberBuildingBuffs(client, userId, guildId) {
+  if (!guildBuildings?.enabled) return {};
+  if (!client?.guildClubMembersCollection || !client?.guildsClubCollection) return {};
+  const m = await client.guildClubMembersCollection
+    .findOne({ userId, guildId })
+    .catch(() => null);
+  if (!m) return {};
+  const club = await client.guildsClubCollection
+    .findOne({ guild_club_id: m.guild_club_id, disbanded_at: null })
+    .catch(() => null);
+  if (!club) return {};
+  return buildingsBuffs(club);
+}
 
 // 倉庫擴建：累加 [≤lv] 的 capacity_bonus
 const warehouseCapacityBonus = (club) => {
@@ -81,7 +101,7 @@ const upgradeBuilding = async (client, { userId, guildId, kind }) => {
   const club = await guildClubService.getClubById(client, membership.guild_club_id);
   if (!club) return { ok: false, reason: "club_missing" };
 
-  const need = buildingCfg().unlockClubLevel || 2;
+  const need = unlockClubLevelOf(kind);
   if ((club.level || 1) < need)
     return { ok: false, reason: "club_level_locked", need, have: club.level || 1 };
 
@@ -175,6 +195,12 @@ const upgradeBuilding = async (client, { userId, guildId, kind }) => {
     }).catch(() => {});
   }
 
+  if (kind === "blacksmith") {
+    syncMembersWeaponMaxDurability(client, newDoc).catch((e) => {
+      console.log(`[GUILD_BUILDING] 同步武器耐久失敗：${e.message}`.yellow);
+    });
+  }
+
   return {
     ok: true,
     club: newDoc,
@@ -185,13 +211,46 @@ const upgradeBuilding = async (client, { userId, guildId, kind }) => {
   };
 };
 
+// 鐵匠鋪升級後，把公會內所有有武器的成員 weapon_max_durability 重算。
+// 不調整當前 weapon_durability（不送禮包，避免戰力通膨）；但若舊上限 < 新上限，
+// 玩家修武器到滿時自然會吃到。
+async function syncMembersWeaponMaxDurability(client, club) {
+  if (!club) return;
+  const buffs = buildingsBuffs(club);
+  const pct = buffs.weapon_max_durability_pct || 0;
+  const members = await guildClubService
+    .listMembers(client, club.guild_club_id)
+    .catch(() => []);
+  const weapons = dungeon?.weapons || {};
+  for (const m of members) {
+    const profile = await client.miningProfilesCollection
+      .findOne({ userId: m.userId, guildId: m.guildId })
+      .catch(() => null);
+    if (!profile) continue;
+    if (!profile.weapon || profile.weapon === "fist") continue;
+    const baseDur = weapons[profile.weapon]?.durability;
+    if (typeof baseDur !== "number") continue;
+    const newMax = Math.floor(baseDur * (1 + pct / 100));
+    if (newMax === profile.weapon_max_durability) continue;
+    await client.miningProfilesCollection
+      .updateOne(
+        { userId: m.userId, guildId: m.guildId },
+        { $set: { weapon_max_durability: newMax, updatedAt: new Date() } }
+      )
+      .catch(() => {});
+  }
+}
+
 module.exports = {
   allKinds,
   kindDef,
   levelRow,
   nextLevelRow,
+  unlockClubLevelOf,
   warehouseCapacityBonus,
   buildingsBuffs,
+  getMemberBuildingBuffs,
   checkUpgradeRequirements,
   upgradeBuilding,
+  syncMembersWeaponMaxDurability,
 };

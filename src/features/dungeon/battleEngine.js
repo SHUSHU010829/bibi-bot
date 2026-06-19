@@ -38,6 +38,10 @@ function resolveIncomingDamage(rawDamage, ctx, log) {
     dmg = Math.floor(dmg * (1 - reduction));
   }
 
+  // 公會鐵匠鋪 Lv.5：盾扣耐前骰省耐機率。
+  const savePct = player.combatDurabilitySavePct || 0;
+  const rollSave = () => savePct > 0 && Math.random() < savePct / 100;
+
   // 2) 格擋判定：受擊「前」判定（盾未壞才有資格）
   const shieldOk = player.shieldDef.blockRate > 0
     && player.shield_durability > 0
@@ -45,8 +49,10 @@ function resolveIncomingDamage(rawDamage, ctx, log) {
   if (shieldOk && Math.random() < player.shieldDef.blockRate) {
     blocked = true;
     dmg = Math.floor(dmg * 0.5);
-    player.shield_durability -= 1;
-    player.shield_capUsed += 1;
+    if (!rollSave()) {
+      player.shield_durability -= 1;
+      player.shield_capUsed += 1;
+    }
     blockedShield = player.shield_durability;
   }
 
@@ -61,8 +67,10 @@ function resolveIncomingDamage(rawDamage, ctx, log) {
     reflected = Math.floor(dmg / 3);
     if (reflected > 0) {
       ctx.monster.hp = Math.max(0, ctx.monster.hp - reflected);
-      player.shield_durability -= 1;
-      player.shield_capUsed += 1;
+      if (!rollSave()) {
+        player.shield_durability -= 1;
+        player.shield_capUsed += 1;
+      }
       log.push({
         turn: ctx.turn,
         type: "shield_reflect",
@@ -282,6 +290,7 @@ function simulate({ player, monster, miniBoss = null }) {
     shield_cap: miniBoss
       ? (dungeon?.shieldDurability?.maxConsumePerMiniBoss ?? 8)
       : (dungeon?.shieldDurability?.maxConsumePerBattle ?? 5),
+    combatDurabilitySavePct: player.combatDurabilitySavePct || 0,
   };
   const m = { ...monster, hp_max: monster.hp };
   const log = [];

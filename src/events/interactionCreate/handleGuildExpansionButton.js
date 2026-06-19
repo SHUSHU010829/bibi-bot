@@ -18,8 +18,10 @@ const { MessageFlags } = require("discord.js");
 const guildClubService = require("../../features/guild_club/guildClubService");
 const forgeService = require("../../features/guild_club/forgeService");
 const buildingService = require("../../features/guild_club/buildingService");
+const banquetService = require("../../features/guild_club/banquetService");
 const warehouseService = require("../../features/guild_club/warehouse/warehouseService");
 const expansionView = require("../../features/guild_club/expansionView");
+const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
 const { guildForge } = require("../../config");
 
 const splitId = (id) => id.split("|");
@@ -274,6 +276,94 @@ async function handleBldBack(client, interaction) {
   return updateMsg(interaction, await renderBuildingsPanel(client, interaction, club));
 }
 
+// ───────── 公會宴會 ─────────
+
+async function handleBanquetOpen(client, interaction) {
+  // gcx_banquet_open|<viewerId>|<guildClubId>
+  const parts = splitId(interaction.customId);
+  const viewerId = parts[1];
+  const guildClubId = parts[2];
+  const blocked = verifyViewer(interaction, viewerId);
+  if (blocked) return blocked;
+  const club = await loadClub(client, guildClubId);
+  if (!club) return;
+  const warehouseRows = await warehouseService
+    .getInventory(client, club.guild_club_id)
+    .catch(() => []);
+  return updateMsg(
+    interaction,
+    expansionView.buildBanquetMenuPanel({ viewerId, club, warehouseRows })
+  );
+}
+
+async function handleBanquetPick(client, interaction) {
+  // gcx_banquet_pick|<viewerId>|<guildClubId>
+  const parts = splitId(interaction.customId);
+  const viewerId = parts[1];
+  const guildClubId = parts[2];
+  const blocked = verifyViewer(interaction, viewerId);
+  if (blocked) return blocked;
+  const menuId = interaction.values?.[0];
+  const club = await loadClub(client, guildClubId);
+  if (!club || !menuId) return;
+  const menu = banquetService.menuDef(menuId);
+  if (!menu)
+    return updateMsg(
+      interaction,
+      expansionView.buildSimpleError({
+        title: "❌ 菜色不存在",
+        body: "請重新選擇。",
+      })
+    );
+  const warehouseRows = await warehouseService
+    .getInventory(client, club.guild_club_id)
+    .catch(() => []);
+  return updateMsg(
+    interaction,
+    expansionView.buildBanquetConfirmPanel({
+      viewerId,
+      club,
+      menuId,
+      menu,
+      warehouseRows,
+    })
+  );
+}
+
+async function handleBanquetConfirm(client, interaction) {
+  // gcx_banquet_confirm|<viewerId>|<guildClubId>|<menuId>
+  const parts = splitId(interaction.customId);
+  const viewerId = parts[1];
+  const menuId = parts[3];
+  const blocked = verifyViewer(interaction, viewerId);
+  if (blocked) return blocked;
+
+  const result = await banquetService.startBanquet(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    menuId,
+  });
+  if (!result.ok) return updateMsg(interaction, banquetErrorView(result));
+
+  guildClubAnnouncer
+    .announceBanquetStart(client, {
+      club: result.club,
+      menu: result.menu,
+      banquet: result.banquet,
+      starterTag: interaction.user.tag || `<@${interaction.user.id}>`,
+    })
+    .catch(() => {});
+
+  return updateMsg(
+    interaction,
+    expansionView.buildBanquetSuccessPanel({
+      club: result.club,
+      menu: result.menu,
+      banquet: result.banquet,
+    })
+  );
+}
+
 // ───────── 錯誤訊息 ─────────
 
 function forgeErrorView(result) {
@@ -442,6 +532,66 @@ function buildingErrorView(result) {
   });
 }
 
+function banquetErrorView(result) {
+  const { guildWarehouse } = require("../../config");
+  const itemName = (id) => guildWarehouse?.items?.[id]?.name || id;
+  const r = result.reason;
+  if (r === "disabled")
+    return expansionView.buildSimpleError({
+      title: "🍽️ 宴會功能未啟用",
+      body: "目前管理員未開啟公會宴會。",
+    });
+  if (r === "not_in_club")
+    return expansionView.buildSimpleError({
+      title: "🏰 你還沒加入公會",
+      body: "宴會是公會專屬功能。",
+    });
+  if (r === "not_manager")
+    return expansionView.buildSimpleError({
+      title: "🔒 沒有權限",
+      body: "宴會須由會長 / 副會長召集。",
+    });
+  if (r === "farm_kitchen_locked")
+    return expansionView.buildSimpleError({
+      title: "🔒 農膳坊尚未滿級",
+      body: `召集宴會須農膳坊 Lv.${result.need}（目前 Lv.${result.have}）。`,
+      hint: "持續累積建材 + 鋼錠來升級農膳坊。",
+    });
+  if (r === "banquet_active")
+    return expansionView.buildSimpleError({
+      title: "🍽️ 已有宴會進行中",
+      body: `本場結束 <t:${Math.floor(result.expiresAt / 1000)}:R>`,
+      hint: "席終後即可再召集下一場。",
+    });
+  if (r === "cooldown")
+    return expansionView.buildSimpleError({
+      title: "⏳ 宴會冷卻中",
+      body: `下一次可於 <t:${Math.floor(result.readyAt / 1000)}:R> 召集`,
+    });
+  if (r === "insufficient_materials") {
+    const lines = result.lacks
+      .map(
+        (l) =>
+          `• ${itemName(l.itemId)}：需要 ${l.need}，倉庫有 ${l.have}（缺 ${l.need - l.have}）`
+      )
+      .join("\n");
+    return expansionView.buildSimpleError({
+      title: "❌ 倉庫材料不足",
+      body: lines,
+      hint: "成員多繳一點材料到公會倉庫，再回來召集。",
+    });
+  }
+  if (r === "race_lost" || r === "race_lost_materials")
+    return expansionView.buildSimpleError({
+      title: "⏳ 操作衝突",
+      body: "別人剛剛同時召集 / 動了倉庫，請再點一次。",
+    });
+  return expansionView.buildSimpleError({
+    title: "❌ 召集失敗",
+    body: `原因：${r}`,
+  });
+}
+
 module.exports = async (client, interaction) => {
   const id = interaction.customId || "";
   if (!id.startsWith("gcx_")) return;
@@ -453,6 +603,7 @@ module.exports = async (client, interaction) => {
     if (interaction.isStringSelectMenu?.()) {
       if (prefix === "gcx_forge_pick") return handleForgePick(client, interaction);
       if (prefix === "gcx_bld_pick") return handleBldPick(client, interaction);
+      if (prefix === "gcx_banquet_pick") return handleBanquetPick(client, interaction);
     }
     if (!interaction.isButton()) return;
 
@@ -463,6 +614,8 @@ module.exports = async (client, interaction) => {
     if (prefix === "gcx_bld_confirm") return handleBldConfirm(client, interaction);
     if (prefix === "gcx_bld_cancel") return handleBldCancel(client, interaction);
     if (prefix === "gcx_bld_back") return handleBldBack(client, interaction);
+    if (prefix === "gcx_banquet_open") return handleBanquetOpen(client, interaction);
+    if (prefix === "gcx_banquet_confirm") return handleBanquetConfirm(client, interaction);
   } catch (e) {
     console.log(`[GUILD_EXPANSION] ${id} 失敗：${e.stack || e.message}`.red);
     try {

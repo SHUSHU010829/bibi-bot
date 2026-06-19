@@ -2,6 +2,7 @@ require("colors");
 const { fishing } = require("../../config");
 const { getOrCreate } = require("../mining/miningProfile");
 const foodBag = require("./foodBag");
+const buildingService = require("../guild_club/buildingService");
 
 // 食物合成與食物 buff 管理。
 //
@@ -285,15 +286,27 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false, qty = 
   const isCoalEnhanced = useCoal && coalPerPortion > 0 && !!recipe.coalBuff;
   const buffDef = isCoalEnhanced ? recipe.coalBuff : recipe.buff;
 
+  // 公會農膳坊烹飪暴擊：每份獨立骰，命中 → 該份產 2 instance 而不是 1。
+  const buildingBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const critRate = (buildingBuffs.cooking_crit_pct || 0) / 100;
+
   const now = Date.now();
   const instances = [];
+  let critCount = 0;
   for (let i = 0; i < qty; i++) {
-    instances.push({
-      id: foodBag.newId(),
-      recipeId,
-      cookedAt: now,
-      useCoal: isCoalEnhanced,
-    });
+    const isCrit = critRate > 0 && Math.random() < critRate;
+    if (isCrit) critCount += 1;
+    const portions = isCrit ? 2 : 1;
+    for (let j = 0; j < portions; j++) {
+      instances.push({
+        id: foodBag.newId(),
+        recipeId,
+        cookedAt: now,
+        useCoal: isCoalEnhanced,
+      });
+    }
   }
 
   // 原子更新：扣材料 + 扣煤炭 + 入食物倉庫 + 烹飪副產廚餘堆肥 + byproduct（全部 × qty）
@@ -331,6 +344,7 @@ async function cook(client, { userId, guildId, recipeId, useCoal = false, qty = 
     qty,
     instances,
     instance: instances[0],
+    critCount,
   };
 }
 
