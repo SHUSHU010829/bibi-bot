@@ -163,6 +163,13 @@ async function summary(client, userId, guildId, member) {
   const guildDungeonDmgPct = gc.buffsByType.dungeon_damage_pct || 0;
   const guildCritPct = gc.buffsByType.crit_rate_pct || 0;
   const guildBossDmgPct = gc.buffsByType.boss_damage_pct || 0;
+  const guildFarmGrowthCutPct = gc.buffsByType.farm_growth_reduction_pct || 0;
+  const guildHarvestCoinPct = gc.buffsByType.harvest_coin_pct || 0;
+  const guildCookingCritPct = gc.buffsByType.cooking_crit_pct || 0;
+  const guildFarmLowTierExtra = gc.buffsByType.farm_low_tier_extra_count || 0;
+  const guildWeaponMaxDurPct = gc.buffsByType.weapon_max_durability_pct || 0;
+  const guildRepairDiscountPct = gc.buffsByType.equipment_repair_discount_pct || 0;
+  const guildCombatDurSavePct = gc.buffsByType.combat_durability_save_pct || 0;
   const guildWhBonus = gc.club ? buildingService.warehouseCapacityBonus(gc.club) : 0;
   return {
     atk: atkFromProfile(profile),
@@ -203,7 +210,15 @@ async function summary(client, userId, guildId, member) {
           dungeonDamagePct: guildDungeonDmgPct,
           critRatePct: guildCritPct,
           bossDamagePct: guildBossDmgPct,
+          farmGrowthReductionPct: guildFarmGrowthCutPct,
+          harvestCoinPct: guildHarvestCoinPct,
+          cookingCritPct: guildCookingCritPct,
+          farmLowTierExtraCount: guildFarmLowTierExtra,
+          weaponMaxDurabilityPct: guildWeaponMaxDurPct,
+          equipmentRepairDiscountPct: guildRepairDiscountPct,
+          combatDurabilitySavePct: guildCombatDurSavePct,
           warehouseCapacityBonus: guildWhBonus,
+          activeBanquet: gc.activeBanquet || null,
         }
       : null,
   };

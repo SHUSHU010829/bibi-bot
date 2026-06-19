@@ -20,7 +20,8 @@ const {
   DONOR_THEME_ITEM_ID,
   CARDNO_OPEN_ID,
 } = require("../donation/customCardNumber");
-const { getPickaxeRepairCost } = require("../mining/mineService");
+const { getPickaxeRepairCost, applyRepairDiscount } = require("../mining/mineService");
+const buildingService = require("../guild_club/buildingService");
 const dungeonService = require("../mining/dungeonService");
 const orePriceEngine = require("../market/orePriceEngine");
 
@@ -363,7 +364,14 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     );
     const staminaPotionRestore = staminaPotionItem?.payload?.restore || 5;
 
-    const repairCost = getPickaxeRepairCost(profile);
+    const repairDiscountPct =
+      (await buildingService
+        .getMemberBuildingBuffs(client, userId, guildId)
+        .catch(() => ({}))).equipment_repair_discount_pct || 0;
+    const repairCost = applyRepairDiscount(
+      getPickaxeRepairCost(profile),
+      repairDiscountPct
+    );
     const canRepair =
       repairCost !== null &&
       profile.pickaxe !== "wood" &&

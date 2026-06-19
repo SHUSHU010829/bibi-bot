@@ -30,8 +30,16 @@ const {
   USE_WHETSTONE_SHIELD_CONFIRM_PREFIX,
 } = require("../../features/shop/backpackView");
 const mineService = require("../../features/mining/mineService");
+const buildingService = require("../../features/guild_club/buildingService");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const { mining, fishing, dungeon } = require("../../config");
+
+async function getRepairDiscountPct(client, userId, guildId) {
+  const buffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  return buffs.equipment_repair_discount_pct || 0;
+}
 
 function materialLabel(mat) {
   const fishDef = fishing?.fish?.[mat];
@@ -308,7 +316,11 @@ module.exports = async (client, interaction) => {
 
       if (!confirm) {
         const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
-        const cost = mineService.getWeaponRepairCost(profile);
+        const discountPct = await getRepairDiscountPct(client, interaction.user.id, interaction.guildId);
+        const cost = mineService.applyRepairDiscount(
+          mineService.getWeaponRepairCost(profile),
+          discountPct
+        );
         if (!cost || profile.weapon === "fist") {
           await replyEphemeral(interaction, "⚔️ 你目前沒有可修復的武器。");
           return;
@@ -385,7 +397,11 @@ module.exports = async (client, interaction) => {
 
       if (!confirm) {
         const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
-        const cost = mineService.getRodRepairCost(profile);
+        const discountPct = await getRepairDiscountPct(client, interaction.user.id, interaction.guildId);
+        const cost = mineService.applyRepairDiscount(
+          mineService.getRodRepairCost(profile),
+          discountPct
+        );
         if (!cost || profile.fishing_rod === "bamboo") {
           await replyEphemeral(interaction, "🪝 你目前沒有可修復的釣竿。");
           return;
@@ -466,7 +482,11 @@ module.exports = async (client, interaction) => {
     if (!confirm) {
       // ── 預覽：顯示消耗材料 + 確認鈕（不 deferUpdate，直接 reply）──
       const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
-      const cost = mineService.getPickaxeRepairCost(profile);
+      const discountPct = await getRepairDiscountPct(client, interaction.user.id, interaction.guildId);
+      const cost = mineService.applyRepairDiscount(
+        mineService.getPickaxeRepairCost(profile),
+        discountPct
+      );
 
       if (!cost || profile.pickaxe === "wood") {
         await replyEphemeral(interaction, "⛏️ 你目前沒有可修復的鎬子。");
