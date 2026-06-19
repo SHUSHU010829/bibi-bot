@@ -1049,4 +1049,5 @@ module.exports = {
   buildSettingsPanel,
   publicBroadcastContent,
   showEntryPanel,
+  dmWeaponLowDurability,
 };
