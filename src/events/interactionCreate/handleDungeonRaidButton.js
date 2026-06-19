@@ -145,6 +145,17 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
     flags: MessageFlags.IsComponentsV2,
   });
 
+  if (result.weaponDurabilityWarnCrossed && result.weaponBefore) {
+    dungeonCmd
+      .dmWeaponLowDurability(
+        interaction,
+        result.weaponBefore,
+        result.weaponDurabilityAfter,
+        result.weaponDurabilityWarnCrossed,
+      )
+      .catch(() => {});
+  }
+
   // 2) 公開精簡播報（送到 dungeon.channelId，沒設或頻道不可用則 fallback 當前頻道）
   //    在個人遊戲房內觸發時，播報保留在房內，不外送到公開地下城頻道。
   const displayName = interaction.member?.displayName || interaction.user.username;
