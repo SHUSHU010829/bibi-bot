@@ -155,6 +155,16 @@ async function distribute(client, guild, settlement) {
     if (totalRare > 0) {
       await grantRare(client, { userId: p.userId, guildId, qty: totalRare });
     }
+    if ((p.diamondReward || 0) > 0) {
+      await client.miningProfilesCollection.updateOne(
+        { userId: p.userId, guildId },
+        {
+          $inc: { "backpack.diamond": p.diamondReward, "lifetime_ore.diamond": p.diamondReward },
+          $set: { updatedAt: new Date() },
+        },
+        { upsert: true },
+      ).catch(() => {});
+    }
 
     // ── B: 個人公會貢獻 ──────────────────────────────
     const mb = membershipByUser.get(p.userId);

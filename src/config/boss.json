@@ -3,8 +3,8 @@
     "enabled": true,
     "announceChannelId": "1511617684532367440",
     "chronicleChannelId": "1511610220856475701",
-    "hpPerPlayer": 2000,
-    "minHp": 15000,
+    "hpPerPlayer": 3000,
+    "minHp": 25000,
     "durationMinutes": 30,
     "attackLimitPerPlayer": 5,
     "rareMaterial": "legendary_fragment",
@@ -65,11 +65,12 @@
     },
     "comboAnnouncement": "⚡ Combo 滿格！全場傷害 ×1.3 持續 120 秒！（由 <@{user}> 接力觸發）",
     "rewards": {
-      "poolRatio": 0.3,
-      "killBonus": 100,
-      "killerBonusRatio": 0.03,
+      "poolRatio": 0.5,
+      "killBonus": 150,
+      "killerBonusRatio": 0.05,
       "killerRareReward": 1,
       "topRareRewardTiers": [3, 2, 1, 1, 1],
+      "topRankDiamondTiers": [5, 3, 1],
       "dragonHeirThreshold": 10
     },
     "damage": {
