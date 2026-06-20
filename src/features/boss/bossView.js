@@ -322,6 +322,7 @@ function buildSettlementContainer(settlement) {
     const lines = top.map((p, i) => {
       const extras = [];
       if (p.rareReward) extras.push("✨ ×1");
+      if (p.diamondReward) extras.push(`💎 ×${p.diamondReward}`);
       if (p.killBonus) extras.push(`擊殺 +${p.killBonus}`);
       if (p.guildClubName) extras.push(`🏰 ${p.guildClubName}`);
       return `**#${i + 1}** ${nameOf(guild, p.userId)} — ${p.damage.toLocaleString()} 傷害　→ ${p.share.toLocaleString()} ${COIN_EMOJI}${extras.length ? "（" + extras.join("、") + "）" : ""}`;

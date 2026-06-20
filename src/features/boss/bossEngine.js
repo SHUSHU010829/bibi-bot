@@ -352,16 +352,19 @@ async function settleBoss(client, bossDoc) {
   const tiers = Array.isArray(rwd.topRareRewardTiers)
     ? rwd.topRareRewardTiers
     : new Array(rwd.topRareRewards ?? 3).fill(1);
+  const diamondTiers = Array.isArray(rwd.topRankDiamondTiers) ? rwd.topRankDiamondTiers : [];
 
   const payouts = ranking.map((r, idx) => {
     const share = totalDamage > 0 ? Math.floor(r.damage / totalDamage * totalPool) : 0;
     const rareReward = tiers[idx] || 0;
+    const diamondReward = diamondTiers[idx] || 0;
     const killBonus = killed ? (rwd.killBonus ?? 100) : 0;
     return {
       ...r,
       rank: idx + 1,
       share,
       rareReward,
+      diamondReward,
       killBonus,
     };
   });
