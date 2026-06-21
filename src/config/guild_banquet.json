@@ -1,0 +1,43 @@
+{
+  "guildBanquet": {
+    "enabled": true,
+    "requiredFarmKitchenLevel": 5,
+    "cooldownHours": 24,
+    "menus": {
+      "harvest_feast": {
+        "name": "豐年宴",
+        "emoji": "🥗",
+        "materials": { "carrot": 80, "corn": 40, "octopus": 30 },
+        "buffs": [
+          { "type": "work_income_multiplier", "value": 0.20 },
+          { "type": "harvest_coin_pct", "value": 10 }
+        ],
+        "durationMs": 3600000,
+        "description": "公會宴席滿桌時鮮，今晚打工與下田都格外有精神"
+      },
+      "surf_and_turf": {
+        "name": "海陸雙拼",
+        "emoji": "🍱",
+        "materials": { "strawberry": 25, "shark": 100, "coal": 50 },
+        "buffs": [
+          { "type": "dungeon_damage_pct", "value": 25 },
+          { "type": "crit_rate_pct", "value": 5 }
+        ],
+        "durationMs": 7200000,
+        "description": "公會主廚親自掌勺，下副本的兄弟刀刀致命"
+      },
+      "black_rose_grand": {
+        "name": "黑玫瑰盛宴",
+        "emoji": "🌹",
+        "materials": { "black_rose": 10, "lava_fish": 10, "steel_ingot": 5 },
+        "buffs": [
+          { "type": "mining_luck_pct", "value": 0.10 },
+          { "type": "dungeon_damage_pct", "value": 15 },
+          { "type": "work_income_multiplier", "value": 0.10 }
+        ],
+        "durationMs": 5400000,
+        "description": "黑玫瑰熬煮的高湯與熔岩魚的烈焰精華，全公會今晚天時地利人和"
+      }
+    }
+  }
+}

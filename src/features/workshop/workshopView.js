@@ -29,7 +29,9 @@ const {
   getPickaxeRepairCost,
   getWeaponRepairCost,
   getRodRepairCost,
+  applyRepairDiscount,
 } = require("../mining/mineService");
+const buildingService = require("../guild_club/buildingService");
 const {
   REPAIR_MATERIAL_PREFIX,
   REPAIR_WEAPON_PREFIX,
@@ -452,7 +454,7 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
 }
 
 // ─── 修復分頁 ────────────────────────────────────────────────────────────────
-function buildRepairTab(container, { userId, displayName, profile }) {
+function buildRepairTab(container, { userId, displayName, profile, repairDiscountPct = 0 }) {
   container
     .setAccentColor(0x16a085)
     .addTextDisplayComponents(
@@ -466,7 +468,7 @@ function buildRepairTab(container, { userId, displayName, profile }) {
 
   // 鎬子
   {
-    const cost = getPickaxeRepairCost(profile);
+    const cost = applyRepairDiscount(getPickaxeRepairCost(profile), repairDiscountPct);
     const can =
       cost !== null &&
       profile.pickaxe !== "wood" &&
@@ -502,7 +504,7 @@ function buildRepairTab(container, { userId, displayName, profile }) {
 
   // 武器
   {
-    const cost = getWeaponRepairCost(profile);
+    const cost = applyRepairDiscount(getWeaponRepairCost(profile), repairDiscountPct);
     const wKey = profile.weapon || "fist";
     const can =
       cost !== null &&
@@ -563,7 +565,7 @@ function buildRepairTab(container, { userId, displayName, profile }) {
 
   // 釣竿
   {
-    const cost = getRodRepairCost(profile);
+    const cost = applyRepairDiscount(getRodRepairCost(profile), repairDiscountPct);
     const rKey = profile.fishing_rod || "bamboo";
     const can =
       cost !== null &&
@@ -645,6 +647,10 @@ function buildRepairTab(container, { userId, displayName, profile }) {
 async function buildView(client, { userId, guildId, displayName, tab = "equipment", craftSub = "pickaxe" }) {
   if (!TABS.includes(tab)) tab = "equipment";
   const profile = await getOrCreate(client, userId, guildId);
+  const guildBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const repairDiscountPct = guildBuffs.equipment_repair_discount_pct || 0;
 
   const container = new ContainerBuilder();
   container.addActionRowComponents(tabRow(userId, tab));
@@ -652,7 +658,7 @@ async function buildView(client, { userId, guildId, displayName, tab = "equipmen
 
   if (tab === "equipment") buildEquipmentTab(container, { userId, displayName, profile });
   else if (tab === "craft") buildCraftTab(container, { userId, displayName, profile, craftSub });
-  else if (tab === "repair") buildRepairTab(container, { userId, displayName, profile });
+  else if (tab === "repair") buildRepairTab(container, { userId, displayName, profile, repairDiscountPct });
 
   return {
     components: [container],

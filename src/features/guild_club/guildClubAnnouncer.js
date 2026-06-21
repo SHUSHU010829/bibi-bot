@@ -62,9 +62,33 @@ async function announceLargeDeposit(client, payload) {
     );
 }
 
+async function announceBanquetStart(client, { club, menu, banquet, starterTag }) {
+  const ch = await resolveAnnounceChannel(client);
+  if (!ch) return;
+  const { formatBuff } = require("../buff/buffLabels");
+  const buffStr = (banquet?.buffs || [])
+    .map((b) => formatBuff(b.type, b.value))
+    .join("・");
+  const durMin = Math.floor((menu?.durationMs || 0) / 60000);
+  await ch
+    .send({
+      content:
+        `🍽️ **${club.name}** 召開宴席！\n` +
+        `主廚：${starterTag}\n` +
+        `菜色：**${menu?.emoji || ""} ${menu?.name || banquet?.menu_id}**\n` +
+        `效果：${buffStr}（${durMin} 分鐘，全公會生效）\n` +
+        `席至 <t:${Math.floor(banquet.expires_at / 1000)}:R>`,
+      allowedMentions: { parse: [] },
+    })
+    .catch((e) =>
+      console.log(`[GUILD_CLUB] announceBanquetStart 失敗：${e.message}`.yellow)
+    );
+}
+
 module.exports = {
   resolveAnnounceChannel,
   announceLevelUp,
   announceQuestReward,
   announceLargeDeposit,
+  announceBanquetStart,
 };

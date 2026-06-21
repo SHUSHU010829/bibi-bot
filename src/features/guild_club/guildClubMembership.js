@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const { guildClub } = require("../../config");
 const service = require("./guildClubService");
 const guildClubDm = require("./guildClubDm");
+const guildClubChat = require("./guildClubChat");
 
 const shortId = (prefix) =>
   `${prefix}_${crypto.randomBytes(4).toString("hex")}`;
@@ -159,6 +160,10 @@ const respondInvitation = async (
   } catch (e) {
     return { ok: false, reason: "member_insert_failed", error: e.message };
   }
+
+  guildClubChat
+    .addMemberWithWelcome(client, { club, userId, source: "invite" })
+    .catch(() => {});
 
   return { ok: true, accepted: true, club };
 };
@@ -343,6 +348,14 @@ const respondApplication = async (
     return { ok: false, reason: "member_insert_failed", error: e.message };
   }
 
+  guildClubChat
+    .addMemberWithWelcome(client, {
+      club,
+      userId: app.applicant_id,
+      source: "apply",
+    })
+    .catch(() => {});
+
   return { ok: true, approved: true, club, applicantId: app.applicant_id };
 };
 
@@ -377,6 +390,10 @@ const leave = async (client, { userId, guildId }) => {
     guildId,
     guild_club_id: m.guild_club_id,
   });
+
+  guildClubChat
+    .removeMember(client, { club, userId, reason: "leave" })
+    .catch(() => {});
 
   const now = new Date();
   await client.guildClubLogsCollection.insertOne({
@@ -419,6 +436,10 @@ const kick = async (client, { leaderId, guildId, targetId }) => {
     guildId,
     guild_club_id: leaderM.guild_club_id,
   });
+
+  guildClubChat
+    .removeMember(client, { club, userId: targetId, reason: "kick" })
+    .catch(() => {});
 
   await client.guildClubLogsCollection.insertOne({
     guild_club_id: leaderM.guild_club_id,

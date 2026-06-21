@@ -152,7 +152,44 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
       lines.push(`• 🐲 世界王傷害 +${s.guildClub.bossDamagePct}%（訓練場）`);
     if (s.guildClub.warehouseCapacityBonus > 0)
       lines.push(`• 📦 公會倉庫容量 +${s.guildClub.warehouseCapacityBonus}（倉庫擴建）`);
+    // 公會建築（農膳坊）buff
+    if (s.guildClub.farmGrowthReductionPct > 0)
+      lines.push(`• 🌱 作物成熟 -${s.guildClub.farmGrowthReductionPct}%（農膳坊）`);
+    if (s.guildClub.harvestCoinPct > 0)
+      lines.push(`• 💰 收成金幣 +${s.guildClub.harvestCoinPct}%（農膳坊）`);
+    if (s.guildClub.cookingCritPct > 0)
+      lines.push(`• ✨ 烹飪美味暴擊 +${s.guildClub.cookingCritPct}%（農膳坊）`);
+    if (s.guildClub.farmLowTierExtraCount > 0)
+      lines.push(
+        `• 🥕 紅蘿蔔/玉米收成 +${s.guildClub.farmLowTierExtraCount} 個（農膳坊）`
+      );
+    // 公會建築（鐵匠鋪）buff
+    if (s.guildClub.weaponMaxDurabilityPct > 0)
+      lines.push(`• 🗡️ 武器耐久上限 +${s.guildClub.weaponMaxDurabilityPct}%（鐵匠鋪）`);
+    if (s.guildClub.equipmentRepairDiscountPct > 0)
+      lines.push(
+        `• 🔧 裝備修復材料 -${s.guildClub.equipmentRepairDiscountPct}%（鐵匠鋪，武器/鎬/釣竿）`
+      );
+    if (s.guildClub.combatDurabilitySavePct > 0)
+      lines.push(
+        `• 🛡️ 戰鬥耐久節省 ${s.guildClub.combatDurabilitySavePct}%（鐵匠鋪，武器/盾）`
+      );
     if (lines.length === 0) lines.push(`-# 公會升到 Lv.2 起逐步解鎖共享 buff`);
+
+    // 公會宴會（時效）
+    const banquet = s.guildClub.activeBanquet;
+    if (banquet && banquet.expires_at > Date.now()) {
+      const { guildBanquet } = require("../../config");
+      const menu = guildBanquet?.menus?.[banquet.menu_id];
+      const { formatBuff } = require("./buffLabels");
+      const buffStr = (banquet.buffs || [])
+        .map((b) => formatBuff(b.type, b.value))
+        .join("・");
+      lines.push(
+        `• 🍽️ 公會宴會「${menu?.emoji || ""}${menu?.name || banquet.menu_id}」：${buffStr}（<t:${Math.floor(banquet.expires_at / 1000)}:R>）`
+      );
+    }
+
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(

@@ -50,7 +50,23 @@ async function getGuildClubBuffs(client, userId, guildId) {
   for (const [k, v] of Object.entries(fromBuildings)) {
     buffsByType[k] = (buffsByType[k] || 0) + v;
   }
-  return { club, level: club.level, buffs, buffsByType, buildingBuffs: fromBuildings };
+  // 公會宴會：時效內把宴會的 buff 加進來，過期就忽略。
+  const banquet = club.active_banquet;
+  let activeBanquet = null;
+  if (banquet && typeof banquet.expires_at === "number" && banquet.expires_at > Date.now()) {
+    for (const b of banquet.buffs || []) {
+      buffsByType[b.type] = (buffsByType[b.type] || 0) + (b.value || 0);
+    }
+    activeBanquet = banquet;
+  }
+  return {
+    club,
+    level: club.level,
+    buffs,
+    buffsByType,
+    buildingBuffs: fromBuildings,
+    activeBanquet,
+  };
 }
 
 // ── ATK ───────────────────────────────────────────────
@@ -147,6 +163,13 @@ async function summary(client, userId, guildId, member) {
   const guildDungeonDmgPct = gc.buffsByType.dungeon_damage_pct || 0;
   const guildCritPct = gc.buffsByType.crit_rate_pct || 0;
   const guildBossDmgPct = gc.buffsByType.boss_damage_pct || 0;
+  const guildFarmGrowthCutPct = gc.buffsByType.farm_growth_reduction_pct || 0;
+  const guildHarvestCoinPct = gc.buffsByType.harvest_coin_pct || 0;
+  const guildCookingCritPct = gc.buffsByType.cooking_crit_pct || 0;
+  const guildFarmLowTierExtra = gc.buffsByType.farm_low_tier_extra_count || 0;
+  const guildWeaponMaxDurPct = gc.buffsByType.weapon_max_durability_pct || 0;
+  const guildRepairDiscountPct = gc.buffsByType.equipment_repair_discount_pct || 0;
+  const guildCombatDurSavePct = gc.buffsByType.combat_durability_save_pct || 0;
   const guildWhBonus = gc.club ? buildingService.warehouseCapacityBonus(gc.club) : 0;
   return {
     atk: atkFromProfile(profile),
@@ -187,7 +210,15 @@ async function summary(client, userId, guildId, member) {
           dungeonDamagePct: guildDungeonDmgPct,
           critRatePct: guildCritPct,
           bossDamagePct: guildBossDmgPct,
+          farmGrowthReductionPct: guildFarmGrowthCutPct,
+          harvestCoinPct: guildHarvestCoinPct,
+          cookingCritPct: guildCookingCritPct,
+          farmLowTierExtraCount: guildFarmLowTierExtra,
+          weaponMaxDurabilityPct: guildWeaponMaxDurPct,
+          equipmentRepairDiscountPct: guildRepairDiscountPct,
+          combatDurabilitySavePct: guildCombatDurSavePct,
           warehouseCapacityBonus: guildWhBonus,
+          activeBanquet: gc.activeBanquet || null,
         }
       : null,
   };

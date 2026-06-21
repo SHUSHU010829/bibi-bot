@@ -6,7 +6,14 @@ const grantCoins = require("../economy/grantCoins");
 const twitchPerks = require("./twitchPerks");
 const encounterService = require("./encounterService");
 const { getFoodAtkBonus, formatFoodBuffLines } = require("../fishing/cookService");
+const buildingService = require("../guild_club/buildingService");
 const bus = require("../eventBus");
+
+// 公會鐵匠鋪 Lv.5：戰鬥扣武器/盾耐久時，每次有機率不消耗。
+function rollDurabilitySave(savePct) {
+  if (!savePct || savePct <= 0) return false;
+  return Math.random() < savePct / 100;
+}
 
 // CD 縮短券持有上限（與商店 shop.json maxStack 一致）
 const CD_TICKET_MAX = 60;
@@ -312,19 +319,26 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     profile.weapon !== "fist" && typeof profile.weapon_durability === "number";
   if (hasWeaponDurability) {
     const before = profile.weapon_durability;
-    weaponDurabilityAfter = before - 1;
-    if (weaponDurabilityAfter <= 0) {
-      weaponBroke = true;
-      weaponDurabilityAfter = null;
-      set.weapon = "fist";
-      set.weapon_durability = null;
+    const saved = rollDurabilitySave(
+      clubBuildingPct(club, "combat_durability_save_pct")
+    );
+    if (saved) {
+      weaponDurabilityAfter = before;
     } else {
-      inc.weapon_durability = -1;
-      const warn = dungeon?.durabilityWarn || {};
-      if (typeof warn.critical === "number" && before > warn.critical && weaponDurabilityAfter <= warn.critical) {
-        weaponDurabilityWarnCrossed = "critical";
-      } else if (typeof warn.low === "number" && before > warn.low && weaponDurabilityAfter <= warn.low) {
-        weaponDurabilityWarnCrossed = "low";
+      weaponDurabilityAfter = before - 1;
+      if (weaponDurabilityAfter <= 0) {
+        weaponBroke = true;
+        weaponDurabilityAfter = null;
+        set.weapon = "fist";
+        set.weapon_durability = null;
+      } else {
+        inc.weapon_durability = -1;
+        const warn = dungeon?.durabilityWarn || {};
+        if (typeof warn.critical === "number" && before > warn.critical && weaponDurabilityAfter <= warn.critical) {
+          weaponDurabilityWarnCrossed = "critical";
+        } else if (typeof warn.low === "number" && before > warn.low && weaponDurabilityAfter <= warn.low) {
+          weaponDurabilityWarnCrossed = "low";
+        }
       }
     }
   }
@@ -776,6 +790,7 @@ async function enterDungeonHp(client, {
       weapon: profile.weapon,
       shield: profile.shield,
       shield_durability: profile.shield_durability || 0,
+      combatDurabilitySavePct: clubBuildingPct(club, "combat_durability_save_pct"),
       potions: {
         small: profile.hp_potion_small || 0,
         medium: profile.hp_potion_medium || 0,
@@ -842,19 +857,26 @@ async function enterDungeonHp(client, {
 
   if (hasWeaponDurability) {
     const before = profile.weapon_durability;
-    weaponDurabilityAfter = before - wdurCost;
-    if (weaponDurabilityAfter <= 0) {
-      weaponBroke = true;
-      weaponDurabilityAfter = null;
-      set.weapon = "fist";
-      set.weapon_durability = null;
+    const saved = rollDurabilitySave(
+      clubBuildingPct(club, "combat_durability_save_pct")
+    );
+    if (saved) {
+      weaponDurabilityAfter = before;
     } else {
-      inc.weapon_durability = -wdurCost;
-      const warn = dungeon?.durabilityWarn || {};
-      if (typeof warn.critical === "number" && before > warn.critical && weaponDurabilityAfter <= warn.critical) {
-        weaponDurabilityWarnCrossed = "critical";
-      } else if (typeof warn.low === "number" && before > warn.low && weaponDurabilityAfter <= warn.low) {
-        weaponDurabilityWarnCrossed = "low";
+      weaponDurabilityAfter = before - wdurCost;
+      if (weaponDurabilityAfter <= 0) {
+        weaponBroke = true;
+        weaponDurabilityAfter = null;
+        set.weapon = "fist";
+        set.weapon_durability = null;
+      } else {
+        inc.weapon_durability = -wdurCost;
+        const warn = dungeon?.durabilityWarn || {};
+        if (typeof warn.critical === "number" && before > warn.critical && weaponDurabilityAfter <= warn.critical) {
+          weaponDurabilityWarnCrossed = "critical";
+        } else if (typeof warn.low === "number" && before > warn.low && weaponDurabilityAfter <= warn.low) {
+          weaponDurabilityWarnCrossed = "low";
+        }
       }
     }
   }

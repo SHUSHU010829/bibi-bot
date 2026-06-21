@@ -6,7 +6,10 @@ const {
   getFoodFarmYieldBonus,
   consumeFarmYieldUse,
 } = require("../fishing/cookService");
+const buildingService = require("../guild_club/buildingService");
 const bus = require("../eventBus");
+
+const LOW_TIER_CROPS = new Set(["carrot", "corn"]);
 
 // 農場核心服務。每塊地以 (userId, guildId, plotIndex) 唯一存於 FarmPlots。
 //
@@ -117,9 +120,20 @@ async function plantCrop(client, { userId, guildId, username, member, cropKey, p
     );
   }
 
-  // 寫入地塊
+  // 公會農膳坊：種植時即套用一次成長時間減免，計入與肥料共用的 cap。
+  const buildingBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const growthCutPct = buildingBuffs.farm_growth_reduction_pct || 0;
+  const cap = farming.growthReductionCapPct ?? 0.6;
+  const maxReduction = Math.floor((crop.growMs || 0) * cap);
+  const buildingReductionMs = Math.min(
+    maxReduction,
+    Math.floor((crop.growMs || 0) * (growthCutPct / 100))
+  );
+
   const now = Date.now();
-  const ready_at = now + crop.growMs;
+  const ready_at = now + (crop.growMs - buildingReductionMs);
   const expires_at = ready_at + crop.rotMs;
   const plotDoc = {
     userId, guildId, plotIndex,
@@ -128,7 +142,7 @@ async function plantCrop(client, { userId, guildId, username, member, cropKey, p
     ready_at,
     expires_at,
     fertilizers: [],
-    growth_reduction_ms: 0,
+    growth_reduction_ms: buildingReductionMs,
     yield_bonus_pct: 0,
     status: "growing",
     raid: null,
@@ -233,11 +247,19 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
   const worldBuffs = worldEventBuffs.getCachedBuffs();
   const worldYieldPct = (worldBuffs.farm_yield_pct || 0) / 100;
   const worldYieldCountBonus = worldBuffs.farm_yield_count_bonus || 0;
+  // 公會農膳坊：收成金幣 +X%（只動幣，不動掉率）+ 低階作物 +1 個（限紅蘿蔔/玉米）
+  const buildingBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const harvestCoinPct = (buildingBuffs.harvest_coin_pct || 0) / 100;
+  const lowTierExtra = LOW_TIER_CROPS.has(plot.crop)
+    ? buildingBuffs.farm_low_tier_extra_count || 0
+    : 0;
   const yieldBonus = fertBonus + foodBonus + worldYieldPct;
-  const coins = Math.round(baseCoins * (1 + yieldBonus));
+  const coins = Math.round(baseCoins * (1 + yieldBonus) * (1 + harvestCoinPct));
 
-  // 寫入 veggie_bag（含世界事件「+1 個」加成）
-  const harvestCount = 1 + worldYieldCountBonus;
+  // 寫入 veggie_bag（含世界事件「+1 個」加成 + 農膳坊「低階作物 +1」）
+  const harvestCount = 1 + worldYieldCountBonus + lowTierExtra;
   const inc = { [`veggie_bag.${plot.crop}`]: harvestCount, farm_harvest_total: 1 };
 
   // 額外掉落（黑玫瑰）

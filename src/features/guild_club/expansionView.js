@@ -11,11 +11,12 @@ const {
   StringSelectMenuOptionBuilder,
 } = require("discord.js");
 
-const { guildForge, guildBuildings, guildWarehouse } = require("../../config");
+const { guildForge, guildBuildings, guildWarehouse, guildBanquet } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const guildClubService = require("./guildClubService");
 const forgeService = require("./forgeService");
 const buildingService = require("./buildingService");
+const banquetService = require("./banquetService");
 
 const COLOR_GOLD = 0xf1c40f;
 const COLOR_ERROR = 0xe74c3c;
@@ -233,7 +234,9 @@ function buildForgeQtyPanel({ viewerId, club, recipeKey, maxQty }) {
 function buildBuildingsPanel({ viewerId, club, warehouseRows, isManager }) {
   const c = new ContainerBuilder().setAccentColor(COLOR_GOLD);
   const bl = guildClubService.buildingsOf(club);
-  const need = guildBuildings.unlockClubLevel || 2;
+  const minUnlock = Math.min(
+    ...buildingService.allKinds().map((k) => buildingService.unlockClubLevelOf(k))
+  );
 
   c.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -243,10 +246,10 @@ function buildBuildingsPanel({ viewerId, club, warehouseRows, isManager }) {
   );
   c.addSeparatorComponents(new SeparatorBuilder());
 
-  if ((club.level || 1) < need) {
+  if ((club.level || 1) < minUnlock) {
     c.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `## 🔒 公會建築尚未解鎖\n解鎖條件：公會等級 ${need}\n目前：Lv.${club.level || 1}`
+        `## 🔒 公會建築尚未解鎖\n解鎖條件：公會等級 ${minUnlock}\n目前：Lv.${club.level || 1}`
       )
     );
     return c;
@@ -258,11 +261,20 @@ function buildBuildingsPanel({ viewerId, club, warehouseRows, isManager }) {
   const upgradeRows = [];
   for (const kind of buildingService.allKinds()) {
     const def = buildingService.kindDef(kind);
+    const unlockNeed = buildingService.unlockClubLevelOf(kind);
     const lv = bl[kind] || 0;
+
+    const lines = [`${def.emoji} **${def.label}**　Lv.${lv}/${def.maxLevel}`];
+
+    if ((club.level || 1) < unlockNeed) {
+      lines.push(`-# 🔒 公會 Lv.${unlockNeed} 解鎖（目前 Lv.${club.level || 1}）`);
+      c.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+      continue;
+    }
+
     const current = buildingService.levelRow(kind, lv);
     const next = buildingService.nextLevelRow(kind, lv);
 
-    const lines = [`${def.emoji} **${def.label}**　Lv.${lv}/${def.maxLevel}`];
     if (current) {
       if (current.buffs)
         lines.push(`-# 當前效果：${formatBuffList(current.buffs)}`);
@@ -292,6 +304,59 @@ function buildBuildingsPanel({ viewerId, club, warehouseRows, isManager }) {
       lines.push(`-# 🏆 已達最高等級`);
     }
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+  }
+
+  // 農膳坊滿級 → 顯示宴會狀態 + 召集按鈕（manager only）
+  const farmKitchenLv = bl.farm_kitchen || 0;
+  if (
+    guildBanquet?.enabled &&
+    farmKitchenLv >= banquetService.requiredFarmKitchenLevel()
+  ) {
+    c.addSeparatorComponents(new SeparatorBuilder());
+    const active = banquetService.getActiveBanquet(club);
+    const lastAt = club.last_banquet_at
+      ? new Date(club.last_banquet_at).getTime()
+      : 0;
+    const readyAt = lastAt > 0 ? lastAt + banquetService.cooldownMs() : 0;
+    const onCooldown = !active && readyAt > 0 && Date.now() < readyAt;
+
+    if (active) {
+      const menu = banquetService.menuDef(active.menu_id);
+      c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🍽️ **宴會進行中：${menu?.emoji || ""} ${menu?.name || active.menu_id}**\n` +
+            `效果：${formatBuffList(active.buffs)}\n` +
+            `席至 <t:${Math.floor(active.expires_at / 1000)}:R>`
+        )
+      );
+    } else if (onCooldown) {
+      c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🍽️ **公會宴會**\n冷卻中，可於 <t:${Math.floor(readyAt / 1000)}:R> 再次召集`
+        )
+      );
+    } else if (isManager) {
+      c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🍽️ **公會宴會**\n農膳坊滿級可召集宴會，給全公會時效 buff。`
+        )
+      );
+      c.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`gcx_banquet_open|${viewerId}|${club.guild_club_id}`)
+            .setLabel("召集宴會")
+            .setEmoji("🍽️")
+            .setStyle(ButtonStyle.Primary)
+        )
+      );
+    } else {
+      c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🍽️ **公會宴會**\n-# 由會長 / 副會長召集。`
+        )
+      );
+    }
   }
 
   if (isManager && upgradeRows.length > 0) {
@@ -337,6 +402,124 @@ function buildBuildingConfirmPanel({ viewerId, club, kind, next, cost }) {
       new ButtonBuilder()
         .setCustomId(`gcx_bld_cancel|${viewerId}`)
         .setLabel(`取消`)
+        .setStyle(ButtonStyle.Secondary)
+    )
+  );
+  return c;
+}
+
+// ───────────────────── 公會宴會 ─────────────────────
+function buildBanquetMenuPanel({ viewerId, club, warehouseRows }) {
+  const c = new ContainerBuilder().setAccentColor(COLOR_GOLD);
+  c.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `# 🍽️ ${club.name} 召集公會宴會\n` +
+        `選一道菜，材料由公會倉庫扣除，效果套用全公會`
+    )
+  );
+  c.addSeparatorComponents(new SeparatorBuilder());
+
+  const wh = {};
+  for (const r of warehouseRows || []) wh[r.item_id] = r.available_qty || 0;
+
+  const menus = guildBanquet?.menus || {};
+  for (const [menuId, menu] of Object.entries(menus)) {
+    const matList = [];
+    const lackList = [];
+    for (const [itemId, need] of Object.entries(menu.materials || {})) {
+      const have = wh[itemId] || 0;
+      const label = banquetService.itemLabel(itemId);
+      const emoji = banquetService.itemEmoji(itemId);
+      matList.push(`${emoji} ${label} ×${need}`);
+      if (have < need) lackList.push(`${label} 缺 ${need - have}`);
+    }
+    const durMin = Math.floor((menu.durationMs || 0) / 60000);
+    const lines = [
+      `${menu.emoji} **${menu.name}**（${durMin} 分鐘）`,
+      `-# ${menu.description || ""}`,
+      `材料：${matList.join("・")}`,
+      `效果：${formatBuffList(menu.buffs)}`,
+    ];
+    if (lackList.length > 0) lines.push(`-# 缺：${lackList.join("・")}`);
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+  }
+
+  const sel = new StringSelectMenuBuilder()
+    .setCustomId(`gcx_banquet_pick|${viewerId}|${club.guild_club_id}`)
+    .setPlaceholder("選一道菜");
+  for (const [menuId, menu] of Object.entries(menus)) {
+    sel.addOptions(
+      new StringSelectMenuOptionBuilder()
+        .setLabel(menu.name)
+        .setValue(menuId)
+        .setEmoji(menu.emoji || "🍽️")
+    );
+  }
+  c.addSeparatorComponents(new SeparatorBuilder());
+  c.addActionRowComponents(new ActionRowBuilder().addComponents(sel));
+  c.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`gcx_bld_back|${club.guild_club_id}`)
+        .setLabel("返回建築")
+        .setStyle(ButtonStyle.Secondary)
+    )
+  );
+  return c;
+}
+
+function buildBanquetConfirmPanel({ viewerId, club, menuId, menu, warehouseRows }) {
+  const c = new ContainerBuilder().setAccentColor(COLOR_INFO);
+  const matList = [];
+  for (const [itemId, need] of Object.entries(menu.materials || {})) {
+    matList.push(`${banquetService.itemEmoji(itemId)} ${banquetService.itemLabel(itemId)} ×${need}`);
+  }
+  const durMin = Math.floor((menu.durationMs || 0) / 60000);
+  c.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `# 🍽️ 確認召集「${menu.emoji} ${menu.name}」\n` +
+        `公會宴會將消耗：${matList.join("・")}\n` +
+        `效果：${formatBuffList(menu.buffs)}（${durMin} 分鐘，全公會生效）`
+    )
+  );
+  c.addSeparatorComponents(new SeparatorBuilder());
+  c.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`gcx_banquet_confirm|${viewerId}|${club.guild_club_id}|${menuId}`)
+        .setLabel("確認召集")
+        .setEmoji("✅")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`gcx_banquet_open|${viewerId}|${club.guild_club_id}`)
+        .setLabel("換一道")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`gcx_bld_back|${club.guild_club_id}`)
+        .setLabel("取消")
+        .setStyle(ButtonStyle.Secondary)
+    )
+  );
+  return c;
+}
+
+function buildBanquetSuccessPanel({ club, menu, banquet }) {
+  const c = new ContainerBuilder().setAccentColor(COLOR_SUCCESS);
+  const durMin = Math.floor((menu.durationMs || 0) / 60000);
+  c.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `# 🍽️ 宴會開席！${menu.emoji} ${menu.name}\n` +
+        `${menu.description || ""}\n` +
+        `效果：${formatBuffList(banquet.buffs)}（${durMin} 分鐘）\n` +
+        `席至 <t:${Math.floor(banquet.expires_at / 1000)}:R>`
+    )
+  );
+  c.addSeparatorComponents(new SeparatorBuilder());
+  c.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`gcx_bld_back|${club.guild_club_id}`)
+        .setLabel("回建築面板")
         .setStyle(ButtonStyle.Secondary)
     )
   );
@@ -437,6 +620,9 @@ module.exports = {
   buildForgeQtyPanel,
   buildBuildingsPanel,
   buildBuildingConfirmPanel,
+  buildBanquetMenuPanel,
+  buildBanquetConfirmPanel,
+  buildBanquetSuccessPanel,
   buildSimpleError,
   buildForgeSuccess,
   buildBuildingUpgradeSuccess,
