@@ -560,7 +560,7 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     if (typeof enc.patch?.staminaAfter === "number") {
       result.stamina = enc.patch.staminaAfter;
     }
-    result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body, loot: enc.loot || [] };
+    result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body, loot: enc.loot || [], outcome: enc.outcome || null };
     if (enc.diamondGained > 0) result.encounterDiamond = enc.diamondGained;
   }
 
@@ -1154,7 +1154,7 @@ async function enterDungeonHp(client, {
     if (typeof enc.patch?.staminaAfter === "number") {
       result.staminaAfter = enc.patch.staminaAfter;
     }
-    result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body, loot: enc.loot || [] };
+    result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body, loot: enc.loot || [], outcome: enc.outcome || null };
     if (enc.diamondGained > 0) result.encounterDiamond = enc.diamondGained;
   }
 

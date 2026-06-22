@@ -656,11 +656,17 @@ function clearGrade(result) {
   return { tag: `【${grade}】`, emoji: GRADE_EMOJI[grade] };
 }
 
-// 事件戰利品播報行：事件名稱 ＋ 拿到的物品。沒拿到東西就不顯示，避免洗版。
+// 事件播報行：事件名稱 ＋ 結果。
+// 戰鬥型事件（精英 / 突襲 / 賭注）用 outcome 顯示勝負；其餘獎勵事件顯示拿到的物品。
+// 兩者都沒有就不顯示，避免洗版。
 function encounterBroadcastLine(result) {
   const enc = result.encounter;
-  if (!enc || !Array.isArray(enc.loot) || !enc.loot.length) return "";
-  return `\n　　${enc.emoji || "🎲"} ${enc.name} → ${enc.loot.join("、")}`;
+  if (!enc) return "";
+  const detail = Array.isArray(enc.loot) && enc.loot.length
+    ? enc.loot.join("、")
+    : (enc.outcome || "");
+  if (!detail) return "";
+  return `\n　　${enc.emoji || "🎲"} ${enc.name} → ${detail}`;
 }
 
 // 公開精簡播報（dungeon.json.channelId 頻道）。一行訊息，不洗版。

@@ -96,6 +96,8 @@ async function trigger(client, ctx) {
   // loot：事件實際讓玩家「拿到」的東西（精簡顯示字串），供公開播報用。
   // 只收 gift / bonus 類正向獎勵，戰鬥型事件（精英 / 突襲 / 賭注）不收。
   const loot = [];
+  // outcome：戰鬥型事件（精英 / 突襲 / 賭注）的勝負結果精簡字串，供公開播報用。
+  let outcome = null;
   const patch = {};
   let diamondGained = 0;
 
@@ -425,6 +427,7 @@ async function trigger(client, ctx) {
             meta: { encounter: enc.id, result: "win" },
           });
           lines.push(`⚖️ 你鼓起勇氣抓住機會，奪得 +${coins.toLocaleString()} ${COIN_EMOJI}！`);
+          outcome = `搏一把成功，奪得 +${coins.toLocaleString()} ${COIN_EMOJI}`;
         } else {
           const max = baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 12);
           const cur = typeof baseResult?.stamina === "number" ? baseResult.stamina : max;
@@ -434,13 +437,15 @@ async function trigger(client, ctx) {
           if (cur >= max && lose > 0) set.stamina_updated_at = Date.now();
 
           // Phase H+：可選 loseHp（礦車失控撞傷）
+          let hpLost = 0;
           if (eff.loseHp > 0) {
             const profile = await getOrCreate(client, userId, guildId);
             const hpCur = typeof profile.hp_current === "number" ? profile.hp_current : 100;
             const hpAfter = Math.max(0, hpCur - eff.loseHp);
+            hpLost = hpCur - hpAfter;
             set.hp_current = hpAfter;
             set.hp_updated_at = hpAfter > 0 ? Date.now() : 0;
-            lines.push(`💥 你被撞傷，HP -${hpCur - hpAfter}（${hpAfter}）`);
+            lines.push(`💥 你被撞傷，HP -${hpLost}（${hpAfter}）`);
           }
 
           await coll(client).updateOne({ userId, guildId }, { $set: set });
@@ -450,6 +455,10 @@ async function trigger(client, ctx) {
           } else if (!eff.loseHp) {
             lines.push("⚖️ 機關觸發！但沒造成實際損失，下次注意點。");
           }
+          const losses = [];
+          if (hpLost > 0) losses.push(`HP -${hpLost}`);
+          if (lose > 0) losses.push(`體力 -${lose}`);
+          outcome = losses.length ? `機關觸發，${losses.join("、")}` : "機關觸發，但安然無事";
         }
         break;
       }
@@ -538,6 +547,7 @@ async function trigger(client, ctx) {
           lines.push(
             `🦇 怪物突襲！你用 ${weaponLabel(profile)} 擊退了牠，奪得 +${coins.toLocaleString()} ${COIN_EMOJI}`
           );
+          outcome = `擊退來犯，奪得 +${coins.toLocaleString()} ${COIN_EMOJI}`;
         } else {
           // 落敗：被打斷採集，掉落本次部分礦石（赤手空拳更容易吃癟）
           const ore = baseResult?.ore;
@@ -565,6 +575,7 @@ async function trigger(client, ctx) {
               (lost > 0 ? `，掉落 ${oreLabel(ore)} ×${lost}` : "") +
               `。${tail}`
           );
+          outcome = lost > 0 ? `不敵逃竄，掉落 ${oreLabel(ore)} ×${lost}` : "不敵逃竄，所幸沒損失";
         }
         break;
       }
@@ -606,6 +617,8 @@ async function trigger(client, ctx) {
             `👹 精英怪現身！你擊敗了牠（HP ${hp}），奪得 +${coins.toLocaleString()} ${COIN_EMOJI}` +
               (frag ? `　✨ 傳說素材碎片 ×1` : "")
           );
+          outcome = `擊敗精英，奪得 +${coins.toLocaleString()} ${COIN_EMOJI}` +
+            (frag ? `、✨ 傳說素材碎片 ×1` : "");
         } else {
           const max = baseResult?.staminaMax ?? (dungeon?.staminaMax ?? 10);
           const cur =
@@ -620,6 +633,7 @@ async function trigger(client, ctx) {
           lines.push(
             `👹 精英怪現身（HP ${hp}）！你不敵敗退，損失 ${cur - next} 體力。`
           );
+          outcome = `不敵精英，體力 -${cur - next}`;
         }
         break;
       }
@@ -638,6 +652,7 @@ async function trigger(client, ctx) {
     emoji: enc.emoji || "❗",
     body: lines.join("\n"),
     loot,
+    outcome,
     patch,
     diamondGained,
   };
