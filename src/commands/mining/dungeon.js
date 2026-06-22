@@ -22,6 +22,9 @@ const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const { buildOverflowConfirmView } = require("../../features/mining/overflowConfirm");
 const { COIN_EMOJI } = require("../../constants/coin");
+const gameTitleService = require("../../features/gameTitles/gameTitleService");
+
+const DRAGON_HEIR_THRESHOLD = gameTitleService.def("dragon_heir")?.req?.bossKills ?? 10;
 
 const CONTINUE_PREFIX = "dungeon_continue_";
 const DUNGEON_OVERFLOW_CONFIRM_PREFIX = "dungeon_overflow_confirm_";
@@ -641,7 +644,7 @@ function publicBroadcastContent(displayName, result) {
   if (result.isMiniBoss) {
     if (result.won) {
       const total = result.dragonSlayerTotal ?? null;
-      const tail = total != null ? `屠龍累積 **${total}/10**` : `屠龍累積 +1`;
+      const tail = total != null ? `屠龍累積 **${total}/${DRAGON_HEIR_THRESHOLD}**` : `屠龍累積 +1`;
       return `🏆 **${displayName}** 擊敗 ${result.monster.emoji || ""} ${result.monster.name}！${tail}`;
     }
     return `💀 **${displayName}** 挑戰 ${result.monster.emoji || ""} ${result.monster.name} 失敗，撐了 ${result.turns} 回合`;
