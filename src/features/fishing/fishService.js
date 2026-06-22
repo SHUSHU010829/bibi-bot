@@ -8,6 +8,7 @@ const {
   consumeFishFortuneUse,
   formatFoodBuffLines,
 } = require("./cookService");
+const grantCoins = require("../economy/grantCoins");
 const bus = require("../eventBus");
 
 // 依 rareBonus 調整後的掉落權重：weight * (1 + rareBonus * rareFactor)。
@@ -19,6 +20,28 @@ function adjustedFishWeights(locWeights, rareBonus = 0) {
     weights[key] = base * (1 + rareBonus * factor);
   }
   return weights;
+}
+
+// 成功上鉤時，依機率改抽到「非魚的東西」（垃圾 / 寶物）。
+// 釣竿 rareBonus 越高 → 寶物比例越高、垃圾越少。回傳選中的項目（含 category），或 null 表示照常釣魚。
+function rollNonFish(rodDef) {
+  const cfg = fishing?.nonFishCatch;
+  if (!cfg || !(cfg.chance > 0)) return null;
+  if (Math.random() >= cfg.chance) return null;
+
+  const treasureChance =
+    (cfg.treasureBase || 0) + (rodDef.rareBonus || 0) * (cfg.treasureRodFactor || 0);
+  const isTreasure = Math.random() < treasureChance;
+  const pool = isTreasure ? cfg.treasure : cfg.junk;
+  if (!Array.isArray(pool) || pool.length === 0) return null;
+
+  const weights = {};
+  pool.forEach((it, i) => {
+    weights[i] = it.weight || 1;
+  });
+  const item = pool[Number(weightedRandom(weights))];
+  if (!item) return null;
+  return { ...item, category: isTreasure ? "treasure" : "junk" };
 }
 
 // 釣魚核心服務。CD 與魚袋存於 MiningProfiles，與挖礦系統共用玩家文件。
@@ -39,7 +62,7 @@ function locationUnlockDesc(locKey) {
 }
 
 // 執行一次釣魚。回傳結果物件。
-async function fish(client, { userId, guildId, location = "stream" }) {
+async function fish(client, { userId, guildId, location = "stream", member, username }) {
   if (!fishing?.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
@@ -160,21 +183,11 @@ async function fish(client, { userId, guildId, location = "stream" }) {
     };
   }
 
-  // 成功！依稀有度偏移後的權重抽魚
-  const rareBonus = (rodDef.rareBonus || 0) + (foodFish.rare || 0);
-  const weights = adjustedFishWeights(fishing.dropTable?.[location] || {}, rareBonus);
-  const fishKey = weightedRandom(weights);
-  if (!fishKey) return { ok: false, reason: "no_drop" };
-
-  const fishDef = fishing.fish?.[fishKey] || {};
-  const qty = 1 + (rodDef.qtyBonus || 0);
+  // ── 成功上鉤 ──：先算「魚 / 非魚」共用的冷卻、耐久、漁網消耗
   const newCooldownAt =
     now + Math.max((fishing.cooldownMs || 9000000) - (rodDef.cdReductionMs || 0), 60 * 1000);
 
-  const inc = {
-    [`fish_bag.${fishKey}`]: qty,
-    fish_count_total: 1,
-  };
+  const inc = { fish_count_total: 1 };
   if (droppedNetFragment) inc.broken_net_fragments = 1;
   if (netActive) inc.fishing_net_uses = -1;
   const set = { fish_cooldown_at: newCooldownAt, last_fish_location: location, updatedAt: new Date() };
@@ -205,6 +218,103 @@ async function fish(client, { userId, guildId, location = "stream" }) {
     }
   }
 
+  const baseResult = {
+    ok: true,
+    caught: true,
+    location,
+    locDef,
+    rodKey,
+    rodDef,
+    successRate,
+    rodBroke,
+    rodDurabilityAfter,
+    rodDurabilityWarnCrossed,
+    newCooldownAt,
+    fishCountTotal: (profile.fish_count_total || 0) + 1,
+    droppedNetFragment,
+    netActive,
+    netUsesAfter: netActive ? (profile.fishing_net_uses || 0) - 1 : (profile.fishing_net_uses || 0),
+    foodBuffLines: formatFoodBuffLines(profile, "fish"),
+  };
+
+  // ── 釣到「非魚的東西」（垃圾 / 寶物）──
+  const nonFish = rollNonFish(rodDef);
+  if (nonFish) {
+    let coinsBase = 0;
+    if (Array.isArray(nonFish.coins)) {
+      const [lo, hi] = nonFish.coins;
+      coinsBase = Math.floor(Math.random() * (hi - lo + 1)) + lo;
+    }
+    if (nonFish.material) {
+      inc[nonFish.material.field] =
+        (inc[nonFish.material.field] || 0) + (nonFish.material.qty || 1);
+    }
+
+    await client.miningProfilesCollection.updateOne(
+      { userId, guildId },
+      { $inc: inc, $set: set }
+    );
+    consumeFortune();
+
+    let coinsAwarded = coinsBase;
+    if (coinsBase > 0) {
+      const grant = await grantCoins(client, {
+        userId,
+        guildId,
+        username,
+        member,
+        amount: coinsBase,
+        source: "fish_loot",
+        meta: { item: nonFish.name, category: nonFish.category },
+      }).catch(() => null);
+      coinsAwarded = grant?.granted ?? coinsBase;
+    }
+
+    bus.emit("fish.done", {
+      userId,
+      guildId,
+      caught: true,
+      location,
+      fishCountTotal: baseResult.fishCountTotal,
+    });
+    if (nonFish.material) {
+      bus.emit("item.gained", {
+        userId,
+        guildId,
+        itemType: "rare_item",
+        itemId: nonFish.material.field,
+        qty: nonFish.material.qty || 1,
+        source: "fish",
+      });
+    }
+
+    return {
+      ...baseResult,
+      nonFish: true,
+      catchItem: nonFish,
+      coinsAwarded,
+      materialReward: nonFish.material
+        ? { ...nonFish.material, name: nonFish.name, emoji: nonFish.emoji }
+        : null,
+    };
+  }
+
+  // ── 釣到魚 ──：依稀有度偏移後的權重抽魚
+  const rareBonus = (rodDef.rareBonus || 0) + (foodFish.rare || 0);
+  const weights = adjustedFishWeights(fishing.dropTable?.[location] || {}, rareBonus);
+  const fishKey = weightedRandom(weights);
+  if (!fishKey) return { ok: false, reason: "no_drop" };
+
+  const fishDef = fishing.fish?.[fishKey] || {};
+  let qty = 1 + (rodDef.qtyBonus || 0);
+  // 豐收：依釣竿 bonusChance 機率多釣一條（比照鎬子的數量加成手感）
+  let bumperCatch = false;
+  if ((rodDef.bonusChance || 0) > 0 && Math.random() < rodDef.bonusChance) {
+    qty += 1;
+    bumperCatch = true;
+  }
+  inc[`fish_bag.${fishKey}`] = qty;
+
   // 稀有道具掉落（例如熔岩湖的月光露水）
   const rareDrops = [];
   for (const drop of fishing.rareItemDrops?.[location] || []) {
@@ -226,8 +336,6 @@ async function fish(client, { userId, guildId, location = "stream" }) {
     ?.insertOne({ user_id: userId, guild_id: guildId, fish: fishKey, location, ts: new Date() })
     .catch((e) => console.log(`[ERROR] insert fish log: ${e}`.red));
 
-  const newFishCountTotal = (profile.fish_count_total || 0) + 1;
-
   // 世界事件觸發 roll：fire-and-forget
   require("../world_event/worldEventService")
     .rollTrigger(client, "fish_catch", { fish: fishKey })
@@ -239,7 +347,7 @@ async function fish(client, { userId, guildId, location = "stream" }) {
     caught: true,
     fish: fishKey,
     location,
-    fishCountTotal: newFishCountTotal,
+    fishCountTotal: baseResult.fishCountTotal,
   });
   bus.emit("item.gained", {
     userId,
@@ -261,26 +369,12 @@ async function fish(client, { userId, guildId, location = "stream" }) {
   }
 
   return {
-    ok: true,
-    caught: true,
+    ...baseResult,
     fish: fishKey,
     fishDef,
     qty,
-    location,
-    locDef,
-    rodKey,
-    rodDef,
-    successRate,
-    rodBroke,
-    rodDurabilityAfter,
-    rodDurabilityWarnCrossed,
-    newCooldownAt,
-    fishCountTotal: (profile.fish_count_total || 0) + 1,
+    bumperCatch,
     rareDrops,
-    droppedNetFragment,
-    netActive,
-    netUsesAfter: netActive ? (profile.fishing_net_uses || 0) - 1 : (profile.fishing_net_uses || 0),
-    foodBuffLines: formatFoodBuffLines(profile, "fish"),
   };
 }
 

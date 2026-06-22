@@ -197,7 +197,7 @@ function buildEquipmentTab(container, { userId, displayName, profile }) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `🪝 **釣竿**：${rodLabel(rodKey)}（耐久 ${rodDurability}）\n` +
-        `-# 成功率 +${rodSuccessPct}% ・ 稀有度 +${rdef.rareBonus || 0} ・ CD -${rodCdReduceMin} 分 ・ 數量 +${rdef.qtyBonus || 0}`,
+        `-# 成功率 +${rodSuccessPct}% ・ 稀有度 +${rdef.rareBonus || 0} ・ CD -${rodCdReduceMin} 分 ・ 數量 +${rdef.qtyBonus || 0} ・ 豐收 ${Math.round((rdef.bonusChance || 0) * 100)}%`,
     ),
   );
 
@@ -267,7 +267,7 @@ function recipeBodyText(recipe, profile, type) {
       propLine =
         `屬性：成功率 +${Math.round((rdef.successBonus || 0) * 100)}% ・ ` +
         `稀有度 +${rdef.rareBonus || 0} ・ CD -${Math.round((rdef.cdReductionMs || 0) / 60000)} 分 ・ ` +
-        `數量 +${rdef.qtyBonus || 0} ・ 耐久 ${rdef.durability ?? "永久"}`;
+        `數量 +${rdef.qtyBonus || 0} ・ 豐收 ${Math.round((rdef.bonusChance || 0) * 100)}% ・ 耐久 ${rdef.durability ?? "永久"}`;
     } else {
       const pdef = (mining?.pickaxes || {})[resultId] || {};
       propLine =

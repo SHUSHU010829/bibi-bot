@@ -18,10 +18,10 @@
     ],
     "durabilityWarn": { "low": 5, "critical": 1 },
     "rods": {
-      "bamboo":  { "name": "竹釣竿",   "emoji": "🎣", "successBonus": 0,    "rareBonus": 0,   "cdReductionMs": 0,       "qtyBonus": 0, "durability": null },
-      "carbon":  { "name": "碳纖釣竿", "emoji": "🎏", "successBonus": 0.12, "rareBonus": 0.5, "cdReductionMs": 1800000, "qtyBonus": 0, "durability": 30 },
-      "gold":    { "name": "黃金釣竿", "emoji": "🥇", "successBonus": 0.20, "rareBonus": 1.0, "cdReductionMs": 2700000, "qtyBonus": 0, "durability": 50 },
-      "mythril": { "name": "秘銀釣竿", "emoji": "🔱", "successBonus": 0.28, "rareBonus": 1.5, "cdReductionMs": 3600000, "qtyBonus": 1, "durability": 80 }
+      "bamboo":  { "name": "竹釣竿",   "emoji": "🎣", "successBonus": 0,    "rareBonus": 0,   "cdReductionMs": 0,       "qtyBonus": 0, "bonusChance": 0,    "durability": null },
+      "carbon":  { "name": "碳纖釣竿", "emoji": "🎏", "successBonus": 0.12, "rareBonus": 0.5, "cdReductionMs": 1800000, "qtyBonus": 0, "bonusChance": 0.12, "durability": 30 },
+      "gold":    { "name": "黃金釣竿", "emoji": "🥇", "successBonus": 0.20, "rareBonus": 1.0, "cdReductionMs": 2700000, "qtyBonus": 0, "bonusChance": 0.2,  "durability": 50 },
+      "mythril": { "name": "秘銀釣竿", "emoji": "🔱", "successBonus": 0.28, "rareBonus": 1.5, "cdReductionMs": 3600000, "qtyBonus": 1, "bonusChance": 0.25, "durability": 80 }
     },
     "locations": {
       "stream": {
@@ -58,6 +58,25 @@
     "rareItemDrops": {
       "lava_lake": [
         { "item": "moonlight_dew", "field": "backpack.moonlight_dew", "chance": 0.05, "name": "月光露水", "emoji": "🌟" }
+      ]
+    },
+    "nonFishCatch": {
+      "chance": 0.18,
+      "treasureBase": 0.16,
+      "treasureRodFactor": 0.14,
+      "junk": [
+        { "name": "破靴子",         "emoji": "🥾", "weight": 24, "coins": [1, 4], "flavor": "一隻濕透的破靴子，鞋帶上還纏著水草…" },
+        { "name": "生鏽空罐頭",     "emoji": "🥫", "weight": 22, "coins": [1, 5], "flavor": "標籤早就泡爛了，搖一搖裡面還有水。" },
+        { "name": "纏成一團的海帶", "emoji": "🌿", "weight": 20, "coins": [2, 6], "flavor": "花了三分鐘才把鉤子從海帶裡解出來。" },
+        { "name": "別人掉的拖鞋",   "emoji": "🩴", "weight": 18, "coins": [1, 4], "flavor": "只有一隻，另一隻大概還在某條魚肚子裡。" },
+        { "name": "沉船的爛木板",   "emoji": "🪵", "weight": 16, "coins": [2, 8], "flavor": "上面好像刻著字，但早就看不清了。" }
+      ],
+      "treasure": [
+        { "name": "古錢幣",       "emoji": "🪙", "weight": 30, "coins": [25, 70],   "flavor": "沉在水底不知多少年的古錢，還能換點錢。" },
+        { "name": "漂流寶箱",     "emoji": "📦", "weight": 16, "coins": [70, 180],  "flavor": "鎖早就鏽掉了，掀開竟然是一把銅板！" },
+        { "name": "沉沒的金幣袋", "emoji": "💰", "weight": 8,  "coins": [150, 320], "flavor": "繩結一拉就鬆開，金幣嘩啦嘩啦灑了出來！" },
+        { "name": "藏寶圖碎片",   "emoji": "🗺️", "weight": 14, "material": { "field": "treasure_map_fragments", "qty": 1 }, "flavor": "邊緣燒焦的羊皮紙，集滿 6 張就能拼出藏寶圖。" },
+        { "name": "月光露水",     "emoji": "🌟", "weight": 10, "material": { "field": "backpack.moonlight_dew", "qty": 1 }, "flavor": "在鉤子上凝成一顆發光的水珠，是農場施肥的好東西。" }
       ]
     },
     "foodStorage": {
