@@ -51,6 +51,7 @@ function parseThreadItem(data) {
   if (!post) return null;
 
   const result = {
+    code: post?.code || null,
     text: post?.caption?.text || "",
     username: post?.user?.username || "unknown",
     userPic: post?.user?.profile_pic_url || null,
@@ -106,12 +107,15 @@ function parseThreadItem(data) {
 }
 
 // 從 HTML 中提取 hidden JSON 並解析 thread 資料
-function extractThreadDataFromHtml(html) {
+// 頁面 JSON 會夾帶多篇貼文（推薦、相關、回覆串），必須用 URL 的 shortcode
+// 比對 post.code，否則會抓到「第一個有內容的」別篇貼文。
+function extractThreadDataFromHtml(html, targetCode) {
   // 找所有 <script type="application/json" data-sjs> 標籤
   const scriptRegex =
     /<script[^>]*type=["']application\/json["'][^>]*data-sjs[^>]*>([\s\S]*?)<\/script>/gi;
 
   let match;
+  let fallback = null; // 第一個有內容的貼文，僅在沒有 targetCode 時使用
   while ((match = scriptRegex.exec(html)) !== null) {
     const content = match[1];
 
@@ -124,13 +128,21 @@ function extractThreadDataFromHtml(html) {
       const threadItems = nestedLookup("thread_items", data);
 
       if (threadItems && threadItems.length > 0) {
-        // thread_items 是 array of arrays
+        // thread_items 是 array of arrays，逐篇檢查（貼文可能在串中任一位置）
         for (const items of threadItems) {
-          if (Array.isArray(items) && items.length > 0) {
-            const parsed = parseThreadItem(items[0]);
-            if (parsed && (parsed.text || parsed.images.length > 0 || parsed.videos.length > 0)) {
+          if (!Array.isArray(items)) continue;
+          for (const item of items) {
+            const parsed = parseThreadItem(item);
+            const hasContent =
+              parsed &&
+              (parsed.text || parsed.images.length > 0 || parsed.videos.length > 0);
+            if (!hasContent) continue;
+
+            // 找到 URL 指定的那一篇 → 直接回傳
+            if (targetCode && parsed.code === targetCode) {
               return parsed;
             }
+            if (!fallback) fallback = parsed;
           }
         }
       }
@@ -140,7 +152,8 @@ function extractThreadDataFromHtml(html) {
     }
   }
 
-  return null;
+  // 有指定 code 卻找不到對應貼文 → 回 null，改用 og:meta（針對該 URL 較準確）
+  return targetCode ? null : fallback;
 }
 
 // Fallback: 從 og meta tags 抓取（原本的方式）
@@ -209,8 +222,11 @@ async function fetchThreadsData(url) {
 
     const html = await response.text();
 
+    // 從 URL 取出貼文 shortcode，用來鎖定頁面 JSON 中正確的那一篇
+    const targetCode = url.match(/\/post\/([\w-]+)/)?.[1] || null;
+
     // 優先嘗試從 hidden JSON 提取（更完整的資料）
-    let data = extractThreadDataFromHtml(html);
+    let data = extractThreadDataFromHtml(html, targetCode);
 
     // Fallback 到 og meta
     if (!data) {
