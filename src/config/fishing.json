@@ -2,7 +2,7 @@
   "fishing": {
     "enabled": true,
     "cooldownMs": 9000000,
-    "baseSuccessRate": 0.6,
+    "baseSuccessRate": 0.72,
     "successCap": 0.95,
     "failCooldownMs": 1800000,
     "cdTicketReductionMs": 1800000,
