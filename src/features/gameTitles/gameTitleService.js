@@ -302,6 +302,11 @@ const RESOLVERS = {
     const clears = m?.floor_unlocks?.ruins?.clears || {};
     return [1, 2, 3, 4, 5].every((f) => (clears[String(f)] || 0) >= 1);
   },
+  // 龍裔：屠龍累積（世界 BOSS + 地下城 mini-BOSS 共用 dragon_slayer_kills）達門檻
+  dragon_heir: async (cache, ctx, req) => {
+    const m = await cache.mining();
+    return (m.dragon_slayer_kills || 0) >= req.bossKills;
+  },
 };
 
 // 檢查並解鎖達標稱號。categories 限制範圍（預設全部）。weekly 型不在此處理。

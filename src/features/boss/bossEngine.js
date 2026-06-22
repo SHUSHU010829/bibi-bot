@@ -445,17 +445,6 @@ async function findFreshlyDefeatedBosses(client) {
     .toArray();
 }
 
-async function incrementKillCount(client, { userId, guildId }) {
-  if (!client.bossKillsCollection) return 0;
-  const res = await client.bossKillsCollection.findOneAndUpdate(
-    { user_id: userId, guild_id: guildId },
-    { $inc: { kills: 1 }, $set: { updatedAt: new Date() } },
-    { upsert: true, returnDocument: "after" },
-  );
-  const doc = res?.value || res;
-  return doc?.kills ?? 1;
-}
-
 async function applyComboAttack(client, params, count) {
   const hits = [];
   let stopReason = null;
@@ -521,7 +510,6 @@ module.exports = {
   getBossInfo,
   findExpiredActiveBosses,
   findFreshlyDefeatedBosses,
-  incrementKillCount,
   countOnlineMembers,
   phaseOf,
   phaseDef,

@@ -159,7 +159,6 @@ module.exports = async (client) => {
     // BOSS 共鬥系統 collections（Phase C）
     const bossEventsCollection = database.collection("BossEvents");
     const bossDamageLogsCollection = database.collection("BossDamageLogs");
-    const bossKillsCollection = database.collection("BossKills");
 
     // 公會系統 collections（Phase A）
     const guildsClubCollection = database.collection("GuildsClub");
@@ -298,7 +297,6 @@ module.exports = async (client) => {
     client.farmPlotsCollection = farmPlotsCollection;
     client.bossEventsCollection = bossEventsCollection;
     client.bossDamageLogsCollection = bossDamageLogsCollection;
-    client.bossKillsCollection = bossKillsCollection;
     client.guildsClubCollection = guildsClubCollection;
     client.guildClubMembersCollection = guildClubMembersCollection;
     client.guildClubLogsCollection = guildClubLogsCollection;
@@ -1089,11 +1087,6 @@ module.exports = async (client) => {
         { ts: 1 },
         { expireAfterSeconds: 90 * 24 * 60 * 60, name: "boss_dmg_ttl_90d" }
       ).catch((e) => console.log(`[WARN] BossDamageLogs TTL: ${e.message}`.yellow));
-      await bossKillsCollection.createIndex(
-        { user_id: 1, guild_id: 1 },
-        { unique: true, name: "uniq_boss_kills_user_guild" }
-      ).catch((e) => console.log(`[WARN] BossKills uniq: ${e.message}`.yellow));
-
       // 公會系統索引（Phase A）
       await guildsClubCollection.createIndex(
         { guild_club_id: 1 },

@@ -2,7 +2,6 @@ require("colors");
 const { boss, guildClub } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 const gameTitleService = require("../gameTitles/gameTitleService");
-const bossEngine = require("./bossEngine");
 const guildClubContribution = require("../guild_club/guildClubContribution");
 
 const RARE_KEY = "legendary_fragments";
@@ -267,20 +266,17 @@ async function distribute(client, guild, settlement) {
       titleId: "dragon_slayer",
       source: "boss",
     }).catch(() => {});
-    const kills = await bossEngine.incrementKillCount(client, {
-      userId: settlement.killerUserId,
-      guildId,
-    });
-    const threshold = boss?.rewards?.dragonHeirThreshold ?? 10;
-    if (kills >= threshold) {
-      await gameTitleService.grant(client, {
-        userId: settlement.killerUserId,
-        guildId,
-        member,
-        titleId: "dragon_heir",
-        source: "boss",
-      }).catch(() => {});
-    }
+    // 屠龍累積與地下城 mini-BOSS 共用 dragon_slayer_kills；龍裔由 RESOLVER 統一判定
+    await client.miningProfilesCollection?.updateOne(
+      { userId: settlement.killerUserId, guildId },
+      { $inc: { dragon_slayer_kills: 1 }, $set: { updatedAt: new Date() } },
+      { upsert: true },
+    ).catch(() => {});
+    await gameTitleService.check(
+      client,
+      { userId: settlement.killerUserId, guildId, member },
+      ["boss"],
+    ).catch(() => {});
   }
   if (settlement.mvpUserId) {
     const member = await fetchMember(guild, settlement.mvpUserId);

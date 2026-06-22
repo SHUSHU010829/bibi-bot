@@ -214,7 +214,7 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
         },
         hooks,
       );
-      // 稱號自動檢查（dungeon 類）
+      // 稱號自動檢查（dungeon 類 + 龍裔屠龍累積，category boss）
       if (result.won) {
         const gameTitleService = require("../../features/gameTitles/gameTitleService");
         gameTitleService
@@ -225,7 +225,7 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
               guildId: interaction.guildId,
               member: interaction.member,
             },
-            ["dungeon"],
+            ["dungeon", "boss"],
           )
           .catch(() => {});
       }
