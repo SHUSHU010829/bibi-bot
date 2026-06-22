@@ -318,7 +318,7 @@ function buildActionsRow(ownerId, status, themeId = "mine") {
   row.addComponents(mkBtn("large", "💊", "大", large));
   row.addComponents(
     new ButtonBuilder()
-      .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${themeId}`)
+      .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${themeId}_r`)
       .setLabel("🔄 重整")
       .setStyle(ButtonStyle.Secondary),
   );
