@@ -213,6 +213,8 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       userId: interaction.user.id,
       guildId: interaction.guildId,
       location,
+      member: interaction.member,
+      username: interaction.user.username,
     });
 
     if (!result.ok) {
@@ -360,6 +362,101 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       return;
     }
 
+    // ── 釣到非魚的東西（垃圾 / 寶物）──
+    if (result.nonFish) {
+      const item = result.catchItem || {};
+      const isTreasure = item.category === "treasure";
+      const lootEpoch = Math.floor(result.newCooldownAt / 1000);
+      const lootContainer = new ContainerBuilder()
+        .setAccentColor(isTreasure ? 0xf1c40f : 0xa9744f)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            isTreasure
+              ? `# ${item.emoji || "💎"} 釣到寶了！**${item.name}**`
+              : `# ${item.emoji || "🗑️"} 咦？釣到奇怪的東西…**${item.name}**`
+          )
+        );
+      if (item.flavor) {
+        lootContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`-# ${item.flavor}`)
+        );
+      }
+      lootContainer
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `${result.locDef?.emoji || "🎣"} 釣魚地點：**${result.locDef?.name || location}**\n` +
+              `🪝 使用釣竿：**${rodLabelText}**\n` +
+              `🎯 本次成功率：**${successPct}%**`
+          )
+        );
+      if (result.materialReward) {
+        lootContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `🎁 **撈到 ${result.materialReward.emoji || "🎁"} ${result.materialReward.name} ×${result.materialReward.qty || 1}！**`
+          )
+        );
+      } else {
+        lootContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            isTreasure
+              ? `💰 **變賣所得：+${(result.coinsAwarded || 0).toLocaleString()} 幣**`
+              : `💰 廢品商收購：**+${(result.coinsAwarded || 0).toLocaleString()} 幣**`
+          )
+        );
+      }
+      lootContainer
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `⏱️ 下次可釣：<t:${lootEpoch}:R>（<t:${lootEpoch}:t>）`
+          )
+        );
+
+      if (result.rodBroke) {
+        lootContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "-# 🪝 你的釣竿斷了，已換回竹釣竿，快去 /合成 打造新的！"
+          )
+        );
+      }
+      if (result.rodDurabilityWarnCrossed) {
+        dmRodLowDurability(
+          interaction,
+          result.rodKey,
+          result.rodDurabilityAfter,
+          result.rodDurabilityWarnCrossed,
+        ).catch(() => {});
+      }
+
+      lootContainer.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`fish_bag_${interaction.user.id}`)
+            .setLabel("查看背包")
+            .setStyle(ButtonStyle.Secondary)
+        )
+      );
+      lootContainer.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 累計釣魚 ${result.fishCountTotal} 次・釣竿越好、越容易撈到寶物`
+        )
+      );
+
+      await interaction.editReply({
+        components: [lootContainer],
+        flags: MessageFlags.IsComponentsV2,
+      });
+
+      reminder.refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "fish",
+        readyAt: result.newCooldownAt,
+      }).catch(() => {});
+      return;
+    }
+
     const { fishDef, locDef, newCooldownAt } = result;
     const readyEpoch = Math.floor(newCooldownAt / 1000);
 
@@ -411,6 +508,14 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           `⏱️ 下次可釣：<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）`
         )
       );
+
+    if (result.bumperCatch) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🎉 **大豐收！** 一竿拉起 **${qty}** 條，多賺一條～`,
+        ),
+      );
+    }
 
     if (result.foodBuffLines?.length) {
       container.addTextDisplayComponents(
