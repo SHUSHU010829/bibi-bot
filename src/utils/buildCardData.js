@@ -9,7 +9,6 @@ function buildCardData({
   strawResult,
   nextSpecialDay,
   daysUntilSpecialDay,
-  diamondCount,
 }) {
   const dateStr = `${now.toFormat("yyyy.MM.dd")} ${WEEKDAY_EN[now.weekday] || ""}`.trim();
 
@@ -22,16 +21,19 @@ function buildCardData({
 
   const fortuneText = (strawResult || "").replace(/^\S+\s+/, "").trim();
 
+  const isFestivalToday = Boolean(nextSpecialDay) && daysUntilSpecialDay === 0;
+
   return {
     dateStr,
     lunarYearLabel,
     lunarDay,
-    countdownName: nextSpecialDay ? nextSpecialDay.description : null,
-    countdownDays: daysUntilSpecialDay || null,
+    festivalToday: isFestivalToday,
+    festivalName: isFestivalToday ? nextSpecialDay.description : null,
+    countdownName: isFestivalToday || !nextSpecialDay ? null : nextSpecialDay.description,
+    countdownDays: isFestivalToday ? null : daysUntilSpecialDay || null,
     fortuneText,
     recommends: lunarInfo?.recommends || [],
     avoids: lunarInfo?.avoids || [],
-    diamondCount: diamondCount || 0,
     serialNo: "0829",
   };
 }

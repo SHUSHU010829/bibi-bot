@@ -15,7 +15,6 @@ async function sendMorning(client) {
 
   const { attachment } = await buildMorningPayload({
     timezone: morningMessage.timezone,
-    client,
   });
 
   await channel.send({
