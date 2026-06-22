@@ -119,7 +119,7 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
               .setLabel(`🥤 喝體力藥水（剩 ${result.potionCount}）`)
               .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
-              .setCustomId(`${dungeonCmd.RAID_PANEL_PREFIX}${interaction.user.id}`)
+              .setCustomId(`${dungeonCmd.RAID_PANEL_PREFIX}${interaction.user.id}_${themeId}`)
               .setLabel("⬅️ 回主面板")
               .setStyle(ButtonStyle.Secondary),
           ),
@@ -317,7 +317,7 @@ function formatLogEntry(e, monsterLabel = "👹 怪物") {
   }
 }
 
-async function doHeal(client, interaction, tier) {
+async function doHeal(client, interaction, tier, themeId) {
   if (tier === "none") {
     return replyEphemeral(interaction, "你沒有生命藥水，到 /商店 → 挖礦道具 購買。");
   }
@@ -338,8 +338,8 @@ async function doHeal(client, interaction, tier) {
     if (result.reason === "full") return replyEphemeral(interaction, `❤️ HP 已滿（${result.hp}/${result.hpMax}）`);
     return replyEphemeral(interaction, "🔧 補血失敗，請稍後再試。");
   }
-  // 喝完 → 重整面板
-  return showEntryPanelOnSameMessage(client, interaction);
+  // 喝完 → 重整面板（保留當前副本主題）
+  return showEntryPanelOnSameMessage(client, interaction, themeId ? { themeId } : {});
 }
 
 module.exports = async (client, interaction) => {
@@ -485,20 +485,22 @@ module.exports = async (client, interaction) => {
     if (m.prefix === dungeonCmd.RAID_HEAL_PREFIX) {
       const parts = m.payload.split("_");
       const tier = parts[1];
+      const themeId = parts[2]; // 可選
       await interaction.deferUpdate();
-      await doHeal(client, interaction, tier);
+      await doHeal(client, interaction, tier, themeId);
       trackSuccess("raid-heal");
       return;
     }
 
     if (m.prefix === dungeonCmd.RAID_SETTINGS_PREFIX) {
+      const themeId = m.payload.split("_")[1]; // 可選
       await interaction.deferUpdate();
       const status = await dungeonService.getDungeonStatus(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
         member: interaction.member,
       });
-      const container = dungeonCmd.buildSettingsPanel(interaction.user.id, status);
+      const container = dungeonCmd.buildSettingsPanel(interaction.user.id, status, themeId);
       await interaction.editReply({
         components: [container],
         flags: MessageFlags.IsComponentsV2,
@@ -509,6 +511,7 @@ module.exports = async (client, interaction) => {
 
     if (m.prefix === dungeonCmd.RAID_PREF_TOGGLE_PREFIX) {
       // StringSelect 值：'on' / 'off'
+      const themeId = m.payload.split("_")[1]; // 可選
       const value = interaction.values?.[0];
       await interaction.deferUpdate();
       await dungeonService.setAutoPotionPref(client, {
@@ -523,7 +526,7 @@ module.exports = async (client, interaction) => {
         member: interaction.member,
       });
       await interaction.editReply({
-        components: [dungeonCmd.buildSettingsPanel(interaction.user.id, status)],
+        components: [dungeonCmd.buildSettingsPanel(interaction.user.id, status, themeId)],
         flags: MessageFlags.IsComponentsV2,
       });
       trackSuccess("raid-pref-toggle");
@@ -531,6 +534,7 @@ module.exports = async (client, interaction) => {
     }
 
     if (m.prefix === dungeonCmd.RAID_PREF_TIER_PREFIX) {
+      const themeId = m.payload.split("_")[1]; // 可選
       const value = interaction.values?.[0];
       await interaction.deferUpdate();
       await dungeonService.setAutoPotionPref(client, {
@@ -544,7 +548,7 @@ module.exports = async (client, interaction) => {
         member: interaction.member,
       });
       await interaction.editReply({
-        components: [dungeonCmd.buildSettingsPanel(interaction.user.id, status)],
+        components: [dungeonCmd.buildSettingsPanel(interaction.user.id, status, themeId)],
         flags: MessageFlags.IsComponentsV2,
       });
       trackSuccess("raid-pref-tier");

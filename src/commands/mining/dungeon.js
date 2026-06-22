@@ -300,7 +300,7 @@ function buildFloorActionRow(ownerId, floorStates, themeId = "mine") {
   return row;
 }
 
-function buildActionsRow(ownerId, status) {
+function buildActionsRow(ownerId, status, themeId = "mine") {
   const row = new ActionRowBuilder();
   const small = status.potions.small;
   const medium = status.potions.medium;
@@ -309,7 +309,7 @@ function buildActionsRow(ownerId, status) {
   // 三瓶各一個按鈕，玩家自己選；沒持有的 disable。HP 滿時全 disable。
   const mkBtn = (tier, emoji, name, count) =>
     new ButtonBuilder()
-      .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_${tier}`)
+      .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_${tier}_${themeId}`)
       .setLabel(`${emoji} ${name}（${count}）`)
       .setStyle(count > 0 && !full ? ButtonStyle.Success : ButtonStyle.Secondary)
       .setDisabled(count <= 0 || full);
@@ -318,13 +318,13 @@ function buildActionsRow(ownerId, status) {
   row.addComponents(mkBtn("large", "💊", "大", large));
   row.addComponents(
     new ButtonBuilder()
-      .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}`)
+      .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${themeId}`)
       .setLabel("🔄 重整")
       .setStyle(ButtonStyle.Secondary),
   );
   row.addComponents(
     new ButtonBuilder()
-      .setCustomId(`${RAID_SETTINGS_PREFIX}${ownerId}`)
+      .setCustomId(`${RAID_SETTINGS_PREFIX}${ownerId}_${themeId}`)
       .setLabel("⚙️ 設定")
       .setStyle(ButtonStyle.Secondary),
   );
@@ -332,7 +332,7 @@ function buildActionsRow(ownerId, status) {
 }
 
 // Phase H+ 設定面板：自動藥水開關 + 用哪瓶優先
-function buildSettingsPanel(ownerId, status) {
+function buildSettingsPanel(ownerId, status, themeId = "mine") {
   const autoPotion = status.autoPotion !== false;
   const tier = status.autoPotionTier || "smallest";
   const tierLabel = {
@@ -349,7 +349,7 @@ function buildSettingsPanel(ownerId, status) {
   ];
 
   const toggleSelect = new StringSelectMenuBuilder()
-    .setCustomId(`${RAID_PREF_TOGGLE_PREFIX}${ownerId}`)
+    .setCustomId(`${RAID_PREF_TOGGLE_PREFIX}${ownerId}_${themeId}`)
     .setPlaceholder("自動藥水：開 / 關")
     .addOptions(
       new StringSelectMenuOptionBuilder()
@@ -362,7 +362,7 @@ function buildSettingsPanel(ownerId, status) {
         .setDefault(!autoPotion),
     );
   const tierSelect = new StringSelectMenuBuilder()
-    .setCustomId(`${RAID_PREF_TIER_PREFIX}${ownerId}`)
+    .setCustomId(`${RAID_PREF_TIER_PREFIX}${ownerId}_${themeId}`)
     .setPlaceholder("用哪瓶優先")
     .addOptions(
       new StringSelectMenuOptionBuilder().setLabel("最小可用瓶（小→中→大，最省）").setValue("smallest").setDefault(tier === "smallest"),
@@ -382,7 +382,7 @@ function buildSettingsPanel(ownerId, status) {
     .addActionRowComponents(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}`)
+          .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${themeId}`)
           .setLabel("⬅️ 回主面板")
           .setStyle(ButtonStyle.Primary),
       ),
@@ -447,7 +447,7 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
   container.addActionRowComponents(buildFloorActionRow(interaction.user.id, floorStates, themeId));
   container.addActionRowComponents(themeRow);
-  container.addActionRowComponents(buildActionsRow(interaction.user.id, status));
+  container.addActionRowComponents(buildActionsRow(interaction.user.id, status, themeId));
 
   // Phase H+ mini-BOSS（解鎖時才顯示按鈕；門檻：當前主題 5F 通關 ×5）
   const mbState = floorService.miniBossUnlockState(status.profile, status.level, themeId);
@@ -614,12 +614,12 @@ function buildBattleResultPanel(ownerId, result) {
       .setLabel("📜 戰鬥日誌")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_${healTier || "none"}`)
+      .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_${healTier || "none"}_${result.theme}`)
       .setLabel(hasPotion ? `💊 補血（最小瓶）` : "💊 無生命藥水")
       .setStyle(hasPotion && result.hpAfter < result.hpMax ? ButtonStyle.Success : ButtonStyle.Secondary)
       .setDisabled(!hasPotion || result.hpAfter >= result.hpMax),
     new ButtonBuilder()
-      .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}`)
+      .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${result.theme}`)
       .setLabel("⚙️ 換樓層")
       .setStyle(ButtonStyle.Secondary),
   );
@@ -723,7 +723,7 @@ function buildLowHpConfirmPanel(ownerId, status, themeId, floor) {
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_${healTier || "none"}`)
+      .setCustomId(`${RAID_HEAL_PREFIX}${ownerId}_${healTier || "none"}_${themeId}`)
       .setLabel(hasPotion ? "💊 補血（最小瓶）" : "💊 無生命藥水")
       .setStyle(hasPotion ? ButtonStyle.Success : ButtonStyle.Secondary)
       .setDisabled(!hasPotion),
@@ -732,7 +732,7 @@ function buildLowHpConfirmPanel(ownerId, status, themeId, floor) {
       .setLabel(`⚠️ 強制進場 ${floor}F`)
       .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
-      .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}`)
+      .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${themeId}`)
       .setLabel("❌ 取消（回面板）")
       .setStyle(ButtonStyle.Secondary),
   );
