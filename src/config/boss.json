@@ -70,8 +70,7 @@
       "killerBonusRatio": 0.05,
       "killerRareReward": 1,
       "topRareRewardTiers": [3, 2, 1, 1, 1],
-      "topRankDiamondTiers": [5, 3, 1],
-      "dragonHeirThreshold": 10
+      "topRankDiamondTiers": [5, 3, 1]
     },
     "damage": {
       "baseRandMin": 10,

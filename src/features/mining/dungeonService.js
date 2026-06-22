@@ -7,7 +7,6 @@ const twitchPerks = require("./twitchPerks");
 const encounterService = require("./encounterService");
 const { getFoodAtkBonus, formatFoodBuffLines } = require("../fishing/cookService");
 const buildingService = require("../guild_club/buildingService");
-const gameTitleService = require("../gameTitles/gameTitleService");
 const bus = require("../eventBus");
 
 // 公會鐵匠鋪 Lv.5：戰鬥扣武器/盾耐久時，每次有機率不消耗。
@@ -1109,14 +1108,6 @@ async function enterDungeonHp(client, {
   if (won && isMiniBoss) {
     const killCount = ((profile.mini_boss_kills || {})[themeId] || 0) + 1;
     bus.emit("dungeon.mini_boss_defeated", { userId, guildId, theme: themeId, killCount });
-
-    // 龍裔：屠龍累積達門檻即授予（grant 為冪等，已持有者不重複）
-    const heirThreshold = gameTitleService.def("dragon_heir")?.req?.bossKills ?? 10;
-    if ((result.dragonSlayerTotal || 0) >= heirThreshold) {
-      await gameTitleService
-        .grant(client, { userId, guildId, member, titleId: "dragon_heir", source: "dungeon" })
-        .catch(() => {});
-    }
   }
 
   if (won) {
