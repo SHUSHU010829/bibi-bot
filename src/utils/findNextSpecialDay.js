@@ -16,7 +16,8 @@ function loadCalenderData() {
 }
 
 /**
- * 找出當日之後第一個帶有 description 的日子，以及還有幾天。
+ * 找出當日（含）之後第一個帶有 description 的日子，以及還有幾天。
+ * 當天就是特殊日時，daysUntilSpecialDay 會是 0。
  *
  * @param {DateTime} now
  * @param {string} timezone
@@ -35,7 +36,7 @@ function findNextSpecialDay(now, timezone) {
       (data) =>
         data.description &&
         data.description.trim() !== "" &&
-        data.date > searchDate
+        data.date >= searchDate
     )
     .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -47,7 +48,9 @@ function findNextSpecialDay(now, timezone) {
   const specialDate = DateTime.fromFormat(nextSpecialDay.date, "yyyyMMdd", {
     zone: timezone,
   });
-  const daysUntilSpecialDay = Math.ceil(specialDate.diff(now, "days").days);
+  const daysUntilSpecialDay = Math.round(
+    specialDate.diff(now.startOf("day"), "days").days
+  );
 
   return { nextSpecialDay, daysUntilSpecialDay };
 }

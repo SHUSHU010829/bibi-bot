@@ -339,7 +339,7 @@ embed.js → 發送 Embed
 
 ### 7. 每日早安卡
 
-- **早安卡**：`events/ready/sendMorningMessage.js` 依 `morningMessage.cronSchedule`（預設每天早上 8 點）發送，使用 `satori` 動態繪製含日期、星期、節氣、農民曆、詩詞、運勢的 PNG 卡片，卡片底部另附**昨日全服挖到的鑽石總量**（由 `rankService.oreTotalInRange` 從 `MineLogs` 聚合，僅統計挖礦掉落）。
+- **早安卡**：`events/ready/sendMorningMessage.js` 依 `morningMessage.cronSchedule`（預設每天早上 8 點）發送，使用 `satori` 動態繪製含日期、星期、節氣、農民曆、詩詞、運勢的 PNG 卡片。倒數區塊（`utils/findNextSpecialDay.js`）平時顯示「距離下一個節日還有 N 天」；當天本身就是節日時（`daysUntilSpecialDay === 0`）改為慶祝排版直接呈現當天節日名稱。
 - **資料來源**：本地 `src/data/calender.json`（透過 `npm run update-calendar` 從 TaiwanCalendar 更新）、`utils/getLunarInfo.js`（農民曆）、`utils/getPoem.js`（詩詞）。
 
 ---

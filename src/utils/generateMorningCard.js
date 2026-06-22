@@ -18,16 +18,17 @@ function buildMarkup(data) {
     lunarDay,
     countdownName,
     countdownDays,
+    festivalToday,
+    festivalName,
     recommends,
     avoids,
-    diamondCount,
     serialNo,
   } = data;
 
   const recommendsLines = chunkByTwo(recommends || []);
   const avoidsItems = avoids || [];
 
-  const hasLunar = Boolean(lunarYearLabel && lunarDay);
+  const hasFestivalToday = Boolean(festivalToday && festivalName);
   const hasCountdown = Boolean(countdownName && countdownDays);
 
   return `
@@ -59,7 +60,18 @@ function buildMarkup(data) {
           </div>
         </div>
 
-        <!-- C. Countdown -->
+        <!-- C. Countdown / Festival -->
+        ${
+          hasFestivalToday
+            ? `
+        <div style="display:flex;width:100%;height:88px;margin-top:18px;background:${theme.accent};padding:0 30px;align-items:center;box-sizing:border-box;">
+          <div style="display:flex;flex-direction:column;justify-content:center;flex:1;">
+            <div style="display:flex;font-family:'SpaceMono';font-size:14px;letter-spacing:5px;color:${theme.card};opacity:0.85;">TODAY · 就是今天</div>
+            <div style="display:flex;margin-top:4px;font-family:'NotoSansTC';font-weight:900;font-size:34px;letter-spacing:4px;color:${theme.card};line-height:1;">${festivalName}</div>
+          </div>
+          <div style="display:flex;align-items:center;font-family:'NotoSansTC';font-weight:900;font-size:46px;line-height:1;">🎉</div>
+        </div>`
+            : `
         <div style="display:flex;width:100%;height:88px;margin-top:18px;border:2px solid ${theme.ink};padding:0 30px;align-items:center;box-sizing:border-box;">
           ${
             hasCountdown
@@ -74,7 +86,8 @@ function buildMarkup(data) {
             <div style="display:flex;flex:1;justify-content:center;font-family:'NotoSansTC';font-weight:500;font-size:22px;letter-spacing:5px;color:${theme.ink};">今天也是好好過日子的一天</div>
           `
           }
-        </div>
+        </div>`
+        }
 
         <!-- D. 宜忌 -->
         <div style="display:flex;width:100%;margin-top:20px;flex:1;gap:22px;overflow:hidden;">
@@ -103,8 +116,7 @@ function buildMarkup(data) {
         <!-- E. Footer -->
         <div style="display:flex;flex-direction:column;width:100%;margin-top:18px;">
           <div style="display:flex;width:100%;height:1px;border-top:1px dashed ${theme.muted};"></div>
-          <div style="display:flex;justify-content:center;align-items:center;margin-top:12px;font-family:'NotoSansTC';font-weight:500;font-size:22px;letter-spacing:2px;color:${theme.ink};">昨日全服挖到鑽石 <span style="font-family:'NotoSansTC';font-weight:900;font-size:26px;color:${theme.accent};margin:0 8px;">${diamondCount}</span> 顆</div>
-          <div style="display:flex;justify-content:center;margin-top:10px;font-family:'SpaceMono';font-size:18px;letter-spacing:10px;color:${theme.muted};">@SHUSHU</div>
+          <div style="display:flex;justify-content:center;margin-top:14px;font-family:'SpaceMono';font-size:18px;letter-spacing:10px;color:${theme.muted};">@SHUSHU</div>
         </div>
 
       </div>
