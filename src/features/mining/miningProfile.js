@@ -47,6 +47,7 @@ function defaultProfile(userId, guildId) {
     gift_count: 0,
     fish_cooldown_at: 0,
     fish_count_total: 0,
+    last_fish_location: "stream",
     fish_bag: { small_fish: 0, crucian: 0, shark: 0, octopus: 0, lava_fish: 0 },
     fishing_rod: "bamboo",
     rod_durability: null,
@@ -142,6 +143,7 @@ function normalize(doc) {
   doc.gift_count ??= 0;
   doc.fish_cooldown_at ??= 0;
   doc.fish_count_total ??= 0;
+  if (!fishing?.locations?.[doc.last_fish_location]) doc.last_fish_location = "stream";
   doc.fish_bag = { small_fish: 0, crucian: 0, shark: 0, octopus: 0, lava_fish: 0, ...(doc.fish_bag || {}) };
   doc.fishing_rod ??= "bamboo";
   if (doc.rod_durability === undefined) doc.rod_durability = null;

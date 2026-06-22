@@ -130,7 +130,7 @@ async function fish(client, { userId, guildId, location = "stream" }) {
   if (Math.random() >= successRate) {
     // 失敗：魚跑了，套用較短的失敗冷卻，不扣釣竿耐久；撈網不扣使用次數
     const failCdAt = now + (fishing.failCooldownMs || 1800000);
-    const failSet = { fish_cooldown_at: failCdAt, updatedAt: new Date() };
+    const failSet = { fish_cooldown_at: failCdAt, last_fish_location: location, updatedAt: new Date() };
     const failInc = {};
     if (droppedNetFragment) failInc.broken_net_fragments = 1;
     const updateOps = { $set: failSet };
@@ -177,7 +177,7 @@ async function fish(client, { userId, guildId, location = "stream" }) {
   };
   if (droppedNetFragment) inc.broken_net_fragments = 1;
   if (netActive) inc.fishing_net_uses = -1;
-  const set = { fish_cooldown_at: newCooldownAt, updatedAt: new Date() };
+  const set = { fish_cooldown_at: newCooldownAt, last_fish_location: location, updatedAt: new Date() };
 
   // 釣竿耐久：非竹竿且有耐久值才消耗；歸 0 退回竹竿（比照鎬子）
   let rodBroke = false;
@@ -357,4 +357,22 @@ async function useCdTicket(client, { userId, guildId }) {
   };
 }
 
-module.exports = { fish, getFishingProfile, locationUnlockDesc, useCdTicket };
+// 判斷某地點對玩家是否已解鎖（等級 + 地下城通關）。
+// 供冷卻畫面切換地點時用，避免把鎖住的釣場存成預設。
+async function isLocationUnlocked(client, { userId, guildId, location, profile }) {
+  const locDef = fishing?.locations?.[location];
+  if (!locDef) return false;
+  if ((locDef.unlockLevel || 0) > 0) {
+    const userLevel = await client.userLevelsCollection
+      ?.findOne({ userId, guildId })
+      .catch(() => null);
+    if ((userLevel?.level ?? 0) < locDef.unlockLevel) return false;
+  }
+  if ((locDef.requireDungeonClears || 0) > 0) {
+    const p = profile || (await getFishingProfile(client, userId, guildId));
+    if ((p.dungeon_count || 0) < locDef.requireDungeonClears) return false;
+  }
+  return true;
+}
+
+module.exports = { fish, getFishingProfile, locationUnlockDesc, useCdTicket, isLocationUnlocked };
