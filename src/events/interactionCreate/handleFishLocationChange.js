@@ -18,7 +18,7 @@ const {
   buildCooldownView,
   parseFishLocChangeId,
 } = require("../../commands/fishing/fish");
-const { getFishingProfile } = require("../../features/fishing/fishService");
+const { getFishingProfile, isLocationUnlocked } = require("../../features/fishing/fishService");
 const reminder = require("../../features/reminders/cooldownReminderService");
 
 async function replyEphemeral(interaction, content) {
@@ -69,6 +69,24 @@ module.exports = async (client, interaction) => {
     await interaction.deferUpdate();
 
     const profile = await getFishingProfile(client, interaction.user.id, interaction.guildId);
+
+    // 已解鎖才把這個選擇存成預設，避免下次 /釣魚 預設到鎖住的釣場
+    if (
+      await isLocationUnlocked(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        location: newLocation,
+        profile,
+      })
+    ) {
+      await client.miningProfilesCollection
+        .updateOne(
+          { userId: interaction.user.id, guildId: interaction.guildId },
+          { $set: { last_fish_location: newLocation, updatedAt: new Date() } },
+        )
+        .catch(() => {});
+    }
+
     const now = Date.now();
     const cooldownAt = profile.fish_cooldown_at || 0;
     if (cooldownAt <= now) {

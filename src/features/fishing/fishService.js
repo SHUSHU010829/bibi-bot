@@ -357,4 +357,22 @@ async function useCdTicket(client, { userId, guildId }) {
   };
 }
 
-module.exports = { fish, getFishingProfile, locationUnlockDesc, useCdTicket };
+// 判斷某地點對玩家是否已解鎖（等級 + 地下城通關）。
+// 供冷卻畫面切換地點時用，避免把鎖住的釣場存成預設。
+async function isLocationUnlocked(client, { userId, guildId, location, profile }) {
+  const locDef = fishing?.locations?.[location];
+  if (!locDef) return false;
+  if ((locDef.unlockLevel || 0) > 0) {
+    const userLevel = await client.userLevelsCollection
+      ?.findOne({ userId, guildId })
+      .catch(() => null);
+    if ((userLevel?.level ?? 0) < locDef.unlockLevel) return false;
+  }
+  if ((locDef.requireDungeonClears || 0) > 0) {
+    const p = profile || (await getFishingProfile(client, userId, guildId));
+    if ((p.dungeon_count || 0) < locDef.requireDungeonClears) return false;
+  }
+  return true;
+}
+
+module.exports = { fish, getFishingProfile, locationUnlockDesc, useCdTicket, isLocationUnlocked };
