@@ -638,16 +638,48 @@ function buildBattleResultPanel(ownerId, result) {
   return container;
 }
 
+// 通關評價：回合數相對該樓層 expectedTurns 給 S / A / B；
+// 拿到稀有掉落（傳說碎片 / 黃金 / 鑽石）再升一級（最高 S）。
+const GRADE_EMOJI = { S: "⚡", A: "⚔️", B: "😮‍💨" };
+function clearGrade(result) {
+  const [lo, hi] = result.expectedTurns || [];
+  const turns = result.turns;
+  let grade = "B";
+  if (typeof lo === "number" && turns <= lo) grade = "S";
+  else if (typeof hi === "number" && turns <= hi) grade = "A";
+
+  const rareOre = result.oreGained && !result.oreOverflowToCoins &&
+    (result.oreGained.ore === "gold" || result.oreGained.ore === "diamond");
+  if ((result.legendaryGained > 0 || rareOre) && grade !== "S") {
+    grade = grade === "B" ? "A" : "S";
+  }
+  return { tag: `【${grade}】`, emoji: GRADE_EMOJI[grade] };
+}
+
+// 事件播報行：事件名稱 ＋ 結果。
+// 戰鬥型事件（精英 / 突襲 / 賭注）用 outcome 顯示勝負；其餘獎勵事件顯示拿到的物品。
+// 兩者都沒有就不顯示，避免洗版。
+function encounterBroadcastLine(result) {
+  const enc = result.encounter;
+  if (!enc) return "";
+  const detail = Array.isArray(enc.loot) && enc.loot.length
+    ? enc.loot.join("、")
+    : (enc.outcome || "");
+  if (!detail) return "";
+  return `\n　　${enc.emoji || "🎲"} ${enc.name} → ${detail}`;
+}
+
 // 公開精簡播報（dungeon.json.channelId 頻道）。一行訊息，不洗版。
 function publicBroadcastContent(displayName, result) {
   const f = `${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""}`.trim();
+  const encLine = encounterBroadcastLine(result);
   if (result.isMiniBoss) {
     if (result.won) {
       const total = result.dragonSlayerTotal ?? null;
       const tail = total != null ? `屠龍累積 **${total}/${DRAGON_HEIR_THRESHOLD}**` : `屠龍累積 +1`;
-      return `🏆 **${displayName}** 擊敗 ${result.monster.emoji || ""} ${result.monster.name}！${tail}`;
+      return `🏆 **${displayName}** 擊敗 ${result.monster.emoji || ""} ${result.monster.name}！${tail}` + encLine;
     }
-    return `💀 **${displayName}** 挑戰 ${result.monster.emoji || ""} ${result.monster.name} 失敗，撐了 ${result.turns} 回合`;
+    return `💀 **${displayName}** 挑戰 ${result.monster.emoji || ""} ${result.monster.name} 失敗，撐了 ${result.turns} 回合` + encLine;
   }
   if (result.won) {
     const lootBrief = [];
@@ -655,12 +687,13 @@ function publicBroadcastContent(displayName, result) {
     if (result.legendaryGained) lootBrief.push(`✨碎片×${result.legendaryGained}`);
     if (result.coinsGained > 0) lootBrief.push(`+${result.coinsGained.toLocaleString()} ${COIN_EMOJI}`);
     const tail = lootBrief.length ? ` ・ ${lootBrief.join("、")}` : "";
-    return `⚔️ **${displayName}** 通過 ${f}（${result.turns} 回合）${tail}`;
+    const { tag, emoji } = clearGrade(result);
+    return `${tag}${emoji} **${displayName}** 通過 ${f}（${result.turns} 回合）${tail}` + encLine;
   }
   if (result.battleResult === "draw") {
-    return `⏳ **${displayName}** 在 ${f} 戰鬥逾時撤退（${result.turns} 回合）`;
+    return `⏳ **${displayName}** 在 ${f} 戰鬥逾時撤退（${result.turns} 回合）` + encLine;
   }
-  return `💀 **${displayName}** 在 ${f} 倒下了（撐了 ${result.turns} 回合）`;
+  return `💀 **${displayName}** 在 ${f} 倒下了（撐了 ${result.turns} 回合）` + encLine;
 }
 
 // 戰前低 HP 確認面板：HP < 30% 時點樓層按鈕觸發，避免新手不小心送頭。
