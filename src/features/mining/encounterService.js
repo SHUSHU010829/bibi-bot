@@ -93,6 +93,9 @@ async function trigger(client, ctx) {
   const eff = enc.effect || {};
   const lines = [];
   if (enc.text) lines.push(enc.text);
+  // loot：事件實際讓玩家「拿到」的東西（精簡顯示字串），供公開播報用。
+  // 只收 gift / bonus 類正向獎勵，戰鬥型事件（精英 / 突襲 / 賭注）不收。
+  const loot = [];
   const patch = {};
   let diamondGained = 0;
 
@@ -110,6 +113,7 @@ async function trigger(client, ctx) {
           meta: { encounter: enc.id },
         });
         lines.push(`💰 +${amount.toLocaleString()} ${COIN_EMOJI}`);
+        loot.push(`+${amount.toLocaleString()} ${COIN_EMOJI}`);
         break;
       }
 
@@ -136,6 +140,7 @@ async function trigger(client, ctx) {
               }
             );
             lines.push(`${oreLabel(ore)} ×${granted}（額外獲得）`);
+            loot.push(`${oreLabel(ore)} ×${granted}`);
             if (ore === "diamond") diamondGained += granted;
           }
           // 背包塞不下的部分折算成金幣，不浪費
@@ -156,6 +161,7 @@ async function trigger(client, ctx) {
               lines.push(
                 `🎒 背包已滿，${oreLabel(ore)} ×${overflow} 折算成 +${coins.toLocaleString()} ${COIN_EMOJI}`
               );
+              loot.push(`+${coins.toLocaleString()} ${COIN_EMOJI}`);
             }
           }
         }
@@ -179,6 +185,7 @@ async function trigger(client, ctx) {
             }
           );
           lines.push(`${oreLabel(ore)} ×${qty}（額外獲得）`);
+          loot.push(`${oreLabel(ore)} ×${qty}`);
           if (ore === "diamond") diamondGained += qty;
         } else {
           // 背包滿了折算成等值金幣，避免戰利品憑空消失
@@ -198,6 +205,7 @@ async function trigger(client, ctx) {
           lines.push(
             `🎒 背包已滿，${oreLabel(ore)} ×${qty} 折算成 +${coins.toLocaleString()} ${COIN_EMOJI}`
           );
+          if (coins > 0) loot.push(`+${coins.toLocaleString()} ${COIN_EMOJI}`);
         }
         break;
       }
@@ -242,6 +250,7 @@ async function trigger(client, ctx) {
           { $inc: { luck_potion_uses: qty }, $set: { updatedAt: new Date() } }
         );
         lines.push(`🍀 幸運藥水 ×${qty}`);
+        loot.push(`🍀 幸運藥水 ×${qty}`);
         break;
       }
 
@@ -252,6 +261,7 @@ async function trigger(client, ctx) {
           { $inc: { treasure_map_fragments: qty }, $set: { updatedAt: new Date() } }
         );
         lines.push(`📜 藏寶圖碎片 ×${qty}（集 6 張可在工坊合成藏寶圖）`);
+        loot.push(`📜 藏寶圖碎片 ×${qty}`);
         break;
       }
 
@@ -265,6 +275,7 @@ async function trigger(client, ctx) {
             { $inc: { cd_ticket_count: qty }, $set: { updatedAt: new Date() } }
           );
           lines.push(`🎫 CD 縮短券 ×${qty}`);
+          loot.push(`🎫 CD 縮短券 ×${qty}`);
         } else {
           lines.push("你的 CD 縮短券已達持有上限，這次沒拿到。");
         }
@@ -392,6 +403,7 @@ async function trigger(client, ctx) {
           );
           const tierName = dungeon?.hpPotions?.[tier]?.name || `生命藥水（${tier}）`;
           lines.push(`💊 ${tierName} ×${give}`);
+          loot.push(`💊 ${tierName} ×${give}`);
         } else {
           lines.push("你的生命藥水已達持有上限，這次沒拿到。");
         }
@@ -454,6 +466,7 @@ async function trigger(client, ctx) {
             { $inc: { whetstone_inferior_count: give }, $set: { updatedAt: new Date() } }
           );
           lines.push(`🪨 劣質磨石 ×${give}（可在 /背包 使用）`);
+          loot.push(`🪨 劣質磨石 ×${give}`);
         } else {
           lines.push("你的劣質磨石已達持有上限，這次沒拿到。");
         }
@@ -624,6 +637,7 @@ async function trigger(client, ctx) {
     name: enc.name,
     emoji: enc.emoji || "❗",
     body: lines.join("\n"),
+    loot,
     patch,
     diamondGained,
   };
