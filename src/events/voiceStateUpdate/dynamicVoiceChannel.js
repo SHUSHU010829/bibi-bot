@@ -25,52 +25,56 @@ module.exports = async (client, oldState, newState) => {
       newState.channelId === CREATE_CHANNEL_ID &&
       oldState.channelId !== CREATE_CHANNEL_ID
     ) {
-      console.log(
-        `[VOICE] ${member.user.tag} joined the create channel, creating new voice channel...`
-          .cyan
-      );
+      try {
+        console.log(
+          `[VOICE] ${member.user.tag} joined the create channel, creating new voice channel...`
+            .cyan
+        );
 
-      // 獲取創建頻道所在的分類
-      const createChannel = guild.channels.cache.get(CREATE_CHANNEL_ID);
-      const parentId = createChannel?.parentId;
+        // 獲取創建頻道所在的分類
+        const createChannel = guild.channels.cache.get(CREATE_CHANNEL_ID);
+        const parentId = createChannel?.parentId;
 
-      // 創建新的語音頻道
-      const newChannel = await guild.channels.create({
-        name: voiceChannel.defaultChannelName,
-        type: ChannelType.GuildVoice,
-        parent: parentId,
-        permissionOverwrites: [
-          // 基礎權限：所有人都可以查看和連接
-          {
-            id: guild.id,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect],
-          },
-          // 創建者權限：可以管理頻道（編輯名稱、調整人數上限）
-          {
-            id: member.id,
-            allow: [
-              PermissionFlagsBits.ManageChannels,
-              PermissionFlagsBits.MoveMembers,
-            ],
-          },
-        ],
-      });
+        // 創建新的語音頻道
+        const newChannel = await guild.channels.create({
+          name: voiceChannel.defaultChannelName,
+          type: ChannelType.GuildVoice,
+          parent: parentId,
+          permissionOverwrites: [
+            // 基礎權限：所有人都可以查看和連接
+            {
+              id: guild.id,
+              allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect],
+            },
+            // 創建者權限：可以管理頻道（編輯名稱、調整人數上限）
+            {
+              id: member.id,
+              allow: [
+                PermissionFlagsBits.ManageChannels,
+                PermissionFlagsBits.MoveMembers,
+              ],
+            },
+          ],
+        });
 
-      // 記錄創建者
-      dynamicChannels.set(newChannel.id, {
-        ownerId: member.id,
-        guildId: guild.id,
-        parentId: parentId || null,
-        createdAt: Date.now(),
-      });
+        // 記錄創建者
+        dynamicChannels.set(newChannel.id, {
+          ownerId: member.id,
+          guildId: guild.id,
+          parentId: parentId || null,
+          createdAt: Date.now(),
+        });
 
-      // 將用戶移動到新頻道
-      await member.voice.setChannel(newChannel);
+        // 將用戶移動到新頻道
+        await member.voice.setChannel(newChannel);
 
-      console.log(
-        `[VOICE] Created new voice channel: ${newChannel.name} (${newChannel.id}) for ${member.user.tag}`
-          .green
-      );
+        console.log(
+          `[VOICE] Created new voice channel: ${newChannel.name} (${newChannel.id}) for ${member.user.tag}`
+            .green
+        );
+      } catch (error) {
+        console.error(`[ERROR] Failed to create dynamic voice channel: ${error}`.red);
+      }
     }
 
     // 當用戶加入動態頻道時，給予編輯狀態的權限
@@ -79,12 +83,12 @@ module.exports = async (client, oldState, newState) => {
       dynamicChannels.has(newState.channelId) &&
       newState.channelId !== oldState.channelId
     ) {
-      const channel = guild.channels.cache.get(newState.channelId);
-      if (channel) {
+      try {
+        const channel = guild.channels.cache.get(newState.channelId);
         // 給予加入者設置狀態的權限（如果該權限存在）
-        if (PermissionFlagsBits.SetVoiceChannelStatus) {
+        if (channel && PermissionFlagsBits.SetVoiceChannelStatus) {
           await channel.permissionOverwrites.edit(member.id, {
-            [PermissionFlagsBits.SetVoiceChannelStatus]: true,
+            SetVoiceChannelStatus: true,
           });
 
           console.log(
@@ -92,6 +96,10 @@ module.exports = async (client, oldState, newState) => {
               .cyan
           );
         }
+      } catch (error) {
+        console.error(
+          `[ERROR] Failed to grant status permission in dynamic voice channel: ${error}`.red
+        );
       }
     }
 
