@@ -46,14 +46,14 @@
     "fish": {
       "small_fish": { "name": "小雜魚", "emoji": "🐟", "rarity": "普通", "price": 5,   "rareFactor": 0 },
       "crucian":    { "name": "鯽魚",   "emoji": "🎣", "rarity": "普通", "price": 15,  "rareFactor": 0 },
-      "shark":      { "name": "鯊魚",   "emoji": "🦈", "rarity": "稀有", "price": 60,  "rareFactor": 1 },
-      "octopus":    { "name": "章魚",   "emoji": "🐙", "rarity": "稀有", "price": 150, "rareFactor": 1.5 },
-      "lava_fish":  { "name": "熔岩魚", "emoji": "🐉", "rarity": "傳說", "price": 600, "rareFactor": 2 }
+      "shark":      { "name": "鯊魚",   "emoji": "🦈", "rarity": "稀有", "price": 60,  "rareFactor": 0.8 },
+      "octopus":    { "name": "章魚",   "emoji": "🐙", "rarity": "稀有", "price": 150, "rareFactor": 1.0 },
+      "lava_fish":  { "name": "熔岩魚", "emoji": "🐉", "rarity": "傳說", "price": 600, "rareFactor": 1.2 }
     },
     "dropTable": {
-      "stream":    { "small_fish": 60, "crucian": 28, "shark": 10, "octopus": 2,  "lava_fish": 0 },
-      "sea":       { "small_fish": 25, "crucian": 28, "shark": 28, "octopus": 19, "lava_fish": 0 },
-      "lava_lake": { "small_fish": 18, "crucian": 22, "shark": 28, "octopus": 24, "lava_fish": 8 }
+      "stream":    { "small_fish": 62, "crucian": 28, "shark": 9,  "octopus": 1,  "lava_fish": 0 },
+      "sea":       { "small_fish": 38, "crucian": 30, "shark": 22, "octopus": 10, "lava_fish": 0 },
+      "lava_lake": { "small_fish": 28, "crucian": 18, "shark": 24, "octopus": 24, "lava_fish": 6 }
     },
     "rareItemDrops": {
       "lava_lake": [
