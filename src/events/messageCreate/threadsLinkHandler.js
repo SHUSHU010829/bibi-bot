@@ -174,6 +174,16 @@ function extractFromOgMeta(html) {
 
   if (!title && !description && images.length === 0) return null;
 
+  // 偵測 Threads 登入牆 / 通用頁（拿不到貼文時 Meta 會回這個）
+  // 這種頁的 og:description 是固定招呼語、og:image 是 Threads logo，
+  // 不能拿來當預覽，否則會貼出一張無意義的「Join Threads」卡片。
+  const desc = description ? decodeHtmlEntities(description) : "";
+  const isGenericPage =
+    /Join Threads to share ideas/i.test(desc) ||
+    /Log in with your Instagram/i.test(desc) ||
+    /^Threads$/i.test(title || "");
+  if (isGenericPage) return null;
+
   // 從 title 解析 username
   let username = "unknown";
   if (title) {
@@ -185,7 +195,7 @@ function extractFromOgMeta(html) {
   }
 
   return {
-    text: description ? decodeHtmlEntities(description) : "",
+    text: desc,
     username,
     userPic: null,
     isVerified: false,
@@ -196,52 +206,70 @@ function extractFromOgMeta(html) {
   };
 }
 
-// 主要抓取函數
-async function fetchThreadsData(url) {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10 秒 timeout
+// 不同 UA 拿到的頁面差很多：有些只回登入牆 / 推薦貼文，沒有目標貼文的
+// SSR JSON。逐一嘗試，誰先拿到「code 吻合的貼文」就用誰。
+const FETCH_USER_AGENTS = [
+  "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+  "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+];
 
+async function fetchHtml(url, userAgent) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000); // 10 秒 timeout
+  try {
     const response = await fetch(url, {
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+        "User-Agent": userAgent,
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       },
       signal: controller.signal,
     });
-
-    clearTimeout(timeout);
-
     if (!response.ok) {
       console.log(`[Threads] HTTP ${response.status} for ${url}`);
       return null;
     }
-
-    const html = await response.text();
-
-    // 從 URL 取出貼文 shortcode，用來鎖定頁面 JSON 中正確的那一篇
-    const targetCode = url.match(/\/post\/([\w-]+)/)?.[1] || null;
-
-    // 優先嘗試從 hidden JSON 提取（更完整的資料）
-    let data = extractThreadDataFromHtml(html, targetCode);
-
-    // Fallback 到 og meta
-    if (!data) {
-      data = extractFromOgMeta(html);
-    }
-
-    return data;
-  } catch (error) {
-    if (error.name === "AbortError") {
-      console.log(`[Threads] 請求超時：${url}`);
-    } else {
-      console.log(`[Threads] 抓取失敗：${error.message}`);
-    }
-    return null;
+    return await response.text();
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+// 主要抓取函數
+async function fetchThreadsData(url) {
+  // 從 URL 取出貼文 shortcode，用來鎖定頁面 JSON 中正確的那一篇
+  const targetCode = url.match(/\/post\/([\w-]+)/)?.[1] || null;
+
+  let ogFallback = null; // 各 UA 拿到的最佳 og:meta（已濾掉登入牆）
+
+  for (const ua of FETCH_USER_AGENTS) {
+    let html;
+    try {
+      html = await fetchHtml(url, ua);
+    } catch (error) {
+      if (error.name === "AbortError") {
+        console.log(`[Threads] 請求超時：${url}`);
+      } else {
+        console.log(`[Threads] 抓取失敗：${error.message}`);
+      }
+      continue;
+    }
+    if (!html) continue;
+
+    // 拿到 code 吻合的貼文 → 直接成功
+    const data = extractThreadDataFromHtml(html, targetCode);
+    if (data) return data;
+
+    // 還沒成功，先留著這個 UA 的 og:meta（登入牆會被濾成 null）
+    if (!ogFallback) {
+      ogFallback = extractFromOgMeta(html);
+    }
+  }
+
+  // 所有 UA 都拿不到目標貼文的 JSON → 退回非登入牆的 og:meta（可能為 null）
+  return ogFallback;
 }
 
 // 擷取 Threads 連結（支援 threads.net 和 threads.com）
