@@ -2,12 +2,10 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  StringSelectMenuBuilder,
 } = require("discord.js");
 const { isStackable, stackMax } = require("./catalog");
 const { MONEY_EMOJI } = require("../../constants/coin");
 
-const QTY_SELECT_PREFIX = "shop_qty_";
 const CONFIRM_PREFIX = "shop_confirm_";
 const CANCEL_ID = "shop_cancel";
 
@@ -39,20 +37,8 @@ function clampQty(item, qty) {
   return q;
 }
 
-// 數量下拉選單的選項（1 起跳的常用級距，最後補上上限）。
-function qtyOptions(item, selected) {
-  const max = stackMax(item);
-  const base = [1, 2, 3, 5, 10, 20, 30, 50];
-  const list = base.filter((n) => n <= max);
-  if (!list.includes(max)) list.push(max);
-  return list.slice(0, 25).map((n) => ({
-    label: `${n} 個`,
-    value: String(n),
-    default: n === selected,
-  }));
-}
-
-// 組出購買確認面板（僅自己可見的 ephemeral）。可堆疊商品會多一排數量選單。
+// 組出購買確認面板（僅自己可見的 ephemeral）。可堆疊商品的數量改由 Modal 輸入，
+// 這裡只負責「一次買 1 筆」的非堆疊商品確認。
 function buildBuyConfirmView(item, qty = 1) {
   const stackable = isStackable(item);
   const quantity = stackable ? clampQty(item, qty) : 1;
@@ -72,14 +58,6 @@ function buildBuyConfirmView(item, qty = 1) {
   }
 
   const components = [];
-
-  if (stackable) {
-    const select = new StringSelectMenuBuilder()
-      .setCustomId(`${QTY_SELECT_PREFIX}${item.id}`)
-      .setPlaceholder("選擇購買數量…")
-      .addOptions(qtyOptions(item, quantity));
-    components.push(new ActionRowBuilder().addComponents(select));
-  }
 
   components.push(
     new ActionRowBuilder().addComponents(
@@ -102,7 +80,6 @@ function buildBuyConfirmView(item, qty = 1) {
 module.exports = {
   buildBuyConfirmView,
   clampQty,
-  QTY_SELECT_PREFIX,
   CONFIRM_PREFIX,
   CANCEL_ID,
 };

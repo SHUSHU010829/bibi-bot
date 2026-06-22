@@ -12,7 +12,8 @@ const { ObjectId } = require("mongodb");
 
 const equipItem = require("../../features/shop/equipItem");
 const buyItem = require("../../features/shop/buyItem");
-const { getItem } = require("../../features/shop/catalog");
+const { getItem, isStackable } = require("../../features/shop/catalog");
+const { getStackInfo } = require("../../features/shop/stackInfo");
 const {
   buildBackpackView,
   UNIFIED_EQUIP_ID,
@@ -20,8 +21,6 @@ const {
 const { buildShopView } = require("../../features/shop/shopView");
 const {
   buildBuyConfirmView,
-  clampQty,
-  QTY_SELECT_PREFIX,
   CONFIRM_PREFIX,
   CANCEL_ID,
 } = require("../../features/shop/buyConfirmView");
@@ -44,6 +43,7 @@ const TITLE_SELECT_ID = "shop_title_select";
 const CAT_SELECT_ID = "shop_cat";
 const NAV_PREFIX = "shop_nav_";
 const BUY_PREFIX = "shop_buy_";
+const QTY_BUY_MODAL_PREFIX = "shop_qtybuy_";
 const CUSTOM_COLOR_MODAL_ID = "shop_custom_color_modal";
 
 function isValidObjectId(id) {
@@ -66,6 +66,33 @@ function buildTitleModal(inventoryId) {
     .setRequired(true)
     .setMinLength(1)
     .setMaxLength(24);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
+// 可堆疊商品的「輸入購買數量」Modal。label 帶限購／持有資訊，placeholder 給可輸入範圍。
+function buildQtyModal(item, info) {
+  const { max, maxStack, dailyLimit, owned, boughtToday, unit, maxBuyNow } = info;
+  const labelParts = ["數量"];
+  if (owned != null) {
+    labelParts.push(maxStack != null ? `持有 ${owned}/${maxStack}` : `持有 ${owned}${unit}`);
+  }
+  if (dailyLimit != null) labelParts.push(`今日 ${boughtToday}/${dailyLimit}`);
+  let label = labelParts.join("｜");
+  if (label.length > 45) label = label.slice(0, 45);
+
+  const upper = maxBuyNow > 0 ? maxBuyNow : max;
+  const modal = new ModalBuilder()
+    .setCustomId(`${QTY_BUY_MODAL_PREFIX}${item.id}`)
+    .setTitle(`購買 ${item.name}`.slice(0, 45));
+  const input = new TextInputBuilder()
+    .setCustomId("qty")
+    .setLabel(label)
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMinLength(1)
+    .setMaxLength(4)
+    .setPlaceholder(`輸入 1～${upper}，本次最多 ${upper} ${unit}`);
   modal.addComponents(new ActionRowBuilder().addComponents(input));
   return modal;
 }
@@ -155,8 +182,10 @@ async function handleNav(client, interaction) {
   await interaction.update(view);
 }
 
-// 購買鈕：customId = shop_buy_<itemId>。不直接扣款，先跳出（僅自己可見的）確認面板防誤觸。
-// role_color_custom 例外：改為彈出 Modal 讓玩家輸入 HEX 色碼。
+// 購買鈕：customId = shop_buy_<itemId>。
+// - 可堆疊商品：彈出 Modal 讓玩家直接輸入數量（label 顯示限購／持有資訊）。
+// - role_color_custom：彈出 Modal 輸入 HEX 色碼。
+// - 其餘（一次買 1 筆）：跳出僅自己可見的確認面板防誤觸。
 async function handleBuyButton(client, interaction, itemId) {
   const item = getItem(itemId);
   if (!item) {
@@ -164,6 +193,24 @@ async function handleBuyButton(client, interaction, itemId) {
   }
   if (item.type === "role_color_custom") {
     return interaction.showModal(buildCustomColorModal(item));
+  }
+  if (isStackable(item)) {
+    const info = await getStackInfo(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      item,
+    });
+    if (info.maxBuyNow <= 0) {
+      const reason =
+        info.dailyLimit != null && info.boughtToday >= info.dailyLimit
+          ? `今日已達購買上限（${info.boughtToday}/${info.dailyLimit}）`
+          : `已達持有上限（${info.owned}/${info.maxStack}）`;
+      return interaction.reply({
+        content: `🚫 「${item.name}」${reason}，暫時無法再購買。`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    return interaction.showModal(buildQtyModal(item, info));
   }
   const view = buildBuyConfirmView(item, 1);
   await interaction.reply({ ...view, flags: MessageFlags.Ephemeral });
@@ -237,37 +284,8 @@ async function handleCustomColorModalSubmit(client, interaction) {
   await interaction.editReply({ content: lines.join("\n"), components });
 }
 
-// 數量選單：customId = shop_qty_<itemId>，value = 數量。更新確認面板的小計。
-async function handleQtySelect(client, interaction, itemId) {
-  const item = getItem(itemId);
-  if (!item) {
-    return interaction.update({ content: "❌ 找不到該商品", components: [] });
-  }
-  const qty = clampQty(item, parseInt(interaction.values?.[0], 10) || 1);
-  await interaction.update(buildBuyConfirmView(item, qty));
-}
-
-// 確認購買：customId = shop_confirm_<qty>_<itemId>。真正扣款發生在這裡。
-async function handleConfirmButton(client, interaction, qty, itemId) {
-  const item = getItem(itemId);
-  if (!item) {
-    return interaction.update({ content: "❌ 找不到該商品", components: [] });
-  }
-
-  // 真正的購買：先把確認面板鎖住（移除按鈕）再扣款，避免重複送出
-  await interaction.update({ content: "⏳ 購買處理中…", components: [] });
-
-  const result = await buyItem(client, {
-    userId: interaction.user.id,
-    guildId: interaction.guildId,
-    username: interaction.user.username,
-    member: interaction.member,
-    itemId,
-    quantity: qty,
-  });
-
-  if (!result.ok) return interaction.editReply({ content: `❌ ${result.error}`, components: [] });
-
+// 購買成功的回覆內容（確認鈕與數量 Modal 共用）。
+function renderPurchaseResult(item, result) {
   const boughtQty = result.quantity || 1;
   const lines = [
     `✅ 已購買 **${item.name}**${boughtQty > 1 ? ` ×${boughtQty}` : ""}`,
@@ -320,7 +338,59 @@ async function handleConfirmButton(client, interaction, qty, itemId) {
     );
   }
 
-  await interaction.editReply({ content: lines.join("\n"), components });
+  return { content: lines.join("\n"), components };
+}
+
+// 數量 Modal 送出：customId = shop_qtybuy_<itemId>。解析輸入數量 → 扣款。
+async function handleQtyBuyModalSubmit(client, interaction, itemId) {
+  const item = getItem(itemId);
+  if (!item) {
+    return interaction.reply({ content: "❌ 找不到該商品", flags: MessageFlags.Ephemeral });
+  }
+  const raw = (interaction.fields.getTextInputValue("qty") || "").trim();
+  const qty = Math.floor(Number(raw));
+  if (!Number.isFinite(qty) || qty < 1) {
+    return interaction.reply({
+      content: "❌ 請輸入大於 0 的整數數量。",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const result = await buyItem(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    username: interaction.user.username,
+    member: interaction.member,
+    itemId,
+    quantity: qty,
+  });
+  if (!result.ok) return interaction.editReply({ content: `❌ ${result.error}`, components: [] });
+  await interaction.editReply(renderPurchaseResult(item, result));
+}
+
+// 確認購買：customId = shop_confirm_<qty>_<itemId>。真正扣款發生在這裡。
+async function handleConfirmButton(client, interaction, qty, itemId) {
+  const item = getItem(itemId);
+  if (!item) {
+    return interaction.update({ content: "❌ 找不到該商品", components: [] });
+  }
+
+  // 真正的購買：先把確認面板鎖住（移除按鈕）再扣款，避免重複送出
+  await interaction.update({ content: "⏳ 購買處理中…", components: [] });
+
+  const result = await buyItem(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    username: interaction.user.username,
+    member: interaction.member,
+    itemId,
+    quantity: qty,
+  });
+
+  if (!result.ok) return interaction.editReply({ content: `❌ ${result.error}`, components: [] });
+
+  await interaction.editReply(renderPurchaseResult(item, result));
 }
 
 // 取消購買：把確認面板收掉。
@@ -421,7 +491,7 @@ module.exports = async (client, interaction) => {
       cid === CAT_SELECT_ID ||
       cid.startsWith(NAV_PREFIX) ||
       cid.startsWith(BUY_PREFIX) ||
-      cid.startsWith(QTY_SELECT_PREFIX) ||
+      cid.startsWith(QTY_BUY_MODAL_PREFIX) ||
       cid.startsWith(CONFIRM_PREFIX) ||
       cid === CANCEL_ID ||
       cid.startsWith(EQUIP_BTN_PREFIX) ||
@@ -453,8 +523,11 @@ module.exports = async (client, interaction) => {
       }
     }
 
-    // 防重複扣款：確認購買做較嚴格的限流
-    if (interaction.isButton() && cid.startsWith(CONFIRM_PREFIX)) {
+    // 防重複扣款：確認購買 / 數量 Modal 送出做較嚴格的限流
+    if (
+      (interaction.isButton() && cid.startsWith(CONFIRM_PREFIX)) ||
+      (interaction.isModalSubmit() && cid.startsWith(QTY_BUY_MODAL_PREFIX))
+    ) {
       const rl = consume(interaction.user.id, "shop:buy", { windowMs: 2500, max: 1 });
       if (!rl.allowed) {
         try {
@@ -477,12 +550,12 @@ module.exports = async (client, interaction) => {
       return handleNav(client, interaction);
     }
 
-    // 購買流程：開確認面板 → 調整數量 → 確認 / 取消
+    // 購買流程：可堆疊商品開數量 Modal；其餘開確認面板 → 確認 / 取消
     if (interaction.isButton() && cid.startsWith(BUY_PREFIX)) {
       return handleBuyButton(client, interaction, cid.slice(BUY_PREFIX.length));
     }
-    if (interaction.isStringSelectMenu() && cid.startsWith(QTY_SELECT_PREFIX)) {
-      return handleQtySelect(client, interaction, cid.slice(QTY_SELECT_PREFIX.length));
+    if (interaction.isModalSubmit() && cid.startsWith(QTY_BUY_MODAL_PREFIX)) {
+      return handleQtyBuyModalSubmit(client, interaction, cid.slice(QTY_BUY_MODAL_PREFIX.length));
     }
     if (interaction.isButton() && cid.startsWith(CONFIRM_PREFIX)) {
       const rest = cid.slice(CONFIRM_PREFIX.length); // <qty>_<itemId>
