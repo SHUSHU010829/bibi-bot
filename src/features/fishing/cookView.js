@@ -35,7 +35,7 @@ const COOK_CATS = [
   { id: "mine", label: "挖礦", emoji: "⛏️", types: ["mine_luck"] },
   { id: "fish", label: "釣魚", emoji: "🎣", types: ["fish_fortune"] },
   { id: "work", label: "打工", emoji: "💼", types: ["work_income"] },
-  { id: "battle", label: "戰鬥", emoji: "⚔️", types: ["dungeon_atk"] },
+  { id: "battle", label: "戰鬥", emoji: "⚔️", types: ["dungeon_atk", "dungeon_def", "dungeon_hp_max"] },
   { id: "farm", label: "農場", emoji: "🌾", types: ["farm_yield"] },
   { id: "all", label: "全能", emoji: "✨", types: ["all_boost"] },
 ];
@@ -55,6 +55,8 @@ function describeBuff(buff) {
   if (buff.label) return buff.label;
   if (buff.type === "work_income") return `打工收入 +${Math.round(buff.value * 100)}%`;
   if (buff.type === "dungeon_atk") return `地下城 ATK +${buff.value}`;
+  if (buff.type === "dungeon_def") return `地下城 DEF +${buff.value}`;
+  if (buff.type === "dungeon_hp_max") return `地下城 HP 上限 +${buff.value}`;
   if (buff.type === "mine_luck") return `挖礦幸運 +${Math.round(buff.value * 100)}%`;
   if (buff.type === "all_boost") return `全屬性 +${Math.round(buff.value * 100)}%`;
   if (buff.type === "fish_fortune") return `釣魚成功率 +${Math.round(buff.value * 100)}% ・ 稀有度提升`;
