@@ -568,14 +568,23 @@ module.exports = {
     .addStringOption((o) =>
       o
         .setName("地點")
-        .setDescription("釣魚地點（不選則預設溪流）")
+        .setDescription("釣魚地點（不選則沿用上次地點，首次為溪流）")
         .setRequired(false)
         .addChoices(...locationChoices())
     ),
 
   run: async (client, interaction) => {
     await interaction.deferReply();
-    const location = interaction.options.getString("地點") || "stream";
+    let location = interaction.options.getString("地點");
+    if (!location) {
+      const profile = await fishService.getFishingProfile(
+        client,
+        interaction.user.id,
+        interaction.guildId,
+      );
+      location = profile?.last_fish_location || "stream";
+    }
+    if (!fishing.locations?.[location]) location = "stream";
     return executeFish(client, interaction, { location });
   },
 

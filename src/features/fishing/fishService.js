@@ -130,7 +130,7 @@ async function fish(client, { userId, guildId, location = "stream" }) {
   if (Math.random() >= successRate) {
     // 失敗：魚跑了，套用較短的失敗冷卻，不扣釣竿耐久；撈網不扣使用次數
     const failCdAt = now + (fishing.failCooldownMs || 1800000);
-    const failSet = { fish_cooldown_at: failCdAt, updatedAt: new Date() };
+    const failSet = { fish_cooldown_at: failCdAt, last_fish_location: location, updatedAt: new Date() };
     const failInc = {};
     if (droppedNetFragment) failInc.broken_net_fragments = 1;
     const updateOps = { $set: failSet };
@@ -177,7 +177,7 @@ async function fish(client, { userId, guildId, location = "stream" }) {
   };
   if (droppedNetFragment) inc.broken_net_fragments = 1;
   if (netActive) inc.fishing_net_uses = -1;
-  const set = { fish_cooldown_at: newCooldownAt, updatedAt: new Date() };
+  const set = { fish_cooldown_at: newCooldownAt, last_fish_location: location, updatedAt: new Date() };
 
   // 釣竿耐久：非竹竿且有耐久值才消耗；歸 0 退回竹竿（比照鎬子）
   let rodBroke = false;
