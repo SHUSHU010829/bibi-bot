@@ -238,11 +238,17 @@ async function fetchHtml(url, userAgent) {
 }
 
 // 主要抓取函數
+// 回傳 { data, reachable }：
+//   data      解析到的貼文，抓不到為 null
+//   reachable 是否至少有一個 UA 成功取得頁面（HTTP 200）
+//             用來區分「網路/被擋」與「這篇沒有可用的公開資料（gate 掉）」，
+//             後者不該算進 circuit breaker，否則會連累正常貼文。
 async function fetchThreadsData(url) {
   // 從 URL 取出貼文 shortcode，用來鎖定頁面 JSON 中正確的那一篇
   const targetCode = url.match(/\/post\/([\w-]+)/)?.[1] || null;
 
   let ogFallback = null; // 各 UA 拿到的最佳 og:meta（已濾掉登入牆）
+  let reachable = false;
 
   for (const ua of FETCH_USER_AGENTS) {
     let html;
@@ -257,10 +263,11 @@ async function fetchThreadsData(url) {
       continue;
     }
     if (!html) continue;
+    reachable = true;
 
     // 拿到 code 吻合的貼文 → 直接成功
     const data = extractThreadDataFromHtml(html, targetCode);
-    if (data) return data;
+    if (data) return { data, reachable: true };
 
     // 還沒成功，先留著這個 UA 的 og:meta（登入牆會被濾成 null）
     if (!ogFallback) {
@@ -269,7 +276,7 @@ async function fetchThreadsData(url) {
   }
 
   // 所有 UA 都拿不到目標貼文的 JSON → 退回非登入牆的 og:meta（可能為 null）
-  return ogFallback;
+  return { data: ogFallback, reachable };
 }
 
 // 擷取 Threads 連結（支援 threads.net 和 threads.com）
@@ -330,9 +337,11 @@ module.exports = async (client, message) => {
   if (circuitOpen()) return;
 
   try {
-    const data = await fetchThreadsData(threadsUrl);
+    const { data, reachable } = await fetchThreadsData(threadsUrl);
     if (!data) {
-      recordFailure();
+      // 只有真的連不上才算進熔斷；頁面拿到但這篇無公開資料（gate 掉）不算，
+      // 否則會害正常貼文一起被暫停。此時不 suppressEmbeds，保留 Discord 原生預覽。
+      if (!reachable) recordFailure();
       return;
     }
     recordSuccess();
