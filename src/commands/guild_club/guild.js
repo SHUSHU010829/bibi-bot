@@ -250,7 +250,7 @@ module.exports = {
             body: "目前無法使用公會功能。",
           }),
         ],
-        flags: MessageFlags.IsComponentsV2,
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
     }
 
@@ -265,7 +265,7 @@ module.exports = {
             hint: "此限制適用於所有 /公會 subcommand。",
           }),
         ],
-        flags: MessageFlags.IsComponentsV2,
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
     }
 
