@@ -250,7 +250,7 @@ module.exports = {
             body: "目前無法使用公會功能。",
           }),
         ],
-        flags: MessageFlags.IsComponentsV2,
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
       });
     }
 
