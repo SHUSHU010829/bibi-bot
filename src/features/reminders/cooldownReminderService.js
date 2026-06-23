@@ -43,7 +43,7 @@ const TYPE_META = {
     command: "/地下城",
     notifyText: "體力已補滿，快來大顯身手！",
     triggerWord: "體力補滿",
-    channelKey: "mining",
+    channelKey: "boss",
   },
   farm: {
     label: "農場",

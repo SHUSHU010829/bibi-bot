@@ -14,6 +14,7 @@ const {
 const { barter } = require("../../config");
 const barterService = require("../../features/barter/barterService");
 const { listAllChoices, parseChoice, getItemDef } = require("../../features/barter/itemCatalog");
+const { isGameRoom } = require("../../features/gameRoom/service");
 const {
   buildBoardContainer,
   buildOwnerContainer,
@@ -25,6 +26,7 @@ const ITEM_CHOICES = listAllChoices();
 function channelGuard(interaction) {
   const allowed = barter?.allowedChannelId;
   if (!allowed) return true;
+  if (isGameRoom(interaction.channelId)) return true;
   return interaction.channelId === allowed;
 }
 

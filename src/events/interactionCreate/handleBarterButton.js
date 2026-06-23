@@ -23,6 +23,7 @@ const barterService = require("../../features/barter/barterService");
 const { computeFee } = require("../../features/barter/barterService");
 const { buildBoardContainer, errorContainer } = require("../../features/barter/barterView");
 const { getItemDef } = require("../../features/barter/itemCatalog");
+const { isGameRoom } = require("../../features/gameRoom/service");
 
 function statusPanel(text) {
   return new ContainerBuilder()
@@ -34,8 +35,12 @@ module.exports = async (client, interaction) => {
   if (!interaction.isButton?.()) return;
   if (!interaction.customId?.startsWith("barter_")) return;
 
-  // 頻道守門
-  if (barter?.allowedChannelId && interaction.channelId !== barter.allowedChannelId) {
+  // 頻道守門（遊戲房豁免，與指令層 / 全域頻道分流一致）
+  if (
+    barter?.allowedChannelId &&
+    interaction.channelId !== barter.allowedChannelId &&
+    !isGameRoom(interaction.channelId)
+  ) {
     return interaction.reply({
       components: [
         errorContainer(
