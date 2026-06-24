@@ -1,6 +1,6 @@
 require("colors");
 const { DateTime } = require("luxon");
-const { casino, mining, fishing, farming } = require("../../config");
+const { casino, mining, fishing, farming, stockSystem } = require("../../config");
 
 const TZ = "Asia/Taipei";
 
@@ -681,6 +681,159 @@ async function aggregateCropFlow(client, guildId, fromIso, toIso) {
   };
 }
 
+// 股票市場：即時持股分布（UserPortfolio）+ 即時行情（StockMarket）+ 期間交易量（StockTransactions）。
+// 回傳每檔股票的持股人 / 持股市值 / 未實現損益，與期間買賣量、手續費、已實現損益、股息。
+async function aggregateStockMarket(client, guildId, fromIso, toIso) {
+  const empty = { stocks: [], totals: null, days: 1 };
+  if (!client.stockMarketCollection || !client.stockTransactionsCollection) {
+    return empty;
+  }
+  const { from, to } = dateRangeAsTs(fromIso, toIso);
+  const days = Math.max(1, Math.round((to.getTime() - from.getTime()) / 86400000));
+  const poolBySymbol = {};
+  for (const s of stockSystem?.pool || []) poolBySymbol[s.symbol] = s;
+
+  const [markets, holdingsBySymbol, uniqueHolders, txRows] = await Promise.all([
+    client.stockMarketCollection.find({ guildId }).toArray(),
+    client.userPortfolioCollection
+      ? client.userPortfolioCollection
+          .aggregate([
+            { $match: { guildId, shares: { $gt: 0 } } },
+            {
+              $group: {
+                _id: "$symbol",
+                holders: { $sum: 1 },
+                heldShares: { $sum: "$shares" },
+                investedCost: { $sum: { $multiply: ["$shares", { $ifNull: ["$avgCost", 0] }] } },
+              },
+            },
+          ])
+          .toArray()
+      : Promise.resolve([]),
+    client.userPortfolioCollection
+      ? client.userPortfolioCollection
+          .aggregate([
+            { $match: { guildId, shares: { $gt: 0 } } },
+            { $group: { _id: "$userId" } },
+            { $count: "n" },
+          ])
+          .toArray()
+      : Promise.resolve([]),
+    client.stockTransactionsCollection
+      .aggregate([
+        { $match: { guildId, timestamp: { $gte: from, $lte: to } } },
+        {
+          $group: {
+            _id: { symbol: "$symbol", side: "$side" },
+            shares: { $sum: { $ifNull: ["$shares", 0] } },
+            proceeds: { $sum: { $ifNull: ["$proceeds", 0] } },
+            totalCost: { $sum: { $ifNull: ["$totalCost", 0] } },
+            payout: { $sum: { $ifNull: ["$payout", 0] } },
+            fee: { $sum: { $ifNull: ["$fee", 0] } },
+            pnl: { $sum: { $ifNull: ["$pnl", 0] } },
+            count: { $sum: 1 },
+            users: { $addToSet: "$userId" },
+          },
+        },
+      ])
+      .toArray(),
+  ]);
+
+  const holdMap = {};
+  for (const h of holdingsBySymbol) holdMap[h._id] = h;
+
+  const txMap = {};
+  for (const r of txRows) {
+    const sym = r._id.symbol;
+    if (!txMap[sym]) txMap[sym] = { traders: new Set(), txCount: 0 };
+    const t = txMap[sym];
+    t.txCount += r.count;
+    for (const u of r.users || []) t.traders.add(u);
+    if (r._id.side === "buy") {
+      t.buyShares = r.shares;
+      t.buyValue = r.totalCost;
+      t.buyFee = r.fee;
+    } else if (r._id.side === "sell") {
+      t.sellShares = r.shares;
+      t.sellValue = r.proceeds;
+      t.sellFee = r.fee;
+      t.realizedPnl = r.pnl;
+    } else if (r._id.side === "dividend") {
+      t.dividendPaid = r.payout;
+      t.dividendCount = r.count;
+    }
+  }
+
+  const symbols = new Set([
+    ...markets.map((m) => m.symbol),
+    ...Object.keys(holdMap),
+    ...Object.keys(txMap),
+  ]);
+
+  const stocks = [...symbols].map((sym) => {
+    const m = markets.find((x) => x.symbol === sym) || {};
+    const def = poolBySymbol[sym] || {};
+    const hold = holdMap[sym] || {};
+    const tx = txMap[sym] || {};
+    const currentPrice = m.currentPrice ?? def.initialPrice ?? 0;
+    const heldShares = hold.heldShares || 0;
+    const investedCost = hold.investedCost || 0;
+    const heldValue = heldShares * currentPrice;
+    return {
+      symbol: sym,
+      name: m.name || def.name || sym,
+      type: def.type || null,
+      enabled: m.enabled !== false,
+      currentPrice,
+      holders: hold.holders || 0,
+      heldShares,
+      heldValue,
+      investedCost,
+      unrealizedPnl: heldValue - investedCost,
+      buyShares: tx.buyShares || 0,
+      buyValue: tx.buyValue || 0,
+      sellShares: tx.sellShares || 0,
+      sellValue: tx.sellValue || 0,
+      feeTotal: (tx.buyFee || 0) + (tx.sellFee || 0),
+      realizedPnl: tx.realizedPnl || 0,
+      dividendPaid: tx.dividendPaid || 0,
+      dividendCount: tx.dividendCount || 0,
+      uniqueTraders: tx.traders ? tx.traders.size : 0,
+      txCount: tx.txCount || 0,
+    };
+  });
+  stocks.sort((a, b) => b.heldValue - a.heldValue);
+
+  const totals = stocks.reduce(
+    (acc, s) => {
+      acc.heldShares += s.heldShares;
+      acc.heldValue += s.heldValue;
+      acc.investedCost += s.investedCost;
+      acc.buyShares += s.buyShares;
+      acc.buyValue += s.buyValue;
+      acc.sellShares += s.sellShares;
+      acc.sellValue += s.sellValue;
+      acc.feeTotal += s.feeTotal;
+      acc.realizedPnl += s.realizedPnl;
+      acc.dividendPaid += s.dividendPaid;
+      acc.txCount += s.txCount;
+      return acc;
+    },
+    {
+      heldShares: 0, heldValue: 0, investedCost: 0,
+      buyShares: 0, buyValue: 0, sellShares: 0, sellValue: 0,
+      feeTotal: 0, realizedPnl: 0, dividendPaid: 0, txCount: 0,
+    },
+  );
+  totals.unrealizedPnl = totals.heldValue - totals.investedCost;
+  totals.totalHolders = uniqueHolders[0]?.n || 0;
+  totals.symbolCount = markets.length;
+  totals.enabledCount = markets.filter((m) => m.enabled !== false).length;
+  totals.marketSentiment = markets[0]?.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways";
+
+  return { stocks, totals, days };
+}
+
 // 市場活動量分組（source → 活動類別）。
 // 同時作為「已知金流 source」的權威清單來源，供 getUnclassifiedFlow 偵測漏接的新 source。
 const MARKET_GROUPS = {
@@ -917,6 +1070,7 @@ module.exports = {
   aggregateStoneAppraisal,
   aggregateFishCirculation,
   aggregateCropFlow,
+  aggregateStockMarket,
   aggregateMarketActivity,
   aggregateDeposits,
   aggregateWealthMetrics,
