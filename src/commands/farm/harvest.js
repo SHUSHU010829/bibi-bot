@@ -60,12 +60,24 @@ module.exports = {
       if (!result.ok) {
         if (result.reason === "disabled") return interaction.editReply("🔧 農場系統尚未啟動！");
         if (result.reason === "empty_plot") {
+          const emptyContainer = new ContainerBuilder()
+            .setAccentColor(0xe74c3c)
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent("# ❌ 空地塊"))
+            .addSeparatorComponents(new SeparatorBuilder())
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(`地塊 ${plotIndex + 1} 沒有種任何東西。`),
+            )
+            .addActionRowComponents(
+              new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                  .setCustomId(`farm_view_${interaction.user.id}`)
+                  .setLabel("去農場")
+                  .setEmoji("🌾")
+                  .setStyle(ButtonStyle.Primary),
+              ),
+            );
           return interaction.editReply({
-            components: [errorContainer(
-              "❌ 空地塊",
-              `地塊 ${plotIndex + 1} 沒有種任何東西。`,
-              "用 `/種植` 種點什麼吧",
-            )],
+            components: [emptyContainer],
             flags: MessageFlags.IsComponentsV2,
           });
         }
