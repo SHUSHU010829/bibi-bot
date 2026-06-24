@@ -31,15 +31,19 @@ const PURE_MINT_SOURCES = new Set([
   "quest_daily", "quest_weekly", "quest_event",
   "stock_dividend", "invite_reward", "invite_welcome",
   "donation", "encounter",
-  "farm_harvest", "farm_raid", "farm_sell",
+  "farm_harvest", "farm_raid", "farm_sell", "farm_raid_trap",
   "boss_loot", "boss_killer", "boss_kill_bonus",
   "guild_create_refund", "guild_donate_refund", "guild_disband_payout",
   "deposit_interest",
+  "fish_sell", "fish_loot",
+  "mine_overflow", "gift_overflow", "stone_appraisal_overflow",
+  "treasure_map", "levelup", "milestone", "survey",
 ]);
 const PURE_SINK_SOURCES = new Set([
   "shop_buy", "wealth_tax", "stock_fee", "stone_appraisal",
   "farm_plant", "farm_expand", "barter_fee",
   "guild_create", "guild_donate",
+  "guild_warehouse_fee", "guild_consign_buy",
   "invite_clawback",
   "transfer_fee", "deposit_penalty",
   "quest_reroll", "quest_skip",
@@ -677,36 +681,73 @@ async function aggregateCropFlow(client, guildId, fromIso, toIso) {
   };
 }
 
+// 市場活動量分組（source → 活動類別）。
+// 同時作為「已知金流 source」的權威清單來源，供 getUnclassifiedFlow 偵測漏接的新 source。
+const MARKET_GROUPS = {
+  shop: ["shop_buy"],
+  stock: ["stock_buy", "stock_sell", "stock_fee", "stock_dividend"],
+  auction: ["auction_bid", "auction_payout", "auction_refund"],
+  market: ["market_buy", "market_escrow", "market_bid", "market_payout", "market_refund"],
+  barter: ["barter_fee"],
+  transfer: ["transfer_in", "transfer_out"],
+  transferFee: ["transfer_fee"],
+  deposit: ["deposit_lock", "deposit_release"],
+  depositInterest: ["deposit_interest"],
+  depositPenalty: ["deposit_penalty"],
+  welfare: ["welfare"],
+  wealthTax: ["wealth_tax"],
+  duel: ["duel_stake", "duel_payout", "duel_refund"],
+  work: ["work"],
+  mining: ["mining_sell", "stone_appraisal", "stone_appraisal_overflow", "mine_overflow", "gift_overflow"],
+  fishing: ["fish_sell", "fish_loot"],
+  farming: ["farm_plant", "farm_harvest", "farm_sell", "farm_raid", "farm_raid_trap", "farm_expand"],
+  treasure: ["treasure_map"],
+  leveling: ["levelup", "milestone"],
+  donation: ["donation"],
+  survey: ["survey"],
+  chat: ["message", "voice", "reaction"],
+  quest: ["quest_daily", "quest_weekly", "quest_event"],
+  questManage: ["quest_reroll", "quest_skip"],
+  dungeon: ["dungeon"],
+  boss: ["boss_loot", "boss_killer", "boss_kill_bonus"],
+  invite: ["invite_reward", "invite_welcome", "invite_clawback"],
+  guild: ["guild_create", "guild_donate", "guild_create_refund", "guild_donate_refund", "guild_disband_payout", "guild_warehouse_fee", "guild_consign_buy"],
+  encounter: ["encounter"],
+  event: ["event_host_lock", "event_prize", "event_refund"],
+};
+
+// 所有「儀表板已知」的金流 source（市場分組 + 賭場下注 / 派彩）。
+// 新增 source 卻忘了納入分組時，getUnclassifiedFlow 會把它撈出來顯示，避免資料靜默消失。
+const KNOWN_SOURCES = new Set([
+  ...Object.values(MARKET_GROUPS).flat(),
+  "bet",
+  "payout",
+  "admin",
+]);
+
+// 比對期間 flow 的 mintedBySource / burnedBySource，找出不在 KNOWN_SOURCES 的 source。
+// 回傳依淨額絕對值排序的清單，作為「新 source 漏接」的安全網。
+function getUnclassifiedFlow(totals) {
+  if (!totals) return [];
+  const seen = new Set([
+    ...Object.keys(totals.mintedBySource || {}),
+    ...Object.keys(totals.burnedBySource || {}),
+  ]);
+  const out = [];
+  for (const s of seen) {
+    if (KNOWN_SOURCES.has(s)) continue;
+    const minted = totals.mintedBySource?.[s] || 0;
+    const burned = totals.burnedBySource?.[s] || 0;
+    out.push({ source: s, minted, burned, net: minted - burned });
+  }
+  out.sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+  return out;
+}
+
 // 市場活動量：商店、股票、市集 / 拍賣 / 交易所、玩家轉帳
 async function aggregateMarketActivity(client, guildId, fromIso, toIso) {
   if (!client.coinTransactionsCollection) return {};
-  const groups = {
-    shop: ["shop_buy"],
-    stock: ["stock_buy", "stock_sell", "stock_fee", "stock_dividend"],
-    auction: ["auction_bid", "auction_payout", "auction_refund"],
-    market: ["market_buy", "market_escrow", "market_bid", "market_payout", "market_refund"],
-    barter: ["barter_fee"],
-    transfer: ["transfer_in", "transfer_out"],
-    transferFee: ["transfer_fee"],
-    deposit: ["deposit_lock", "deposit_release"],
-    depositInterest: ["deposit_interest"],
-    depositPenalty: ["deposit_penalty"],
-    welfare: ["welfare"],
-    wealthTax: ["wealth_tax"],
-    duel: ["duel_stake", "duel_payout", "duel_refund"],
-    work: ["work"],
-    mining: ["mining_sell", "stone_appraisal"],
-    fishing: ["fish_sell"],
-    chat: ["message", "voice", "reaction"],
-    quest: ["quest_daily", "quest_weekly", "quest_event"],
-    questManage: ["quest_reroll", "quest_skip"],
-    dungeon: ["dungeon"],
-    boss: ["boss_loot", "boss_killer", "boss_kill_bonus"],
-    invite: ["invite_reward", "invite_welcome", "invite_clawback"],
-    guild: ["guild_create", "guild_donate", "guild_create_refund", "guild_donate_refund", "guild_disband_payout"],
-    encounter: ["encounter"],
-    event: ["event_host_lock", "event_prize", "event_refund"],
-  };
+  const groups = MARKET_GROUPS;
   const allSources = Object.values(groups).flat();
 
   const rows = await client.coinTransactionsCollection
@@ -744,7 +785,6 @@ async function aggregateMarketActivity(client, guildId, fromIso, toIso) {
     let inflow = 0;
     let outflow = 0;
     let count = 0;
-    const users = new Set();
     for (const s of sources) {
       const v = bySource[s];
       if (!v) continue;
@@ -869,6 +909,9 @@ module.exports = {
   classifySource,
   PURE_MINT_SOURCES,
   PURE_SINK_SOURCES,
+  MARKET_GROUPS,
+  KNOWN_SOURCES,
+  getUnclassifiedFlow,
   aggregateCasinoEdge,
   aggregateOreCirculation,
   aggregateStoneAppraisal,

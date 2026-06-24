@@ -29,6 +29,7 @@ const {
   aggregateWealthMetrics,
   countActivePlayers,
   getMarketPricesForDate,
+  getUnclassifiedFlow,
 } = require("../../features/economy/economyDashboard");
 
 const RANGE_CHOICES = [
@@ -99,6 +100,21 @@ function trendLine(snapshots) {
   const ratio = first.totalCirculation > 0 ? delta / first.totalCirculation : 0;
   const arrow = delta > 0 ? "📈" : delta < 0 ? "📉" : "➡️";
   return `${arrow} ${first.date} → ${last.date}：${fmt(first.totalCirculation)} → ${fmt(last.totalCirculation)}（${signed(delta)} ・ ${pct(ratio)}）`;
+}
+
+function formatDailyFlow(days, max = 10) {
+  if (!days || days.length === 0) return "（暫無逐日資料）";
+  const shown = days.slice(-max);
+  const peak = Math.max(1, ...shown.map((d) => Math.max(d.mintedTotal, d.burnedTotal)));
+  return shown
+    .map((d) => {
+      const md = d.date.slice(5);
+      const arrow = d.netFlow > 0 ? "🟢" : d.netFlow < 0 ? "🔴" : "⚪";
+      const barLen = Math.round((Math.abs(d.netFlow) / peak) * 10);
+      const bar = (d.netFlow >= 0 ? "▰" : "▱").repeat(Math.max(0, Math.min(10, barLen))) || "·";
+      return `${arrow} ${md}　+${fmt(d.mintedTotal)} / −${fmt(d.burnedTotal)}　淨 ${signed(d.netFlow)}　${bar}`;
+    })
+    .join("\n");
 }
 
 function formatCasinoGame(g, days) {
@@ -228,6 +244,7 @@ module.exports = {
       });
 
       const rangeLabel = days === 1 ? "今日（即時）" : `近 ${days} 天`;
+      const unclassified = getUnclassifiedFlow(totals);
 
       // ─── Container 1：流通量 + 淨流動 + 集中度（核心） ──────────
       const c1 = new ContainerBuilder()
@@ -259,6 +276,14 @@ module.exports = {
               `・🟢 玩家收到合計：**+${fmt(totals.mintedTotal)}**（日均 +${fmt(Math.round(dailyAvgMinted))}）\n` +
               `・🔴 玩家支付合計：**−${fmt(totals.burnedTotal)}**（日均 −${fmt(Math.round(dailyAvgBurned))}）\n` +
               `-# 淨流動 = 收到 − 支付。為正代表系統淨印幣，為負代表系統淨吸幣。`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `## 📅 逐日流動趨勢（近 ${Math.min(flow.days.length, 10)} 天）\n` +
+              `${formatDailyFlow(flow.days, 10)}\n` +
+              `-# 🟢 印幣日／🔴 銷幣日；長條長度＝當日淨流動相對強度。`,
           ),
         )
         .addSeparatorComponents(new SeparatorBuilder())
@@ -455,8 +480,13 @@ module.exports = {
         ["🏛️ 福利金", market.welfare],
         ["🏛️ 財富稅", market.wealthTax],
         ["⛏️ 打工", market.work],
-        ["⛏️ 挖礦相關（賣礦+鑑定）", market.mining],
-        ["🎣 漁獲販售", market.fishing],
+        ["⛏️ 挖礦相關（賣礦+鑑定+溢出）", market.mining],
+        ["🎣 漁獲相關（販售+雜物）", market.fishing],
+        ["🌾 農場相關", market.farming],
+        ["🗺️ 藏寶圖", market.treasure],
+        ["🆙 升級 / 里程碑", market.leveling],
+        ["💖 抖內贊助", market.donation],
+        ["📋 問卷", market.survey],
       ]
         .map(([label, m]) => formatMarketLine(label, m))
         .filter(Boolean);
@@ -533,6 +563,25 @@ module.exports = {
               `・🟢 **印 / 銷比**：${totals.burnedTotal > 0 ? (totals.mintedTotal / totals.burnedTotal).toFixed(2) : "∞"}　-# >1 通膨、<1 通縮`,
           ),
         );
+
+      if (unclassified.length > 0) {
+        const uncLines = unclassified
+          .slice(0, 8)
+          .map(
+            (u) =>
+              `${sourceLabel(u.source)}　收 +${fmt(u.minted)} / 付 −${fmt(u.burned)}　淨 ${signed(u.net)}`,
+          )
+          .join("\n");
+        c4.addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `## ⚠️ 未分類金流（${rangeLabel}）\n` +
+                `以下 source 尚未納入任何分組，請補進 \`MARKET_GROUPS\` 與分類表：\n` +
+                `${uncLines}\n` +
+                `-# 出現新項目代表有金流來源沒同步到儀表板，資料會在上方各區塊缺漏。`,
+            ),
+          );
+      }
 
       c4.addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
