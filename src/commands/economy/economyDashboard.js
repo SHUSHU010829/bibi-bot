@@ -24,11 +24,13 @@ const {
   aggregateStoneAppraisal,
   aggregateFishCirculation,
   aggregateCropFlow,
+  aggregateStockMarket,
   aggregateMarketActivity,
   aggregateDeposits,
   aggregateWealthMetrics,
   countActivePlayers,
   getMarketPricesForDate,
+  getUnclassifiedFlow,
 } = require("../../features/economy/economyDashboard");
 
 const RANGE_CHOICES = [
@@ -36,6 +38,19 @@ const RANGE_CHOICES = [
   { name: "近 7 天", value: 7 },
   { name: "近 30 天", value: 30 },
 ];
+
+const SENTIMENT_LABELS = {
+  bull: "🐂 多頭",
+  bear: "🐻 空頭",
+  sideways: "➡️ 盤整",
+};
+
+const STOCK_TYPE_LABELS = {
+  tech: "科技",
+  blue: "權值",
+  meme: "迷因",
+  finance: "金融",
+};
 
 const GAME_LABELS = {
   slot: "🎰 拉霸",
@@ -101,6 +116,21 @@ function trendLine(snapshots) {
   return `${arrow} ${first.date} → ${last.date}：${fmt(first.totalCirculation)} → ${fmt(last.totalCirculation)}（${signed(delta)} ・ ${pct(ratio)}）`;
 }
 
+function formatDailyFlow(days, max = 10) {
+  if (!days || days.length === 0) return "（暫無逐日資料）";
+  const shown = days.slice(-max);
+  const peak = Math.max(1, ...shown.map((d) => Math.max(d.mintedTotal, d.burnedTotal)));
+  return shown
+    .map((d) => {
+      const md = d.date.slice(5);
+      const arrow = d.netFlow > 0 ? "🟢" : d.netFlow < 0 ? "🔴" : "⚪";
+      const barLen = Math.round((Math.abs(d.netFlow) / peak) * 10);
+      const bar = (d.netFlow >= 0 ? "▰" : "▱").repeat(Math.max(0, Math.min(10, barLen))) || "·";
+      return `${arrow} ${md}　+${fmt(d.mintedTotal)} / −${fmt(d.burnedTotal)}　淨 ${signed(d.netFlow)}　${bar}`;
+    })
+    .join("\n");
+}
+
 function formatCasinoGame(g, days) {
   const label = GAME_LABELS[g.game] || `❓ ${g.game}`;
   const theo = g.theoreticalEdge !== null
@@ -145,6 +175,24 @@ function formatCropLine(c, days) {
   );
 }
 
+function formatStockLine(s) {
+  const typeTag = s.type && STOCK_TYPE_LABELS[s.type] ? `〔${STOCK_TYPE_LABELS[s.type]}〕` : "";
+  const disabled = s.enabled ? "" : "（停牌）";
+  const unrealArrow = s.unrealizedPnl >= 0 ? "📈" : "📉";
+  const realLine =
+    s.txCount > 0
+      ? `-# 期間買 ${fmt(s.buyShares)} 股（${fmt(s.buyValue)}）・賣 ${fmt(s.sellShares)} 股（${fmt(s.sellValue)}）・手續費 ${fmt(s.feeTotal)}\n` +
+        `-# 已實現損益 ${signed(s.realizedPnl)}　・交易 ${fmt(s.txCount)} 筆　・交易玩家 ${fmt(s.uniqueTraders)} 人` +
+        (s.dividendPaid > 0 ? `　・股息發放 ${fmt(s.dividendPaid)}` : "")
+      : `-# 期間無交易`;
+  return (
+    `**${s.symbol}** ${s.name}${typeTag}${disabled}　現價 **${fmt(s.currentPrice)}**\n` +
+    `-# 持股人 ${fmt(s.holders)} 人　・在外流通 ${fmt(s.heldShares)} 股　・持股市值 ${fmt(s.heldValue)}\n` +
+    `-# 持有成本 ${fmt(s.investedCost)}　・未實現損益 ${unrealArrow} ${signed(s.unrealizedPnl)}\n` +
+    realLine
+  );
+}
+
 function formatMarketLine(label, m) {
   if (!m || m.count === 0) return null;
   return `${label}　筆數 ${fmt(m.count)}　・流入 +${fmt(m.inflow)}　・流出 −${fmt(m.outflow)}　・總量 ${fmt(m.volume)}`;
@@ -153,7 +201,7 @@ function formatMarketLine(label, m) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("economy-dashboard")
-    .setDescription("[ADMIN] 經濟健康度儀表板：流通／賭場 Edge／礦魚作物流通量／集中度 📊")
+    .setDescription("[ADMIN] 經濟健康度儀表板：流通／賭場 Edge／礦魚作物流通量／股票市場／集中度 📊")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild)
     .addIntegerOption((opt) =>
@@ -190,6 +238,7 @@ module.exports = {
         appraisal,
         fishStats,
         crops,
+        stockMarket,
         market,
         deposits,
         wealth,
@@ -205,6 +254,7 @@ module.exports = {
         aggregateStoneAppraisal(client, guildId, fromIso, toIso),
         aggregateFishCirculation(client, guildId, fromIso, toIso),
         aggregateCropFlow(client, guildId, fromIso, toIso),
+        aggregateStockMarket(client, guildId, fromIso, toIso),
         aggregateMarketActivity(client, guildId, fromIso, toIso),
         aggregateDeposits(client, guildId),
         aggregateWealthMetrics(client, guildId),
@@ -228,6 +278,7 @@ module.exports = {
       });
 
       const rangeLabel = days === 1 ? "今日（即時）" : `近 ${days} 天`;
+      const unclassified = getUnclassifiedFlow(totals);
 
       // ─── Container 1：流通量 + 淨流動 + 集中度（核心） ──────────
       const c1 = new ContainerBuilder()
@@ -259,6 +310,14 @@ module.exports = {
               `・🟢 玩家收到合計：**+${fmt(totals.mintedTotal)}**（日均 +${fmt(Math.round(dailyAvgMinted))}）\n` +
               `・🔴 玩家支付合計：**−${fmt(totals.burnedTotal)}**（日均 −${fmt(Math.round(dailyAvgBurned))}）\n` +
               `-# 淨流動 = 收到 − 支付。為正代表系統淨印幣，為負代表系統淨吸幣。`,
+          ),
+        )
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `## 📅 逐日流動趨勢（近 ${Math.min(flow.days.length, 10)} 天）\n` +
+              `${formatDailyFlow(flow.days, 10)}\n` +
+              `-# 🟢 印幣日／🔴 銷幣日；長條長度＝當日淨流動相對強度。`,
           ),
         )
         .addSeparatorComponents(new SeparatorBuilder())
@@ -455,8 +514,13 @@ module.exports = {
         ["🏛️ 福利金", market.welfare],
         ["🏛️ 財富稅", market.wealthTax],
         ["⛏️ 打工", market.work],
-        ["⛏️ 挖礦相關（賣礦+鑑定）", market.mining],
-        ["🎣 漁獲販售", market.fishing],
+        ["⛏️ 挖礦相關（賣礦+鑑定+溢出）", market.mining],
+        ["🎣 漁獲相關（販售+雜物）", market.fishing],
+        ["🌾 農場相關", market.farming],
+        ["🗺️ 藏寶圖", market.treasure],
+        ["🆙 升級 / 里程碑", market.leveling],
+        ["💖 抖內贊助", market.donation],
+        ["📋 問卷", market.survey],
       ]
         .map(([label, m]) => formatMarketLine(label, m))
         .filter(Boolean);
@@ -534,15 +598,66 @@ module.exports = {
           ),
         );
 
+      if (unclassified.length > 0) {
+        const uncLines = unclassified
+          .slice(0, 8)
+          .map(
+            (u) =>
+              `${sourceLabel(u.source)}　收 +${fmt(u.minted)} / 付 −${fmt(u.burned)}　淨 ${signed(u.net)}`,
+          )
+          .join("\n");
+        c4.addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `## ⚠️ 未分類金流（${rangeLabel}）\n` +
+                `以下 source 尚未納入任何分組，請補進 \`MARKET_GROUPS\` 與分類表：\n` +
+                `${uncLines}\n` +
+                `-# 出現新項目代表有金流來源沒同步到儀表板，資料會在上方各區塊缺漏。`,
+            ),
+          );
+      }
+
       c4.addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `-# 資料源：CoinTransactions（TTL 30 天）・MineLogs / FishLogs（TTL 90 天）・EconomySnapshots（每日 00:05 凍結）・OreMarketPrices\n` +
+            `-# 資料源：CoinTransactions（TTL 30 天）・MineLogs / FishLogs（TTL 90 天）・StockTransactions（TTL 90 天）・StockMarket / UserPortfolio（即時）・EconomySnapshots（每日 00:05 凍結）・OreMarketPrices\n` +
               `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
           ),
         );
 
-      // V2 messages 限 4000 字總長，分四則訊息送，避免被截斷。
+      // ─── Container 5：股票市場（持股分布 + 交易量 + 損益） ──────────
+      const st = stockMarket.totals;
+      const c5 = new ContainerBuilder().setAccentColor(
+        st && st.unrealizedPnl >= 0 ? 0x16a085 : 0xc0392b,
+      );
+      if (!st || st.symbolCount === 0) {
+        c5.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `## 📈 股票市場（${rangeLabel}）\n-# 尚未開市或無股票資料。`,
+          ),
+        );
+      } else {
+        const turnover = st.buyValue + st.sellValue;
+        const pnlArrow = st.unrealizedPnl >= 0 ? "📈" : "📉";
+        c5.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `## 📈 股票市場（${rangeLabel}）\n` +
+              `市場氣氛 **${SENTIMENT_LABELS[st.marketSentiment] || st.marketSentiment}**　・上市 ${fmt(st.enabledCount)} / ${fmt(st.symbolCount)} 檔　・持股玩家 **${fmt(st.totalHolders)}** 人\n` +
+              `總持股市值 **${fmt(st.heldValue)}**　・持有成本 ${fmt(st.investedCost)}　・未實現損益 ${pnlArrow} **${signed(st.unrealizedPnl)}**\n` +
+              `期間成交額 **${fmt(turnover)}**（買 ${fmt(st.buyValue)} / 賣 ${fmt(st.sellValue)}）・手續費 ${fmt(st.feeTotal)}　・已實現損益 ${signed(st.realizedPnl)}\n` +
+              (st.dividendPaid > 0 ? `期間股息發放 ${fmt(st.dividendPaid)}　・交易 ${fmt(st.txCount)} 筆\n` : `交易 ${fmt(st.txCount)} 筆\n`) +
+              `-# 未實現損益 = 持股市值 − 持有成本；已實現損益 = 期間賣出實現的玩家盈虧。`,
+          ),
+        );
+        for (const s of stockMarket.stocks) {
+          c5.addSeparatorComponents(new SeparatorBuilder())
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(formatStockLine(s)),
+            );
+        }
+      }
+
+      // V2 messages 限 4000 字總長，分多則訊息送，避免被截斷。
       await interaction.editReply({
         components: [c1],
         flags: MessageFlags.IsComponentsV2,
@@ -553,6 +668,10 @@ module.exports = {
       });
       await interaction.followUp({
         components: [c3],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      await interaction.followUp({
+        components: [c5],
         flags: MessageFlags.IsComponentsV2,
       });
       await interaction.followUp({
