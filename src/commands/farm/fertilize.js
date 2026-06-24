@@ -4,6 +4,9 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -82,12 +85,24 @@ module.exports = {
         if (result.reason === "disabled") return interaction.editReply("🔧 農場系統尚未啟動！");
         if (result.reason === "invalid_fertilizer") return interaction.editReply("🔧 找不到這種肥料。");
         if (result.reason === "empty_plot") {
+          const emptyContainer = new ContainerBuilder()
+            .setAccentColor(0xe74c3c)
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent("# ❌ 空地塊"))
+            .addSeparatorComponents(new SeparatorBuilder())
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(`地塊 ${plotIndex + 1} 沒有作物可施肥。`),
+            )
+            .addActionRowComponents(
+              new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                  .setCustomId(`farm_view_${interaction.user.id}`)
+                  .setLabel("去農場")
+                  .setEmoji("🌾")
+                  .setStyle(ButtonStyle.Primary),
+              ),
+            );
           return interaction.editReply({
-            components: [errorContainer(
-              "❌ 空地塊",
-              `地塊 ${plotIndex + 1} 沒有作物可施肥。`,
-              "用 `/種植` 先種點什麼",
-            )],
+            components: [emptyContainer],
             flags: MessageFlags.IsComponentsV2,
           });
         }

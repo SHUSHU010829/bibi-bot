@@ -1,8 +1,9 @@
 require("colors");
-const { treasureMap, dungeon } = require("../../config");
+const { treasureMap } = require("../../config");
 const { getOrCreate } = require("../mining/miningProfile");
 const { weightedRandom } = require("../mining/weightedRandom");
 const grantCoins = require("../economy/grantCoins");
+const dungeonService = require("../mining/dungeonService");
 
 function cfg() {
   return treasureMap || {};
@@ -95,14 +96,17 @@ async function useMap(client, { userId, guildId, username, member }) {
   } else if (eff.type === "restore_stamina") {
     const amount = Math.max(0, Math.floor(eff.amount || 0));
     if (amount > 0) {
-      const max = dungeon?.maxStamina ?? 10;
-      const cur = Number.isFinite(profile.stamina) ? profile.stamina : max;
-      const after = Math.min(max, cur + amount);
-      await client.miningProfilesCollection.updateOne(
-        { userId, guildId },
-        { $set: { stamina: after, stamina_updated_at: Date.now(), updatedAt: new Date() } },
-      );
-      lines.push(`🔋 體力 +${after - cur}（${after} / ${max}）`);
+      const restored = await dungeonService.restoreStamina(client, {
+        userId, guildId, member, amount,
+      });
+      const after = restored.staminaAfter ?? restored.staminaBefore ?? 0;
+      const max = restored.max ?? 0;
+      const gained = restored.restored ?? 0;
+      if (restored.full) {
+        lines.push(`🔋 體力已滿（${after} / ${max}），藥水沒派上用場 🥲`);
+      } else {
+        lines.push(`🔋 體力 +${gained}（${after} / ${max}）`);
+      }
       patch.staminaAfter = after;
     }
   } else if (eff.type === "mimic") {
@@ -130,14 +134,16 @@ async function useMap(client, { userId, guildId, username, member }) {
       patch.coins = coins;
     } else {
       const loseStamina = Math.max(0, eff.loseStamina || 1);
-      const max = dungeon?.maxStamina ?? 10;
-      const cur = Number.isFinite(profile.stamina) ? profile.stamina : max;
-      const after = Math.max(0, cur - loseStamina);
+      const club = await dungeonService.getMemberClub(client, userId, guildId);
+      const max = dungeonService.staminaMax(member, club);
+      const st = dungeonService.resolveStamina(profile, max);
+      const after = Math.max(0, st.stamina - loseStamina);
+      const newUpdatedAt = after >= max ? 0 : st.updatedAt || Date.now();
       await client.miningProfilesCollection.updateOne(
         { userId, guildId },
-        { $set: { stamina: after, stamina_updated_at: Date.now(), updatedAt: new Date() } },
+        { $set: { stamina: after, stamina_updated_at: newUpdatedAt, updatedAt: new Date() } },
       );
-      lines.push(`👊 你赤手空拳被寶箱怪揍了一頓，體力 -${cur - after}（${after} / ${max}）`);
+      lines.push(`👊 你赤手空拳被寶箱怪揍了一頓，體力 -${st.stamina - after}（${after} / ${max}）`);
       patch.staminaAfter = after;
     }
   } else if (eff.type === "prank") {
