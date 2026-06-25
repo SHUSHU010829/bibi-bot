@@ -5,6 +5,7 @@
 
 const {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
@@ -12,6 +13,7 @@ const { MONEY_EMOJI } = require("../../../constants/coin");
 
 const { buildReplayRow } = require("../replay");
 const { buildCasinoEmbed } = require("../casinoEmbed");
+const generateScratchCard = require("../../../utils/generateScratchCard");
 
 function cellFace(state, idx) {
   const settled = state.status !== "playing";
@@ -76,12 +78,22 @@ async function renderMessage(state, { username, balance, userId, avatarURL } = {
   const isPlaying = state.status === "playing";
   const { outcome, net } = settleOutcome(state);
 
-  const lines = isPlaying
-    ? [
-        `刮開 **${state.revealed.length}/9** 格・湊滿任意三個相同符號就中獎！`,
-        "-# 逐格刮，或按「全部刮開」一次揭曉",
-      ]
-    : [];
+  let files = [];
+  let imageName;
+  let fallbackLines = [];
+  try {
+    const buf = await generateScratchCard(state, { username, balance });
+    imageName = `scratch-${state.gameId}-${state.revealed.length}.png`;
+    files = [new AttachmentBuilder(buf, { name: imageName })];
+  } catch (e) {
+    console.log(`[WARN] scratch card render failed, falling back to text: ${e.message}`);
+    fallbackLines = isPlaying
+      ? [
+          `刮開 **${state.revealed.length}/9** 格・湊滿任意三個相同符號就中獎！`,
+          "-# 逐格刮，或按「全部刮開」一次揭曉",
+        ]
+      : [];
+  }
 
   const components = isPlaying
     ? [...buildCardRows(state), buildAllRow(state)]
@@ -94,13 +106,14 @@ async function renderMessage(state, { username, balance, userId, avatarURL } = {
     user: { id: userId || state.userId, displayName: username, avatarURL },
     outcome,
     headline: isPlaying ? null : settleHeadline(state),
-    lines,
+    lines: fallbackLines,
     bet: state.bet,
     net: isPlaying ? undefined : net,
     balance: isPlaying || typeof balance !== "number" ? undefined : balance,
+    imageName,
   });
 
-  return { content: "", embeds: [embed], components, files: [] };
+  return { content: "", embeds: [embed], components, files };
 }
 
 module.exports = { renderMessage, buildCardRows, settleHeadline };
