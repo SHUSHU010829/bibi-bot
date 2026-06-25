@@ -25,6 +25,7 @@ const GAME_COMMAND_PATHS = {
   keno: "../../commands/casino/keno",
   dragonGate: "../../commands/casino/dragonGate",
   lottery: "../../commands/casino/lottery",
+  tower: "../../commands/casino/tower",
 };
 
 // 把存起來的選項 map 包成一個假的 interaction.options。
