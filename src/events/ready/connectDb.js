@@ -66,6 +66,9 @@ module.exports = async (client) => {
     // 爬塔對局狀態
     const towerGamesCollection = database.collection("TowerGames");
 
+    // 踩地雷對局狀態
+    const minesGamesCollection = database.collection("MinesGames");
+
     // 尋寶（Keno）對局狀態
     const kenoGamesCollection = database.collection("KenoGames");
 
@@ -260,6 +263,7 @@ module.exports = async (client) => {
     client.blackjackGamesCollection = blackjackGamesCollection;
     client.hiloGamesCollection = hiloGamesCollection;
     client.towerGamesCollection = towerGamesCollection;
+    client.minesGamesCollection = minesGamesCollection;
     client.kenoGamesCollection = kenoGamesCollection;
     client.dragonGateGamesCollection = dragonGateGamesCollection;
     client.crashGamesCollection = crashGamesCollection;
@@ -713,6 +717,20 @@ module.exports = async (client) => {
       await towerGamesCollection.createIndex(
         { updatedAt: 1 },
         { expireAfterSeconds: 30 * 24 * 60 * 60, name: "tw_ttl_30d" }
+      );
+
+      // 踩地雷對局索引：每位玩家同 guild 同時只能有一局 playing
+      await minesGamesCollection.createIndex(
+        { gameId: 1 },
+        { unique: true, name: "uniq_mn_gameId" }
+      );
+      await minesGamesCollection.createIndex(
+        { userId: 1, guildId: 1, status: 1 },
+        { name: "mn_user_guild_status" }
+      );
+      await minesGamesCollection.createIndex(
+        { updatedAt: 1 },
+        { expireAfterSeconds: 30 * 24 * 60 * 60, name: "mn_ttl_30d" }
       );
 
       // 尋寶（Keno）對局索引：每位玩家同 guild 同時只能有一局 selecting

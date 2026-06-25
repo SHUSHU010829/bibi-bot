@@ -19,6 +19,7 @@ const GAMES = [
   require("./sicbo"),
   require("./slot"),
   require("./tower"),
+  require("./mines"),
 ];
 
 const gameByName = new Map();

@@ -46,6 +46,16 @@
       "houseEdge": 0.05,
       "maxFloors": 9
     },
+    "mines": {
+      "enabled": true,
+      "minBet": 10,
+      "maxBet": 5000,
+      "gameTtlSeconds": 300,
+      "houseEdge": 0.02,
+      "cols": 5,
+      "rows": 4,
+      "defaultMines": 3
+    },
     "keno": {
       "enabled": true,
       "minBet": 10,
