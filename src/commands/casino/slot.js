@@ -41,6 +41,23 @@ function describeMatch(matchType) {
   }
 }
 
+function summariseLines(lines) {
+  const wins = lines.filter((l) => l.payout > 0);
+  if (wins.length === 0) return "";
+  const parts = wins.map((l) => {
+    const tag =
+      l.matchType === "jackpot"
+        ? "JACKPOT"
+        : l.matchType === "triple"
+        ? "三連"
+        : l.matchType === "double_cherry"
+        ? "雙櫻桃"
+        : "雙連";
+    return `${l.name}（${tag} +${l.payout.toLocaleString()}）`;
+  });
+  return `🎯 中獎連線：${parts.join("、")}`;
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("拉霸")
@@ -186,7 +203,8 @@ module.exports = {
         const buf = await generateSlotGif({
           userId,
           username,
-          reels: result.reels,
+          grid: result.grid,
+          lines: result.lines,
           matchType: result.matchType,
           matchedSymbol: result.matchedSymbol,
           bet,
@@ -213,12 +231,13 @@ module.exports = {
         jackpotEnabled && jackpotPool != null
           ? `${MONEY_EMOJI} 目前 Jackpot Pool：**${jackpotPool.toLocaleString()}** credits`
           : "";
+      const linesLine = summariseLines(result.lines);
 
       const headline =
         result.matchType === "jackpot"
           ? `🎉 **JACKPOT！** ＋${totalPayout.toLocaleString()} credits！`
           : totalPayout > 0
-          ? `${describeMatch(result.matchType)} ＋${totalPayout.toLocaleString()} credits`
+          ? `${describeMatch(result.matchType)}（${result.winLineCount} 線中獎）＋${totalPayout.toLocaleString()} credits`
           : `💸 沒中，下次再來！`;
 
       const bankruptLine =
@@ -245,11 +264,14 @@ module.exports = {
           : "neutral";
 
       // 保留原本 content 內的額外資訊（爆池、彩池、破產提示）。
-      // 若圖片生成失敗，把轉軸結果以文字呈現作為 fallback。
+      // 若圖片生成失敗，把整個 3x3 結果以文字呈現作為 fallback。
       const reelsLine = attachment
         ? null
-        : `🎰 轉出：${result.reels.map((s) => s.emoji).join(" ｜ ")}`;
-      const extraLines = [reelsLine, jackpotLine, poolLine, bankruptLine].filter(Boolean);
+        : "🎰 轉出：\n" +
+          result.grid
+            .map((row) => row.map((s) => s.emoji).join(" ｜ "))
+            .join("\n");
+      const extraLines = [reelsLine, linesLine, jackpotLine, poolLine, bankruptLine].filter(Boolean);
 
       const embed = buildCasinoEmbed({
         game: "🎰 拉霸",

@@ -4,7 +4,11 @@ const { createCanvas, loadImage, registerFont } = require('canvas');
 const GIFEncoder = require('gif-encoder-2');
 const { Resvg } = require('@resvg/resvg-js');
 
-const { SYMBOLS } = require('../features/casino/slot/paytable');
+const {
+  SYMBOLS,
+  SYMBOL_BY_ID,
+  PAYLINES,
+} = require('../features/casino/slot/paytable');
 
 // ─── Fonts ───────────────────────────────────────────────────────────────────
 const FONT_DIR = path.join(__dirname, '../../fonts');
@@ -19,7 +23,7 @@ function ensureFonts() {
 // ─── Emoji rasterizer (twemoji SVG → PNG → canvas Image) ─────────────────────
 const EMOJI_IMG_CACHE = new Map();
 const TWEMOJI_VERSION = '14.0.2';
-const EMOJI_RENDER_PX = 256; // raster size; downscaled when drawn
+const EMOJI_RENDER_PX = 256;
 
 function toCodePoint(emoji) {
   const codes = [];
@@ -52,7 +56,16 @@ async function getEmojiImage(emoji) {
 
 // ─── Canvas layout ───────────────────────────────────────────────────────────
 const W = 1080;
-const H = 680;
+const H = 870;
+const CELL = 160;
+const VIEW_ROWS = 3;
+const VIEW_COLS = 3;
+const REEL_GAP = 14;
+const REELS_TOTAL_W = VIEW_COLS * CELL + (VIEW_COLS - 1) * REEL_GAP;
+const REELS_TOTAL_H = VIEW_ROWS * CELL;
+const STRIP_LEN = SYMBOLS.length;
+const STRIP_H = STRIP_LEN * CELL;
+const FOOTER_Y = 830;
 
 const PALETTE = {
   card:   '#F4ECD8',
@@ -64,6 +77,7 @@ const PALETTE = {
   teal:   '#3D6F6A',
   win:    '#2D7A4A',
   loss:   '#888888',
+  gridDiv: '#C9BFA3',
 };
 
 function pickAccent(matchType) {
@@ -76,22 +90,15 @@ function pickAccent(matchType) {
   }
 }
 
-function buildHeadline(matchType) {
+function buildHeadline(matchType, winLineCount) {
   switch (matchType) {
     case 'jackpot':       return { left: '🎉', text: 'JACKPOT',  right: '🎉' };
-    case 'triple':        return { left: '🎊', text: '三連線中獎', right: null };
-    case 'double_cherry': return { left: '🍒', text: '兩個櫻桃',   right: null };
-    case 'double':        return { left: '✨', text: '兩個一樣',   right: null };
+    case 'triple':        return { left: '🎊', text: `三連線 ×${winLineCount || 1}`, right: null };
+    case 'double_cherry': return { left: '🍒', text: `兩個櫻桃 ×${winLineCount || 1}`, right: null };
+    case 'double':        return { left: '✨', text: `兩個一樣 ×${winLineCount || 1}`, right: null };
     default:              return { left: '💸', text: 'NO MATCH', right: null };
   }
 }
-
-// ─── Reel strip ──────────────────────────────────────────────────────────────
-const STRIP = SYMBOLS;                       // 6 entries
-const CELL = 200;                            // reel viewport size (px)
-const STRIP_H = STRIP.length * CELL;         // 1200
-const REEL_GAP = 16;
-const REELS_TOTAL_W = 3 * CELL + 2 * REEL_GAP;
 
 // ─── Math helpers ────────────────────────────────────────────────────────────
 function easeOut3(t) { return 1 - Math.pow(1 - t, 3); }
@@ -126,7 +133,6 @@ function dashedLine(ctx, x1, y1, x2, y2, color, dash = [5, 5]) {
   ctx.restore();
 }
 
-// Fallback colors when twemoji CDN is unreachable — keep reels readable.
 const EMOJI_FALLBACK = {
   '🍒': { bg: '#C9302C', label: 'CH' },
   '🍋': { bg: '#E0B53D', label: 'LM' },
@@ -169,7 +175,6 @@ function drawBackground(ctx) {
 }
 
 function drawCardFrame(ctx) {
-  // Outer card panel
   const x = 24, y = 24, w = W - 48, h = H - 48;
   ctx.fillStyle = PALETTE.card;
   ctx.fillRect(x, y, w, h);
@@ -180,7 +185,6 @@ function drawCardFrame(ctx) {
 
 function drawHeader(ctx, accent) {
   const x = 71, y = 59;
-  // Badge
   ctx.fillStyle = accent;
   ctx.fillRect(x, y, 64, 64);
   ctx.strokeStyle = PALETTE.ink;
@@ -193,14 +197,12 @@ function drawHeader(ctx, accent) {
   ctx.textBaseline = 'middle';
   ctx.fillText('霸', x + 32, y + 36);
 
-  // Title
   ctx.font = '900 44px NotoSans';
   ctx.fillStyle = PALETTE.ink;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText('SLOT MACHINE', x + 64 + 20, y + 34);
+  ctx.fillText('SLOT 3×3', x + 64 + 20, y + 34);
 
-  // Right chip
   const chipText = '逼逼賭場';
   ctx.font = '500 18px NotoSans';
   const chipW = ctx.measureText(chipText).width + 36;
@@ -225,21 +227,18 @@ function drawJackpotBanner(ctx, jackpotPool, jackpotBust, isBust) {
   ctx.lineWidth = 2;
   ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
 
-  // Left: 💰 + label
   drawEmoji(ctx, '💰', x + 24, y + h / 2, 26);
   ctx.font = '500 14px NotoSans';
   ctx.fillStyle = PALETTE.ink;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   const label = isBust ? 'JACKPOT BUSTED!' : 'JACKPOT POOL';
-  // letter-spacing emulation
   let lx = x + 44;
   for (const ch of label) {
     ctx.fillText(ch, lx, y + h / 2 + 1);
     lx += ctx.measureText(ch).width + 5;
   }
 
-  // Right: amount
   ctx.font = '900 30px NotoSans';
   ctx.fillStyle = PALETTE.ink;
   ctx.textAlign = 'right';
@@ -250,38 +249,52 @@ function drawJackpotBanner(ctx, jackpotPool, jackpotBust, isBust) {
   ctx.fillText(amount, x + w - 18, y + h / 2 + 1);
 }
 
-function drawReelBox(ctx, rx, ry, offset, accent, highlight, pulse) {
-  // Background
+function drawReelBox(ctx, rx, ry, offset, columnStrip, accent, highlightRows, pulse) {
+  // viewport: CELL wide × VIEW_ROWS*CELL tall
   ctx.fillStyle = PALETTE.reelBg;
-  ctx.fillRect(rx, ry, CELL, CELL);
+  ctx.fillRect(rx, ry, CELL, REELS_TOTAL_H);
 
-  // Symbols (clipped)
   ctx.save();
   ctx.beginPath();
-  ctx.rect(rx, ry, CELL, CELL);
+  ctx.rect(rx, ry, CELL, REELS_TOTAL_H);
   ctx.clip();
 
   const off = mod(offset, STRIP_H);
   const baseI = Math.floor(off / CELL);
-  for (let k = -1; k <= 2; k++) {
-    const i = mod(baseI + k, STRIP.length);
-    const sym = STRIP[i];
+  for (let k = -1; k <= VIEW_ROWS; k++) {
+    const i = mod(baseI + k, STRIP_LEN);
+    const sym = columnStrip[i];
     const cy = ry + CELL / 2 + ((baseI + k) * CELL - off);
-    drawEmoji(ctx, sym.emoji, rx + CELL / 2, cy, 130);
+    drawEmoji(ctx, sym.emoji, rx + CELL / 2, cy, 110);
+  }
+
+  // Inner horizontal dividers between rows.
+  ctx.strokeStyle = PALETTE.gridDiv;
+  ctx.lineWidth = 1;
+  for (let i = 1; i < VIEW_ROWS; i++) {
+    const yy = ry + i * CELL;
+    ctx.beginPath();
+    ctx.moveTo(rx, yy);
+    ctx.lineTo(rx + CELL, yy);
+    ctx.stroke();
   }
 
   ctx.restore();
 
-  // Frame (with optional pulsing highlight)
-  if (highlight) {
+  // Outer frame
+  ctx.strokeStyle = PALETTE.ink;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(rx + 1.5, ry + 1.5, CELL - 3, REELS_TOTAL_H - 3);
+
+  // Per-cell pulsing highlight on winning rows.
+  if (highlightRows && highlightRows.size > 0) {
     const w = 4 + 2 * pulse;
     ctx.strokeStyle = accent;
     ctx.lineWidth = w;
-    ctx.strokeRect(rx + w / 2, ry + w / 2, CELL - w, CELL - w);
-  } else {
-    ctx.strokeStyle = PALETTE.ink;
-    ctx.lineWidth = 3;
-    ctx.strokeRect(rx + 1.5, ry + 1.5, CELL - 3, CELL - 3);
+    for (const row of highlightRows) {
+      const cy = ry + row * CELL;
+      ctx.strokeRect(rx + w / 2, cy + w / 2, CELL - w, CELL - w);
+    }
   }
 }
 
@@ -320,7 +333,7 @@ function drawHeadline(ctx, headline, color, cx, cy, size, weight, gap = 12) {
 }
 
 function drawResultPanel(ctx, opts) {
-  const { phase, matchType, payout, accent, areaY, areaH } = opts;
+  const { phase, matchType, payout, accent, areaY, areaH, winLineCount } = opts;
   const cx = W / 2;
 
   if (phase === 'spinning') {
@@ -328,7 +341,6 @@ function drawResultPanel(ctx, opts) {
     ctx.fillStyle = PALETTE.muted;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    let lx = cx - 100;
     const label = 'SPINNING...';
     const tw = ctx.measureText(label).width + 4 * (label.length - 1);
     let cursor = cx - tw / 2;
@@ -339,11 +351,11 @@ function drawResultPanel(ctx, opts) {
     return;
   }
 
-  const headline = buildHeadline(matchType);
+  const headline = buildHeadline(matchType, winLineCount);
   if (payout > 0) {
-    const headlineSize = 44;
-    const payoutSize   = 68;
-    const innerGap     = 28;
+    const headlineSize = 38;
+    const payoutSize   = 58;
+    const innerGap     = 24;
     const cy = areaY + areaH / 2;
 
     const headlineW = measureHeadline(ctx, headline, headlineSize, '900', 12);
@@ -363,20 +375,18 @@ function drawResultPanel(ctx, opts) {
     ctx.textBaseline = 'middle';
     ctx.fillText(numText, payoutCx, cy);
   } else {
-    drawHeadline(ctx, headline, PALETTE.muted, cx, areaY + areaH / 2, 48, '900', 16);
+    drawHeadline(ctx, headline, PALETTE.muted, cx, areaY + areaH / 2, 42, '900', 16);
   }
 }
 
 function drawFooter(ctx, opts) {
   const { bet, balance, multiplier, won, username } = opts;
-  const y = 612;
+  const y = FOOTER_Y;
 
-  // Dashed separator above
   dashedLine(ctx, 71, y - 26, W - 71, y - 26, PALETTE.muted, [3, 4]);
 
   ctx.textBaseline = 'middle';
 
-  // BET
   ctx.font = '500 13px NotoSans';
   ctx.fillStyle = PALETTE.muted;
   ctx.textAlign = 'left';
@@ -402,7 +412,6 @@ function drawFooter(ctx, opts) {
     }
   }
 
-  // BALANCE (centered)
   ctx.font = '500 13px NotoSans';
   ctx.fillStyle = PALETTE.muted;
   const balLabel = 'BALANCE';
@@ -429,13 +438,11 @@ function drawFooter(ctx, opts) {
   ctx.fillStyle = PALETTE.ink;
   ctx.fillText(balValueText, bx, y);
 
-  // Username (right)
   const handle = `@${(username || 'shushu').toUpperCase()}`;
   ctx.font = '500 14px NotoSans';
   ctx.fillStyle = PALETTE.ink;
   ctx.textAlign = 'right';
   let hx = W - 71;
-  // letter-spacing right-aligned: render right-to-left
   const chars = [...handle];
   for (let i = chars.length - 1; i >= 0; i--) {
     const w = ctx.measureText(chars[i]).width;
@@ -444,46 +451,59 @@ function drawFooter(ctx, opts) {
   }
 }
 
-// ─── Reel state machine ──────────────────────────────────────────────────────
-function buildReelPlan({ reels, totalFrames }) {
-  // Phase frame budgets per reel (total must fit within totalFrames).
-  // Reels stop in sequence: left → middle → right.
-  const SPIN_BASE   = 10;  // reel 0 spin frames
-  const SPIN_DELTA  = 3;   // each subsequent reel spins this many extra frames
-  const SETTLE_LEN  = 6;
-  const SPIN_SPEED  = 110; // px / frame during free spin
+// ─── Per-column strip + reel plan ────────────────────────────────────────────
 
-  const plans = reels.map((r, idx) => {
-    const targetIdx = STRIP.findIndex((s) => s.id === r.id);
-    const spinFrames = SPIN_BASE + idx * SPIN_DELTA;
+// 為每一欄建一條 6 格 strip：把 grid 該欄的 top/mid/bot 放在連續 3 格，
+// 剩餘 3 格用 SYMBOLS 補（轉動時當填料），這樣滾到目標時剛好對齊 3 列。
+function buildColumnStrip(gridCol) {
+  const N = STRIP_LEN;
+  const T = 1 + Math.floor(Math.random() * (N - 3)); // 1..N-3 → top visible index
+  const strip = new Array(N).fill(null);
+  strip[T]     = SYMBOL_BY_ID[gridCol[0].id];
+  strip[T + 1] = SYMBOL_BY_ID[gridCol[1].id];
+  strip[T + 2] = SYMBOL_BY_ID[gridCol[2].id];
+  let p = 0;
+  for (let i = 0; i < N; i++) {
+    if (strip[i]) continue;
+    strip[i] = SYMBOLS[p++ % N];
+  }
+  return { strip, targetIdx: T };
+}
+
+function buildReelPlan({ grid }) {
+  const SPIN_BASE   = 10;
+  const SPIN_DELTA  = 3;
+  const SETTLE_LEN  = 6;
+  const SPIN_SPEED  = 110;
+
+  const plans = [];
+  for (let c = 0; c < VIEW_COLS; c++) {
+    const gridCol = [grid[0][c], grid[1][c], grid[2][c]];
+    const { strip, targetIdx } = buildColumnStrip(gridCol);
+    const spinFrames = SPIN_BASE + c * SPIN_DELTA;
     const settleStart = spinFrames;
-    const settleEnd   = settleStart + SETTLE_LEN; // exclusive
-    const startOffset = idx * 137; // visually de-sync the reels
-    return {
+    const settleEnd   = settleStart + SETTLE_LEN;
+    const startOffset = c * 137;
+    const spinEndOffset = startOffset + spinFrames * SPIN_SPEED;
+    const minOff = spinEndOffset + STRIP_H;
+    const wraps = Math.ceil((minOff - targetIdx * CELL) / STRIP_H);
+    const finalOffset = wraps * STRIP_H + targetIdx * CELL;
+    plans.push({
+      strip,
       targetIdx,
       spinFrames,
       settleStart,
       settleEnd,
       startOffset,
-    };
-  });
-
-  // Pre-compute per-reel spin-end & target offsets so `settle` can interpolate.
-  for (const p of plans) {
-    p.spinEndOffset = p.startOffset + p.spinFrames * SPIN_SPEED;
-
-    // Pick a target offset >= spinEndOffset + STRIP_H (≥ one extra wrap),
-    // landing exactly on `targetIdx`.
-    const minOff = p.spinEndOffset + STRIP_H;
-    const wraps = Math.ceil((minOff - p.targetIdx * CELL) / STRIP_H);
-    p.finalOffset = wraps * STRIP_H + p.targetIdx * CELL;
+      spinEndOffset,
+      finalOffset,
+    });
   }
 
   const allStoppedAt = Math.max(...plans.map((p) => p.settleEnd));
   const revealStart = allStoppedAt;
-  const holdFrames = totalFrames - revealStart;
 
-  return { plans, spinSpeed: SPIN_SPEED, revealStart, holdFrames };
+  return { plans, spinSpeed: SPIN_SPEED, revealStart };
 }
 
 function reelOffsetAtFrame(plan, f, spinSpeed) {
@@ -498,16 +518,29 @@ function reelOffsetAtFrame(plan, f, spinSpeed) {
   return plan.finalOffset;
 }
 
+// 把所有中獎 payline 的 cells 攤平成「每欄該亮哪幾列」。
+function buildHighlightSets(lines) {
+  const perCol = Array.from({ length: VIEW_COLS }, () => new Set());
+  for (const ln of lines) {
+    if (!ln || ln.payout <= 0) continue;
+    for (const [r, c] of ln.cells) {
+      perCol[c].add(r);
+    }
+  }
+  return perCol;
+}
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 /**
  * @param {object} data
  * @param {string} data.username
- * @param {Array<{id:string, emoji:string}>} data.reels
- * @param {string} data.matchType   - jackpot|triple|double_cherry|double|none
+ * @param {Array<Array<{id:string, emoji:string}>>} data.grid  3x3
+ * @param {Array<object>} data.lines  每條 payline 的判定結果（含 cells/payout）
+ * @param {string} data.matchType
  * @param {string|null} data.matchedSymbol
  * @param {number} data.bet
- * @param {number} data.payout      - total payout (base + jackpot bust)
+ * @param {number} data.payout   total payout (base + jackpot bust)
  * @param {number} data.multiplier
  * @param {number} data.balance
  * @param {number|null} [data.jackpotPool]
@@ -517,7 +550,6 @@ function reelOffsetAtFrame(plan, f, spinSpeed) {
 async function generateSlotGif(data) {
   ensureFonts();
 
-  // Collect every emoji we might draw and preload their twemoji raster.
   const emojisNeeded = new Set([
     ...SYMBOLS.map((s) => s.emoji),
     '🎉', '🎊', '🍒', '✨', '💸',
@@ -527,20 +559,21 @@ async function generateSlotGif(data) {
 
   const accent = pickAccent(data.matchType);
   const won = data.payout > 0;
+  const winLines = (data.lines || []).filter((l) => l.payout > 0);
+  const winLineCount = winLines.length;
   const isBust = data.matchType === 'jackpot' && (data.jackpotBust || 0) > 0;
   const showJackpotBanner = data.jackpotPool != null;
 
-  const reelsY = showJackpotBanner ? 226 : 174;
+  const reelsY0 = showJackpotBanner ? 226 : 174;
   const reelsX0 = (W - REELS_TOTAL_W) / 2;
+  const reelsEndY = reelsY0 + REELS_TOTAL_H;
 
-  const resultAreaY = reelsY + CELL + 16;
-  const resultAreaH = 612 - 32 - resultAreaY;
+  const resultAreaY = reelsEndY + 14;
+  const resultAreaH = FOOTER_Y - 28 - resultAreaY;
 
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
 
-  // Pre-render everything that doesn't change per frame: chrome + footer
-  // (and the jackpot banner unless it flips state on bust reveal).
   const staticCanvas = createCanvas(W, H);
   const sctx = staticCanvas.getContext('2d');
   drawBackground(sctx);
@@ -558,72 +591,53 @@ async function generateSlotGif(data) {
     username: data.username,
   });
 
-  // Frame budget. Tuned so the GIF wraps just under 2s including hold.
   const TOTAL_FRAMES = 27;
-  const FRAME_DELAY  = 50;     // 20 fps
-  const HOLD_DELAY   = 140;    // slow down toward the end so people read result
+  const FRAME_DELAY  = 50;
+  const HOLD_DELAY   = 140;
 
-  const { plans, spinSpeed, revealStart } =
-    buildReelPlan({ reels: data.reels, totalFrames: TOTAL_FRAMES });
+  const { plans, spinSpeed, revealStart } = buildReelPlan({ grid: data.grid });
+  const highlightSets = buildHighlightSets(data.lines || []);
 
   const encoder = new GIFEncoder(W, H, 'neuquant', true, TOTAL_FRAMES);
   encoder.setRepeat(0);
   encoder.setQuality(30);
   encoder.start();
 
-  // Yield event loop occasionally — same trick as roulette gif.
   const YIELD_EVERY = 4;
   let frameCount = 0;
 
   for (let f = 0; f < TOTAL_FRAMES; f++) {
     const inReveal = f >= revealStart;
 
-    // Per-frame delay (longer on final frames so the result lingers).
     if (f === TOTAL_FRAMES - 1)         encoder.setDelay(HOLD_DELAY * 3);
     else if (f >= TOTAL_FRAMES - 4)     encoder.setDelay(HOLD_DELAY);
     else                                encoder.setDelay(FRAME_DELAY);
 
-    // ── Static chrome (pre-rendered) ──
     ctx.drawImage(staticCanvas, 0, 0);
 
-    // Bust banner is the only chrome that flips mid-GIF; redraw on reveal.
     if (showJackpotBanner && isBust) {
       drawJackpotBanner(ctx, data.jackpotPool, data.jackpotBust || 0, inReveal);
     }
 
-    // ── Reels ──
-    const winningSet = new Set();
-    if (inReveal && won && data.matchedSymbol) {
-      if (data.matchType === 'jackpot' || data.matchType === 'triple') {
-        winningSet.add(0); winningSet.add(1); winningSet.add(2);
-      } else {
-        data.reels.forEach((r, i) => {
-          if (r.id === data.matchedSymbol) winningSet.add(i);
-        });
-      }
-    }
-
-    // Pulse 0..1 (flash for highlighted reels during reveal)
     const revealLocal = inReveal ? f - revealStart : 0;
-    const pulse = inReveal
-      ? 0.5 + 0.5 * Math.sin(revealLocal * 0.9)
-      : 0;
+    const pulse = inReveal ? 0.5 + 0.5 * Math.sin(revealLocal * 0.9) : 0;
 
-    for (let i = 0; i < 3; i++) {
-      const rx = reelsX0 + i * (CELL + REEL_GAP);
-      const offset = reelOffsetAtFrame(plans[i], f, spinSpeed);
+    for (let c = 0; c < VIEW_COLS; c++) {
+      const rx = reelsX0 + c * (CELL + REEL_GAP);
+      const offset = reelOffsetAtFrame(plans[c], f, spinSpeed);
+      const highlights = inReveal && won ? highlightSets[c] : null;
       drawReelBox(
         ctx,
         rx,
-        reelsY,
+        reelsY0,
         offset,
+        plans[c].strip,
         accent,
-        winningSet.has(i),
+        highlights,
         pulse,
       );
     }
 
-    // ── Result panel ──
     drawResultPanel(ctx, {
       phase: inReveal ? 'reveal' : 'spinning',
       matchType: data.matchType,
@@ -631,6 +645,7 @@ async function generateSlotGif(data) {
       accent,
       areaY: resultAreaY,
       areaH: resultAreaH,
+      winLineCount,
     });
 
     encoder.addFrame(ctx);
