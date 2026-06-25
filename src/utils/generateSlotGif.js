@@ -65,7 +65,7 @@ const REELS_TOTAL_W = VIEW_COLS * CELL + (VIEW_COLS - 1) * REEL_GAP;
 const REELS_TOTAL_H = VIEW_ROWS * CELL;
 const STRIP_LEN = SYMBOLS.length;
 const STRIP_H = STRIP_LEN * CELL;
-const FOOTER_Y = 830;
+const FOOTER_Y = 808;
 
 const PALETTE = {
   card:   '#F4ECD8',
@@ -191,11 +191,12 @@ function drawHeader(ctx, accent) {
   ctx.lineWidth = 3;
   ctx.strokeRect(x + 1.5, y + 1.5, 61, 61);
 
-  ctx.font = '900 36px NotoSans';
+  // NotoSansJP 的 baseline='middle' 對 CJK 字偏上，視覺中心要再往下推一些
+  ctx.font = '900 38px NotoSans';
   ctx.fillStyle = PALETTE.card;
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('霸', x + 32, y + 36);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('霸', x + 32, y + 46);
 
   ctx.font = '900 44px NotoSans';
   ctx.fillStyle = PALETTE.ink;
@@ -471,10 +472,10 @@ function buildColumnStrip(gridCol) {
 }
 
 function buildReelPlan({ grid }) {
-  const SPIN_BASE   = 7;
+  const SPIN_BASE   = 4;
   const SPIN_DELTA  = 2;
-  const SETTLE_LEN  = 4;
-  const SPIN_SPEED  = 140;
+  const SETTLE_LEN  = 3;
+  const SPIN_SPEED  = 170;
 
   const plans = [];
   for (let c = 0; c < VIEW_COLS; c++) {
@@ -591,9 +592,9 @@ async function generateSlotGif(data) {
     username: data.username,
   });
 
-  const TOTAL_FRAMES = 18;
-  const FRAME_DELAY  = 40;
-  const HOLD_DELAY   = 110;
+  const TOTAL_FRAMES = 13;
+  const FRAME_DELAY  = 30;
+  const HOLD_DELAY   = 80;
 
   const { plans, spinSpeed, revealStart } = buildReelPlan({ grid: data.grid });
   const highlightSets = buildHighlightSets(data.lines || []);
