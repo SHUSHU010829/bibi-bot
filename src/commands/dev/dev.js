@@ -27,8 +27,8 @@ const grantXp = require("../../features/leveling/grantXp");
 const generateCheckinCard = require("../../utils/generateCheckinCard");
 const generateLevelUpCard = require("../../utils/generateLevelUpCard");
 const { getLevelProgress } = require("../../utils/levelMath");
-const { spin } = require("../../features/casino/slot/slotMachine");
-const { SYMBOL_BY_ID } = require("../../features/casino/slot/paytable");
+const { spin, evaluateLine } = require("../../features/casino/slot/slotMachine");
+const { SYMBOL_BY_ID, PAYLINES } = require("../../features/casino/slot/paytable");
 const generateSlotGif = require("../../utils/generateSlotGif");
 const { rawFollowUpWithImage } = require("../../utils/rawWebhookUpload");
 const { flush: flushCommandStats } = require("../../utils/commandUsageTracker");
@@ -601,45 +601,76 @@ async function runSlotSpin(interaction) {
   }
 }
 
-function buildSlotPreviewReels(kind) {
+// 給 /dev slot preview 用：產一個指定中獎類型的 3x3 grid，
+// 並用真正的 evaluateLine 套到 5 條 payline 上算出各線結果。
+function buildSlotPreviewGrid(kind) {
   const sym = (id) => ({ id, emoji: SYMBOL_BY_ID[id].emoji });
+  // 預設背景：每格都不同，確保不會誤觸其他線
+  const base = [
+    [sym("lemon"), sym("watermelon"), sym("bell")],
+    [sym("bell"), sym("star"), sym("cherry")],
+    [sym("watermelon"), sym("cherry"), sym("lemon")],
+  ];
+
+  // 把中排（row=1）改成指定情境
   switch (kind) {
     case "jackpot":
-      return {
-        reels: [sym("seven"), sym("seven"), sym("seven")],
-        matchType: "jackpot",
-        matchedSymbol: "seven",
-        multiplier: 500,
-      };
+      base[1] = [sym("seven"), sym("seven"), sym("seven")];
+      break;
     case "triple":
-      return {
-        reels: [sym("star"), sym("star"), sym("star")],
-        matchType: "triple",
-        matchedSymbol: "star",
-        multiplier: 80,
-      };
+      base[1] = [sym("star"), sym("star"), sym("star")];
+      break;
     case "double_cherry":
-      return {
-        reels: [sym("cherry"), sym("cherry"), sym("lemon")],
-        matchType: "double_cherry",
-        matchedSymbol: "cherry",
-        multiplier: 1.5,
-      };
+      base[1] = [sym("cherry"), sym("cherry"), sym("lemon")];
+      break;
     case "double":
-      return {
-        reels: [sym("bell"), sym("watermelon"), sym("bell")],
-        matchType: "double",
-        matchedSymbol: "bell",
-        multiplier: 0.5,
-      };
+      base[1] = [sym("bell"), sym("watermelon"), sym("bell")];
+      break;
     default:
-      return {
-        reels: [sym("cherry"), sym("lemon"), sym("watermelon")],
-        matchType: "none",
-        matchedSymbol: null,
-        multiplier: 0,
-      };
+      // 不動：所有線都 none
+      break;
   }
+  return base;
+}
+
+function buildSlotPreviewResult(kind, bet) {
+  const grid = buildSlotPreviewGrid(kind);
+  const lineCount = PAYLINES.length;
+  const perLineBet = Math.max(1, Math.floor(bet / lineCount));
+
+  const lines = PAYLINES.map((pl, idx) => {
+    const cellSymbols = pl.cells.map(([r, c]) => grid[r][c]);
+    const ev = evaluateLine(cellSymbols);
+    return {
+      index: idx,
+      id: pl.id,
+      name: pl.name,
+      cells: pl.cells,
+      cellSymbols,
+      matchType: ev.matchType,
+      multiplier: ev.multiplier,
+      matchedSymbol: ev.matchedSymbol,
+      payout: ev.multiplier > 0 ? Math.floor(perLineBet * ev.multiplier) : 0,
+    };
+  });
+
+  const TIER = { none: 0, double: 1, double_cherry: 2, triple: 3, jackpot: 4 };
+  const totalPayout = lines.reduce((s, l) => s + l.payout, 0);
+  const bestLine = lines.reduce(
+    (best, cur) => (TIER[cur.matchType] > TIER[best?.matchType ?? "none"] ? cur : best),
+    null
+  );
+  const matchType = bestLine?.matchType ?? "none";
+  const aggMult = bet > 0 ? Math.round((totalPayout / bet) * 100) / 100 : 0;
+
+  return {
+    grid,
+    lines,
+    matchType,
+    matchedSymbol: bestLine?.matchedSymbol ?? null,
+    multiplier: aggMult,
+    payout: totalPayout,
+  };
 }
 
 // ─────────────────────────── /dev cmdstats ───────────────────────────
@@ -704,17 +735,17 @@ async function runSlotPreview(interaction) {
   try {
     const kind = interaction.options.getString("kind");
     const bet = interaction.options.getInteger("bet") ?? 100;
-    const preview = buildSlotPreviewReels(kind);
-    const payout = Math.floor(bet * preview.multiplier);
+    const preview = buildSlotPreviewResult(kind, bet);
 
     const buf = await generateSlotGif({
       userId: interaction.user.id,
       username: interaction.member?.displayName || interaction.user.username,
-      reels: preview.reels,
+      grid: preview.grid,
+      lines: preview.lines,
       matchType: preview.matchType,
       matchedSymbol: preview.matchedSymbol,
       bet,
-      payout,
+      payout: preview.payout,
       multiplier: preview.multiplier,
       balance: 9999,
     });
@@ -724,7 +755,7 @@ async function runSlotPreview(interaction) {
     });
 
     await interaction.editReply({
-      content: `🧪 預覽 \`${kind}\`(bet=${bet}, payout=${payout})`,
+      content: `🧪 預覽 \`${kind}\`(bet=${bet}, payout=${preview.payout})`,
       files: [attachment],
     });
   } catch (error) {
