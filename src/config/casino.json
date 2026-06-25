@@ -76,7 +76,7 @@
       "minBet": 10,
       "maxBet": 5000,
       "defaultRisk": "medium",
-      "defaultRows": 12,
+      "defaultRows": 8,
       "multipliers": {
         "low": {
           "8": [5.6, 2.1, 1.1, 1, 0.5, 1, 1.1, 2.1, 5.6],
