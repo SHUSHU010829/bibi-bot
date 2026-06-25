@@ -65,13 +65,16 @@
       "numberMax": 99,
       "decoyPrizes": [1, 1.5, 2, 3, 5],
       "prizes": [
-        { "mult": 0, "weight": 85 },
-        { "mult": 1.5, "weight": 18 },
-        { "mult": 2, "weight": 12 },
-        { "mult": 3, "weight": 6 },
-        { "mult": 5, "weight": 3 },
-        { "mult": 10, "weight": 1.2 },
-        { "mult": 50, "weight": 0.2 }
+        { "matches": [], "weight": 92 },
+        { "matches": [1.5], "weight": 22 },
+        { "matches": [2], "weight": 12 },
+        { "matches": [1, 1], "weight": 5 },
+        { "matches": [3], "weight": 6 },
+        { "matches": [1.5, 1.5], "weight": 2 },
+        { "matches": [5], "weight": 2 },
+        { "matches": [2, 2, 2], "weight": 0.5 },
+        { "matches": [10], "weight": 0.8 },
+        { "matches": [50], "weight": 0.15 }
       ]
     },
     "plinko": {

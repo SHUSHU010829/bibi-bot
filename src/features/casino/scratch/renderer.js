@@ -59,10 +59,22 @@ function buildAllRow(state) {
   );
 }
 
+function matchedNumbers(state) {
+  const nums = [];
+  for (let i = 0; i < state.cells.length; i += 1) {
+    if (isMatch(state, i)) nums.push(state.cells[i].number);
+  }
+  return nums;
+}
+
 function settleHeadline(state) {
   if (state.result === "win") {
-    const num = state.cells[state.winIndex]?.number;
-    return `🎯 **對中 ${num}！** 中獎 ×${state.multiplier} → 拿走 ${state.payout.toLocaleString()} credits`;
+    const nums = matchedNumbers(state);
+    const head =
+      nums.length > 1
+        ? `🎯 **連中 ${nums.length} 格（${nums.join("・")}）！**`
+        : `🎯 **對中 ${nums[0]}！**`;
+    return `${head} 合計 ×${state.multiplier} → 拿走 ${state.payout.toLocaleString()} credits`;
   }
   return `🎫 **銘謝惠顧…** 沒對中任何幸運號碼，再來一張試試！`;
 }
