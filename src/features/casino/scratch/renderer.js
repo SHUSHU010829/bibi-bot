@@ -1,7 +1,7 @@
-// 刮刮樂 Discord 訊息 payload 渲染。開局與每次刮開互動共用同一份。
+// 刮刮樂（對中獎號碼版）Discord 訊息 payload 渲染。
 //
-// 卡面 3×3 用按鈕格呈現：未刮 ❓（可按）、刮開後顯示符號。
-// 結算後中獎的 3 格用綠色按鈕標出，並附「再來一局」。
+// 主視覺是刮刮卡圖（generateScratchCard）：上方幸運號碼、下方 3×3 你的號碼。
+// 按鈕是刮開介面：未刮 ❓，刮開後顯示號碼；對中幸運號碼的格變綠。
 
 const {
   ActionRowBuilder,
@@ -9,23 +9,22 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
-const { MONEY_EMOJI } = require("../../../constants/coin");
 
+const { isMatch } = require("./engine");
 const { buildReplayRow } = require("../replay");
 const { buildCasinoEmbed } = require("../casinoEmbed");
 const generateScratchCard = require("../../../utils/generateScratchCard");
 
 function cellFace(state, idx) {
-  const settled = state.status !== "playing";
   const revealed = state.revealed.includes(idx);
   if (!revealed) {
-    return { emoji: "❓", style: ButtonStyle.Secondary, disabled: settled };
+    return { label: null, emoji: "❓", style: ButtonStyle.Secondary, disabled: false };
   }
-  const sym = state.grid[idx];
-  const isWinCell = settled && state.winSymbol && sym === state.winSymbol;
+  const matched = isMatch(state, idx);
   return {
-    emoji: sym,
-    style: isWinCell ? ButtonStyle.Success : ButtonStyle.Secondary,
+    label: String(state.cells[idx].number),
+    emoji: matched ? "🎯" : undefined,
+    style: matched ? ButtonStyle.Success : ButtonStyle.Secondary,
     disabled: true,
   };
 }
@@ -37,13 +36,13 @@ function buildCardRows(state) {
     for (let c = 0; c < 3; c += 1) {
       const idx = r * 3 + c;
       const face = cellFace(state, idx);
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId(`sc_c${idx}_${state.gameId}`)
-          .setEmoji(face.emoji)
-          .setStyle(face.style)
-          .setDisabled(face.disabled)
-      );
+      const btn = new ButtonBuilder()
+        .setCustomId(`sc_c${idx}_${state.gameId}`)
+        .setStyle(face.style)
+        .setDisabled(face.disabled);
+      if (face.label) btn.setLabel(face.label);
+      if (face.emoji) btn.setEmoji(face.emoji);
+      row.addComponents(btn);
     }
     rows.push(row);
   }
@@ -62,9 +61,10 @@ function buildAllRow(state) {
 
 function settleHeadline(state) {
   if (state.result === "win") {
-    return `🎉 **湊滿三個 ${state.winSymbol}！** 中獎 ×${state.multiplier} → 拿走 ${state.payout.toLocaleString()} credits`;
+    const num = state.cells[state.winIndex]?.number;
+    return `🎯 **對中 ${num}！** 中獎 ×${state.multiplier} → 拿走 ${state.payout.toLocaleString()} credits`;
   }
-  return `🪙 **沒湊到三個一樣的…** －${state.bet.toLocaleString()} credits，再刮一張試試！`;
+  return `🎫 **銘謝惠顧…** 沒對中任何幸運號碼，再來一張試試！`;
 }
 
 function settleOutcome(state) {
@@ -89,7 +89,8 @@ async function renderMessage(state, { username, balance, userId, avatarURL } = {
     console.log(`[WARN] scratch card render failed, falling back to text: ${e.message}`);
     fallbackLines = isPlaying
       ? [
-          `刮開 **${state.revealed.length}/9** 格・湊滿任意三個相同符號就中獎！`,
+          `幸運號碼：**${state.luckyNumbers.join("・")}**`,
+          `刮開你的號碼，對中任一個就中獎！（已刮 ${state.revealed.length}/9）`,
           "-# 逐格刮，或按「全部刮開」一次揭曉",
         ]
       : [];

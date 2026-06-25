@@ -61,14 +61,17 @@
       "minBet": 10,
       "maxBet": 2000,
       "gameTtlSeconds": 300,
+      "luckyCount": 3,
+      "numberMax": 99,
+      "decoyPrizes": [1, 1.5, 2, 3, 5],
       "prizes": [
-        { "mult": 0, "weight": 85, "symbol": null },
-        { "mult": 1.5, "weight": 18, "symbol": "🍋" },
-        { "mult": 2, "weight": 12, "symbol": "🍒" },
-        { "mult": 3, "weight": 6, "symbol": "🔔" },
-        { "mult": 5, "weight": 3, "symbol": "7️⃣" },
-        { "mult": 10, "weight": 1.2, "symbol": "💎" },
-        { "mult": 50, "weight": 0.2, "symbol": "👑" }
+        { "mult": 0, "weight": 85 },
+        { "mult": 1.5, "weight": 18 },
+        { "mult": 2, "weight": 12 },
+        { "mult": 3, "weight": 6 },
+        { "mult": 5, "weight": 3 },
+        { "mult": 10, "weight": 1.2 },
+        { "mult": 50, "weight": 0.2 }
       ]
     },
     "plinko": {
