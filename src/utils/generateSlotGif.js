@@ -471,10 +471,10 @@ function buildColumnStrip(gridCol) {
 }
 
 function buildReelPlan({ grid }) {
-  const SPIN_BASE   = 10;
-  const SPIN_DELTA  = 3;
-  const SETTLE_LEN  = 6;
-  const SPIN_SPEED  = 110;
+  const SPIN_BASE   = 7;
+  const SPIN_DELTA  = 2;
+  const SETTLE_LEN  = 4;
+  const SPIN_SPEED  = 140;
 
   const plans = [];
   for (let c = 0; c < VIEW_COLS; c++) {
@@ -591,26 +591,27 @@ async function generateSlotGif(data) {
     username: data.username,
   });
 
-  const TOTAL_FRAMES = 27;
-  const FRAME_DELAY  = 50;
-  const HOLD_DELAY   = 140;
+  const TOTAL_FRAMES = 18;
+  const FRAME_DELAY  = 40;
+  const HOLD_DELAY   = 110;
 
   const { plans, spinSpeed, revealStart } = buildReelPlan({ grid: data.grid });
   const highlightSets = buildHighlightSets(data.lines || []);
 
-  const encoder = new GIFEncoder(W, H, 'neuquant', true, TOTAL_FRAMES);
+  // octree palette 比 neuquant 快很多（單張省約 30–40%），對拉霸的固定色板已夠用。
+  const encoder = new GIFEncoder(W, H, 'octree', true, TOTAL_FRAMES);
   encoder.setRepeat(0);
-  encoder.setQuality(30);
+  encoder.setQuality(20);
   encoder.start();
 
-  const YIELD_EVERY = 4;
+  const YIELD_EVERY = 6;
   let frameCount = 0;
 
   for (let f = 0; f < TOTAL_FRAMES; f++) {
     const inReveal = f >= revealStart;
 
-    if (f === TOTAL_FRAMES - 1)         encoder.setDelay(HOLD_DELAY * 3);
-    else if (f >= TOTAL_FRAMES - 4)     encoder.setDelay(HOLD_DELAY);
+    if (f === TOTAL_FRAMES - 1)         encoder.setDelay(HOLD_DELAY * 2);
+    else if (f >= TOTAL_FRAMES - 3)     encoder.setDelay(HOLD_DELAY);
     else                                encoder.setDelay(FRAME_DELAY);
 
     ctx.drawImage(staticCanvas, 0, 0);
