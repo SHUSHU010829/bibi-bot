@@ -123,46 +123,42 @@ module.exports = {
       const prePoolAmount = prePoolDoc?.amount ?? seed;
       const contribution = jackpotEnabled ? Math.floor(bet * contributionRate) : 0;
 
-      // Phase 2：扣下注（必須先成功才繼續，不能 race）
-      const betResult = await grantCoins(client, {
-        userId,
-        guildId,
-        username,
-        avatarHash: interaction.user.avatar,
-        amount: -bet,
-        source: "bet",
-        member,
-        meta: { game: "slot", roundId },
-      });
-      if (!betResult) {
-        return interaction.editReply("🔧 下注失敗，請稍後再試。");
-      }
-
-      // Phase 3：抽獎（純 CPU）
+      // Phase 2：抽獎（純 CPU，不碰 DB）
       const result = spin({ bet });
       const isJackpot = jackpotEnabled && result.matchType === "jackpot";
 
-      // Phase 4：彩池 ops
-      // - 非 jackpot：contribute 直接 fire-and-forget，pool 數字由 prePool + contribution 投影出來
-      // - jackpot：必須 await contribute → bust 才能拿到真正的爆池金額
+      // Phase 3（僅 jackpot 路徑）：必須序列 bet → contribute → bust 才能拿到真實爆池金額
       let jackpotBust = 0;
       let jackpotPool;
-      if (jackpotEnabled) {
-        if (isJackpot) {
-          await contributeJackpot(client, guildId, bet).catch((e) =>
-            console.log(`[SLOT] jackpot contribute failed: ${e}`.yellow)
-          );
-          jackpotBust = await bustJackpot(client, guildId).catch((e) => {
-            console.log(`[SLOT] jackpot bust failed: ${e}`.red);
-            return 0;
-          });
-          jackpotPool = seed;
-        } else {
-          contributeJackpot(client, guildId, bet).catch((e) =>
-            console.log(`[SLOT] jackpot contribute failed: ${e}`.yellow)
-          );
-          jackpotPool = prePoolAmount + contribution;
+      let jackpotBetResult = null;
+      if (isJackpot) {
+        jackpotBetResult = await grantCoins(client, {
+          userId,
+          guildId,
+          username,
+          avatarHash: interaction.user.avatar,
+          amount: -bet,
+          source: "bet",
+          member,
+          meta: { game: "slot", roundId },
+        });
+        if (!jackpotBetResult) {
+          return interaction.editReply("🔧 下注失敗，請稍後再試。");
         }
+        await contributeJackpot(client, guildId, bet).catch((e) =>
+          console.log(`[SLOT] jackpot contribute failed: ${e}`.yellow)
+        );
+        jackpotBust = await bustJackpot(client, guildId).catch((e) => {
+          console.log(`[SLOT] jackpot bust failed: ${e}`.red);
+          return 0;
+        });
+        jackpotPool = seed;
+      } else if (jackpotEnabled) {
+        // 非 jackpot：contribute fire-and-forget，pool 用投影值
+        contributeJackpot(client, guildId, bet).catch((e) =>
+          console.log(`[SLOT] jackpot contribute failed: ${e}`.yellow)
+        );
+        jackpotPool = prePoolAmount + contribution;
       } else {
         jackpotPool = null;
       }
@@ -170,7 +166,24 @@ module.exports = {
       const totalPayout = result.payout + jackpotBust;
       const balanceAfter = balance - bet + totalPayout;
 
-      // Phase 5：GIF / 派彩 / saveLastBet 全部平行 — 互不依賴，這是省最多的地方
+      // Phase 4：所有剩下的工作一次平行
+      // - 非 jackpot 路徑：bet + payout + GIF + saveLastBet 全部一起跑（critical path 變成 max 而非 sum）
+      // - jackpot 路徑：bet 已經 serial 跑完，這裡只剩 payout + GIF + save
+      // 安全性：pre-validation 已保證 balance >= bet；grantCoins 對 CASINO_SOURCES 不再做餘額檢查，
+      // 所以非 jackpot 路徑把 bet 並行進來不會 race。
+      const betPromise = isJackpot
+        ? Promise.resolve(jackpotBetResult)
+        : grantCoins(client, {
+            userId,
+            guildId,
+            username,
+            avatarHash: interaction.user.avatar,
+            amount: -bet,
+            source: "bet",
+            member,
+            meta: { game: "slot", roundId },
+          });
+
       const payoutPromise =
         totalPayout > 0
           ? grantCoins(client, {
@@ -224,7 +237,15 @@ module.exports = {
         payload: { options: { 下注: bet, 梭哈: false } },
       }).catch(() => null);
 
-      const [, buf] = await Promise.all([payoutPromise, gifPromise, savePromise]);
+      const [betResult, , buf] = await Promise.all([
+        betPromise,
+        payoutPromise,
+        gifPromise,
+        savePromise,
+      ]);
+      if (!betResult) {
+        return interaction.editReply("🔧 下注失敗，請稍後再試。");
+      }
       const attachment = buf
         ? new AttachmentBuilder(buf, { name: `slot-${roundId}.gif` })
         : null;

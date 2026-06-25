@@ -472,10 +472,10 @@ function buildColumnStrip(gridCol) {
 }
 
 function buildReelPlan({ grid }) {
-  const SPIN_BASE   = 4;
+  const SPIN_BASE   = 5;
   const SPIN_DELTA  = 2;
   const SETTLE_LEN  = 3;
-  const SPIN_SPEED  = 170;
+  const SPIN_SPEED  = 190;
 
   const plans = [];
   for (let c = 0; c < VIEW_COLS; c++) {
@@ -592,9 +592,9 @@ async function generateSlotGif(data) {
     username: data.username,
   });
 
-  const TOTAL_FRAMES = 13;
-  const FRAME_DELAY  = 30;
-  const HOLD_DELAY   = 80;
+  const TOTAL_FRAMES = 15;
+  const FRAME_DELAY  = 60;
+  const HOLD_DELAY   = 120;
 
   const { plans, spinSpeed, revealStart } = buildReelPlan({ grid: data.grid });
   const highlightSets = buildHighlightSets(data.lines || []);
