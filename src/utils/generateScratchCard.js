@@ -91,8 +91,14 @@ function buildMarkup(state, opts) {
   if (playing) {
     headline = `刮開 ${state.revealed.length} / 9`;
   } else if (win) {
-    const num = state.cells[state.winIndex]?.number;
-    headline = `對中 ${num} ・ 中獎 ×${state.multiplier}`;
+    const nums = [];
+    for (let i = 0; i < state.cells.length; i += 1) {
+      if (isMatch(state, i)) nums.push(state.cells[i].number);
+    }
+    headline =
+      nums.length > 1
+        ? `連中 ${nums.length} 格 ・ 合計 ×${state.multiplier}`
+        : `對中 ${nums[0]} ・ 中獎 ×${state.multiplier}`;
   } else {
     headline = `銘謝惠顧`;
   }

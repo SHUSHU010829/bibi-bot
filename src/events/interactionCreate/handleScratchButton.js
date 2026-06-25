@@ -109,6 +109,8 @@ module.exports = async (client, interaction) => {
           status: next.status,
           result: next.result,
           payout: next.payout,
+          matchCount: next.matchCount,
+          multiplier: next.multiplier,
           updatedAt: now,
           expiresAt: new Date(now.getTime() + ttlSec * 1000),
         },
