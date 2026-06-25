@@ -40,18 +40,26 @@ async function renderMessage(result, { username, balance, userId, avatarURL } = 
   let imageName;
   let fallbackLines = [];
   try {
-    const buf = await generatePlinkoCard(result, { username, balance });
-    imageName = `plinko-${bucket}-${rows}.png`;
+    // 優先產 GIF（球真的掉下來）；失敗退靜態 PNG；再失敗退文字。
+    const buf = await generatePlinkoGif(result, { username, balance });
+    imageName = `plinko-${bucket}-${rows}.gif`;
     files = [new AttachmentBuilder(buf, { name: imageName })];
-  } catch (e) {
-    console.log(`[WARN] plinko card render failed, falling back to text: ${e.message}`);
-    fallbackLines = [
-      `風險：**${RISK_LABEL[risk] || risk}**　・　排數：**${rows}**　・　落點：第 ${bucket + 1} 格`,
-      "```",
-      `路徑 ${renderPath(path)}`,
-      renderBuckets(row, bucket),
-      "```",
-    ];
+  } catch (gifErr) {
+    console.log(`[WARN] plinko GIF render failed, trying static card: ${gifErr.message}`);
+    try {
+      const buf = await generatePlinkoCard(result, { username, balance });
+      imageName = `plinko-${bucket}-${rows}.png`;
+      files = [new AttachmentBuilder(buf, { name: imageName })];
+    } catch (e) {
+      console.log(`[WARN] plinko card render failed, falling back to text: ${e.message}`);
+      fallbackLines = [
+        `風險：**${RISK_LABEL[risk] || risk}**　・　排數：**${rows}**　・　落點：第 ${bucket + 1} 格`,
+        "```",
+        `路徑 ${renderPath(path)}`,
+        renderBuckets(row, bucket),
+        "```",
+      ];
+    }
   }
 
   const components = userId
