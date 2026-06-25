@@ -32,14 +32,23 @@ const LABEL_W = 54;
 const TILE_W = 60;
 const TILE_H = 46;
 const TILE_GAP = 8;
-const ROW_GAP = 7;
-const MULT_W = 92;
+const ROW_GAP = 10;
+const MULT_W = 108;
 const PAD = 28;
 const INNER_PAD_X = 26;
 const BORDER = 3;
 
 function round2(n) {
   return Math.round(n * 100) / 100;
+}
+
+// 把前綴符號（× / ＋ / －）與數字拆成兩個 span，避免在 SpaceMono 下黏在一起
+// 而看起來像被劃掉。純數字（無前綴）不需要走這個。
+function prefixNum(prefix, value, color, size = 19) {
+  return `<div style="display:flex;align-items:baseline;font-family:'SpaceMono';font-weight:700;color:${color};">
+      <div style="display:flex;font-size:${size - 4}px;margin-right:5px;">${prefix}</div>
+      <div style="display:flex;font-size:${size}px;letter-spacing:1px;">${value}</div>
+    </div>`;
 }
 
 function reachMultiplier(state, floor) {
@@ -98,11 +107,11 @@ function floorRow(state, floor) {
 
   const rowBg = isCurrent ? "background:rgba(255,216,77,0.08);" : "";
 
-  return `<div style="display:flex;flex-direction:row;align-items:center;justify-content:center;${rowBg}padding:2px 0;">
+  return `<div style="display:flex;flex-direction:row;align-items:center;justify-content:center;${rowBg}padding:3px 0;">
       ${marker}
-      <div style="display:flex;width:${LABEL_W}px;font-family:'SpaceMono';font-weight:700;font-size:18px;color:${labelColor};">${labelTxt}</div>
+      <div style="display:flex;width:${LABEL_W}px;margin-right:14px;font-family:'SpaceMono';font-weight:700;font-size:18px;color:${labelColor};">${labelTxt}</div>
       <div style="display:flex;flex-direction:row;gap:${TILE_GAP}px;">${tiles.join("")}</div>
-      <div style="display:flex;width:${MULT_W}px;justify-content:flex-end;font-family:'SpaceMono';font-weight:700;font-size:18px;color:${multColor};">×${reached.toFixed(2)}</div>
+      <div style="display:flex;width:${MULT_W}px;margin-left:18px;justify-content:flex-end;">${prefixNum("×", reached.toFixed(2), multColor, 18)}</div>
     </div>`;
 }
 
@@ -139,7 +148,7 @@ function buildMarkup(state, opts) {
     footRight = `
       <div style="display:flex;flex-direction:column;align-items:flex-end;margin-right:22px;">
         <div style="display:flex;font-family:'NotoSansTC';font-weight:500;font-size:14px;color:${P.muted};letter-spacing:2px;padding-right:2px;">累積倍率</div>
-        <div style="display:flex;font-family:'SpaceMono';font-weight:700;font-size:22px;color:${P.accent};margin-top:2px;">×${state.accMultiplier.toFixed(2)}</div>
+        <div style="display:flex;margin-top:2px;">${prefixNum("×", state.accMultiplier.toFixed(2), P.accent, 22)}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;">
         <div style="display:flex;font-family:'NotoSansTC';font-weight:500;font-size:14px;color:${P.muted};letter-spacing:2px;padding-right:2px;">收手可拿</div>
@@ -147,11 +156,11 @@ function buildMarkup(state, opts) {
       </div>`;
   } else {
     const net = (state.payout || 0) - state.bet;
-    const netStr = `${net > 0 ? "＋" : net < 0 ? "－" : "±"}${Math.abs(net).toLocaleString()}`;
+    const sign = net > 0 ? "＋" : net < 0 ? "－" : "±";
     footRight = `
       <div style="display:flex;flex-direction:column;align-items:flex-end;margin-right:22px;">
         <div style="display:flex;font-family:'NotoSansTC';font-weight:500;font-size:14px;color:${P.muted};letter-spacing:2px;padding-right:2px;">淨輸贏</div>
-        <div style="display:flex;font-family:'SpaceMono';font-weight:700;font-size:22px;color:${tint.headline};margin-top:2px;">${netStr}</div>
+        <div style="display:flex;margin-top:2px;">${prefixNum(sign, Math.abs(net).toLocaleString(), tint.headline, 22)}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;">
         <div style="display:flex;font-family:'NotoSansTC';font-weight:500;font-size:14px;color:${P.muted};letter-spacing:2px;padding-right:2px;">餘額</div>
@@ -202,8 +211,8 @@ async function generateTowerCard(state, opts = {}) {
     20 + LABEL_W + state.tilesPerFloor * TILE_W + (state.tilesPerFloor - 1) * TILE_GAP + MULT_W;
   const contentW = Math.max(boardInnerW, 460);
   const cardW = contentW + (PAD + BORDER + INNER_PAD_X) * 2;
-  const floorsH = state.maxFloors * (TILE_H + 4 + ROW_GAP);
-  const cardH = floorsH + 280; // 頁首 + 標題 + 頁尾固定高
+  const floorsH = state.maxFloors * (TILE_H + 6 + ROW_GAP);
+  const cardH = floorsH + 300; // 頁首 + 標題 + 頁尾固定高
   const markup = buildMarkup(state, { ...opts, cardW, cardH });
   return renderCard({ markup, width: cardW, height: cardH });
 }

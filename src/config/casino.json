@@ -54,7 +54,7 @@
       "houseEdge": 0.02,
       "cols": 5,
       "rows": 4,
-      "defaultMines": 3
+      "defaultMines": 5
     },
     "scratch": {
       "enabled": true,

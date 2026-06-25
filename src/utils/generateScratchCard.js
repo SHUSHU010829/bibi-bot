@@ -27,6 +27,14 @@ const PAD = 28;
 const INNER_PAD_X = 26;
 const BORDER = 3;
 
+// 前綴符號（＋ / －）與數字拆兩個 span，避免 SpaceMono 下黏在一起像被劃掉。
+function prefixNum(prefix, value, color, size = 22) {
+  return `<div style="display:flex;align-items:baseline;font-family:'SpaceMono';font-weight:700;color:${color};">
+      <div style="display:flex;font-size:${size - 4}px;margin-right:5px;">${prefix}</div>
+      <div style="display:flex;font-size:${size}px;letter-spacing:1px;">${value}</div>
+    </div>`;
+}
+
 function cellMarkup(state, idx) {
   const revealed = state.revealed.includes(idx);
   const sym = state.grid[idx];
@@ -83,11 +91,11 @@ function buildMarkup(state, opts) {
       </div>`;
   } else {
     const net = (state.payout || 0) - state.bet;
-    const netStr = `${net > 0 ? "＋" : net < 0 ? "－" : "±"}${Math.abs(net).toLocaleString()}`;
+    const sign = net > 0 ? "＋" : net < 0 ? "－" : "±";
     footRight = `
       <div style="display:flex;flex-direction:column;align-items:flex-end;margin-right:22px;">
         <div style="display:flex;font-family:'NotoSansTC';font-weight:500;font-size:14px;color:${P.muted};letter-spacing:2px;padding-right:2px;">淨輸贏</div>
-        <div style="display:flex;font-family:'SpaceMono';font-weight:700;font-size:22px;color:${tint};margin-top:2px;">${netStr}</div>
+        <div style="display:flex;margin-top:2px;">${prefixNum(sign, Math.abs(net).toLocaleString(), tint, 22)}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;">
         <div style="display:flex;font-family:'NotoSansTC';font-weight:500;font-size:14px;color:${P.muted};letter-spacing:2px;padding-right:2px;">餘額</div>
@@ -132,7 +140,7 @@ async function generateScratchCard(state, opts = {}) {
   const contentW = Math.max(gridW, 460);
   const cardW = contentW + (PAD + BORDER + INNER_PAD_X) * 2;
   const gridH = CELL * 3 + CELL_GAP * 2;
-  const cardH = gridH + 280; // 頁首 + 標題 + 頁尾固定高
+  const cardH = gridH + 340; // 頁首 + 標題 + 頁尾固定高（含底部留白）
   const markup = buildMarkup(state, { ...opts, cardW, cardH });
   return renderCard({ markup, width: cardW, height: cardH });
 }
