@@ -138,7 +138,7 @@ async function renderMessage(state, { username, balance, userId, avatarURL } = {
   const { outcome, net } = settleOutcome(state);
 
   let files = [];
-  let imageName;
+  let imageOk = false;
   let fallbackLines = [];
   try {
     const buf = await generateTowerCard(state, {
@@ -146,8 +146,8 @@ async function renderMessage(state, { username, balance, userId, avatarURL } = {
       balance,
       diffLabel: `${diff.label}（${state.tilesPerFloor} 格 ${state.trapsPerFloor} 雷）`,
     });
-    imageName = `tower-${state.gameId}-${state.currentFloor}.png`;
-    files = [new AttachmentBuilder(buf, { name: imageName })];
+    files = [new AttachmentBuilder(buf, { name: `tower-${state.gameId}-${state.currentFloor}.png` })];
+    imageOk = true;
   } catch (e) {
     console.log(`[WARN] tower card render failed, falling back to text: ${e.message}`);
     fallbackLines = [
@@ -174,6 +174,16 @@ async function renderMessage(state, { username, balance, userId, avatarURL } = {
       ? [buildReplayRow("tower", state.userId, { name: username })]
       : [];
 
+  // 成功產圖 → 用「大圖附檔」呈現（不包 embed），Discord 顯示明顯較大；
+  // 圖內已含難度/下注/累積倍率/淨輸贏/餘額/玩家，資訊不流失。
+  if (imageOk) {
+    const headline = isPlaying
+      ? `🗼 **爬塔** ・ 第 ${state.currentFloor + 1} 層`
+      : settleHeadline(state);
+    return { content: headline, embeds: [], components, files };
+  }
+
+  // 圖失敗 → 退回 embed 文字版
   const embed = buildCasinoEmbed({
     game: "🗼 爬塔",
     user: { id: userId || state.userId, displayName: username, avatarURL },
@@ -183,13 +193,12 @@ async function renderMessage(state, { username, balance, userId, avatarURL } = {
     bet: state.bet,
     net: isPlaying ? undefined : net,
     balance: isPlaying || typeof balance !== "number" ? undefined : balance,
-    imageName,
     footer: isPlaying
       ? `累積倍率 ×${state.accMultiplier.toFixed(2)} ・ 已爬 ${state.currentFloor}/${state.maxFloors} 層`
       : undefined,
   });
 
-  return { content: "", embeds: [embed], components, files };
+  return { content: "", embeds: [embed], components, files: [] };
 }
 
 module.exports = {
