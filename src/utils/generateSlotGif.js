@@ -55,8 +55,13 @@ async function getEmojiImage(emoji) {
 }
 
 // ─── Canvas layout ───────────────────────────────────────────────────────────
+// 內部繪圖座標仍用「設計尺寸」W×H；輸出 GIF 用 RENDER_W×RENDER_H（小很多，編碼快很多）。
+// Discord 在客戶端會自動放大顯示，視覺差異對 emoji slot 可接受。
 const W = 1080;
 const H = 870;
+const RENDER_SCALE = 0.7;
+const RENDER_W = Math.round(W * RENDER_SCALE);
+const RENDER_H = Math.round(H * RENDER_SCALE);
 const CELL = 160;
 const VIEW_ROWS = 3;
 const VIEW_COLS = 3;
@@ -472,10 +477,10 @@ function buildColumnStrip(gridCol) {
 }
 
 function buildReelPlan({ grid }) {
-  const SPIN_BASE   = 5;
+  const SPIN_BASE   = 4;
   const SPIN_DELTA  = 2;
   const SETTLE_LEN  = 3;
-  const SPIN_SPEED  = 190;
+  const SPIN_SPEED  = 220;
 
   const plans = [];
   for (let c = 0; c < VIEW_COLS; c++) {
@@ -572,11 +577,13 @@ async function generateSlotGif(data) {
   const resultAreaY = reelsEndY + 14;
   const resultAreaH = FOOTER_Y - 28 - resultAreaY;
 
-  const canvas = createCanvas(W, H);
+  const canvas = createCanvas(RENDER_W, RENDER_H);
   const ctx = canvas.getContext('2d');
+  ctx.scale(RENDER_SCALE, RENDER_SCALE);
 
-  const staticCanvas = createCanvas(W, H);
+  const staticCanvas = createCanvas(RENDER_W, RENDER_H);
   const sctx = staticCanvas.getContext('2d');
+  sctx.scale(RENDER_SCALE, RENDER_SCALE);
   drawBackground(sctx);
   drawCardFrame(sctx);
   drawHeader(sctx, accent);
@@ -592,15 +599,15 @@ async function generateSlotGif(data) {
     username: data.username,
   });
 
-  const TOTAL_FRAMES = 15;
-  const FRAME_DELAY  = 60;
-  const HOLD_DELAY   = 120;
+  const TOTAL_FRAMES = 13;
+  const FRAME_DELAY  = 75;
+  const HOLD_DELAY   = 130;
 
   const { plans, spinSpeed, revealStart } = buildReelPlan({ grid: data.grid });
   const highlightSets = buildHighlightSets(data.lines || []);
 
   // octree palette 比 neuquant 快很多（單張省約 30–40%），對拉霸的固定色板已夠用。
-  const encoder = new GIFEncoder(W, H, 'octree', true, TOTAL_FRAMES);
+  const encoder = new GIFEncoder(RENDER_W, RENDER_H, 'octree', true, TOTAL_FRAMES);
   encoder.setRepeat(0);
   encoder.setQuality(20);
   encoder.start();
@@ -615,7 +622,11 @@ async function generateSlotGif(data) {
     else if (f >= TOTAL_FRAMES - 3)     encoder.setDelay(HOLD_DELAY);
     else                                encoder.setDelay(FRAME_DELAY);
 
+    // staticCanvas 也是 RENDER_W×RENDER_H，所以複製時要暫時取消 scale，避免被再縮一次
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(staticCanvas, 0, 0);
+    ctx.restore();
 
     if (showJackpotBanner && isBust) {
       drawJackpotBanner(ctx, data.jackpotPool, data.jackpotBust || 0, inReveal);
