@@ -28,7 +28,7 @@ const TILE = {
   locked: { bg: "#201A12", fg: "#4A4234", glyph: "" },
 };
 
-const LABEL_W = 54;
+const LABEL_W = 64;
 const TILE_W = 60;
 const TILE_H = 46;
 const TILE_GAP = 8;
@@ -94,7 +94,10 @@ function floorRow(state, floor) {
   }
 
   const labelColor = isCurrent ? PAL_BASE.accent : PAL_BASE.muted;
-  const labelTxt = `${isTop ? "🏆" : ""}F${floor + 1}`;
+  // 獎盃放在固定寬的左欄，與文字保留間距；非頂層用同寬空盒讓 F 數字對齊。
+  const trophyBox = isTop
+    ? `<div style="display:flex;width:24px;justify-content:center;">🏆</div>`
+    : `<div style="display:flex;width:24px;"></div>`;
   const reached = reachMultiplier(state, floor);
   const multColor = isCurrent
     ? PAL_BASE.accent
@@ -109,7 +112,7 @@ function floorRow(state, floor) {
 
   return `<div style="display:flex;flex-direction:row;align-items:center;justify-content:center;${rowBg}padding:3px 0;">
       ${marker}
-      <div style="display:flex;width:${LABEL_W}px;margin-right:14px;font-family:'SpaceMono';font-weight:700;font-size:18px;color:${labelColor};">${labelTxt}</div>
+      <div style="display:flex;flex-direction:row;align-items:center;width:${LABEL_W}px;margin-right:14px;font-family:'SpaceMono';font-weight:700;font-size:18px;color:${labelColor};">${trophyBox}<div style="display:flex;margin-left:8px;">F${floor + 1}</div></div>
       <div style="display:flex;flex-direction:row;gap:${TILE_GAP}px;">${tiles.join("")}</div>
       <div style="display:flex;width:${MULT_W}px;margin-left:18px;justify-content:flex-end;">${prefixNum("×", reached.toFixed(2), multColor, 18)}</div>
     </div>`;
@@ -187,11 +190,11 @@ function buildMarkup(state, opts) {
           <div style="display:flex;font-family:'NotoSansTC';font-weight:500;font-size:16px;color:${P.muted};letter-spacing:2px;margin-left:14px;padding-right:2px;">${diffLabel}</div>
         </div>
 
-        <div style="display:flex;flex-direction:column;width:100%;margin-top:14px;gap:${ROW_GAP}px;">
+        <div style="display:flex;flex-direction:column;width:100%;margin-top:20px;gap:${ROW_GAP}px;">
           ${floors.join("")}
         </div>
 
-        <div style="display:flex;width:100%;justify-content:space-between;align-items:center;margin-top:auto;padding-top:16px;border-top:2px dashed ${P.muted};">
+        <div style="display:flex;width:100%;justify-content:space-between;align-items:center;margin-top:auto;padding-top:26px;border-top:2px dashed ${P.muted};">
           <div style="display:flex;flex-direction:column;">
             <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:20px;color:${P.ink};letter-spacing:2px;padding-right:2px;">${username || "玩家"}</div>
             <div style="display:flex;font-family:'NotoSansTC';font-weight:500;font-size:14px;color:${P.muted};letter-spacing:2px;margin-top:3px;padding-right:2px;">下注 ${state.bet.toLocaleString()}</div>
@@ -212,7 +215,7 @@ async function generateTowerCard(state, opts = {}) {
   const contentW = Math.max(boardInnerW, 460);
   const cardW = contentW + (PAD + BORDER + INNER_PAD_X) * 2;
   const floorsH = state.maxFloors * (TILE_H + 6 + ROW_GAP);
-  const cardH = floorsH + 300; // 頁首 + 標題 + 頁尾固定高
+  const cardH = floorsH + 366; // 頁首 + 標題 + 頁尾 + 上下留白
   const markup = buildMarkup(state, { ...opts, cardW, cardH });
   return renderCard({ markup, width: cardW, height: cardH });
 }

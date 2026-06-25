@@ -132,13 +132,13 @@ function buildMarkup(state, opts) {
 
         <div style="display:flex;width:100%;height:0;margin-top:12px;border-top:2px dashed ${P.muted};"></div>
 
-        <div style="display:flex;flex-direction:column;align-items:center;margin-top:14px;">
+        <div style="display:flex;flex-direction:column;align-items:center;margin-top:18px;">
           <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:26px;color:${tint};letter-spacing:3px;padding-right:3px;">${headline}</div>
-          <div style="display:flex;margin-top:14px;">${luckyRow(state)}</div>
-          <div style="display:flex;margin-top:14px;">${gridMarkup(state)}</div>
+          <div style="display:flex;margin-top:18px;">${luckyRow(state)}</div>
+          <div style="display:flex;margin-top:18px;">${gridMarkup(state)}</div>
         </div>
 
-        <div style="display:flex;width:100%;justify-content:space-between;align-items:center;margin-top:auto;padding-top:16px;border-top:2px dashed ${P.muted};">
+        <div style="display:flex;width:100%;justify-content:space-between;align-items:center;margin-top:auto;padding-top:26px;border-top:2px dashed ${P.muted};">
           <div style="display:flex;flex-direction:column;">
             <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:20px;color:${P.ink};letter-spacing:2px;padding-right:2px;">${username || "玩家"}</div>
             <div style="display:flex;font-family:'NotoSansTC';font-weight:500;font-size:14px;color:${P.muted};letter-spacing:2px;margin-top:3px;padding-right:2px;">下注 ${state.bet.toLocaleString()}</div>
@@ -156,7 +156,7 @@ async function generateScratchCard(state, opts = {}) {
   const contentW = Math.max(gridW, 460);
   const cardW = contentW + (PAD + BORDER + INNER_PAD_X) * 2;
   const gridH = CELL_H * 3 + CELL_GAP * 2;
-  const cardH = gridH + 380; // 頁首 + 標題 + 幸運號碼列 + 頁尾固定高
+  const cardH = gridH + 446; // 頁首 + 標題 + 幸運號碼列 + 頁尾 + 上下留白
   const markup = buildMarkup(state, { ...opts, cardW, cardH });
   return renderCard({ markup, width: cardW, height: cardH });
 }
