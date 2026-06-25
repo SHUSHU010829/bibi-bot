@@ -69,6 +69,9 @@ module.exports = async (client) => {
     // 踩地雷對局狀態
     const minesGamesCollection = database.collection("MinesGames");
 
+    // 刮刮樂對局狀態
+    const scratchGamesCollection = database.collection("ScratchGames");
+
     // 尋寶（Keno）對局狀態
     const kenoGamesCollection = database.collection("KenoGames");
 
@@ -264,6 +267,7 @@ module.exports = async (client) => {
     client.hiloGamesCollection = hiloGamesCollection;
     client.towerGamesCollection = towerGamesCollection;
     client.minesGamesCollection = minesGamesCollection;
+    client.scratchGamesCollection = scratchGamesCollection;
     client.kenoGamesCollection = kenoGamesCollection;
     client.dragonGateGamesCollection = dragonGateGamesCollection;
     client.crashGamesCollection = crashGamesCollection;
@@ -731,6 +735,20 @@ module.exports = async (client) => {
       await minesGamesCollection.createIndex(
         { updatedAt: 1 },
         { expireAfterSeconds: 30 * 24 * 60 * 60, name: "mn_ttl_30d" }
+      );
+
+      // 刮刮樂對局索引：每位玩家同 guild 同時只能有一張 playing
+      await scratchGamesCollection.createIndex(
+        { gameId: 1 },
+        { unique: true, name: "uniq_sc_gameId" }
+      );
+      await scratchGamesCollection.createIndex(
+        { userId: 1, guildId: 1, status: 1 },
+        { name: "sc_user_guild_status" }
+      );
+      await scratchGamesCollection.createIndex(
+        { updatedAt: 1 },
+        { expireAfterSeconds: 30 * 24 * 60 * 60, name: "sc_ttl_30d" }
       );
 
       // 尋寶（Keno）對局索引：每位玩家同 guild 同時只能有一局 selecting

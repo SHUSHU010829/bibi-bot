@@ -21,6 +21,7 @@ const GAMES = [
   require("./tower"),
   require("./mines"),
   require("./plinko"),
+  require("./scratch"),
 ];
 
 const gameByName = new Map();
