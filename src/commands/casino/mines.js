@@ -28,16 +28,6 @@ module.exports = {
         .setRequired(false)
         .setMinValue(getMinesConfig().minBet ?? 10)
     )
-    .addIntegerOption((opt) => {
-      const cfg = getMinesConfig();
-      const n = (cfg.cols ?? 5) * (cfg.rows ?? 4);
-      return opt
-        .setName("地雷數")
-        .setDescription(`盤面有幾顆地雷（越多倍率越高，預設 ${cfg.defaultMines ?? 3}）`)
-        .setRequired(false)
-        .setMinValue(1)
-        .setMaxValue(n - 1);
-    })
     .addBooleanOption((opt) =>
       opt
         .setName("梭哈")
@@ -79,8 +69,8 @@ module.exports = {
 
       const betInput = interaction.options.getInteger("下注");
       const allIn = interaction.options.getBoolean("梭哈") === true;
-      const minesInput = interaction.options.getInteger("地雷數");
-      const mines = Math.max(1, Math.min(n - 1, minesInput ?? defaultMines));
+      // 雷數固定為設定值（中等風險），不開放玩家自選。
+      const mines = Math.max(1, Math.min(n - 1, defaultMines));
 
       if (!allIn && (!Number.isInteger(betInput) || betInput < minBet)) {
         return interaction.editReply(
@@ -176,7 +166,7 @@ module.exports = {
         userId,
         guildId,
         game: "mines",
-        payload: { options: { 下注: bet, 地雷數: mines, 梭哈: false } },
+        payload: { options: { 下注: bet, 梭哈: false } },
       });
 
       const payload = await renderMessage(doc, {

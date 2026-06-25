@@ -6,6 +6,7 @@
 
 const {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
@@ -14,6 +15,7 @@ const { MONEY_EMOJI } = require("../../../constants/coin");
 const { resolveDifficulty, round2 } = require("./engine");
 const { buildReplayRow } = require("../replay");
 const { buildCasinoEmbed } = require("../casinoEmbed");
+const generateTowerCard = require("../../../utils/generateTowerCard");
 
 const TILE = {
   picked: "✅",
@@ -135,21 +137,34 @@ async function renderMessage(state, { username, balance, userId, avatarURL } = {
   const diff = resolveDifficulty(state.difficulty);
   const { outcome, net } = settleOutcome(state);
 
-  const headerLines = [
-    `難度：**${diff.label}**（${state.tilesPerFloor} 格 ${state.trapsPerFloor} 雷）・每層 ×${state.floorMultiplier.toFixed(2)}`,
-    "```",
-    renderTower(state),
-    "```",
-  ];
-
-  if (isPlaying) {
-    const nextReach = reachMultiplier(state, state.currentFloor);
-    headerLines.push(
-      `第 **${state.currentFloor + 1}** 層・踩對 → 累積 ×${nextReach.toFixed(2)}`
-    );
-    if (state.currentFloor > 0) {
-      const cash = Math.floor(state.bet * state.accMultiplier + 1e-9);
-      headerLines.push(`收手可拿：**${cash.toLocaleString()}** credits`);
+  let files = [];
+  let imageName;
+  let fallbackLines = [];
+  try {
+    const buf = await generateTowerCard(state, {
+      username,
+      balance,
+      diffLabel: `${diff.label}（${state.tilesPerFloor} 格 ${state.trapsPerFloor} 雷）`,
+    });
+    imageName = `tower-${state.gameId}-${state.currentFloor}.png`;
+    files = [new AttachmentBuilder(buf, { name: imageName })];
+  } catch (e) {
+    console.log(`[WARN] tower card render failed, falling back to text: ${e.message}`);
+    fallbackLines = [
+      `難度：**${diff.label}**（${state.tilesPerFloor} 格 ${state.trapsPerFloor} 雷）・每層 ×${state.floorMultiplier.toFixed(2)}`,
+      "```",
+      renderTower(state),
+      "```",
+    ];
+    if (isPlaying) {
+      const nextReach = reachMultiplier(state, state.currentFloor);
+      fallbackLines.push(
+        `第 **${state.currentFloor + 1}** 層・踩對 → 累積 ×${nextReach.toFixed(2)}`
+      );
+      if (state.currentFloor > 0) {
+        const cash = Math.floor(state.bet * state.accMultiplier + 1e-9);
+        fallbackLines.push(`收手可拿：**${cash.toLocaleString()}** credits`);
+      }
     }
   }
 
@@ -164,16 +179,17 @@ async function renderMessage(state, { username, balance, userId, avatarURL } = {
     user: { id: userId || state.userId, displayName: username, avatarURL },
     outcome,
     headline: isPlaying ? null : settleHeadline(state),
-    lines: headerLines,
+    lines: fallbackLines,
     bet: state.bet,
     net: isPlaying ? undefined : net,
     balance: isPlaying || typeof balance !== "number" ? undefined : balance,
+    imageName,
     footer: isPlaying
       ? `累積倍率 ×${state.accMultiplier.toFixed(2)} ・ 已爬 ${state.currentFloor}/${state.maxFloors} 層`
       : undefined,
   });
 
-  return { content: "", embeds: [embed], components, files: [] };
+  return { content: "", embeds: [embed], components, files };
 }
 
 module.exports = {
