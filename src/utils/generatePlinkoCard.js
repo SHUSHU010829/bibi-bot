@@ -37,7 +37,9 @@ function bucketColor(mult) {
 const CW = 78; // 每格 / 每欄寬
 const SY = 54; // 每排垂直間距
 const PEG_TOP = 26;
-const PAD = 28;
+const PAD = 28; // 白框外的暗色留白
+const INNER_PAD_X = 26; // 白框內左右留白
+const BORDER = 3; // 白框線寬
 
 // 第 j 層（0..R）、索引 p（0..j，= 目前往右次數）的釘 / 球座標。
 // 設計成 x(R,p) 剛好對齊底部第 p 個落點格中心。
@@ -142,9 +144,8 @@ function buildMarkup(result, opts) {
         </div>
 
         <div style="display:flex;width:100%;justify-content:space-between;align-items:center;margin-top:20px;padding-top:16px;border-top:2px dashed ${P.muted};">
-          <div style="display:flex;flex-direction:column;">
-            <div style="display:flex;font-family:'NotoSansTC';font-weight:500;font-size:15px;color:${P.muted};letter-spacing:3px;padding-right:3px;">${username || "玩家"}</div>
-            <div style="display:flex;font-family:'SpaceMono';font-weight:700;font-size:18px;color:${P.ink};margin-top:4px;">中風險 ・ ${R} 排</div>
+          <div style="display:flex;align-items:center;">
+            <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:20px;color:${P.ink};letter-spacing:3px;padding-right:3px;">${username || "玩家"}</div>
           </div>
           <div style="display:flex;align-items:flex-end;">
             <div style="display:flex;flex-direction:column;align-items:flex-end;margin-right:24px;">
@@ -170,7 +171,8 @@ function buildMarkup(result, opts) {
 async function generatePlinkoCard(result, opts = {}) {
   const R = result.rows;
   const boardW = CW * (R + 1);
-  const cardW = boardW + PAD * 2;
+  // 卡寬要含：白框外留白 + 白框線 + 白框內留白，板面才不會頂到白框。
+  const cardW = boardW + (PAD + BORDER + INNER_PAD_X) * 2;
   const boardH = PEG_TOP + R * SY + 28;
   const cardH = boardH + 394; // 板面 + 頁首/頁尾固定高
   const markup = buildMarkup(result, { ...opts, cardW, cardH });
