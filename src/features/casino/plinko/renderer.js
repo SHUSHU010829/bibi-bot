@@ -5,6 +5,7 @@ const { AttachmentBuilder } = require("discord.js");
 const { buildReplayRow } = require("../replay");
 const { buildCasinoEmbed } = require("../casinoEmbed");
 const generatePlinkoCard = require("../../../utils/generatePlinkoCard");
+const generatePlinkoGif = require("../../../utils/generatePlinkoGif");
 
 const RISK_LABEL = { low: "低風險", medium: "中風險", high: "高風險" };
 
