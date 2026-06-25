@@ -94,7 +94,18 @@ module.exports = {
       const username = interaction.member?.displayName || interaction.user.username;
       const member = interaction.member;
 
-      const before = await client.userCoinsCollection.findOne({ userId, guildId });
+      const jackpotCfg = getJackpotCfg();
+      const jackpotEnabled = jackpotCfg?.enabled !== false;
+      const seed = jackpotCfg?.seedAmount ?? 5000;
+      const contributionRate = jackpotCfg?.contributionRate ?? 0.03;
+
+      // Phase 1：餘額 + 彩池一次平行讀完（兩個 collection 互不相關）
+      const [before, prePoolDoc] = await Promise.all([
+        client.userCoinsCollection.findOne({ userId, guildId }),
+        jackpotEnabled
+          ? getJackpotPool(client, guildId).catch(() => null)
+          : Promise.resolve(null),
+      ]);
       const balance = before?.totalCoins || 0;
       const bet = allIn ? balance : betInput;
       if (allIn && balance < minBet) {
@@ -109,8 +120,10 @@ module.exports = {
       }
 
       const roundId = crypto.randomUUID();
+      const prePoolAmount = prePoolDoc?.amount ?? seed;
+      const contribution = jackpotEnabled ? Math.floor(bet * contributionRate) : 0;
 
-      // 扣下注
+      // Phase 2：扣下注（必須先成功才繼續，不能 race）
       const betResult = await grantCoins(client, {
         userId,
         guildId,
@@ -125,86 +138,96 @@ module.exports = {
         return interaction.editReply("🔧 下注失敗，請稍後再試。");
       }
 
-      // 累積彩池：先把這筆下注的 3% 灌進池
-      const jackpotCfg = getJackpotCfg();
-      const jackpotEnabled = jackpotCfg?.enabled !== false;
-      if (jackpotEnabled) {
-        await contributeJackpot(client, guildId, bet).catch((e) =>
-          console.log(`[SLOT] jackpot contribute failed: ${e}`.yellow)
-        );
-      }
-
-      // 跑抽獎
+      // Phase 3：抽獎（純 CPU）
       const result = spin({ bet });
-      let balanceAfter = betResult.doc?.totalCoins ?? balance - bet;
-      let jackpotBust = 0;
+      const isJackpot = jackpotEnabled && result.matchType === "jackpot";
 
-      // 中 jackpot：把整池額外送給玩家、並重置回 seed
-      if (jackpotEnabled && result.matchType === "jackpot") {
-        jackpotBust = await bustJackpot(client, guildId).catch((e) => {
-          console.log(`[SLOT] jackpot bust failed: ${e}`.red);
-          return 0;
-        });
+      // Phase 4：彩池 ops
+      // - 非 jackpot：contribute 直接 fire-and-forget，pool 數字由 prePool + contribution 投影出來
+      // - jackpot：必須 await contribute → bust 才能拿到真正的爆池金額
+      let jackpotBust = 0;
+      let jackpotPool;
+      if (jackpotEnabled) {
+        if (isJackpot) {
+          await contributeJackpot(client, guildId, bet).catch((e) =>
+            console.log(`[SLOT] jackpot contribute failed: ${e}`.yellow)
+          );
+          jackpotBust = await bustJackpot(client, guildId).catch((e) => {
+            console.log(`[SLOT] jackpot bust failed: ${e}`.red);
+            return 0;
+          });
+          jackpotPool = seed;
+        } else {
+          contributeJackpot(client, guildId, bet).catch((e) =>
+            console.log(`[SLOT] jackpot contribute failed: ${e}`.yellow)
+          );
+          jackpotPool = prePoolAmount + contribution;
+        }
+      } else {
+        jackpotPool = null;
       }
 
       const totalPayout = result.payout + jackpotBust;
+      const balanceAfter = balance - bet + totalPayout;
 
-      // 派彩（base + jackpot bust 一起發）
-      if (totalPayout > 0) {
-        const payoutResult = await grantCoins(client, {
-          userId,
-          guildId,
-          username,
-          avatarHash: interaction.user.avatar,
-          amount: totalPayout,
-          source: "payout",
-          member,
-          meta: {
-            game: "slot",
-            matchType: result.matchType,
-            matchKey: result.matchKey,
-            multiplier: result.multiplier,
-            basePayout: result.payout,
-            jackpotBust,
-            bet,
-            roundId,
-          },
-        });
-        balanceAfter = payoutResult?.doc?.totalCoins ?? balanceAfter + totalPayout;
-      }
+      // Phase 5：GIF / 派彩 / saveLastBet 全部平行 — 互不依賴，這是省最多的地方
+      const payoutPromise =
+        totalPayout > 0
+          ? grantCoins(client, {
+              userId,
+              guildId,
+              username,
+              avatarHash: interaction.user.avatar,
+              amount: totalPayout,
+              source: "payout",
+              member,
+              meta: {
+                game: "slot",
+                matchType: result.matchType,
+                matchKey: result.matchKey,
+                multiplier: result.multiplier,
+                basePayout: result.payout,
+                jackpotBust,
+                bet,
+                roundId,
+              },
+            }).catch((e) => {
+              console.log(`[SLOT] payout grantCoins failed: ${e}`.red);
+              return null;
+            })
+          : Promise.resolve(null);
 
-      // 取得目前 pool 顯示在卡片上
-      let jackpotPool = null;
-      if (jackpotEnabled) {
-        const poolDoc = await getJackpotPool(client, guildId).catch(() => null);
-        jackpotPool = poolDoc?.amount ?? null;
-      }
-
-      // 出圖（GIF 一鏡到底，含轉軸動畫）— 失敗就降級成純文字 embed
-      let attachment = null;
-      try {
-        const buf = await generateSlotGif({
-          userId,
-          username,
-          grid: result.grid,
-          lines: result.lines,
-          matchType: result.matchType,
-          matchedSymbol: result.matchedSymbol,
-          bet,
-          payout: totalPayout,
-          multiplier: result.multiplier,
-          balance: balanceAfter,
-          jackpotPool,
-          jackpotBust,
-        });
-        attachment = new AttachmentBuilder(buf, {
-          name: `slot-${roundId}.gif`,
-        });
-      } catch (gifErr) {
+      const gifPromise = generateSlotGif({
+        userId,
+        username,
+        grid: result.grid,
+        lines: result.lines,
+        matchType: result.matchType,
+        matchedSymbol: result.matchedSymbol,
+        bet,
+        payout: totalPayout,
+        multiplier: result.multiplier,
+        balance: balanceAfter,
+        jackpotPool,
+        jackpotBust,
+      }).catch((gifErr) => {
         console.log(
           `[WARN] slot gif render failed, falling back to text: ${gifErr.message}`.yellow
         );
-      }
+        return null;
+      });
+
+      const savePromise = saveLastBet(client, {
+        userId,
+        guildId,
+        game: "slot",
+        payload: { options: { 下注: bet, 梭哈: false } },
+      }).catch(() => null);
+
+      const [, buf] = await Promise.all([payoutPromise, gifPromise, savePromise]);
+      const attachment = buf
+        ? new AttachmentBuilder(buf, { name: `slot-${roundId}.gif` })
+        : null;
 
       const jackpotLine =
         result.matchType === "jackpot" && jackpotBust > 0
@@ -222,13 +245,6 @@ module.exports = {
         balanceAfter <= 0
           ? `🚨 **你破產了！** 餘額歸零，去發言、聊天賺金幣再來吧！`
           : "";
-
-      await saveLastBet(client, {
-        userId,
-        guildId,
-        game: "slot",
-        payload: { options: { 下注: bet, 梭哈: false } },
-      });
 
       // 結果改用賭場共用 embed 呈現：作者放玩家頭像／名稱，圖片塞進 embed 內。
       const net = totalPayout - bet;
