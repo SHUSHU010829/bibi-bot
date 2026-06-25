@@ -27,28 +27,6 @@ module.exports = {
         .setRequired(false)
         .setMinValue(getPlinkoConfig().minBet ?? 10)
     )
-    .addStringOption((opt) =>
-      opt
-        .setName("風險")
-        .setDescription("風險越高，邊緣倍率越誇張、中央越容易賠")
-        .setRequired(false)
-        .addChoices(
-          { name: "低風險", value: "low" },
-          { name: "中風險", value: "medium" },
-          { name: "高風險", value: "high" }
-        )
-    )
-    .addIntegerOption((opt) =>
-      opt
-        .setName("排數")
-        .setDescription("釘板排數（越多排，倍率分布越極端）")
-        .setRequired(false)
-        .addChoices(
-          { name: "8 排", value: 8 },
-          { name: "12 排", value: 12 },
-          { name: "16 排", value: 16 }
-        )
-    )
     .addBooleanOption((opt) =>
       opt
         .setName("梭哈")
@@ -78,16 +56,12 @@ module.exports = {
       const minBet = cfg.minBet ?? 10;
       const maxBet = cfg.maxBet ?? 0;
       const multipliers = cfg.multipliers;
-      const defaultRisk = cfg.defaultRisk ?? "medium";
-      const defaultRows = cfg.defaultRows ?? 12;
-
-      const risk = interaction.options.getString("風險") || defaultRisk;
-      const rows = interaction.options.getInteger("排數") || defaultRows;
+      // 風險 / 排數固定（綁定圖形板面）：中風險、8 排（9 格）。
+      const risk = cfg.defaultRisk ?? "medium";
+      const rows = cfg.defaultRows ?? 8;
 
       if (!RISK_LABEL[risk] || !multipliers?.[risk]?.[String(rows)]) {
-        return interaction.editReply(
-          "這個風險 / 排數組合暫不開放，請換一組再試。"
-        );
+        return interaction.editReply("🔧 彈珠台板面設定有誤，請聯絡舒舒！");
       }
 
       const betInput = interaction.options.getInteger("下注");
@@ -168,7 +142,7 @@ module.exports = {
         userId,
         guildId,
         game: "plinko",
-        payload: { options: { 下注: bet, 風險: risk, 排數: rows, 梭哈: false } },
+        payload: { options: { 下注: bet, 梭哈: false } },
       });
 
       const payload = await renderMessage(result, {
