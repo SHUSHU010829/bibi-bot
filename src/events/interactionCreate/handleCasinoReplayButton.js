@@ -27,6 +27,7 @@ const GAME_COMMAND_PATHS = {
   lottery: "../../commands/casino/lottery",
   tower: "../../commands/casino/tower",
   mines: "../../commands/casino/mines",
+  plinko: "../../commands/casino/plinko",
 };
 
 // 把存起來的選項 map 包成一個假的 interaction.options。

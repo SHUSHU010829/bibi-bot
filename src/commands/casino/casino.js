@@ -20,6 +20,7 @@ const GAMES = [
   require("./slot"),
   require("./tower"),
   require("./mines"),
+  require("./plinko"),
 ];
 
 const gameByName = new Map();
