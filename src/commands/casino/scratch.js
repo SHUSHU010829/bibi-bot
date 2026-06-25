@@ -132,7 +132,13 @@ module.exports = {
       }
       const balanceAfter = betResult.doc?.totalCoins ?? balance - bet;
 
-      const initial = startGame({ bet, prizes });
+      const initial = startGame({
+        bet,
+        prizes,
+        luckyCount: cfg.luckyCount ?? 3,
+        numberMax: cfg.numberMax ?? 99,
+        decoys: cfg.decoyPrizes,
+      });
       const now = new Date();
       const doc = {
         gameId,
@@ -141,9 +147,10 @@ module.exports = {
         username,
         bet: initial.bet,
         status: initial.status,
-        grid: initial.grid,
+        luckyNumbers: initial.luckyNumbers,
+        cells: initial.cells,
+        winIndex: initial.winIndex,
         revealed: initial.revealed,
-        winSymbol: initial.winSymbol,
         multiplier: initial.multiplier,
         result: initial.result,
         payout: initial.payout,
