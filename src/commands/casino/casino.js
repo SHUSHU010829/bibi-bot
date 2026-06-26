@@ -26,7 +26,6 @@ const GAMES = [
   require("./fishPrawnCrab"),
   require("./luckyWheel"),
   require("./bingo"),
-  require("./redPacket"),
   require("./russianRoulette"),
 ];
 
