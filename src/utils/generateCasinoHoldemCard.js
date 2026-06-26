@@ -186,7 +186,6 @@ function buildMarkup(state, { username } = {}) {
     infoRow =
       infoChip("底注", ante.toLocaleString()) +
       infoChip("跟注", callBet.toLocaleString()) +
-      infoChip("彩池", pot.toLocaleString(), PALETTE.gold) +
       infoChip("淨輸贏", netStr, netColor);
   } else if (folded) {
     infoRow =

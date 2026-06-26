@@ -122,8 +122,6 @@ function buildMarkup(data) {
     : `沒中  下次再來`;
   const resultColor = won ? PALETTE.gold : PALETTE.muted;
 
-  const handle = `@${(username || "shushu").toUpperCase()}`;
-
   const playerHand = buildHand(
     "閒",
     "PLAYER",
@@ -180,10 +178,6 @@ function buildMarkup(data) {
             <div style="display:flex;font-family:'SpaceMono';font-size:13px;letter-spacing:5px;color:${PALETTE.muted};line-height:1;padding-right:5px;">BALANCE</div>
             <div style="display:flex;margin-left:7px;font-family:'NotoSansTC';font-weight:900;font-size:24px;color:${PALETTE.ink};line-height:1;">${(balance || 0).toLocaleString()}</div>
           </div>
-          <div style="display:flex;font-family:'SpaceMono';font-size:14px;letter-spacing:5px;color:${PALETTE.ink};padding-right:5px;">${handle}</div>
-        </div>
-
-        <div style="display:flex;width:100%;justify-content:center;margin-top:10px;">
           <div style="display:flex;font-family:'SpaceMono';font-size:12px;letter-spacing:4px;color:${PALETTE.muted};padding-right:4px;">逼逼賭場 · BACCARAT</div>
         </div>
 

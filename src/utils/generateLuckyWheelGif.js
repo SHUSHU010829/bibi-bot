@@ -125,17 +125,17 @@ function drawWheel(ctx, segments, wheelAngle) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Label, rotated to face outward
+    // Label — horizontal (always upright = readable) and large
     const midA = a0 + step / 2;
-    const tr = R_SECTOR * 0.72;
+    const tr = R_SECTOR * 0.64;
+    const lab = wedgeLabel(seg);
     ctx.save();
     ctx.translate(Math.cos(midA) * tr, Math.sin(midA) * tr);
-    ctx.rotate(midA + Math.PI / 2);
-    ctx.font = '900 17px NotoSans';
+    ctx.font = `900 ${lab.length >= 4 ? 26 : lab.length >= 2 ? 30 : 36}px NotoSans`;
     ctx.fillStyle = (Number(seg?.mult) || 0) >= 50 ? C.ink : C.white;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(wedgeLabel(seg), 0, 0);
+    ctx.fillText(lab, 0, 0);
     ctx.restore();
   }
 
@@ -215,7 +215,7 @@ function drawInfoPanel(ctx, { phase, segments, winningIndex, bet, payout, mult, 
   if (phase === 'result') {
     const win = payout > bet;
     const seg = segments[winningIndex] || {};
-    const segText = `${seg.emoji ? `${seg.emoji} ` : ''}${label || wedgeLabel(seg)}`;
+    const segText = `${label || wedgeLabel(seg)}`;
 
     // Result chip
     ctx.fillStyle = mult >= 50 ? C.goldBright : win ? C.win : C.loss;
@@ -330,7 +330,7 @@ async function generateLuckyWheelGif({ segments, winningIndex, bet, payout, mult
   const ctx = canvas.getContext('2d');
 
   const SPIN_FRAMES = 32;
-  const STILL_FRAMES = 8;
+  const STILL_FRAMES = 22;
   const TOTAL_FRAMES = SPIN_FRAMES + STILL_FRAMES;
 
   // Yield the event loop periodically so queued Discord interactions aren't
