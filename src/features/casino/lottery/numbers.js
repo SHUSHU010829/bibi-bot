@@ -16,6 +16,14 @@ const LOTTERY_CONFIG = {
     label: "小樂透",
     emoji: "🎫",
   },
+  power_38_8: {
+    range: 38,
+    pickCount: 6,
+    label: "威力彩",
+    emoji: "⚡",
+    // 第二區：1~8 選 1，與第一區獨立（號碼可重疊，分屬不同區）
+    special: { range: 8, pickCount: 1, label: "第二區" },
+  },
 };
 
 function getLotteryConfig(lotteryType) {
@@ -179,6 +187,42 @@ function generateCombinations(baseNumbers, pickCount) {
 }
 
 /**
+ * 該玩法是否有第二區（威力彩式雙區）。
+ */
+function hasSecondZone(lotteryType) {
+  return !!getLotteryConfig(lotteryType)?.special;
+}
+
+/**
+ * 隨機抽第二區號碼（pickCount 為 1 時回傳單一數字）。
+ */
+function pickRandomSpecial(lotteryType) {
+  const cfg = getLotteryConfig(lotteryType);
+  if (!cfg?.special) return null;
+  const picked = pickRandomNumbers(cfg.special.pickCount, cfg.special.range);
+  return cfg.special.pickCount === 1 ? picked[0] : picked;
+}
+
+/**
+ * 驗證玩家輸入的第二區號碼（單一數字）。
+ * @returns {{ ok: boolean, value?: number, error?: string }}
+ */
+function validateSpecial(rawInput, lotteryType) {
+  const cfg = getLotteryConfig(lotteryType);
+  if (!cfg?.special) return { ok: false, error: "此玩法沒有第二區" };
+  const label = cfg.special.label || "第二區";
+  const range = cfg.special.range;
+  if (typeof rawInput !== "string" || !rawInput.trim()) {
+    return { ok: false, error: `請輸入${label}號碼(1-${range})` };
+  }
+  const n = Number(rawInput.trim());
+  if (!Number.isInteger(n) || n < 1 || n > range) {
+    return { ok: false, error: `${label}必須是 1-${range} 的整數` };
+  }
+  return { ok: true, value: n };
+}
+
+/**
  * 一組號碼裡是否存在長度 ≥ minRun 的連號（連續整數）。
  * 例：[3,7,8,9,20] minRun=3 → true（7・8・9）。
  */
@@ -218,4 +262,7 @@ module.exports = {
   generateCombinations,
   combinationCount,
   hasConsecutiveRun,
+  hasSecondZone,
+  pickRandomSpecial,
+  validateSpecial,
 };

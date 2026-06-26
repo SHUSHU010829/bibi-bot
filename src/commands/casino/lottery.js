@@ -23,6 +23,9 @@ const {
   validateNumbers,
   validateWheelingNumbers,
   listLotteryTypes,
+  hasSecondZone,
+  pickRandomSpecial,
+  validateSpecial,
 } = require("../../features/casino/lottery/numbers");
 const {
   calculateWheelingCost,
@@ -42,12 +45,22 @@ const TYPE_CHOICES = [
   { name: "大樂透 6/49", value: "6_49" },
   { name: "小樂透 3/20", value: "3_20" },
 ];
+// 購買可選威力彩；訂閱 / 包牌維持原本玩法（威力彩雙區暫不支援自動買 / 包牌）
+const BUY_TYPE_CHOICES = [
+  ...TYPE_CHOICES,
+  { name: "威力彩 6/38 + 第二區", value: "power_38_8" },
+];
 
 const PRIZE_LABEL = {
   jackpot: "🎉 頭獎",
   second: "💎 二獎",
   third: "🥉 三獎",
   fourth: "🎯 四獎",
+  fifth: "5️⃣ 五獎",
+  sixth: "6️⃣ 六獎",
+  seventh: "7️⃣ 七獎",
+  eighth: "8️⃣ 八獎",
+  ninth: "9️⃣ 九獎",
 };
 const SOURCE_LABEL = {
   manual: "手買",
@@ -55,7 +68,7 @@ const SOURCE_LABEL = {
   wheeling: "包牌",
   auto: "自動",
 };
-const TYPE_LABEL = { "6_49": "大樂透", "3_20": "小樂透" };
+const TYPE_LABEL = { "6_49": "大樂透", "3_20": "小樂透", power_38_8: "威力彩" };
 const RESULT_LABEL = { won: "中獎", lost: "未中", pending: "等開獎" };
 
 const HISTORY_TIMEOUT_MS = 3 * 60 * 1000;
@@ -85,7 +98,7 @@ module.exports = {
             .setName("玩法")
             .setDescription("玩法")
             .setRequired(true)
-            .addChoices(...TYPE_CHOICES)
+            .addChoices(...BUY_TYPE_CHOICES)
         )
         .addIntegerOption((o) =>
           o
@@ -98,8 +111,16 @@ module.exports = {
         .addStringOption((o) =>
           o
             .setName("號碼")
-            .setDescription("自選號碼(空白/逗號分隔,留空則隨機)")
+            .setDescription("自選第一區號碼(空白/逗號分隔,留空則隨機)")
             .setRequired(false)
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName("第二區")
+            .setDescription("威力彩第二區號碼 1-8(自選第一區時必填,隨機則免)")
+            .setRequired(false)
+            .setMinValue(1)
+            .setMaxValue(8)
         )
     )
     .addSubcommand((s) =>
@@ -219,35 +240,46 @@ async function runBuy(client, interaction) {
 
     const ticketCountInput = interaction.options.getInteger("張數");
     const numbersInput = interaction.options.getString("號碼");
+    const specialInput = interaction.options.getInteger("第二區");
     const ticketPrice = typeCfg.ticketPrice || 0;
     const maxTicketsPerOrder = typeCfg.maxTicketsPerOrder || 100;
+    const withSpecial = hasSecondZone(lotteryType);
 
-    let numbersList = [];
+    // entries: [{ numbers:number[], special:number|null }]
+    let entries = [];
+    const count = ticketCountInput || 1;
+    if (count > maxTicketsPerOrder) {
+      return interaction.editReply(`❌ 單筆最多買 ${maxTicketsPerOrder} 張票`);
+    }
     if (numbersInput && numbersInput.trim()) {
       const v = validateNumbers(numbersInput, lotteryType);
       if (!v.ok) {
         return interaction.editReply(`❌ ${v.error}`);
       }
-      const count = ticketCountInput || 1;
-      if (count > maxTicketsPerOrder) {
-        return interaction.editReply(
-          `❌ 單筆最多買 ${maxTicketsPerOrder} 張票`
+      let special = null;
+      if (withSpecial) {
+        const sv = validateSpecial(
+          specialInput != null ? String(specialInput) : "",
+          lotteryType
         );
-      }
-      for (let i = 0; i < count; i++) numbersList.push([...v.numbers]);
-    } else {
-      const count = ticketCountInput || 1;
-      if (count > maxTicketsPerOrder) {
-        return interaction.editReply(
-          `❌ 單筆最多買 ${maxTicketsPerOrder} 張票`
-        );
+        if (!sv.ok) {
+          return interaction.editReply(`❌ ${sv.error}（自選號碼時請一併填「第二區」）`);
+        }
+        special = sv.value;
       }
       for (let i = 0; i < count; i++) {
-        numbersList.push(pickRandomNumbers(cfg.pickCount, cfg.range));
+        entries.push({ numbers: [...v.numbers], special });
+      }
+    } else {
+      for (let i = 0; i < count; i++) {
+        entries.push({
+          numbers: pickRandomNumbers(cfg.pickCount, cfg.range),
+          special: withSpecial ? pickRandomSpecial(lotteryType) : null,
+        });
       }
     }
 
-    const totalCost = numbersList.length * ticketPrice;
+    const totalCost = entries.length * ticketPrice;
 
     let draw = await getCurrentOpenDraw(client, lotteryType);
     if (!draw) draw = await ensureNextDraw(client, lotteryType);
@@ -283,26 +315,28 @@ async function runBuy(client, interaction) {
         lotteryType,
         drawId: draw.drawId,
         orderId,
-        ticketCount: numbersList.length,
+        ticketCount: entries.length,
       },
     });
     if (!betResult) {
       return interaction.editReply("🔧 扣款失敗,請稍後再試。");
     }
 
-    const ticketDocs = numbersList.map((nums) => ({
+    const ticketDocs = entries.map((e) => ({
       ticketId: crypto.randomUUID(),
       drawId: draw.drawId,
       lotteryType,
       userId,
       guildId,
       username,
-      numbers: nums,
+      numbers: e.numbers,
+      special: e.special,
       pricePaid: ticketPrice,
       source: "manual",
       subscriptionId: null,
       wheelingId: null,
       matched: 0,
+      specialMatched: false,
       prize: null,
       payoutAmount: 0,
       createdAt: new Date(),
@@ -334,7 +368,11 @@ async function runBuy(client, interaction) {
 
     const previewLines = ticketDocs
       .slice(0, 10)
-      .map((t, i) => `\`${String(i + 1).padStart(2, " ")}.\` ${t.numbers.join(" ・ ")}`)
+      .map(
+        (t, i) =>
+          `\`${String(i + 1).padStart(2, " ")}.\` ${t.numbers.join(" ・ ")}` +
+          (t.special != null ? ` ＋ 第二區 **${t.special}**` : "")
+      )
       .join("\n");
     const moreLine =
       ticketDocs.length > 10 ? `\n…再 ${ticketDocs.length - 10} 張` : "";
@@ -349,6 +387,7 @@ async function runBuy(client, interaction) {
           玩法: lotteryType,
           張數: ticketCountInput,
           號碼: numbersInput,
+          第二區: specialInput,
         },
       },
     });
@@ -695,7 +734,8 @@ async function runHistory(client, interaction) {
       const lines = tickets.map((t) => {
         const cfg = getLotteryConfig(t.lotteryType);
         const draw = drawById.get(t.drawId);
-        const numStr = t.numbers.join(" ・ ");
+        const numStr =
+          t.numbers.join(" ・ ") + (t.special != null ? ` ＋${t.special}` : "");
         const bonusTags = [];
         if (t.bonusFlags?.bonusBall) bonusTags.push("🎯加碼球");
         if (t.bonusFlags?.consecutive) bonusTags.push("🔗連號");

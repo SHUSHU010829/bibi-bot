@@ -71,6 +71,9 @@ async function announceDrawResult(client, drawResult) {
     ? `\n滾入下期:**${draw.payout.rolledOver.amount.toLocaleString()}** credits`
     : "";
 
+  const specialZoneLine =
+    draw.specialNumber != null ? `\n第二區:**${draw.specialNumber}**` : "";
+
   const bonus = draw.payout?.bonus;
   const bonusBallLine =
     draw.bonusBall != null
@@ -87,7 +90,7 @@ async function announceDrawResult(client, drawResult) {
   await channel.send({
     content:
       `# ${emoji} ${label} 第 ${draw.drawNumber} 期 開獎\n` +
-      `中獎號碼:**${draw.winningNumbers.join(" ・ ")}**\n` +
+      `中獎號碼:**${draw.winningNumbers.join(" ・ ")}**${specialZoneLine}\n` +
       `${winnerLine}${rolloverLine}${bonusBallLine}${consecutiveLine}\n\n` +
       `查詢個人結果:\`/樂透 歷史\``,
     files: [attachment],

@@ -291,6 +291,24 @@
           "wheelingEnabled": false,
           "drawWeekdays": [3, 7],
           "drawHour": 21
+        },
+        "power_38_8": {
+          "enabled": true,
+          "ticketPrice": 50,
+          "systemSeed": 20000,
+          "maxTicketsPerOrder": 100,
+          "wheelingEnabled": false,
+          "drawWeekdays": [1, 4],
+          "drawHour": 21,
+          "parimutuel": { "jackpot": 0.6, "second": 0.12, "third": 0.08 },
+          "fixedPrizes": {
+            "fourth": 2000,
+            "fifth": 400,
+            "sixth": 200,
+            "seventh": 80,
+            "eighth": 40,
+            "ninth": 20
+          }
         }
       },
       "subscription": {
@@ -300,7 +318,8 @@
       },
       "poolMilestones": {
         "6_49": [10000, 20000, 30000, 50000, 75000, 100000, 150000, 200000],
-        "3_20": [1000, 2000, 5000, 10000]
+        "3_20": [1000, 2000, 5000, 10000],
+        "power_38_8": [50000, 100000, 200000, 350000, 500000, 750000, 1000000]
       },
       "reminders": {
         "enabled": true,

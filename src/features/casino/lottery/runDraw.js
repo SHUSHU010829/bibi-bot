@@ -7,8 +7,13 @@ require("colors");
 const { DateTime } = require("luxon");
 
 const { casino } = require("../../../config");
-const { generateWinningNumbers, generateBonusBall, buildDrawId } = require("./draw");
-const { countMatches, hasConsecutiveRun } = require("./numbers");
+const {
+  generateWinningNumbers,
+  generateSpecialNumber,
+  generateBonusBall,
+  buildDrawId,
+} = require("./draw");
+const { countMatches, hasConsecutiveRun, hasSecondZone } = require("./numbers");
 const { calculatePayout } = require("./payout");
 const { generateReminderSchedule } = require("./reminderScheduler");
 const { nextDrawTime } = require("./schedule");
@@ -138,14 +143,19 @@ async function runDraw(client, lotteryType) {
   console.log(`[LOTTERY] 開始開獎 ${draw.drawId}(彩池 ${draw.pool})`.cyan);
 
   const winningNumbers = generateWinningNumbers(lotteryType);
+  // 威力彩式雙區：抽第二區號碼
+  const winningSpecial = hasSecondZone(lotteryType)
+    ? generateSpecialNumber(lotteryType)
+    : null;
   const tickets = await client.lotteryTicketsCollection
     .find({ drawId: draw.drawId })
     .toArray();
 
-  // 比對每張票
+  // 比對每張票（第一區命中數 + 第二區是否命中）
   const ticketMatched = tickets.map((t) => ({
     ticketId: t.ticketId,
     matched: countMatches(t.numbers, winningNumbers),
+    specialMatched: winningSpecial != null && t.special === winningSpecial,
   }));
 
   const typeCfg = getTypeConfig(lotteryType);
@@ -199,7 +209,8 @@ async function runDraw(client, lotteryType) {
     const ops = [];
     for (const a of ticketAssignments) {
       const tk = ticketsById.get(a.ticketId);
-      const matched = ticketMatched.find((m) => m.ticketId === a.ticketId)?.matched || 0;
+      const mInfo = ticketMatched.find((m) => m.ticketId === a.ticketId);
+      const matched = mInfo?.matched || 0;
       const bonus = ticketBonus.get(a.ticketId);
       const bonusAmount = bonus?.amount || 0;
       ops.push({
@@ -208,6 +219,7 @@ async function runDraw(client, lotteryType) {
           update: {
             $set: {
               matched,
+              specialMatched: !!mInfo?.specialMatched,
               prize: a.prize,
               payoutAmount: a.payoutAmount,
               bonusPayout: bonusAmount,
@@ -305,14 +317,17 @@ async function runDraw(client, lotteryType) {
 
   // 結算 draw doc
   const rolledOverAmount = prizes.rolledOver?.amount || 0;
-  const payoutDoc = {
-    jackpot: prizes.jackpot,
-    second: prizes.second,
-    fourth: prizes.fourth || null,
-    third: prizes.third || null,
-    rolledOver: { amount: rolledOverAmount, toDrawId: null },
-    bonus: bonusBall != null || bonusSummary.totalBonusPaid > 0 ? bonusSummary : null,
-  };
+  // 通用組裝：複製所有獎項層級（6/49 有 jackpot~fourth，威力彩有 jackpot~ninth），
+  // 再補 rolledOver / bonus，並保留 third/fourth 的 null 後備（圖卡相容）。
+  const payoutDoc = {};
+  for (const [k, v] of Object.entries(prizes)) {
+    if (k !== "rolledOver") payoutDoc[k] = v;
+  }
+  if (payoutDoc.third === undefined) payoutDoc.third = null;
+  if (payoutDoc.fourth === undefined) payoutDoc.fourth = null;
+  payoutDoc.rolledOver = { amount: rolledOverAmount, toDrawId: null };
+  payoutDoc.bonus =
+    bonusBall != null || bonusSummary.totalBonusPaid > 0 ? bonusSummary : null;
 
   await client.lotteryDrawsCollection.updateOne(
     { _id: draw._id },
@@ -321,6 +336,7 @@ async function runDraw(client, lotteryType) {
         status: "settled",
         drawnAt: new Date(),
         winningNumbers,
+        specialNumber: winningSpecial,
         bonusBall,
         payout: payoutDoc,
         updatedAt: new Date(),
@@ -348,6 +364,7 @@ async function runDraw(client, lotteryType) {
     draw: {
       ...draw,
       winningNumbers,
+      specialNumber: winningSpecial,
       bonusBall,
       payout: payoutDoc,
       status: "settled",
