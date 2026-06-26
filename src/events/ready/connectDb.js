@@ -99,6 +99,10 @@ module.exports = async (client) => {
     // 俄羅斯輪盤牌桌（channel-scoped 等候 → 開轉結算）
     const russianRouletteGamesCollection = database.collection("RussianRouletteGames");
 
+    // 賓果大廳：排程式群組賓果（場次 + 卡片）
+    const bingoHallRoundsCollection = database.collection("BingoHallRounds");
+    const bingoHallCardsCollection = database.collection("BingoHallCards");
+
     // 賭場「再來一局」：每位玩家每款遊戲的上一注參數
     const casinoLastBetsCollection = database.collection("CasinoLastBets");
 
@@ -286,6 +290,8 @@ module.exports = async (client) => {
     client.casinoHoldemGamesCollection = casinoHoldemGamesCollection;
     client.redPacketGamesCollection = redPacketGamesCollection;
     client.russianRouletteGamesCollection = russianRouletteGamesCollection;
+    client.bingoHallRoundsCollection = bingoHallRoundsCollection;
+    client.bingoHallCardsCollection = bingoHallCardsCollection;
     client.casinoLastBetsCollection = casinoLastBetsCollection;
     client.twitchScoreFlushesCollection = twitchScoreFlushesCollection;
     client.twitchLiveStateCollection = twitchLiveStateCollection;
@@ -907,6 +913,42 @@ module.exports = async (client) => {
       await russianRouletteGamesCollection.createIndex(
         { updatedAt: 1 },
         { expireAfterSeconds: 30 * 24 * 60 * 60, name: "rr_ttl_30d" }
+      );
+
+      // 賓果大廳場次索引：同時只能有一場 open（partial unique）+ 到期掃描
+      await bingoHallRoundsCollection.createIndex(
+        { roundId: 1 },
+        { unique: true, name: "uniq_bh_roundId" }
+      );
+      await bingoHallRoundsCollection.createIndex(
+        { status: 1 },
+        {
+          unique: true,
+          partialFilterExpression: { status: "open" },
+          name: "uniq_bh_single_open",
+        }
+      );
+      await bingoHallRoundsCollection.createIndex(
+        { status: 1, scheduledAt: 1 },
+        { name: "bh_status_scheduled" }
+      );
+      await bingoHallRoundsCollection.createIndex(
+        { updatedAt: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "bh_ttl_90d" }
+      );
+
+      // 賓果大廳卡片索引
+      await bingoHallCardsCollection.createIndex(
+        { cardId: 1 },
+        { unique: true, name: "uniq_bhc_cardId" }
+      );
+      await bingoHallCardsCollection.createIndex(
+        { roundId: 1, userId: 1 },
+        { name: "bhc_round_user" }
+      );
+      await bingoHallCardsCollection.createIndex(
+        { createdAt: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "bhc_ttl_90d" }
       );
 
       // 賭場「再來一局」：每人每款遊戲一筆，舊紀錄 30 天後清掉

@@ -2,6 +2,7 @@ require("colors");
 const crypto = require("crypto");
 const {
   SlashCommandBuilder,
+  AttachmentBuilder,
   InteractionContextType,
 } = require("discord.js");
 const { MONEY_EMOJI } = require("../../constants/coin");
@@ -11,6 +12,7 @@ const grantCoins = require("../../features/economy/grantCoins");
 const { spin, DEFAULT_SEGMENTS } = require("../../features/casino/luckyWheel/engine");
 const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
 const { buildCasinoEmbed } = require("../../features/casino/casinoEmbed");
+const generateLuckyWheelGif = require("../../utils/generateLuckyWheelGif");
 
 function getConfig() {
   return casino?.luckyWheel || {};
@@ -167,6 +169,29 @@ module.exports = {
         payload: { options: { 金額: bet, 梭哈: false } },
       });
 
+      let attachment = null;
+      try {
+        const buf = await generateLuckyWheelGif({
+          segments,
+          winningIndex: outcome.segmentIndex,
+          bet,
+          payout: outcome.payout,
+          mult: outcome.mult,
+          label: seg.label,
+          username,
+          balance: balanceAfter,
+        });
+        if (buf) {
+          attachment = new AttachmentBuilder(buf, {
+            name: `luckywheel-${roundId}.gif`,
+          });
+        }
+      } catch (gifErr) {
+        console.log(
+          `[WARN] 幸運轉盤 gif render failed, falling back to text: ${gifErr.message}`.yellow
+        );
+      }
+
       const embed = buildCasinoEmbed({
         game: "🎡 幸運轉盤",
         user: {
@@ -180,11 +205,13 @@ module.exports = {
         bet,
         net,
         balance: balanceAfter,
+        imageName: attachment?.name,
       });
 
       await interaction.editReply({
         content: "",
         embeds: [embed],
+        files: attachment ? [attachment] : [],
         components: [buildReplayRow("luckyWheel", userId, { name: username })],
       });
     } catch (error) {

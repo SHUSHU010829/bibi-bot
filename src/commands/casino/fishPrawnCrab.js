@@ -1,6 +1,10 @@
 require("colors");
 const crypto = require("crypto");
-const { SlashCommandBuilder, InteractionContextType } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  AttachmentBuilder,
+  InteractionContextType,
+} = require("discord.js");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
@@ -11,6 +15,7 @@ const {
   symbolLabel,
   settleRound,
 } = require("../../features/casino/fishPrawnCrab/engine");
+const generateFishPrawnCrabCard = require("../../utils/generateFishPrawnCrabCard");
 const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
 const { buildCasinoEmbed } = require("../../features/casino/casinoEmbed");
 
@@ -177,6 +182,30 @@ module.exports = {
 
       const rolledStr = roll.map((k) => symbolLabel(k)).join("・");
 
+      const net = round.totalPayout - totalBet;
+
+      let attachment = null;
+      try {
+        const buf = await generateFishPrawnCrabCard({
+          userId,
+          username,
+          roll,
+          bets,
+          results: round.results,
+          totalPayout: round.totalPayout,
+          betAmount: totalBet,
+          net,
+          balance: balanceAfter,
+        });
+        attachment = new AttachmentBuilder(buf, {
+          name: `fpc-${roundId}.png`,
+        });
+      } catch (cardErr) {
+        console.log(
+          `[WARN] fishPrawnCrab card render failed, falling back to text: ${cardErr.message}`.yellow
+        );
+      }
+
       const lines = round.results.map((r, i) => {
         const label = symbolLabel(r.bet.symbol);
         if (r.won) {
@@ -189,8 +218,6 @@ module.exports = {
         round.totalPayout > 0
           ? `✨ 開出 ${rolledStr}，總派彩 **+${round.totalPayout.toLocaleString()}** credits`
           : `💸 開出 ${rolledStr}，全部沒中，下次加油！`;
-
-      const net = round.totalPayout - totalBet;
 
       const bankruptLine =
         balanceAfter <= 0
@@ -228,11 +255,13 @@ module.exports = {
         bet: totalBet,
         net,
         balance: balanceAfter,
+        imageName: attachment?.name,
       });
 
       await interaction.editReply({
         content: "",
         embeds: [embed],
+        files: attachment ? [attachment] : [],
         components: [buildReplayRow("fishPrawnCrab", userId, { name: username })],
       });
     } catch (error) {

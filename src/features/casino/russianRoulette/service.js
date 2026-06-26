@@ -4,7 +4,8 @@
 require("colors");
 const { casino } = require("../../../config");
 const grantCoins = require("../../economy/grantCoins");
-const { notifyDm } = require("../notifyAbandon");
+const { notifyEmbed } = require("../notifyAbandon");
+const { MONEY_EMOJI } = require("../../../constants/coin");
 const { resolve } = require("./engine");
 const {
   buildFinishedPayload,
@@ -43,11 +44,10 @@ async function cancelAndRefund(client, gameId, { reason = "cancelled" } = {}) {
       source: "payout",
       meta: { game: "russianRoulette", gameId, kind: "refund", reason },
     }).catch((e) => console.log(`[ROULETTE] refund fail ${gameId}: ${e}`.yellow));
-    await notifyDm(
-      client,
-      p.userId,
-      `🔫 你加入的俄羅斯輪盤這桌${reasonText}，賭注 **${(p.ante || 0).toLocaleString()}** credits 已退回。\n-# 款項一定回到你身上 👍`
-    );
+    await notifyEmbed(client, p.userId, {
+      title: "🔫 俄羅斯輪盤退款",
+      description: `你加入的這桌${reasonText}，賭注 **${(p.ante || 0).toLocaleString()}** ${MONEY_EMOJI} 已退回。`,
+    });
   }
 
   await client.russianRouletteGamesCollection.updateOne(
