@@ -5,6 +5,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  EmbedBuilder,
 } = require("discord.js");
 const { MONEY_EMOJI } = require("../../../constants/coin");
 
@@ -34,34 +35,46 @@ function countdownTag(scheduledAt) {
   return `<t:${Math.floor(new Date(scheduledAt).getTime() / 1000)}:R>`;
 }
 
-// 開場購買訊息（公開、含買卡按鈕）。
-function buildBuyMessage(round, { ticketPrice, buyOptions = [1, 5, 10, 20] } = {}) {
-  const content =
-    `# 🎱 賓果大廳 第 ${round.roundNumber} 場 開賣中！\n` +
-    `累積頭彩：**${(round.jackpotPoolIn || 0).toLocaleString()}** ${MONEY_EMOJI}　・　一張 **${ticketPrice.toLocaleString()}** ${MONEY_EMOJI}\n` +
-    `⏰ 開球 ${countdownTag(round.scheduledAt)}（時間到自動開球，免指令）\n\n` +
-    `-# 點下方按鈕直接買卡。開出 30 球，完成的連線越多分越多，連線最多者獨得累積頭彩！中獎會私訊你兌獎圖。`;
+// 開場購買訊息（公開、Embed + 單一買卡按鈕，點了跳輸入框填張數）。
+function buildBuyMessage(round, { ticketPrice } = {}) {
+  const embed = new EmbedBuilder()
+    .setColor(0xd4a437)
+    .setTitle(`🎱 賓果大廳 第 ${round.roundNumber} 場 開賣中！`)
+    .setDescription(
+      "點下方「買卡」輸入要買幾張即可參與。\n開出 30 球，完成的連線越多分越多，**連線最多者獨得累積頭彩**！中獎會私訊你兌獎圖。"
+    )
+    .addFields(
+      {
+        name: "累積頭彩",
+        value: `**${(round.jackpotPoolIn || 0).toLocaleString()}** ${MONEY_EMOJI}`,
+        inline: true,
+      },
+      {
+        name: "一張",
+        value: `**${(ticketPrice || 0).toLocaleString()}** ${MONEY_EMOJI}`,
+        inline: true,
+      },
+      { name: "開球", value: countdownTag(round.scheduledAt), inline: true }
+    )
+    .setFooter({ text: "時間到自動開球 · 免指令" });
 
   const row = new ActionRowBuilder().addComponents(
-    buyOptions.map((n) =>
-      new ButtonBuilder()
-        .setCustomId(`bh_buy_${round.roundId}_${n}`)
-        .setLabel(`買 ${n} 張`)
-        .setEmoji("🎟️")
-        .setStyle(ButtonStyle.Success)
-    )
+    new ButtonBuilder()
+      .setCustomId(`bh_buy_${round.roundId}`)
+      .setLabel("買卡")
+      .setEmoji("🎟️")
+      .setStyle(ButtonStyle.Success)
   );
-  return { content, components: [row] };
+  return { content: "", embeds: [embed], components: [row] };
 }
 
 // 開球後把舊購買訊息收掉（移除按鈕）。
 function buildClosedMessage(round) {
-  return {
-    content:
-      `# 🎱 賓果大廳 第 ${round.roundNumber} 場 已截止開球\n` +
-      `-# 開球結果請見下方，新一場已開賣 👇`,
-    components: [],
-  };
+  const embed = new EmbedBuilder()
+    .setColor(0x95a5a6)
+    .setTitle(`🎱 賓果大廳 第 ${round.roundNumber} 場 已截止開球`)
+    .setDescription("開球結果請見下方，新一場已開賣 👇");
+  return { content: "", embeds: [embed], components: [] };
 }
 
 // 玩家買卡後的 ephemeral 回覆。
