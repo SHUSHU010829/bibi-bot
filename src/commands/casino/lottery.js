@@ -349,7 +349,7 @@ async function runBuy(client, interaction) {
         $inc: {
           pool: totalCost,
           totalRevenue: totalCost,
-          totalTickets: numbersList.length,
+          totalTickets: entries.length,
         },
         $set: { updatedAt: new Date() },
       },
