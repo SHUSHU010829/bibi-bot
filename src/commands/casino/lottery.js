@@ -651,7 +651,9 @@ async function runHistory(client, interaction) {
             $group: {
               _id: null,
               spent: { $sum: "$pricePaid" },
-              won: { $sum: "$payoutAmount" },
+              won: {
+                $sum: { $add: ["$payoutAmount", { $ifNull: ["$bonusPayout", 0] }] },
+              },
             },
           },
         ])
@@ -694,6 +696,13 @@ async function runHistory(client, interaction) {
         const cfg = getLotteryConfig(t.lotteryType);
         const draw = drawById.get(t.drawId);
         const numStr = t.numbers.join(" ・ ");
+        const bonusTags = [];
+        if (t.bonusFlags?.bonusBall) bonusTags.push("🎯加碼球");
+        if (t.bonusFlags?.consecutive) bonusTags.push("🔗連號");
+        const bonusStr =
+          (t.bonusPayout || 0) > 0
+            ? ` ・ ${bonusTags.join("")} +${t.bonusPayout.toLocaleString()}`
+            : "";
         const status =
           draw?.status === "settled"
             ? t.prize
@@ -701,7 +710,7 @@ async function runHistory(client, interaction) {
               : `沒中(中 ${t.matched || 0})`
             : "等開獎";
         const sourceTag = SOURCE_LABEL[t.source] || t.source;
-        return `\`${draw?.drawNumber ?? "?"}\` ${cfg?.emoji || "🎟"} ${numStr} ・ ${sourceTag} ・ ${status}`;
+        return `\`${draw?.drawNumber ?? "?"}\` ${cfg?.emoji || "🎟"} ${numStr} ・ ${sourceTag} ・ ${status}${bonusStr}`;
       });
 
       const spent = agg?.spent || 0;

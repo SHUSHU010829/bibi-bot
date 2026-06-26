@@ -14,7 +14,7 @@ const GAMES = [
   require("./hilo"),
   require("./horseRacing"),
   require("./keno"),
-  require("./pokerOpen"),
+  require("./casinoHoldem"),
   require("./roulette"),
   require("./sicbo"),
   require("./slot"),
@@ -22,6 +22,12 @@ const GAMES = [
   require("./mines"),
   require("./plinko"),
   require("./scratch"),
+  require("./baccarat"),
+  require("./fishPrawnCrab"),
+  require("./luckyWheel"),
+  require("./bingo"),
+  require("./redPacket"),
+  require("./russianRoulette"),
 ];
 
 const gameByName = new Map();

@@ -7,8 +7,8 @@ require("colors");
 const { DateTime } = require("luxon");
 
 const { casino } = require("../../../config");
-const { generateWinningNumbers, buildDrawId } = require("./draw");
-const { countMatches } = require("./numbers");
+const { generateWinningNumbers, generateBonusBall, buildDrawId } = require("./draw");
+const { countMatches, hasConsecutiveRun } = require("./numbers");
 const { calculatePayout } = require("./payout");
 const { generateReminderSchedule } = require("./reminderScheduler");
 const { nextDrawTime } = require("./schedule");
@@ -149,6 +149,34 @@ async function runDraw(client, lotteryType) {
   }));
 
   const typeCfg = getTypeConfig(lotteryType);
+
+  // 加碼球 + 連號加碼：系統固定額側獎，獨立於彩池分配（不影響頭/二/三/四獎與滾池）。
+  const bonusBallCfg = typeCfg.bonusBall || {};
+  const consecutiveCfg = typeCfg.consecutiveBonus || {};
+  const winSet = new Set(winningNumbers);
+  const bonusBall =
+    bonusBallCfg.enabled && bonusBallCfg.prize > 0
+      ? generateBonusBall(lotteryType, winningNumbers)
+      : null;
+  const consecMinRun = consecutiveCfg.minRun ?? 3;
+  // 每張票的側獎：bonusBall 命中 + 中獎號碼中含連號
+  const ticketBonus = new Map();
+  for (const t of tickets) {
+    let amount = 0;
+    const flags = { bonusBall: false, consecutive: false };
+    if (bonusBall != null && t.numbers.includes(bonusBall)) {
+      amount += bonusBallCfg.prize;
+      flags.bonusBall = true;
+    }
+    if (consecutiveCfg.enabled && consecutiveCfg.prize > 0) {
+      const matchedNums = t.numbers.filter((n) => winSet.has(n));
+      if (hasConsecutiveRun(matchedNums, consecMinRun)) {
+        amount += consecutiveCfg.prize;
+        flags.consecutive = true;
+      }
+    }
+    if (amount > 0) ticketBonus.set(t.ticketId, { amount, flags });
+  }
   const { prizes, ticketAssignments } = calculatePayout({
     lotteryType,
     pool: draw.pool,
@@ -158,11 +186,22 @@ async function runDraw(client, lotteryType) {
 
   // bulkWrite 票券更新
   const ticketsById = new Map(tickets.map((t) => [t.ticketId, t]));
+  const bonusSummary = {
+    bonusBall,
+    bonusBallPrize: bonusBallCfg.prize || 0,
+    consecutivePrize: consecutiveCfg.prize || 0,
+    consecutiveMinRun: consecMinRun,
+    bonusBallWinners: 0,
+    consecutiveWinners: 0,
+    totalBonusPaid: 0,
+  };
   if (ticketAssignments.length > 0) {
     const ops = [];
     for (const a of ticketAssignments) {
       const tk = ticketsById.get(a.ticketId);
       const matched = ticketMatched.find((m) => m.ticketId === a.ticketId)?.matched || 0;
+      const bonus = ticketBonus.get(a.ticketId);
+      const bonusAmount = bonus?.amount || 0;
       ops.push({
         updateOne: {
           filter: { ticketId: a.ticketId },
@@ -171,6 +210,8 @@ async function runDraw(client, lotteryType) {
               matched,
               prize: a.prize,
               payoutAmount: a.payoutAmount,
+              bonusPayout: bonusAmount,
+              bonusFlags: bonus?.flags || { bonusBall: false, consecutive: false },
             },
           },
         },
@@ -190,6 +231,27 @@ async function runDraw(client, lotteryType) {
             ticketId: a.ticketId,
             prize: a.prize,
             matched,
+          },
+        });
+      }
+      // 側獎派彩（加碼球 / 連號），系統固定額，獨立發放
+      if (bonusAmount > 0 && tk) {
+        if (bonus.flags.bonusBall) bonusSummary.bonusBallWinners += 1;
+        if (bonus.flags.consecutive) bonusSummary.consecutiveWinners += 1;
+        bonusSummary.totalBonusPaid += bonusAmount;
+        await grantCoins(client, {
+          userId: tk.userId,
+          guildId: tk.guildId,
+          username: tk.username,
+          amount: bonusAmount,
+          source: "payout",
+          meta: {
+            game: "lottery",
+            lotteryType,
+            drawId: draw.drawId,
+            ticketId: a.ticketId,
+            prize: "bonus",
+            bonusFlags: bonus.flags,
           },
         });
       }
@@ -249,6 +311,7 @@ async function runDraw(client, lotteryType) {
     fourth: prizes.fourth || null,
     third: prizes.third || null,
     rolledOver: { amount: rolledOverAmount, toDrawId: null },
+    bonus: bonusBall != null || bonusSummary.totalBonusPaid > 0 ? bonusSummary : null,
   };
 
   await client.lotteryDrawsCollection.updateOne(
@@ -258,6 +321,7 @@ async function runDraw(client, lotteryType) {
         status: "settled",
         drawnAt: new Date(),
         winningNumbers,
+        bonusBall,
         payout: payoutDoc,
         updatedAt: new Date(),
       },
@@ -284,6 +348,7 @@ async function runDraw(client, lotteryType) {
     draw: {
       ...draw,
       winningNumbers,
+      bonusBall,
       payout: payoutDoc,
       status: "settled",
       drawnAt: new Date(),

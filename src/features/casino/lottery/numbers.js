@@ -179,6 +179,21 @@ function generateCombinations(baseNumbers, pickCount) {
 }
 
 /**
+ * 一組號碼裡是否存在長度 ≥ minRun 的連號（連續整數）。
+ * 例：[3,7,8,9,20] minRun=3 → true（7・8・9）。
+ */
+function hasConsecutiveRun(numbers, minRun) {
+  if (!Array.isArray(numbers) || numbers.length < minRun) return false;
+  const sorted = [...new Set(numbers)].sort((a, b) => a - b);
+  let run = 1;
+  for (let i = 1; i < sorted.length; i++) {
+    run = sorted[i] === sorted[i - 1] + 1 ? run + 1 : 1;
+    if (run >= minRun) return true;
+  }
+  return false;
+}
+
+/**
  * 數學公式 C(n, k)。
  */
 function combinationCount(n, k) {
@@ -202,4 +217,5 @@ module.exports = {
   countMatches,
   generateCombinations,
   combinationCount,
+  hasConsecutiveRun,
 };

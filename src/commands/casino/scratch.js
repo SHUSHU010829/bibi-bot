@@ -16,25 +16,77 @@ function getScratchConfig() {
   return casino?.scratch || {};
 }
 
-module.exports = {
-  data: new SlashCommandBuilder()
+// 把 config 的 themes 正規化成「款式」清單；沒設定 themes 時退回舊的頂層 config（款式 classic）。
+function getThemes(cfg = getScratchConfig()) {
+  if (Array.isArray(cfg.themes) && cfg.themes.length > 0) return cfg.themes;
+  return [
+    {
+      key: "classic",
+      name: null,
+      emoji: null,
+      minBet: cfg.minBet,
+      maxBet: cfg.maxBet,
+      luckyCount: cfg.luckyCount,
+      numberMax: cfg.numberMax,
+      prizes: cfg.prizes,
+      decoyPrizes: cfg.decoyPrizes,
+    },
+  ];
+}
+
+// 依款式 key 解析；找不到就回第一個（預設款）。
+function resolveTheme(cfg, key) {
+  const themes = getThemes(cfg);
+  return themes.find((t) => t.key === key) || themes[0];
+}
+
+function buildScratchBuilder() {
+  const cfg = getScratchConfig();
+  const themes = getThemes(cfg);
+  const minBetFloor = Math.min(
+    ...themes.map((t) => t.minBet ?? cfg.minBet ?? 10)
+  );
+  const builder = new SlashCommandBuilder()
     .setName("刮刮樂")
     .setDescription("買一張刮刮卡，湊滿三個相同符號就中獎 🎫")
-    .setContexts(InteractionContextType.Guild)
+    .setContexts(InteractionContextType.Guild);
+
+  // 有多種款式才開放「款式」選項
+  if (themes.length > 1) {
+    builder.addStringOption((opt) => {
+      opt
+        .setName("款式")
+        .setDescription("選擇刮刮卡款式（不同入手價與大獎）")
+        .setRequired(false);
+      themes.forEach((t) =>
+        opt.addChoices({
+          name: `${t.emoji ? `${t.emoji} ` : ""}${t.name || "經典"}（最低 ${(t.minBet ?? cfg.minBet ?? 10).toLocaleString()}）`,
+          value: t.key,
+        })
+      );
+      return opt;
+    });
+  }
+
+  builder
     .addIntegerOption((opt) =>
       opt
         .setName("下注")
         .setDescription("買卡金額（勾選梭哈時可省略）")
         .setRequired(false)
-        .setMinValue(getScratchConfig().minBet ?? 10)
+        .setMinValue(minBetFloor)
     )
     .addBooleanOption((opt) =>
       opt
         .setName("梭哈")
         .setDescription("一次押上目前全部餘額")
         .setRequired(false)
-    )
-    .toJSON(),
+    );
+  return builder;
+}
+
+module.exports = {
+  data: buildScratchBuilder().toJSON(),
 
   subcommandOnly: true,
 
@@ -58,10 +110,14 @@ module.exports = {
         return interaction.editReply("🔧 刮刮樂暫時關閉中！");
       }
 
-      const minBet = cfg.minBet ?? 10;
-      const maxBet = cfg.maxBet ?? 0;
+      const theme = resolveTheme(cfg, interaction.options.getString("款式"));
+      const minBet = theme.minBet ?? cfg.minBet ?? 10;
+      const maxBet = theme.maxBet ?? cfg.maxBet ?? 0;
       const ttlSec = cfg.gameTtlSeconds ?? 300;
-      const prizes = cfg.prizes;
+      const prizes = theme.prizes ?? cfg.prizes;
+      const decoys = theme.decoyPrizes ?? cfg.decoyPrizes;
+      const luckyCount = theme.luckyCount ?? cfg.luckyCount ?? 3;
+      const numberMax = theme.numberMax ?? cfg.numberMax ?? 99;
 
       if (!Array.isArray(prizes) || prizes.length === 0) {
         return interaction.editReply("🔧 刮刮樂獎項尚未設定，請聯絡舒舒！");
@@ -135,9 +191,9 @@ module.exports = {
       const initial = startGame({
         bet,
         prizes,
-        luckyCount: cfg.luckyCount ?? 3,
-        numberMax: cfg.numberMax ?? 99,
-        decoys: cfg.decoyPrizes,
+        luckyCount,
+        numberMax,
+        decoys,
       });
       const now = new Date();
       const doc = {
@@ -145,6 +201,9 @@ module.exports = {
         userId,
         guildId,
         username,
+        themeKey: theme.key,
+        themeName: theme.name || null,
+        themeEmoji: theme.emoji || null,
         bet: initial.bet,
         status: initial.status,
         luckyNumbers: initial.luckyNumbers,
@@ -166,7 +225,7 @@ module.exports = {
         userId,
         guildId,
         game: "scratch",
-        payload: { options: { 下注: bet, 梭哈: false } },
+        payload: { options: { 下注: bet, 梭哈: false, 款式: theme.key } },
       });
 
       const payload = await renderMessage(doc, {
