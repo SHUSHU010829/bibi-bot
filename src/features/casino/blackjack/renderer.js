@@ -3,7 +3,6 @@
 
 const {
   ActionRowBuilder,
-  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
@@ -12,7 +11,7 @@ const { evaluateHand } = require("./hand");
 const { FIVE_CARD_THRESHOLD } = require("./engine");
 const { buildReplayRow } = require("../replay");
 const { buildCasinoEmbed } = require("../casinoEmbed");
-const generateBlackjackCard = require("../../../utils/generateBlackjackCard");
+const { cardEmoji, cardBackEmoji, handEmojis } = require("../cardEmoji");
 
 const SUIT_EMOJI = { S: "♠", H: "♥", D: "♦", C: "♣" };
 const RANK_LABEL = {
@@ -31,6 +30,14 @@ function renderHandLine(label, cards, total, isHidden) {
   }
   const parts = cards.map((c) => `[ ${formatCard(c)} ]`).join(" ");
   return `${label}：${parts}　= ${total}`;
+}
+
+// emoji 版手牌行：用應用程式 emoji 呈現整手牌（暗牌用綠色牌背）。
+function emojiHandLine(label, cards, total, isHidden) {
+  if (isHidden) {
+    return `**${label}**　${cardEmoji(cards[0])} ${cardBackEmoji("green")}　= **?**`;
+  }
+  return `**${label}**　${handEmojis(cards)}　= **${total}**`;
 }
 
 function buildButtons(state, balance) {
@@ -221,8 +228,8 @@ function settleOutcome(state) {
   return { outcome, net };
 }
 
-// 圖片渲染失敗時，把牌況寫進 embed 內文的備援文字行。
-function gameStatusLines(state) {
+// 用應用程式 emoji 把整副牌況組成 embed 內文行（取代 Canvas 生圖）。
+function emojiBoardLines(state) {
   const isPlaying = state.status === "playing";
   const dealerEval = evaluateHand(state.dealerHand);
   const hands =
@@ -238,14 +245,24 @@ function gameStatusLines(state) {
         ];
 
   const lines = [
-    renderHandLine("莊家", state.dealerHand, dealerEval.total, isPlaying),
+    emojiHandLine("莊家", state.dealerHand, dealerEval.total, isPlaying),
+    "",
   ];
   hands.forEach((h, i) => {
     const ev = evaluateHand(h.cards);
     const label = state.isSplit ? `第 ${i + 1} 手` : "你的";
     const marker =
       isPlaying && i === state.activeIndex && state.isSplit ? " ▶" : "";
-    lines.push(renderHandLine(label + marker, h.cards, ev.total, false));
+    lines.push(emojiHandLine(label + marker, h.cards, ev.total, false));
+    if (isPlaying && h.cards.length >= 3 && !ev.isBust) {
+      const remain = FIVE_CARD_THRESHOLD - h.cards.length;
+      if (remain > 0 && (!state.isSplit || i === state.activeIndex)) {
+        lines.push(`-# 🏆 再抽 ${remain} 張未爆牌即過五關（賠率 2:1）`);
+      }
+    }
+    if (!isPlaying && state.isSplit) {
+      lines.push(`-# ${perHandHeadline(h)}`);
+    }
   });
   return lines;
 }
@@ -264,35 +281,15 @@ async function renderMessage(
   const isPlaying = state.status === "playing";
   const { outcome, net } = settleOutcome(state);
 
-  let files = [];
-  let imageName;
-  let fallbackLines = [];
-  try {
-    const buf = await generateBlackjackCard({
-      username,
-      state,
-      balance: balance ?? 0,
-    });
-    imageName = `blackjack-${state.gameId}.png`;
-    files = [new AttachmentBuilder(buf, { name: imageName })];
-  } catch (e) {
-    // 圖卡生成失敗就 fallback：把牌況放進 embed 內文
-    console.log(
-      `[WARN] blackjack card render failed, falling back to text: ${e.message}`
-    );
-    fallbackLines = gameStatusLines(state);
-  }
-
   const embed = buildCasinoEmbed({
     game: "🃏 BLACKJACK",
     user: { id: userId || state.userId, displayName: username, avatarURL },
     outcome,
     headline: isPlaying ? null : buildSettleHeadlineLine(state),
-    lines: fallbackLines,
+    lines: emojiBoardLines(state),
     bet: totalStakeOf(state),
     net: isPlaying ? undefined : net,
     balance: isPlaying || typeof balance !== "number" ? undefined : balance,
-    imageName,
     footer: isPlaying
       ? state.isSplit
         ? `分牌中 ・ 進行第 ${state.activeIndex + 1} 手`
@@ -300,7 +297,7 @@ async function renderMessage(
       : undefined,
   });
 
-  return { content: "", embeds: [embed], components, files };
+  return { content: "", embeds: [embed], components, files: [] };
 }
 
 module.exports = {
