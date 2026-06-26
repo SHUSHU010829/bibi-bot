@@ -6,7 +6,7 @@ const { casino } = require("../../../config");
 const grantCoins = require("../../economy/grantCoins");
 const { notifyEmbed } = require("../notifyAbandon");
 const { MONEY_EMOJI } = require("../../../constants/coin");
-const { resolve } = require("./engine");
+const { resolve, modeBullets } = require("./engine");
 const {
   buildFinishedPayload,
   buildCancelledPayload,
@@ -77,7 +77,8 @@ async function startGame(client, gameId) {
   const state = claimed?.value || claimed;
   if (!state) return { ok: false };
 
-  const outcome = resolve(state.players, { rakePct });
+  const bullets = modeBullets(state.mode, state.players.length);
+  const outcome = resolve(state.players, { bullets, rakePct });
 
   for (const w of outcome.payouts) {
     if (w.amount <= 0) continue;
@@ -95,8 +96,9 @@ async function startGame(client, gameId) {
   const finished = {
     ...state,
     status: "finished",
-    loserIndex: outcome.loserIndex,
-    loserId: outcome.loserId,
+    loserIndices: outcome.loserIndices,
+    loserIds: outcome.loserIds,
+    bullets: outcome.bullets,
     pot: outcome.pot,
     perWinner: outcome.perWinner,
     payouts: outcome.payouts,
@@ -107,8 +109,9 @@ async function startGame(client, gameId) {
     {
       $set: {
         status: "finished",
-        loserIndex: outcome.loserIndex,
-        loserId: outcome.loserId,
+        loserIndices: outcome.loserIndices,
+        loserIds: outcome.loserIds,
+        bullets: outcome.bullets,
         pot: outcome.pot,
         perWinner: outcome.perWinner,
         payouts: outcome.payouts,

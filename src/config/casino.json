@@ -278,6 +278,7 @@
     },
     "russianRoulette": {
       "enabled": true,
+      "announceChannelId": "1506339475867832330",
       "minAnte": 50,
       "maxAnte": 5000,
       "maxPlayers": 6,
@@ -287,7 +288,7 @@
     "bingoHall": {
       "enabled": true,
       "ticketPrice": 50,
-      "drawIntervalMinutes": 360,
+      "drawIntervalMinutes": 60,
       "ballsDrawn": 30,
       "rakePct": 0.12,
       "jackpotShare": 0.4,
