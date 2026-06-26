@@ -1,5 +1,11 @@
-// 賓果大廳訊息組裝（純文字，公開導向）。
+// 賓果大廳訊息組裝（純組裝）。改為頻道按鈕驅動：開場貼購買訊息(按鈕選張數)，
+// 開獎貼中獎資訊，免指令。
 
+const {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require("discord.js");
 const { MONEY_EMOJI } = require("../../../constants/coin");
 
 const HEADERS = ["B", "I", "N", "G", "O"];
@@ -28,27 +34,43 @@ function countdownTag(scheduledAt) {
   return `<t:${Math.floor(new Date(scheduledAt).getTime() / 1000)}:R>`;
 }
 
-function buildBuyReply({ round, cards, cost, balance, totalCardsThisRound }) {
-  const preview = cards.length === 1 ? `\n${renderCardText(cards[0].card)}` : "";
-  const jackpot = round.jackpotPoolIn || 0;
-  return (
-    `🎱 **賓果大廳** 第 ${round.roundNumber} 場 ・ 買了 **${cards.length}** 張卡\n` +
-    `花費 **${cost.toLocaleString()}** ${MONEY_EMOJI}　餘額 **${balance.toLocaleString()}**\n` +
-    `你本場共 **${totalCardsThisRound}** 張　・　目前累積大獎 **${jackpot.toLocaleString()}** ${MONEY_EMOJI}\n` +
-    `⏰ 開球 ${countdownTag(round.scheduledAt)}（時間到自動開獎，免等人開）${preview}`
+// 開場購買訊息（公開、含買卡按鈕）。
+function buildBuyMessage(round, { ticketPrice, buyOptions = [1, 5, 10, 20] } = {}) {
+  const content =
+    `# 🎱 賓果大廳 第 ${round.roundNumber} 場 開賣中！\n` +
+    `累積頭彩：**${(round.jackpotPoolIn || 0).toLocaleString()}** ${MONEY_EMOJI}　・　一張 **${ticketPrice.toLocaleString()}** ${MONEY_EMOJI}\n` +
+    `⏰ 開球 ${countdownTag(round.scheduledAt)}（時間到自動開球，免指令）\n\n` +
+    `-# 點下方按鈕直接買卡。開出 30 球，完成的連線越多分越多，連線最多者獨得累積頭彩！中獎會私訊你兌獎圖。`;
+
+  const row = new ActionRowBuilder().addComponents(
+    buyOptions.map((n) =>
+      new ButtonBuilder()
+        .setCustomId(`bh_buy_${round.roundId}_${n}`)
+        .setLabel(`買 ${n} 張`)
+        .setEmoji("🎟️")
+        .setStyle(ButtonStyle.Success)
+    )
   );
+  return { content, components: [row] };
 }
 
-function buildInfoReply({ round, userCards, ticketPrice }) {
-  if (!round) return "🎱 目前沒有進行中的賓果大廳場次，稍後再來～";
-  const yourLine = userCards > 0 ? `你本場有 **${userCards}** 張卡` : "你本場還沒買卡";
+// 開球後把舊購買訊息收掉（移除按鈕）。
+function buildClosedMessage(round) {
+  return {
+    content:
+      `# 🎱 賓果大廳 第 ${round.roundNumber} 場 已截止開球\n` +
+      `-# 開球結果請見下方，新一場已開賣 👇`,
+    components: [],
+  };
+}
+
+// 玩家買卡後的 ephemeral 回覆。
+function buildBuyReply({ round, cards, cost, balance, totalCardsThisRound }) {
+  const preview = cards.length === 1 ? `\n${renderCardText(cards[0].card)}` : "";
   return (
-    `# 🎱 賓果大廳 第 ${round.roundNumber} 場\n` +
-    `累積大獎(全餐)：**${(round.jackpotPoolIn || 0).toLocaleString()}** ${MONEY_EMOJI}\n` +
-    `本場銷售彩池：**${(round.pool || 0).toLocaleString()}** ${MONEY_EMOJI} ・ 共 ${round.totalCards || 0} 張卡\n` +
-    `${yourLine}\n` +
-    `⏰ 開球倒數：${countdownTag(round.scheduledAt)}\n\n` +
-    `-# 一張 ${ticketPrice.toLocaleString()} ${MONEY_EMOJI}，用 \`/賓果大廳 買卡\` 進場。開出 30 球，連線越多分越多，全餐獨得累積大獎！`
+    `🎟️ 已買 **${cards.length}** 張卡（第 ${round.roundNumber} 場）\n` +
+    `花費 **${cost.toLocaleString()}** ${MONEY_EMOJI}　餘額 **${balance.toLocaleString()}**\n` +
+    `你本場共 **${totalCardsThisRound}** 張　・　開球 ${countdownTag(round.scheduledAt)}${preview}`
   );
 }
 
@@ -59,7 +81,6 @@ function buildAnnounce({ round, settle, drawnBalls }) {
     .map((n) => String(n).padStart(2, "0"))
     .join(" ");
 
-  // 連線獎前幾名
   const lineWinners = settle.results
     .filter((r) => r.prize === "lines" && r.payout > 0)
     .sort((a, b) => b.payout - a.payout)
@@ -79,9 +100,15 @@ function buildAnnounce({ round, settle, drawnBalls }) {
     `開出 30 球：\n\`${drawnStr}\`\n\n` +
     `${jackpotLine}\n` +
     (lineWinners ? `\n**連線獎**\n${lineWinners}\n` : "\n本場沒有人連線。\n") +
-    `\n查看你的成績：\`/賓果大廳 資訊\``;
+    `\n-# 中獎者已收到私訊兌獎圖。新一場已開賣，往上買卡 👆`;
 
   return { content: body };
 }
 
-module.exports = { renderCardText, buildBuyReply, buildInfoReply, buildAnnounce };
+module.exports = {
+  renderCardText,
+  buildBuyMessage,
+  buildClosedMessage,
+  buildBuyReply,
+  buildAnnounce,
+};

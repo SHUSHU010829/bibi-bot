@@ -9,7 +9,11 @@ const { casino } = require("../../../config");
 const grantCoins = require("../../economy/grantCoins");
 const { buildCard } = require("../bingo/engine");
 const { settleRound } = require("./engine");
-const { buildAnnounce } = require("./render");
+const {
+  buildAnnounce,
+  buildBuyMessage,
+  buildClosedMessage,
+} = require("./render");
 const generateBingoHallCard = require("../../../utils/generateBingoHallCard");
 
 function cfg() {
@@ -33,13 +37,54 @@ async function getOpenRound(client) {
   return client.bingoHallRoundsCollection.findOne({ status: "open" });
 }
 
+async function getChannel(client) {
+  const id = cfg().announceChannelId;
+  if (!id) return null;
+  const ch = await client.channels.fetch(id).catch(() => null);
+  return ch?.isTextBased?.() ? ch : null;
+}
+
+// 在公告頻道貼出該場的購買訊息（含買卡按鈕），並把 messageId 記回場次。
+async function postBuyMessage(client, round) {
+  const ch = await getChannel(client);
+  if (!ch) return;
+  const payload = buildBuyMessage(round, {
+    ticketPrice: cfg().ticketPrice ?? 50,
+    buyOptions: cfg().buyOptions,
+  });
+  const msg = await ch.send(payload).catch((e) => {
+    console.log(`[BINGOHALL] 貼購買訊息失敗: ${e}`.yellow);
+    return null;
+  });
+  if (msg) {
+    round.messageId = msg.id;
+    round.channelId = ch.id;
+    await client.bingoHallRoundsCollection.updateOne(
+      { roundId: round.roundId },
+      { $set: { messageId: msg.id, channelId: ch.id, updatedAt: new Date() } }
+    );
+  }
+}
+
+// 開球後把舊購買訊息的按鈕收掉。
+async function closeBuyMessage(client, round) {
+  if (!round.messageId) return;
+  const ch = await getChannel(client);
+  if (!ch) return;
+  const msg = await ch.messages.fetch(round.messageId).catch(() => null);
+  if (msg) await msg.edit(buildClosedMessage(round)).catch(() => {});
+}
+
 async function ensureOpenRound(client) {
   if (!client.bingoHallRoundsCollection) return null;
   const c = cfg();
   if (c.enabled === false) return null;
 
   const existing = await getOpenRound(client);
-  if (existing) return existing;
+  if (existing) {
+    if (!existing.messageId) await postBuyMessage(client, existing); // 重啟/舊資料兜底
+    return existing;
+  }
 
   const last = await client.bingoHallRoundsCollection
     .find({ status: "settled" })
@@ -65,6 +110,7 @@ async function ensureOpenRound(client) {
   try {
     await client.bingoHallRoundsCollection.insertOne(doc);
     console.log(`[BINGOHALL] 開新場 #${roundNumber}（累積大獎 ${carriedJackpot}，開球 ${doc.scheduledAt.toISOString()}）`.green);
+    await postBuyMessage(client, doc);
     return doc;
   } catch (e) {
     if (e.code === 11000) return getOpenRound(client); // 已有 open 場
@@ -187,6 +233,9 @@ async function settleAndAnnounce(client, round) {
   const c = cfg();
   const ballsDrawn = c.ballsDrawn ?? 30;
   const drawnBalls = sampleBalls(ballsDrawn);
+
+  // 先收掉舊購買訊息的按鈕（避免開球後還有人點）
+  await closeBuyMessage(client, round).catch(() => {});
 
   const cards = await client.bingoHallCardsCollection
     .find({ roundId: round.roundId })
