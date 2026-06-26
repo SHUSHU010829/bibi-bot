@@ -4,6 +4,7 @@ const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const { notifyAbandon } = require("../../features/casino/notifyAbandon");
 const { settleRetroactive } = require("../../features/casino/crash/engine");
 const { buildSettledPayload } = require("../../features/casino/crash/renderer");
 
@@ -102,6 +103,16 @@ async function sweepOnce(client) {
     }
 
     await tryEditFinal(client, finalDoc);
+
+    await notifyAbandon(client, g.userId, {
+      game: "crash",
+      kind: settled.payout > 0 ? "cashout" : "bust",
+      amount: settled.payout,
+      detail:
+        settled.payout > 0 && settled.cashoutAt
+          ? `自動收手 ×${settled.cashoutAt}`
+          : null,
+    });
 
     recovered += 1;
     console.log(

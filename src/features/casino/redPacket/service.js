@@ -3,6 +3,7 @@
 
 require("colors");
 const grantCoins = require("../../economy/grantCoins");
+const { notifyDm } = require("../notifyAbandon");
 const { buildClosedPayload } = require("./render");
 
 // 嘗試把一包 open 的紅包關閉。回傳 { closed, refunded }。
@@ -31,6 +32,11 @@ async function closeRedPacket(client, gameId, { reason = "expired" } = {}) {
       meta: { game: "redPacket", gameId, kind: "refund", reason },
     }).catch((e) =>
       console.log(`[REDPACKET] refund failed ${gameId}: ${e}`.yellow)
+    );
+    await notifyDm(
+      client,
+      state.hostUserId,
+      `🧧 你發的紅包還剩 **${refunded.toLocaleString()}** credits 沒被搶完，已退回給你。\n-# 款項一定回到你身上 👍`
     );
   }
 

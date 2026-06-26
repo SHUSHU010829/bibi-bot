@@ -4,6 +4,7 @@ const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const { notifyAbandon } = require("../../features/casino/notifyAbandon");
 
 // 踩地雷中途離場：expiresAt 過了還是 playing → 視玩家狀態退錢
 //   - 還沒翻過任何一格：退回原始 bet
@@ -57,23 +58,12 @@ async function sweepOnce(client) {
       }
     );
 
-    // 主動 DM 通知，避免玩家以為被清房後錢不見了
-    try {
-      const user = await client.users.fetch(g.userId).catch(() => null);
-      if (user) {
-        const body =
-          revealed > 0
-            ? `🧹 你的 **踩地雷** 因閒置太久自動收手了（翻了 ${revealed} 格・×${mult}）。\n` +
-              `已派彩 **${refund.toLocaleString()}** credits 入帳。`
-            : `🧹 你的 **踩地雷** 因閒置太久自動結束了（一格都還沒翻）。\n` +
-              `已全額退回 **${refund.toLocaleString()}** credits。`;
-        await user
-          .send(`${body}\n-# 系統每分鐘清理閒置超過 5 分鐘的牌局，錢一定會回到你身上 👍`)
-          .catch(() => {});
-      }
-    } catch (err) {
-      console.log(`[MN] 清房 DM 失敗 ${g.userId}:${err.message}`.yellow);
-    }
+    await notifyAbandon(client, g.userId, {
+      game: "mines",
+      kind: revealed > 0 ? "cashout" : "refund",
+      amount: refund,
+      detail: revealed > 0 ? `翻了 ${revealed} 格・×${mult}` : null,
+    });
 
     refunded += 1;
     console.log(

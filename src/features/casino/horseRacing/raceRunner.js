@@ -9,6 +9,7 @@ require("colors");
 const { AttachmentBuilder } = require("discord.js");
 
 const grantCoins = require("../../economy/grantCoins");
+const { notifyDm } = require("../notifyAbandon");
 const {
   HORSES,
   TRACK_LENGTH,
@@ -283,6 +284,7 @@ async function cancelRace(client, gameId, reason = "host_cancelled") {
       console.log(`[HORSE] refund failed for ${bet.userId}: ${e}`.red),
     );
   }
+  await dmHorseRefunds(client, doc, "這場取消了");
 
   const message = await fetchMessage(client, doc);
   if (message) {
@@ -292,6 +294,22 @@ async function cancelRace(client, gameId, reason = "host_cancelled") {
       .catch(() => {});
   }
   return doc;
+}
+
+// 把同一位玩家的多筆下注合併，逐人 DM 退款金額（避免多注多訊息洗版）
+async function dmHorseRefunds(client, doc, reasonText) {
+  const byUser = new Map();
+  for (const bet of doc.bets || []) {
+    byUser.set(bet.userId, (byUser.get(bet.userId) || 0) + (bet.amount || 0));
+  }
+  for (const [userId, amount] of byUser) {
+    if (amount <= 0) continue;
+    await notifyDm(
+      client,
+      userId,
+      `🐎 你押注的賽馬${reasonText}，退回 **${amount.toLocaleString()}** credits。\n-# 款項一定回到你身上 👍`,
+    );
+  }
 }
 
 // 卡住的 running 局退款（例如 bot 在動畫中段崩潰）
@@ -328,6 +346,7 @@ async function abandonStaleRace(client, gameId) {
       },
     }).catch(() => {});
   }
+  await dmHorseRefunds(client, doc, "因故中斷，已自動退款");
 
   const message = await fetchMessage(client, doc);
   if (message) {

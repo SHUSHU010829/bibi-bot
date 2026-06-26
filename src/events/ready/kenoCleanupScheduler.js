@@ -4,6 +4,7 @@ const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const { notifyAbandon } = require("../../features/casino/notifyAbandon");
 
 // 尋寶（Keno）中途離場：expiresAt 過了還是 selecting → 退回本金。
 
@@ -48,6 +49,14 @@ async function sweepOnce(client) {
         },
       }
     );
+
+    if (refund > 0) {
+      await notifyAbandon(client, g.userId, {
+        game: "keno",
+        kind: "refund",
+        amount: refund,
+      });
+    }
 
     refunded += 1;
     console.log(
