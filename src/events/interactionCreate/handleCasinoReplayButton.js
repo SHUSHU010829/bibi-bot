@@ -29,7 +29,6 @@ const GAME_COMMAND_PATHS = {
   fishPrawnCrab: "../../commands/casino/fishPrawnCrab",
   luckyWheel: "../../commands/casino/luckyWheel",
   roulette: "../../commands/casino/roulette",
-  bingo: "../../commands/casino/bingo",
   casinoHoldem: "../../commands/casino/casinoHoldem",
 };
 
