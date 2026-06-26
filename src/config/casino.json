@@ -262,6 +262,17 @@
       "joinWindowSeconds": 120,
       "rakePct": 0.05
     },
+    "bingoHall": {
+      "enabled": true,
+      "ticketPrice": 50,
+      "drawIntervalMinutes": 360,
+      "ballsDrawn": 30,
+      "rakePct": 0.12,
+      "jackpotShare": 0.4,
+      "jackpotSeed": 5000,
+      "maxCardsPerRound": 20,
+      "announceChannelId": "1501770364982657084"
+    },
     "lottery": {
       "enabled": true,
       "announceChannelId": "1501770364982657084",

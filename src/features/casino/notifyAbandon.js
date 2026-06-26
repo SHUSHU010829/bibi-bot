@@ -1,7 +1,9 @@
-// 賭場牌局被自動清理 / 退款後，主動 DM 通知玩家款項去向，
-// 避免「被清房後以為錢不見了」的誤會。不丟例外、不阻塞結算流程。
+// 賭場牌局被自動清理 / 退款後，主動 DM 通知玩家款項去向。
+// 用 Embed 呈現，乾淨好看；不丟例外、不阻塞結算流程。
 
 require("colors");
+const { EmbedBuilder } = require("discord.js");
+const { MONEY_EMOJI } = require("../../constants/coin");
 
 const GAME_NAMES = {
   mines: "踩地雷",
@@ -18,23 +20,48 @@ const GAME_NAMES = {
   russianRoulette: "俄羅斯輪盤",
 };
 
-function buildBody({ game, kind, amount = 0, detail }) {
+const COLORS = {
+  refund: 0x2ecc71,
+  cashout: 0x2ecc71,
+  win: 0xf1c40f,
+  lose: 0x95a5a6,
+  bust: 0xe74c3c,
+};
+
+function buildAbandonEmbed({ game, kind, amount = 0, detail }) {
   const name = GAME_NAMES[game] || game;
-  const amt = Number(amount).toLocaleString();
   const d = detail ? `（${detail}）` : "";
+  const amt = `**${Number(amount).toLocaleString()}** ${MONEY_EMOJI}`;
+
+  let title;
+  let desc;
   switch (kind) {
     case "cashout":
-      return `🧹 你的 **${name}** 因閒置太久自動收手了${d}。\n已派彩 **${amt}** credits 入帳。`;
+      title = "🧹 自動收手";
+      desc = `你的 **${name}** 閒置太久自動收手${d}\n已派彩 ${amt} 入帳`;
+      break;
     case "win":
-      return `🧹 你的 **${name}** 因閒置自動開獎${d}，恭喜中獎！\n已派彩 **${amt}** credits 入帳。`;
+      title = "🎉 自動開獎・中獎";
+      desc = `你的 **${name}** 閒置自動開獎${d}，恭喜中獎！\n已派彩 ${amt} 入帳`;
+      break;
     case "lose":
-      return `🧹 你的 **${name}** 因閒置自動開獎${d}，可惜這次沒中。`;
+      title = "🧹 自動開獎";
+      desc = `你的 **${name}** 閒置自動開獎${d}\n可惜這次沒中，再接再厲！`;
+      break;
     case "bust":
-      return `🧹 你的 **${name}** 因閒置自動結算${d}，可惜沒能及時收手，這局未派彩。`;
+      title = "🧹 自動結算";
+      desc = `你的 **${name}** 閒置自動結算${d}\n可惜沒能及時收手，這局未派彩`;
+      break;
     case "refund":
     default:
-      return `🧹 你的 **${name}** 因閒置太久自動結束了${d}。\n已全額退回 **${amt}** credits。`;
+      title = "🧹 自動退款";
+      desc = `你的 **${name}** 閒置太久自動結束${d}\n已全額退回 ${amt}`;
+      break;
   }
+  return new EmbedBuilder()
+    .setColor(COLORS[kind] || COLORS.refund)
+    .setTitle(title)
+    .setDescription(desc);
 }
 
 // 單人牌局清理通知（refund / cashout / win / lose / bust）
@@ -42,25 +69,24 @@ async function notifyAbandon(client, userId, opts) {
   try {
     const user = await client.users.fetch(userId).catch(() => null);
     if (!user) return;
-    const noMoney = opts.kind === "bust" || opts.kind === "lose";
-    const footer = noMoney
-      ? "系統會自動清理閒置太久的牌局。"
-      : "系統會自動清理閒置太久的牌局，款項一定回到你身上 👍";
-    await user.send(`${buildBody(opts)}\n-# ${footer}`).catch(() => {});
+    await user.send({ embeds: [buildAbandonEmbed(opts)] }).catch(() => {});
   } catch (e) {
     console.log(`[CASINO] 清理 DM 失敗 ${userId}:${e.message}`.yellow);
   }
 }
 
-// 自訂訊息 DM（給群組遊戲退款等情境用）
-async function notifyDm(client, userId, message) {
+// 自訂 Embed DM（群組遊戲退款等情境）
+async function notifyEmbed(client, userId, { title, description, color = COLORS.refund } = {}) {
   try {
     const user = await client.users.fetch(userId).catch(() => null);
     if (!user) return;
-    await user.send(message).catch(() => {});
+    const embed = new EmbedBuilder().setColor(color);
+    if (title) embed.setTitle(title);
+    if (description) embed.setDescription(description);
+    await user.send({ embeds: [embed] }).catch(() => {});
   } catch (e) {
     console.log(`[CASINO] DM 失敗 ${userId}:${e.message}`.yellow);
   }
 }
 
-module.exports = { notifyAbandon, notifyDm, GAME_NAMES };
+module.exports = { notifyAbandon, notifyEmbed, GAME_NAMES, COLORS };

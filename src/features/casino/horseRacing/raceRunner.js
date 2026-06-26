@@ -9,7 +9,8 @@ require("colors");
 const { AttachmentBuilder } = require("discord.js");
 
 const grantCoins = require("../../economy/grantCoins");
-const { notifyDm } = require("../notifyAbandon");
+const { notifyEmbed } = require("../notifyAbandon");
+const { MONEY_EMOJI } = require("../../../constants/coin");
 const {
   HORSES,
   TRACK_LENGTH,
@@ -304,11 +305,10 @@ async function dmHorseRefunds(client, doc, reasonText) {
   }
   for (const [userId, amount] of byUser) {
     if (amount <= 0) continue;
-    await notifyDm(
-      client,
-      userId,
-      `🐎 你押注的賽馬${reasonText}，退回 **${amount.toLocaleString()}** credits。\n-# 款項一定回到你身上 👍`,
-    );
+    await notifyEmbed(client, userId, {
+      title: "🐎 賽馬退款",
+      description: `你押注的賽馬${reasonText}，退回 **${amount.toLocaleString()}** ${MONEY_EMOJI}。`,
+    });
   }
 }
 
