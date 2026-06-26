@@ -1,102 +1,50 @@
-require('colors');
-const crypto = require('crypto');
+require("colors");
+const crypto = require("crypto");
 const {
   SlashCommandBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
+  AttachmentBuilder,
   InteractionContextType,
 } = require("discord.js");
 const { MONEY_EMOJI } = require("../../constants/coin");
 
-const { coinSystem, casino } = require('../../config');
-const grantCoins = require('../../features/economy/grantCoins');
-const { BET_TYPES } = require('../../features/casino/roulette/numbers');
-const { totalWagered } = require('../../features/casino/roulette/engine');
+const { coinSystem, casino } = require("../../config");
+const grantCoins = require("../../features/economy/grantCoins");
+const { spin, DEFAULT_SEGMENTS } = require("../../features/casino/roulette/multiplierWheel");
+const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
+const { buildCasinoEmbed } = require("../../features/casino/casinoEmbed");
+const generateMultiplierWheelGif = require("../../utils/generateMultiplierWheelGif");
 
 function getCfg() {
   return casino?.roulette || {};
 }
 
-function unitAmount(remaining) {
-  return Math.floor(remaining / 3);
-}
-
-function buildBettingRows(gameId, remainingBudget) {
-  const disabled = unitAmount(remainingBudget) <= 0;
-
-  const btn = (type, label, style = ButtonStyle.Secondary) =>
-    new ButtonBuilder()
-      .setCustomId(`rl_outside_${type}_${gameId}`)
-      .setLabel(label)
-      .setStyle(style)
-      .setDisabled(disabled);
-
-  const row1 = new ActionRowBuilder().addComponents(
-    btn('red',   '🔴 紅', ButtonStyle.Danger),
-    btn('black', '⚫ 黑'),
-    btn('odd',   '奇'),
-    btn('even',  '偶'),
-  );
-  const row2 = new ActionRowBuilder().addComponents(
-    btn('low',  '1–18'),
-    btn('high', '19–36'),
-  );
-  const row3 = new ActionRowBuilder().addComponents(
-    btn('dozen1', '第一打'),
-    btn('dozen2', '第二打'),
-    btn('dozen3', '第三打'),
-  );
-  const row4 = new ActionRowBuilder().addComponents(
-    btn('col1', '第一列'),
-    btn('col2', '第二列'),
-    btn('col3', '第三列'),
-    new ButtonBuilder()
-      .setCustomId(`rl_confirm_${gameId}`)
-      .setLabel('✅ 開轉')
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`rl_cancel_${gameId}`)
-      .setLabel('❌ 取消')
-      .setStyle(ButtonStyle.Danger),
-  );
-
-  return [row1, row2, row3, row4];
-}
-
-function buildStatusContent(game) {
-  const wagered = totalWagered(game.bets);
-  const remaining = game.totalBudget - wagered;
-  const unit = unitAmount(remaining);
-
-  const betLines = game.bets.length === 0
-    ? '_尚未押注_'
-    : game.bets.map(b => {
-        const def = BET_TYPES[b.type];
-        return `・${def?.label ?? b.type} **${b.amount.toLocaleString()}** (x${def?.payout ?? '?'})`;
-      }).join('\n');
-
-  return (
-    `🎰 **輪盤**　剩 **${remaining.toLocaleString()}** / ${game.totalBudget.toLocaleString()}　每押 **${unit.toLocaleString()}**\n\n` +
-    `${betLines}\n\n` +
-    `-# 90 秒未開轉自動退款`
-  );
-}
-
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('輪盤')
-    .setDescription('輪盤 🎰 押紅黑、奇偶、大小、打、列')
+    .setName("輪盤")
+    .setDescription("🎡 倍率轉盤！押 ×2 / ×5 / ×10，轉到自己押的倍率才中獎，中間一堆 0 要閃過")
     .setContexts(InteractionContextType.Guild)
-    .addIntegerOption(opt =>
-      opt.setName('金額')
-        .setDescription('投入籌碼總額（勾選梭哈時可省略）')
-        .setRequired(false)
-        .setMinValue(getCfg().minBetPerSlot ?? 30)
+    .addStringOption((opt) =>
+      opt
+        .setName("押注")
+        .setDescription("選一個倍率，轉到它才中獎")
+        .setRequired(true)
+        .addChoices(
+          { name: "×2", value: "2" },
+          { name: "×5", value: "5" },
+          { name: "×10", value: "10" }
+        )
     )
-    .addBooleanOption(opt =>
-      opt.setName('梭哈')
-        .setDescription('一次押上目前全部餘額')
+    .addIntegerOption((opt) =>
+      opt
+        .setName("金額")
+        .setDescription("下注 credits（勾選梭哈時可省略）")
+        .setRequired(false)
+        .setMinValue(getCfg().minBet ?? 10)
+    )
+    .addBooleanOption((opt) =>
+      opt
+        .setName("梭哈")
+        .setDescription("一次押上目前全部餘額")
         .setRequired(false)
     )
     .toJSON(),
@@ -107,95 +55,182 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      if (!coinSystem?.enabled) return interaction.editReply('🔧 金幣系統未啟動');
-      if (!client.rouletteGamesCollection) return interaction.editReply('🔧 輪盤系統未啟動，請聯絡舒舒！');
+      if (!coinSystem?.enabled) {
+        return interaction.editReply("🔧 金幣系統尚未啟動！");
+      }
+      if (!client.userCoinsCollection || !client.coinTransactionsCollection) {
+        return interaction.editReply("🔧 金幣系統尚未啟動，請聯絡舒舒！");
+      }
 
       const cfg = getCfg();
-      if (cfg.enabled === false) return interaction.editReply('🔧 輪盤暫時關閉中！');
+      if (cfg.enabled === false) {
+        return interaction.editReply("🔧 倍率轉盤暫時關閉中！");
+      }
+
+      const minBet = cfg.minBet ?? 10;
+      const maxBet = cfg.maxBet ?? 5000;
+      const segments = Array.isArray(cfg.segments) && cfg.segments.length
+        ? cfg.segments
+        : DEFAULT_SEGMENTS;
+
+      const choice = Number(interaction.options.getString("押注"));
+      if (![2, 5, 10].includes(choice)) {
+        return interaction.editReply("押注倍率只能是 ×2 / ×5 / ×10。");
+      }
+
+      const betInput = interaction.options.getInteger("金額");
+      const allIn = interaction.options.getBoolean("梭哈") === true;
+      if (!allIn && (!Number.isInteger(betInput) || betInput < minBet)) {
+        return interaction.editReply(
+          `下注金額至少需 ${minBet.toLocaleString()} credits（或勾選梭哈）。`
+        );
+      }
 
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
-      const budgetInput = interaction.options.getInteger('金額');
-      const allIn = interaction.options.getBoolean('梭哈') === true;
-      const minBudget = cfg.minBetPerSlot ?? 30;
-      const timeoutSec = cfg.bettingTimeoutSeconds ?? 90;
-      const username = interaction.member?.displayName || interaction.user.username;
+      const username =
+        interaction.member?.displayName || interaction.user.username;
+      const member = interaction.member;
 
-      if (!allIn && (!Number.isInteger(budgetInput) || budgetInput < minBudget)) {
-        return interaction.editReply(
-          `金額至少 ${minBudget.toLocaleString()} credits（或勾選梭哈）`
-        );
-      }
-
-      // 同時只能有一局 betting 中
-      const existing = await client.rouletteGamesCollection.findOne({
-        userId, guildId, status: 'betting',
+      const before = await client.userCoinsCollection.findOne({
+        userId,
+        guildId,
       });
-      if (existing) {
-        return interaction.editReply('🎰 你還有一局在進行中！');
-      }
+      const balance = before?.totalCoins || 0;
+      let bet = allIn ? balance : betInput;
 
-      // 餘額檢查
-      const userDoc = await client.userCoinsCollection.findOne({ userId, guildId });
-      const balance = userDoc?.totalCoins || 0;
-      const totalBudget = allIn ? balance : budgetInput;
-      if (allIn && balance < minBudget) {
+      if (allIn && balance < minBet) {
         return interaction.editReply(
-          `${MONEY_EMOJI} 餘額不足以梭哈！目前 **${balance.toLocaleString()}** credits，至少需 ${minBudget.toLocaleString()}。`
+          `${MONEY_EMOJI} 餘額不足以梭哈！目前 **${balance.toLocaleString()}** credits，至少需 ${minBet.toLocaleString()}。`
         );
       }
-      if (balance < totalBudget) {
+      if (!allIn && maxBet > 0 && bet > maxBet) {
         return interaction.editReply(
-          `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}** credits，需要 **${totalBudget.toLocaleString()}**。`
+          `下注上限 **${maxBet.toLocaleString()}** credits。`
+        );
+      }
+      if (allIn && maxBet > 0 && bet > maxBet) {
+        bet = maxBet;
+      }
+      if (balance < bet) {
+        return interaction.editReply(
+          `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}** credits，無法下注 ${bet.toLocaleString()}。`
         );
       }
 
-      // 先扣款
+      const roundId = crypto.randomUUID();
+
       const betResult = await grantCoins(client, {
         userId,
         guildId,
         username,
         avatarHash: interaction.user.avatar,
-        amount: -totalBudget,
-        source: 'bet',
-        member: interaction.member,
-        meta: { game: 'roulette' },
+        amount: -bet,
+        source: "bet",
+        member,
+        meta: { game: "roulette", roundId, choice },
       });
-      if (!betResult) return interaction.editReply('🔧 扣款失敗，請稍後再試。');
+      if (!betResult) {
+        return interaction.editReply("🔧 下注失敗，請稍後再試。");
+      }
+      let balanceAfter = betResult.doc?.totalCoins ?? balance - bet;
 
-      const gameId = crypto.randomUUID();
-      const now = new Date();
+      const outcome = spin({ bet, choice, segments });
 
-      const game = {
-        gameId,
+      if (outcome.payout > 0) {
+        const payoutResult = await grantCoins(client, {
+          userId,
+          guildId,
+          username,
+          avatarHash: interaction.user.avatar,
+          amount: outcome.payout,
+          source: "payout",
+          member,
+          meta: {
+            game: "roulette",
+            roundId,
+            choice,
+            landedMult: outcome.landedMult,
+            payout: outcome.payout,
+          },
+        });
+        balanceAfter =
+          payoutResult?.doc?.totalCoins ?? balanceAfter + outcome.payout;
+      }
+
+      const net = outcome.net;
+      const landedLabel = outcome.landedMult === 0 ? "0" : `×${outcome.landedMult}`;
+
+      let headline;
+      if (outcome.payout > 0) {
+        headline = `🎡 轉到 **×${choice}**！押中啦 → 派彩 **+${outcome.payout.toLocaleString()}** credits`;
+      } else {
+        headline = `🎡 押 ×${choice}，卻停在 **${landedLabel}**，這把槓龜了，下次再轉！`;
+      }
+
+      const lines = [];
+      if (balanceAfter <= 0) {
+        lines.push("🚨 **你破產了！** 餘額歸零，去發言、聊天賺金幣再來吧！");
+      }
+
+      const embedOutcome = net > 0 ? "win" : net < 0 ? "lose" : "neutral";
+
+      await saveLastBet(client, {
         userId,
         guildId,
-        username,
-        status: 'betting',
-        totalBudget,
-        bets: [],
-        result: null,
-        totalPayout: null,
-        createdAt: now,
-        updatedAt: now,
-        expiresAt: new Date(now.getTime() + timeoutSec * 1000),
-      };
-
-      await client.rouletteGamesCollection.insertOne(game);
-
-      const rows = buildBettingRows(gameId, totalBudget);
-      await interaction.editReply({
-        content: buildStatusContent(game),
-        components: rows,
+        game: "roulette",
+        payload: { options: { 金額: bet, 押注: String(choice), 梭哈: false } },
       });
-    } catch (err) {
-      console.log(`[ERROR] /輪盤:\n${err}\n${err.stack}`.red);
-      await interaction.editReply('🔧 輪盤開局失敗，請呼叫舒舒！').catch(() => {});
+
+      let attachment = null;
+      try {
+        const buf = await generateMultiplierWheelGif({
+          segments,
+          winningIndex: outcome.winningIndex,
+          choice,
+          bet,
+          payout: outcome.payout,
+          username,
+          balance: balanceAfter,
+        });
+        if (buf) {
+          attachment = new AttachmentBuilder(buf, {
+            name: `roulette-${roundId}.gif`,
+          });
+        }
+      } catch (gifErr) {
+        console.log(
+          `[WARN] 倍率轉盤 gif render failed, falling back to text: ${gifErr.message}`.yellow
+        );
+      }
+
+      const embed = buildCasinoEmbed({
+        game: "🎡 倍率轉盤",
+        user: {
+          id: interaction.user.id,
+          displayName: username,
+          avatarURL: interaction.user.displayAvatarURL(),
+        },
+        outcome: embedOutcome,
+        headline,
+        lines,
+        bet,
+        net,
+        balance: balanceAfter,
+        imageName: attachment?.name,
+      });
+
+      await interaction.editReply({
+        content: "",
+        embeds: [embed],
+        files: attachment ? [attachment] : [],
+        components: [buildReplayRow("roulette", userId, { name: username })],
+      });
+    } catch (error) {
+      console.log(`[ERROR] /輪盤:\n${error}\n${error.stack}`.red);
+      await interaction
+        .editReply("🔧 倍率轉盤執行失敗，請呼叫舒舒！")
+        .catch(() => {});
     }
   },
-
-  // 供 handleRouletteButton.js 使用
-  buildBettingRows,
-  buildStatusContent,
-  unitAmount,
 };

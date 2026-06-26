@@ -2,10 +2,16 @@
   "casino": {
     "roulette": {
       "enabled": true,
-      "minBetPerSlot": 30,
-      "maxTotalBudget": 2000,
-      "bettingTimeoutSeconds": 90,
-      "gameTtlSeconds": 300
+      "minBet": 10,
+      "maxBet": 5000,
+      "segments": [
+        { "mult": 2 }, { "mult": 2 }, { "mult": 0 }, { "mult": 5 },
+        { "mult": 2 }, { "mult": 2 }, { "mult": 0 }, { "mult": 10 },
+        { "mult": 2 }, { "mult": 2 }, { "mult": 0 }, { "mult": 5 },
+        { "mult": 2 }, { "mult": 2 }, { "mult": 0 }, { "mult": 10 },
+        { "mult": 2 }, { "mult": 2 }, { "mult": 0 }, { "mult": 5 },
+        { "mult": 0 }, { "mult": 5 }
+      ]
     },
     "sicbo": {
       "minBet": 10,
