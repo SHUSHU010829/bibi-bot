@@ -13,6 +13,7 @@ const { MONEY_EMOJI } = require("../../constants/coin");
 const grantCoins = require("../../features/economy/grantCoins");
 const { buildWaitingPayload } = require("../../features/casino/russianRoulette/render");
 const { startGame, cancelAndRefund } = require("../../features/casino/russianRoulette/service");
+const { MODES } = require("../../features/casino/russianRoulette/engine");
 
 function getCfg() {
   return casino?.russianRoulette || {};
@@ -29,6 +30,18 @@ module.exports = {
         .setDescription("每人押注金額")
         .setRequired(true)
         .setMinValue(getCfg().minAnte ?? 50)
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName("模式")
+        .setDescription("子彈數量：越多人中彈越刺激")
+        .setRequired(false)
+        .addChoices(
+          ...Object.entries(MODES).map(([value, m]) => ({
+            name: `${m.emoji} ${m.label}`,
+            value,
+          }))
+        )
     )
     .toJSON(),
 
@@ -58,7 +71,19 @@ module.exports = {
       const maxPlayers = cfg.maxPlayers ?? 6;
       const windowSec = cfg.joinWindowSeconds ?? 120;
 
+      const announceChannelId = cfg.announceChannelId;
+      if (!announceChannelId) {
+        return interaction.editReply("🔧 左輪公佈頻道未設定，請聯絡舒舒！");
+      }
+      const announceChannel = await client.channels
+        .fetch(announceChannelId)
+        .catch(() => null);
+      if (!announceChannel?.isTextBased?.()) {
+        return interaction.editReply("🔧 左輪公佈頻道無法存取，請聯絡舒舒！");
+      }
+
       const ante = interaction.options.getInteger("賭注");
+      const mode = interaction.options.getString("模式") || "standard";
       if (ante < minAnte) {
         return interaction.editReply(`賭注至少 ${minAnte.toLocaleString()} ${MONEY_EMOJI}。`);
       }
@@ -68,16 +93,16 @@ module.exports = {
 
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
-      const channelId = interaction.channelId;
+      const channelId = announceChannelId;
       const username = interaction.member?.displayName || interaction.user.username;
 
-      // 同頻道一次只能有一桌等候中
+      // 公佈頻道一次只能有一桌等候中
       const existing = await client.russianRouletteGamesCollection.findOne({
         channelId,
         status: "waiting",
       });
       if (existing) {
-        return interaction.editReply("🔫 這個頻道已經有一桌在等人了，先把那桌打完！");
+        return interaction.editReply("🔫 已經有一桌在等人了，先到公佈頻道把那桌打完！");
       }
 
       const before = await client.userCoinsCollection.findOne({ userId, guildId });
@@ -112,6 +137,7 @@ module.exports = {
         messageId: null,
         hostUserId: userId,
         ante,
+        mode,
         maxPlayers,
         players: [{ userId, username, ante }],
         status: "waiting",
@@ -121,14 +147,15 @@ module.exports = {
       };
       await client.russianRouletteGamesCollection.insertOne(state);
 
-      const message = await interaction.channel.send(buildWaitingPayload(state));
+      const message = await announceChannel.send(buildWaitingPayload(state));
       await client.russianRouletteGamesCollection.updateOne(
         { gameId },
         { $set: { messageId: message.id, updatedAt: new Date() } }
       );
 
+      const link = `https://discord.com/channels/${guildId}/${announceChannelId}/${message.id}`;
       await interaction.editReply(
-        `🔫 已開桌！其他人點面板上的「加入」一起玩，${Math.round(windowSec / 60) || 1} 分鐘後自動開轉。`
+        `🔫 已在公佈頻道開桌！前往 ${link} 點「加入」一起玩，${Math.round(windowSec / 60) || 1} 分鐘後自動開轉。`
       );
 
       const delayMs = expiresAt.getTime() - Date.now();

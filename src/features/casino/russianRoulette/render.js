@@ -1,11 +1,17 @@
-// 俄羅斯輪盤訊息渲染（純組裝）。公開、熱鬧導向。
+// 俄羅斯輪盤訊息渲染（Embed 呈現，公開、熱鬧導向）。
 
 const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  EmbedBuilder,
 } = require("discord.js");
 const { MONEY_EMOJI } = require("../../../constants/coin");
+const { MODES } = require("./engine");
+
+function modeLabel(mode) {
+  return MODES[mode]?.label || MODES.standard.label;
+}
 
 function buildWaitingPayload(state) {
   const expiresEpoch = Math.floor(new Date(state.expiresAt).getTime() / 1000);
@@ -14,12 +20,24 @@ function buildWaitingPayload(state) {
     .map((p, i) => `${i + 1}. <@${p.userId}>`)
     .join("\n");
 
-  const content =
-    `# 🔫 俄羅斯輪盤　賭注 **${state.ante.toLocaleString()}** ${MONEY_EMOJI}/人\n` +
-    `莊家 <@${state.hostUserId}> 開了一桌！轉輪一響，中彈者輸光，其餘人平分池底。\n\n` +
-    `**目前牌桌（${state.players.length}/${state.maxPlayers}）　池底 ${pot.toLocaleString()} ${MONEY_EMOJI}**\n` +
-    `${playerLines}\n\n` +
-    `-# 至少 2 人才能開轉・<t:${expiresEpoch}:R> 自動開轉（不足 2 人則退款）`;
+  const embed = new EmbedBuilder()
+    .setColor(0xb83030)
+    .setTitle("🔫 俄羅斯輪盤")
+    .setDescription(
+      `莊家 <@${state.hostUserId}> 開了一桌！轉輪一響，**中彈者輸光**，生還者平分池底。`
+    )
+    .addFields(
+      { name: "模式", value: modeLabel(state.mode), inline: true },
+      { name: "賭注", value: `${state.ante.toLocaleString()} ${MONEY_EMOJI} / 人`, inline: true },
+      { name: "池底", value: `${pot.toLocaleString()} ${MONEY_EMOJI}`, inline: true },
+      {
+        name: `牌桌（${state.players.length}/${state.maxPlayers}）`,
+        value: playerLines || "_等待玩家加入…_",
+        inline: true,
+      },
+      { name: "開轉倒數", value: `<t:${expiresEpoch}:R>`, inline: true }
+    )
+    .setFooter({ text: "至少 2 人才能開轉 · 時間到自動開轉（不足 2 人退款）" });
 
   const joinFull = state.players.length >= state.maxPlayers;
   const row = new ActionRowBuilder().addComponents(
@@ -40,49 +58,69 @@ function buildWaitingPayload(state) {
       .setEmoji("✖️")
       .setStyle(ButtonStyle.Danger)
   );
-  return { content, components: [row] };
+  return { content: "", embeds: [embed], components: [row] };
 }
 
-// 戲劇化的扣板機序列：中彈者前面的人「喀（空膛）」，中彈者「砰」。
+// 戲劇化的扣板機序列：每位玩家依序扣板機，中彈者「砰」、生還者「喀（空膛）」。
 function triggerSequence(state) {
-  const lines = [];
-  for (let i = 0; i < state.players.length; i += 1) {
-    const p = state.players[i];
-    if (i < state.loserIndex) {
-      lines.push(`・<@${p.userId}>　🔫 喀…（空膛）`);
-    } else if (i === state.loserIndex) {
-      lines.push(`・<@${p.userId}>　💥 **砰！中彈！**`);
-      break;
-    }
-  }
-  return lines.join("\n");
+  const loserSet = new Set(state.loserIds || []);
+  return state.players
+    .map((p) => {
+      if (loserSet.has(p.userId)) {
+        return `・<@${p.userId}>　💥 **砰！中彈！**`;
+      }
+      return `・<@${p.userId}>　🔫 喀…（空膛）`;
+    })
+    .join("\n");
 }
 
 function buildFinishedPayload(state) {
+  const loserIds = state.loserIds || [];
   const winners = state.payouts || [];
+  const loserLine = loserIds.length
+    ? loserIds.map((id) => `<@${id}>`).join("　")
+    : "（無）";
   const winnerLine = winners.length
     ? winners
         .map((w) => `<@${w.userId}> +${w.amount.toLocaleString()} ${MONEY_EMOJI}`)
         .join("　")
     : "（無）";
 
-  const content =
-    `# 🔫 轉輪停了…\n` +
-    `${triggerSequence(state)}\n\n` +
-    `💀 <@${state.loserId}> 中彈，輸掉 **${state.ante.toLocaleString()}** ${MONEY_EMOJI}！\n` +
-    `🏆 倖存者平分池底（池底 ${state.pot.toLocaleString()}）：\n${winnerLine}`;
-
-  return { content, components: [] };
+  const embed = new EmbedBuilder()
+    .setColor(0x8c7a2a)
+    .setTitle("🔫 轉輪停了…")
+    .setDescription(triggerSequence(state))
+    .addFields(
+      {
+        name: `💀 中彈（${loserIds.length} 人各輸 ${state.ante.toLocaleString()} ${MONEY_EMOJI}）`,
+        value: loserLine,
+      },
+      {
+        name: `🏆 倖存者平分池底（${(state.pot || 0).toLocaleString()}）`,
+        value: winnerLine,
+      }
+    );
+  // 內容帶上中彈者提及，讓他們收到通知
+  const ping = loserIds.length
+    ? `💥 ${loserIds.map((id) => `<@${id}>`).join("　")} 中彈！`
+    : "💥 轉輪停了！";
+  return { content: ping, embeds: [embed], components: [] };
 }
 
 function buildCancelledPayload(state, { reason = "cancelled" } = {}) {
   const head =
     reason === "not_enough"
-      ? "🔫 人數不足 2 人，這桌取消了，賭注已全數退回。"
-      : "🔫 這桌取消了，賭注已全數退回。";
-  const content =
-    `# ${head}\n莊家 <@${state.hostUserId}>　賭注 ${state.ante.toLocaleString()} ${MONEY_EMOJI}/人`;
-  return { content, components: [] };
+      ? "人數不足 2 人，這桌取消了，賭注已全數退回。"
+      : "這桌取消了，賭注已全數退回。";
+  const embed = new EmbedBuilder()
+    .setColor(0x95a5a6)
+    .setTitle("🔫 俄羅斯輪盤 已取消")
+    .setDescription(head)
+    .addFields({
+      name: "牌桌",
+      value: `莊家 <@${state.hostUserId}>　賭注 ${state.ante.toLocaleString()} ${MONEY_EMOJI}/人`,
+    });
+  return { content: "", embeds: [embed], components: [] };
 }
 
 module.exports = {

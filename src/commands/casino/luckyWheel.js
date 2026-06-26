@@ -146,12 +146,14 @@ module.exports = {
       const net = outcome.net;
 
       let headline;
-      if (outcome.mult >= 50) {
-        headline = `👑 **超級大獎！** 轉盤停在 ${segLabel}（×${outcome.mult}）→ 派彩 **+${outcome.payout.toLocaleString()}** credits`;
-      } else if (outcome.payout > 0) {
-        headline = `🎡 轉盤停在 ${segLabel}（×${outcome.mult}）→ 派彩 **+${outcome.payout.toLocaleString()}** credits`;
+      if (outcome.mult >= 25) {
+        headline = `👑 **超級大獎！** 轉盤停在 ${segLabel} → 派彩 **+${outcome.payout.toLocaleString()}** credits`;
+      } else if (net > 0) {
+        headline = `🎡 轉盤停在 ${segLabel} → 賺 **+${net.toLocaleString()}**（拿回 ${outcome.payout.toLocaleString()}）`;
+      } else if (net === 0) {
+        headline = `🎡 轉盤停在 ${segLabel}，保本！拿回 ${outcome.payout.toLocaleString()} credits`;
       } else {
-        headline = `🎡 轉盤停在 ${segLabel}，這把槓龜了，下次再轉！`;
+        headline = `🎡 轉盤停在 ${segLabel}，少賠些～拿回 **${outcome.payout.toLocaleString()}** credits`;
       }
 
       const lines = [];
@@ -160,7 +162,7 @@ module.exports = {
       }
 
       const result = net > 0 ? "win" : net < 0 ? "lose" : "neutral";
-      const embedOutcome = outcome.mult >= 50 ? "jackpot" : result;
+      const embedOutcome = outcome.mult >= 25 ? "jackpot" : result;
 
       await saveLastBet(client, {
         userId,

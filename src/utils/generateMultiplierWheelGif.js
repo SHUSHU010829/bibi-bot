@@ -13,14 +13,15 @@ function ensureFonts() {
 }
 
 // ─── Canvas layout ───────────────────────────────────────────────────────────
-const W = 1080;
-const H = 760;
+// 輪盤本身就是主體：方形畫布、置中放大，不再放右側資訊面板（結果由 embed 呈現）。
+const W = 720;
+const H = 720;
 
-const CX = 265;
-const CY = 380;
-const R_SECTOR = 215;
-const R_RIM = 226;
-const R_HUB = 44;
+const CX = 360;
+const CY = 350;
+const R_SECTOR = 290;
+const R_RIM = 302;
+const R_HUB = 50;
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const C = {
@@ -35,17 +36,17 @@ const C = {
   red: '#B83030',
 };
 
-// 倍率→底色：×2/×5/×10 各自一色，0（沒中）暗灰。
+// 倍率→底色：×2 藍、×5 紫、×10 琥珀，0（沒中）暖灰。
 const MULT_COLORS = {
-  2: '#2E5E8C',
-  5: '#7A3B8C',
-  10: '#A8602A',
+  2: '#2C7BB6',
+  5: '#8E5BA6',
+  10: '#D98E2B',
 };
 
 function wedgeColor(seg) {
   const mult = Number(seg?.mult) || 0;
-  if (mult === 0) return '#5A5048';
-  return MULT_COLORS[mult] || '#3B6E8C';
+  if (mult === 0) return '#8A8178';
+  return MULT_COLORS[mult] || '#2C7BB6';
 }
 
 function wedgeLabel(seg) {
@@ -134,7 +135,7 @@ function drawWheel(ctx, segments, wheelAngle, choice) {
     const lab = wedgeLabel(seg);
     ctx.save();
     ctx.translate(Math.cos(midA) * tr, Math.sin(midA) * tr);
-    ctx.font = `900 ${lab.length >= 4 ? 26 : lab.length >= 2 ? 30 : 36}px NotoSans`;
+    ctx.font = `900 ${lab.length >= 4 ? 18 : lab.length >= 3 ? 21 : 24}px NotoSans`;
     ctx.fillStyle = mult === 0 ? '#C8BEB0' : C.white;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -313,6 +314,18 @@ function drawInfoPanel(ctx, { phase, segments, winningIndex, bet, payout, choice
   ctx.fillText(handle, W - 28, footY);
 }
 
+// 底部品牌小字（取代右側面板，讓輪盤當主體）。
+function drawBrand(ctx, name) {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = '900 24px NotoSans';
+  ctx.fillStyle = C.ink;
+  ctx.fillText(name, W / 2, H - 34);
+  ctx.font = '400 13px NotoSans';
+  ctx.fillStyle = C.muted;
+  ctx.fillText('逼逼賭場', W / 2, H - 16);
+}
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 /**
@@ -367,7 +380,7 @@ async function generateMultiplierWheelGif({ segments, winningIndex, choice, bet,
     clearFrame(ctx);
     drawWheel(ctx, list, e * finalAngle, pick);
     drawPointer(ctx);
-    drawInfoPanel(ctx, { phase: 'spinning', ...shared });
+    drawBrand(ctx, '倍率輪盤');
     await addFrame();
   }
 
@@ -376,7 +389,7 @@ async function generateMultiplierWheelGif({ segments, winningIndex, choice, bet,
     clearFrame(ctx);
     drawWheel(ctx, list, finalAngle, pick);
     drawPointer(ctx);
-    drawInfoPanel(ctx, { phase: 'result', ...shared });
+    drawBrand(ctx, '倍率輪盤');
     await addFrame();
   }
 
