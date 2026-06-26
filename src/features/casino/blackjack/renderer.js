@@ -3,6 +3,7 @@
 
 const {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
@@ -11,7 +12,7 @@ const { evaluateHand } = require("./hand");
 const { FIVE_CARD_THRESHOLD } = require("./engine");
 const { buildReplayRow } = require("../replay");
 const { buildCasinoEmbed } = require("../casinoEmbed");
-const { cardEmoji, cardBackEmoji, handEmojis } = require("../cardEmoji");
+const generateBlackjackCard = require("../../../utils/generateBlackjackCard");
 
 const SUIT_EMOJI = { S: "♠", H: "♥", D: "♦", C: "♣" };
 const RANK_LABEL = {
@@ -220,55 +221,31 @@ function settleOutcome(state) {
   return { outcome, net };
 }
 
-function handsOf(state) {
-  return Array.isArray(state.hands) && state.hands.length > 0
-    ? state.hands
-    : [
-        {
-          cards: state.playerHand,
-          bet: state.bet,
-          doubled: !!state.doubled,
-          result: null,
-        },
-      ];
-}
-
-// 牌面放進訊息 content，且整段只有 emoji（不混任何文字），Discord 才會放大成大圖。
-// 標題 / 點數一律改放 embed（見 statusLines）。莊家暗牌用綠色牌背。
-function cardContent(state) {
-  const isPlaying = state.status === "playing";
-  const rows = [
-    isPlaying
-      ? `${cardEmoji(state.dealerHand[0])} ${cardBackEmoji("green")}`
-      : handEmojis(state.dealerHand),
-  ];
-  handsOf(state).forEach((h) => rows.push(handEmojis(h.cards)));
-  return rows.join("\n");
-}
-
-// embed 內文：莊家 / 你的 的點數與提示文字（牌面本身在 content 大圖）。
-function statusLines(state) {
+// 圖片渲染失敗時，把牌況寫進 embed 內文的備援文字行。
+function gameStatusLines(state) {
   const isPlaying = state.status === "playing";
   const dealerEval = evaluateHand(state.dealerHand);
+  const hands =
+    Array.isArray(state.hands) && state.hands.length > 0
+      ? state.hands
+      : [
+          {
+            cards: state.playerHand,
+            bet: state.bet,
+            doubled: !!state.doubled,
+            result: null,
+          },
+        ];
 
   const lines = [
-    `🎴 **莊家**　${isPlaying ? "= **?**" : `= **${dealerEval.total}**`}`,
+    renderHandLine("莊家", state.dealerHand, dealerEval.total, isPlaying),
   ];
-  handsOf(state).forEach((h, i) => {
+  hands.forEach((h, i) => {
     const ev = evaluateHand(h.cards);
     const label = state.isSplit ? `第 ${i + 1} 手` : "你的";
     const marker =
       isPlaying && i === state.activeIndex && state.isSplit ? " ▶" : "";
-    lines.push(`👤 **${label}${marker}**　= **${ev.total}**`);
-    if (isPlaying && h.cards.length >= 3 && !ev.isBust) {
-      const remain = FIVE_CARD_THRESHOLD - h.cards.length;
-      if (remain > 0 && (!state.isSplit || i === state.activeIndex)) {
-        lines.push(`-# 🏆 再抽 ${remain} 張未爆牌即過五關（賠率 2:1）`);
-      }
-    }
-    if (!isPlaying && state.isSplit) {
-      lines.push(`-# ${perHandHeadline(h)}`);
-    }
+    lines.push(renderHandLine(label + marker, h.cards, ev.total, false));
   });
   return lines;
 }
@@ -287,15 +264,35 @@ async function renderMessage(
   const isPlaying = state.status === "playing";
   const { outcome, net } = settleOutcome(state);
 
+  let files = [];
+  let imageName;
+  let fallbackLines = [];
+  try {
+    const buf = await generateBlackjackCard({
+      username,
+      state,
+      balance: balance ?? 0,
+    });
+    imageName = `blackjack-${state.gameId}.png`;
+    files = [new AttachmentBuilder(buf, { name: imageName })];
+  } catch (e) {
+    // 圖卡生成失敗就 fallback：把牌況放進 embed 內文
+    console.log(
+      `[WARN] blackjack card render failed, falling back to text: ${e.message}`
+    );
+    fallbackLines = gameStatusLines(state);
+  }
+
   const embed = buildCasinoEmbed({
     game: "🃏 BLACKJACK",
     user: { id: userId || state.userId, displayName: username, avatarURL },
     outcome,
     headline: isPlaying ? null : buildSettleHeadlineLine(state),
-    lines: statusLines(state),
+    lines: fallbackLines,
     bet: totalStakeOf(state),
     net: isPlaying ? undefined : net,
     balance: isPlaying || typeof balance !== "number" ? undefined : balance,
+    imageName,
     footer: isPlaying
       ? state.isSplit
         ? `分牌中 ・ 進行第 ${state.activeIndex + 1} 手`
@@ -303,7 +300,7 @@ async function renderMessage(
       : undefined,
   });
 
-  return { content: cardContent(state), embeds: [embed], components, files: [] };
+  return { content: "", embeds: [embed], components, files };
 }
 
 module.exports = {
