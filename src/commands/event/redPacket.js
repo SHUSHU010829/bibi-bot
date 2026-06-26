@@ -55,6 +55,9 @@ module.exports = {
     )
     .toJSON(),
 
+  // 紅包是同樂性質：開放在公會大廳(general)與賭場遊戲頻道(casino)，遊戲房討論串本就豁免。
+  channelBuckets: ["general", "casino"],
+
   run: async (client, interaction) => {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 

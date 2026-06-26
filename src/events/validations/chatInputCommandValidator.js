@@ -85,7 +85,15 @@ module.exports = async (client, interaction) => {
     // 用錯頻道就回覆一則 ephemeral 提醒，引導到對應頻道。
     if (interaction.guildId === serverId && !inGameRoom) {
       const allowed = allowedChannelsFor(commandObject, commandChannels);
-      if (allowed && !allowed.includes(interaction.channelId)) {
+      // 討論串繼承母頻道的指令權限：母頻道在白名單，串內就放行（例：公會大廳聊天串）。
+      const parentId = interaction.channel?.isThread?.()
+        ? interaction.channel.parentId
+        : null;
+      const channelOk =
+        allowed &&
+        (allowed.includes(interaction.channelId) ||
+          (parentId && allowed.includes(parentId)));
+      if (allowed && !channelOk) {
         const hidden = new Set(commandChannelsHidden || []);
         const visible = allowed.filter((id) => !hidden.has(id));
         const mentions = (visible.length ? visible : allowed)
