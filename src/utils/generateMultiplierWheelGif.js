@@ -18,9 +18,9 @@ const W = 720;
 const H = 720;
 
 const CX = 360;
-const CY = 350;
-const R_SECTOR = 290;
-const R_RIM = 302;
+const CY = 340;
+const R_SECTOR = 274;
+const R_RIM = 286;
 const R_HUB = 50;
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
@@ -336,16 +336,17 @@ function drawInfoPanel(ctx, { phase, segments, winningIndex, bet, payout, choice
 }
 
 // 底部品牌小字（取代右側面板，讓輪盤當主體）。
-// 往上收，避免壓到內框線（內框底邊在 y≈702）。
+// 以輪盤底緣為基準往下排，確保與輪圈之間留有間距、不會黏在一起。
 function drawBrand(ctx, name) {
+  const wheelBottom = CY + R_RIM;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.font = '900 24px NotoSans';
   ctx.fillStyle = C.ink;
-  ctx.fillText(name, W / 2, H - 46);
+  ctx.fillText(name, W / 2, wheelBottom + 40);
   ctx.font = '400 13px NotoSans';
   ctx.fillStyle = C.muted;
-  ctx.fillText('逼逼賭場', W / 2, H - 26);
+  ctx.fillText('逼逼賭場', W / 2, wheelBottom + 62);
 }
 
 // ─── Main export ─────────────────────────────────────────────────────────────
@@ -371,13 +372,15 @@ async function generateMultiplierWheelGif({ segments, winningIndex, choice, bet,
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
 
-  const SPIN_FRAMES = 32;
-  const STILL_FRAMES = 22;
+  // 大幅縮短轉動與停留幀數，並改用 octree 量化（比 neuquant 快很多，
+  // 輪盤為平塗色塊、品質足夠），讓 GIF 產生時間明顯下降、指令回應更快。
+  const SPIN_FRAMES = 20;
+  const STILL_FRAMES = 4;
   const TOTAL_FRAMES = SPIN_FRAMES + STILL_FRAMES;
 
   const YIELD_EVERY = 4;
 
-  const encoder = new GIFEncoder(W, H, 'neuquant', true, TOTAL_FRAMES);
+  const encoder = new GIFEncoder(W, H, 'octree', true, TOTAL_FRAMES);
   encoder.setDelay(50);
   encoder.setRepeat(0);
   encoder.setQuality(20);
@@ -406,8 +409,9 @@ async function generateMultiplierWheelGif({ segments, winningIndex, choice, bet,
     await addFrame();
   }
 
-  // ── Phase 2: static result ────────────────────────────────
+  // ── Phase 2: static result（幀數少，最後一幀停留久一點讓結果看清楚）──
   for (let f = 0; f < STILL_FRAMES; f++) {
+    encoder.setDelay(f === STILL_FRAMES - 1 ? 1500 : 60);
     clearFrame(ctx);
     drawWheel(ctx, list, finalAngle, pick);
     drawPointer(ctx);
