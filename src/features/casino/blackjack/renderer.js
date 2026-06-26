@@ -32,14 +32,6 @@ function renderHandLine(label, cards, total, isHidden) {
   return `${label}：${parts}　= ${total}`;
 }
 
-// emoji 版手牌行：用應用程式 emoji 呈現整手牌（暗牌用綠色牌背）。
-function emojiHandLine(label, cards, total, isHidden) {
-  if (isHidden) {
-    return `**${label}**　${cardEmoji(cards[0])} ${cardBackEmoji("green")}　= **?**`;
-  }
-  return `**${label}**　${handEmojis(cards)}　= **${total}**`;
-}
-
 function buildButtons(state, balance) {
   const gameId = state.gameId;
   const isPlaying = state.status === "playing";
@@ -228,32 +220,46 @@ function settleOutcome(state) {
   return { outcome, net };
 }
 
-// 用應用程式 emoji 把整副牌況組成 embed 內文行（取代 Canvas 生圖）。
-function emojiBoardLines(state) {
+function handsOf(state) {
+  return Array.isArray(state.hands) && state.hands.length > 0
+    ? state.hands
+    : [
+        {
+          cards: state.playerHand,
+          bet: state.bet,
+          doubled: !!state.doubled,
+          result: null,
+        },
+      ];
+}
+
+// 牌面放進訊息 content，且整段只有 emoji（不混任何文字），Discord 才會放大成大圖。
+// 標題 / 點數一律改放 embed（見 statusLines）。莊家暗牌用綠色牌背。
+function cardContent(state) {
+  const isPlaying = state.status === "playing";
+  const rows = [
+    isPlaying
+      ? `${cardEmoji(state.dealerHand[0])} ${cardBackEmoji("green")}`
+      : handEmojis(state.dealerHand),
+  ];
+  handsOf(state).forEach((h) => rows.push(handEmojis(h.cards)));
+  return rows.join("\n");
+}
+
+// embed 內文：莊家 / 你的 的點數與提示文字（牌面本身在 content 大圖）。
+function statusLines(state) {
   const isPlaying = state.status === "playing";
   const dealerEval = evaluateHand(state.dealerHand);
-  const hands =
-    Array.isArray(state.hands) && state.hands.length > 0
-      ? state.hands
-      : [
-          {
-            cards: state.playerHand,
-            bet: state.bet,
-            doubled: !!state.doubled,
-            result: null,
-          },
-        ];
 
   const lines = [
-    emojiHandLine("莊家", state.dealerHand, dealerEval.total, isPlaying),
-    "",
+    `🎴 **莊家**　${isPlaying ? "= **?**" : `= **${dealerEval.total}**`}`,
   ];
-  hands.forEach((h, i) => {
+  handsOf(state).forEach((h, i) => {
     const ev = evaluateHand(h.cards);
     const label = state.isSplit ? `第 ${i + 1} 手` : "你的";
     const marker =
       isPlaying && i === state.activeIndex && state.isSplit ? " ▶" : "";
-    lines.push(emojiHandLine(label + marker, h.cards, ev.total, false));
+    lines.push(`👤 **${label}${marker}**　= **${ev.total}**`);
     if (isPlaying && h.cards.length >= 3 && !ev.isBust) {
       const remain = FIVE_CARD_THRESHOLD - h.cards.length;
       if (remain > 0 && (!state.isSplit || i === state.activeIndex)) {
@@ -286,7 +292,7 @@ async function renderMessage(
     user: { id: userId || state.userId, displayName: username, avatarURL },
     outcome,
     headline: isPlaying ? null : buildSettleHeadlineLine(state),
-    lines: emojiBoardLines(state),
+    lines: statusLines(state),
     bet: totalStakeOf(state),
     net: isPlaying ? undefined : net,
     balance: isPlaying || typeof balance !== "number" ? undefined : balance,
@@ -297,7 +303,7 @@ async function renderMessage(
       : undefined,
   });
 
-  return { content: "", embeds: [embed], components, files: [] };
+  return { content: cardContent(state), embeds: [embed], components, files: [] };
 }
 
 module.exports = {
