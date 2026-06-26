@@ -13,15 +13,15 @@ function ensureFonts() {
 }
 
 // ─── Canvas layout ───────────────────────────────────────────────────────────
-const W = 1080;
-const H = 760;
+// 輪盤本身就是主體：方形畫布、置中放大，不再放右側資訊面板（結果由 embed 呈現）。
+const W = 720;
+const H = 720;
 
-// Wheel geometry (center on left half, same footprint as roulette card)
-const CX = 265;
-const CY = 380;
-const R_SECTOR = 215; // colored wedges reach this radius
-const R_RIM = 226;    // outer rim
-const R_HUB = 44;     // center hub
+const CX = 360;
+const CY = 350;
+const R_SECTOR = 290; // colored wedges reach this radius
+const R_RIM = 302;    // outer rim
+const R_HUB = 50;     // center hub
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const C = {
@@ -306,6 +306,18 @@ function drawInfoPanel(ctx, { phase, segments, winningIndex, bet, payout, mult, 
   ctx.fillText(handle, W - 28, footY);
 }
 
+// 底部品牌小字（取代右側面板，讓輪盤當主體）。
+function drawBrand(ctx, name) {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = '900 24px NotoSans';
+  ctx.fillStyle = C.ink;
+  ctx.fillText(name, W / 2, H - 34);
+  ctx.font = '400 13px NotoSans';
+  ctx.fillStyle = C.muted;
+  ctx.fillText('逼逼賭場', W / 2, H - 16);
+}
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 /**
@@ -362,7 +374,7 @@ async function generateLuckyWheelGif({ segments, winningIndex, bet, payout, mult
     clearFrame(ctx);
     drawWheel(ctx, list, e * finalAngle);
     drawPointer(ctx);
-    drawInfoPanel(ctx, { phase: 'spinning', ...shared });
+    drawBrand(ctx, '幸運轉盤');
     await addFrame();
   }
 
@@ -371,7 +383,7 @@ async function generateLuckyWheelGif({ segments, winningIndex, bet, payout, mult
     clearFrame(ctx);
     drawWheel(ctx, list, finalAngle);
     drawPointer(ctx);
-    drawInfoPanel(ctx, { phase: 'result', ...shared });
+    drawBrand(ctx, '幸運轉盤');
     await addFrame();
   }
 
