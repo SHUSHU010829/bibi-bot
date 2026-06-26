@@ -24,29 +24,33 @@ const R_RIM = 302;
 const R_HUB = 50;
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
+// 暖色系賭場主題：奶油底 + 漸層加深做出立體感、金屬金邊框與輪圈。
 const C = {
-  bg: '#F4ECD8',
+  bgCenter: '#FCF6E8',
+  bgEdge: '#E4D4B2',
   ink: '#2A2420',
-  muted: '#A89270',
+  muted: '#9C875E',
   gold: '#C9963A',
-  goldBright: '#E8B948',
+  goldBright: '#F2D479',
+  goldDeep: '#9A6A22',
   white: '#FFFFFF',
   win: '#2D7A4A',
   loss: '#888888',
-  red: '#B83030',
+  red: '#C0392B',
+  dim: '#9A8F82',
 };
 
 // 倍率→底色：×2 藍、×5 紫、×10 琥珀，0（沒中）暖灰。
 const MULT_COLORS = {
-  2: '#2C7BB6',
-  5: '#8E5BA6',
-  10: '#D98E2B',
+  2: '#2980B9',
+  5: '#8E44AD',
+  10: '#E08A2F',
 };
 
 function wedgeColor(seg) {
   const mult = Number(seg?.mult) || 0;
-  if (mult === 0) return '#8A8178';
-  return MULT_COLORS[mult] || '#2C7BB6';
+  if (mult === 0) return C.dim;
+  return MULT_COLORS[mult] || '#2980B9';
 }
 
 function wedgeLabel(seg) {
@@ -70,13 +74,16 @@ function landingAngle(winningIndex, segmentCount, fullTurns = 5) {
 
 // ─── Frame drawing ───────────────────────────────────────────────────────────
 function clearFrame(ctx) {
-  ctx.fillStyle = C.bg;
+  const bg = ctx.createRadialGradient(CX, CY, 80, CX, CY, 520);
+  bg.addColorStop(0, C.bgCenter);
+  bg.addColorStop(1, C.bgEdge);
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
 
-  ctx.strokeStyle = C.ink;
+  ctx.strokeStyle = C.goldDeep;
   ctx.lineWidth = 3;
   ctx.strokeRect(12, 12, W - 24, H - 24);
-  ctx.strokeStyle = C.muted;
+  ctx.strokeStyle = C.gold;
   ctx.lineWidth = 1;
   ctx.strokeRect(18, 18, W - 36, H - 36);
 }
@@ -88,13 +95,24 @@ function drawWheel(ctx, segments, wheelAngle, choice) {
   ctx.save();
   ctx.translate(CX, CY);
 
-  // Outer rim
+  // Outer rim — 金屬漸層 + 柔和落地陰影做出立體感
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.28)';
+  ctx.shadowBlur = 16;
+  ctx.shadowOffsetY = 5;
+  const rimGrad = ctx.createLinearGradient(0, -R_RIM, 0, R_RIM);
+  rimGrad.addColorStop(0, C.goldBright);
+  rimGrad.addColorStop(0.5, C.gold);
+  rimGrad.addColorStop(1, C.goldDeep);
   ctx.beginPath();
   ctx.arc(0, 0, R_RIM, 0, Math.PI * 2);
-  ctx.fillStyle = C.gold;
+  ctx.fillStyle = rimGrad;
   ctx.fill();
-  ctx.strokeStyle = C.ink;
-  ctx.lineWidth = 2.5;
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(0, 0, R_RIM, 0, Math.PI * 2);
+  ctx.strokeStyle = C.goldDeep;
+  ctx.lineWidth = 2;
   ctx.stroke();
 
   // Rotating wedges
@@ -150,17 +168,20 @@ function drawWheel(ctx, segments, wheelAngle, choice) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Hub
+  // Hub — 立體深色 + 金邊
+  const hubGrad = ctx.createRadialGradient(-14, -14, 4, 0, 0, R_HUB);
+  hubGrad.addColorStop(0, '#4A4038');
+  hubGrad.addColorStop(1, C.ink);
   ctx.beginPath();
   ctx.arc(0, 0, R_HUB, 0, Math.PI * 2);
-  ctx.fillStyle = C.ink;
+  ctx.fillStyle = hubGrad;
   ctx.fill();
-  ctx.strokeStyle = C.gold;
+  ctx.strokeStyle = C.goldBright;
   ctx.lineWidth = 2;
   ctx.stroke();
 
   ctx.font = '900 9px NotoSans';
-  ctx.fillStyle = C.gold;
+  ctx.fillStyle = C.goldBright;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('MULTI', 0, 0);
@@ -315,15 +336,16 @@ function drawInfoPanel(ctx, { phase, segments, winningIndex, bet, payout, choice
 }
 
 // 底部品牌小字（取代右側面板，讓輪盤當主體）。
+// 往上收，避免壓到內框線（內框底邊在 y≈702）。
 function drawBrand(ctx, name) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.font = '900 24px NotoSans';
   ctx.fillStyle = C.ink;
-  ctx.fillText(name, W / 2, H - 34);
+  ctx.fillText(name, W / 2, H - 46);
   ctx.font = '400 13px NotoSans';
   ctx.fillStyle = C.muted;
-  ctx.fillText('逼逼賭場', W / 2, H - 16);
+  ctx.fillText('逼逼賭場', W / 2, H - 26);
 }
 
 // ─── Main export ─────────────────────────────────────────────────────────────
