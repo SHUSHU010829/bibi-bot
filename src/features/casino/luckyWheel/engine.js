@@ -1,21 +1,29 @@
 // 幸運轉盤核心引擎：純函數，不接觸 DB / Discord。
 //
-// 玩法：一個由多個加權扇形組成的轉盤，每個扇形帶一個倍率。
+// 玩法：一個由多個加權扇形組成的轉盤，每個扇形帶一個倍率（含 < 1 的「少賠」格）。
 //   旋轉時依權重抽中一個扇形，payout = floor(bet × segment.mult)。
-//   mult = 0 代表槓龜，下注全沒。
+//   沒有槓龜（×0）：最低也會拿回一部分本金，只是少賠。
 //
-// RTP = Σ(weight × mult) / Σweight；房費由權重控制（預設約 6–10%）。
-// 預設權重已調至 RTP ≈ 0.929（房費約 7.1%），含稀有大獎 ×50（約 0.1% 機率）。
-
+// RTP = Σ(weight × mult) / Σweight；房費由權重控制。預設 17 格、RTP ≈ 0.90，
+// 含稀有大獎 ×25 / ×50 / ×100。
 const DEFAULT_SEGMENTS = [
-  { mult: 0, weight: 470, label: "槓龜", emoji: "💀" },
-  { mult: 1.2, weight: 240, label: "×1.2", emoji: "🪙" },
-  { mult: 1.5, weight: 160, label: "×1.5", emoji: "🪙" },
-  { mult: 2, weight: 90, label: "×2", emoji: "✨" },
-  { mult: 3, weight: 28, label: "×3", emoji: "💎" },
-  { mult: 5, weight: 10, label: "×5", emoji: "💎" },
-  { mult: 10, weight: 4, label: "×10", emoji: "🎉" },
-  { mult: 50, weight: 1, label: "大獎 ×50", emoji: "👑" },
+  { mult: 0.2, weight: 173, label: "×0.2" },
+  { mult: 0.3, weight: 187, label: "×0.3" },
+  { mult: 0.5, weight: 231, label: "×0.5" },
+  { mult: 0.6, weight: 231, label: "×0.6" },
+  { mult: 0.7, weight: 231, label: "×0.7" },
+  { mult: 0.8, weight: 231, label: "×0.8" },
+  { mult: 1.2, weight: 95, label: "×1.2" },
+  { mult: 1.5, weight: 72, label: "×1.5" },
+  { mult: 2, weight: 52, label: "×2" },
+  { mult: 2.5, weight: 34, label: "×2.5" },
+  { mult: 3, weight: 24, label: "×3" },
+  { mult: 4, weight: 15, label: "×4" },
+  { mult: 6, weight: 9, label: "×6" },
+  { mult: 10, weight: 5, label: "×10" },
+  { mult: 25, weight: 1.6, label: "×25" },
+  { mult: 50, weight: 0.6, label: "×50" },
+  { mult: 100, weight: 0.25, label: "大獎 ×100" },
 ];
 
 function floorPayout(bet, mult) {

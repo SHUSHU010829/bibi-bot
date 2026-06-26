@@ -36,16 +36,16 @@ const C = {
   red: '#B83030',
 };
 
-// Wedge palette (alternating warm/cool); ×50 jackpot wedge gets gold override.
+// 鮮明但協調的配色（在米色底上以白字呈現都清楚）；大獎（×50+）金色、< 1 少賠灰。
 const WEDGE_COLORS = [
-  '#2E5E8C', '#7A3B8C', '#1D6B45', '#A8602A',
-  '#3B6E8C', '#8C3B5A', '#46795A', '#8C7A2A',
+  '#C0392B', '#2C7BB6', '#279B6B', '#8E5BA6',
+  '#E08A2F', '#1F9E94', '#5B6FC0', '#B0467E',
 ];
 
 function wedgeColor(seg, i) {
   const mult = Number(seg?.mult) || 0;
   if (mult >= 50) return C.goldBright;
-  if (mult === 0) return '#5A5048'; // 槓龜：暗色
+  if (mult < 1) return '#8A8178'; // < 1（少賠）：暖灰
   return WEDGE_COLORS[i % WEDGE_COLORS.length];
 }
 
@@ -131,7 +131,7 @@ function drawWheel(ctx, segments, wheelAngle) {
     const lab = wedgeLabel(seg);
     ctx.save();
     ctx.translate(Math.cos(midA) * tr, Math.sin(midA) * tr);
-    ctx.font = `900 ${lab.length >= 4 ? 26 : lab.length >= 2 ? 30 : 36}px NotoSans`;
+    ctx.font = `900 ${lab.length >= 4 ? 18 : lab.length >= 3 ? 21 : 24}px NotoSans`;
     ctx.fillStyle = (Number(seg?.mult) || 0) >= 50 ? C.ink : C.white;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

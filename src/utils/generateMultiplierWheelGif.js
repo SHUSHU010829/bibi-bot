@@ -35,17 +35,17 @@ const C = {
   red: '#B83030',
 };
 
-// 倍率→底色：×2/×5/×10 各自一色，0（沒中）暗灰。
+// 倍率→底色：×2 藍、×5 紫、×10 琥珀，0（沒中）暖灰。
 const MULT_COLORS = {
-  2: '#2E5E8C',
-  5: '#7A3B8C',
-  10: '#A8602A',
+  2: '#2C7BB6',
+  5: '#8E5BA6',
+  10: '#D98E2B',
 };
 
 function wedgeColor(seg) {
   const mult = Number(seg?.mult) || 0;
-  if (mult === 0) return '#5A5048';
-  return MULT_COLORS[mult] || '#3B6E8C';
+  if (mult === 0) return '#8A8178';
+  return MULT_COLORS[mult] || '#2C7BB6';
 }
 
 function wedgeLabel(seg) {
@@ -134,7 +134,7 @@ function drawWheel(ctx, segments, wheelAngle, choice) {
     const lab = wedgeLabel(seg);
     ctx.save();
     ctx.translate(Math.cos(midA) * tr, Math.sin(midA) * tr);
-    ctx.font = `900 ${lab.length >= 4 ? 26 : lab.length >= 2 ? 30 : 36}px NotoSans`;
+    ctx.font = `900 ${lab.length >= 4 ? 18 : lab.length >= 3 ? 21 : 24}px NotoSans`;
     ctx.fillStyle = mult === 0 ? '#C8BEB0' : C.white;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

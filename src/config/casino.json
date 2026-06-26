@@ -237,14 +237,23 @@
       "minBet": 10,
       "maxBet": 5000,
       "segments": [
-        { "mult": 0, "weight": 470, "label": "槓龜", "emoji": "💀" },
-        { "mult": 1.2, "weight": 240, "label": "×1.2", "emoji": "🪙" },
-        { "mult": 1.5, "weight": 160, "label": "×1.5", "emoji": "🪙" },
-        { "mult": 2, "weight": 90, "label": "×2", "emoji": "✨" },
-        { "mult": 3, "weight": 28, "label": "×3", "emoji": "💎" },
-        { "mult": 5, "weight": 10, "label": "×5", "emoji": "💎" },
-        { "mult": 10, "weight": 4, "label": "×10", "emoji": "🎉" },
-        { "mult": 50, "weight": 1, "label": "大獎 ×50", "emoji": "👑" }
+        { "mult": 0.2, "weight": 173, "label": "×0.2" },
+        { "mult": 0.3, "weight": 187, "label": "×0.3" },
+        { "mult": 0.5, "weight": 231, "label": "×0.5" },
+        { "mult": 0.6, "weight": 231, "label": "×0.6" },
+        { "mult": 0.7, "weight": 231, "label": "×0.7" },
+        { "mult": 0.8, "weight": 231, "label": "×0.8" },
+        { "mult": 1.2, "weight": 95, "label": "×1.2" },
+        { "mult": 1.5, "weight": 72, "label": "×1.5" },
+        { "mult": 2, "weight": 52, "label": "×2" },
+        { "mult": 2.5, "weight": 34, "label": "×2.5" },
+        { "mult": 3, "weight": 24, "label": "×3" },
+        { "mult": 4, "weight": 15, "label": "×4" },
+        { "mult": 6, "weight": 9, "label": "×6" },
+        { "mult": 10, "weight": 5, "label": "×10" },
+        { "mult": 25, "weight": 1.6, "label": "×25" },
+        { "mult": 50, "weight": 0.6, "label": "×50" },
+        { "mult": 100, "weight": 0.25, "label": "大獎 ×100" }
       ]
     },
     "bingo": {
