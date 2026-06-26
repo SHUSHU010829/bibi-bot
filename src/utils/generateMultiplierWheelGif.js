@@ -1,0 +1,388 @@
+const path = require('path');
+const { createCanvas, registerFont } = require('canvas');
+const GIFEncoder = require('gif-encoder-2');
+
+const FONT_DIR = path.join(__dirname, '../../fonts');
+let fontsLoaded = false;
+
+function ensureFonts() {
+  if (fontsLoaded) return;
+  registerFont(path.join(FONT_DIR, 'NotoSansJP-Black.otf'), { family: 'NotoSans', weight: '900' });
+  registerFont(path.join(FONT_DIR, 'NotoSansJP-Medium.otf'), { family: 'NotoSans', weight: '400' });
+  fontsLoaded = true;
+}
+
+// ─── Canvas layout ───────────────────────────────────────────────────────────
+const W = 1080;
+const H = 760;
+
+const CX = 265;
+const CY = 380;
+const R_SECTOR = 215;
+const R_RIM = 226;
+const R_HUB = 44;
+
+// ─── Palette ─────────────────────────────────────────────────────────────────
+const C = {
+  bg: '#F4ECD8',
+  ink: '#2A2420',
+  muted: '#A89270',
+  gold: '#C9963A',
+  goldBright: '#E8B948',
+  white: '#FFFFFF',
+  win: '#2D7A4A',
+  loss: '#888888',
+  red: '#B83030',
+};
+
+// 倍率→底色：×2/×5/×10 各自一色，0（沒中）暗灰。
+const MULT_COLORS = {
+  2: '#2E5E8C',
+  5: '#7A3B8C',
+  10: '#A8602A',
+};
+
+function wedgeColor(seg) {
+  const mult = Number(seg?.mult) || 0;
+  if (mult === 0) return '#5A5048';
+  return MULT_COLORS[mult] || '#3B6E8C';
+}
+
+function wedgeLabel(seg) {
+  const mult = Number(seg?.mult) || 0;
+  if (mult === 0) return '0';
+  return `×${mult}`;
+}
+
+// ─── Math helpers ────────────────────────────────────────────────────────────
+function easeOut4(t) { return 1 - Math.pow(1 - t, 4); }
+
+// Final wheel rotation so the winning wedge CENTER sits under the top pointer.
+// Wedges are drawn starting at -π/2 (top, pointer) and laid clockwise. Wedge i
+// centre is at (i + 0.5)·step clockwise from the top; rotate backwards by that
+// amount plus N full turns for drama.
+function landingAngle(winningIndex, segmentCount, fullTurns = 5) {
+  const step = (2 * Math.PI) / segmentCount;
+  const localCenter = (winningIndex + 0.5) * step;
+  return fullTurns * 2 * Math.PI + (2 * Math.PI - localCenter);
+}
+
+// ─── Frame drawing ───────────────────────────────────────────────────────────
+function clearFrame(ctx) {
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = C.ink;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(12, 12, W - 24, H - 24);
+  ctx.strokeStyle = C.muted;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(18, 18, W - 36, H - 36);
+}
+
+function drawWheel(ctx, segments, wheelAngle, choice) {
+  const N = segments.length;
+  const step = (2 * Math.PI) / N;
+
+  ctx.save();
+  ctx.translate(CX, CY);
+
+  // Outer rim
+  ctx.beginPath();
+  ctx.arc(0, 0, R_RIM, 0, Math.PI * 2);
+  ctx.fillStyle = C.gold;
+  ctx.fill();
+  ctx.strokeStyle = C.ink;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Rotating wedges
+  ctx.save();
+  ctx.rotate(wheelAngle);
+
+  for (let i = 0; i < N; i++) {
+    const seg = segments[i];
+    const mult = Number(seg?.mult) || 0;
+    const a0 = i * step - Math.PI / 2;
+    const a1 = a0 + step;
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, R_SECTOR, a0, a1);
+    ctx.closePath();
+    ctx.fillStyle = wedgeColor(seg);
+    ctx.fill();
+
+    // 玩家押的倍率：整圈相符的扇形加亮邊框，讓玩家看見目標。
+    if (mult > 0 && mult === choice) {
+      ctx.strokeStyle = C.goldBright;
+      ctx.lineWidth = 5;
+      ctx.stroke();
+    }
+
+    // Divider line
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a0) * R_HUB, Math.sin(a0) * R_HUB);
+    ctx.lineTo(Math.cos(a0) * R_SECTOR, Math.sin(a0) * R_SECTOR);
+    ctx.strokeStyle = C.gold;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Label — horizontal (upright) and large
+    const midA = a0 + step / 2;
+    const tr = R_SECTOR * 0.64;
+    const lab = wedgeLabel(seg);
+    ctx.save();
+    ctx.translate(Math.cos(midA) * tr, Math.sin(midA) * tr);
+    ctx.font = `900 ${lab.length >= 4 ? 26 : lab.length >= 2 ? 30 : 36}px NotoSans`;
+    ctx.fillStyle = mult === 0 ? '#C8BEB0' : C.white;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(lab, 0, 0);
+    ctx.restore();
+  }
+
+  // Inner ring
+  ctx.beginPath();
+  ctx.arc(0, 0, R_SECTOR, 0, Math.PI * 2);
+  ctx.strokeStyle = C.gold;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Hub
+  ctx.beginPath();
+  ctx.arc(0, 0, R_HUB, 0, Math.PI * 2);
+  ctx.fillStyle = C.ink;
+  ctx.fill();
+  ctx.strokeStyle = C.gold;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.font = '900 9px NotoSans';
+  ctx.fillStyle = C.gold;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('MULTI', 0, 0);
+
+  ctx.restore(); // un-rotate
+  ctx.restore(); // un-translate
+}
+
+// Fixed pointer at the top, pointing down into the wheel.
+function drawPointer(ctx) {
+  const tipY = CY - R_SECTOR + 6;
+  const baseY = CY - R_RIM - 18;
+  ctx.beginPath();
+  ctx.moveTo(CX, tipY);
+  ctx.lineTo(CX - 16, baseY);
+  ctx.lineTo(CX + 16, baseY);
+  ctx.closePath();
+  ctx.fillStyle = C.red;
+  ctx.fill();
+  ctx.strokeStyle = C.ink;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawInfoPanel(ctx, { phase, segments, winningIndex, bet, payout, choice, username, balance }) {
+  const px = 532;
+  const gx = px + 22;
+  let ty = 38;
+
+  ctx.save();
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(px, 26);
+  ctx.lineTo(px, H - 26);
+  ctx.strokeStyle = C.muted;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
+
+  // Title / brand
+  ctx.font = '900 21px NotoSans';
+  ctx.fillStyle = C.ink;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('倍率轉盤 / MULTIPLIER WHEEL', gx, ty);
+  ty += 32;
+
+  ctx.strokeStyle = C.muted;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(gx, ty);
+  ctx.lineTo(W - 28, ty);
+  ctx.stroke();
+  ty += 16;
+
+  // 押注（一律顯示，讓玩家看見自己押了哪個倍率）
+  ctx.font = '400 15px NotoSans';
+  ctx.fillStyle = C.ink;
+  ctx.fillText(`押注 ×${choice}`, gx, ty);
+  ty += 28;
+
+  if (phase === 'result') {
+    const seg = segments[winningIndex] || {};
+    const landedMult = Number(seg?.mult) || 0;
+    const won = payout > 0;
+
+    // Result chip
+    ctx.fillStyle = won ? C.win : C.loss;
+    ctx.beginPath();
+    ctx.roundRect(gx, ty, 220, 56, 8);
+    ctx.fill();
+    ctx.strokeStyle = C.ink;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.font = '900 24px NotoSans';
+    ctx.fillStyle = C.white;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(won ? '中獎' : '槓龜', gx + 110, ty + 28);
+    ty += 72;
+
+    ctx.font = '400 15px NotoSans';
+    ctx.fillStyle = C.ink;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`停在 ${landedMult === 0 ? '0' : `×${landedMult}`}`, gx, ty);
+    ty += 30;
+
+    const net = payout - bet;
+    const netStr = net >= 0 ? `+${net.toLocaleString()}` : net.toLocaleString();
+    ctx.font = '900 24px NotoSans';
+    ctx.fillStyle = net >= 0 ? C.win : C.red;
+    ctx.fillText(`${netStr} CR`, gx, ty);
+    ty += 38;
+
+    ctx.font = '400 14px NotoSans';
+    ctx.fillStyle = C.muted;
+    ctx.fillText(`派彩 ${payout.toLocaleString()} CR`, gx, ty);
+    ty += 22;
+  } else {
+    ctx.font = '400 16px NotoSans';
+    ctx.fillStyle = C.muted;
+    ctx.fillText('轉動中 Spinning...', gx, ty);
+    ty += 30;
+
+    ctx.font = '400 14px NotoSans';
+    ctx.fillStyle = C.ink;
+    ctx.fillText(`下注 ${bet.toLocaleString()} CR`, gx, ty);
+  }
+
+  // Footer
+  const footY = H - 42;
+  ctx.save();
+  ctx.setLineDash([3, 4]);
+  ctx.beginPath();
+  ctx.moveTo(gx, footY - 10);
+  ctx.lineTo(W - 28, footY - 10);
+  ctx.strokeStyle = C.muted;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.textBaseline = 'middle';
+  ctx.font = '400 12px NotoSans';
+  ctx.fillStyle = C.muted;
+  ctx.textAlign = 'left';
+  ctx.fillText('BET', gx, footY);
+
+  ctx.font = '900 16px NotoSans';
+  ctx.fillStyle = C.ink;
+  ctx.fillText(bet.toLocaleString(), gx + 34, footY);
+
+  if (phase === 'result' && typeof balance === 'number') {
+    ctx.font = '400 12px NotoSans';
+    ctx.fillStyle = C.muted;
+    ctx.fillText('BAL', gx + 150, footY);
+    ctx.font = '900 16px NotoSans';
+    ctx.fillStyle = C.ink;
+    ctx.fillText(balance.toLocaleString(), gx + 182, footY);
+  }
+
+  // Brand footer (right) + handle
+  ctx.font = '400 12px NotoSans';
+  ctx.fillStyle = C.muted;
+  ctx.textAlign = 'right';
+  ctx.fillText('逼逼賭場', W - 28, footY - 16);
+
+  const handle = `@${(username || 'PLAYER').toUpperCase()}`;
+  ctx.fillStyle = C.ink;
+  ctx.fillText(handle, W - 28, footY);
+}
+
+// ─── Main export ─────────────────────────────────────────────────────────────
+
+/**
+ * @param {object}  data
+ * @param {Array}   data.segments      - ordered ring [{ mult }]
+ * @param {number}  data.winningIndex  - index of landed wedge
+ * @param {number}  data.choice        - player's chosen multiplier (2/5/10)
+ * @param {number}  data.bet
+ * @param {number}  data.payout
+ * @param {string}  data.username
+ * @param {number}  data.balance
+ * @returns {Promise<Buffer>} GIF binary
+ */
+async function generateMultiplierWheelGif({ segments, winningIndex, choice, bet, payout, username, balance }) {
+  ensureFonts();
+
+  const list = Array.isArray(segments) && segments.length ? segments : [];
+  const idx = Math.max(0, Math.min(winningIndex | 0, list.length - 1));
+  const pick = Number(choice) || 0;
+
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext('2d');
+
+  const SPIN_FRAMES = 32;
+  const STILL_FRAMES = 22;
+  const TOTAL_FRAMES = SPIN_FRAMES + STILL_FRAMES;
+
+  const YIELD_EVERY = 4;
+
+  const encoder = new GIFEncoder(W, H, 'neuquant', true, TOTAL_FRAMES);
+  encoder.setDelay(50);
+  encoder.setRepeat(0);
+  encoder.setQuality(20);
+  encoder.start();
+
+  const finalAngle = landingAngle(idx, list.length, 5);
+
+  const shared = { segments: list, winningIndex: idx, choice: pick, bet, payout, username, balance };
+
+  let frameCount = 0;
+  async function addFrame() {
+    encoder.addFrame(ctx);
+    frameCount++;
+    if (frameCount % YIELD_EVERY === 0) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+
+  // ── Phase 1: spin, ease-out to the landing angle ──────────
+  for (let f = 0; f < SPIN_FRAMES; f++) {
+    const e = easeOut4((f + 1) / SPIN_FRAMES);
+    clearFrame(ctx);
+    drawWheel(ctx, list, e * finalAngle, pick);
+    drawPointer(ctx);
+    drawInfoPanel(ctx, { phase: 'spinning', ...shared });
+    await addFrame();
+  }
+
+  // ── Phase 2: static result ────────────────────────────────
+  for (let f = 0; f < STILL_FRAMES; f++) {
+    clearFrame(ctx);
+    drawWheel(ctx, list, finalAngle, pick);
+    drawPointer(ctx);
+    drawInfoPanel(ctx, { phase: 'result', ...shared });
+    await addFrame();
+  }
+
+  encoder.finish();
+  return encoder.out.getData();
+}
+
+module.exports = generateMultiplierWheelGif;
+module.exports.landingAngle = landingAngle;

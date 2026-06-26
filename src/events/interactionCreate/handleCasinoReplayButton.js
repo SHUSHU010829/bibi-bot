@@ -1,14 +1,10 @@
 // 賭場「🔁 再來一局」按鈕統一處理器。
 //
 // 按鈕 customId = rb_<game>_<ownerId>（見 features/casino/replay.js）。
-// 大多數遊戲：把上一注參數合成 interaction.options，直接交回原 slash 指令的 run() 重跑
+// 所有遊戲：把上一注參數合成 interaction.options，直接交回原 slash 指令的 run() 重跑
 // （run() 會自己 deferReply，產生一則全新的對局訊息）。
-// 輪盤特例：bet 是用按鈕逐格累加的，重玩時直接重建一張「已預填同樣押注」的下注面板，
-//          玩家只要再按一次「開轉」即可。
 
 const { MessageFlags } = require("discord.js");
-const { MONEY_EMOJI } = require("../../constants/coin");
-const crypto = require("crypto");
 
 const { consume } = require("../../utils/rateLimiter");
 const logger = require("../../utils/logger");
@@ -32,6 +28,7 @@ const GAME_COMMAND_PATHS = {
   baccarat: "../../commands/casino/baccarat",
   fishPrawnCrab: "../../commands/casino/fishPrawnCrab",
   luckyWheel: "../../commands/casino/luckyWheel",
+  roulette: "../../commands/casino/roulette",
   bingo: "../../commands/casino/bingo",
   casinoHoldem: "../../commands/casino/casinoHoldem",
 };
@@ -112,12 +109,6 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    if (game === "roulette") {
-      await replayRoulette(client, interaction, lastBet.payload);
-      trackSuccess("casino-replay");
-      return;
-    }
-
     const cmdPath = GAME_COMMAND_PATHS[game];
     if (!cmdPath) {
       await replyEphemeral(interaction, "這個遊戲暫不支援再來一局。");
@@ -144,98 +135,3 @@ module.exports = async (client, interaction) => {
     await replyEphemeral(interaction, "🔧 再來一局失敗，請呼叫舒舒！");
   }
 };
-
-// 輪盤重玩：重建一張預填同樣押注的下注面板。
-async function replayRoulette(client, interaction, payload) {
-  const { casino } = require("../../config");
-  const grantCoins = require("../../features/economy/grantCoins");
-  const { totalWagered } = require("../../features/casino/roulette/engine");
-  const {
-    buildBettingRows,
-    buildStatusContent,
-  } = require("../../commands/casino/roulette");
-
-  await interaction.deferReply();
-
-  const cfg = casino?.roulette || {};
-  if (cfg.enabled === false) {
-    return interaction.editReply("🔧 輪盤暫時關閉中！");
-  }
-  if (!client.rouletteGamesCollection) {
-    return interaction.editReply("🔧 輪盤系統未啟動，請聯絡舒舒！");
-  }
-
-  const totalBudget = payload.totalBudget;
-  const bets = Array.isArray(payload.bets) ? payload.bets : [];
-  if (!totalBudget || bets.length === 0) {
-    return interaction.editReply("找不到可重玩的輪盤下注。");
-  }
-
-  const userId = interaction.user.id;
-  const guildId = interaction.guildId;
-  const username =
-    interaction.member?.displayName || interaction.user.username;
-
-  const existing = await client.rouletteGamesCollection.findOne({
-    userId,
-    guildId,
-    status: "betting",
-  });
-  if (existing) {
-    return interaction.editReply("🎰 你還有一局在進行中！");
-  }
-
-  const userDoc = await client.userCoinsCollection.findOne({
-    userId,
-    guildId,
-  });
-  const balance = userDoc?.totalCoins || 0;
-  if (balance < totalBudget) {
-    return interaction.editReply(
-      `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}** credits，需要 **${totalBudget.toLocaleString()}**。`
-    );
-  }
-
-  const betResult = await grantCoins(client, {
-    userId,
-    guildId,
-    username,
-    avatarHash: interaction.user.avatar,
-    amount: -totalBudget,
-    source: "bet",
-    member: interaction.member,
-    meta: { game: "roulette", replay: true },
-  });
-  if (!betResult) {
-    return interaction.editReply("🔧 扣款失敗，請稍後再試。");
-  }
-
-  const gameId = crypto.randomUUID();
-  const now = new Date();
-  const timeoutSec = cfg.bettingTimeoutSeconds ?? 90;
-  const game = {
-    gameId,
-    userId,
-    guildId,
-    username,
-    status: "betting",
-    totalBudget,
-    bets: bets.map((b) => ({
-      type: b.type,
-      amount: b.amount,
-      numbers: b.numbers,
-    })),
-    result: null,
-    totalPayout: null,
-    createdAt: now,
-    updatedAt: now,
-    expiresAt: new Date(now.getTime() + timeoutSec * 1000),
-  };
-  await client.rouletteGamesCollection.insertOne(game);
-
-  const remaining = totalBudget - totalWagered(game.bets);
-  await interaction.editReply({
-    content: buildStatusContent(game),
-    components: buildBettingRows(gameId, remaining),
-  });
-}
