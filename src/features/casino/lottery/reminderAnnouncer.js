@@ -22,7 +22,7 @@ const REMINDER_TEMPLATES = {
         `頭獎預估:約 ${jackpotEst} credits\n` +
         `已售出:${ticketCount} 張票\n` +
         `開獎倒數:<t:${drawAtUnix}:R>\n\n` +
-        `購票指令:\`/樂透 購買\` ・ \`/樂透 包牌\` ・ \`/樂透 訂閱 開啟\``,
+        `購票指令:\`/彩券 購買\` ・ \`/彩券 包牌\` ・ \`/彩券 訂閱 開啟\``,
       accentColor: 0x3d6f6a,
     };
   },
@@ -36,7 +36,7 @@ const REMINDER_TEMPLATES = {
         `當前彩池:**${poolFmt}** credits\n` +
         `已售出:${ticketCount} 張票\n` +
         `開獎倒數:<t:${drawAtUnix}:R>\n\n` +
-        `購票指令:\`/樂透 購買\` 玩法選小樂透`,
+        `購票指令:\`/彩券 購買\` 玩法選小樂透`,
       accentColor: 0x3d6f6a,
     };
   },

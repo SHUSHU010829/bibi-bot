@@ -92,7 +92,7 @@ async function announceDrawResult(client, drawResult) {
       `# ${emoji} ${label} 第 ${draw.drawNumber} 期 開獎\n` +
       `中獎號碼:**${draw.winningNumbers.join(" ・ ")}**${specialZoneLine}\n` +
       `${winnerLine}${rolloverLine}${bonusBallLine}${consecutiveLine}\n\n` +
-      `查詢個人結果:\`/樂透 歷史\``,
+      `查詢個人結果:\`/彩券 歷史\``,
     files: [attachment],
   });
 
