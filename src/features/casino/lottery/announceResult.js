@@ -71,12 +71,28 @@ async function announceDrawResult(client, drawResult) {
     ? `\n滾入下期:**${draw.payout.rolledOver.amount.toLocaleString()}** credits`
     : "";
 
+  const specialZoneLine =
+    draw.specialNumber != null ? `\n第二區:**${draw.specialNumber}**` : "";
+
+  const bonus = draw.payout?.bonus;
+  const bonusBallLine =
+    draw.bonusBall != null
+      ? `\n🎯 加碼球:**${draw.bonusBall}**` +
+        (bonus?.bonusBallWinners > 0
+          ? `（${bonus.bonusBallWinners} 張命中,每張 +${(bonus.bonusBallPrize || 0).toLocaleString()}）`
+          : "（無人命中）")
+      : "";
+  const consecutiveLine =
+    bonus?.consecutiveWinners > 0
+      ? `\n🔗 連號加碼:**${bonus.consecutiveWinners}** 張中獎號碼含連號,每張 +${(bonus.consecutivePrize || 0).toLocaleString()}`
+      : "";
+
   await channel.send({
     content:
       `# ${emoji} ${label} 第 ${draw.drawNumber} 期 開獎\n` +
-      `中獎號碼:**${draw.winningNumbers.join(" ・ ")}**\n` +
-      `${winnerLine}${rolloverLine}\n\n` +
-      `查詢個人結果:\`/樂透 歷史\``,
+      `中獎號碼:**${draw.winningNumbers.join(" ・ ")}**${specialZoneLine}\n` +
+      `${winnerLine}${rolloverLine}${bonusBallLine}${consecutiveLine}\n\n` +
+      `查詢個人結果:\`/彩券 歷史\``,
     files: [attachment],
   });
 

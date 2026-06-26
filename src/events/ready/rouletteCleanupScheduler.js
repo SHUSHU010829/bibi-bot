@@ -4,6 +4,7 @@ const { registerCron } = require('../../utils/cronRegistry');
 
 const { casino } = require('../../config');
 const grantCoins = require('../../features/economy/grantCoins');
+const { notifyAbandon } = require('../../features/casino/notifyAbandon');
 
 // 每分鐘掃 expiresAt 過期但 status 還是 'betting' 的局，
 // 視為玩家放棄 → 全額退回 totalBudget 並標記 abandoned。
@@ -47,6 +48,12 @@ async function sweepOnce(client) {
         gameId: g.gameId,
         totalBudget: g.totalBudget,
       },
+    });
+
+    await notifyAbandon(client, g.userId, {
+      game: "roulette",
+      kind: "refund",
+      amount: g.totalBudget,
     });
 
     refunded += 1;

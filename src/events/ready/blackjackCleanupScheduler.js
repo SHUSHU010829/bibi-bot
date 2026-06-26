@@ -4,6 +4,7 @@ const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const { notifyAbandon } = require("../../features/casino/notifyAbandon");
 
 // 每分鐘掃 expiresAt 過期但 status 還是 playing 的局，
 // 視為玩家中途跑掉 → 退回 bet（含 double 過的部分）並標記 abandoned。
@@ -54,6 +55,12 @@ async function sweepOnce(client) {
         },
       }
     );
+
+    await notifyAbandon(client, g.userId, {
+      game: "blackjack",
+      kind: "refund",
+      amount: refund,
+    });
 
     refunded += 1;
     console.log(

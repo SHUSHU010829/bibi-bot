@@ -29,6 +29,11 @@ const GAME_COMMAND_PATHS = {
   mines: "../../commands/casino/mines",
   plinko: "../../commands/casino/plinko",
   scratch: "../../commands/casino/scratch",
+  baccarat: "../../commands/casino/baccarat",
+  fishPrawnCrab: "../../commands/casino/fishPrawnCrab",
+  luckyWheel: "../../commands/casino/luckyWheel",
+  bingo: "../../commands/casino/bingo",
+  casinoHoldem: "../../commands/casino/casinoHoldem",
 };
 
 // 把存起來的選項 map 包成一個假的 interaction.options。

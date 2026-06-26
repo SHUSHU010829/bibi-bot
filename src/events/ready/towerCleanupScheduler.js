@@ -4,6 +4,7 @@ const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const { notifyAbandon } = require("../../features/casino/notifyAbandon");
 
 // 爬塔中途離場：expiresAt 過了還是 playing → 視玩家狀態退錢
 //   - 還沒爬過任何一層：退回原始 bet
@@ -56,6 +57,13 @@ async function sweepOnce(client) {
         },
       }
     );
+
+    await notifyAbandon(client, g.userId, {
+      game: "tower",
+      kind: floors > 0 ? "cashout" : "refund",
+      amount: refund,
+      detail: floors > 0 ? `爬到第 ${floors} 層・×${acc}` : null,
+    });
 
     refunded += 1;
     console.log(

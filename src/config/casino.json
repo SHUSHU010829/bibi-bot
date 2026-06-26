@@ -75,6 +75,68 @@
         { "matches": [2, 2, 2], "weight": 0.5 },
         { "matches": [10], "weight": 0.8 },
         { "matches": [50], "weight": 0.15 }
+      ],
+      "themes": [
+        {
+          "key": "copper",
+          "name": "銅板場",
+          "emoji": "🥉",
+          "minBet": 10,
+          "maxBet": 2000,
+          "decoyPrizes": [1, 1.5, 2, 3, 5],
+          "prizes": [
+            { "matches": [], "weight": 92 },
+            { "matches": [1.5], "weight": 22 },
+            { "matches": [2], "weight": 12 },
+            { "matches": [1, 1], "weight": 5 },
+            { "matches": [3], "weight": 6 },
+            { "matches": [1.5, 1.5], "weight": 2 },
+            { "matches": [5], "weight": 2 },
+            { "matches": [2, 2, 2], "weight": 0.5 },
+            { "matches": [10], "weight": 0.8 },
+            { "matches": [50], "weight": 0.15 }
+          ]
+        },
+        {
+          "key": "gold",
+          "name": "黃金場",
+          "emoji": "🥇",
+          "minBet": 100,
+          "maxBet": 5000,
+          "decoyPrizes": [1, 2, 3, 5, 8],
+          "prizes": [
+            { "matches": [], "weight": 193 },
+            { "matches": [2], "weight": 24 },
+            { "matches": [3], "weight": 12 },
+            { "matches": [2, 2], "weight": 5 },
+            { "matches": [5], "weight": 6 },
+            { "matches": [3, 3], "weight": 2 },
+            { "matches": [10], "weight": 2 },
+            { "matches": [5, 5, 5], "weight": 0.5 },
+            { "matches": [25], "weight": 0.8 },
+            { "matches": [100], "weight": 0.15 }
+          ]
+        },
+        {
+          "key": "diamond",
+          "name": "鑽石場",
+          "emoji": "💎",
+          "minBet": 1000,
+          "maxBet": 20000,
+          "decoyPrizes": [1, 3, 5, 10, 20],
+          "prizes": [
+            { "matches": [], "weight": 247 },
+            { "matches": [2], "weight": 20 },
+            { "matches": [3], "weight": 10 },
+            { "matches": [5], "weight": 8 },
+            { "matches": [3, 3], "weight": 3 },
+            { "matches": [10], "weight": 3 },
+            { "matches": [20], "weight": 1.2 },
+            { "matches": [10, 10, 10], "weight": 0.4 },
+            { "matches": [50], "weight": 0.6 },
+            { "matches": [250], "weight": 0.1 }
+          ]
+        }
       ]
     },
     "plinko": {
@@ -148,6 +210,58 @@
       "gameTtlSeconds": 900,
       "dailyBuyInLimit": 50000
     },
+    "casinoHoldem": {
+      "enabled": true,
+      "minBet": 10,
+      "maxBet": 5000,
+      "gameTtlSeconds": 300
+    },
+    "baccarat": {
+      "enabled": true,
+      "minBet": 10,
+      "maxBet": 50000
+    },
+    "fishPrawnCrab": {
+      "enabled": true,
+      "minBet": 10,
+      "maxBet": 1000
+    },
+    "luckyWheel": {
+      "enabled": true,
+      "minBet": 10,
+      "maxBet": 5000,
+      "segments": [
+        { "mult": 0, "weight": 470, "label": "槓龜", "emoji": "💀" },
+        { "mult": 1.2, "weight": 240, "label": "×1.2", "emoji": "🪙" },
+        { "mult": 1.5, "weight": 160, "label": "×1.5", "emoji": "🪙" },
+        { "mult": 2, "weight": 90, "label": "×2", "emoji": "✨" },
+        { "mult": 3, "weight": 28, "label": "×3", "emoji": "💎" },
+        { "mult": 5, "weight": 10, "label": "×5", "emoji": "💎" },
+        { "mult": 10, "weight": 4, "label": "×10", "emoji": "🎉" },
+        { "mult": 50, "weight": 1, "label": "大獎 ×50", "emoji": "👑" }
+      ]
+    },
+    "bingo": {
+      "enabled": true,
+      "minBet": 10,
+      "maxBet": 2000,
+      "ballsDrawn": 30,
+      "linePaytable": [0, 5, 16, 85, 500, 3000, 10000, 20000, 30000, 40000, 50000, 75000, 100000]
+    },
+    "redPacket": {
+      "enabled": true,
+      "minTotal": 100,
+      "maxCount": 20,
+      "grabWindowSeconds": 600
+    },
+    "russianRoulette": {
+      "enabled": true,
+      "minAnte": 50,
+      "maxAnte": 5000,
+      "maxPlayers": 6,
+      "joinWindowSeconds": 120,
+      "rakePct": 0.05
+    },
     "lottery": {
       "enabled": true,
       "announceChannelId": "1501770364982657084",
@@ -164,7 +278,9 @@
           "wheelingEnabled": true,
           "wheelingMaxBaseNumbers": 10,
           "drawWeekdays": [7],
-          "drawHour": 21
+          "drawHour": 21,
+          "bonusBall": { "enabled": true, "prize": 200 },
+          "consecutiveBonus": { "enabled": true, "minRun": 3, "prize": 300 }
         },
         "3_20": {
           "enabled": true,
@@ -175,6 +291,24 @@
           "wheelingEnabled": false,
           "drawWeekdays": [3, 7],
           "drawHour": 21
+        },
+        "power_38_8": {
+          "enabled": true,
+          "ticketPrice": 50,
+          "systemSeed": 20000,
+          "maxTicketsPerOrder": 100,
+          "wheelingEnabled": false,
+          "drawWeekdays": [1, 4],
+          "drawHour": 21,
+          "parimutuel": { "jackpot": 0.6, "second": 0.12, "third": 0.08 },
+          "fixedPrizes": {
+            "fourth": 2000,
+            "fifth": 400,
+            "sixth": 200,
+            "seventh": 80,
+            "eighth": 40,
+            "ninth": 20
+          }
         }
       },
       "subscription": {
@@ -184,7 +318,8 @@
       },
       "poolMilestones": {
         "6_49": [10000, 20000, 30000, 50000, 75000, 100000, 150000, 200000],
-        "3_20": [1000, 2000, 5000, 10000]
+        "3_20": [1000, 2000, 5000, 10000],
+        "power_38_8": [50000, 100000, 200000, 350000, 500000, 750000, 1000000]
       },
       "reminders": {
         "enabled": true,

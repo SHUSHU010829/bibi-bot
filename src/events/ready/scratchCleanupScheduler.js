@@ -4,6 +4,7 @@ const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const { notifyAbandon } = require("../../features/casino/notifyAbandon");
 
 // 刮刮樂中途離場：expiresAt 過了還是 playing → 直接按既定結果結算。
 // 卡的中獎與否在買卡當下就抽定了，沒刮完不影響結果：中獎照付、槓龜歸零。
@@ -52,6 +53,12 @@ async function sweepOnce(client) {
         },
       }
     );
+
+    await notifyAbandon(client, g.userId, {
+      game: "scratch",
+      kind: win ? "win" : "lose",
+      amount: payout,
+    });
 
     settled += 1;
     console.log(

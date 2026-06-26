@@ -4,6 +4,7 @@ const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const { notifyAbandon } = require("../../features/casino/notifyAbandon");
 
 // 踩地雷中途離場：expiresAt 過了還是 playing → 視玩家狀態退錢
 //   - 還沒翻過任何一格：退回原始 bet
@@ -56,6 +57,13 @@ async function sweepOnce(client) {
         },
       }
     );
+
+    await notifyAbandon(client, g.userId, {
+      game: "mines",
+      kind: revealed > 0 ? "cashout" : "refund",
+      amount: refund,
+      detail: revealed > 0 ? `翻了 ${revealed} 格・×${mult}` : null,
+    });
 
     refunded += 1;
     console.log(

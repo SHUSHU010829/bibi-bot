@@ -114,8 +114,10 @@ async function renderMessage(state, { username, balance, userId, avatarURL } = {
       ? [...buildCardRows(state), buildReplayRow("scratch", state.userId, { name: username })]
       : buildCardRows(state);
 
+  const themeEmoji = state.themeEmoji || "🎫";
+  const themeSuffix = state.themeName ? `・${state.themeName}` : "";
   const embed = buildCasinoEmbed({
-    game: "🎫 刮刮樂",
+    game: `${themeEmoji} 刮刮樂${themeSuffix}`,
     user: { id: userId || state.userId, displayName: username, avatarURL },
     outcome,
     headline: isPlaying ? null : settleHeadline(state),

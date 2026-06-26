@@ -90,6 +90,15 @@ module.exports = async (client) => {
     // 賽馬牌桌狀態（多人，channel-scoped 售票 → 開賽 → 結算）
     const horseRaceGamesCollection = database.collection("HorseRaceGames");
 
+    // 單人德州撲克（Casino Hold'em）對局狀態
+    const casinoHoldemGamesCollection = database.collection("CasinoHoldemGames");
+
+    // 搶紅包（channel-scoped，限時搶 → 未搶完退款收尾）
+    const redPacketGamesCollection = database.collection("RedPacketGames");
+
+    // 俄羅斯輪盤牌桌（channel-scoped 等候 → 開轉結算）
+    const russianRouletteGamesCollection = database.collection("RussianRouletteGames");
+
     // 賭場「再來一局」：每位玩家每款遊戲的上一注參數
     const casinoLastBetsCollection = database.collection("CasinoLastBets");
 
@@ -274,6 +283,9 @@ module.exports = async (client) => {
     client.rouletteGamesCollection = rouletteGamesCollection;
     client.pokerGamesCollection = pokerGamesCollection;
     client.horseRaceGamesCollection = horseRaceGamesCollection;
+    client.casinoHoldemGamesCollection = casinoHoldemGamesCollection;
+    client.redPacketGamesCollection = redPacketGamesCollection;
+    client.russianRouletteGamesCollection = russianRouletteGamesCollection;
     client.casinoLastBetsCollection = casinoLastBetsCollection;
     client.twitchScoreFlushesCollection = twitchScoreFlushesCollection;
     client.twitchLiveStateCollection = twitchLiveStateCollection;
@@ -849,6 +861,52 @@ module.exports = async (client) => {
       await horseRaceGamesCollection.createIndex(
         { updatedAt: 1 },
         { expireAfterSeconds: 30 * 24 * 60 * 60, name: "hr_ttl_30d" }
+      );
+
+      // 單人德州撲克索引：每人同 guild 同時只能有一局 playing
+      await casinoHoldemGamesCollection.createIndex(
+        { gameId: 1 },
+        { unique: true, name: "uniq_ch_gameId" }
+      );
+      await casinoHoldemGamesCollection.createIndex(
+        { userId: 1, guildId: 1, status: 1 },
+        { name: "ch_user_guild_status" }
+      );
+      await casinoHoldemGamesCollection.createIndex(
+        { updatedAt: 1 },
+        { expireAfterSeconds: 30 * 24 * 60 * 60, name: "ch_ttl_30d" }
+      );
+
+      // 搶紅包索引：channel-scoped + 到期掃描
+      await redPacketGamesCollection.createIndex(
+        { gameId: 1 },
+        { unique: true, name: "uniq_rp_gameId" }
+      );
+      await redPacketGamesCollection.createIndex(
+        { status: 1, expiresAt: 1 },
+        { name: "rp_status_expiry" }
+      );
+      await redPacketGamesCollection.createIndex(
+        { updatedAt: 1 },
+        { expireAfterSeconds: 30 * 24 * 60 * 60, name: "rp_ttl_30d" }
+      );
+
+      // 俄羅斯輪盤索引：channel-scoped 等候 + 到期掃描
+      await russianRouletteGamesCollection.createIndex(
+        { gameId: 1 },
+        { unique: true, name: "uniq_rr_gameId" }
+      );
+      await russianRouletteGamesCollection.createIndex(
+        { channelId: 1, status: 1 },
+        { name: "rr_channel_status" }
+      );
+      await russianRouletteGamesCollection.createIndex(
+        { status: 1, expiresAt: 1 },
+        { name: "rr_status_expiry" }
+      );
+      await russianRouletteGamesCollection.createIndex(
+        { updatedAt: 1 },
+        { expireAfterSeconds: 30 * 24 * 60 * 60, name: "rr_ttl_30d" }
       );
 
       // 賭場「再來一局」：每人每款遊戲一筆，舊紀錄 30 天後清掉

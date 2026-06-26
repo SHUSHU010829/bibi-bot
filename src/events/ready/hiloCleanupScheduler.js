@@ -4,6 +4,7 @@ const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const { notifyAbandon } = require("../../features/casino/notifyAbandon");
 
 // HI-LO 中途離場：expiresAt 過了還是 playing → 視玩家狀態退錢
 //   - 還沒贏過任何一把：退回原始 bet
@@ -56,6 +57,13 @@ async function sweepOnce(client) {
         },
       }
     );
+
+    await notifyAbandon(client, g.userId, {
+      game: "hilo",
+      kind: wins > 0 ? "cashout" : "refund",
+      amount: refund,
+      detail: wins > 0 ? `連贏 ${wins} 把・×${acc}` : null,
+    });
 
     refunded += 1;
     console.log(
