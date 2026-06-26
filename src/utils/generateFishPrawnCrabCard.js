@@ -11,8 +11,8 @@ const SYMBOL_STYLE = {
   fish: { char: "魚", bg: "#2E6F8E", fg: "#FFFFFF", emoji: "🐟" },
   prawn: { char: "蝦", bg: "#C0563B", fg: "#FFFFFF", emoji: "🦐" },
   crab: { char: "蟹", bg: "#B5403A", fg: "#FFFFFF", emoji: "🦀" },
-  gourd: { char: "葫", bg: "#4F8A4A", fg: "#FFFFFF", emoji: "🫛" },
-  coin: { char: "錢", bg: "#C99A2E", fg: "#2A2420", emoji: "🪙" },
+  gourd: { char: "葫", bg: "#4F8A4A", fg: "#FFFFFF", emoji: "🍐" },
+  coin: { char: "錢", bg: "#C99A2E", fg: "#2A2420", emoji: "💰" },
   rooster: { char: "雞", bg: "#9A6FB0", fg: "#FFFFFF", emoji: "🐓" },
 };
 
@@ -28,12 +28,10 @@ function renderTile(symbolKey, size, highlight, ink, gold) {
   const s = symbolStyle(symbolKey);
   const frameColor = highlight ? gold : ink;
   const frameWidth = highlight ? 6 : 3;
-  const charSize = Math.round(size * 0.5);
-  const emojiSize = Math.round(size * 0.18);
+  const emojiSize = Math.round(size * 0.6);
   return `
-    <div style="position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;width:${size}px;height:${size}px;background:${s.bg};border:${frameWidth}px solid ${frameColor};border-radius:18px;box-sizing:border-box;margin:0 14px;">
-      <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:${charSize}px;color:${s.fg};line-height:1;">${s.char}</div>
-      <div style="display:flex;font-family:'NotoSansTC';font-size:${emojiSize}px;line-height:1;margin-top:8px;">${s.emoji}</div>
+    <div style="position:relative;display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;background:${s.bg};border:${frameWidth}px solid ${frameColor};border-radius:18px;box-sizing:border-box;margin:0 14px;">
+      <div style="display:flex;font-family:'NotoSansTC';font-size:${emojiSize}px;line-height:1;">${s.emoji}</div>
     </div>
   `;
 }
