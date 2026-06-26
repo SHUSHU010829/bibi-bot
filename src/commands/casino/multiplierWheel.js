@@ -178,7 +178,7 @@ module.exports = {
       await saveLastBet(client, {
         userId,
         guildId,
-        game: "roulette",
+        game: "multiplierWheel",
         payload: { options: { 金額: bet, 押注: String(choice), 梭哈: false } },
       });
 

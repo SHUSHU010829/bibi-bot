@@ -6,24 +6,26 @@
 //
 // RTP = Σ(weight × mult) / Σweight；房費由權重控制。預設 17 格、RTP ≈ 0.90，
 // 含稀有大獎 ×25 / ×50 / ×100。
+// 順序＝轉盤上的視覺排列：< 1 的「少賠」格刻意穿插在中獎格之間，不集中成一塊
+//（機率只看 weight，與排列無關）。
 const DEFAULT_SEGMENTS = [
-  { mult: 0.2, weight: 173, label: "×0.2" },
-  { mult: 0.3, weight: 187, label: "×0.3" },
   { mult: 0.5, weight: 231, label: "×0.5" },
-  { mult: 0.6, weight: 231, label: "×0.6" },
-  { mult: 0.7, weight: 231, label: "×0.7" },
-  { mult: 0.8, weight: 231, label: "×0.8" },
-  { mult: 1.2, weight: 95, label: "×1.2" },
-  { mult: 1.5, weight: 72, label: "×1.5" },
   { mult: 2, weight: 52, label: "×2" },
-  { mult: 2.5, weight: 34, label: "×2.5" },
-  { mult: 3, weight: 24, label: "×3" },
-  { mult: 4, weight: 15, label: "×4" },
-  { mult: 6, weight: 9, label: "×6" },
-  { mult: 10, weight: 5, label: "×10" },
-  { mult: 25, weight: 1.6, label: "×25" },
-  { mult: 50, weight: 0.6, label: "×50" },
   { mult: 100, weight: 0.25, label: "大獎 ×100" },
+  { mult: 0.2, weight: 173, label: "×0.2" },
+  { mult: 1.5, weight: 72, label: "×1.5" },
+  { mult: 3, weight: 24, label: "×3" },
+  { mult: 0.7, weight: 231, label: "×0.7" },
+  { mult: 25, weight: 1.6, label: "×25" },
+  { mult: 1.2, weight: 95, label: "×1.2" },
+  { mult: 0.3, weight: 187, label: "×0.3" },
+  { mult: 6, weight: 9, label: "×6" },
+  { mult: 0.8, weight: 231, label: "×0.8" },
+  { mult: 2.5, weight: 34, label: "×2.5" },
+  { mult: 50, weight: 0.6, label: "×50" },
+  { mult: 0.6, weight: 231, label: "×0.6" },
+  { mult: 4, weight: 15, label: "×4" },
+  { mult: 10, weight: 5, label: "×10" },
 ];
 
 function floorPayout(bet, mult) {
