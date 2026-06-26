@@ -164,7 +164,7 @@ module.exports = {
         payload: { options: { 底注: ante, 梭哈: false } },
       });
 
-      const payload = renderMessage(doc, {
+      const payload = await renderMessage(doc, {
         username,
         balance: balanceAfter,
         userId,

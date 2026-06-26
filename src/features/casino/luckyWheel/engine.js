@@ -25,21 +25,23 @@ function floorPayout(bet, mult) {
 function pickSegment(segments, rng = Math.random) {
   const total = segments.reduce((s, p) => s + p.weight, 0);
   let r = rng() * total;
-  for (const seg of segments) {
-    r -= seg.weight;
-    if (r < 0) return seg;
+  for (let i = 0; i < segments.length; i++) {
+    r -= segments[i].weight;
+    if (r < 0) return { segment: segments[i], index: i };
   }
-  return segments[segments.length - 1];
+  const last = segments.length - 1;
+  return { segment: segments[last], index: last };
 }
 
 function spin({ bet, segments = DEFAULT_SEGMENTS, rng = Math.random }) {
   const list = Array.isArray(segments) && segments.length ? segments : DEFAULT_SEGMENTS;
-  const segment = pickSegment(list, rng);
+  const { segment, index } = pickSegment(list, rng);
   const mult = Number(segment.mult) || 0;
   const payout = floorPayout(bet, mult);
   const win = payout > bet;
   return {
     segment,
+    segmentIndex: index,
     mult,
     payout,
     result: payout > 0 ? "win" : "lose",

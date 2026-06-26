@@ -1,10 +1,15 @@
 require("colors");
 const crypto = require("crypto");
-const { SlashCommandBuilder, InteractionContextType } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  AttachmentBuilder,
+  InteractionContextType,
+} = require("discord.js");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
 const { deal, settleRound, cardLabel } = require("../../features/casino/baccarat/engine");
+const generateBaccaratCard = require("../../utils/generateBaccaratCard");
 const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
 const { buildCasinoEmbed } = require("../../features/casino/casinoEmbed");
 
@@ -233,6 +238,34 @@ module.exports = {
 
       const outcome = net > 0 ? "win" : net < 0 ? "lose" : "neutral";
 
+      let attachment = null;
+      try {
+        const buf = await generateBaccaratCard({
+          player: dealResult.player,
+          banker: dealResult.banker,
+          playerTotal: dealResult.playerTotal,
+          bankerTotal: dealResult.bankerTotal,
+          outcome: dealResult.outcome,
+          playerPair: dealResult.playerPair,
+          bankerPair: dealResult.bankerPair,
+          betLabel: bets.length === 1
+            ? describeBet(bets[0].type)
+            : `${bets.length} 注合押`,
+          betAmount: totalBet,
+          payout: round.totalPayout,
+          net,
+          balance: balanceAfter,
+          username,
+        });
+        attachment = new AttachmentBuilder(buf, {
+          name: `baccarat-${roundId}.png`,
+        });
+      } catch (cardErr) {
+        console.log(
+          `[WARN] baccarat card render failed, falling back to text: ${cardErr.message}`.yellow
+        );
+      }
+
       const embed = buildCasinoEmbed({
         game: "🎴 百家樂",
         user: {
@@ -246,11 +279,13 @@ module.exports = {
         bet: totalBet,
         net,
         balance: balanceAfter,
+        imageName: attachment?.name,
       });
 
       await interaction.editReply({
         content: "",
         embeds: [embed],
+        files: attachment ? [attachment] : [],
         components: [buildReplayRow("baccarat", userId, { name: username })],
       });
     } catch (error) {

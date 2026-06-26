@@ -5,6 +5,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  AttachmentBuilder,
 } = require("discord.js");
 
 const { categoryLabel } = require("../poker/hand");
@@ -12,6 +13,7 @@ const { anteOddsMultiplier } = require("./engine");
 const { buildReplayRow } = require("../replay");
 const { buildCasinoEmbed } = require("../casinoEmbed");
 const { MONEY_EMOJI } = require("../../../constants/coin");
+const generateCasinoHoldemCard = require("../../../utils/generateCasinoHoldemCard");
 
 const SUIT_EMOJI = { S: "♠", H: "♥", D: "♦", C: "♣" };
 const RANK_LABEL = {
@@ -128,7 +130,7 @@ function totalStakeOf(state) {
   return state.ante + (state.callBet || state.ante * 2);
 }
 
-function renderMessage(state, { username, balance, userId, avatarURL } = {}) {
+async function renderMessage(state, { username, balance, userId, avatarURL } = {}) {
   const isPlaying = state.status === "playing";
 
   let lines;
@@ -151,6 +153,18 @@ function renderMessage(state, { username, balance, userId, avatarURL } = {}) {
       ? [buildReplayRow("casinoHoldem", state.userId, { name: username })]
       : [];
 
+  let attachment = null;
+  try {
+    const buf = await generateCasinoHoldemCard(state, { username, balance, net });
+    attachment = new AttachmentBuilder(buf, {
+      name: `holdem-${state.gameId || "x"}-${state.stage || "flop"}.png`,
+    });
+  } catch (cardErr) {
+    console.log(
+      `[WARN] casinoHoldem card render failed, falling back to text: ${cardErr.message}`
+    );
+  }
+
   const embed = buildCasinoEmbed({
     game: "🃏 賭場德州撲克",
     user: { id: userId || state.userId, displayName: username, avatarURL },
@@ -161,9 +175,15 @@ function renderMessage(state, { username, balance, userId, avatarURL } = {}) {
     net: isPlaying ? undefined : net,
     balance: isPlaying || typeof balance !== "number" ? undefined : balance,
     footer: isPlaying ? "跟注或蓋牌？" : undefined,
+    imageName: attachment?.name,
   });
 
-  return { content: "", embeds: [embed], components, files: [] };
+  return {
+    content: "",
+    embeds: [embed],
+    components,
+    files: attachment ? [attachment] : [],
+  };
 }
 
 module.exports = { renderMessage, formatCard, anteOddsMultiplier };
