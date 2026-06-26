@@ -14,6 +14,7 @@ const config = require("../../config");
 const worldEventService = require("../../features/world_event/worldEventService");
 const worldEventBuffs = require("../../features/world_event/worldEventBuffs");
 const { formatBuff } = require("../../features/buff/buffLabels");
+const { itemLabel } = require("../../features/world_event/worldEventItems");
 
 const COLOR_OPEN = 0xf1c40f;
 const COLOR_BUFF = 0x2ecc71;
@@ -60,10 +61,6 @@ async function claimAnnounce(client, eventDbId, phase) {
     if (e?.code === 11000) return false;
     return false;
   }
-}
-
-function itemLabel(id) {
-  return config?.guildWarehouse?.items?.[id]?.name || id;
 }
 
 function buildOpenContainer(event) {

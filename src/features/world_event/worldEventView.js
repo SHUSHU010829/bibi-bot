@@ -9,17 +9,14 @@ const {
   StringSelectMenuOptionBuilder,
 } = require("discord.js");
 
-const { guildWarehouse, worldEvents } = require("../../config");
 const { formatBuff } = require("../buff/buffLabels");
+const { itemLabel, itemEmoji } = require("./worldEventItems");
 
 const COLOR_OPEN = 0xf1c40f;
 const COLOR_BUFF = 0x2ecc71;
 const COLOR_END = 0x95a5a6;
 const COLOR_ERROR = 0xe74c3c;
 const COLOR_INFO = 0x3498db;
-
-const itemLabel = (id) => guildWarehouse?.items?.[id]?.name || id;
-const itemEmoji = (id) => guildWarehouse?.items?.[id]?.emoji || "📦";
 
 function buildHomePanel({ viewerId, events }) {
   const c = new ContainerBuilder().setAccentColor(COLOR_INFO);
