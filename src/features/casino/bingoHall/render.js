@@ -5,7 +5,13 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ContainerBuilder,
   EmbedBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+  MessageFlags,
+  SeparatorBuilder,
+  TextDisplayBuilder,
 } = require("discord.js");
 const { MONEY_EMOJI } = require("../../../constants/coin");
 
@@ -94,28 +100,133 @@ function buildAnnounce({ round, settle, drawnBalls }) {
     .map((n) => String(n).padStart(2, "0"))
     .join(" ");
 
-  const lineWinners = settle.results
+  const lineWinnersAll = settle.results
     .filter((r) => r.prize === "lines" && r.payout > 0)
-    .sort((a, b) => b.payout - a.payout)
+    .sort((a, b) => b.payout - a.payout);
+  const lineWinnersShown = lineWinnersAll
     .slice(0, 5)
-    .map((r) => `・<@${r.userId}> ${r.lines} 線 +${r.payout.toLocaleString()}`)
+    .map((r) => `・<@${r.userId}> ${r.lines} 線 ・ **+${r.payout.toLocaleString()}** ${MONEY_EMOJI}`)
     .join("\n");
+  const lineRest = lineWinnersAll.length - 5;
 
   const jp = settle.results.filter((r) => r.prize === "jackpot");
   const fullHouse = jp.some((r) => r.lines >= 12);
-  const jackpotLine =
-    jp.length > 0
-      ? `🏆 **${fullHouse ? "全餐 BINGO！" : "頭彩"}** ${jp.map((r) => `<@${r.userId}>`).join("・")}（${jp[0].lines} 線）獨得累積頭彩 **${jp[0].payout.toLocaleString()}** ${MONEY_EMOJI}`
-      : `🎰 本場無人連線，累積頭彩滾至 **${settle.jackpotPoolOut.toLocaleString()}** ${MONEY_EMOJI}，下場見！`;
+  const hasJackpot = jp.length > 0;
+  const jackpotLine = hasJackpot
+    ? `🏆 **${fullHouse ? "全餐 BINGO！" : "頭彩"}** ${jp.map((r) => `<@${r.userId}>`).join("・")}（${jp[0].lines} 線）獨得累積頭彩 **${jp[0].payout.toLocaleString()}** ${MONEY_EMOJI}`
+    : `🎰 本場無人連線，累積頭彩滾至 **${settle.jackpotPoolOut.toLocaleString()}** ${MONEY_EMOJI}，下場見！`;
 
-  const body =
-    `# 🎱 賓果大廳 第 ${round.roundNumber} 場 開球結果\n` +
-    `開出 30 球：\n\`${drawnStr}\`\n\n` +
-    `${jackpotLine}\n` +
-    (lineWinners ? `\n**連線獎**\n${lineWinners}\n` : "\n本場沒有人連線。\n") +
-    `\n-# 中獎者已收到私訊兌獎圖。新一場已開賣，往上買卡 👆`;
+  const accent = hasJackpot ? 0xd4a437 : 0x3d6f6a;
 
-  return { content: body };
+  const container = new ContainerBuilder().setAccentColor(accent);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## 🎱 賓果大廳 第 ${round.roundNumber} 場 開球結果\n` +
+        `-# 共開出 ${drawnBalls.length} 球`
+    )
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`**開球順序**\n\`${drawnStr}\``)
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(jackpotLine)
+  );
+
+  if (lineWinnersShown) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    const restNote = lineRest > 0 ? `\n-# 其餘 ${lineRest} 位中獎玩家未顯示。` : "";
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**🎯 連線獎**\n${lineWinnersShown}${restNote}`
+      )
+    );
+  } else if (hasJackpot) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# 本場沒有其他連線中獎者。")
+    );
+  }
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "-# 中獎者已收到私訊兌獎圖 ・ 新一場已開賣，往上買卡 👆"
+    )
+  );
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { users: jp.map((r) => r.userId).concat(lineWinnersAll.map((r) => r.userId)) },
+  };
+}
+
+function prizeMeta(prize, lines) {
+  if (prize === "jackpot") {
+    if (lines >= 12) {
+      return { label: "🌈 全餐 BINGO", accent: 0xd4a437, isJackpot: true, isFullHouse: true };
+    }
+    return { label: "🏆 頭彩", accent: 0xd4a437, isJackpot: true, isFullHouse: false };
+  }
+  return { label: "🎯 連線獎", accent: 0x3d6f6a, isJackpot: false, isFullHouse: false };
+}
+
+function buildWinnerDm({ round, result, fileName, channelId }) {
+  const meta = prizeMeta(result.prize, result.lines);
+
+  const container = new ContainerBuilder().setAccentColor(meta.accent);
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## 🎉 賓果大廳 第 ${round.roundNumber} 場 中獎！\n` +
+        `-# ${meta.label} ・ ${result.lines} 線 ・ 兌獎圖已附上`
+    )
+  );
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+
+  const fullHouseSuffix = meta.isFullHouse ? "（連 12 線達成）" : "";
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `**獎項**　${meta.label}${fullHouseSuffix}\n` +
+        `**入帳**　**+${result.payout.toLocaleString()}** ${MONEY_EMOJI}\n` +
+        `**場次**　第 ${round.roundNumber} 場 ・ 完成 ${result.lines} 線`
+    )
+  );
+
+  if (fileName) {
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder()
+          .setURL(`attachment://${fileName}`)
+          .setDescription(`賓果大廳 第 ${round.roundNumber} 場 兌獎圖`)
+      )
+    );
+  }
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      channelId
+        ? `-# 新一場已開賣 → <#${channelId}> 再來一張碰運氣 🎟️`
+        : `-# 新一場已開賣，回大廳再來一張 🎟️`
+    )
+  );
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] },
+  };
 }
 
 module.exports = {
@@ -124,4 +235,5 @@ module.exports = {
   buildClosedMessage,
   buildBuyReply,
   buildAnnounce,
+  buildWinnerDm,
 };
