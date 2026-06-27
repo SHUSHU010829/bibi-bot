@@ -1,9 +1,10 @@
 // /紅包 — 在頻道發一包紅包，大家限時搶，未搶完自動退回發包人。
 //
-// 流程：
-//   1) 發包人下指令 → 立即扣款（escrow）→ 預先算好每包金額 → 頻道貼出搶紅包面板
-//   2) 任何人（發包人除外）點 🧧 搶一次 → atomic 分配一包 → grantCoins 入帳
-//   3) 搶光 or 到期 → closeRedPacket 收尾，退回未搶金額
+// 兩種類型：
+//   normal — 一般紅包：發包人預先扣款，shares 預先算好，搶到實際金額。
+//   prank  — 傻瓜紅包：發包人只付固定整人費，shares 全部是 0，所有搶到的人都拿到空包，
+//            費用不退回（被服務器吃掉，避免免費刷屏）。對外顯示與一般紅包完全一樣，
+//            等截止 / 全被騙完再揭曉「🤡 X 人上當」。
 
 require("colors");
 const crypto = require("crypto");
@@ -32,16 +33,26 @@ module.exports = {
     .addIntegerOption((opt) =>
       opt
         .setName("金額")
-        .setDescription("紅包總金額")
+        .setDescription("紅包總金額（傻瓜紅包顯示用，實際只扣整人費）")
         .setRequired(true)
         .setMinValue(1)
     )
     .addIntegerOption((opt) =>
       opt
         .setName("包數")
-        .setDescription("拆成幾包")
+        .setDescription("拆成幾包（至少 2 包，避免變成轉帳）")
         .setRequired(true)
-        .setMinValue(1)
+        .setMinValue(2)
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName("類型")
+        .setDescription("一般 或 傻瓜紅包（🤡 看似有錢、其實是空的）")
+        .setRequired(false)
+        .addChoices(
+          { name: "一般紅包", value: "normal" },
+          { name: "🤡 傻瓜紅包（假的，沒錢）", value: "prank" }
+        )
     )
     .addStringOption((opt) =>
       opt
@@ -85,11 +96,18 @@ module.exports = {
       }
 
       const minTotal = cfg.minTotal ?? 100;
+      const minCount = cfg.minCount ?? 2;
       const maxCount = cfg.maxCount ?? 20;
-      const windowSec = cfg.grabWindowSeconds ?? 600;
+      const normalWindowSec = cfg.grabWindowSeconds ?? 600;
 
-      const total = interaction.options.getInteger("金額");
-      const count = interaction.options.getInteger("包數");
+      const prankCfg = cfg.prank || {};
+      const prankEnabled = prankCfg.enabled !== false;
+      const prankFee = prankCfg.fee ?? 100;
+      const prankWindowSec = prankCfg.grabWindowSeconds ?? normalWindowSec;
+
+      const displayTotal = interaction.options.getInteger("金額");
+      const displayCount = interaction.options.getInteger("包數");
+      const kind = interaction.options.getString("類型") || "normal";
       const mode = interaction.options.getString("手氣") || "lucky";
       const rawTitle = interaction.options.getString("標題");
       const title = rawTitle
@@ -100,31 +118,48 @@ module.exports = {
             .slice(0, 50)
         : null;
 
-      if (total < minTotal) {
+      if (kind === "prank" && !prankEnabled) {
+        return interaction.editReply("🔧 傻瓜紅包暫時關閉中！");
+      }
+
+      if (displayCount < minCount) {
         return interaction.editReply(
-          `🧧 紅包至少要 **${minTotal.toLocaleString()}** ${MONEY_EMOJI}（目前填 ${total.toLocaleString()}）。`
+          `🧧 至少要拆成 **${minCount}** 包（少於 ${minCount} 包就跟直接轉帳沒兩樣了 🙅）。`
         );
       }
-      if (count > maxCount) {
+      if (displayCount > maxCount) {
         return interaction.editReply(
-          `🧧 最多拆成 **${maxCount}** 包（目前填 ${count}）。`
+          `🧧 最多拆成 **${maxCount}** 包（目前填 ${displayCount}）。`
         );
       }
-      if (total < count) {
-        return interaction.editReply(
-          `🧧 金額要 ≥ 包數，每包至少 1 ${MONEY_EMOJI}（${total.toLocaleString()} 元拆 ${count} 包不夠分）。`
-        );
+
+      if (kind === "normal") {
+        if (displayTotal < minTotal) {
+          return interaction.editReply(
+            `🧧 紅包至少要 **${minTotal.toLocaleString()}** ${MONEY_EMOJI}（目前填 ${displayTotal.toLocaleString()}）。`
+          );
+        }
+        if (displayTotal < displayCount) {
+          return interaction.editReply(
+            `🧧 金額要 ≥ 包數，每包至少 1 ${MONEY_EMOJI}（${displayTotal.toLocaleString()} 元拆 ${displayCount} 包不夠分）。`
+          );
+        }
       }
 
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
       const username = interaction.member?.displayName || interaction.user.username;
 
+      const actualPay = kind === "prank" ? prankFee : displayTotal;
+
       const before = await client.userCoinsCollection.findOne({ userId, guildId });
       const balance = before?.totalCoins || 0;
-      if (balance < total) {
+      if (balance < actualPay) {
+        const need = kind === "prank"
+          ? `傻瓜紅包整人費 **${actualPay.toLocaleString()}** ${MONEY_EMOJI}`
+          : `這包要 **${actualPay.toLocaleString()}** ${MONEY_EMOJI}`;
         return interaction.editReply(
-          `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}**，發這包要 **${total.toLocaleString()}**。`
+          `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}**，發${need}。`
         );
       }
 
@@ -135,16 +170,19 @@ module.exports = {
         guildId,
         username,
         avatarHash: interaction.user.avatar,
-        amount: -total,
+        amount: -actualPay,
         source: "bet",
         member: interaction.member,
-        meta: { game: "redPacket", gameId, kind: "fund" },
+        meta: { game: "redPacket", gameId, kind: kind === "prank" ? "prank_fee" : "fund" },
       });
       if (!betResult) {
         return interaction.editReply("🔧 扣款失敗，請稍後再試。");
       }
 
-      const shares = buildShares(total, count, mode);
+      const shares = kind === "prank"
+        ? new Array(displayCount).fill(0)
+        : buildShares(displayTotal, displayCount, mode);
+      const windowSec = kind === "prank" ? prankWindowSec : normalWindowSec;
       const now = new Date();
       const expiresAt = new Date(now.getTime() + windowSec * 1000);
 
@@ -155,10 +193,14 @@ module.exports = {
         messageId: null,
         hostUserId: userId,
         hostUsername: username,
+        kind,
         mode,
         title: title || null,
-        totalAmount: total,
-        totalCount: count,
+        totalAmount: actualPay,
+        totalCount: displayCount,
+        displayAmount: displayTotal,
+        displayCount,
+        prankFee: kind === "prank" ? prankFee : 0,
         shares,
         grabbers: [],
         status: "open",
@@ -176,10 +218,16 @@ module.exports = {
         { $set: { messageId: message.id, updatedAt: new Date() } }
       );
 
-      await interaction.editReply(
-        `🧧 紅包已發出！共 ${total.toLocaleString()} ${MONEY_EMOJI} / ${count} 包，` +
-          `${windowSec >= 60 ? `${Math.round(windowSec / 60)} 分鐘` : `${windowSec} 秒`}內沒搶完會退回給你。`
-      );
+      const windowText = windowSec >= 60
+        ? `${Math.round(windowSec / 60)} 分鐘`
+        : `${windowSec} 秒`;
+      const hostNotice = kind === "prank"
+        ? `🤡 傻瓜紅包已發出！花費 **${prankFee.toLocaleString()}** ${MONEY_EMOJI} 整人費（不退回），` +
+          `顯示金額 ${displayTotal.toLocaleString()} ${MONEY_EMOJI} / ${displayCount} 包都是假的。` +
+          `${windowText}內看誰來上鉤～`
+        : `🧧 紅包已發出！共 ${displayTotal.toLocaleString()} ${MONEY_EMOJI} / ${displayCount} 包，` +
+          `${windowText}內沒搶完會退回給你。`;
+      await interaction.editReply(hostNotice);
 
       const delayMs = expiresAt.getTime() - Date.now();
       if (delayMs > 0) {
