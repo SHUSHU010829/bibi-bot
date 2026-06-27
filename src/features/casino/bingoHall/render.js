@@ -116,56 +116,32 @@ function buildAnnounce({ round, settle, drawnBalls }) {
     ? `🏆 **${fullHouse ? "全餐 BINGO！" : "頭彩"}** ${jp.map((r) => `<@${r.userId}>`).join("・")}（${jp[0].lines} 線）獨得累積頭彩 **${jp[0].payout.toLocaleString()}** ${MONEY_EMOJI}`
     : `🎰 本場無人連線，累積頭彩滾至 **${settle.jackpotPoolOut.toLocaleString()}** ${MONEY_EMOJI}，下場見！`;
 
-  const accent = hasJackpot ? 0xd4a437 : 0x3d6f6a;
-
-  const container = new ContainerBuilder().setAccentColor(accent);
-
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `## 🎱 賓果大廳 第 ${round.roundNumber} 場 開球結果\n` +
-        `-# 共開出 ${drawnBalls.length} 球`
+  const embed = new EmbedBuilder()
+    .setColor(hasJackpot ? 0xd4a437 : 0x3d6f6a)
+    .setTitle(`🎱 賓果大廳 第 ${round.roundNumber} 場 開球結果`)
+    .setDescription(
+      `**開球順序**（共 ${drawnBalls.length} 球）\n\`${drawnStr}\`\n\n${jackpotLine}`
     )
-  );
-
-  container.addSeparatorComponents(new SeparatorBuilder());
-
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`**開球順序**\n\`${drawnStr}\``)
-  );
-
-  container.addSeparatorComponents(new SeparatorBuilder());
-
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(jackpotLine)
-  );
+    .setFooter({ text: "中獎者已收到私訊兌獎圖 · 新一場已開賣，往上買卡 👆" });
 
   if (lineWinnersShown) {
-    container.addSeparatorComponents(new SeparatorBuilder());
     const restNote = lineRest > 0 ? `\n-# 其餘 ${lineRest} 位中獎玩家未顯示。` : "";
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**🎯 連線獎**\n${lineWinnersShown}${restNote}`
-      )
-    );
+    embed.addFields({
+      name: "🎯 連線獎",
+      value: `${lineWinnersShown}${restNote}`,
+    });
   } else if (hasJackpot) {
-    container.addSeparatorComponents(new SeparatorBuilder());
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# 本場沒有其他連線中獎者。")
-    );
+    embed.addFields({ name: "🎯 連線獎", value: "本場沒有其他連線中獎者。" });
   }
 
-  container.addSeparatorComponents(new SeparatorBuilder());
-
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      "-# 中獎者已收到私訊兌獎圖 ・ 新一場已開賣，往上買卡 👆"
-    )
+  const mentionIds = Array.from(
+    new Set(jp.map((r) => r.userId).concat(lineWinnersAll.map((r) => r.userId)))
   );
 
   return {
-    components: [container],
-    flags: MessageFlags.IsComponentsV2,
-    allowedMentions: { users: jp.map((r) => r.userId).concat(lineWinnersAll.map((r) => r.userId)) },
+    content: hasJackpot || lineWinnersShown ? "🎉 賓果大廳開獎啦！" : "",
+    embeds: [embed],
+    allowedMentions: { parse: [], users: mentionIds },
   };
 }
 
