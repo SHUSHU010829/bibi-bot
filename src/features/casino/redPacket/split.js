@@ -2,8 +2,9 @@
 //
 // 兩種手氣模式：
 //   even   — 均分：每包 floor(total/count)，餘數隨機灑到幾包 +1。
-//   lucky  — 隨機（微信「二倍均值法」）：每包在 [1, 2×剩餘均值] 間隨機，
-//            保證每包 ≥ 1、總和 = total、後面的人一定有得拿。
+//   lucky  — 隨機（微信「二倍均值法」變形）：每包在 [0, 2×剩餘均值] 間隨機，
+//            總和 = total、最後一包拿光剩餘。允許單包是 0 元 —— 一般紅包也
+//            偶爾會出現「拿到 0 元」，傻瓜紅包就不會一看就被識破。
 //
 // 兩種模式都先「預先算好」整個 shares 陣列，再於搶的時候依序發放，
 // 確保併發下每包金額是固定的、不會因為搶的順序而被重算。
@@ -27,8 +28,8 @@ function splitEven(total, count, rng = Math.random) {
   return shares;
 }
 
-// 二倍均值法：第 k 包（還剩 n 人、剩 m 元）→ random in [1, max(1, floor(2m/n))]，
-// 最後一包拿光剩餘。保證每包 ≥ 1。
+// 二倍均值法（下限放到 0）：第 k 包（還剩 n 人、剩 m 元）→ random in [0, floor(2m/n)]，
+// 最後一包拿光剩餘。允許單包是 0 元，讓傻瓜紅包（全 0）不會被「出現 0 元」直接識破。
 function splitLucky(total, count, rng = Math.random) {
   const shares = [];
   let remaining = total;
@@ -38,9 +39,8 @@ function splitLucky(total, count, rng = Math.random) {
       shares.push(remaining);
       break;
     }
-    // 預留每個後面的人至少 1 元
-    const maxDraw = Math.max(1, Math.min(remaining - (peopleLeft - 1), Math.floor((2 * remaining) / peopleLeft)));
-    const draw = randInt(1, maxDraw, rng);
+    const maxDraw = Math.max(0, Math.floor((2 * remaining) / peopleLeft));
+    const draw = randInt(0, maxDraw, rng);
     shares.push(draw);
     remaining -= draw;
   }

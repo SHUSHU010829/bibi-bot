@@ -139,11 +139,6 @@ module.exports = {
             `🧧 紅包至少要 **${minTotal.toLocaleString()}** ${MONEY_EMOJI}（目前填 ${displayTotal.toLocaleString()}）。`
           );
         }
-        if (displayTotal < displayCount) {
-          return interaction.editReply(
-            `🧧 金額要 ≥ 包數，每包至少 1 ${MONEY_EMOJI}（${displayTotal.toLocaleString()} 元拆 ${displayCount} 包不夠分）。`
-          );
-        }
       }
 
       const userId = interaction.user.id;
