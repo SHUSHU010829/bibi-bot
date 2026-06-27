@@ -13,6 +13,7 @@ const {
   buildAnnounce,
   buildBuyMessage,
   buildClosedMessage,
+  buildWinnerDm,
 } = require("./render");
 const generateBingoHallCard = require("../../../utils/generateBingoHallCard");
 
@@ -196,9 +197,9 @@ async function announce(client, round, settle, drawnBalls) {
   );
 }
 
-// 對每張中獎卡 DM 一張兌獎圖 + 中獎金額；算圖失敗退回純文字。
+// 對每張中獎卡 DM 一張 Components v2 兌獎面板（含兌獎圖）；算圖失敗退回純面板。
 async function dmWinners(client, round, settle, drawnBalls, cardsById) {
-  const PRIZE_LABEL = { jackpot: "🏆 頭彩", lines: "🎯 連線獎" };
+  const channelId = cfg().announceChannelId || round.channelId;
   for (const r of settle.results) {
     if (!(r.payout > 0)) continue;
     const cardDoc = cardsById.get(r.cardId);
@@ -206,11 +207,8 @@ async function dmWinners(client, round, settle, drawnBalls, cardsById) {
     const user = await client.users.fetch(r.userId).catch(() => null);
     if (!user) continue;
 
-    const headline =
-      `🎉 你在 **賓果大廳 第 ${round.roundNumber} 場** 中獎了！\n` +
-      `${PRIZE_LABEL[r.prize] || "中獎"}（${r.lines} 線）→ **+${r.payout.toLocaleString()}** credits 已入帳。`;
-
     let files = [];
+    let fileName = null;
     try {
       const buf = await generateBingoHallCard({
         card: cardDoc.card,
@@ -221,11 +219,14 @@ async function dmWinners(client, round, settle, drawnBalls, cardsById) {
         roundNumber: round.roundNumber,
         username: cardDoc.username,
       });
-      files = [new AttachmentBuilder(buf, { name: `bingo-${r.cardId}.png` })];
+      fileName = `bingo-${r.cardId}.png`;
+      files = [new AttachmentBuilder(buf, { name: fileName })];
     } catch (e) {
       console.log(`[BINGOHALL] 兌獎圖算圖失敗 ${r.cardId}: ${e.message}`.yellow);
     }
-    await user.send({ content: headline, files }).catch(() => {});
+
+    const payload = buildWinnerDm({ round, result: r, fileName, channelId });
+    await user.send({ ...payload, files }).catch(() => {});
   }
 }
 

@@ -96,10 +96,11 @@ function buildMarkup({ card, drawnBalls, lines, prize, payout, roundNumber, user
 
   const isJackpot = prize === "jackpot";
   const bannerBg = isJackpot ? PALETTE.gold : PALETTE.teal;
+  const bannerFg = isJackpot ? PALETTE.ink : PALETTE.white;
 
   return `
-    <div style="display:flex;width:680px;height:900px;background:${PALETTE.card};padding:24px;box-sizing:border-box;font-family:'NotoSansTC';">
-      <div style="display:flex;flex-direction:column;width:100%;height:100%;background:${PALETTE.card};border:3px solid ${PALETTE.ink};padding:28px 32px;box-sizing:border-box;align-items:center;">
+    <div style="display:flex;width:680px;height:1000px;background:${PALETTE.card};padding:24px;box-sizing:border-box;font-family:'NotoSansTC';">
+      <div style="display:flex;flex-direction:column;width:100%;height:100%;background:${PALETTE.card};border:3px solid ${PALETTE.ink};padding:26px 32px 24px 32px;box-sizing:border-box;align-items:center;">
 
         <div style="display:flex;width:100%;justify-content:space-between;align-items:center;">
           <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:34px;color:${PALETTE.ink};letter-spacing:4px;">賓果大廳</div>
@@ -108,21 +109,22 @@ function buildMarkup({ card, drawnBalls, lines, prize, payout, roundNumber, user
 
         <div style="display:flex;margin-top:6px;width:100%;font-family:'SpaceMono';font-size:14px;color:${PALETTE.muted};letter-spacing:2px;">@${username || "player"}</div>
 
-        <div style="display:flex;width:100%;height:0;margin-top:14px;border-top:2px dashed ${PALETTE.muted};"></div>
+        <div style="display:flex;width:100%;height:0;margin-top:12px;border-top:2px dashed ${PALETTE.muted};"></div>
 
-        <div style="display:flex;margin-top:20px;">${headerRow}</div>
+        <div style="display:flex;margin-top:18px;">${headerRow}</div>
         <div style="display:flex;flex-direction:column;align-items:center;">${gridRows.join("")}</div>
 
-        <div style="display:flex;margin-top:24px;padding:12px 28px;background:${bannerBg};border:3px solid ${PALETTE.ink};align-items:center;">
-          <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:30px;color:${isJackpot ? PALETTE.ink : PALETTE.white};letter-spacing:2px;">${prizeText(prize, lines)} ・ ${lines} 線</div>
-        </div>
-        <div style="display:flex;margin-top:14px;align-items:flex-end;">
-          <div style="display:flex;font-family:'SpaceMono';font-size:16px;letter-spacing:4px;color:${PALETTE.muted};padding-right:6px;">WIN</div>
-          <div style="display:flex;margin-left:8px;font-family:'NotoSansTC';font-weight:900;font-size:44px;color:${PALETTE.red};line-height:1;">+${(payout || 0).toLocaleString()}</div>
-        </div>
-
-        <div style="display:flex;width:100%;justify-content:flex-end;margin-top:auto;">
-          <div style="display:flex;font-family:'SpaceMono';font-size:12px;letter-spacing:4px;color:${PALETTE.muted};">逼逼賭場 · BINGO HALL</div>
+        <div style="display:flex;flex-direction:column;align-items:center;width:100%;margin-top:auto;padding-top:20px;">
+          <div style="display:flex;padding:10px 28px;background:${bannerBg};border:3px solid ${PALETTE.ink};align-items:center;">
+            <div style="display:flex;font-family:'NotoSansTC';font-weight:900;font-size:26px;color:${bannerFg};letter-spacing:2px;">${prizeText(prize, lines)} ・ ${lines} 線</div>
+          </div>
+          <div style="display:flex;margin-top:10px;align-items:flex-end;">
+            <div style="display:flex;font-family:'SpaceMono';font-size:16px;letter-spacing:4px;color:${PALETTE.muted};padding-right:6px;padding-bottom:6px;">WIN</div>
+            <div style="display:flex;margin-left:6px;font-family:'NotoSansTC';font-weight:900;font-size:40px;color:${PALETTE.red};line-height:1;">+${(payout || 0).toLocaleString()}</div>
+          </div>
+          <div style="display:flex;width:100%;justify-content:flex-end;margin-top:14px;">
+            <div style="display:flex;font-family:'SpaceMono';font-size:12px;letter-spacing:4px;color:${PALETTE.muted};">逼逼賭場 · BINGO HALL</div>
+          </div>
         </div>
 
       </div>
@@ -132,7 +134,7 @@ function buildMarkup({ card, drawnBalls, lines, prize, payout, roundNumber, user
 
 async function generateBingoHallCard(opts) {
   const markup = buildMarkup(opts);
-  return renderCard({ markup, width: 680, height: 900 });
+  return renderCard({ markup, width: 680, height: 1000 });
 }
 
 module.exports = generateBingoHallCard;
