@@ -118,10 +118,17 @@ module.exports = async (client, interaction) => {
       await interaction.editReply(buildOpenPayload(next)).catch(() => {});
     }
 
-    await ephemeral(
-      interaction,
-      `🧧 你搶到 **${amount.toLocaleString()}** ${MONEY_EMOJI}！`
-    );
+    if (next.kind === "prank") {
+      await ephemeral(
+        interaction,
+        "🤡 你被騙啦！這是**傻瓜紅包**，根本是空的什麼都沒有 ㄎㄎㄎ"
+      );
+    } else {
+      await ephemeral(
+        interaction,
+        `🧧 你搶到 **${amount.toLocaleString()}** ${MONEY_EMOJI}！`
+      );
+    }
     trackSuccess("redpacket-button");
   } catch (error) {
     logger.error(

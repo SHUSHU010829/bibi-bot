@@ -273,8 +273,14 @@
     "redPacket": {
       "enabled": true,
       "minTotal": 100,
+      "minCount": 2,
       "maxCount": 20,
-      "grabWindowSeconds": 600
+      "grabWindowSeconds": 600,
+      "prank": {
+        "enabled": true,
+        "fee": 100,
+        "grabWindowSeconds": 300
+      }
     },
     "russianRoulette": {
       "enabled": true,

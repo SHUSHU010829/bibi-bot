@@ -21,7 +21,9 @@ async function closeRedPacket(client, gameId, { reason = "expired" } = {}) {
   if (!state) return { closed: false, refunded: 0 };
 
   const grabbedAmount = (state.grabbers || []).reduce((s, g) => s + g.amount, 0);
-  const refunded = Math.max(0, state.totalAmount - grabbedAmount);
+  // 傻瓜紅包：發包人付的整人費不退；其餘照「總額 - 已搶」退回。
+  const refundable = state.kind === "prank" ? 0 : state.totalAmount;
+  const refunded = Math.max(0, refundable - grabbedAmount);
 
   if (refunded > 0) {
     await grantCoins(client, {
@@ -38,6 +40,14 @@ async function closeRedPacket(client, gameId, { reason = "expired" } = {}) {
       title: "🧧 紅包退回",
       description: `你發的紅包還剩 **${refunded.toLocaleString()}** ${MONEY_EMOJI} 沒被搶完，已退回給你。`,
     });
+  } else if (state.kind === "prank") {
+    const fooled = state.grabbers?.length || 0;
+    await notifyEmbed(client, state.hostUserId, {
+      title: "🤡 傻瓜紅包結束",
+      description: fooled > 0
+        ? `你的傻瓜紅包成功騙到 **${fooled}** 人 🎉 整人費 ${state.prankFee || state.totalAmount} ${MONEY_EMOJI} 已消耗。`
+        : `你的傻瓜紅包...沒人來搶 😶 整人費 ${state.prankFee || state.totalAmount} ${MONEY_EMOJI} 已消耗。`,
+    }).catch(() => {});
   }
 
   await client.redPacketGamesCollection.updateOne(
