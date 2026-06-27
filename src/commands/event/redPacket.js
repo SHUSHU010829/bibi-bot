@@ -53,6 +53,13 @@ module.exports = {
           { name: "均分", value: "even" }
         )
     )
+    .addStringOption((opt) =>
+      opt
+        .setName("標題")
+        .setDescription("紅包標題（會顯示在訊息上，最多 50 字）")
+        .setRequired(false)
+        .setMaxLength(50)
+    )
     .toJSON(),
 
   // 紅包是同樂性質：開放在公會大廳(general)與賭場遊戲頻道(casino)，遊戲房討論串本就豁免。
@@ -84,6 +91,14 @@ module.exports = {
       const total = interaction.options.getInteger("金額");
       const count = interaction.options.getInteger("包數");
       const mode = interaction.options.getString("手氣") || "lucky";
+      const rawTitle = interaction.options.getString("標題");
+      const title = rawTitle
+        ? rawTitle
+            .replace(/@(everyone|here)/g, "@​$1")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 50)
+        : null;
 
       if (total < minTotal) {
         return interaction.editReply(
@@ -141,6 +156,7 @@ module.exports = {
         hostUserId: userId,
         hostUsername: username,
         mode,
+        title: title || null,
         totalAmount: total,
         totalCount: count,
         shares,
