@@ -286,7 +286,7 @@
       "enabled": true,
       "announceChannelId": "1506339475867832330",
       "minAnte": 50,
-      "maxAnte": 5000,
+      "maxAnte": 10000,
       "maxPlayers": 6,
       "joinWindowSeconds": 120,
       "rakePct": 0.05
