@@ -25,8 +25,10 @@ function grabberLines(state, { highlightBest = false } = {}) {
 function buildOpenPayload(state) {
   const grabbedCount = state.grabbers?.length || 0;
   const expiresEpoch = Math.floor(new Date(state.expiresAt).getTime() / 1000);
+  const titleLine = state.title ? `> 💬 ${state.title}\n` : "";
   const content =
     `# 🧧 <@${state.hostUserId}> 發了一包紅包！\n` +
+    `${titleLine}` +
     `**${MODE_LABEL[state.mode] || state.mode}**　共 **${state.totalAmount.toLocaleString()}** ${MONEY_EMOJI} / **${state.totalCount}** 包\n` +
     `已搶 **${grabbedCount}** / ${state.totalCount} 包\n\n` +
     `${grabberLines(state)}\n\n` +
@@ -53,8 +55,10 @@ function buildClosedPayload(state, { refunded = 0 } = {}) {
       ? `\n剩下 **${refunded.toLocaleString()}** ${MONEY_EMOJI} 已退回給 <@${state.hostUserId}>`
       : "";
 
+  const titleLine = state.title ? `> 💬 ${state.title}\n` : "";
   const content =
     `# ${closedReason}\n` +
+    `${titleLine}` +
     `<@${state.hostUserId}> 的紅包 **${state.totalAmount.toLocaleString()}** ${MONEY_EMOJI} / ${state.totalCount} 包，` +
     `搶出 **${grabbedAmount.toLocaleString()}** ${MONEY_EMOJI}${refundLine}\n\n` +
     `${grabberLines(state, { highlightBest: true })}`;
