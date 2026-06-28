@@ -19,6 +19,7 @@ const reminder = require("../../features/reminders/cooldownReminderService");
 const { isGameRoom } = require("../../features/gameRoom/service");
 const { dungeon } = require("../../config");
 const { consume } = require("../../utils/rateLimiter");
+const { deferReplySafe, deferUpdateSafe } = require("../../utils/safeAck");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 
@@ -249,7 +250,7 @@ async function showBattleLog(interaction, runId) {
     return replyEphemeral(interaction, "🔧 戰鬥日誌系統未啟動。");
   }
   // M5 修正：先 defer 避免 Mongo 查詢慢時超過 3s 互動視窗
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const doc = await client.dungeonRunsCollection.findOne({ run_id: runId, user_id: interaction.user.id }).catch(() => null);
   if (!doc) return interaction.editReply("找不到這場戰鬥的紀錄（或已過期）。").catch(() => {});
 
@@ -368,7 +369,7 @@ module.exports = async (client, interaction) => {
       // payload = <ownerId> 或 <ownerId>_<theme>
       const parts = m.payload.split("_");
       const themeArg = parts[1]; // 可選
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       await showEntryPanelOnSameMessage(client, interaction, themeArg ? { themeId: themeArg } : {});
       trackSuccess("raid-panel");
       return;
@@ -379,7 +380,7 @@ module.exports = async (client, interaction) => {
       const parts = m.payload.split("_");
       const themeId = parts[1];
       if (!themeId) return replyEphemeral(interaction, "🔧 主題參數錯誤。");
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       // mini-BOSS 也走低 HP 確認
       const status = await dungeonService.getDungeonStatus(client, {
         userId: interaction.user.id,
@@ -412,7 +413,7 @@ module.exports = async (client, interaction) => {
       if (!themeId || !Number.isFinite(floor)) {
         return replyEphemeral(interaction, "🔧 樓層參數錯誤。");
       }
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       // 戰前低 HP 確認（強制進場 prefix 跳過）
       if (m.prefix !== dungeonCmd.RAID_FORCE_PREFIX) {
         const status = await dungeonService.getDungeonStatus(client, {
@@ -446,7 +447,7 @@ module.exports = async (client, interaction) => {
     }
 
     if (m.prefix === dungeonCmd.RAID_USE_STAMINA_PREFIX) {
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       const result = await dungeonService.useStaminaPotion(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -486,7 +487,7 @@ module.exports = async (client, interaction) => {
       const parts = m.payload.split("_");
       const tier = parts[1];
       const themeId = parts[2]; // 可選
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       await doHeal(client, interaction, tier, themeId);
       trackSuccess("raid-heal");
       return;
@@ -494,7 +495,7 @@ module.exports = async (client, interaction) => {
 
     if (m.prefix === dungeonCmd.RAID_SETTINGS_PREFIX) {
       const themeId = m.payload.split("_")[1]; // 可選
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       const status = await dungeonService.getDungeonStatus(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -513,7 +514,7 @@ module.exports = async (client, interaction) => {
       // StringSelect 值：'on' / 'off'
       const themeId = m.payload.split("_")[1]; // 可選
       const value = interaction.values?.[0];
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       await dungeonService.setAutoPotionPref(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -536,7 +537,7 @@ module.exports = async (client, interaction) => {
     if (m.prefix === dungeonCmd.RAID_PREF_TIER_PREFIX) {
       const themeId = m.payload.split("_")[1]; // 可選
       const value = interaction.values?.[0];
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       await dungeonService.setAutoPotionPref(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,

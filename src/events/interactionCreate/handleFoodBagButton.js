@@ -6,6 +6,7 @@ const foodBag = require("../../features/fishing/foodBag");
 const foodBagView = require("../../features/fishing/foodBagView");
 const cookService = require("../../features/fishing/cookService");
 const { getOrCreate: getMiningProfile } = require("../../features/mining/miningProfile");
+const { deferReplySafe, deferUpdateSafe } = require("../../utils/safeAck");
 
 const {
   OPEN_PREFIX,
@@ -86,9 +87,9 @@ module.exports = async (client, interaction) => {
       // 從食用成功訊息點的本身是 ephemeral，可以直接 update。
       const fromEphemeral = !!(interaction.message?.flags?.has?.(MessageFlags.Ephemeral));
       if (fromEphemeral) {
-        await interaction.deferUpdate();
+        if (!(await deferUpdateSafe(interaction))) return;
       } else {
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       }
       await openFoodBag(client, interaction, ownerId, interaction.guildId, fromEphemeral);
       return;
@@ -105,9 +106,9 @@ module.exports = async (client, interaction) => {
       }
       const fromEphemeral = !!(interaction.message?.flags?.has?.(MessageFlags.Ephemeral));
       if (fromEphemeral) {
-        await interaction.deferUpdate();
+        if (!(await deferUpdateSafe(interaction))) return;
       } else {
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       }
       await performUse(client, interaction, ownerId, interaction.guildId, instanceId, false);
       return;
@@ -122,7 +123,7 @@ module.exports = async (client, interaction) => {
           flags: MessageFlags.Ephemeral,
         });
       }
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       await performUse(client, interaction, ownerId, interaction.guildId, instanceId, true);
       return;
     }
@@ -136,7 +137,7 @@ module.exports = async (client, interaction) => {
           flags: MessageFlags.Ephemeral,
         });
       }
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       await interaction.editReply(foodBagView.buildCanceledView());
       return;
     }

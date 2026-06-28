@@ -12,6 +12,7 @@ const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 module.exports = async (client, interaction) => {
   try {
@@ -34,7 +35,7 @@ module.exports = async (client, interaction) => {
     }
 
     // 先 ack，避免 DB / 發幣耗時超過 3 秒 token 效期
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
 
     if (id.startsWith("duel_decline_")) {
       const duelId = id.slice("duel_decline_".length);

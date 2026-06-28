@@ -36,6 +36,7 @@ const guildClubView = require("../../features/guild_club/guildClubView");
 const guildClubAnnouncer = require("../../features/guild_club/guildClubAnnouncer");
 const guildClubContribution = require("../../features/guild_club/guildClubContribution");
 const warehouseService = require("../../features/guild_club/warehouse/warehouseService");
+const { deferReplySafe, deferUpdateSafe } = require("../../utils/safeAck");
 
 async function loadClubAndMembers(client, guild_club_id) {
   const club = await guildClubService.getClubById(client, guild_club_id);
@@ -159,7 +160,7 @@ async function handleOpenApplications(client, interaction) {
       flags: MessageFlags.Ephemeral,
     });
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const result = await guildClubMembership.listPendingApplications(client, {
     leaderId: interaction.user.id,
@@ -206,7 +207,7 @@ async function handleDisbandConfirm(client, interaction) {
     });
   }
 
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
 
   try {
     const result = await guildClubService.disband(client, {
@@ -262,7 +263,7 @@ async function handleDisbandCancel(client, interaction) {
       flags: MessageFlags.Ephemeral,
     });
   }
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
   return interaction.editReply({
     components: [
       guildClubView.buildErrorContainer({
@@ -301,7 +302,7 @@ async function handleInviteResponse(client, interaction) {
     });
   }
 
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
 
   try {
     const result = await guildClubMembership.respondInvitation(client, {
@@ -391,7 +392,7 @@ async function handleApplicationResponse(client, interaction) {
     });
   }
 
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
 
   try {
     const result = await guildClubMembership.respondApplication(client, {
@@ -475,7 +476,7 @@ async function handleQuickDonate(client, interaction) {
     });
   }
 
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
 
   try {
     const result = await guildClubService.donate(client, {
@@ -550,7 +551,7 @@ async function handleQuickView(client, interaction) {
     });
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const membership = await guildClubService.getMembership(
     client,
@@ -607,7 +608,7 @@ async function handleContributionRank(client, interaction) {
       flags: MessageFlags.Ephemeral,
     });
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const membership = await guildClubService.getMembership(
     client,
@@ -668,7 +669,7 @@ async function handleQuestClaim(client, interaction) {
     });
   }
 
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
 
   try {
     const result = await guildClubQuest.claimAllReady(client, {
@@ -748,7 +749,7 @@ async function handleViewClub(client, interaction) {
       flags: MessageFlags.Ephemeral,
     });
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const loaded = await loadClubAndMembers(client, guildClubId);
   if (!loaded) {
     return interaction.editReply({
@@ -786,7 +787,7 @@ async function handleQuickRank(client, interaction) {
       flags: MessageFlags.Ephemeral,
     });
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const clubs = await guildClubQuest.getLeaderboard(client, {
     guildId: interaction.guildId,
     limit: 10,
@@ -820,7 +821,7 @@ async function handleQuickKick(client, interaction) {
       flags: MessageFlags.Ephemeral,
     });
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   try {
     const result = await guildClubMembership.kick(client, {
       leaderId: interaction.user.id,
@@ -918,7 +919,7 @@ async function handleEditDescriptionSubmit(client, interaction) {
       flags: MessageFlags.Ephemeral,
     });
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const raw = interaction.fields.getTextInputValue("gc_desc_text");
   try {
     const result = await guildClubService.setDescription(client, {
@@ -1002,7 +1003,7 @@ async function handleManageOpen(client, interaction, mode) {
       flags: MessageFlags.Ephemeral,
     });
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const membership = await guildClubService.getMembership(
     client,
@@ -1075,7 +1076,7 @@ async function handleManageDisband(client, interaction) {
       flags: MessageFlags.Ephemeral,
     });
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const membership = await guildClubService.getMembership(
     client,
@@ -1175,7 +1176,7 @@ async function handleManageSelect(client, interaction, mode) {
   }
   const targetId = interaction.values?.[0];
   if (!targetId) return;
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
 
   try {
     if (mode === "kick") {
@@ -1309,7 +1310,7 @@ async function handleTransferConfirm(client, interaction) {
       flags: MessageFlags.Ephemeral,
     });
   }
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
   try {
     const result = await guildClubMembership.transfer(client, {
       leaderId: interaction.user.id,
@@ -1354,7 +1355,7 @@ async function handleTransferCancel(client, interaction) {
       flags: MessageFlags.Ephemeral,
     });
   }
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
   return interaction.editReply({
     components: [
       guildClubView.buildErrorContainer({

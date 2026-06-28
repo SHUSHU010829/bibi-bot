@@ -23,6 +23,7 @@ const { useRepairTool } = require("../../features/mining/mineService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 const { TAB_PREFIX, CRAFT_SUB_PREFIX, CRAFT_PREFIX, CRAFT_ALL_PREFIX, CONFIRM_PREFIX, CANCEL_PREFIX, REPAIR_TOOL_PREFIX, TABS, CRAFT_SUB_IDS } = workshopView;
 
@@ -226,7 +227,7 @@ module.exports = async (client, interaction) => {
       });
     }
     if (!TABS.includes(tab)) return;
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
     try {
       await refreshWorkshop(client, interaction, tab);
     } catch (err) {
@@ -245,7 +246,7 @@ module.exports = async (client, interaction) => {
       });
     }
     if (!CRAFT_SUB_IDS.includes(sub)) return;
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
     try {
       await refreshWorkshop(client, interaction, "craft", sub);
     } catch (err) {
@@ -265,7 +266,7 @@ module.exports = async (client, interaction) => {
       });
     }
     if (!craft?.recipes?.some((r) => r.id === recipeId)) return;
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
     try {
       const result = await craftService.craftItem(client, {
         userId: interaction.user.id,
@@ -348,7 +349,7 @@ module.exports = async (client, interaction) => {
       });
     }
     if (!craft?.recipes?.some((r) => r.id === recipeId)) return;
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
     try {
       const result = await craftService.craftItem(client, {
         userId: interaction.user.id,
@@ -391,7 +392,7 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.Ephemeral,
       });
     }
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
     try {
       const result = await craftService.craftItem(client, {
         userId: interaction.user.id,
@@ -433,7 +434,7 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.Ephemeral,
       });
     }
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
     try {
       const result = await useRepairTool(client, {
         userId: interaction.user.id,
@@ -499,7 +500,7 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.Ephemeral,
       });
     }
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
     await interaction.editReply({
       content: "🚫 已取消合成。",
       components: [],

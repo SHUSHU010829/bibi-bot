@@ -10,6 +10,7 @@ const {
 } = require("../../features/leaderboard/render");
 const logger = require("../../utils/logger");
 const { trackError } = require("../../utils/errorTracker");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 module.exports = async (client, interaction) => {
   const cid = interaction.customId;
@@ -32,20 +33,7 @@ module.exports = async (client, interaction) => {
     return;
   }
 
-  try {
-    await interaction.deferUpdate();
-  } catch (err) {
-    if (err?.code === 10062) return;
-    logger.warn(
-      {
-        source: "leaderboard-interaction",
-        customId: cid,
-        err: err.message,
-      },
-      "deferUpdate 失敗"
-    );
-    return;
-  }
+  if (!(await deferUpdateSafe(interaction))) return;
 
   try {
     const payload = await renderLeaderboard(client, {

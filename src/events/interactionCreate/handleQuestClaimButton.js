@@ -6,6 +6,7 @@
 
 const { MessageFlags } = require("discord.js");
 
+const { deferUpdateSafe } = require("../../utils/safeAck");
 const { consume } = require("../../utils/rateLimiter");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
@@ -61,7 +62,7 @@ module.exports = async (client, interaction) => {
     }
 
     // 先確認互動，避免後續 DB 操作超過 3 秒 token 視窗
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
 
     const result = await questService.claimAll(
       client,

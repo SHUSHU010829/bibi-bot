@@ -11,6 +11,7 @@
 const { MessageFlags } = require("discord.js");
 
 const { consume } = require("../../utils/rateLimiter");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { fishing } = require("../../config");
@@ -66,7 +67,7 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
 
     const profile = await getFishingProfile(client, interaction.user.id, interaction.guildId);
 

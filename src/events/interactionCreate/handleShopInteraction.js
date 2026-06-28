@@ -26,6 +26,7 @@ const {
 } = require("../../features/shop/buyConfirmView");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { consume } = require("../../utils/rateLimiter");
+const { deferReplySafe, deferUpdateSafe } = require("../../utils/safeAck");
 const {
   MAX_LEN,
   CARDNO_OPEN_ID,
@@ -129,7 +130,7 @@ function buildCardNumberModal() {
 }
 
 async function handleCardNumberModalSubmit(client, interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const raw = interaction.fields.getTextInputValue("cardno_text");
   const result = await setCustomCardNumber(client, {
     userId: interaction.user.id,
@@ -151,13 +152,14 @@ async function handleCardNumberModalSubmit(client, interaction) {
 
 // 切換分類 → 回到該分類第 1 頁（直接更新公開面板）
 async function handleCategorySelect(client, interaction) {
+  if (!(await deferUpdateSafe(interaction))) return;
   const catIndex = parseInt(interaction.values?.[0], 10) || 0;
   const view = await buildShopView(catIndex, 0, {
     client,
     userId: interaction.user.id,
     guildId: interaction.guildId,
   });
-  await interaction.update(view);
+  await interaction.editReply(view);
 }
 
 // 分頁：customId = shop_nav_<catIndex>_<page>_<action>
@@ -166,6 +168,8 @@ async function handleNav(client, interaction) {
   const catIndex = parseInt(parts[2], 10) || 0;
   const page = parseInt(parts[3], 10) || 0;
   const action = parts[4];
+
+  if (!(await deferUpdateSafe(interaction))) return;
 
   let target = page;
   if (action === "first") target = 0;
@@ -179,7 +183,7 @@ async function handleNav(client, interaction) {
     userId: interaction.user.id,
     guildId: interaction.guildId,
   });
-  await interaction.update(view);
+  await interaction.editReply(view);
 }
 
 // 購買鈕：customId = shop_buy_<itemId>。
@@ -241,7 +245,7 @@ async function handleCustomColorModalSubmit(client, interaction) {
   }
   const hex = `#${hexDigits}`;
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const item = getItem("color_custom");
   if (!item) return interaction.editReply({ content: "❌ 找不到商品設定" });
@@ -356,7 +360,7 @@ async function handleQtyBuyModalSubmit(client, interaction, itemId) {
     });
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const result = await buyItem(client, {
     userId: interaction.user.id,
     guildId: interaction.guildId,
@@ -399,7 +403,7 @@ async function handleCancelButton(client, interaction) {
 }
 
 async function handleEquipButton(client, interaction, inventoryId) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const result = await equipItem(client, {
     userId: interaction.user.id,
     guildId: interaction.guildId,
@@ -412,7 +416,7 @@ async function handleEquipButton(client, interaction, inventoryId) {
 }
 
 async function handleEquipFromInventorySelect(client, interaction, inventoryId) {
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
   const result = await equipItem(client, {
     userId: interaction.user.id,
     guildId: interaction.guildId,
@@ -451,7 +455,7 @@ async function handleEquipFromInventorySelect(client, interaction, inventoryId) 
 }
 
 async function handleTitleModalSubmit(client, interaction, inventoryId) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const text = interaction.fields.getTextInputValue("title_text");
   if (!text || !text.trim()) {
     return interaction.editReply("❌ 稱號不可為空");

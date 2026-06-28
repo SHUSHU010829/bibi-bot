@@ -12,17 +12,15 @@ const { MessageFlags } = require("discord.js");
 const worldEventService = require("../../features/world_event/worldEventService");
 const worldEventView = require("../../features/world_event/worldEventView");
 const { guildWarehouse } = require("../../config");
+const { deferReplySafe, deferUpdateSafe } = require("../../utils/safeAck");
 
 const splitId = (id) => id.split("|");
 
-const replyEphem = (interaction, c) =>
-  interaction.reply({
+const editReplyV2 = (interaction, c) =>
+  interaction.editReply({
     components: [c],
-    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    flags: MessageFlags.IsComponentsV2,
   });
-
-const updateMsg = (interaction, c) =>
-  interaction.update({ components: [c], flags: MessageFlags.IsComponentsV2 });
 
 const verifyViewer = (interaction, viewerId) => {
   if (interaction.user.id !== viewerId) {
@@ -66,10 +64,11 @@ async function getGuildQty(client, userId, guildId, itemId) {
 
 async function handleView(client, interaction) {
   // we_view|<eventDbId>
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const eventDbId = splitId(interaction.customId)[1];
   const event = await loadEvent(client, eventDbId);
   if (!event) {
-    return replyEphem(
+    return editReplyV2(
       interaction,
       worldEventView.buildSimpleError({
         title: "❌ 事件不存在",
@@ -77,7 +76,7 @@ async function handleView(client, interaction) {
       })
     );
   }
-  return replyEphem(
+  return editReplyV2(
     interaction,
     worldEventView.buildHomePanel({
       viewerId: interaction.user.id,
@@ -94,9 +93,11 @@ async function handleDonate(client, interaction) {
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const event = await loadEvent(client, eventDbId);
   if (!event || event.state !== "collecting") {
-    return updateMsg(
+    return editReplyV2(
       interaction,
       worldEventView.buildSimpleError({
         title: "❌ 事件已結束",
@@ -104,7 +105,7 @@ async function handleDonate(client, interaction) {
       })
     );
   }
-  return updateMsg(
+  return editReplyV2(
     interaction,
     worldEventView.buildDonatePicker({ viewerId, event })
   );
@@ -118,10 +119,12 @@ async function handlePick(client, interaction) {
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const itemId = interaction.values?.[0];
   const event = await loadEvent(client, eventDbId);
   if (!event || !itemId || event.state !== "collecting") {
-    return updateMsg(
+    return editReplyV2(
       interaction,
       worldEventView.buildSimpleError({
         title: "❌ 事件已結束",
@@ -133,7 +136,7 @@ async function handlePick(client, interaction) {
     getPersonalQty(client, interaction.user.id, interaction.guildId, itemId),
     getGuildQty(client, interaction.user.id, interaction.guildId, itemId),
   ]);
-  return updateMsg(
+  return editReplyV2(
     interaction,
     worldEventView.buildQtyPicker({
       viewerId,
@@ -155,6 +158,8 @@ async function handleGive(client, interaction) {
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const r = await worldEventService.donate(client, {
     userId: interaction.user.id,
     guildId: interaction.guildId,
@@ -163,9 +168,9 @@ async function handleGive(client, interaction) {
     qty,
   });
   if (!r.ok) {
-    return updateMsg(interaction, donateErrorView(r));
+    return editReplyV2(interaction, donateErrorView(r));
   }
-  return updateMsg(
+  return editReplyV2(
     interaction,
     worldEventView.buildDonateSuccess({
       event: r.event,

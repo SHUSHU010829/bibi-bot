@@ -1,6 +1,7 @@
 require("colors");
 const { MessageFlags } = require("discord.js");
 
+const { deferUpdateSafe } = require("../../utils/safeAck");
 const surveyService = require("../../features/survey/surveyService");
 const {
   PREFIX,
@@ -38,7 +39,7 @@ module.exports = async (client, interaction) => {
   }
 
   try {
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
 
     const stats = await surveyService.aggregateStats(client, interaction.guildId);
     if (!stats) {

@@ -11,6 +11,7 @@ const {
   refreshQuizMessage,
   OPTION_EMOJIS,
 } = require("../../features/quiz/quizGame");
+const { deferReplySafe } = require("../../utils/safeAck");
 const { consume } = require("../../utils/rateLimiter");
 
 function isQuizInteraction(customId) {
@@ -34,7 +35,7 @@ function labelOf(doc) {
 }
 
 async function handleAnswerButton(client, interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   // customId: quiz_ans_{quizId}_{key}
   const rest = interaction.customId.slice("quiz_ans_".length);
@@ -106,7 +107,7 @@ async function handleAnswerButton(client, interaction) {
 }
 
 async function handleLockButton(client, interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const quizId = interaction.customId.slice("quiz_lock_".length);
   const doc = await loadQuiz(client, quizId);
@@ -140,7 +141,7 @@ async function handleLockButton(client, interaction) {
 async function handleRevealButton(client, interaction) {
   // 問答（kind=quiz）：從 ACTIVE 直接結算
   // 舊版資料（沒有 kind 欄位 / 仍在 LOCKED 的問答）也走這條路徑
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const prefix = interaction.customId.startsWith("quiz_reveal_")
     ? "quiz_reveal_"
@@ -191,7 +192,7 @@ async function handleRevealButton(client, interaction) {
 }
 
 async function handleSetAnswerButton(client, interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   // customId: quiz_setans_{quizId}_{key}
   const rest = interaction.customId.slice("quiz_setans_".length);
@@ -249,7 +250,7 @@ async function handleSetAnswerButton(client, interaction) {
 }
 
 async function handleCancelButton(client, interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const quizId = interaction.customId.slice("quiz_cancel_".length);
   const doc = await loadQuiz(client, quizId);

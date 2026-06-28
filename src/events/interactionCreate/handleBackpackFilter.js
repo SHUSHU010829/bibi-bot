@@ -6,6 +6,7 @@ require("colors");
 const { MessageFlags } = require("discord.js");
 const { buildBackpackView, BACKPACK_CATEGORIES } = require("../../features/shop/backpackView");
 const { appendNav } = require("../../features/playerStatus/statusNav");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 const PREFIX = "backpack_cat_";
 
@@ -26,7 +27,7 @@ module.exports = async (client, interaction) => {
   const validValues = BACKPACK_CATEGORIES.map((c) => c.value);
   if (!validValues.includes(category)) return;
 
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
 
   try {
     const view = await buildBackpackView(client, {

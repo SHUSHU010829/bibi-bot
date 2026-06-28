@@ -26,6 +26,7 @@ const {
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
+const { deferReplySafe } = require("../../utils/safeAck");
 
 function getCfg() {
   return casino?.horseRacing || {};
@@ -184,17 +185,8 @@ async function submitBet(client, interaction, horseIdStr, gameId) {
     });
   }
 
-  try {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  } catch (e) {
-    if (e?.code === 10062) {
-      logger.warn(
-        { source: "horse-button", customId: interaction.customId },
-        "submitBet deferReply 已過期，略過",
-      );
-      return;
-    }
-    throw e;
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) {
+    return;
   }
 
   const coll = client.horseRaceGamesCollection;
@@ -287,30 +279,30 @@ async function submitBet(client, interaction, horseIdStr, gameId) {
 }
 
 async function earlyStart(client, interaction, gameId) {
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) {
+    return;
+  }
   const coll = client.horseRaceGamesCollection;
   const game = await coll.findOne({ gameId });
   if (!game) {
-    return interaction.reply({ content: "🐎 找不到這場賽馬。", flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ content: "🐎 找不到這場賽馬。" });
   }
   if (game.status !== "betting") {
-    return interaction.reply({ content: "🐎 比賽已開始或結束。", flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ content: "🐎 比賽已開始或結束。" });
   }
   if (game.hostUserId !== interaction.user.id) {
-    return interaction.reply({
+    return interaction.editReply({
       content: "🚫 只有開盤者可以提早開賽。",
-      flags: MessageFlags.Ephemeral,
     });
   }
   if (!game.bets || game.bets.length === 0) {
-    return interaction.reply({
+    return interaction.editReply({
       content: "❌ 還沒有人下注，沒辦法提早開賽。",
-      flags: MessageFlags.Ephemeral,
     });
   }
 
-  await interaction.reply({
+  await interaction.editReply({
     content: "🚀 提早開賽！",
-    flags: MessageFlags.Ephemeral,
   });
 
   startRaceIfDue(client, gameId).catch((e) =>
@@ -319,24 +311,25 @@ async function earlyStart(client, interaction, gameId) {
 }
 
 async function hostCancel(client, interaction, gameId) {
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) {
+    return;
+  }
   const coll = client.horseRaceGamesCollection;
   const game = await coll.findOne({ gameId });
   if (!game) {
-    return interaction.reply({ content: "🐎 找不到這場賽馬。", flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ content: "🐎 找不到這場賽馬。" });
   }
   if (game.status !== "betting") {
-    return interaction.reply({ content: "🐎 已經開賽，沒辦法取消了。", flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ content: "🐎 已經開賽，沒辦法取消了。" });
   }
   if (game.hostUserId !== interaction.user.id) {
-    return interaction.reply({
+    return interaction.editReply({
       content: "🚫 只有開盤者可以取消這場賽馬。",
-      flags: MessageFlags.Ephemeral,
     });
   }
 
-  await interaction.reply({
+  await interaction.editReply({
     content: "❌ 已取消這場賽馬，所有下注已退款。",
-    flags: MessageFlags.Ephemeral,
   });
 
   cancelRace(client, gameId, "host_cancelled").catch((e) =>

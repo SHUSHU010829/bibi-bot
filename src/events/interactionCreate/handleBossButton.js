@@ -10,6 +10,7 @@ const { MessageFlags } = require("discord.js");
 const attackCmd = require("../../commands/boss/attack");
 const infoCmd = require("../../commands/boss/boss");
 const bossView = require("../../features/boss/bossView");
+const { deferReplySafe } = require("../../utils/safeAck");
 
 const PREFIX_ATTACK = "boss_attack_";
 const PREFIX_INFO = "boss_info_";
@@ -44,11 +45,11 @@ module.exports = async (client, interaction) => {
   }
   try {
     if (parsed.action === "attack") {
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction, {}))) return;
       return await attackCmd.runAttack(client, interaction);
     }
     if (parsed.action === "info") {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       return await infoCmd.runInfo(client, interaction);
     }
   } catch (e) {

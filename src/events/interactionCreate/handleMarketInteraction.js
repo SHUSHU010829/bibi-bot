@@ -10,6 +10,7 @@ const {
   MessageFlags,
 } = require("discord.js");
 const { consume } = require("../../utils/rateLimiter");
+const { deferReplySafe, deferUpdateSafe } = require("../../utils/safeAck");
 const marketplaceService = require("../../features/marketplace/marketplaceService");
 const itemAccess = require("../../features/marketplace/itemAccess");
 const guildWarehouseListingService = require("../../features/guild_club/warehouse/guildWarehouseListingService");
@@ -94,7 +95,7 @@ module.exports = async (client, interaction) => {
       if (cid === FILTER_TYPE_ID) listingType = interaction.values[0] || "all";
       if (cid === FILTER_ITEM_ID) itemType = interaction.values[0] || "all";
 
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       const typeArg = listingType !== "all" ? listingType : null;
       const itemArg = itemType !== "all" ? itemType : null;
       const { listings, total } = await marketplaceService.listActive(client, interaction.guildId, {
@@ -138,7 +139,7 @@ module.exports = async (client, interaction) => {
       const listingType = ltFilter || "all";
       const itemType = itFilter || "all";
 
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       const { listings, total } = await marketplaceService.listActive(client, interaction.guildId, {
         page,
         pageSize: PAGE_SIZE,
@@ -161,6 +162,7 @@ module.exports = async (client, interaction) => {
 
     // ─── 點「購買」按鈕 → 顯示確認面板（ephemeral）──────────────────────────
     if (interaction.isButton() && cid.startsWith(BUY_PREFIX)) {
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const listingId = cid.slice(BUY_PREFIX.length);
       const listing = await client.marketListingsCollection.findOne({
         guild_id: interaction.guildId,
@@ -169,17 +171,18 @@ module.exports = async (client, interaction) => {
         status: "active",
       });
       if (!listing) {
-        return interaction.reply({ content: "❌ 此掛單已不存在或已售出。", flags: MessageFlags.Ephemeral });
+        return interaction.editReply({ content: "❌ 此掛單已不存在或已售出。" });
       }
       if (listing.listing_type === "sell" && listing.seller_id === interaction.user.id) {
-        return interaction.reply({ content: "❌ 不能購買自己的掛單。", flags: MessageFlags.Ephemeral });
+        return interaction.editReply({ content: "❌ 不能購買自己的掛單。" });
       }
-      const { container, row, flags } = buildConfirmView(listing, "buy");
-      return interaction.reply({ components: [container, row], flags });
+      const { container, row } = buildConfirmView(listing, "buy");
+      return interaction.editReply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
     }
 
     // ─── 點「接受換礦」→ 確認面板（ephemeral）──────────────────────────────
     if (interaction.isButton() && cid.startsWith(ACCEPT_PREFIX)) {
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const listingId = cid.slice(ACCEPT_PREFIX.length);
       const listing = await client.marketListingsCollection.findOne({
         guild_id: interaction.guildId,
@@ -188,17 +191,18 @@ module.exports = async (client, interaction) => {
         status: "active",
       });
       if (!listing) {
-        return interaction.reply({ content: "❌ 此掛單已不存在或已成交。", flags: MessageFlags.Ephemeral });
+        return interaction.editReply({ content: "❌ 此掛單已不存在或已成交。" });
       }
       if (listing.seller_id === interaction.user.id) {
-        return interaction.reply({ content: "❌ 不能接受自己的換礦單。", flags: MessageFlags.Ephemeral });
+        return interaction.editReply({ content: "❌ 不能接受自己的換礦單。" });
       }
-      const { container, row, flags } = buildConfirmView(listing, "accept");
-      return interaction.reply({ components: [container, row], flags });
+      const { container, row } = buildConfirmView(listing, "accept");
+      return interaction.editReply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
     }
 
     // ─── 點「賣給他」（fulfill want）→ 確認面板（ephemeral）────────────────
     if (interaction.isButton() && cid.startsWith(FULFILL_PREFIX)) {
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const listingId = cid.slice(FULFILL_PREFIX.length);
       const listing = await client.marketListingsCollection.findOne({
         guild_id: interaction.guildId,
@@ -207,13 +211,13 @@ module.exports = async (client, interaction) => {
         status: "active",
       });
       if (!listing) {
-        return interaction.reply({ content: "❌ 此徵求單已不存在或已成交。", flags: MessageFlags.Ephemeral });
+        return interaction.editReply({ content: "❌ 此徵求單已不存在或已成交。" });
       }
       if (listing.seller_id === interaction.user.id) {
-        return interaction.reply({ content: "❌ 不能回應自己的徵求單。", flags: MessageFlags.Ephemeral });
+        return interaction.editReply({ content: "❌ 不能回應自己的徵求單。" });
       }
-      const { container, row, flags } = buildConfirmView(listing, "fulfill");
-      return interaction.reply({ components: [container, row], flags });
+      const { container, row } = buildConfirmView(listing, "fulfill");
+      return interaction.editReply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
     }
 
     // ─── 點「出價」（auction bid）→ 彈出 modal ──────────────────────────────
@@ -252,19 +256,20 @@ module.exports = async (client, interaction) => {
           flags: MessageFlags.Ephemeral,
         });
       }
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const listing = await client.marketListingsCollection.findOne({
         guild_id: interaction.guildId,
         listing_id: listingId,
         status: "active",
       });
       if (!listing) {
-        return interaction.reply({ content: "❌ 此掛單已不存在。", flags: MessageFlags.Ephemeral });
+        return interaction.editReply({ content: "❌ 此掛單已不存在。" });
       }
       if (listing.seller_id !== interaction.user.id) {
-        return interaction.reply({ content: "❌ 你沒有權限下架此掛單。", flags: MessageFlags.Ephemeral });
+        return interaction.editReply({ content: "❌ 你沒有權限下架此掛單。" });
       }
-      const { container, row, flags } = buildConfirmView(listing, "cancel");
-      return interaction.reply({ components: [container, row], flags });
+      const { container, row } = buildConfirmView(listing, "cancel");
+      return interaction.editReply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
     }
 
     // ─── 取消按鈕（中止二次確認）─────────────────────────────────────────────
@@ -449,7 +454,7 @@ module.exports = async (client, interaction) => {
       if (!Number.isFinite(amount) || amount <= 0) {
         return interaction.reply({ content: "❌ 請輸入有效的出價金額（正整數）。", flags: MessageFlags.Ephemeral });
       }
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const result = await marketplaceService.placeBid(client, {
         listingId,
         bidderId: interaction.user.id,
@@ -467,7 +472,7 @@ module.exports = async (client, interaction) => {
 
     // ─── 快捷後續：回到 /市集 逛攤 ────────────────────────────────────────────
     if (interaction.isButton() && cid === VIEW_BROWSE_ID) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const { listings, total } = await marketplaceService.listActive(client, interaction.guildId, {
         page: 0,
         pageSize: PAGE_SIZE,
@@ -488,7 +493,7 @@ module.exports = async (client, interaction) => {
 
     // ─── 快捷後續：回到 /市集 我的攤位 ─────────────────────────────────────────
     if (interaction.isButton() && cid === VIEW_MYSTALL_ID) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const { buildMyStallView } = require("../../features/marketplace/marketplaceView");
       const listings = await marketplaceService.listByOwner(
         client,
@@ -504,7 +509,7 @@ module.exports = async (client, interaction) => {
 
     // ─── 快捷後續：查看我目前領先的競標 ───────────────────────────────────────
     if (interaction.isButton() && cid === VIEW_MYBIDS_ID) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const { buildMyBidsView } = require("../../features/marketplace/marketplaceView");
       const listings = await marketplaceService.listByBidder(
         client,
@@ -520,7 +525,7 @@ module.exports = async (client, interaction) => {
 
     // ─── 快捷後續：去看 /交易所 列表（ephemeral） ─────────────────────────────
     if (interaction.isButton() && cid === VIEW_BARTER_ID) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const barterService = require("../../features/barter/barterService");
       const { buildBoardContainer } = require("../../features/barter/barterView");
       const c = barterService.cfg();

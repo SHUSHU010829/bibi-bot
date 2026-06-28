@@ -16,6 +16,7 @@ const {
 } = require("../../features/shop/backpackView");
 const treasureMapService = require("../../features/treasure/treasureMapService");
 const { appendNav } = require("../../features/playerStatus/statusNav");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 module.exports = async (client, interaction) => {
   if (!interaction.isButton()) return;
@@ -29,7 +30,7 @@ module.exports = async (client, interaction) => {
     });
   }
 
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
 
   try {
     const result = await treasureMapService.useMap(client, {

@@ -8,6 +8,7 @@ const {
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
+const { deferReplySafe, deferUpdateSafe } = require("../../utils/safeAck");
 
 const {
   findActiveGameInChannel,
@@ -95,32 +96,30 @@ async function handleButton(client, interaction) {
   // 在 DB 查詢之前先 defer，避免 3 秒 token 過期觸發 10062。
   // raise 必須留給 showModal（modal 不能在 defer 後出現）。
   if (POKER_ACTIONS_DEFER_UPDATE.has(action)) {
-    try {
-      await interaction.deferUpdate();
-    } catch (deferErr) {
-      if (deferErr?.code === 10062) {
-        logger.warn(
-          { source: "poker-interaction", action, gameId },
-          "互動已逾期,無法 defer"
-        );
-        trackError("poker-interaction", deferErr, { action, reason: "expired" });
-        return true;
-      }
-      throw deferErr;
+    if (!(await deferUpdateSafe(interaction))) {
+      logger.warn(
+        { source: "poker-interaction", action, gameId },
+        "互動已逾期,無法 defer"
+      );
+      trackError(
+        "poker-interaction",
+        new Error("Unknown interaction (10062)"),
+        { action, reason: "expired" }
+      );
+      return true;
     }
   } else if (POKER_ACTIONS_DEFER_REPLY.has(action)) {
-    try {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    } catch (deferErr) {
-      if (deferErr?.code === 10062) {
-        logger.warn(
-          { source: "poker-interaction", action, gameId },
-          "互動已逾期,無法 defer"
-        );
-        trackError("poker-interaction", deferErr, { action, reason: "expired" });
-        return true;
-      }
-      throw deferErr;
+    if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) {
+      logger.warn(
+        { source: "poker-interaction", action, gameId },
+        "互動已逾期,無法 defer"
+      );
+      trackError(
+        "poker-interaction",
+        new Error("Unknown interaction (10062)"),
+        { action, reason: "expired" }
+      );
+      return true;
     }
   }
 
@@ -396,18 +395,17 @@ async function handleModal(client, interaction) {
   const gameId = interaction.customId.slice("pk_raisemodal_".length);
 
   // 先 deferUpdate，避免 DB 查詢讓 3 秒 token 過期觸發 10062
-  try {
-    await interaction.deferUpdate();
-  } catch (deferErr) {
-    if (deferErr?.code === 10062) {
-      logger.warn(
-        { source: "poker-interaction", gameId, kind: "raisemodal" },
-        "互動已逾期,無法 defer"
-      );
-      trackError("poker-interaction", deferErr, { kind: "raisemodal", reason: "expired" });
-      return true;
-    }
-    throw deferErr;
+  if (!(await deferUpdateSafe(interaction))) {
+    logger.warn(
+      { source: "poker-interaction", gameId, kind: "raisemodal" },
+      "互動已逾期,無法 defer"
+    );
+    trackError(
+      "poker-interaction",
+      new Error("Unknown interaction (10062)"),
+      { kind: "raisemodal", reason: "expired" }
+    );
+    return true;
   }
 
   const doc = await fetchByGameId(client, gameId);

@@ -14,6 +14,7 @@ const { renderMessage } = require("../../features/casino/dragonGate/renderer");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 function getDragonGateConfig() {
   return casino?.dragonGate || {};
@@ -132,18 +133,13 @@ async function openBetModal(client, interaction, gameId) {
 }
 
 async function handleFold(client, interaction, gameId) {
-  try {
-    await interaction.deferUpdate();
-  } catch (deferErr) {
-    if (deferErr?.code === 10062) {
-      logger.warn(
-        { source: "dragonGate-button", gameId },
-        "互動已逾期,無法 defer"
-      );
-      trackError("dragonGate-button", deferErr, { gameId, reason: "expired" });
-      return;
-    }
-    throw deferErr;
+  if (!(await deferUpdateSafe(interaction))) {
+    logger.warn(
+      { source: "dragonGate-button", gameId },
+      "互動已逾期,無法 defer"
+    );
+    trackError("dragonGate-button", { code: 10062 }, { gameId, reason: "expired" });
+    return;
   }
 
   const state = await loadGameForUser(client, interaction, gameId, false);
@@ -206,17 +202,12 @@ async function submitBet(client, interaction, gameId) {
     });
   }
 
-  try {
-    await interaction.deferUpdate();
-  } catch (deferErr) {
-    if (deferErr?.code === 10062) {
-      logger.warn(
-        { source: "dragonGate-button", gameId },
-        "modal 互動已逾期"
-      );
-      return;
-    }
-    throw deferErr;
+  if (!(await deferUpdateSafe(interaction))) {
+    logger.warn(
+      { source: "dragonGate-button", gameId },
+      "modal 互動已逾期"
+    );
+    return;
   }
 
   const state = await loadGameForUser(client, interaction, gameId, false);

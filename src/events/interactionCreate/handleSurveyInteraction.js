@@ -1,6 +1,7 @@
 require("colors");
 const { MessageFlags } = require("discord.js");
 
+const { deferUpdateSafe } = require("../../utils/safeAck");
 const surveyService = require("../../features/survey/surveyService");
 const {
   PREFIX,
@@ -59,16 +60,27 @@ module.exports = async (client, interaction) => {
 
   const guildId = interaction.guildId;
 
+  // open 走 showModal，無法 defer（modal 必須是該互動的第一個回應）；其餘分支
+  // 都會做 DB 查詢後才 update／editReply，先 deferUpdate 卡住 3 秒 ack 視窗。
+  const isOpenModalBranch = action === "open" && interaction.isButton();
+
   try {
+    if (!isOpenModalBranch) {
+      if (!(await deferUpdateSafe(interaction))) return;
+    }
+
     const existing = await surveyService.getResponse(client, ownerId, guildId);
     if (existing?.completedAt && action !== "noop") {
-      // 已完成不允許再改
-      await interaction
-        .reply({
-          components: [buildCompletedContainer(existing)],
-          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      // 已完成不允許再改。modal 分支未 defer，仍用 reply；其餘已 deferUpdate，用 followUp。
+      const completedPayload = {
+        components: [buildCompletedContainer(existing)],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      };
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp(completedPayload).catch(() => {});
+      } else {
+        await interaction.reply(completedPayload).catch(() => {});
+      }
       return;
     }
 
@@ -82,7 +94,7 @@ module.exports = async (client, interaction) => {
         interaction.values,
       );
       const doc = await surveyService.getResponse(client, ownerId, guildId);
-      await interaction.update({
+      await interaction.editReply({
         components: [buildSurveyContainer(ownerId, doc)],
         flags: MessageFlags.IsComponentsV2,
       });
@@ -102,7 +114,7 @@ module.exports = async (client, interaction) => {
       }
       await surveyService.saveOpenAnswers(client, ownerId, guildId, answers);
       const doc = await surveyService.getResponse(client, ownerId, guildId);
-      await interaction.update({
+      await interaction.editReply({
         components: [
           buildSurveyContainer(ownerId, doc, { hint: "自由意見已儲存，繼續填或直接送出。" }),
         ],
@@ -112,7 +124,6 @@ module.exports = async (client, interaction) => {
     }
 
     if (action === "submit" && interaction.isButton()) {
-      await interaction.deferUpdate();
       const result = await surveyService.submit(
         client,
         ownerId,

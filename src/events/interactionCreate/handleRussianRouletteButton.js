@@ -8,6 +8,7 @@ const { startGame, cancelAndRefund } = require("../../features/casino/russianRou
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 async function ephemeral(interaction, content) {
   try {
@@ -44,12 +45,7 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    try {
-      await interaction.deferUpdate();
-    } catch (deferErr) {
-      if (deferErr?.code === 10062) return;
-      throw deferErr;
-    }
+    if (!(await deferUpdateSafe(interaction))) return;
 
     const state = await client.russianRouletteGamesCollection.findOne({ gameId });
     if (!state) return ephemeral(interaction, "🔫 這桌找不到了。");

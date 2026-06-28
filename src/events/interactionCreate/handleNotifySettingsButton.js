@@ -15,6 +15,7 @@ const reminder = require("../../features/reminders/cooldownReminderService");
 const notifyPrefs = require("../../features/reminders/notifyPrefs");
 const notifySettingsView = require("../../features/reminders/notifySettingsView");
 const questNotifyPref = require("../../features/quests/questNotifyPref");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 async function replyEphemeral(interaction, content) {
   try {
@@ -57,7 +58,7 @@ module.exports = async (client, interaction) => {
     }
 
     // 先確認互動，避免後續 DB 操作超過 3 秒 token 視窗
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
 
     const userId = interaction.user.id;
     const guildId = interaction.guildId;

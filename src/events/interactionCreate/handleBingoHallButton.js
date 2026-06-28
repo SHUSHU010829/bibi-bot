@@ -20,6 +20,7 @@ const { buildBuyReply } = require("../../features/casino/bingoHall/render");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
+const { deferReplySafe } = require("../../utils/safeAck");
 
 function maxPerRound() {
   return casino?.bingoHall?.maxCardsPerRound ?? 20;
@@ -70,7 +71,7 @@ async function handleBuySubmit(client, interaction) {
     return ephemeral(interaction, `每場最多 ${maxPerRound()} 張，請輸入 1 ~ ${maxPerRound()}。`);
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const open = await getOpenRound(client);
   if (!open || open.roundId !== roundId) {

@@ -6,6 +6,7 @@ const {
   buildContainer,
   parsePagerCustomId,
 } = require("../../features/economy/coinHistory");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 module.exports = async (client, interaction) => {
   if (!interaction.isButton?.()) return;
@@ -23,12 +24,7 @@ module.exports = async (client, interaction) => {
     });
   }
 
-  try {
-    await interaction.deferUpdate();
-  } catch (err) {
-    if (err?.code === 10062) return;
-    throw err;
-  }
+  if (!(await deferUpdateSafe(interaction))) return;
 
   try {
     if (!client.coinTransactionsCollection) {
