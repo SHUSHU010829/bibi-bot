@@ -84,6 +84,10 @@ async function ensureNextDraw(client, lotteryType, options = {}) {
 
   const scheduledReminders = generateReminderSchedule(drawTime.toJSDate());
 
+  // 已被滾池跨過的里程碑直接視為已播報，避免新一期重播相同金額。
+  const milestones = casino?.lottery?.poolMilestones?.[lotteryType] || [];
+  const announcedMilestones = milestones.filter((m) => initialPool >= m);
+
   const doc = {
     drawId,
     lotteryType,
@@ -95,7 +99,7 @@ async function ensureNextDraw(client, lotteryType, options = {}) {
     pool: initialPool,
     systemSeedAmount: systemSeed,
     rolledOverFrom: rolledOverAmount > 0 ? options.rolledOverFromDrawId || null : null,
-    announcedMilestones: [],
+    announcedMilestones,
     scheduledReminders,
     payout: null,
     totalTickets: 0,
