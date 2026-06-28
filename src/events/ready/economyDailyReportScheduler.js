@@ -5,6 +5,7 @@ const { DateTime } = require("luxon");
 
 const { coinSystem } = require("../../config");
 const { scanAllPairs } = require("../../features/economy/suspiciousTransferDetector");
+const { gameShortLabel } = require("../../features/casino/gameLabels");
 
 // 每天 08:00 Asia/Taipei 在指定頻道播報：
 // 1) 過去 N 天每日淨發幣量（流入 / 還款回流 / 流出 / 淨），股票買賣與手續費已併入
@@ -36,18 +37,6 @@ const REAL_INFLOW = [
 ];
 const REPAY_INFLOW = ["deposit_release", "payout", "stock_sell", "auction_payout", "auction_refund", "duel_payout", "duel_refund"];
 const OUTFLOW = ["bet", "deposit_lock", "transfer_out", "transfer_fee", "deposit_penalty", "shop_buy", "wealth_tax", "stock_buy", "stock_fee", "auction_bid", "duel_stake", "quest_reroll", "quest_skip"];
-
-const CASINO_GAME_LABEL = {
-  blackjack: "BJ",
-  hilo: "HiLo",
-  dragonGate: "DGate",
-  slot: "Slot",
-  roulette: "Roul",
-  sicbo: "Sicbo",
-  poker: "Poker",
-  lottery: "Lott",
-  horseRacing: "Horse",
-};
 
 const fmt = (n) => Math.round(n).toLocaleString();
 
@@ -261,7 +250,7 @@ async function buildCasinoSection(client, guildId, opts) {
     const he = 100 - rtp;
     const mark = rtp > 100 ? "⚠️" : "";
     rows.push([
-      CASINO_GAME_LABEL[game] || game,
+      gameShortLabel(game),
       fmt(g.bet),
       fmt(g.payout),
       rtp.toFixed(2),

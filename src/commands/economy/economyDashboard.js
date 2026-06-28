@@ -11,6 +11,7 @@ const {
 } = require("discord.js");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { coinHistory } = require("../../config");
+const { gameLabel } = require("../../features/casino/gameLabels");
 const {
   aggregateFlow,
   getTopHolders,
@@ -50,21 +51,6 @@ const STOCK_TYPE_LABELS = {
   blue: "權值",
   meme: "迷因",
   finance: "金融",
-};
-
-const GAME_LABELS = {
-  slot: "🎰 拉霸",
-  sicbo: "🎲 骰寶",
-  blackjack: "🃏 21 點",
-  hilo: "🔼 HI-LO",
-  keno: "🗺️ 尋寶",
-  dragonGate: "🐉 射龍門",
-  roulette: "🎡 輪盤",
-  poker: "🃏 德州撲克",
-  lottery: "🎟️ 樂透",
-  horseRacing: "🐎 賽馬",
-  crash: "🚀 火箭",
-  unknown: "❓ 未分類",
 };
 
 function fmt(n) {
@@ -132,7 +118,7 @@ function formatDailyFlow(days, max = 10) {
 }
 
 function formatCasinoGame(g, days) {
-  const label = GAME_LABELS[g.game] || `❓ ${g.game}`;
+  const label = gameLabel(g.game);
   const theo = g.theoreticalEdge !== null
     ? pct(g.theoreticalEdge, 2)
     : "—（PvP 或池抽）";
