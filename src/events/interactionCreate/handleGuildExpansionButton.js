@@ -14,6 +14,7 @@
 
 require("colors");
 const { MessageFlags } = require("discord.js");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 const guildClubService = require("../../features/guild_club/guildClubService");
 const forgeService = require("../../features/guild_club/forgeService");
@@ -33,7 +34,9 @@ const replyEphem = (interaction, c) =>
   });
 
 const updateMsg = (interaction, c) =>
-  interaction.update({ components: [c], flags: MessageFlags.IsComponentsV2 });
+  interaction.deferred || interaction.replied
+    ? interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 })
+    : interaction.update({ components: [c], flags: MessageFlags.IsComponentsV2 });
 
 const verifyViewer = (interaction, viewerId) => {
   if (interaction.user.id !== viewerId) {
@@ -88,6 +91,8 @@ async function handleForgePick(client, interaction) {
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const recipeKey = interaction.values?.[0];
   const club = await loadClub(client, guildClubId);
   if (!club || !recipeKey)
@@ -125,6 +130,8 @@ async function handleForgeMake(client, interaction) {
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const result = await forgeService.craft(client, {
     userId: interaction.user.id,
     guildId: interaction.guildId,
@@ -156,6 +163,8 @@ async function handleForgeUpgrade(client, interaction) {
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const result = await forgeService.upgradeForge(client, {
     userId: interaction.user.id,
     guildId: interaction.guildId,
@@ -180,6 +189,8 @@ async function handleRefineryUpgrade(client, interaction) {
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const result = await forgeService.upgradeRefinery(client, {
     userId: interaction.user.id,
     guildId: interaction.guildId,
@@ -199,6 +210,8 @@ async function handleRefineryUpgrade(client, interaction) {
 
 async function handleForgeBack(client, interaction) {
   // gcx_forge_back|<guildClubId>
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const parts = splitId(interaction.customId);
   const guildClubId = parts[1];
   const club = await loadClub(client, guildClubId);
@@ -213,6 +226,8 @@ async function handleBldPick(client, interaction) {
   const guildClubId = parts[2];
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
+
+  if (!(await deferUpdateSafe(interaction))) return;
 
   const kind = interaction.values?.[0];
   const club = await loadClub(client, guildClubId);
@@ -240,6 +255,8 @@ async function handleBldConfirm(client, interaction) {
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
 
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const result = await buildingService.upgradeBuilding(client, {
     userId: interaction.user.id,
     guildId: interaction.guildId,
@@ -260,15 +277,19 @@ async function handleBldConfirm(client, interaction) {
 
 async function handleBldCancel(client, interaction) {
   // 從 customId 解析不到 guildClubId 時，找成員資料
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const m = await loadMembership(client, interaction.user.id, interaction.guildId);
-  if (!m) return interaction.deferUpdate().catch(() => {});
+  if (!m) return;
   const club = await loadClub(client, m.guild_club_id);
-  if (!club) return interaction.deferUpdate().catch(() => {});
+  if (!club) return;
   return updateMsg(interaction, await renderBuildingsPanel(client, interaction, club));
 }
 
 async function handleBldBack(client, interaction) {
   // gcx_bld_back|<guildClubId>
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const parts = splitId(interaction.customId);
   const guildClubId = parts[1];
   const club = await loadClub(client, guildClubId);
@@ -285,6 +306,9 @@ async function handleBanquetOpen(client, interaction) {
   const guildClubId = parts[2];
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
+
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const club = await loadClub(client, guildClubId);
   if (!club) return;
   const warehouseRows = await warehouseService
@@ -303,6 +327,9 @@ async function handleBanquetPick(client, interaction) {
   const guildClubId = parts[2];
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
+
+  if (!(await deferUpdateSafe(interaction))) return;
+
   const menuId = interaction.values?.[0];
   const club = await loadClub(client, guildClubId);
   if (!club || !menuId) return;
@@ -337,6 +364,8 @@ async function handleBanquetConfirm(client, interaction) {
   const menuId = parts[3];
   const blocked = verifyViewer(interaction, viewerId);
   if (blocked) return blocked;
+
+  if (!(await deferUpdateSafe(interaction))) return;
 
   const result = await banquetService.startBanquet(client, {
     userId: interaction.user.id,

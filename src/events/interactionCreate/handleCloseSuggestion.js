@@ -8,6 +8,7 @@ const config = require("../../config");
 const { loadPanels } = require("../../utils/suggestionPanelsStore");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
+const { deferReplySafe } = require("../../utils/safeAck");
 
 module.exports = async (client, interaction) => {
   if (!interaction.isButton()) return;
@@ -22,6 +23,8 @@ module.exports = async (client, interaction) => {
     }
 
     const channel = interaction.channel;
+
+    if (!(await deferReplySafe(interaction, {}))) return;
 
     const panels = await loadPanels(client);
     let supportRoleId = null;
@@ -56,7 +59,7 @@ module.exports = async (client, interaction) => {
           ),
         );
 
-      await interaction.reply({
+      await interaction.editReply({
         components: [requestContainer],
         flags: MessageFlags.IsComponentsV2,
         allowedMentions: { roles: [] },
@@ -78,7 +81,7 @@ module.exports = async (client, interaction) => {
         ),
       );
 
-    await interaction.reply({
+    await interaction.editReply({
       components: [closeContainer],
       flags: MessageFlags.IsComponentsV2,
     });
@@ -108,19 +111,23 @@ module.exports = async (client, interaction) => {
     );
     trackError("close-suggestion", error, { userId: interaction.user?.id });
 
-    if (!interaction.replied && !interaction.deferred) {
-      try {
+    try {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({
+          content: "❌ 處理關閉票務時發生錯誤！請聯絡管理員。",
+        });
+      } else {
         await interaction.reply({
           content: "❌ 處理關閉票務時發生錯誤！請聯絡管理員。",
           flags: MessageFlags.Ephemeral,
         });
-      } catch (replyError) {
-        logger.error(
-          { source: "close-suggestion", err: replyError.message },
-          "回覆錯誤訊息失敗",
-        );
-        trackError("close-suggestion", replyError);
       }
+    } catch (replyError) {
+      logger.error(
+        { source: "close-suggestion", err: replyError.message },
+        "回覆錯誤訊息失敗",
+      );
+      trackError("close-suggestion", replyError);
     }
   }
 };

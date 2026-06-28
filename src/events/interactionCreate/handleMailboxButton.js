@@ -9,6 +9,7 @@ const { mining } = require("../../config");
 const mailbox = require("../../features/marketplace/marketplaceMailbox");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("../../features/mining/miningProfile");
 const { buildMailboxView } = require("../../commands/economy/mailbox");
+const { deferReplySafe } = require("../../utils/safeAck");
 
 const CLAIM_PREFIX = "mailbox_claim_";
 
@@ -38,7 +39,9 @@ module.exports = async (client, interaction) => {
       }).catch(() => {});
     }
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) {
+      return;
+    }
 
     const result = await mailbox.claimMail(client, {
       mailId,

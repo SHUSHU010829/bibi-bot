@@ -33,6 +33,7 @@ const mineService = require("../../features/mining/mineService");
 const buildingService = require("../../features/guild_club/buildingService");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const { mining, fishing, dungeon } = require("../../config");
+const { deferReplySafe, deferUpdateSafe } = require("../../utils/safeAck");
 
 async function getRepairDiscountPct(client, userId, guildId) {
   const buffs = await buildingService
@@ -94,6 +95,7 @@ module.exports = async (client, interaction) => {
 
       if (!confirm) {
         // ── 預覽：用 ephemeral 純文字提示後果 + 確認鈕 ──
+        if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
         const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
         const maxDur = profile.pickaxe_max_durability;
         if ((profile.whetstone_inferior_count || 0) <= 0) {
@@ -117,21 +119,20 @@ module.exports = async (client, interaction) => {
           .setLabel("確認使用")
           .setStyle(ButtonStyle.Danger);
 
-        await interaction.reply({
+        await interaction.editReply({
           content:
             `🪨 確認要對 **${pickDef.name || profile.pickaxe}** 使用劣質磨石？\n` +
             `・耐久：${profile.pickaxe_durability} → ${maxDur}（補滿）\n` +
             `・最大耐久上限：${maxDur} → **${maxDur - 10}**（-10）\n\n` +
             `-# 此操作無法撤回，最大耐久下降後無法回復。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
       // ── 確認使用：實際執行 ──
       // 同材料修復：確認訊息是上一步 ephemeral 純文字 reply，這裡用同樣方式 editReply。
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
 
       const result = await mineService.useInferiorWhetstone(client, {
         userId: interaction.user.id,
@@ -175,6 +176,7 @@ module.exports = async (client, interaction) => {
         return;
       }
       if (!confirm) {
+        if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
         const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
         if ((profile.whetstone_inferior_count || 0) <= 0) {
           await replyEphemeral(interaction, "🪨 你沒有劣質磨石，可到 /商店 購買。");
@@ -194,18 +196,17 @@ module.exports = async (client, interaction) => {
           .setCustomId(`${USE_WHETSTONE_WEAPON_CONFIRM_PREFIX}${interaction.user.id}`)
           .setLabel("確認使用")
           .setStyle(ButtonStyle.Danger);
-        await interaction.reply({
+        await interaction.editReply({
           content:
             `🪨 確認要對 **${wdef.name || profile.weapon}** 使用劣質磨石？\n` +
             `・耐久：${profile.weapon_durability} → ${maxDur}（補滿）\n` +
             `・最大耐久上限：${maxDur} → **${maxDur - 10}**（-10）\n\n` +
             `-# 此操作無法撤回，最大耐久下降後無法回復。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       const result = await mineService.useInferiorWhetstoneOnWeapon(client, {
         userId: interaction.user.id, guildId: interaction.guildId,
       });
@@ -243,6 +244,7 @@ module.exports = async (client, interaction) => {
         return;
       }
       if (!confirm) {
+        if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
         const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
         if ((profile.whetstone_inferior_count || 0) <= 0) {
           await replyEphemeral(interaction, "🪨 你沒有劣質磨石，可到 /商店 購買。");
@@ -262,18 +264,17 @@ module.exports = async (client, interaction) => {
           .setCustomId(`${USE_WHETSTONE_SHIELD_CONFIRM_PREFIX}${interaction.user.id}`)
           .setLabel("確認使用")
           .setStyle(ButtonStyle.Danger);
-        await interaction.reply({
+        await interaction.editReply({
           content:
             `🪨 確認要對 **${sdef.name || profile.shield}** 使用劣質磨石？\n` +
             `・耐久：${profile.shield_durability} → ${maxDur}（補滿）\n` +
             `・最大耐久上限：${maxDur} → **${maxDur - 10}**（-10）\n\n` +
             `-# 此操作無法撤回，最大耐久下降後無法回復。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       const result = await mineService.useInferiorWhetstoneOnShield(client, {
         userId: interaction.user.id, guildId: interaction.guildId,
       });
@@ -315,6 +316,7 @@ module.exports = async (client, interaction) => {
       }
 
       if (!confirm) {
+        if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
         const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
         const discountPct = await getRepairDiscountPct(client, interaction.user.id, interaction.guildId);
         const cost = mineService.applyRepairDiscount(
@@ -338,15 +340,14 @@ module.exports = async (client, interaction) => {
           .setCustomId(`${REPAIR_WEAPON_CONFIRM_PREFIX}${interaction.user.id}`)
           .setLabel("確認修復")
           .setStyle(ButtonStyle.Danger);
-        await interaction.reply({
+        await interaction.editReply({
           content: `🛠️ 確認要修復 **${wdef.name || profile.weapon}**（耐久 ${profile.weapon_durability} → ${profile.weapon_max_durability}）？\n\n**消耗材料**：${formatCostLine(cost)}\n\n-# 此操作無法撤回，請確認背包有足夠材料後再按確認。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       const result = await mineService.repairWeaponWithMaterials(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -396,6 +397,7 @@ module.exports = async (client, interaction) => {
       }
 
       if (!confirm) {
+        if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
         const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
         const discountPct = await getRepairDiscountPct(client, interaction.user.id, interaction.guildId);
         const cost = mineService.applyRepairDiscount(
@@ -419,15 +421,14 @@ module.exports = async (client, interaction) => {
           .setCustomId(`${REPAIR_ROD_CONFIRM_PREFIX}${interaction.user.id}`)
           .setLabel("確認修復")
           .setStyle(ButtonStyle.Danger);
-        await interaction.reply({
+        await interaction.editReply({
           content: `🛠️ 確認要修復 **${rdef.name || profile.fishing_rod}**（耐久 ${profile.rod_durability} → ${profile.rod_max_durability}）？\n\n**消耗材料**：${formatCostLine(cost)}\n\n-# 此操作無法撤回，請確認背包/魚袋有足夠材料後再按確認。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       const result = await mineService.repairRodWithMaterials(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -480,7 +481,8 @@ module.exports = async (client, interaction) => {
     }
 
     if (!confirm) {
-      // ── 預覽：顯示消耗材料 + 確認鈕（不 deferUpdate，直接 reply）──
+      // ── 預覽：顯示消耗材料 + 確認鈕（不 deferUpdate，直接 editReply）──
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
       const discountPct = await getRepairDiscountPct(client, interaction.user.id, interaction.guildId);
       const cost = mineService.applyRepairDiscount(
@@ -516,10 +518,9 @@ module.exports = async (client, interaction) => {
         .setLabel("確認修復")
         .setStyle(ButtonStyle.Danger);
 
-      await interaction.reply({
+      await interaction.editReply({
         content: `🛠️ 確認要修復 **${pickDef.name || profile.pickaxe}**（耐久 ${profile.pickaxe_durability} → ${profile.pickaxe_max_durability}）？\n\n**消耗材料**：${costLines}\n\n-# 此操作無法撤回，請確認背包有足夠材料後再按確認。`,
         components: [new ActionRowBuilder().addComponents(confirmBtn)],
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -528,7 +529,7 @@ module.exports = async (client, interaction) => {
     // 注意：這個確認訊息是上一步 interaction.reply 建立的純文字 ephemeral
     // （沒帶 IsComponentsV2 flag），所以這裡只能用同樣不帶 v2 flag 的方式
     // editReply，不能塞 buildBackpackView 的 v2 容器，否則會被 Discord 拒收。
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
 
     const result = await mineService.repairPickaxeWithMaterials(client, {
       userId: interaction.user.id,

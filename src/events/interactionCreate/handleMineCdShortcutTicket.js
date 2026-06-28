@@ -18,6 +18,7 @@ const {
 } = require("../../commands/mining/mine");
 const mineService = require("../../features/mining/mineService");
 const reminder = require("../../features/reminders/cooldownReminderService");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 async function replyEphemeral(interaction, content) {
   try {
@@ -58,7 +59,7 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
 
     const result = await mineService.useCdTicket(client, {
       userId: interaction.user.id,

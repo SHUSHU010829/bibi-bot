@@ -13,6 +13,7 @@ const {
 
 const { mining } = require("../../config");
 const { consume } = require("../../utils/rateLimiter");
+const { deferReplySafe } = require("../../utils/safeAck");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const mineCmd = require("../../commands/mining/mine");
@@ -84,7 +85,7 @@ module.exports = async (client, interaction) => {
           .update({ components: [], content: "已取消賭石。" })
           .catch(() => {});
       }
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       return await runAppraisal(client, interaction, {
         ts: overflow.ts,
         allowOverflow: true,
@@ -117,7 +118,7 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
     await runAppraisal(client, interaction, { ts, allowOverflow: false });
   } catch (err) {
     logger.error(

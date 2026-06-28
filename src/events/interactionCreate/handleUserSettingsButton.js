@@ -4,6 +4,7 @@
 const { MessageFlags } = require("discord.js");
 
 const { consume } = require("../../utils/rateLimiter");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 const userSettings = require("../../features/settings/userSettings");
 const userSettingsView = require("../../features/settings/userSettingsView");
 
@@ -37,6 +38,8 @@ module.exports = async (client, interaction) => {
     return;
   }
 
+  if (!(await deferUpdateSafe(interaction))) return;
+
   try {
     if (action === "publicProfile") {
       await userSettings.togglePublicProfile(
@@ -51,14 +54,14 @@ module.exports = async (client, interaction) => {
       ownerId,
       interaction.guildId,
     );
-    await interaction.update({
+    await interaction.editReply({
       components: [container],
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      flags: MessageFlags.IsComponentsV2,
     });
   } catch (err) {
     console.log(`[ERROR] handleUserSettingsButton:\n${err}\n${err.stack}`);
     await interaction
-      .reply({
+      .followUp({
         content: "🔧 切換失敗，請呼叫舒舒！",
         flags: MessageFlags.Ephemeral,
       })

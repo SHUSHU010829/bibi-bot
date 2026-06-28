@@ -48,6 +48,7 @@ const {
 } = require("../../features/farm/farmAnnouncer");
 const { resolveStamina, staminaMax, getMemberClub } = require("../../features/mining/dungeonService");
 const reminder = require("../../features/reminders/cooldownReminderService");
+const { deferReplySafe } = require("../../utils/safeAck");
 
 const BTN_PREFIXES = [
   "farm_plantall_", "farm_plant_", "farm_harvestall_", "farm_harvest_",
@@ -348,7 +349,7 @@ module.exports = async (client, interaction) => {
   try {
     // ── view：重新渲染整個農場 ──
     if (action === "view") {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const container = await renderFarm(interaction, client);
       return interaction.editReply({
         components: [container],
@@ -358,6 +359,7 @@ module.exports = async (client, interaction) => {
 
     // ── plant 按鈕：彈出作物選單 ──
     if (action === "plant" && isBtn) {
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
       const coins = await fetchUserCoins(client, interaction.user.id, interaction.guildId);
       const seedParts = [];
@@ -391,7 +393,7 @@ module.exports = async (client, interaction) => {
     if (action === "plantsel" && isSelect) {
       const cropKey = interaction.values?.[0];
       if (!cropKey) return;
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction))) return;
 
       const result = await farmService.plantCrop(client, {
         userId: interaction.user.id,
@@ -463,6 +465,7 @@ module.exports = async (client, interaction) => {
 
     // ── plantall 按鈕：算出空地數，彈出作物選單 ──
     if (action === "plantall" && isBtn) {
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
       const profile = await getOrCreate(client, userId, guildId);
@@ -538,7 +541,7 @@ module.exports = async (client, interaction) => {
     if (action === "plantallsel" && isSelect) {
       const cropKey = interaction.values?.[0];
       if (!cropKey) return;
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction))) return;
 
       const result = await farmService.plantAllCrops(client, {
         userId: interaction.user.id,
@@ -620,6 +623,7 @@ module.exports = async (client, interaction) => {
 
     // ── fert 按鈕：彈出肥料選單 ──
     if (action === "fert" && isBtn) {
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
       const inv = fertilizerInventoryLine(profile);
       const c = new ContainerBuilder()
@@ -645,7 +649,7 @@ module.exports = async (client, interaction) => {
       const fertilizerKey = interaction.values?.[0];
       if (!fertilizerKey) return;
       const fertDef = farming.fertilizers?.[fertilizerKey] || {};
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction))) return;
 
       const result = await farmService.fertilize(client, {
         userId: interaction.user.id,
@@ -725,7 +729,7 @@ module.exports = async (client, interaction) => {
       const countSpec = segs[segs.length - 1];
       const fertilizerKey = segs.slice(1, -1).join("_");
       const fertDef = farming.fertilizers?.[fertilizerKey] || {};
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction))) return;
 
       const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
       const sourceField = fertDef.source === "fish_bag" ? "fish_bag" : "backpack";
@@ -804,7 +808,7 @@ module.exports = async (client, interaction) => {
       const excludePlotIndex = Number.parseInt(segs[0], 10);
       const fertilizerKey = segs.slice(1).join("_");
       const fertDef = farming.fertilizers?.[fertilizerKey] || {};
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction))) return;
 
       const result = await farmService.fertilizeAll(client, {
         userId: interaction.user.id,
@@ -850,6 +854,7 @@ module.exports = async (client, interaction) => {
 
     // ── fertall 按鈕：彈出肥料 select（一鍵施肥）──
     if (action === "fertall" && isBtn) {
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
       const profile = await getOrCreate(client, userId, guildId);
@@ -920,6 +925,8 @@ module.exports = async (client, interaction) => {
       const fertDef = farming.fertilizers?.[fertilizerKey] || {};
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
+
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
       const preview = await farmService.previewFertilizeAll(client, { userId, guildId, fertilizerKey });
       if (!preview.ok) {
@@ -993,7 +1000,7 @@ module.exports = async (client, interaction) => {
     if (action === "fertallcfm" && isBtn) {
       const fertilizerKey = payload;
       const fertDef = farming.fertilizers?.[fertilizerKey] || {};
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction))) return;
 
       const result = await farmService.fertilizeAll(client, {
         userId: interaction.user.id,
@@ -1041,7 +1048,7 @@ module.exports = async (client, interaction) => {
 
     // ── harvestall：一鍵收成所有成熟地塊 ──
     if (action === "harvestall") {
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction))) return;
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
       const profile = await getOrCreate(client, userId, guildId);
@@ -1138,7 +1145,7 @@ module.exports = async (client, interaction) => {
 
     // ── harvest：直接收成 ──
     if (action === "harvest") {
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction))) return;
       const result = await farmService.harvestCrop(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -1203,7 +1210,7 @@ module.exports = async (client, interaction) => {
 
     // ── defend：戰鬥防禦 ──
     if (action === "defend") {
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction))) return;
       const result = await farmService.defendRaid(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -1258,7 +1265,7 @@ module.exports = async (client, interaction) => {
 
     // ── trap：沒體力時的備案，30% 賭機率救作物 ──
     if (action === "trap") {
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction))) return;
       const result = await farmService.setTrap(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -1305,6 +1312,7 @@ module.exports = async (client, interaction) => {
 
     // ── expand：先顯示擴建預覽與確認按鈕（不直接扣款）──
     if (action === "expand") {
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       const preview = await farmService.previewExpand(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -1382,7 +1390,7 @@ module.exports = async (client, interaction) => {
 
     // ── expandconfirm：實際執行擴建 ──
     if (action === "expandconfirm") {
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction))) return;
       const result = await farmService.expandFarm(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -1428,7 +1436,7 @@ module.exports = async (client, interaction) => {
           errContainer("❌ 無法賣出", "找不到這種農產品。", ""),
         );
       }
-      await interaction.deferReply();
+      if (!(await deferReplySafe(interaction))) return;
       const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
       const have = (profile.veggie_bag || {})[cropKey] || 0;
       if (have <= 0) {

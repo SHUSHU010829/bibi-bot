@@ -13,6 +13,7 @@ const config = require("../../config");
 const { loadPanels } = require("../../utils/suggestionPanelsStore");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 module.exports = async (client, interaction) => {
   // 步驟 1：選擇類別後，先請使用者選擇公開或私密
@@ -130,18 +131,13 @@ async function createSuggestionChannel(client, interaction) {
     }
 
     // 先 deferUpdate，沿用原本的臨時訊息並移除按鈕，避免重複點擊建立多個頻道
-    try {
-      await interaction.deferUpdate();
-    } catch (deferErr) {
-      if (deferErr?.code === 10062) {
-        logger.warn(
-          { source: "suggestion-open", customId: interaction.customId },
-          "互動已逾期,無法 defer"
-        );
-        trackError("suggestion-open", deferErr, { reason: "expired" });
-        return;
-      }
-      throw deferErr;
+    if (!(await deferUpdateSafe(interaction))) {
+      logger.warn(
+        { source: "suggestion-open", customId: interaction.customId },
+        "互動已逾期,無法 defer"
+      );
+      trackError("suggestion-open", new Error("expired"), { reason: "expired" });
+      return;
     }
 
     // 獲取此頻道的面板配置（如果存在）

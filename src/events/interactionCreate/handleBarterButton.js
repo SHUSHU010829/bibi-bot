@@ -24,6 +24,7 @@ const { computeFee } = require("../../features/barter/barterService");
 const { buildBoardContainer, errorContainer } = require("../../features/barter/barterView");
 const { getItemDef } = require("../../features/barter/itemCatalog");
 const { isGameRoom } = require("../../features/gameRoom/service");
+const { deferReplySafe, deferUpdateSafe } = require("../../utils/safeAck");
 
 function statusPanel(text) {
   return new ContainerBuilder()
@@ -100,26 +101,27 @@ module.exports = async (client, interaction) => {
 };
 
 async function handleAccept(client, interaction, listingId) {
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const existing = await barterService.getListing(client, interaction.guildId, listingId);
   if (!existing) {
-    return interaction.reply({
+    return interaction.editReply({
       components: [errorContainer("❌ 找不到掛單", `編號 #${listingId} 不存在或已下架。`, "用 `/交易所 列表` 重新整理")],
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      flags: MessageFlags.IsComponentsV2,
     });
   }
   if (existing.seller_id === interaction.user.id) {
-    return interaction.reply({
+    return interaction.editReply({
       components: [errorContainer("❌ 不能接自己的單", "這是你自己上架的交易。", "")],
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      flags: MessageFlags.IsComponentsV2,
     });
   }
 
   const offerDef = getItemDef(existing.offer.type, existing.offer.key);
   const wantDef = getItemDef(existing.want.type, existing.want.key);
   if (!offerDef || !wantDef) {
-    return interaction.reply({
+    return interaction.editReply({
       components: [errorContainer("❌ 物品異常", "找不到掛單上的物品定義。", "請呼叫舒舒！")],
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      flags: MessageFlags.IsComponentsV2,
     });
   }
   const fee = computeFee(offerDef, existing.offer.qty, wantDef, existing.want.qty);
@@ -148,9 +150,9 @@ async function handleAccept(client, interaction, listingId) {
       ),
     );
 
-  return interaction.reply({
+  return interaction.editReply({
     components: [container],
-    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    flags: MessageFlags.IsComponentsV2,
   });
 }
 
@@ -234,7 +236,7 @@ function acceptErrorOf(result, listingId) {
 }
 
 async function handleCancel(client, interaction, listingId) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const result = await barterService.cancelListing(client, {
     listingId,
     guildId: interaction.guildId,
@@ -280,7 +282,7 @@ async function handlePage(client, interaction) {
   }
   if (!Number.isFinite(page) || page < 1) return;
 
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
   const cfg = barterService.cfg();
   const pageSize = cfg.pageSize ?? 5;
   const { listings, total } = await barterService.listActive(client, interaction.guildId, {

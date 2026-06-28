@@ -14,6 +14,7 @@ const { consume } = require("../../utils/rateLimiter");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { parseReplayId, getLastBet } = require("../../features/casino/replay");
+const { deferReplySafe, isUnknownInteraction } = require("../../utils/safeAck");
 
 // game → 原 slash 指令模組路徑（懶載入，避免載入順序問題）
 const GAME_COMMAND_PATHS = {
@@ -131,6 +132,7 @@ module.exports = async (client, interaction) => {
     await cmd.run(client, interaction);
     trackSuccess("casino-replay");
   } catch (err) {
+    if (isUnknownInteraction(err)) return;
     logger.error(
       {
         source: "casino-replay",
@@ -147,6 +149,8 @@ module.exports = async (client, interaction) => {
 
 // 輪盤重玩：重建一張預填同樣押注的下注面板。
 async function replayRoulette(client, interaction, payload) {
+  if (!(await deferReplySafe(interaction))) return;
+
   const { casino } = require("../../config");
   const grantCoins = require("../../features/economy/grantCoins");
   const { totalWagered } = require("../../features/casino/roulette/engine");
@@ -154,8 +158,6 @@ async function replayRoulette(client, interaction, payload) {
     buildBettingRows,
     buildStatusContent,
   } = require("../../commands/casino/roulette");
-
-  await interaction.deferReply();
 
   const cfg = casino?.roulette || {};
   if (cfg.enabled === false) {

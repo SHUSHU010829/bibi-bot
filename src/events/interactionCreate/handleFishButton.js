@@ -19,6 +19,7 @@ const { fishing } = require("../../config");
 const { getFishingProfile } = require("../../features/fishing/fishService");
 const { buildBackpackView } = require("../../features/shop/backpackView");
 const grantCoins = require("../../features/economy/grantCoins");
+const { deferReplySafe } = require("../../utils/safeAck");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const { COIN_EMOJI } = require("../../constants/coin");
 const SELL_PREFIX = "fish_sell_";
@@ -46,7 +47,7 @@ module.exports = async (client, interaction) => {
     const fishDef = fishing?.fish?.[fishKey];
     if (!fishDef) return;
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
     try {
       const userId = interaction.user.id;
@@ -120,7 +121,7 @@ module.exports = async (client, interaction) => {
       });
     }
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
     try {
       const view = await buildBackpackView(client, {

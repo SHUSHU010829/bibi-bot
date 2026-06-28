@@ -3,6 +3,7 @@
 
 const { MessageFlags } = require("discord.js");
 
+const { deferUpdateSafe } = require("../../utils/safeAck");
 const { consume } = require("../../utils/rateLimiter");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
@@ -83,7 +84,7 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
 
     const opts = {
       username: interaction.user.username,

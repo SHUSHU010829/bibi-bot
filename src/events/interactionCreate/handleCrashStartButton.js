@@ -14,6 +14,7 @@ const { saveLastBet } = require("../../features/casino/replay");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 // 按下「確認發射」後先暫停這段時間，火箭停在 ×1.00 蓄勢，過了才真正升空。
 const LAUNCH_DELAY_MS = 1_000;
@@ -72,18 +73,13 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    try {
-      await interaction.deferUpdate();
-    } catch (deferErr) {
-      if (deferErr?.code === 10062) {
-        logger.warn(
-          { source: "crash-start", customId: cid },
-          "互動已逾期，無法 defer",
-        );
-        trackError("crash-start", deferErr, { reason: "expired" });
-        return;
-      }
-      throw deferErr;
+    if (!(await deferUpdateSafe(interaction))) {
+      logger.warn(
+        { source: "crash-start", customId: cid },
+        "互動已逾期，無法 defer",
+      );
+      trackError("crash-start", { code: 10062 }, { reason: "expired" });
+      return;
     }
 
     if (isCancel) {

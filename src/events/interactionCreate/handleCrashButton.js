@@ -8,6 +8,7 @@ const tickManager = require("../../features/casino/crash/tick");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 module.exports = async (client, interaction) => {
   try {
@@ -34,18 +35,13 @@ module.exports = async (client, interaction) => {
     }
 
     // 先 defer
-    try {
-      await interaction.deferUpdate();
-    } catch (deferErr) {
-      if (deferErr?.code === 10062) {
-        logger.warn(
-          { source: "crash-button", gameId },
-          "互動已逾期，無法 defer",
-        );
-        trackError("crash-button", deferErr, { gameId, reason: "expired" });
-        return;
-      }
-      throw deferErr;
+    if (!(await deferUpdateSafe(interaction))) {
+      logger.warn(
+        { source: "crash-button", gameId },
+        "互動已逾期，無法 defer",
+      );
+      trackError("crash-button", { code: 10062 }, { gameId, reason: "expired" });
+      return;
     }
 
     const state = await client.crashGamesCollection.findOne({ gameId });

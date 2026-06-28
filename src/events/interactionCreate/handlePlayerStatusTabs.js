@@ -10,6 +10,7 @@ const foodBag = require("../../features/fishing/foodBag");
 const foodBagView = require("../../features/fishing/foodBagView");
 const { getOrCreate: getMiningProfile } = require("../../features/mining/miningProfile");
 const { appendNav, PREFIX } = require("../../features/playerStatus/statusNav");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 const refreshBucket = new Map();
 const REFRESH_COOLDOWN_MS = 3000;
@@ -78,7 +79,7 @@ module.exports = async (client, interaction) => {
 
   if (!["backpack", "buff", "food"].includes(tab)) return;
 
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
 
   try {
     const view = await buildTab(client, interaction, tab);

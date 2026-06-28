@@ -12,6 +12,7 @@ const {
   buildAmountModal,
 } = require("../../features/event/hostedEvent");
 const { consume } = require("../../utils/rateLimiter");
+const { deferReplySafe, deferUpdateSafe, isUnknownInteraction } = require("../../utils/safeAck");
 
 // 結算選名次的暫存：key=`${eventId}:${hostId}` → { picks: [userId,...] }
 const pendingPicks = new Map();
@@ -67,7 +68,7 @@ async function fetchParticipantMembers(guild, ids) {
 }
 
 async function handleJoinButton(client, interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const { doc } = await loadEventByCustomId(client, interaction.customId, "event_join_");
   if (!doc) {
@@ -98,34 +99,33 @@ async function handleJoinButton(client, interaction) {
 }
 
 async function handleManageButton(client, interaction) {
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+
   const { doc } = await loadEventByCustomId(client, interaction.customId, "event_manage_");
   if (!doc) {
-    return interaction.reply({ content: "❌ 找不到活動。", flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ content: "❌ 找不到活動。" });
   }
   if (interaction.user.id !== doc.hostId) {
-    return interaction.reply({
+    return interaction.editReply({
       content: "❌ 只有主辦人可以管理這個活動。",
-      flags: MessageFlags.Ephemeral,
     });
   }
   if (doc.status !== "RECRUITING") {
-    return interaction.reply({
+    return interaction.editReply({
       content: `❌ 活動已經 ${doc.status === "SETTLED" ? "結算" : "取消"}。`,
-      flags: MessageFlags.Ephemeral,
     });
   }
 
-  await interaction.reply({
+  await interaction.editReply({
     content:
       `⚙️ 活動「${doc.name}」管理面板\n` +
       `目前報名 **${doc.participants.length}** 人（需 ≥ ${doc.minParticipants} 人才能結算）`,
     components: [buildManagePanel(doc)],
-    flags: MessageFlags.Ephemeral,
   });
 }
 
 async function handleToggleOpenButton(client, interaction) {
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
 
   const { doc } = await loadEventByCustomId(
     client,
@@ -159,7 +159,7 @@ async function handleToggleOpenButton(client, interaction) {
 }
 
 async function handleCancelButton(client, interaction) {
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
 
   const { doc } = await loadEventByCustomId(client, interaction.customId, "event_cancel_");
   if (!doc) return interaction.editReply({ content: "❌ 找不到活動。", components: [] });
@@ -193,23 +193,23 @@ async function handleCancelButton(client, interaction) {
 }
 
 async function startSettleFlow(client, interaction) {
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+
   const { doc } = await loadEventByCustomId(client, interaction.customId, "event_settle_");
   if (!doc) {
-    return interaction.reply({ content: "❌ 找不到活動。", flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ content: "❌ 找不到活動。" });
   }
   if (interaction.user.id !== doc.hostId) {
-    return interaction.reply({ content: "❌ 只有主辦人能結算。", flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ content: "❌ 只有主辦人能結算。" });
   }
   if (doc.status !== "RECRUITING") {
-    return interaction.reply({
+    return interaction.editReply({
       content: "❌ 活動已不在報名階段。",
-      flags: MessageFlags.Ephemeral,
     });
   }
   if (doc.participants.length < doc.minParticipants) {
-    return interaction.reply({
+    return interaction.editReply({
       content: `❌ 報名人數 ${doc.participants.length} 人未達最少 ${doc.minParticipants} 人。`,
-      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -225,15 +225,14 @@ async function startSettleFlow(client, interaction) {
       ? `（人數 ${doc.participants.length} < 名次 ${doc.rankCount}，將只發出 ${effectiveRanks} 名，剩餘退回主辦人）\n`
       : "";
 
-  await interaction.reply({
+  await interaction.editReply({
     content: `🏆 開始結算「${doc.name}」（共 ${effectiveRanks} 名）\n${noteShort}請依序選出第 1 名。`,
     components: [buildPickSelect(doc, 1, [], members)],
-    flags: MessageFlags.Ephemeral,
   });
 }
 
 async function handlePickSelect(client, interaction) {
-  await interaction.deferUpdate();
+  if (!(await deferUpdateSafe(interaction))) return;
 
   // customId: event_pick_{eventId}_{rank}
   const rest = interaction.customId.slice("event_pick_".length);
@@ -340,7 +339,7 @@ async function handleAmountsButton(client, interaction) {
 }
 
 async function handleAmountsModal(client, interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const eventId = interaction.customId.slice("event_amounts_".length);
   const doc = await client.hostedEventsCollection.findOne({ eventId });

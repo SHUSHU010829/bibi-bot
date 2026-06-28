@@ -15,6 +15,7 @@ const {
 } = require("discord.js");
 const mineCmd = require("../../commands/mining/mine");
 const giveCmd = require("../../commands/mining/give");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 async function replyEphemeral(interaction, content) {
   try {
@@ -45,7 +46,7 @@ module.exports = async (client, interaction) => {
       if (interaction.user.id !== ownerId) {
         return replyEphemeral(interaction, "🚫 這不是你的挖礦。");
       }
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       return await mineCmd.executeMine(client, interaction, { allowOverflow: true });
     }
     if (cid.startsWith(mineCmd.MINE_OVERFLOW_CANCEL_PREFIX)) {
@@ -76,13 +77,13 @@ module.exports = async (client, interaction) => {
       }
       if (!Number.isFinite(qty) || qty <= 0) return;
 
+      if (!(await deferUpdateSafe(interaction))) return;
       const target = await client.users.fetch(recipientId).catch(() => null);
       if (!target) {
         return interaction
-          .update({ components: [], content: "🔧 找不到收禮對象，請重新 /贈送。" })
+          .editReply({ components: [], content: "🔧 找不到收禮對象，請重新 /贈送。" })
           .catch(() => {});
       }
-      await interaction.deferUpdate();
       return await giveCmd.executeGift(client, interaction, {
         target,
         type,

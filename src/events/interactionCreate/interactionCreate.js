@@ -11,6 +11,7 @@ const config = require("../../config");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
+const { deferReplySafe } = require("../../utils/safeAck");
 
 module.exports = async (client, interaction) => {
   try {
@@ -56,17 +57,16 @@ module.exports = async (client, interaction) => {
     }
 
     const hasRole = interaction.member.roles.cache.has(role.id);
+    if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
     if (hasRole) {
       await interaction.member.roles.remove(role);
-      return interaction.reply({
+      return interaction.editReply({
         content: `已經移除了身份組：${role.name}`,
-        flags: MessageFlags.Ephemeral,
       });
     } else {
       await interaction.member.roles.add(role);
-      return interaction.reply({
+      return interaction.editReply({
         content: `已經成功給予身份組：${role.name}`,
-        flags: MessageFlags.Ephemeral,
       });
     }
   } catch (error) {
@@ -81,18 +81,13 @@ module.exports = async (client, interaction) => {
 async function handleVoteButton(client, interaction) {
   try {
     // 先 defer，避免 DB 查詢 + 多次 updateOne 讓 3 秒 token 過期觸發 10062
-    try {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    } catch (deferErr) {
-      if (deferErr?.code === 10062) {
-        logger.warn(
-          { source: "vote-button", customId: interaction.customId },
-          "互動已逾期,無法 defer"
-        );
-        trackError("vote-button", deferErr, { reason: "expired" });
-        return;
-      }
-      throw deferErr;
+    if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) {
+      logger.warn(
+        { source: "vote-button", customId: interaction.customId },
+        "互動已逾期,無法 defer"
+      );
+      trackError("vote-button", { code: 10062 }, { reason: "expired" });
+      return;
     }
 
     // 查找對應的投票提案

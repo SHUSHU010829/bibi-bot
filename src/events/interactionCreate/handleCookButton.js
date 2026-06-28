@@ -15,6 +15,7 @@ const {
   ActionRowBuilder,
 } = require("discord.js");
 
+const { deferUpdateSafe } = require("../../utils/safeAck");
 const { fishing } = require("../../config");
 const cookService = require("../../features/fishing/cookService");
 const { getOrCreate } = require("../../features/mining/miningProfile");
@@ -166,7 +167,7 @@ module.exports = async (client, interaction) => {
       });
     }
 
-    await interaction.deferUpdate().catch(() => {});
+    if (!(await deferUpdateSafe(interaction))) return;
     try {
       await executeCook(client, interaction, recipeId, useCoal, qty);
     } catch (err) {
@@ -186,7 +187,7 @@ module.exports = async (client, interaction) => {
     }
     const category = interaction.values?.[0];
     if (!COOK_CAT_IDS.includes(category)) return;
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
     try {
       await refreshKitchen(client, interaction, category);
     } catch (err) {
@@ -225,7 +226,7 @@ module.exports = async (client, interaction) => {
     const recipe = fishing?.recipes?.[recipeId];
     if (!recipe) return;
 
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
     try {
       const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
       const view = cookView.buildConfirmView({
@@ -257,7 +258,7 @@ module.exports = async (client, interaction) => {
     const recipe = fishing?.recipes?.[recipeId];
     if (!recipe) return;
 
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
     try {
       const useCoal = mode === "c";
       let qty = 1;
@@ -280,7 +281,7 @@ module.exports = async (client, interaction) => {
     if (interaction.user.id !== ownerId) {
       return interaction.reply({ content: "❌ 這不是你的廚房！", flags: MessageFlags.Ephemeral });
     }
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
     try {
       await refreshKitchen(client, interaction, COOK_CAT_IDS.includes(category) ? category : undefined);
     } catch (err) {

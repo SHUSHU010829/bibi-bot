@@ -1,6 +1,7 @@
 require("colors");
 const { MessageFlags } = require("discord.js");
 const sellCmd = require("../../commands/mining/sell");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 module.exports = async (client, interaction) => {
   if (!interaction.isButton()) return;
@@ -29,7 +30,7 @@ module.exports = async (client, interaction) => {
       }
       if (qtyToken !== "all" && (!Number.isFinite(qtyArg) || qtyArg <= 0)) return;
 
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       return await sellCmd.executeSell(client, interaction, {
         userId: interaction.user.id,
         guildId: interaction.guildId,

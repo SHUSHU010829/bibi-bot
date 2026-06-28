@@ -7,6 +7,7 @@
 const { MessageFlags } = require("discord.js");
 
 const { consume } = require("../../utils/rateLimiter");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const dungeonCmd = require("../../commands/mining/dungeon");
@@ -44,7 +45,7 @@ module.exports = async (client, interaction) => {
           .update({ components: [], content: "已取消這次探索。" })
           .catch(() => {});
       }
-      await interaction.deferUpdate();
+      if (!(await deferUpdateSafe(interaction))) return;
       return await dungeonCmd.executeDungeon(client, interaction, {
         allowOverflow: true,
       });

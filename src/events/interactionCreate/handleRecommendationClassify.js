@@ -8,6 +8,7 @@ const {
   MessageFlags,
 } = require("discord.js");
 
+const { deferUpdateSafe } = require("../../utils/safeAck");
 const { TYPES } = require("../../constants/recommendationCategories");
 const {
   buildClassifyComponents,
@@ -89,15 +90,24 @@ module.exports = async (client, interaction) => {
 
   const { action, messageId } = parsed;
 
+  // edit 走 showModal（不能 defer，且彈窗本身就是 ack）；其餘分支最終都以
+  // interaction.update 重繪面板，必須先 deferUpdate 再做 DB 查詢避免 10062。
+  if (action !== "edit") {
+    if (!(await deferUpdateSafe(interaction))) return;
+  }
+
   try {
     const doc = await collection.findOne({ messageId });
     if (!doc) {
-      await interaction
-        .reply({
-          content: "找不到對應的推薦紀錄，可能已被刪除。",
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      const notFound = {
+        content: "找不到對應的推薦紀錄，可能已被刪除。",
+        flags: MessageFlags.Ephemeral,
+      };
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp(notFound).catch(() => {});
+      } else {
+        await interaction.reply(notFound).catch(() => {});
+      }
       return;
     }
 
@@ -105,7 +115,7 @@ module.exports = async (client, interaction) => {
       const newType = interaction.values?.[0];
       if (!newType || !TYPES[newType]) {
         await interaction
-          .reply({
+          .followUp({
             content: "無效的分類選項。",
             flags: MessageFlags.Ephemeral,
           })
@@ -123,7 +133,7 @@ module.exports = async (client, interaction) => {
       await collection.updateOne({ messageId }, { $set: update });
       const updatedDoc = { ...doc, ...update };
 
-      await interaction.update({
+      await interaction.editReply({
         components: [
           withRows(
             buildClassifyContainer(updatedDoc),
@@ -160,7 +170,7 @@ module.exports = async (client, interaction) => {
       await collection.updateOne({ messageId }, { $set: update });
       const updatedDoc = { ...doc, ...update };
 
-      await interaction.update({
+      await interaction.editReply({
         components: [
           withRows(
             buildClassifyContainer(updatedDoc),
@@ -193,9 +203,9 @@ module.exports = async (client, interaction) => {
       try {
         await interaction.message.delete();
       } catch (deleteError) {
-        // 刪不掉就退回 update 顯示已確認
+        // 刪不掉就退回 editReply 顯示已確認
         await interaction
-          .update({
+          .editReply({
             components: [
               withRows(
                 buildConfirmedContainer(doc),

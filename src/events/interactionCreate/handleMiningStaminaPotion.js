@@ -16,6 +16,7 @@ const {
   parseUseStaminaPotionId,
 } = require("../../features/shop/backpackView");
 const dungeonService = require("../../features/mining/dungeonService");
+const { deferReplySafe } = require("../../utils/safeAck");
 
 async function replyEphemeral(interaction, payload) {
   try {
@@ -55,6 +56,11 @@ module.exports = async (client, interaction) => {
       return;
     }
 
+    if (
+      !(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))
+    )
+      return;
+
     const result = await dungeonService.useStaminaPotion(client, {
       userId: interaction.user.id,
       guildId: interaction.guildId,
@@ -74,9 +80,9 @@ module.exports = async (client, interaction) => {
               "你目前持有 0 瓶體力藥水。\n-# 到 /商店 → 挖礦道具 購買（每日上限 3 瓶）"
             )
           );
-        await interaction.reply({
+        await interaction.editReply({
           components: [c],
-          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+          flags: MessageFlags.IsComponentsV2,
         });
         return;
       }
@@ -92,9 +98,9 @@ module.exports = async (client, interaction) => {
               `目前體力：**${result.staminaBefore} / ${result.max}**\n-# 體力滿了用藥水會浪費，先去 /地下城 探險吧！`
             )
           );
-        await interaction.reply({
+        await interaction.editReply({
           components: [c],
-          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+          flags: MessageFlags.IsComponentsV2,
         });
         return;
       }
@@ -120,9 +126,9 @@ module.exports = async (client, interaction) => {
           `🔋 體力：${result.staminaBefore} → **${result.staminaAfter}** / ${result.max}（+${result.restored}）\n🧪 剩餘藥水：×${result.potionLeft}${tail}\n-# 立刻去 /地下城 探險吧！`
         )
       );
-    await interaction.reply({
+    await interaction.editReply({
       components: [c],
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      flags: MessageFlags.IsComponentsV2,
     });
     trackSuccess("mining-use-stamina-potion");
   } catch (err) {

@@ -12,6 +12,7 @@
 const { MessageFlags } = require("discord.js");
 
 const { consume } = require("../../utils/rateLimiter");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const reminder = require("../../features/reminders/cooldownReminderService");
@@ -57,7 +58,7 @@ module.exports = async (client, interaction) => {
     }
 
     // 先確認互動（deferUpdate 不會更動原訊息），避免後續 DB 操作超過 3 秒 token 視窗。
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
 
     const readyAt = await reminder.currentCooldownAt(client, {
       userId: interaction.user.id,

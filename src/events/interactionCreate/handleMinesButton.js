@@ -6,6 +6,7 @@ const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { consume } = require("../../utils/rateLimiter");
 const { MessageFlags } = require("discord.js");
+const { deferUpdateSafe } = require("../../utils/safeAck");
 
 function getMinesConfig() {
   return casino?.mines || {};
@@ -42,15 +43,10 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    try {
-      await interaction.deferUpdate();
-    } catch (deferErr) {
-      if (deferErr?.code === 10062) {
-        logger.warn({ source: "mines-button", gameId }, "互動已逾期,無法 defer");
-        trackError("mines-button", deferErr, { gameId, reason: "expired" });
-        return;
-      }
-      throw deferErr;
+    if (!(await deferUpdateSafe(interaction))) {
+      logger.warn({ source: "mines-button", gameId }, "互動已逾期,無法 defer");
+      trackError("mines-button", { code: 10062 }, { gameId, reason: "expired" });
+      return;
     }
 
     const state = await client.minesGamesCollection.findOne({ gameId });

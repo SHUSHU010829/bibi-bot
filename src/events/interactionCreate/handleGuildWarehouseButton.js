@@ -19,6 +19,7 @@ const warehouseEligibility = require("../../features/guild_club/warehouse/wareho
 const warehouseSettings = require("../../features/guild_club/warehouse/warehouseSettings");
 const warehouseSettingsService = require("../../features/guild_club/warehouse/warehouseSettingsService");
 const guildWarehouseListingService = require("../../features/guild_club/warehouse/guildWarehouseListingService");
+const { deferReplySafe, deferUpdateSafe } = require("../../utils/safeAck");
 
 module.exports = async (client, interaction) => {
   const id = interaction.customId || "";
@@ -116,7 +117,7 @@ async function handleTakeModalSubmit(client, interaction) {
   const itemId = rest.slice(sepIdx + 1);
   if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "領取視窗");
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const qtyRaw = (interaction.fields.getTextInputValue("qty") || "").trim();
   const qty = parseInt(qtyRaw, 10);
@@ -231,7 +232,7 @@ async function handleConsignModalSubmit(client, interaction) {
   const itemId = rest.slice(sepIdx + 1);
   if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "寄售視窗");
 
-  await interaction.deferReply();
+  if (!(await deferReplySafe(interaction, {}))) return;
 
   const qtyRaw = (interaction.fields.getTextInputValue("qty") || "").trim();
   const priceRaw = (interaction.fields.getTextInputValue("price") || "")
@@ -306,39 +307,41 @@ async function handlePerTakeMaxPicker(client, interaction) {
   const { ownerId } = parseOwner("gcw_ptm_", interaction.customId);
   if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "物品上限按鈕");
 
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+
   const membership = await guildClubService.getMembership(
     client,
     interaction.user.id,
     interaction.guildId
   );
   if (!membership || !guildClubService.isManager(membership.role)) {
-    return interaction.reply({
+    return interaction.editReply({
       components: [
         warehouseView.buildErrorContainer({
           title: "🚫 僅會長 / 副會長可調設定",
           body: "請會長或副會長使用。",
         }),
       ],
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      flags: MessageFlags.IsComponentsV2,
     });
   }
   const club = await guildClubService.getClubById(client, membership.guild_club_id);
   if (!club)
-    return interaction.reply({
+    return interaction.editReply({
       components: [
         warehouseView.buildErrorContainer({ title: "❌ 公會資料異常", body: "公會已不存在。" }),
       ],
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      flags: MessageFlags.IsComponentsV2,
     });
 
-  return interaction.reply({
+  return interaction.editReply({
     components: [
       warehouseView.buildPerTakeMaxPickerContainer({
         userId: interaction.user.id,
         club,
       }),
     ],
-    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    flags: MessageFlags.IsComponentsV2,
   });
 }
 
@@ -390,7 +393,7 @@ async function handlePerTakeMaxSubmit(client, interaction) {
   if (!warehouseView.PTM_GROUPS[group])
     return interaction.reply({ content: "❌ 未知分類", flags: MessageFlags.Ephemeral });
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const inputs = {};
   for (const itemId of warehouseView.itemsInPtmGroup(group)) {
@@ -472,9 +475,9 @@ async function handleTab(client, interaction) {
 
 async function renderWarehouse(client, interaction, { view, mode }) {
   if (mode === "update") {
-    await interaction.deferUpdate();
+    if (!(await deferUpdateSafe(interaction))) return;
   } else {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   }
 
   const editPayload = (components) =>
@@ -532,7 +535,7 @@ async function handleLog(client, interaction) {
   const { ownerId } = parseOwner("gcw_log_", interaction.customId);
   if (interaction.user.id !== ownerId) return denyNotOwner(interaction, "倉庫紀錄按鈕");
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const membership = await guildClubService.getMembership(
     client,
@@ -635,7 +638,7 @@ async function handleSettingsOpen(client, interaction) {
 }
 
 async function handleSettingsSubmit(client, interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const inputs = {};
   for (const key of warehouseSettingsService.SETTING_KEYS) {
     inputs[key] = interaction.fields.getTextInputValue(key);
