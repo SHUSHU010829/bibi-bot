@@ -8,70 +8,58 @@ const {
 } = require("discord.js");
 
 const { casino } = require("../../../config");
+const { getLotteryConfig } = require("./numbers");
 
-const MILESTONE_TEMPLATES = {
-  "6_49": [
-    {
-      threshold: 10000,
-      build: (pool, drawAt) =>
-        `# 🎰 大樂透彩池突破 10,000\n` +
-        `當前彩池:**${pool.toLocaleString()}** credits\n` +
-        `開獎時間:<t:${drawAt}:R>\n\n` +
-        `購票指令:\`/彩券 購買\``,
-      accentColor: 0x3d6f6a,
-    },
-    {
-      threshold: 30000,
-      build: (pool, drawAt) =>
-        `# 🎰 大樂透彩池達 30,000\n` +
-        `當前彩池:**${pool.toLocaleString()}** credits\n` +
-        `頭獎預估:約 ${Math.floor(pool * 0.7).toLocaleString()} credits\n` +
-        `開獎時間:<t:${drawAt}:R>\n\n` +
-        `購票指令:\`/彩券 購買\` ・ \`/彩券 包牌\``,
-      accentColor: 0xd94c2a,
-    },
-    {
-      threshold: 50000,
-      build: (pool, drawAt) =>
-        `# 🎰 大樂透彩池達 50,000\n` +
-        `當前彩池:**${pool.toLocaleString()}** credits\n` +
-        `頭獎預估:約 ${Math.floor(pool * 0.7).toLocaleString()} credits\n` +
-        `開獎時間:<t:${drawAt}:R>\n\n` +
-        `購票指令:\`/彩券 購買\` ・ \`/彩券 包牌\``,
-      accentColor: 0xc9302c,
-    },
-    {
-      threshold: 100000,
-      build: (pool, drawAt) =>
-        `# 🎰 大樂透彩池突破 100,000\n` +
-        `當前彩池:**${pool.toLocaleString()}** credits\n` +
-        `頭獎預估:約 ${Math.floor(pool * 0.7).toLocaleString()} credits\n` +
-        `開獎時間:<t:${drawAt}:R>\n\n` +
-        `購票指令:\`/彩券 購買\` ・ \`/彩券 包牌\``,
-      accentColor: 0xd4a437,
-    },
-  ],
-  "3_20": [
-    {
-      threshold: 1000,
-      build: (pool, drawAt) =>
-        `# 🎫 小樂透彩池突破 1,000\n` +
-        `當前彩池:**${pool.toLocaleString()}** credits\n` +
-        `開獎時間:<t:${drawAt}:R>\n\n` +
-        `購票指令:\`/彩券 購買\` 玩法選小樂透`,
-      accentColor: 0x3d6f6a,
-    },
-    {
-      threshold: 5000,
-      build: (pool, drawAt) =>
-        `# 🎫 小樂透彩池達 5,000\n` +
-        `當前彩池:**${pool.toLocaleString()}** credits\n` +
-        `開獎時間:<t:${drawAt}:R>\n\n` +
-        `購票指令:\`/彩券 購買\` 玩法選小樂透`,
-      accentColor: 0xd94c2a,
-    },
-  ],
+// 每個玩法的播報配置：頭獎預估比例 + 購票提示。
+// emoji / 玩法名共用 numbers.js 的 LOTTERY_CONFIG，避免兩份不同步。
+const ANNOUNCE_CFG = {
+  "6_49": {
+    jackpotRate: 0.7,
+    buyHint: "`/彩券 購買` ・ `/彩券 包牌`",
+  },
+  "3_20": {
+    jackpotRate: null,
+    buyHint: "`/彩券 購買` 玩法選小樂透",
+  },
+  power_38_8: {
+    jackpotRate: 0.6,
+    buyHint: "`/彩券 購買` 玩法選威力彩",
+  },
 };
+
+// 顏色階梯，低 → 高：teal → 橘 → 紅 → 金。
+const ACCENT_TIERS = [0x3d6f6a, 0xd94c2a, 0xc9302c, 0xd4a437];
+
+function pickAccentColor(lotteryType, milestone) {
+  const list = casino?.lottery?.poolMilestones?.[lotteryType] || [];
+  const idx = list.indexOf(milestone);
+  if (idx < 0 || list.length <= 1) return ACCENT_TIERS[0];
+  const position = idx / (list.length - 1);
+  const tier = Math.min(
+    ACCENT_TIERS.length - 1,
+    Math.floor(position * ACCENT_TIERS.length)
+  );
+  return ACCENT_TIERS[tier];
+}
+
+function buildMilestoneContent(lotteryType, milestone, pool, drawAtUnix) {
+  const numCfg = getLotteryConfig(lotteryType);
+  const ann = ANNOUNCE_CFG[lotteryType];
+  if (!numCfg || !ann) return null;
+  const lines = [
+    `# ${numCfg.emoji} ${numCfg.label}彩池突破 ${milestone.toLocaleString()}`,
+    `當前彩池:**${pool.toLocaleString()}** credits`,
+  ];
+  if (ann.jackpotRate) {
+    lines.push(
+      `頭獎預估:約 ${Math.floor(pool * ann.jackpotRate).toLocaleString()} credits`
+    );
+  }
+  lines.push(`開獎時間:<t:${drawAtUnix}:R>`);
+  lines.push("");
+  lines.push(`購票指令:${ann.buyHint}`);
+  return lines.join("\n");
+}
 
 /**
  * 檢查彩池有沒有跨過里程碑,跨了就廣播。
@@ -126,17 +114,17 @@ async function announcePoolMilestone(client, draw, milestone) {
     return;
   }
 
-  const templates = MILESTONE_TEMPLATES[draw.lotteryType] || [];
-  if (templates.length === 0) return;
-
-  const matched = templates.filter((t) => milestone >= t.threshold);
-  const tpl = matched.length > 0 ? matched[matched.length - 1] : templates[0];
-
   const drawAtUnix = Math.floor(new Date(draw.scheduledAt).getTime() / 1000);
-  const content = tpl.build(draw.pool, drawAtUnix);
+  const content = buildMilestoneContent(
+    draw.lotteryType,
+    milestone,
+    draw.pool,
+    drawAtUnix
+  );
+  if (!content) return;
 
   const container = new ContainerBuilder()
-    .setAccentColor(tpl.accentColor)
+    .setAccentColor(pickAccentColor(draw.lotteryType, milestone))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
 
   try {
