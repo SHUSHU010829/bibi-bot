@@ -43,6 +43,29 @@ function parseFishLocChangeId(customId) {
   return ownerId ? { ownerId } : null;
 }
 
+// 釣魚結果訊息上「🎣 再釣一次」按鈕。
+// customId 格式：fish_again_<ownerId>_<location>，帶 location 以延續同一釣場。
+const FISH_AGAIN_PREFIX = "fish_again_";
+
+function parseFishAgainId(customId) {
+  if (!customId || !customId.startsWith(FISH_AGAIN_PREFIX)) return null;
+  const rest = customId.slice(FISH_AGAIN_PREFIX.length);
+  const us = rest.indexOf("_");
+  if (us <= 0) return null;
+  const ownerId = rest.slice(0, us);
+  const location = rest.slice(us + 1);
+  if (!ownerId || !location) return null;
+  return { ownerId, location };
+}
+
+function fishAgainButton(ownerId, location) {
+  return new ButtonBuilder()
+    .setCustomId(`${FISH_AGAIN_PREFIX}${ownerId}_${location || "stream"}`)
+    .setLabel("再釣一次")
+    .setEmoji("🎣")
+    .setStyle(ButtonStyle.Primary);
+}
+
 function locationChoices() {
   return Object.entries(fishing?.locations || {}).map(([key, def]) => ({
     name: `${def.emoji} ${def.name}`,
@@ -348,6 +371,12 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
         );
       }
 
+      failContainer.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          fishAgainButton(interaction.user.id, location),
+        ),
+      );
+
       await interaction.editReply({
         components: [failContainer],
         flags: MessageFlags.IsComponentsV2,
@@ -431,6 +460,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
 
       lootContainer.addActionRowComponents(
         new ActionRowBuilder().addComponents(
+          fishAgainButton(interaction.user.id, location),
           new ButtonBuilder()
             .setCustomId(`fish_bag_${interaction.user.id}`)
             .setLabel("查看背包")
@@ -594,10 +624,11 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       );
     }
 
-    // 快捷操作按鈕：立刻賣掉 + 查看魚袋
+    // 快捷操作按鈕：再釣一次 + 立刻賣掉 + 查看魚袋
     const userId = interaction.user.id;
     container.addActionRowComponents(
       new ActionRowBuilder().addComponents(
+        fishAgainButton(userId, location),
         new ButtonBuilder()
           .setCustomId(`fish_sell_${userId}_${result.fish}`)
           .setLabel(`立刻賣掉（+${fishDef.price} 幣）`)
@@ -697,6 +728,8 @@ module.exports = {
   parseFishCdTicketId,
   FISH_LOC_CHANGE_PREFIX,
   parseFishLocChangeId,
+  FISH_AGAIN_PREFIX,
+  parseFishAgainId,
   buildCooldownView,
   executeFish,
 };

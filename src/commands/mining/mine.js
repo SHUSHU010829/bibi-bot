@@ -72,6 +72,39 @@ function parseMineCdTicketId(customId) {
   return { ownerId };
 }
 
+// 挖礦成功訊息上「⛏️ 再挖一次」按鈕。customId = mine_again_<ownerId>
+const MINE_AGAIN_PREFIX = "mine_again_";
+
+function parseMineAgainId(customId) {
+  if (!customId || !customId.startsWith(MINE_AGAIN_PREFIX)) return null;
+  const ownerId = customId.slice(MINE_AGAIN_PREFIX.length);
+  return ownerId ? { ownerId } : null;
+}
+
+// 挖礦成功訊息上「🎒 查看背包」按鈕。customId = mine_bag_<ownerId>
+const MINE_BAG_PREFIX = "mine_bag_";
+
+function parseMineBagId(customId) {
+  if (!customId || !customId.startsWith(MINE_BAG_PREFIX)) return null;
+  const ownerId = customId.slice(MINE_BAG_PREFIX.length);
+  return ownerId ? { ownerId } : null;
+}
+
+function mineAgainRow(ownerId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${MINE_AGAIN_PREFIX}${ownerId}`)
+      .setLabel("再挖一次")
+      .setEmoji("⛏️")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`${MINE_BAG_PREFIX}${ownerId}`)
+      .setLabel("查看背包")
+      .setEmoji("🎒")
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
 function pickaxeDurabilityLine(pickaxe, durability, maxDurability) {
   if (!pickaxe || pickaxe === "wood" || durability === null || durability === undefined) {
     return `🪓 **目前鎬子**\n${pickaxeLabel("wood")}（無耐久消耗）`;
@@ -439,6 +472,8 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
       );
     }
 
+    container.addActionRowComponents(mineAgainRow(interaction.user.id));
+
     await interaction.editReply({
       components: [container],
       flags: MessageFlags.IsComponentsV2,
@@ -577,5 +612,9 @@ module.exports = {
   MINE_OVERFLOW_CANCEL_PREFIX,
   MINE_CD_TICKET_PREFIX,
   parseMineCdTicketId,
+  MINE_AGAIN_PREFIX,
+  parseMineAgainId,
+  MINE_BAG_PREFIX,
+  parseMineBagId,
   buildCooldownView,
 };
