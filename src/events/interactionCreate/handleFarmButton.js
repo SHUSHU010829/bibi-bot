@@ -1252,7 +1252,10 @@ module.exports = async (client, interaction) => {
         result.won ? 0x2ecc71 : 0xe74c3c,
       );
 
-      const defendNote = buildDefendAnnouncement({ user: interaction.user, result });
+      const defendNote = buildDefendAnnouncement({
+        user: interaction.member?.displayName || interaction.user.username,
+        result,
+      });
       if (defendNote) {
         sendFarmAnnouncement(client, interaction.channel, defendNote).catch(() => {});
       }
@@ -1299,7 +1302,10 @@ module.exports = async (client, interaction) => {
         result.won ? 0x2ecc71 : 0xe74c3c,
       );
 
-      const trapNote = buildTrapAnnouncement({ user: interaction.user, result });
+      const trapNote = buildTrapAnnouncement({
+        user: interaction.member?.displayName || interaction.user.username,
+        result,
+      });
       if (trapNote) {
         sendFarmAnnouncement(client, interaction.channel, trapNote).catch(() => {});
       }

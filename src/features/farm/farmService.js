@@ -638,8 +638,10 @@ async function expandFarm(client, { userId, guildId, username, member }) {
 // 採每次開 /農場 時擲骰，rollChance% 機率觸發；同時涵蓋 growing 與 ready。
 function shouldTriggerRaid(plot, now = Date.now()) {
   if (!plot || plot.status === "empty" || !plot.crop) return false;
-  if (plot.status !== "growing" && plot.status !== "ready") return false;
   if (plot.raid?.active) return true;
+  // 已枯萎的作物不再被怪物攻擊（即使 DB status 尚未被 cron 對齊，也以即時推算為準）。
+  const live = resolveLiveStatus(plot, now);
+  if (live.status !== "growing" && live.status !== "ready") return false;
   const raidCfg = farming?.raid;
   if (!raidCfg) return false;
   const minElapsed = raidCfg.minElapsedMs ?? 30 * 60 * 1000;
