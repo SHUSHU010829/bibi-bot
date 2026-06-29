@@ -13,6 +13,7 @@ const {
 
 const { farming } = require("../../config");
 const farmService = require("../../features/farm/farmService");
+const { bagStatusLine } = require("../../features/mining/bagStatus");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const {
@@ -150,6 +151,14 @@ module.exports = {
         if (drop.kind === "fragment") lines.push(`✨ 額外掉落：傳說碎片 ×${drop.amount}`);
         if (drop.kind === "rare_bait") lines.push(`✨ 額外掉落：稀有魚餌 ×${drop.amount}`);
       }
+      const veggieBagWarn = bagStatusLine({
+        label: "菜籃",
+        used: result.veggieBagUsed,
+        cap: result.veggieBagCap,
+        enforced: farming.bagLimitEnforced,
+        sellHint: "到 `/背包` →「🌾 農場」賣菜",
+      });
+      if (veggieBagWarn) lines.push(veggieBagWarn);
 
       const container = new ContainerBuilder()
         .setAccentColor(0x2ecc71)

@@ -15,6 +15,7 @@ const {
 
 const { fishing, commandChannels, normalChannelId } = require("../../config");
 const fishService = require("../../features/fishing/fishService");
+const { bagStatusLine } = require("../../features/mining/bagStatus");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
 
@@ -661,6 +662,20 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
         new TextDisplayBuilder().setContent(
           `-# 💡 可烹飪成 ${matchedRecipe[1].emoji} ${matchedRecipe[1].name}（/烹飪）`
         )
+      );
+    }
+
+    // 魚袋快滿 / 超量提示（寬限期只提醒不擋）
+    const fishBagWarn = bagStatusLine({
+      label: "魚袋",
+      used: result.fishBagUsed,
+      cap: result.fishBagCap,
+      enforced: fishing.bagLimitEnforced,
+      sellHint: "點下方「立刻賣掉」或到 `/背包` 賣魚",
+    });
+    if (fishBagWarn) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(fishBagWarn)
       );
     }
 

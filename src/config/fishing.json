@@ -5,6 +5,7 @@
     "baseSuccessRate": 0.72,
     "successCap": 0.95,
     "fishBagBaseSlots": 100,
+    "bagLimitEnforced": false,
     "failCooldownMs": 1800000,
     "cdTicketReductionMs": 1800000,
     "cdTicketDailyUseLimit": 0,

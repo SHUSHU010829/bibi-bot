@@ -241,10 +241,11 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
   const baseCoins = randInt(lo, hi);
   const profileForBuff = await getOrCreate(client, userId, guildId);
 
-  // 菜籃容量檢查：滿了擋下收成，作物留在地塊，先賣菜再收
+  // 菜籃容量：寬限期（bagLimitEnforced=false）只在結果提醒、不擋；
+  // 開啟強制後菜籃滿了擋下收成（作物留在地塊，先賣菜再收）。
   const veggieCap = veggieBagCapacity(profileForBuff, farming);
   const veggieUsedNow = veggieBagUsed(profileForBuff);
-  if (veggieUsedNow >= veggieCap) {
+  if (farming.bagLimitEnforced && veggieUsedNow >= veggieCap) {
     return { ok: false, reason: "veggie_bag_full", used: veggieUsedNow, cap: veggieCap, crop: plot.crop };
   }
   const fertBonus = plot.yield_bonus_pct || 0;
@@ -351,6 +352,8 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
     worldYieldCountBonus,
     bonusDrops: bonusDropsResult,
     fertilizers: plot.fertilizers || [],
+    veggieBagCap: veggieCap,
+    veggieBagUsed: veggieUsedNow + harvestCount,
   };
 }
 

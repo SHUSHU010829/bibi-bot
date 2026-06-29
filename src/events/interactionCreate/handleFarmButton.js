@@ -35,6 +35,7 @@ const {
 
 const { farming } = require("../../config");
 const farmService = require("../../features/farm/farmService");
+const { bagStatusLine } = require("../../features/mining/bagStatus");
 const { buildFarmContainer } = require("../../features/farm/farmView");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
@@ -1125,7 +1126,13 @@ module.exports = async (client, interaction) => {
         ...bonusLines,
         bagFull
           ? `-# 🥬 菜籃中途滿了（${bagFull.used}/${bagFull.cap}），剩下的地塊還沒收，賣菜後再收一次`
-          : null,
+          : bagStatusLine({
+              label: "菜籃",
+              used: results[results.length - 1]?.veggieBagUsed,
+              cap: results[results.length - 1]?.veggieBagCap,
+              enforced: farming.bagLimitEnforced,
+              sellHint: "到 `/背包` →「🌾 農場」賣菜",
+            }) || null,
       ].filter(Boolean).join("\n");
       const c = buildSuccessContainer("🌟 一鍵收成完成", body, userId);
 
@@ -1195,6 +1202,13 @@ module.exports = async (client, interaction) => {
             : ""),
         `💰 收益 **+${result.coins} 幣** ${yieldText}`,
         bonusText || null,
+        bagStatusLine({
+          label: "菜籃",
+          used: result.veggieBagUsed,
+          cap: result.veggieBagCap,
+          enforced: farming.bagLimitEnforced,
+          sellHint: "到 `/背包` →「🌾 農場」賣菜",
+        }) || null,
       ].filter(Boolean).join("\n");
       const c = buildSuccessContainer("🌟 收成成功", body, interaction.user.id);
 

@@ -5,6 +5,7 @@
     "bigHarvestYieldBonusPct": 0.5,
     "maxPlots": 8,
     "veggieBagBaseSlots": 100,
+    "bagLimitEnforced": false,
     "plotTiers": [
       { "count": 2, "cost": 0 },
       { "count": 4, "cost": 3000 },
