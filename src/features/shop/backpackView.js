@@ -28,6 +28,7 @@ const { getPickaxeRepairCost, applyRepairDiscount } = require("../mining/mineSer
 const buildingService = require("../guild_club/buildingService");
 const dungeonService = require("../mining/dungeonService");
 const orePriceEngine = require("../market/orePriceEngine");
+const { getSellableItem, SELL_ITEM_OPEN_PREFIX } = require("./sellableItems");
 const foodBag = require("../fishing/foodBag");
 const foodBagView = require("../fishing/foodBagView");
 
@@ -646,6 +647,10 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         container.addTextDisplayComponents(
           new TextDisplayBuilder().setContent(hintLines.join("\n")),
         );
+        const sellable = getSellableItem("mining_whetstone_inferior");
+        const sellLabel = sellable && inferiorCount > 0
+          ? `🪙 賣出（+${(sellable.sellPrice * inferiorCount).toLocaleString()}）`
+          : "🪙 賣出";
         container.addActionRowComponents(
           new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -663,6 +668,11 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
               .setLabel("🛡️ 修盾")
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(!canShield),
+            new ButtonBuilder()
+              .setCustomId(`${SELL_ITEM_OPEN_PREFIX}${userId}_mining_whetstone_inferior`)
+              .setLabel(sellLabel)
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(!sellable || inferiorCount <= 0),
           ),
         );
       }

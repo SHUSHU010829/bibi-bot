@@ -53,7 +53,7 @@
       { "id": "mining_hp_potion_small", "category": "地下城道具", "type": "mining_hp_potion_small", "name": "生命藥水（小）", "description": "地下城面板 💊 補血按鈕使用，回 20 HP；HP ≤ 30% 時戰鬥中也會自動觸發（從最小瓶起用，避免浪費）。最多持有 99 瓶，每日最多購買 10 瓶", "price": 200, "payload": { "restore": 20, "qty": 1, "maxStack": 99, "dailyLimit": 10 } },
       { "id": "mining_hp_potion_medium", "category": "地下城道具", "type": "mining_hp_potion_medium", "name": "生命藥水（中）", "description": "地下城面板 💊 補血按鈕使用，回 50 HP。最多持有 99 瓶，每日最多購買 5 瓶", "price": 500, "payload": { "restore": 50, "qty": 1, "maxStack": 99, "dailyLimit": 5 } },
       { "id": "mining_hp_potion_large", "category": "地下城道具", "type": "mining_hp_potion_large", "name": "生命藥水（大）", "description": "地下城面板 💊 補血按鈕使用，立即補滿 HP。最多持有 99 瓶，每日最多購買 3 瓶", "price": 1500, "payload": { "restore": 9999, "qty": 1, "maxStack": 99, "dailyLimit": 3 } },
-      { "id": "mining_whetstone_inferior", "category": "挖礦道具", "type": "mining_whetstone_inferior", "name": "劣質磨石", "description": "通用磨石（劣質版）— 可修鎬子、武器、盾牌（玩家從 /背包 自選對哪一件使用）。將該裝備耐久補滿，但該裝備最大耐久 -10（最大耐久不足 20 時無法使用）。最多持有 20 個", "price": 250, "payload": { "qty": 1, "maxStack": 20 } },
+      { "id": "mining_whetstone_inferior", "category": "挖礦道具", "type": "mining_whetstone_inferior", "name": "劣質磨石", "description": "通用磨石（劣質版）— 可修鎬子、武器、盾牌（玩家從 /背包 自選對哪一件使用）。將該裝備耐久補滿，但該裝備最大耐久 -10（最大耐久不足 20 時無法使用）。最多持有 20 個", "price": 250, "sellPrice": 125, "payload": { "qty": 1, "maxStack": 20 } },
 
       { "id": "fishing_rod_carbon", "category": "釣魚道具", "type": "fishing_rod", "name": "碳纖釣竿", "description": "釣魚成功率 +12%、稀有度提升、冷卻 -30 分，耐久 50 次。已持有同級或更好的釣竿時無法購買；更高階釣竿請用 /合成 打造", "price": 3000, "payload": { "rodId": "carbon" } },
 
