@@ -334,14 +334,10 @@ async function buildDashboard(client, container, { userId, guildId, member, tota
       const unit = typeof priceMap[key] === "number" ? priceMap[key] : def.price || 0;
       value += qty * unit;
     }
-    const now = Date.now();
-    const cd = (profile.mine_cooldown_at || 0) > now
-      ? `<t:${Math.floor(profile.mine_cooldown_at / 1000)}:R> 可挖`
-      : "✅ 可挖";
     sum.push(
       kinds > 0
-        ? `⛏️ **礦石**：${kinds} 種・值 ${value.toLocaleString()} ${COIN_EMOJI}・${cd}`
-        : `⛏️ **礦石**：空・${cd}`
+        ? `⛏️ **礦石**：${kinds} 種・值 ${value.toLocaleString()} ${COIN_EMOJI}`
+        : `⛏️ **礦石**：空`
     );
   }
 
@@ -358,16 +354,10 @@ async function buildDashboard(client, container, { userId, guildId, member, tota
       const unit = typeof priceMap[key] === "number" ? priceMap[key] : def.price || 0;
       value += qty * unit;
     }
-    const rodKey = profile.fishing_rod || "bamboo";
-    const rodDef = (fishing.rods || {})[rodKey] || (fishing.rods || {}).bamboo || {};
-    const now = Date.now();
-    const cd = (profile.fish_cooldown_at || 0) > now
-      ? `<t:${Math.floor(profile.fish_cooldown_at / 1000)}:R> 可釣`
-      : "✅ 可釣";
     sum.push(
       kinds > 0
-        ? `🎣 **釣魚**：${rodDef.emoji || "🎣"} ${rodDef.name || "竹釣竿"}・魚袋值 ${value.toLocaleString()} ${COIN_EMOJI}・${cd}`
-        : `🎣 **釣魚**：${rodDef.emoji || "🎣"} ${rodDef.name || "竹釣竿"}・魚袋空・${cd}`
+        ? `🎣 **釣魚**：${kinds} 種・魚袋值 ${value.toLocaleString()} ${COIN_EMOJI}`
+        : `🎣 **釣魚**：魚袋空`
     );
   }
 
