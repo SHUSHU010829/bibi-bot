@@ -49,10 +49,10 @@ function capacityBar(used, cap, width = 12) {
   return { bar, pct, mark };
 }
 
-// 單一袋子的兩行容量顯示（標題行 + 進度條）。
+// 單一袋子的容量顯示：用量 / 上限（百分比）+ 號誌；有 % 就不再畫進度條。
 function bagLine(emoji, name, used, cap) {
-  const { bar, pct, mark } = capacityBar(used, cap);
-  return `${emoji} **${name}**　${used} / ${cap}（${pct}%）${mark}\n${bar}`;
+  const { pct, mark } = capacityBar(used, cap);
+  return `${emoji} **${name}**　${used} / ${cap}（${pct}%）${mark}`;
 }
 
 // 食物倉庫最快到期時間（ms epoch），用於背包總覽提示；無新鮮食物回 null。
