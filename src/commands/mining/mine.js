@@ -81,6 +81,15 @@ function parseMineAgainId(customId) {
   return ownerId ? { ownerId } : null;
 }
 
+// 挖礦成功訊息上「🎒 查看背包」按鈕。customId = mine_bag_<ownerId>
+const MINE_BAG_PREFIX = "mine_bag_";
+
+function parseMineBagId(customId) {
+  if (!customId || !customId.startsWith(MINE_BAG_PREFIX)) return null;
+  const ownerId = customId.slice(MINE_BAG_PREFIX.length);
+  return ownerId ? { ownerId } : null;
+}
+
 function mineAgainRow(ownerId) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -88,6 +97,11 @@ function mineAgainRow(ownerId) {
       .setLabel("再挖一次")
       .setEmoji("⛏️")
       .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`${MINE_BAG_PREFIX}${ownerId}`)
+      .setLabel("查看背包")
+      .setEmoji("🎒")
+      .setStyle(ButtonStyle.Secondary),
   );
 }
 
@@ -600,5 +614,7 @@ module.exports = {
   parseMineCdTicketId,
   MINE_AGAIN_PREFIX,
   parseMineAgainId,
+  MINE_BAG_PREFIX,
+  parseMineBagId,
   buildCooldownView,
 };
