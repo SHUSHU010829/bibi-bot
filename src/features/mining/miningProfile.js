@@ -1,5 +1,5 @@
 // 集中管理 MiningProfiles 的預設欄位與讀取，避免 schema 預設散落各處。
-const { mining, fishing, dungeon } = require("../../config");
+const { mining, fishing, farming, dungeon } = require("../../config");
 
 function defaultProfile(userId, guildId) {
   return {
@@ -231,6 +231,29 @@ function backpackUsed(profile) {
   return ORE_KEYS.reduce((sum, k) => sum + (bp[k] || 0), 0);
 }
 
+// 魚袋容量（基礎 + 擴充）。只計魚，非魚漁獲不入袋故不占容量。
+// 擴充共用 backpack_bonus_slots：「背包擴充」道具一次同步擴三袋，故三袋加成永遠相等。
+const FISH_KEYS = ["small_fish", "crucian", "shark", "octopus", "lava_fish"];
+function fishBagCapacity(profile, fishingCfg = fishing) {
+  const base = fishingCfg?.fishBagBaseSlots ?? 100;
+  return base + (profile?.backpack_bonus_slots || 0);
+}
+function fishBagUsed(profile) {
+  const bag = profile?.fish_bag || {};
+  return FISH_KEYS.reduce((sum, k) => sum + (bag[k] || 0), 0);
+}
+
+// 菜籃容量（基礎 + 擴充）。只計收成作物，種子與肥料不占容量。共用 backpack_bonus_slots（同上）。
+const VEGGIE_KEYS = ["carrot", "corn", "strawberry", "black_rose"];
+function veggieBagCapacity(profile, farmingCfg = farming) {
+  const base = farmingCfg?.veggieBagBaseSlots ?? 100;
+  return base + (profile?.backpack_bonus_slots || 0);
+}
+function veggieBagUsed(profile) {
+  const bag = profile?.veggie_bag || {};
+  return VEGGIE_KEYS.reduce((sum, k) => sum + (bag[k] || 0), 0);
+}
+
 module.exports = {
   defaultProfile,
   normalize,
@@ -238,4 +261,10 @@ module.exports = {
   backpackCapacity,
   backpackUsed,
   ORE_KEYS,
+  fishBagCapacity,
+  fishBagUsed,
+  FISH_KEYS,
+  veggieBagCapacity,
+  veggieBagUsed,
+  VEGGIE_KEYS,
 };

@@ -9,11 +9,15 @@ const {
   ButtonStyle,
   MessageFlags,
 } = require("discord.js");
-const { mining, shop, fishing, farming, dungeon } = require("../../config");
+const { mining, shop, fishing, farming, dungeon, craft } = require("../../config");
 const {
   getOrCreate,
   backpackCapacity,
   backpackUsed,
+  fishBagCapacity,
+  fishBagUsed,
+  veggieBagCapacity,
+  veggieBagUsed,
 } = require("../mining/miningProfile");
 const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 const {
@@ -24,6 +28,8 @@ const { getPickaxeRepairCost, applyRepairDiscount } = require("../mining/mineSer
 const buildingService = require("../guild_club/buildingService");
 const dungeonService = require("../mining/dungeonService");
 const orePriceEngine = require("../market/orePriceEngine");
+const foodBag = require("../fishing/foodBag");
+const foodBagView = require("../fishing/foodBagView");
 
 function trendLabel(price, base) {
   if (!base) return "";
@@ -41,6 +47,26 @@ function capacityBar(used, cap, width = 12) {
   if (pct >= 90) mark = "🔴";
   else if (pct >= 70) mark = "🟡";
   return { bar, pct, mark };
+}
+
+// 單一袋子的兩行容量顯示（標題行 + 進度條）。
+function bagLine(emoji, name, used, cap) {
+  const { bar, pct, mark } = capacityBar(used, cap);
+  return `${emoji} **${name}**　${used} / ${cap}（${pct}%）${mark}\n${bar}`;
+}
+
+// 食物倉庫最快到期時間（ms epoch），用於背包總覽提示；無新鮮食物回 null。
+function soonestFoodExpiry(profile, now = Date.now()) {
+  const fresh = foodBag.listFresh(profile, now);
+  if (fresh.length === 0) return null;
+  const cfg = fishing?.foodStorage || {};
+  let soonest = Infinity;
+  for (const it of fresh) {
+    const m = it.useCoal ? cfg.coalMultiplier || 1.5 : 1;
+    const expireAt = (it.cookedAt || 0) + (cfg.zeroAtMs || 0) * m;
+    if (expireAt < soonest) soonest = expireAt;
+  }
+  return Number.isFinite(soonest) ? soonest : null;
 }
 
 // 劣質磨石「使用」按鈕：mining_use_whetstone_inferior_<ownerId>（修鎬）
@@ -245,13 +271,165 @@ const BACKPACK_CATEGORIES = [
   { value: "mine",    label: "🪓 挖礦道具" },
   { value: "fish",    label: "🎣 釣魚" },
   { value: "farm",    label: "🌾 農場" },
+  { value: "food",    label: "🍱 食物" },
   { value: "dungeon", label: "⚔️ 地下城" },
   { value: "shop",    label: "🛍️ 商店道具" },
 ];
 
-// 統一背包：礦石 / 挖礦道具 / 釣魚 / 農場 / 商店合在同一張卡片。
+// 「全部」總覽 = 乾淨儀表板：金幣 + 三袋容量條 + 各區一行摘要。
+// 詳情與操作按鈕都收進各分類頁，避免這頁變成一面牆。
+async function buildDashboard(client, container, { userId, guildId, member, totalCoins, profile }) {
+  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `💰 **金幣**：${totalCoins.toLocaleString()} ${MONEY_EMOJI}`
+    )
+  );
+
+  // ── 三袋容量（一次擴充三袋共用同一加成）──
+  if (profile) {
+    const capLines = ["### 📦 背包容量"];
+    const nearFull = [];
+    if (mining?.enabled) {
+      const used = backpackUsed(profile);
+      const cap = backpackCapacity(profile, mining);
+      capLines.push(bagLine("⛏️", "礦石袋", used, cap));
+      if (cap > 0 && used / cap >= 0.9) nearFull.push("礦石袋");
+    }
+    if (fishing?.enabled) {
+      const used = fishBagUsed(profile);
+      const cap = fishBagCapacity(profile, fishing);
+      capLines.push(bagLine("🎣", "魚袋", used, cap));
+      if (cap > 0 && used / cap >= 0.9) nearFull.push("魚袋");
+    }
+    if (farming?.enabled) {
+      const used = veggieBagUsed(profile);
+      const cap = veggieBagCapacity(profile, farming);
+      capLines.push(bagLine("🥬", "菜籃", used, cap));
+      if (cap > 0 && used / cap >= 0.9) nearFull.push("菜籃");
+    }
+    if (nearFull.length > 0) {
+      capLines.push(
+        `-# 🔴 ${nearFull.join("、")} 快滿了！記得 \`/賣出\` 換金幣，或到 \`/商店\` 買背包擴充（一次擴三袋）`
+      );
+    }
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(capLines.join("\n"))
+    );
+  }
+
+  // ── 各區一行摘要 ──
+  const sum = ["### 📋 總覽"];
+
+  if (mining?.enabled && profile) {
+    const oreMarket = await orePriceEngine.getDailyPrices(client).catch(() => ({ prices: {} }));
+    const priceMap = oreMarket?.prices || {};
+    let value = 0;
+    let kinds = 0;
+    for (const [key, def] of Object.entries(mining.ores)) {
+      const qty = profile.backpack?.[key] || 0;
+      if (qty <= 0) continue;
+      kinds++;
+      const unit = typeof priceMap[key] === "number" ? priceMap[key] : def.price || 0;
+      value += qty * unit;
+    }
+    const now = Date.now();
+    const cd = (profile.mine_cooldown_at || 0) > now
+      ? `<t:${Math.floor(profile.mine_cooldown_at / 1000)}:R> 可挖`
+      : "✅ 可挖";
+    sum.push(
+      kinds > 0
+        ? `⛏️ **礦石**：${kinds} 種・值 ${value.toLocaleString()} ${COIN_EMOJI}・${cd}`
+        : `⛏️ **礦石**：空・${cd}`
+    );
+  }
+
+  if (fishing?.enabled && profile) {
+    const fishMarket = await orePriceEngine.getDailyFishPrices(client).catch(() => ({ prices: {} }));
+    const priceMap = fishMarket?.prices || {};
+    const bag = profile.fish_bag || {};
+    let value = 0;
+    let kinds = 0;
+    for (const [key, def] of Object.entries(fishing.fish || {})) {
+      const qty = bag[key] || 0;
+      if (qty <= 0) continue;
+      kinds++;
+      const unit = typeof priceMap[key] === "number" ? priceMap[key] : def.price || 0;
+      value += qty * unit;
+    }
+    const rodKey = profile.fishing_rod || "bamboo";
+    const rodDef = (fishing.rods || {})[rodKey] || (fishing.rods || {}).bamboo || {};
+    const now = Date.now();
+    const cd = (profile.fish_cooldown_at || 0) > now
+      ? `<t:${Math.floor(profile.fish_cooldown_at / 1000)}:R> 可釣`
+      : "✅ 可釣";
+    sum.push(
+      kinds > 0
+        ? `🎣 **釣魚**：${rodDef.emoji || "🎣"} ${rodDef.name || "竹釣竿"}・魚袋值 ${value.toLocaleString()} ${COIN_EMOJI}・${cd}`
+        : `🎣 **釣魚**：${rodDef.emoji || "🎣"} ${rodDef.name || "竹釣竿"}・魚袋空・${cd}`
+    );
+  }
+
+  if (farming?.enabled && profile) {
+    const cropMarket = await orePriceEngine.getDailyCropPrices(client).catch(() => ({ prices: {} }));
+    const bag = profile.veggie_bag || {};
+    let value = 0;
+    let kinds = 0;
+    for (const [key] of Object.entries(farming.crops || {})) {
+      const qty = bag[key] || 0;
+      if (qty <= 0) continue;
+      kinds++;
+      const dyn = cropMarket.prices?.[key];
+      const unit = typeof dyn === "number" ? dyn : orePriceEngine.cropBasePrice(key);
+      value += qty * unit;
+    }
+    const plotCount = Math.max(1, Math.min(profile.farm_plot_count || 2, farming.maxPlots || 8));
+    sum.push(
+      kinds > 0
+        ? `🌾 **農場**：地塊 ${plotCount}/${farming.maxPlots || 8}・菜籃值 ${value.toLocaleString()} ${COIN_EMOJI}`
+        : `🌾 **農場**：地塊 ${plotCount}/${farming.maxPlots || 8}・菜籃空`
+    );
+  }
+
+  if (fishing?.enabled && profile) {
+    const fresh = foodBag.listFresh(profile);
+    if (fresh.length > 0) {
+      const expiry = soonestFoodExpiry(profile);
+      const expTxt = expiry ? `・最快 <t:${Math.floor(expiry / 1000)}:R> 到期` : "";
+      sum.push(`🍱 **食物**：${fresh.length} 份${expTxt}`);
+    } else {
+      sum.push(`🍱 **食物**：空`);
+    }
+  }
+
+  if (dungeon?.enabled && profile) {
+    const status = await dungeonService
+      .getDungeonStatus(client, { userId, guildId, member })
+      .catch(() => null);
+    if (status) {
+      sum.push(
+        `⚔️ **地下城**：HP ${status.hp}/${status.hpMax}・體力 ${status.stamina}/${status.staminaMax}`
+      );
+    }
+  }
+
+  if (shop?.enabled && client.userInventoryCollection) {
+    const count = await client.userInventoryCollection
+      .countDocuments({ userId, guildId, expired: { $ne: true } })
+      .catch(() => 0);
+    sum.push(count > 0 ? `🛍️ **商店道具**：${count} 項` : `🛍️ **商店道具**：無`);
+  }
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(sum.join("\n"))
+  );
+}
+
+// 統一背包：礦石 / 挖礦道具 / 釣魚 / 農場 / 食物 / 地下城 / 商店。
+// 「全部」是乾淨儀表板（buildDashboard），其餘分類各自展開詳情與操作按鈕。
 // 加成（身分組 / 食物 buff / 商店 buff）已移至 /狀態 指令，本頁不再重複顯示。
-// category: "all" | "ore" | "mine" | "fish" | "farm" | "shop"（預設 "all"）
 async function buildBackpackView(client, { userId, guildId, member, displayName, category = "all" }) {
   const container = new ContainerBuilder().setAccentColor(0x9b59b6);
 
@@ -274,7 +452,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     )
   );
 
-  // ── 頂部狀態列：金幣 + 礦石袋容量（顯眼進度條）──────────────
+  // ── 金幣 + 共用 profile（三袋容量、挖礦/釣魚/農場道具都掛在這）──
   let totalCoins = 0;
   if (client.userCoinsCollection) {
     const coinDoc = await client.userCoinsCollection.findOne(
@@ -285,34 +463,63 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
   }
 
   let miningProfile = null;
-  let cap = 0;
-  let used = 0;
-  if (mining?.enabled && client.miningProfilesCollection) {
+  if (
+    client.miningProfilesCollection &&
+    (mining?.enabled || fishing?.enabled || farming?.enabled)
+  ) {
     miningProfile = await getOrCreate(client, userId, guildId);
-    cap = backpackCapacity(miningProfile, mining);
-    used = backpackUsed(miningProfile);
   }
 
-  container.addSeparatorComponents(new SeparatorBuilder());
-  const headerLines = [
-    `💰 **金幣**：${totalCoins.toLocaleString()} ${MONEY_EMOJI}`,
-  ];
-  if (mining?.enabled) {
-    const { bar, pct, mark } = capacityBar(used, cap);
-    headerLines.push(
-      `📦 **礦石袋**：**${used} / ${cap}** 格（${pct}%） ${mark}`,
-      `${bar}`
+  const equipRows = [];
+
+  // ════════════════ 全部：乾淨儀表板 ════════════════
+  if (category === "all") {
+    await buildDashboard(client, container, {
+      userId,
+      guildId,
+      member,
+      totalCoins,
+      profile: miningProfile,
+    });
+
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 上方下拉切換分類看詳情與操作｜想看加成 / Buff 請用 `/狀態`｜`/賣出` 換金幣・`/烹飪` 製作 buff・`/商店` 逛逛"
+      )
     );
-    if (pct >= 90) {
-      headerLines.push("-# 🔴 快滿了！記得用 `/賣出` 換金幣，或拓寬背包容量");
-    }
+    return {
+      components: [container],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    };
   }
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(headerLines.join("\n"))
-  );
 
-  // ── 挖礦區 ──
-  if ((category === "all" || category === "ore" || category === "mine") && miningProfile) {
+  // ════════════════ 分類詳情：頂部金幣 + 該分類容量 ════════════════
+  container.addSeparatorComponents(new SeparatorBuilder());
+  {
+    const headLines = [`💰 **金幣**：${totalCoins.toLocaleString()} ${MONEY_EMOJI}`];
+    if (miningProfile) {
+      if ((category === "ore" || category === "mine") && mining?.enabled) {
+        headLines.push(
+          bagLine("⛏️", "礦石袋", backpackUsed(miningProfile), backpackCapacity(miningProfile, mining))
+        );
+      } else if (category === "fish" && fishing?.enabled) {
+        headLines.push(
+          bagLine("🎣", "魚袋", fishBagUsed(miningProfile), fishBagCapacity(miningProfile, fishing))
+        );
+      } else if (category === "farm" && farming?.enabled) {
+        headLines.push(
+          bagLine("🥬", "菜籃", veggieBagUsed(miningProfile), veggieBagCapacity(miningProfile, farming))
+        );
+      }
+    }
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(headLines.join("\n"))
+    );
+  }
+
+  // ── 挖礦區（礦石 / 挖礦道具）──
+  if ((category === "ore" || category === "mine") && miningProfile) {
     const profile = miningProfile;
 
     const oreMarket = await orePriceEngine.getDailyPrices(client).catch(() => ({ prices: {} }));
@@ -348,21 +555,15 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     const luckUses = profile.luck_potion_uses || 0;
     const ticketCount = profile.cd_ticket_count || 0;
     const inferiorCount = profile.whetstone_inferior_count || 0;
-    const staminaPotionCount = profile.stamina_potion_count || 0;
     const fragments = profile.legendary_fragments || 0;
     const stoneShards = profile.backpack?.stone_shard || 0;
     const netFrags = profile.broken_net_fragments || 0;
     const netUses = profile.fishing_net_uses || 0;
     const trapFrags = profile.broken_trap_fragments || 0;
-    const trapUses = profile.advanced_trap_uses || 0;
     const mapFrags = profile.treasure_map_fragments || 0;
     const treasureMaps = profile.treasure_maps || 0;
     const repairTools = profile.repair_tools || {};
     const reductionMin = Math.round((mining?.cdTicketReductionMs || 0) / 60000);
-    const staminaPotionItem = (shop?.items || []).find(
-      (it) => it.type === "mining_stamina_potion"
-    );
-    const staminaPotionRestore = staminaPotionItem?.payload?.restore || 5;
 
     const repairDiscountPct =
       (await buildingService
@@ -402,62 +603,9 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
             : "### ⛏️ 礦石\n-# 背包裡還沒有礦石，快去 `/挖礦` 吧！"
         )
       );
-    } else if (category === "all") {
-      container.addSeparatorComponents(new SeparatorBuilder());
-      const compact = [];
-      for (const [key, def] of Object.entries(mining.ores)) {
-        const qty = profile.backpack?.[key] || 0;
-        if (qty <= 0) continue;
-        compact.push(`${def.emoji || "⛏️"} ${def.name}×${qty}`);
-      }
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          compact.length > 0
-            ? `### ⛏️ 礦石（值 ${totalValue.toLocaleString()} ${COIN_EMOJI}）\n${compact.join("・")}`
-            : "### ⛏️ 礦石\n-# 背包裡還沒有礦石，快去 `/挖礦` 吧！"
-        )
-      );
     }
 
-    // ── 挖礦狀態 + 道具（all 分類合併壓縮）──
-    if (category === "all") {
-      container.addSeparatorComponents(new SeparatorBuilder());
-      const toolItems = [
-        { emoji: "🍀", name: "幸運藥水", qty: luckUses },
-        { emoji: "🎫", name: "CD 縮短券", qty: ticketCount },
-        { emoji: "🪨", name: "劣質磨石", qty: inferiorCount },
-        { emoji: "🧪", name: "體力藥水", qty: staminaPotionCount },
-        { emoji: "✨", name: "傳說素材碎片", qty: fragments },
-        { emoji: "<:crack_stone:1516055109199597708>", name: "碎石", qty: stoneShards },
-        { emoji: "🪡", name: "漁網碎片", qty: netFrags },
-        { emoji: "🪛", name: "陷阱碎片", qty: trapFrags },
-        { emoji: "📜", name: "藏寶圖碎片", qty: mapFrags },
-        { emoji: "🗺️", name: "藏寶圖", qty: treasureMaps },
-      ];
-      const hasTools = toolItems.filter((t) => t.qty > 0);
-      const noTools = toolItems.filter((t) => t.qty === 0);
-      const lines = [
-        `### 🪓 挖礦`,
-        `⛏️ 鎬子：${pdef.emoji || "⛏️"} ${pdef.name}（${durabilityText}）　⏳ ${cdText}`,
-      ];
-      if (hasTools.length > 0) {
-        lines.push(`🎁 道具：${hasTools.map((t) => `${t.emoji} ${t.name}×${t.qty}`).join("・")}`);
-      }
-      if (noTools.length > 0) {
-        lines.push(`-# 尚無：${noTools.map((t) => `${t.emoji} ${t.name}`).join("・")}`);
-      }
-      const buffLines = [];
-      if (netUses > 0) buffLines.push(`🕸️ 撈網剩 ${netUses} 次`);
-      // 高級陷阱保護移到農場區塊顯示（自動抵擋農場 raid）
-      if (buffLines.length > 0) {
-        lines.push(`-# 生效中：${buffLines.join("・")}`);
-      }
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(lines.join("\n"))
-      );
-    }
-
-    // ── 挖礦道具（互動分類）──
+    // ── 挖礦道具 ──
     if (category === "mine") {
       container.addSeparatorComponents(new SeparatorBuilder());
       const oreInvLines = [];
@@ -556,6 +704,23 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
             )
         );
       }
+
+      // 維修工具（消耗品，到 /工坊 對鎬子使用）
+      const repairToolDefs = craft?.repairTools || {};
+      const ownedRepairTools = Object.entries(repairToolDefs).filter(
+        ([tier]) => (repairTools[tier] || 0) > 0
+      );
+      if (ownedRepairTools.length > 0) {
+        const rtLine = ownedRepairTools
+          .map(([tier, def]) => `${def.emoji || "🔧"} ${def.name}×${repairTools[tier]}`)
+          .join("・");
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `🛠️ **維修工具**：${rtLine}\n-# 到 \`/工坊\` 對鎬子使用，依階級補耐久`
+          )
+        );
+      }
+
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `✨ **傳說素材碎片** ×${fragments}\n-# 合成傳說裝備材料`
@@ -622,9 +787,9 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
   }
 
   // ── 釣魚區 ──
-  if ((category === "all" || category === "fish") && fishing?.enabled && client.miningProfilesCollection) {
+  if (category === "fish" && fishing?.enabled && client.miningProfilesCollection) {
     const fishProfile = miningProfile || await getOrCreate(client, userId, guildId);
-    const fishBag = fishProfile.fish_bag || {};
+    const fishBagData = fishProfile.fish_bag || {};
     const fishCdAt = fishProfile.fish_cooldown_at || 0;
     const now = Date.now();
     const fishCdText = fishCdAt > now
@@ -645,86 +810,62 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
 
     const fishMarket = await orePriceEngine.getDailyFishPrices(client).catch(() => ({ prices: {} }));
     const fishPriceMap = fishMarket?.prices || {};
-    const hasFish = Object.entries(fishing.fish || {}).some(([k]) => (fishBag[k] || 0) > 0);
+    const hasFish = Object.entries(fishing.fish || {}).some(([k]) => (fishBagData[k] || 0) > 0);
 
-    if (category === "all") {
-      let bagTotalValue = 0;
-      const fishCompact = [];
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### 🎣 釣魚\n${rodLine}\n⏳ 釣魚冷卻：${fishCdText}`
+      )
+    );
+
+    if (hasFish) {
       for (const [key, def] of Object.entries(fishing.fish || {})) {
-        const qty = fishBag[key] || 0;
+        const qty = fishBagData[key] || 0;
         if (qty <= 0) continue;
-        const unit = typeof fishPriceMap[key] === "number" ? fishPriceMap[key] : (def.price || 0);
-        bagTotalValue += qty * unit;
-        fishCompact.push(`${def.emoji} ${def.name}×${qty}`);
+        const base = def.price || 0;
+        const unit = typeof fishPriceMap[key] === "number" ? fishPriceMap[key] : base;
+        const total = qty * unit;
+        const matchedRecipe = Object.entries(fishing.recipes || {}).find(
+          ([, r]) => r.materials?.[key] !== undefined
+        );
+        const recipeHint = matchedRecipe ? `・可烹飪成 ${matchedRecipe[1].emoji} ${matchedRecipe[1].name}` : "";
+        container.addSectionComponents(
+          new SectionBuilder()
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                `${def.emoji} **${def.name}**（${def.rarity}）×${qty}・@${unit.toLocaleString()}${trendLabel(unit, base)}${recipeHint}`
+              )
+            )
+            .setButtonAccessory(
+              new ButtonBuilder()
+                .setCustomId(`fish_sell_${userId}_${key}`)
+                .setLabel(`賣全部 +${total.toLocaleString()}`)
+                .setStyle(ButtonStyle.Secondary)
+            )
+        );
       }
-      const lines = [
-        `### 🎣 釣魚`,
-        `${rodLine}　⏳ ${fishCdText}`,
-      ];
-      if (fishCompact.length > 0) {
-        lines.push(`🐟 魚袋（值 ${bagTotalValue.toLocaleString()} ${COIN_EMOJI}）：${fishCompact.join("・")}`);
-      } else {
-        lines.push(`-# 魚袋空空，去 \`/釣魚\` 吧！`);
-      }
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(lines.join("\n"))
-      );
     } else {
       container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `### 🎣 釣魚\n${rodLine}\n⏳ 釣魚冷卻：${fishCdText}`
-        )
-      );
-
-      if (hasFish) {
-        for (const [key, def] of Object.entries(fishing.fish || {})) {
-          const qty = fishBag[key] || 0;
-          if (qty <= 0) continue;
-          const base = def.price || 0;
-          const unit = typeof fishPriceMap[key] === "number" ? fishPriceMap[key] : base;
-          const total = qty * unit;
-          const matchedRecipe = Object.entries(fishing.recipes || {}).find(
-            ([, r]) => r.materials?.[key] !== undefined
-          );
-          const recipeHint = matchedRecipe ? `・可烹飪成 ${matchedRecipe[1].emoji} ${matchedRecipe[1].name}` : "";
-          container.addSectionComponents(
-            new SectionBuilder()
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                  `${def.emoji} **${def.name}**（${def.rarity}）×${qty}・@${unit.toLocaleString()}${trendLabel(unit, base)}${recipeHint}`
-                )
-              )
-              .setButtonAccessory(
-                new ButtonBuilder()
-                  .setCustomId(`fish_sell_${userId}_${key}`)
-                  .setLabel(`賣全部 +${total.toLocaleString()}`)
-                  .setStyle(ButtonStyle.Secondary)
-              )
-          );
-        }
-      } else {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("-# 魚袋空空，快去 `/釣魚` 吧！")
-        );
-      }
-
-      const emptyFish = Object.entries(fishing.fish || {})
-        .filter(([k]) => (fishBag[k] || 0) === 0)
-        .map(([, def]) => def.name)
-        .join("・");
-      if (emptyFish) {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`-# 尚無：${emptyFish}`)
-        );
-      }
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("-# 依今日行情計價，每日 00:00 變動")
+        new TextDisplayBuilder().setContent("-# 魚袋空空，快去 `/釣魚` 吧！")
       );
     }
+
+    const emptyFish = Object.entries(fishing.fish || {})
+      .filter(([k]) => (fishBagData[k] || 0) === 0)
+      .map(([, def]) => def.name)
+      .join("・");
+    if (emptyFish) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`-# 尚無：${emptyFish}`)
+      );
+    }
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# 依今日行情計價，每日 00:00 變動")
+    );
   }
 
   // ── 農場區 ──
-  if ((category === "all" || category === "farm") && farming?.enabled && client.miningProfilesCollection) {
+  if (category === "farm" && farming?.enabled && client.miningProfilesCollection) {
     const farmProfile = miningProfile || await getOrCreate(client, userId, guildId);
     const veggieBag = farmProfile.veggie_bag || {};
     const seedBag = farmProfile.seed_bag || {};
@@ -739,225 +880,228 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
 
     container.addSeparatorComponents(new SeparatorBuilder());
 
-    if (category === "farm") {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `### 🌾 農場\n地塊：**${plotCount} / ${farming.maxPlots || 8}** 格・累計收成 ${farmProfile.farm_harvest_total || 0} 次`,
-        ),
-      );
-      const veggieEntries = Object.entries(farming.crops || {})
-        .filter(([k]) => (veggieBag[k] || 0) > 0);
-      if (veggieEntries.length > 0) {
-        for (const [key, def] of veggieEntries) {
-          const qty = veggieBag[key] || 0;
-          const price = cropPriceOf(key);
-          const total = qty * price;
-          container.addSectionComponents(
-            new SectionBuilder()
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                  `${def.emoji} **${def.name}** ×${qty}・單價 ${price} ${COIN_EMOJI}`,
-                ),
-              )
-              .setButtonAccessory(
-                new ButtonBuilder()
-                  .setCustomId(`farm_sell_${userId}_${key}`)
-                  .setLabel(`賣全部 +${total.toLocaleString()}`)
-                  .setStyle(ButtonStyle.Secondary),
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### 🌾 農場\n地塊：**${plotCount} / ${farming.maxPlots || 8}** 格・累計收成 ${farmProfile.farm_harvest_total || 0} 次`,
+      ),
+    );
+    const veggieEntries = Object.entries(farming.crops || {})
+      .filter(([k]) => (veggieBag[k] || 0) > 0);
+    if (veggieEntries.length > 0) {
+      for (const [key, def] of veggieEntries) {
+        const qty = veggieBag[key] || 0;
+        const price = cropPriceOf(key);
+        const total = qty * price;
+        container.addSectionComponents(
+          new SectionBuilder()
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                `${def.emoji} **${def.name}** ×${qty}・單價 ${price} ${COIN_EMOJI}`,
               ),
-          );
-        }
-      } else {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("-# 菜籃空空，去 `/農場` 種點蔬菜吧！"),
-        );
-      }
-
-      const seedEntries = Object.entries(seedBag).filter(([, v]) => v > 0);
-      if (seedEntries.length > 0) {
-        const seedLines = seedEntries.map(([k, v]) => {
-          const cropKey = k.replace(/^seed_/, "");
-          const cropDef = farming.crops?.[cropKey] || {};
-          return `${cropDef.emoji || "🌱"} ${cropDef.name || k} 種子 ×${v}`;
-        }).join("・");
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`**🌱 種子**　${seedLines}`),
-        );
-      }
-
-      const fertItems = [
-        { key: "compost", emoji: "🍂", name: "廚餘堆肥" },
-        { key: "monster_slime", emoji: "💧", name: "怪物黏液" },
-        { key: "moonlight_dew", emoji: "🌟", name: "月光露水" },
-      ];
-      const fertLines = fertItems
-        .filter((f) => (bp[f.key] || 0) > 0)
-        .map((f) => `${f.emoji} ${f.name} ×${bp[f.key]}`);
-      if (fertLines.length > 0) {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `**💧 肥料**　${fertLines.join("・")}\n-# 到 /農場 點「施肥」加速作物成長`,
-          ),
-        );
-      }
-      if (farmProfile.rare_bait > 0) {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `**🎏 稀有魚餌** ×${farmProfile.rare_bait}\n-# 黑玫瑰收成額外掉落物`,
-          ),
-        );
-      }
-      // 高級陷阱保護中（自動抵擋農場 raid，與農場 raid 系統強相關，放這裡）
-      const farmTrapUses = farmProfile.advanced_trap_uses || 0;
-      if (farmTrapUses > 0) {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `🪤 **高級陷阱保護中**：剩 ${farmTrapUses} 次\n-# 自動抵擋鄰居對你農場的 raid`,
-          ),
+            )
+            .setButtonAccessory(
+              new ButtonBuilder()
+                .setCustomId(`farm_sell_${userId}_${key}`)
+                .setLabel(`賣全部 +${total.toLocaleString()}`)
+                .setStyle(ButtonStyle.Secondary),
+            ),
         );
       }
     } else {
-      let bagValue = 0;
-      const veggieCompact = [];
-      for (const [key, def] of Object.entries(farming.crops || {})) {
-        const qty = veggieBag[key] || 0;
-        if (qty <= 0) continue;
-        bagValue += qty * cropPriceOf(key);
-        veggieCompact.push(`${def.emoji} ${def.name}×${qty}`);
-      }
-      const fertCompact = [];
-      if (bp.compost > 0) fertCompact.push(`🍂 堆肥×${bp.compost}`);
-      if (bp.monster_slime > 0) fertCompact.push(`💧 黏液×${bp.monster_slime}`);
-      if (bp.moonlight_dew > 0) fertCompact.push(`🌟 露水×${bp.moonlight_dew}`);
-      const seedCompact = Object.entries(seedBag)
-        .filter(([, v]) => v > 0)
-        .map(([k, v]) => {
-          const cropKey = k.replace(/^seed_/, "");
-          const def = farming.crops?.[cropKey] || {};
-          return `${def.emoji || "🌱"} ${def.name || cropKey}種子×${v}`;
-        });
-
-      const lines = [
-        `### 🌾 農場`,
-        `地塊 ${plotCount}/${farming.maxPlots || 8}　累計收成 ${farmProfile.farm_harvest_total || 0} 次`,
-      ];
-      if (veggieCompact.length > 0) {
-        lines.push(`🥬 菜籃（值 ${bagValue.toLocaleString()} ${COIN_EMOJI}）：${veggieCompact.join("・")}`);
-      }
-      if (fertCompact.length > 0) lines.push(`💧 肥料：${fertCompact.join("・")}`);
-      if (seedCompact.length > 0) lines.push(`🌱 種子：${seedCompact.join("・")}`);
-      const farmTrapUsesCompact = farmProfile.advanced_trap_uses || 0;
-      if (farmTrapUsesCompact > 0) {
-        lines.push(`-# 🪤 高級陷阱保護剩 ${farmTrapUsesCompact} 次（抵擋 raid）`);
-      }
       container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(lines.join("\n"))
+        new TextDisplayBuilder().setContent("-# 菜籃空空，去 `/農場` 種點蔬菜吧！"),
+      );
+    }
+
+    const seedEntries = Object.entries(seedBag).filter(([, v]) => v > 0);
+    if (seedEntries.length > 0) {
+      const seedLines = seedEntries.map(([k, v]) => {
+        const cropKey = k.replace(/^seed_/, "");
+        const cropDef = farming.crops?.[cropKey] || {};
+        return `${cropDef.emoji || "🌱"} ${cropDef.name || k} 種子 ×${v}`;
+      }).join("・");
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`**🌱 種子**　${seedLines}`),
+      );
+    }
+
+    const fertItems = [
+      { key: "compost", emoji: "🍂", name: "廚餘堆肥" },
+      { key: "monster_slime", emoji: "💧", name: "怪物黏液" },
+      { key: "moonlight_dew", emoji: "🌟", name: "月光露水" },
+    ];
+    const fertLines = fertItems
+      .filter((f) => (bp[f.key] || 0) > 0)
+      .map((f) => `${f.emoji} ${f.name} ×${bp[f.key]}`);
+    if (fertLines.length > 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**💧 肥料**　${fertLines.join("・")}\n-# 到 /農場 點「施肥」加速作物成長`,
+        ),
+      );
+    }
+    if (farmProfile.rare_bait > 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**🎏 稀有魚餌** ×${farmProfile.rare_bait}\n-# 黑玫瑰收成額外掉落物`,
+        ),
+      );
+    }
+    // 高級陷阱保護中（自動抵擋農場 raid，與農場 raid 系統強相關，放這裡）
+    const farmTrapUses = farmProfile.advanced_trap_uses || 0;
+    if (farmTrapUses > 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🪤 **高級陷阱保護中**：剩 ${farmTrapUses} 次\n-# 自動抵擋鄰居對你農場的 raid`,
+        ),
+      );
+    }
+  }
+
+  // ── 食物區 ──
+  if (category === "food" && fishing?.enabled && client.miningProfilesCollection) {
+    const foodProfile = miningProfile || await getOrCreate(client, userId, guildId);
+    const fresh = foodBag.listFresh(foodProfile);
+    const groups = foodBag.groupByRecipe(fresh);
+    const recipes = fishing?.recipes || {};
+
+    container.addSeparatorComponents(new SeparatorBuilder());
+
+    if (groups.size === 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "### 🍱 食物倉庫\n-# 倉庫是空的，用 `/烹飪 <食物>` 做幾份囤起來吧！"
+        )
+      );
+    } else {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`### 🍱 食物倉庫（${fresh.length} 份）`)
+      );
+
+      // 按平均新鮮度由低到高排（最該先吃的在上面）
+      const entries = [...groups.entries()].map(([rid, arr]) => {
+        const avg = arr.reduce((s, it) => s + it.freshness, 0) / arr.length;
+        return { recipeId: rid, items: arr, avg };
+      });
+      entries.sort((a, b) => a.avg - b.avg);
+
+      for (const { recipeId, items } of entries) {
+        const recipe = recipes[recipeId];
+        if (!recipe) continue;
+        const oldest = items[0];
+        const newest = items[items.length - 1];
+        const oldestPct = Math.round(oldest.freshness * 100);
+        const newestPct = Math.round(newest.freshness * 100);
+        const buffDef = oldest.useCoal && (recipe.coalFuel || 0) > 0 && recipe.coalBuff
+          ? recipe.coalBuff
+          : recipe.buff;
+        const effectFull = buffDef?.label || foodBagView.buffShortDesc(buffDef?.type, buffDef?.value);
+        const rangeText = items.length === 1
+          ? foodBagView.freshnessTag(oldest.freshness)
+          : `最舊 ${oldestPct}% ～ 最新 ${newestPct}%`;
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `${recipe.emoji} **${recipe.name}** ×${items.length}${oldest.useCoal ? " 🔥" : ""}・${rangeText}\n-# 效果：${effectFull}`
+          )
+        );
+      }
+
+      container.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${foodBagView.OPEN_PREFIX}${userId}`)
+            .setLabel("🥡 打開食物倉庫 / 食用")
+            .setStyle(ButtonStyle.Success)
+        )
+      );
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 新鮮度隨時間衰減（普通 7 天歸零、煤炭烤製 ×${fishing.foodStorage?.coalMultiplier || 1.5}）・歸零自動轉廚餘堆肥`
+        )
       );
     }
   }
 
   // ── 地下城區 ──
-  if ((category === "all" || category === "dungeon") && dungeon?.enabled && client.miningProfilesCollection) {
+  if (category === "dungeon" && dungeon?.enabled && client.miningProfilesCollection) {
     const status = await dungeonService.getDungeonStatus(client, {
       userId, guildId, member,
     }).catch(() => null);
 
     if (status) {
-      // 體力藥水欄位 / 商店 restore 值（dungeon block 自帶，與 mine block 局部變數不共用）
       const stPotionCount = status.profile?.stamina_potion_count || 0;
       const stPotionItem = (shop?.items || []).find((it) => it.type === "mining_stamina_potion");
       const stPotionRestore = stPotionItem?.payload?.restore || 5;
 
       container.addSeparatorComponents(new SeparatorBuilder());
 
-      if (category === "dungeon") {
-        // 詳細頁
-        const wdef = (dungeon?.weapons || {})[status.weapon] || {};
-        const sdef = status.shield ? (dungeon?.shields || {})[status.shield] || {} : null;
-        const headLines = [`### ⚔️ 地下城`];
-        headLines.push(`❤️ HP：**${status.hp}/${status.hpMax}**　🔋 體力：**${status.stamina}/${status.staminaMax}**`);
-        const weaponLine = status.weapon === "fist"
-          ? "👊 赤手空拳（先 /合成 一把劍）"
-          : `${wdef.emoji || "🗡️"} ${wdef.name || status.weapon}（耐久 ${status.weaponDurability ?? "—"}/${status.weaponMaxDurability ?? "—"}）`;
-        const shieldLine = sdef
-          ? `${sdef.emoji || "🛡️"} ${sdef.name}（耐久 ${status.shieldDurability ?? "—"}/${status.shieldMaxDurability ?? "—"}・格擋 ${Math.round((sdef.blockRate || 0) * 100)}%）`
-          : "—（未裝盾）";
-        headLines.push(`⚔️ 武器：${weaponLine}`);
-        headLines.push(`🛡️ 盾：${shieldLine}`);
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(headLines.join("\n")),
-        );
+      const wdef = (dungeon?.weapons || {})[status.weapon] || {};
+      const sdef = status.shield ? (dungeon?.shields || {})[status.shield] || {} : null;
+      const headLines = [`### ⚔️ 地下城`];
+      headLines.push(`❤️ HP：**${status.hp}/${status.hpMax}**　🔋 體力：**${status.stamina}/${status.staminaMax}**`);
+      const weaponLine = status.weapon === "fist"
+        ? "👊 赤手空拳（先 /合成 一把劍）"
+        : `${wdef.emoji || "🗡️"} ${wdef.name || status.weapon}（耐久 ${status.weaponDurability ?? "—"}/${status.weaponMaxDurability ?? "—"}）`;
+      const shieldLine = sdef
+        ? `${sdef.emoji || "🛡️"} ${sdef.name}（耐久 ${status.shieldDurability ?? "—"}/${status.shieldMaxDurability ?? "—"}・格擋 ${Math.round((sdef.blockRate || 0) * 100)}%）`
+        : "—（未裝盾）";
+      headLines.push(`⚔️ 武器：${weaponLine}`);
+      headLines.push(`🛡️ 盾：${shieldLine}`);
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(headLines.join("\n")),
+      );
 
-        // 體力藥水（移動自挖礦道具）
-        container.addSectionComponents(
-          new SectionBuilder()
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                `🥤 **體力藥水** ×${stPotionCount}\n-# 立即恢復 ${stPotionRestore} 點地下城體力（不超過上限）`,
-              ),
-            )
-            .setButtonAccessory(
-              new ButtonBuilder()
-                .setCustomId(`${USE_STAMINA_POTION_PREFIX}${userId}`)
-                .setLabel("使用")
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(stPotionCount <= 0),
+      // 體力藥水
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `🥤 **體力藥水** ×${stPotionCount}\n-# 立即恢復 ${stPotionRestore} 點地下城體力（不超過上限）`,
             ),
-        );
+          )
+          .setButtonAccessory(
+            new ButtonBuilder()
+              .setCustomId(`${USE_STAMINA_POTION_PREFIX}${userId}`)
+              .setLabel("使用")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(stPotionCount <= 0),
+          ),
+      );
 
-        // 生命藥水（戰中自動、戰前 / 戰後在 /地下城 面板用補血鈕；這邊只顯示庫存）
-        const potionLines = [];
-        potionLines.push(`### 💊 生命藥水`);
-        potionLines.push(`💊 小（+20 HP）×${status.potions.small}・💊 中（+50 HP）×${status.potions.medium}・💊 大（補滿）×${status.potions.large}`);
-        const autoLabel = status.autoPotion === false
-          ? "⛔ 自動藥水關閉"
-          : `✅ 自動藥水開啟（${
-              { smallest: "最小可用", largest: "最大可用", small: "只用小瓶", medium: "只用中瓶", large: "只用大瓶" }[status.autoPotionTier] || "最小可用"
-            }）`;
-        potionLines.push(`-# ${autoLabel}・到 /地下城 面板「💊 補血」可手動使用，或點「⚙️ 設定」改偏好`);
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(potionLines.join("\n")),
-        );
+      // 生命藥水庫存
+      const potionLines = [];
+      potionLines.push(`### 💊 生命藥水`);
+      potionLines.push(`💊 小（+20 HP）×${status.potions.small}・💊 中（+50 HP）×${status.potions.medium}・💊 大（補滿）×${status.potions.large}`);
+      const autoLabel = status.autoPotion === false
+        ? "⛔ 自動藥水關閉"
+        : `✅ 自動藥水開啟（${
+            { smallest: "最小可用", largest: "最大可用", small: "只用小瓶", medium: "只用中瓶", large: "只用大瓶" }[status.autoPotionTier] || "最小可用"
+          }）`;
+      potionLines.push(`-# ${autoLabel}・到 /地下城 面板「💊 補血」可手動使用，或點「⚙️ 設定」改偏好`);
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(potionLines.join("\n")),
+      );
 
-        // 樓層解鎖進度
-        const floorLines = ["### 🏚️ 樓層解鎖進度"];
-        for (const ts of status.themes) {
-          const t = ts.theme;
-          if (!t) continue;
-          if (ts.unlocked) {
-            const maxFloor = status.profile?.floor_unlocks?.[t.id]?.max_floor || 0;
-            floorLines.push(`${t.emoji || ""} ${t.name}：最高 ${maxFloor}F 可挑戰`);
-          } else {
-            floorLines.push(`🔒 ${t.emoji || ""} ${t.name}：未解鎖`);
-          }
-        }
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(floorLines.join("\n")),
-        );
-      } else {
-        // 全部模式 — 精簡顯示
-        const lines = [`### ⚔️ 地下城`];
-        lines.push(`❤️ HP **${status.hp}/${status.hpMax}**　🔋 體力 **${status.stamina}/${status.staminaMax}**`);
-        const potionsCompact = [];
-        if (stPotionCount > 0) potionsCompact.push(`🥤 精力×${stPotionCount}`);
-        if (status.potions.small > 0) potionsCompact.push(`💊 小×${status.potions.small}`);
-        if (status.potions.medium > 0) potionsCompact.push(`💊 中×${status.potions.medium}`);
-        if (status.potions.large > 0) potionsCompact.push(`💊 大×${status.potions.large}`);
-        if (potionsCompact.length > 0) {
-          lines.push(`藥水：${potionsCompact.join("・")}`);
+      // 樓層解鎖進度
+      const floorLines = ["### 🏚️ 樓層解鎖進度"];
+      for (const ts of status.themes) {
+        const t = ts.theme;
+        if (!t) continue;
+        if (ts.unlocked) {
+          const maxFloor = status.profile?.floor_unlocks?.[t.id]?.max_floor || 0;
+          floorLines.push(`${t.emoji || ""} ${t.name}：最高 ${maxFloor}F 可挑戰`);
         } else {
-          lines.push(`-# 尚無藥水，到 /商店 → 地下城道具 補貨`);
+          floorLines.push(`🔒 ${t.emoji || ""} ${t.name}：未解鎖`);
         }
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(lines.join("\n")),
-        );
       }
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(floorLines.join("\n")),
+      );
     }
   }
 
   // ── 商店區 ──
-  const equipRows = [];
-  if ((category === "all" || category === "shop") && shop?.enabled && client.userInventoryCollection) {
+  if (category === "shop" && shop?.enabled && client.userInventoryCollection) {
     const items = await client.userInventoryCollection
       .find({ userId, guildId, expired: { $ne: true } })
       .sort({ acquiredAt: -1 })
@@ -970,61 +1114,46 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       grouped.get(it.type).push(it);
     }
 
-    if (category === "all") {
-      if (items.length > 0) {
-        container.addSeparatorComponents(new SeparatorBuilder());
-        const summary = [];
-        for (const [type, list] of grouped.entries()) {
-          const equippedCount = list.filter((it) => it.equipped).length;
-          const mark = equippedCount > 0 ? " ✅" : "";
-          summary.push(`${TYPE_LABEL[type] || type}×${list.length}${mark}`);
-        }
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`### 🛍️ 商店道具\n${summary.join("・")}`)
-        );
-      }
-    } else {
-      container.addSeparatorComponents(new SeparatorBuilder());
-      if (items.length === 0) {
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("### 🛍️ 商店道具\n-# 還沒有任何道具，到 `/商店` 逛逛吧！")
-        );
-      } else {
-        const sections = [];
-        for (const [type, list] of grouped.entries()) {
-          const text = list
-            .map((it) => {
-              const equipped = it.equipped ? " ✅" : "";
-              const qty = it.qty ? ` ×${it.qty}` : "";
-              const exp = it.expiresAt ? ` — 到期：${fmtExpiry(it.expiresAt)}` : "";
-              return `・${it.name}${qty}${equipped}${exp}`;
-            })
-            .join("\n");
-          sections.push(`**${TYPE_LABEL[type] || type}**\n${text}`);
-        }
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `### 🛍️ 商店道具\n${sections.join("\n\n")}`.slice(0, 4000)
-          )
-        );
-      }
-
-      const unifiedMenu = buildUnifiedEquipMenu(grouped);
-      if (unifiedMenu) equipRows.push(unifiedMenu);
-
-      const ownsDonorCard = (grouped.get("wallet_theme") || []).some(
-        (it) => it.itemId === DONOR_THEME_ITEM_ID && isUsable(it)
+    container.addSeparatorComponents(new SeparatorBuilder());
+    if (items.length === 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("### 🛍️ 商店道具\n-# 還沒有任何道具，到 `/商店` 逛逛吧！")
       );
-      if (ownsDonorCard) {
-        equipRows.push(
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId(CARDNO_OPEN_ID)
-              .setLabel("💳 設定卡號")
-              .setStyle(ButtonStyle.Secondary)
-          )
-        );
+    } else {
+      const sections = [];
+      for (const [type, list] of grouped.entries()) {
+        const text = list
+          .map((it) => {
+            const equipped = it.equipped ? " ✅" : "";
+            const qty = it.qty ? ` ×${it.qty}` : "";
+            const exp = it.expiresAt ? ` — 到期：${fmtExpiry(it.expiresAt)}` : "";
+            return `・${it.name}${qty}${equipped}${exp}`;
+          })
+          .join("\n");
+        sections.push(`**${TYPE_LABEL[type] || type}**\n${text}`);
       }
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🛍️ 商店道具\n${sections.join("\n\n")}`.slice(0, 4000)
+        )
+      );
+    }
+
+    const unifiedMenu = buildUnifiedEquipMenu(grouped);
+    if (unifiedMenu) equipRows.push(unifiedMenu);
+
+    const ownsDonorCard = (grouped.get("wallet_theme") || []).some(
+      (it) => it.itemId === DONOR_THEME_ITEM_ID && isUsable(it)
+    );
+    if (ownsDonorCard) {
+      equipRows.push(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(CARDNO_OPEN_ID)
+            .setLabel("💳 設定卡號")
+            .setStyle(ButtonStyle.Secondary)
+        )
+      );
     }
   }
 

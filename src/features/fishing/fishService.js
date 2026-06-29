@@ -1,7 +1,7 @@
 require("colors");
 const { DateTime } = require("luxon");
 const { fishing, craft } = require("../../config");
-const { getOrCreate } = require("../mining/miningProfile");
+const { getOrCreate, fishBagCapacity, fishBagUsed } = require("../mining/miningProfile");
 const { weightedRandom } = require("../mining/weightedRandom");
 const {
   getFoodFishBonus,
@@ -121,6 +121,13 @@ async function fish(client, { userId, guildId, location = "stream", member, user
         locDesc: locationUnlockDesc(location),
       };
     }
+  }
+
+  // 魚袋容量檢查：滿了直接擋下，魚還在水裡，先賣魚再來（不消耗冷卻）
+  const fishCap = fishBagCapacity(profile, fishing);
+  const fishUsed = fishBagUsed(profile);
+  if (fishUsed >= fishCap) {
+    return { ok: false, reason: "fish_bag_full", used: fishUsed, cap: fishCap };
   }
 
   // 釣竿 + 海鮮拼盤（fish_fortune）：決定成功率與稀有度偏移

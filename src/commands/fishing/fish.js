@@ -336,6 +336,28 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           flags: MessageFlags.IsComponentsV2,
         });
       }
+      if (result.reason === "fish_bag_full") {
+        const container = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("# 🎣 魚袋滿了，釣不下了！"),
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**目前魚袋**：${result.used} / ${result.cap} 條（已滿）\n先賣掉一些魚，騰出空間再來釣。`,
+            ),
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              "-# 到 `/背包` →「🎣 釣魚」點「賣全部」，或到 `/商店` 買背包擴充（一次擴礦石袋／魚袋／菜籃 各 +5）",
+            ),
+          );
+        return interaction.editReply({
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
       return interaction.editReply("🔧 釣魚失敗，請稍後再試。");
     }
 

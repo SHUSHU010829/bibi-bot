@@ -1,6 +1,6 @@
 require("colors");
 const { farming } = require("../../config");
-const { getOrCreate } = require("../mining/miningProfile");
+const { getOrCreate, veggieBagCapacity, veggieBagUsed } = require("../mining/miningProfile");
 const grantCoins = require("../economy/grantCoins");
 const {
   getFoodFarmYieldBonus,
@@ -240,6 +240,13 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
   const [lo, hi] = crop.payout || [0, 0];
   const baseCoins = randInt(lo, hi);
   const profileForBuff = await getOrCreate(client, userId, guildId);
+
+  // 菜籃容量檢查：滿了擋下收成，作物留在地塊，先賣菜再收
+  const veggieCap = veggieBagCapacity(profileForBuff, farming);
+  const veggieUsedNow = veggieBagUsed(profileForBuff);
+  if (veggieUsedNow >= veggieCap) {
+    return { ok: false, reason: "veggie_bag_full", used: veggieUsedNow, cap: veggieCap, crop: plot.crop };
+  }
   const fertBonus = plot.yield_bonus_pct || 0;
   const foodBonus = getFoodFarmYieldBonus(profileForBuff);
   // 世界事件「草莓教祭典」buff：farm_yield_pct（整數百分比） + farm_yield_count_bonus（+N 個）

@@ -114,6 +114,17 @@ module.exports = {
             flags: MessageFlags.IsComponentsV2,
           });
         }
+        if (result.reason === "veggie_bag_full") {
+          const def = farming.crops?.[result.crop] || {};
+          return interaction.editReply({
+            components: [errorContainer(
+              "🥬 菜籃滿了，收不下！",
+              `**目前菜籃**：${result.used} / ${result.cap} 個（已滿）\n${def.emoji || ""} ${def.name || "作物"} 還留在地塊上，先賣掉一些菜再收。`,
+              "到 `/背包` →「🌾 農場」點「賣全部」，或到 `/商店` 買背包擴充（一次擴礦石袋／魚袋／菜籃 各 +5）",
+            )],
+            flags: MessageFlags.IsComponentsV2,
+          });
+        }
         return interaction.editReply("🔧 收成失敗，請稍後再試。");
       }
 
