@@ -37,16 +37,14 @@ function trendLabel(price, base) {
   return pct > 0 ? ` ▲+${pct}%` : pct < 0 ? ` ▼${pct}%` : " ▬";
 }
 
-// 視覺化容量進度條：12 格 ▰/▱，依使用率上色（emoji 標記）
-function capacityBar(used, cap, width = 12) {
+// 容量百分比 + 號誌燈（依使用率上色）。
+function capacityBar(used, cap) {
   const ratio = cap > 0 ? Math.min(1, used / cap) : 0;
-  const filled = Math.round(ratio * width);
-  const bar = "▰".repeat(filled) + "▱".repeat(width - filled);
   const pct = Math.round(ratio * 100);
   let mark = "🟢";
   if (pct >= 90) mark = "🔴";
   else if (pct >= 70) mark = "🟡";
-  return { bar, pct, mark };
+  return { pct, mark };
 }
 
 // 單一袋子的容量顯示：用量 / 上限（百分比）+ 號誌；有 % 就不再畫進度條。
