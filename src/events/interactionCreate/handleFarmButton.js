@@ -1130,7 +1130,7 @@ module.exports = async (client, interaction) => {
               label: "菜籃",
               used: results[results.length - 1]?.veggieBagUsed,
               cap: results[results.length - 1]?.veggieBagCap,
-              enforced: farming.bagLimitEnforced,
+              enforceAt: farming.bagLimitEnforceAt,
               sellHint: "到 `/背包` →「🌾 農場」賣菜",
             }) || null,
       ].filter(Boolean).join("\n");
@@ -1206,7 +1206,7 @@ module.exports = async (client, interaction) => {
           label: "菜籃",
           used: result.veggieBagUsed,
           cap: result.veggieBagCap,
-          enforced: farming.bagLimitEnforced,
+          enforceAt: farming.bagLimitEnforceAt,
           sellHint: "到 `/背包` →「🌾 農場」賣菜",
         }) || null,
       ].filter(Boolean).join("\n");

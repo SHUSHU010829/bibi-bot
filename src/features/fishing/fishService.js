@@ -2,6 +2,7 @@ require("colors");
 const { DateTime } = require("luxon");
 const { fishing, craft } = require("../../config");
 const { getOrCreate, fishBagCapacity, fishBagUsed } = require("../mining/miningProfile");
+const { isBagLimitEnforced } = require("../mining/bagStatus");
 const { weightedRandom } = require("../mining/weightedRandom");
 const {
   getFoodFishBonus,
@@ -123,11 +124,11 @@ async function fish(client, { userId, guildId, location = "stream", member, user
     }
   }
 
-  // 魚袋容量：寬限期（bagLimitEnforced=false）只在結果提醒、不擋；
-  // 開啟強制後魚袋滿了直接擋下（魚還在水裡、不消耗冷卻，先賣魚再來）。
+  // 魚袋容量：寬限期（bagLimitEnforceAt 未到）只在結果提醒、不擋；
+  // 到期後魚袋滿了直接擋下（魚還在水裡、不消耗冷卻，先賣魚再來）。
   const fishCap = fishBagCapacity(profile, fishing);
   const fishUsed = fishBagUsed(profile);
-  if (fishing.bagLimitEnforced && fishUsed >= fishCap) {
+  if (isBagLimitEnforced(fishing.bagLimitEnforceAt) && fishUsed >= fishCap) {
     return { ok: false, reason: "fish_bag_full", used: fishUsed, cap: fishCap };
   }
 

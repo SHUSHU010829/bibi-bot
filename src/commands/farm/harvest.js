@@ -155,7 +155,7 @@ module.exports = {
         label: "菜籃",
         used: result.veggieBagUsed,
         cap: result.veggieBagCap,
-        enforced: farming.bagLimitEnforced,
+        enforceAt: farming.bagLimitEnforceAt,
         sellHint: "到 `/背包` →「🌾 農場」賣菜",
       });
       if (veggieBagWarn) lines.push(veggieBagWarn);

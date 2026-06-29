@@ -1,6 +1,7 @@
 require("colors");
 const { farming } = require("../../config");
 const { getOrCreate, veggieBagCapacity, veggieBagUsed } = require("../mining/miningProfile");
+const { isBagLimitEnforced } = require("../mining/bagStatus");
 const grantCoins = require("../economy/grantCoins");
 const {
   getFoodFarmYieldBonus,
@@ -241,11 +242,11 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
   const baseCoins = randInt(lo, hi);
   const profileForBuff = await getOrCreate(client, userId, guildId);
 
-  // 菜籃容量：寬限期（bagLimitEnforced=false）只在結果提醒、不擋；
-  // 開啟強制後菜籃滿了擋下收成（作物留在地塊，先賣菜再收）。
+  // 菜籃容量：寬限期（bagLimitEnforceAt 未到）只在結果提醒、不擋；
+  // 到期後菜籃滿了擋下收成（作物留在地塊，先賣菜再收）。
   const veggieCap = veggieBagCapacity(profileForBuff, farming);
   const veggieUsedNow = veggieBagUsed(profileForBuff);
-  if (farming.bagLimitEnforced && veggieUsedNow >= veggieCap) {
+  if (isBagLimitEnforced(farming.bagLimitEnforceAt) && veggieUsedNow >= veggieCap) {
     return { ok: false, reason: "veggie_bag_full", used: veggieUsedNow, cap: veggieCap, crop: plot.crop };
   }
   const fertBonus = plot.yield_bonus_pct || 0;

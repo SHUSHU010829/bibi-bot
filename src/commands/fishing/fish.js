@@ -670,7 +670,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       label: "魚袋",
       used: result.fishBagUsed,
       cap: result.fishBagCap,
-      enforced: fishing.bagLimitEnforced,
+      enforceAt: fishing.bagLimitEnforceAt,
       sellHint: "點下方「立刻賣掉」或到 `/背包` 賣魚",
     });
     if (fishBagWarn) {
