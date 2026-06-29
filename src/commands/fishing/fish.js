@@ -187,6 +187,24 @@ function buildCooldownView({
     );
   }
 
+  // 冷卻結束後可直接點此再釣一次；冷卻未到則會再次顯示這個畫面。
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 🎣 冷卻結束後（<t:${readyEpoch}:R>）點下方「再釣一次」即可繼續。`,
+      ),
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        fishAgainButton(ownerId, location),
+        new ButtonBuilder()
+          .setCustomId(`fish_bag_${ownerId}`)
+          .setLabel("查看背包")
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    );
+
   return container;
 }
 
