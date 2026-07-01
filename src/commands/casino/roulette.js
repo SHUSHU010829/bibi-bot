@@ -46,7 +46,7 @@ function getCfg() {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('輪盤')
-    .setDescription('輪盤 🎰 一次選好押注（可押 1–3 種）與金額，送出直接開轉')
+    .setDescription('輪盤 🎰 一次選好押注（可押 1–3 種）與各自金額，送出直接開轉')
     .setContexts(InteractionContextType.Guild)
     .addStringOption(opt =>
       opt.setName('押注')
@@ -56,8 +56,8 @@ module.exports = {
     )
     .addIntegerOption(opt =>
       opt.setName('金額')
-        .setDescription('投入籌碼總額，會平均分配到每個押注（勾選梭哈時可省略）')
-        .setRequired(false)
+        .setDescription('押注 的下注金額')
+        .setRequired(true)
         .setMinValue(getCfg().minBetPerSlot ?? 30)
     )
     .addStringOption(opt =>
@@ -66,16 +66,23 @@ module.exports = {
         .setRequired(false)
         .addChoices(...BET_CHOICES)
     )
+    .addIntegerOption(opt =>
+      opt.setName('金額2')
+        .setDescription('押注2 的下注金額')
+        .setRequired(false)
+        .setMinValue(getCfg().minBetPerSlot ?? 30)
+    )
     .addStringOption(opt =>
       opt.setName('押注3')
         .setDescription('要押的第三個目標（可選）')
         .setRequired(false)
         .addChoices(...BET_CHOICES)
     )
-    .addBooleanOption(opt =>
-      opt.setName('梭哈')
-        .setDescription('一次押上目前全部餘額')
+    .addIntegerOption(opt =>
+      opt.setName('金額3')
+        .setDescription('押注3 的下注金額')
         .setRequired(false)
+        .setMinValue(getCfg().minBetPerSlot ?? 30)
     )
     .toJSON(),
 
@@ -93,56 +100,43 @@ module.exports = {
 
       const minPerSlot = cfg.minBetPerSlot ?? 30;
 
-      // 收集押注（去重，最多 3 種）
-      const chosen = [];
-      for (const name of ['押注', '押注2', '押注3']) {
-        const v = interaction.options.getString(name);
-        if (v && BET_TYPES[v] && !chosen.includes(v)) chosen.push(v);
+      // 收集押注：每個目標各自指定金額，同一目標合併金額
+      const betMap = new Map();
+      for (const [tName, aName] of [['押注', '金額'], ['押注2', '金額2'], ['押注3', '金額3']]) {
+        const type = interaction.options.getString(tName);
+        if (!type || !BET_TYPES[type]) continue;
+        const amount = interaction.options.getInteger(aName);
+        if (!Number.isInteger(amount) || amount < minPerSlot) {
+          const def = BET_TYPES[type];
+          return interaction.editReply(
+            `「${def?.label ?? type}」需要指定金額，且每注至少 ${minPerSlot.toLocaleString()} credits。`
+          );
+        }
+        betMap.set(type, (betMap.get(type) || 0) + amount);
       }
-      if (chosen.length === 0) {
-        return interaction.editReply('請至少選一個押注目標。');
+      if (betMap.size === 0) {
+        return interaction.editReply('請至少選一個押注目標並填金額。');
       }
-      const N = chosen.length;
+
+      const bets = [...betMap.entries()].map(([type, amount]) => ({
+        type,
+        amount,
+        numbers: BET_TYPES[type].numbers,
+      }));
+      const wagered = bets.reduce((s, b) => s + b.amount, 0);
 
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
       const username = interaction.member?.displayName || interaction.user.username;
       const member = interaction.member;
 
-      const budgetInput = interaction.options.getInteger('金額');
-      const allIn = interaction.options.getBoolean('梭哈') === true;
-
-      if (!allIn && (!Number.isInteger(budgetInput) || budgetInput < minPerSlot)) {
-        return interaction.editReply(
-          `金額至少 ${minPerSlot.toLocaleString()} credits（或勾選梭哈）。`
-        );
-      }
-
       const before = await client.userCoinsCollection.findOne({ userId, guildId });
       const balance = before?.totalCoins || 0;
-
-      const total = allIn ? balance : budgetInput;
-      const per = Math.floor(total / N);
-      if (per < minPerSlot) {
-        return interaction.editReply(
-          allIn
-            ? `${MONEY_EMOJI} 餘額不足以梭哈！押 ${N} 種每種至少 ${minPerSlot.toLocaleString()}，共需 ${(minPerSlot * N).toLocaleString()}，目前僅 ${balance.toLocaleString()}。`
-            : `每種押注至少 ${minPerSlot.toLocaleString()} credits，押 ${N} 種至少要投入 ${(minPerSlot * N).toLocaleString()}。`
-        );
-      }
-
-      const wagered = per * N;
       if (balance < wagered) {
         return interaction.editReply(
           `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}** credits，需要 **${wagered.toLocaleString()}**。`
         );
       }
-
-      const bets = chosen.map(type => ({
-        type,
-        amount: per,
-        numbers: BET_TYPES[type].numbers,
-      }));
 
       const roundId = crypto.randomUUID();
 
@@ -155,7 +149,7 @@ module.exports = {
         amount: -wagered,
         source: 'bet',
         member,
-        meta: { game: 'roulette', roundId, betCount: N },
+        meta: { game: 'roulette', roundId, betCount: bets.length },
       });
       if (!betResult) return interaction.editReply('🔧 扣款失敗，請稍後再試。');
       let balanceAfter = betResult.doc?.totalCoins ?? balance - wagered;
@@ -204,11 +198,12 @@ module.exports = {
         game: 'roulette',
         payload: {
           options: {
-            押注: chosen[0] ?? null,
-            押注2: chosen[1] ?? null,
-            押注3: chosen[2] ?? null,
-            金額: wagered,
-            梭哈: false,
+            押注: bets[0]?.type ?? null,
+            金額: bets[0]?.amount ?? null,
+            押注2: bets[1]?.type ?? null,
+            金額2: bets[1]?.amount ?? null,
+            押注3: bets[2]?.type ?? null,
+            金額3: bets[2]?.amount ?? null,
           },
         },
       });
