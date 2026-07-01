@@ -71,9 +71,16 @@ async function rollRandomEvent(client, guildId) {
   return null;
 }
 
+function resolveSector(target) {
+  return stockSystem?.sectors?.[target] || null;
+}
+
 async function applyEffectToStocks(client, guildId, targetSymbol, effect) {
   const filter = { guildId, enabled: { $ne: false } };
-  if (targetSymbol && targetSymbol !== "ALL") filter.symbol = targetSymbol;
+  if (targetSymbol && targetSymbol !== "ALL") {
+    const sector = resolveSector(targetSymbol);
+    filter.symbol = sector ? { $in: sector.symbols } : targetSymbol;
+  }
 
   const stocks = await client.stockMarketCollection.find(filter).toArray();
   const changes = [];
@@ -140,7 +147,12 @@ async function announceEvent(client, def, changes) {
   const arrow = def.dir === "up" ? "📈" : "📉";
   const pct = (def.effect * 100).toFixed(1);
   const sign = def.effect >= 0 ? "+" : "";
-  const title = def.stock === "ALL" ? `${arrow} 突發新聞｜全市場` : `${arrow} 突發新聞｜${changes[0]?.name || def.stock}`;
+  const sector = resolveSector(def.stock);
+  let scope;
+  if (def.stock === "ALL") scope = "全市場";
+  else if (sector) scope = sector.name;
+  else scope = changes[0]?.name || def.stock;
+  const title = `${arrow} 突發新聞｜${scope}`;
   const lines = changes
     .slice(0, 6)
     .map((c) => `\`${c.symbol}\` ${c.name}：${c.before.toFixed(1)} → **${c.after.toFixed(1)}**`);

@@ -29,6 +29,11 @@
     "chart": {
       "historyPoints": 20
     },
+    "sectors": {
+      "SEMI":     { "name": "半導體族群", "symbols": ["TSPP", "MTKP"] },
+      "DOMESTIC": { "name": "內需族群",   "symbols": ["UPPI", "CTPP"] },
+      "EXPORT":   { "name": "出口族群",   "symbols": ["TSPP", "MTKP", "EGPP"] }
+    },
     "dividend": {
       "enabled": true,
       "cronSchedule": "0 9 * * 1",

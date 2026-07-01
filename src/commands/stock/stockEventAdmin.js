@@ -36,9 +36,15 @@ function slugifyId(name) {
 
 async function ensureSymbolExists(client, guildId, symbol) {
   if (symbol === TARGET_ALL) return true;
+  if (stockSystem?.sectors?.[symbol]) return true;
   if (!client.stockMarketCollection) return false;
   const found = await client.stockMarketCollection.findOne({ guildId, symbol });
   return !!found;
+}
+
+function targetLabel(target) {
+  if (target === TARGET_ALL) return "全市場";
+  return stockSystem?.sectors?.[target]?.name || target;
 }
 
 module.exports = {
@@ -65,7 +71,7 @@ module.exports = {
         .addStringOption((o) =>
           o
             .setName("target")
-            .setDescription("Stock symbol (e.g. TSPP); leave empty or ALL for whole market")
+            .setDescription("Stock (TSPP) or sector (SEMI/DOMESTIC/EXPORT); empty or ALL = whole market")
             .setRequired(false)
         )
         .addBooleanOption((o) =>
@@ -107,7 +113,7 @@ module.exports = {
         .addStringOption((o) =>
           o
             .setName("target")
-            .setDescription("Stock symbol (e.g. TSPP); leave empty or ALL for whole market")
+            .setDescription("Stock (TSPP) or sector (SEMI/DOMESTIC/EXPORT); empty or ALL = whole market")
             .setRequired(false)
         )
         .addStringOption((o) =>
@@ -179,7 +185,7 @@ module.exports = {
         }
         const sign = effect >= 0 ? "+" : "";
         return interaction.editReply(
-          `✅ 已觸發一次性事件 **${name}**｜目標 \`${target}\`｜${sign}${(effect * 100).toFixed(1)}%｜影響 ${result.changes.length} 支`
+          `✅ 已觸發一次性事件 **${name}**｜目標 \`${targetLabel(target)}\`｜${sign}${(effect * 100).toFixed(1)}%｜影響 ${result.changes.length} 支`
         );
       }
 
@@ -262,7 +268,7 @@ module.exports = {
         }
         const sign = effect >= 0 ? "+" : "";
         return interaction.editReply(
-          `✅ 已加入事件簿：\n• id：\`${id}\`\n• 名稱：${name}\n• 目標：\`${target}\`\n• 幅度：${sign}${(effect * 100).toFixed(1)}%${suffix}`
+          `✅ 已加入事件簿：\n• id：\`${id}\`\n• 名稱：${name}\n• 目標：\`${targetLabel(target)}\`\n• 幅度：${sign}${(effect * 100).toFixed(1)}%${suffix}`
         );
       }
 
@@ -286,7 +292,19 @@ module.exports = {
 
         const fmt = (d) => {
           const sign = d.effect >= 0 ? "+" : "";
-          return `\`${d.id}\` ${d.name}｜\`${d.stock}\`｜${sign}${(d.effect * 100).toFixed(1)}%`;
+          return `\`${d.id}\` ${d.name}｜\`${targetLabel(d.stock)}\`｜${sign}${(d.effect * 100).toFixed(1)}%`;
+        };
+        // 事件量已破 60，單一 TextDisplay 會頂到 4000 字上限，分段每 20 筆一塊
+        const addChunkedSection = (heading, defs) => {
+          if (!defs.length) return;
+          const chunkSize = 20;
+          for (let i = 0; i < defs.length; i += chunkSize) {
+            const slice = defs.slice(i, i + chunkSize);
+            const label = i === 0 ? `**${heading}（${defs.length}）**\n` : "";
+            container.addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(`${label}${slice.map(fmt).join("\n")}`),
+            );
+          }
         };
         const container = new ContainerBuilder()
           .setAccentColor(0x3498db)
@@ -294,20 +312,8 @@ module.exports = {
             new TextDisplayBuilder().setContent("# 📒 股市事件清單"),
           )
           .addSeparatorComponents(new SeparatorBuilder());
-        if (staticDefs.length) {
-          container.addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              `**預設事件（${staticDefs.length}）**\n${staticDefs.slice(0, 25).map(fmt).join("\n") || "（無）"}`,
-            ),
-          );
-        }
-        if (dynamicDefs.length) {
-          container.addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              `**自訂事件（${dynamicDefs.length}）**\n${dynamicDefs.slice(0, 25).map(fmt).join("\n") || "（無）"}`,
-            ),
-          );
-        }
+        addChunkedSection("預設事件", staticDefs);
+        addChunkedSection("自訂事件", dynamicDefs);
         container.addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
