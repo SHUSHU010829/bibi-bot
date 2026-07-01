@@ -32,14 +32,14 @@ function buildBetOptionGroup(builder, idx) {
     .addStringOption((opt) =>
       opt
         .setName(`押法${suffix}`)
-        .setDescription(idx === 1 ? "選擇要押的符號（梭哈時必填）" : `第 ${idx} 注押的符號（選填）`)
+        .setDescription(idx === 1 ? "選擇要押的符號（第 1 注）" : `第 ${idx} 注押的符號（選填）`)
         .setRequired(false)
         .addChoices(...BET_CHOICES)
     )
     .addIntegerOption((opt) =>
       opt
         .setName(`金額${suffix}`)
-        .setDescription(idx === 1 ? "下注 credits（勾選梭哈時可省略）" : `第 ${idx} 注的金額`)
+        .setDescription(idx === 1 ? "第 1 注的下注 credits" : `第 ${idx} 注的金額`)
         .setRequired(false)
         .setMinValue(casino?.fishPrawnCrab?.minBet ?? 10)
     );
@@ -51,12 +51,6 @@ const builder = new SlashCommandBuilder()
   .setDescription("擲三顆魚蝦蟹骰賭運氣 🦀（最多同時押 3 注）")
   .setContexts(InteractionContextType.Guild);
 for (let i = 1; i <= MAX_BETS; i += 1) buildBetOptionGroup(builder, i);
-builder.addBooleanOption((opt) =>
-  opt
-    .setName("梭哈")
-    .setDescription("一次押上目前全部餘額（僅適用第 1 注）")
-    .setRequired(false)
-);
 
 module.exports = {
   data: builder.toJSON(),
@@ -77,7 +71,6 @@ module.exports = {
       const cfg = casino?.fishPrawnCrab || {};
       const minBet = cfg.minBet ?? 10;
       const maxBet = cfg.maxBet ?? 1000;
-      const allIn = interaction.options.getBoolean("梭哈") === true;
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
       const username = interaction.member?.displayName || interaction.user.username;
@@ -92,22 +85,16 @@ module.exports = {
         const symbol = interaction.options.getString(`押法${suffix}`);
         const amountInput = interaction.options.getInteger(`金額${suffix}`);
         if (!symbol) continue;
-        if (allIn && i > 1) {
-          return interaction.editReply("梭哈時只能押第 1 注，請移除第 2／3 注。");
-        }
-        let amount = amountInput;
-        if (allIn && i === 1) {
-          amount = balance;
-        }
+        const amount = amountInput;
         if (amount === null || amount === undefined) {
           return interaction.editReply(`第 ${i} 注少了金額！`);
         }
         if (amount < minBet) {
           return interaction.editReply(
-            `第 ${i} 注金額至少需 ${minBet.toLocaleString()} credits${allIn ? "（梭哈餘額不足）" : ""}。`
+            `第 ${i} 注金額至少需 ${minBet.toLocaleString()} credits。`
           );
         }
-        if (!allIn && amount > maxBet) {
+        if (amount > maxBet) {
           return interaction.editReply(
             `第 ${i} 注金額最多 ${maxBet.toLocaleString()} credits。`
           );
@@ -224,7 +211,7 @@ module.exports = {
           ? `🚨 **你破產了！** 餘額歸零，去發言、聊天賺金幣再來吧！`
           : "";
 
-      const replayOptions = { 梭哈: false };
+      const replayOptions = {};
       bets.forEach((b, i) => {
         const suffix = i === 0 ? "" : String(i + 1);
         replayOptions[`押法${suffix}`] = b.symbol;
