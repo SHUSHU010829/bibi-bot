@@ -153,11 +153,7 @@ async function replayRoulette(client, interaction, payload) {
 
   const { casino } = require("../../config");
   const grantCoins = require("../../features/economy/grantCoins");
-  const { totalWagered } = require("../../features/casino/roulette/engine");
-  const {
-    buildBettingRows,
-    buildStatusContent,
-  } = require("../../commands/casino/roulette");
+  const { buildBettingContainer } = require("../../commands/casino/roulette");
 
   const cfg = casino?.roulette || {};
   if (cfg.enabled === false) {
@@ -235,9 +231,8 @@ async function replayRoulette(client, interaction, payload) {
   };
   await client.rouletteGamesCollection.insertOne(game);
 
-  const remaining = totalBudget - totalWagered(game.bets);
   await interaction.editReply({
-    content: buildStatusContent(game),
-    components: buildBettingRows(gameId, remaining),
+    flags: MessageFlags.IsComponentsV2,
+    components: [buildBettingContainer(game)],
   });
 }

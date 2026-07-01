@@ -1,5 +1,7 @@
 const {
   AttachmentBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
   MessageFlags,
 } = require("discord.js");
 const { MONEY_EMOJI } = require("../../constants/coin");
@@ -8,9 +10,9 @@ const grantCoins = require('../../features/economy/grantCoins');
 const { BET_TYPES } = require('../../features/casino/roulette/numbers');
 const generateRouletteGif = require('../../utils/generateRouletteGif');
 const { spinWheel, settle, totalWagered } = require('../../features/casino/roulette/engine');
-const { buildBettingRows, buildStatusContent } = require('../../commands/casino/roulette');
+const { buildBettingContainer } = require('../../commands/casino/roulette');
 const { saveLastBet, buildReplayRow } = require('../../features/casino/replay');
-const { buildCasinoEmbed } = require('../../features/casino/casinoEmbed');
+const { buildCasinoContainer, CASINO_COLORS } = require('../../features/casino/casinoEmbed');
 const logger = require('../../utils/logger');
 const { trackError, trackSuccess } = require('../../utils/errorTracker');
 const { consume } = require('../../utils/rateLimiter');
@@ -102,11 +104,10 @@ module.exports = async (client, interaction) => {
       );
 
       const updatedGame = { ...game, bets: [...game.bets, newBet] };
-      const newRemaining = remaining - amount;
 
       await interaction.editReply({
-        content: buildStatusContent(updatedGame),
-        components: buildBettingRows(gameId, newRemaining),
+        flags: MessageFlags.IsComponentsV2,
+        components: [buildBettingContainer(updatedGame)],
       });
       return;
     }
@@ -207,14 +208,11 @@ module.exports = async (client, interaction) => {
         },
       });
 
-      // 改用賭場共用 embed：作者放玩家頭像＋名稱，欄位顯示下注／淨輸贏／餘額，遊戲 GIF 放進 embed
-      const embed = buildCasinoEmbed({
+      // 改用 Components V2 卡片，與倍率輪盤等賭場結果一致：
+      // 標題／玩家、結果 GIF、戰績、重玩按鈕全收進同一個容器。
+      const container = buildCasinoContainer({
         game: "🎰 輪盤",
-        user: {
-          id: game.userId,
-          displayName: game.username,
-          avatarURL: interaction.user.displayAvatarURL(),
-        },
+        user: { id: game.userId, displayName: game.username },
         outcome: netResult > 0 ? "win" : netResult < 0 ? "lose" : "neutral",
         headline: `開出 **${result}** ${resultEmoji(result)}`,
         lines: winLines ? winLines.split("\n") : [],
@@ -222,19 +220,30 @@ module.exports = async (client, interaction) => {
         net: netResult,
         balance: balanceAfter,
         imageName: gifAttachment ? "roulette.gif" : undefined,
+        actionRow: buildReplayRow("roulette", game.userId, { name: game.username }),
       });
 
       await interaction.editReply({
-        content: "",
-        embeds: [embed],
+        flags: MessageFlags.IsComponentsV2,
+        components: [container],
         files: gifAttachment ? [gifAttachment] : [],
-        components: [buildReplayRow("roulette", game.userId, { name: game.username })],
       });
       return;
     }
 
     // ── 取消 ────────────────────────────────────────────────
     if (action === 'cancel') {
+      const cancelContainer = new ContainerBuilder()
+        .setAccentColor(CASINO_COLORS.neutral)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent('🎰 已取消，籌碼退回。')
+        );
+      const editCancelled = () =>
+        interaction.editReply({
+          flags: MessageFlags.IsComponentsV2,
+          components: [cancelContainer],
+        });
+
       // 用 status 條件防 race（cron 同時掃不會雙退）
       const updated = await client.rouletteGamesCollection.findOneAndUpdate(
         { _id: game._id, status: 'betting' },
@@ -242,7 +251,7 @@ module.exports = async (client, interaction) => {
       );
       if (!updated) {
         // 已被 cron 搶先取消
-        await interaction.editReply({ content: '🎰 已取消，籌碼退回。', components: [] });
+        await editCancelled();
         return;
       }
 
@@ -255,7 +264,7 @@ module.exports = async (client, interaction) => {
         meta: { game: 'roulette', gameId, reason: 'cancelled' },
       });
 
-      await interaction.editReply({ content: '🎰 已取消，籌碼退回。', components: [] });
+      await editCancelled();
     }
     trackSuccess("roulette-button");
   } catch (err) {
