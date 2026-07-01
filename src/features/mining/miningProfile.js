@@ -16,6 +16,8 @@ function defaultProfile(userId, guildId) {
     whetstone_inferior_count: 0,
     repair_tools: { iron: 0, steel: 0, gold: 0, mythril: 0, diamond: 0, legendary: 0 },
     stamina_potion_count: 0,
+    stamina_potion_medium_count: 0,
+    stamina_potion_large_count: 0,
     cd_ticket_count: 0,
     cd_ticket_used_date: null,
     cd_ticket_used_count: 0,
@@ -128,6 +130,8 @@ function normalize(doc) {
   doc.whetstone_inferior_count ??= 0;
   doc.repair_tools = { iron: 0, steel: 0, gold: 0, mythril: 0, diamond: 0, legendary: 0, ...(doc.repair_tools || {}) };
   doc.stamina_potion_count ??= 0;
+  doc.stamina_potion_medium_count ??= 0;
+  doc.stamina_potion_large_count ??= 0;
   doc.cd_ticket_count ??= 0;
   if (doc.cd_ticket_used_date === undefined) doc.cd_ticket_used_date = null;
   doc.cd_ticket_used_count ??= 0;

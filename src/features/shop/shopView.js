@@ -134,7 +134,9 @@ function itemMeta(item) {
     return `${m} 分鐘`;
   }
   if (item.type === "mining_luck_potion") return `${item.payload?.uses || 0} 次`;
-  if (item.type === "mining_stamina_potion") return `+${item.payload?.restore || 0} 體力／瓶`;
+  if (item.type?.startsWith("mining_stamina_potion")) {
+    return (item.payload?.restore || 0) >= 9999 ? "補滿體力／瓶" : `+${item.payload?.restore || 0} 體力／瓶`;
+  }
   if (item.type === "mining_hp_potion_small" || item.type === "mining_hp_potion_medium") {
     return `+${item.payload?.restore || 0} HP／瓶`;
   }

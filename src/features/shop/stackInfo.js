@@ -8,6 +8,8 @@ const OWNED_FIELD = {
   mining_cd_ticket: { field: "cd_ticket_count", unit: "張", payloadKey: "qty" },
   mining_whetstone_inferior: { field: "whetstone_inferior_count", unit: "個", payloadKey: "qty" },
   mining_stamina_potion: { field: "stamina_potion_count", unit: "瓶", payloadKey: "qty" },
+  mining_stamina_potion_medium: { field: "stamina_potion_medium_count", unit: "瓶", payloadKey: "qty" },
+  mining_stamina_potion_large: { field: "stamina_potion_large_count", unit: "瓶", payloadKey: "qty" },
   mining_hp_potion_small: { field: "hp_potion_small", unit: "瓶", payloadKey: "qty" },
   mining_hp_potion_medium: { field: "hp_potion_medium", unit: "瓶", payloadKey: "qty" },
   mining_hp_potion_large: { field: "hp_potion_large", unit: "瓶", payloadKey: "qty" },

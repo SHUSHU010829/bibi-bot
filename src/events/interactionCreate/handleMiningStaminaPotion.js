@@ -36,7 +36,7 @@ module.exports = async (client, interaction) => {
 
     const parsed = parseUseStaminaPotionId(interaction.customId);
     if (!parsed) return;
-    const { ownerId } = parsed;
+    const { ownerId, tier } = parsed;
 
     const rl = consume(interaction.user.id, "btn:miningUseStaminaPotion", {
       windowMs: 2000,
@@ -65,6 +65,7 @@ module.exports = async (client, interaction) => {
       userId: interaction.user.id,
       guildId: interaction.guildId,
       member: interaction.member,
+      tier,
     });
 
     if (!result.ok) {
@@ -118,12 +119,12 @@ module.exports = async (client, interaction) => {
     const c = new ContainerBuilder()
       .setAccentColor(0x2ecc71)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("## 🧪 體力藥水使用成功！")
+        new TextDisplayBuilder().setContent(`## 🧪 ${result.tierName || "體力藥水"} 使用成功！`)
       )
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🔋 體力：${result.staminaBefore} → **${result.staminaAfter}** / ${result.max}（+${result.restored}）\n🧪 剩餘藥水：×${result.potionLeft}${tail}\n-# 立刻去 /地下城 探險吧！`
+          `🔋 體力：${result.staminaBefore} → **${result.staminaAfter}** / ${result.max}（+${result.restored}）\n🧪 剩餘體力藥水：共 ×${result.totalPotionLeft ?? result.potionLeft} 瓶${tail}\n-# 立刻去 /地下城 探險吧！`
         )
       );
     await interaction.editReply({

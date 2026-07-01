@@ -156,30 +156,61 @@ async function restoreStamina(client, { userId, guildId, member, amount }) {
   };
 }
 
+// 體力藥水分級：小 / 中 / 大，各自對應 shop type 與 profile 欄位。
+const STAMINA_POTION_TIERS = {
+  small:  { field: "stamina_potion_count",        type: "mining_stamina_potion",        name: "體力藥水（小）" },
+  medium: { field: "stamina_potion_medium_count", type: "mining_stamina_potion_medium", name: "體力藥水（中）" },
+  large:  { field: "stamina_potion_large_count",  type: "mining_stamina_potion_large",  name: "體力藥水（大）" },
+};
+const STAMINA_TIER_BY_SIZE_DESC = ["large", "medium", "small"];
+
+function staminaPotionRestore(tier) {
+  const meta = STAMINA_POTION_TIERS[tier];
+  const item = (shop?.items || []).find((i) => i.type === meta?.type);
+  return item?.payload?.restore || 0;
+}
+
+function totalStaminaPotions(profile) {
+  return Object.values(STAMINA_POTION_TIERS).reduce(
+    (s, m) => s + (profile?.[m.field] || 0),
+    0,
+  );
+}
+
+// 未指定 tier 時（緊急快捷補體力），優先用持有中「最大」的那瓶。
+function bestStaminaTier(profile) {
+  for (const t of STAMINA_TIER_BY_SIZE_DESC) {
+    if ((profile?.[STAMINA_POTION_TIERS[t].field] || 0) > 0) return t;
+  }
+  return null;
+}
+
 // 使用一瓶體力藥水：扣 1 罐 + 補體力。庫存或體力滿時各自回傳對應 reason。
-async function useStaminaPotion(client, { userId, guildId, member }) {
+// tier 可選（small/medium/large）；未指定則用持有中最大的一瓶。
+async function useStaminaPotion(client, { userId, guildId, member, tier }) {
   if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
   const club = await getMemberClub(client, userId, guildId);
   const max = staminaMax(member, club);
   const profile = await getOrCreate(client, userId, guildId);
 
-  const owned = profile.stamina_potion_count || 0;
-  if (owned <= 0) return { ok: false, reason: "no_potion" };
+  const useTier = STAMINA_POTION_TIERS[tier] ? tier : bestStaminaTier(profile);
+  if (!useTier) return { ok: false, reason: "no_potion" };
+  const meta = STAMINA_POTION_TIERS[useTier];
+
+  if ((profile[meta.field] || 0) <= 0) return { ok: false, reason: "no_potion" };
 
   const st = resolveStamina(profile, max);
   if (st.stamina >= max) {
     return { ok: false, reason: "full", staminaBefore: st.stamina, max };
   }
 
-  const { shop } = require("../../config");
-  const item = (shop?.items || []).find((i) => i.type === "mining_stamina_potion");
-  const restore = item?.payload?.restore || 5;
+  const restore = staminaPotionRestore(useTier) || 5;
 
-  // 原子扣減：filter 帶 stamina_potion_count >= 1，防止連點重複扣
+  // 原子扣減：filter 帶對應欄位 >= 1，防止連點重複扣
   const updated = await client.miningProfilesCollection.findOneAndUpdate(
-    { userId, guildId, stamina_potion_count: { $gte: 1 } },
-    { $inc: { stamina_potion_count: -1 }, $set: { updatedAt: new Date() } },
+    { userId, guildId, [meta.field]: { $gte: 1 } },
+    { $inc: { [meta.field]: -1 }, $set: { updatedAt: new Date() } },
     { returnDocument: "after" },
   );
   const updatedDoc = updated?.value || updated;
@@ -188,11 +219,14 @@ async function useStaminaPotion(client, { userId, guildId, member }) {
   const restored = await restoreStamina(client, { userId, guildId, member, amount: restore });
   return {
     ok: true,
+    tier: useTier,
+    tierName: meta.name,
     staminaBefore: restored.staminaBefore,
     staminaAfter: restored.staminaAfter,
     restored: restored.restored,
     max: restored.max,
-    potionLeft: updatedDoc.stamina_potion_count || 0,
+    potionLeft: updatedDoc[meta.field] || 0,
+    totalPotionLeft: totalStaminaPotions(updatedDoc),
     nextRegenAt: restored.nextRegenAt,
   };
 }
@@ -262,7 +296,7 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
       nextRegenAt: st.nextRegenAt,
       max,
       staminaBonus: bonus,
-      potionCount: profile.stamina_potion_count || 0,
+      potionCount: totalStaminaPotions(profile),
     };
   }
 
@@ -721,7 +755,7 @@ async function enterDungeonHp(client, {
       nextRegenAt: st.nextRegenAt,
       max: staMaxV,
       staminaBonus: staminaBonus(member),
-      potionCount: profile.stamina_potion_count || 0,
+      potionCount: totalStaminaPotions(profile),
       staCost,
     };
   }
@@ -1247,6 +1281,8 @@ module.exports = {
   resolveStamina,
   restoreStamina,
   useStaminaPotion,
+  totalStaminaPotions,
+  STAMINA_POTION_TIERS,
   staminaMax,
   staminaBonus,
   staminaGuildBonus,
