@@ -473,6 +473,8 @@ async function useInferiorWhetstoneOnWeapon(client, { userId, guildId }) {
   }
 
   const fallbackMax = profile.weapon_max_durability;
+  // 磨石 -10 作用在「原始上限」；補滿的當前耐久則補到「有效上限」（原始 × 鐵匠鋪加成）。
+  const pct = await buildingService.getWeaponMaxDurabilityPct(client, userId, guildId);
   const res = await client.miningProfilesCollection.updateOne(
     {
       userId,
@@ -487,7 +489,12 @@ async function useInferiorWhetstoneOnWeapon(client, { userId, guildId }) {
             $add: [{ $ifNull: ["$weapon_max_durability", fallbackMax] }, -10],
           },
           weapon_durability: {
-            $add: [{ $ifNull: ["$weapon_max_durability", fallbackMax] }, -10],
+            $floor: {
+              $multiply: [
+                { $add: [{ $ifNull: ["$weapon_max_durability", fallbackMax] }, -10] },
+                1 + pct / 100,
+              ],
+            },
           },
           whetstone_inferior_count: { $add: ["$whetstone_inferior_count", -1] },
           updatedAt: "$$NOW",
@@ -497,11 +504,12 @@ async function useInferiorWhetstoneOnWeapon(client, { userId, guildId }) {
   );
 
   if (res.modifiedCount === 0) return { ok: false, reason: "retry" };
-  const newMax = profile.weapon_max_durability - 10;
+  const newBase = profile.weapon_max_durability - 10;
+  const newEffMax = buildingService.effectiveWeaponMaxDurability(newBase, pct);
   return {
     ok: true,
-    durabilityAfter: newMax,
-    maxAfter: newMax,
+    durabilityAfter: newEffMax,
+    maxAfter: newEffMax,
     inferiorLeft: (profile.whetstone_inferior_count || 0) - 1,
     weaponKey: profile.weapon,
   };
@@ -694,18 +702,22 @@ async function repairWeaponWithMaterials(client, { userId, guildId }) {
   if (typeof profile.weapon_max_durability !== "number") {
     return { ok: false, reason: "no_weapon" };
   }
+  const guildBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const effMax = buildingService.effectiveWeaponMaxDurability(
+    profile.weapon_max_durability,
+    guildBuffs.weapon_max_durability_pct || 0
+  );
   if (
     typeof profile.weapon_durability === "number" &&
-    profile.weapon_durability >= profile.weapon_max_durability
+    profile.weapon_durability >= effMax
   ) {
     return { ok: false, reason: "already_full", durability: profile.weapon_durability };
   }
 
   const baseCost = getWeaponRepairCost(profile);
   if (!baseCost) return { ok: false, reason: "no_recipe" };
-  const guildBuffs = await buildingService
-    .getMemberBuildingBuffs(client, userId, guildId)
-    .catch(() => ({}));
   const cost = applyRepairDiscount(
     baseCost,
     guildBuffs.equipment_repair_discount_pct || 0
@@ -731,7 +743,7 @@ async function repairWeaponWithMaterials(client, { userId, guildId }) {
     {
       $inc: inc,
       $set: {
-        weapon_durability: profile.weapon_max_durability,
+        weapon_durability: effMax,
         updatedAt: new Date(),
       },
     }
@@ -740,8 +752,8 @@ async function repairWeaponWithMaterials(client, { userId, guildId }) {
   return {
     ok: true,
     cost,
-    durabilityAfter: profile.weapon_max_durability,
-    maxDurability: profile.weapon_max_durability,
+    durabilityAfter: effMax,
+    maxDurability: effMax,
   };
 }
 

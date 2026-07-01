@@ -486,35 +486,38 @@ async function trigger(client, ctx) {
         const profile = await getOrCreate(client, userId, guildId);
         const wdef = (dungeon?.weapons || {})[profile.weapon] || {};
         if (profile.weapon !== "fist" && wdef.durability) {
-          // 優先用 profile 上的 max（舊存檔可能尚未 backfill，fallback 到 config）
-          const max =
+          const buildingService = require("../guild_club/buildingService");
+          const pct = await buildingService.getWeaponMaxDurabilityPct(client, userId, guildId);
+          // 儲存的是「原始上限」；補耐久補到「有效上限」（原始 × 鐵匠鋪加成）。
+          const baseMax =
             typeof profile.weapon_max_durability === "number"
               ? profile.weapon_max_durability
               : wdef.durability;
+          const effMax = buildingService.effectiveWeaponMaxDurability(baseMax, pct);
           const cur =
             typeof profile.weapon_durability === "number"
               ? profile.weapon_durability
-              : max;
+              : effMax;
           const next = eff.pct
-            ? clamp(cur + Math.ceil(max * eff.pct), 0, max)
-            : max;
+            ? clamp(cur + Math.ceil(effMax * eff.pct), 0, effMax)
+            : effMax;
           await coll(client).updateOne(
             { userId, guildId },
             {
               $set: {
                 weapon_durability: next,
-                weapon_max_durability: max,
+                weapon_max_durability: baseMax,
                 updatedAt: new Date(),
               },
             }
           );
           if (eff.pct) {
             lines.push(
-              `🛠️ ${wdef.emoji || "⚔️"} ${wdef.name} 耐久 ${cur} → ${next}/${max}`
+              `🛠️ ${wdef.emoji || "⚔️"} ${wdef.name} 耐久 ${cur} → ${next}/${effMax}`
             );
           } else {
             lines.push(
-              `🛠️ ${wdef.emoji || "⚔️"} ${wdef.name} 耐久恢復至 ${max}`
+              `🛠️ ${wdef.emoji || "⚔️"} ${wdef.name} 耐久恢復至 ${effMax}`
             );
           }
         } else {

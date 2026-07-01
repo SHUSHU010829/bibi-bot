@@ -1194,7 +1194,10 @@ async function getDungeonStatus(client, { userId, guildId, member }) {
     },
     weapon: profile.weapon,
     weaponDurability: profile.weapon_durability,
-    weaponMaxDurability: profile.weapon_max_durability,
+    weaponMaxDurability: buildingService.effectiveWeaponMaxDurability(
+      profile.weapon_max_durability,
+      clubBuildingPct(club, "weapon_max_durability_pct")
+    ),
     shield: profile.shield,
     shieldDurability: profile.shield_durability,
     shieldMaxDurability: profile.shield_max_durability,

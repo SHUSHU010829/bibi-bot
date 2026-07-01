@@ -32,6 +32,7 @@ const {
   applyRepairDiscount,
 } = require("../mining/mineService");
 const buildingService = require("../guild_club/buildingService");
+const { effectiveWeaponMaxDurability } = buildingService;
 const {
   REPAIR_MATERIAL_PREFIX,
   REPAIR_WEAPON_PREFIX,
@@ -121,7 +122,7 @@ function formatCostInline(profile, cost) {
 }
 
 // ─── 裝備分頁 ────────────────────────────────────────────────────────────────
-function buildEquipmentTab(container, { userId, displayName, profile }) {
+function buildEquipmentTab(container, { userId, displayName, profile, weaponMaxPct = 0 }) {
   container
     .setAccentColor(0x95a5a6)
     .addTextDisplayComponents(
@@ -145,10 +146,11 @@ function buildEquipmentTab(container, { userId, displayName, profile }) {
 
   const wKey = profile.weapon || "fist";
   const wdef = (dungeon?.weapons || {})[wKey] || {};
+  const weaponEffMax = effectiveWeaponMaxDurability(profile.weapon_max_durability, weaponMaxPct);
   const weaponDurability =
     wKey === "fist" || profile.weapon_durability == null
       ? "永久"
-      : `${profile.weapon_durability}/${profile.weapon_max_durability ?? "?"} 次`;
+      : `${profile.weapon_durability}/${weaponEffMax ?? "?"} 次`;
   const critPct = Math.round((wdef.critRate || 0) * 100);
   const atk = playerAtk(profile);
   const weaponNote = wKey === "fist" ? "（赤手戰勝率極低，先合成一把劍！）" : "";
@@ -454,7 +456,7 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
 }
 
 // ─── 修復分頁 ────────────────────────────────────────────────────────────────
-function buildRepairTab(container, { userId, displayName, profile, repairDiscountPct = 0 }) {
+function buildRepairTab(container, { userId, displayName, profile, repairDiscountPct = 0, weaponMaxPct = 0 }) {
   container
     .setAccentColor(0x16a085)
     .addTextDisplayComponents(
@@ -506,16 +508,17 @@ function buildRepairTab(container, { userId, displayName, profile, repairDiscoun
   {
     const cost = applyRepairDiscount(getWeaponRepairCost(profile), repairDiscountPct);
     const wKey = profile.weapon || "fist";
+    const weaponEffMax = effectiveWeaponMaxDurability(profile.weapon_max_durability, weaponMaxPct);
     const can =
       cost !== null &&
       wKey !== "fist" &&
       typeof profile.weapon_durability === "number" &&
-      typeof profile.weapon_max_durability === "number" &&
-      profile.weapon_durability < profile.weapon_max_durability;
+      typeof weaponEffMax === "number" &&
+      profile.weapon_durability < weaponEffMax;
     const dura =
       wKey === "fist" || profile.weapon_durability == null
         ? "永久"
-        : `${profile.weapon_durability}/${profile.weapon_max_durability ?? "?"} 次`;
+        : `${profile.weapon_durability}/${weaponEffMax ?? "?"} 次`;
     const body = wKey === "fist"
       ? `⚔️ **武器**：拳頭（不需修復）`
       : cost
@@ -651,14 +654,15 @@ async function buildView(client, { userId, guildId, displayName, tab = "equipmen
     .getMemberBuildingBuffs(client, userId, guildId)
     .catch(() => ({}));
   const repairDiscountPct = guildBuffs.equipment_repair_discount_pct || 0;
+  const weaponMaxPct = guildBuffs.weapon_max_durability_pct || 0;
 
   const container = new ContainerBuilder();
   container.addActionRowComponents(tabRow(userId, tab));
   container.addSeparatorComponents(new SeparatorBuilder());
 
-  if (tab === "equipment") buildEquipmentTab(container, { userId, displayName, profile });
+  if (tab === "equipment") buildEquipmentTab(container, { userId, displayName, profile, weaponMaxPct });
   else if (tab === "craft") buildCraftTab(container, { userId, displayName, profile, craftSub });
-  else if (tab === "repair") buildRepairTab(container, { userId, displayName, profile, repairDiscountPct });
+  else if (tab === "repair") buildRepairTab(container, { userId, displayName, profile, repairDiscountPct, weaponMaxPct });
 
   return {
     components: [container],

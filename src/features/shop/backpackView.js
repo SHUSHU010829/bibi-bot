@@ -554,10 +554,11 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     const repairTools = profile.repair_tools || {};
     const reductionMin = Math.round((mining?.cdTicketReductionMs || 0) / 60000);
 
-    const repairDiscountPct =
-      (await buildingService
-        .getMemberBuildingBuffs(client, userId, guildId)
-        .catch(() => ({}))).equipment_repair_discount_pct || 0;
+    const guildBuildingBuffs = await buildingService
+      .getMemberBuildingBuffs(client, userId, guildId)
+      .catch(() => ({}));
+    const repairDiscountPct = guildBuildingBuffs.equipment_repair_discount_pct || 0;
+    const weaponMaxPct = guildBuildingBuffs.weapon_max_durability_pct || 0;
     const repairCost = applyRepairDiscount(
       getPickaxeRepairCost(profile),
       repairDiscountPct
@@ -632,6 +633,8 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         const pickaxeMax = profile.pickaxe_max_durability;
         const weaponMax = profile.weapon_max_durability;
         const shieldMax = profile.shield_max_durability;
+        // 磨石 -10 的門檻看「原始上限」(weaponMax)；顯示則看「有效上限」(含鐵匠鋪加成)。
+        const weaponEffMax = buildingService.effectiveWeaponMaxDurability(weaponMax, weaponMaxPct);
         const canPickaxe = inferiorCount > 0 && profile.pickaxe !== "wood" && typeof pickaxeMax === "number" && pickaxeMax >= 20;
         const canWeapon = inferiorCount > 0 && profile.weapon !== "fist" && typeof weaponMax === "number" && weaponMax >= 20;
         const canShield = inferiorCount > 0 && !!profile.shield && typeof shieldMax === "number" && shieldMax >= 20;
@@ -640,7 +643,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         hintLines.push("-# 通用修復 — 補滿耐久，該裝備最大耐久 -10（max < 20 時無法使用）");
         const slots = [];
         if (profile.pickaxe !== "wood") slots.push(`鎬 max ${pickaxeMax ?? "—"}`);
-        if (profile.weapon !== "fist") slots.push(`武 max ${weaponMax ?? "—"}`);
+        if (profile.weapon !== "fist") slots.push(`武 max ${weaponEffMax ?? "—"}`);
         if (profile.shield) slots.push(`盾 max ${shieldMax ?? "—"}`);
         if (slots.length) hintLines.push(`-# 目前：${slots.join(" ・ ")}`);
 

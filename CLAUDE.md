@@ -106,6 +106,16 @@ Discord bot（discord.js v14，Node 22，MongoDB）。
 所有加成來源統一走 `src/features/buff/buffResolver.js`，不直接在各指令裡散算。
 新增 buff 類型時同步更新 `/加成` 指令（`src/commands/mining/buff.js`）的顯示區塊。
 
+#### 加成一律「動態換算」，不准寫死進 DB
+
+加成必須反映玩家**當前狀態**，狀態一變（公會升級/降級、退出公會、buff 到期、稱號/裝備換掉）就要即時跟著變。實作原則：
+
+- **存來源，不存結果**：DB 只存來源狀態（公會等級、建築等級、道具數量、`active_*_buffs` 條目 + `expires_at`），加成值在**顯示 / 使用時**才用 resolver 即時算。
+- **禁止在事件當下把加成寫死**：打造、購買、烹飪、加入公會、建築升級…等時機，**不可**把「base ×(1+加成%)」算好塞進 profile 欄位。上限型欄位（`*_max_*`、容量、次數上限）一律存原始 base，加成由讀取端換算（範例：`weapon_max_durability` 存原始上限，`buildingService.effectiveWeaponMaxDurability()` 讀取時才吃鐵匠鋪 %）。
+- **紅旗訊號**：只要出現「loop 全公會成員把某個 buff 值寫進每個 profile」的 `sync*` 函式，或把 `1 + pct/100` 乘進 `$set` 欄位，幾乎都是寫死 → 改成 compute-on-read。
+- **到期型 buff**：存 `expires_at`，用的時候才判定有效性（比照 `cleanExpiredBuffs` / `isActiveBanquet`），不要靠排程去「清掉」欄位。
+- **例外**：真正屬於「某個實體自身狀態」的累積值（如農地施肥累積的 `yield_bonus_pct`）存在該實體上是對的——那不是玩家當前狀態的 buff，不受此規則限制。
+
 ---
 
 ## 程式碼慣例
