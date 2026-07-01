@@ -145,6 +145,7 @@
         "monsterAtkRange": [8, 12],
         "expectedTurns": [3, 5],
         "rewardMultiplier": 1.0,
+        "clearReward": 30,
         "encounterRatePct": 20,
         "monsterPool": ["cave_bat", "stone_slime"],
         "petExp": 10
@@ -160,7 +161,8 @@
         "monsterHpRange": [250, 400],
         "monsterAtkRange": [12, 18],
         "expectedTurns": [4, 6],
-        "rewardMultiplier": 1.3,
+        "rewardMultiplier": 1.5,
+        "clearReward": 80,
         "encounterRatePct": 20,
         "monsterPool": ["stone_slime", "crypt_spider"],
         "petExp": 18
@@ -174,9 +176,10 @@
         "staminaCost": 2,
         "weaponDurabilityCost": 2,
         "monsterHpRange": [500, 800],
-        "monsterAtkRange": [18, 25],
+        "monsterAtkRange": [20, 28],
         "expectedTurns": [6, 8],
-        "rewardMultiplier": 1.7,
+        "rewardMultiplier": 2.6,
+        "clearReward": 180,
         "encounterRatePct": 25,
         "monsterPool": ["crypt_spider", "mine_goblin", "abyss_skeleton"],
         "petExp": 28
@@ -189,10 +192,11 @@
         "prereqClears": { "floor": 3, "count": 15 },
         "staminaCost": 2,
         "weaponDurabilityCost": 2,
-        "monsterHpRange": [1000, 1500],
-        "monsterAtkRange": [25, 35],
+        "monsterHpRange": [1100, 1700],
+        "monsterAtkRange": [30, 42],
         "expectedTurns": [8, 10],
-        "rewardMultiplier": 2.2,
+        "rewardMultiplier": 3.8,
+        "clearReward": 400,
         "encounterRatePct": 25,
         "monsterPool": ["mine_goblin", "lava_giant", "abyss_skeleton"],
         "petExp": 38
@@ -205,14 +209,15 @@
         "prereqClears": { "floor": 4, "count": 25 },
         "staminaCost": 3,
         "weaponDurabilityCost": 3,
-        "monsterHpRange": [1800, 2500],
-        "monsterAtkRange": [25, 35],
+        "monsterHpRange": [2100, 3000],
+        "monsterAtkRange": [40, 55],
         "expectedTurns": [10, 15],
-        "rewardMultiplier": 3.0,
+        "rewardMultiplier": 5.5,
+        "clearReward": 800,
         "encounterRatePct": 15,
         "monsterPool": ["lava_giant", "shadow_wolf"],
         "petExp": 50,
-        "miniBossUnlock": { "floor": 5, "clears": 5 }
+        "miniBossUnlock": { "floor": 5, "clears": 5, "rechargeClears": 3 }
       }
     ],
     "miniBosses": {
@@ -226,7 +231,12 @@
         "weaponDurabilityCost": 4,
         "phase2HpRatio": 0.5,
         "phase2AtkMult": 2.0,
-        "petExp": 80
+        "clearReward": 1500,
+        "petExp": 80,
+        "variants": [
+          { "id": "mine_golem", "name": "崩岩魔像", "emoji": "🗿", "hp": 4400, "atk": 30, "armorTurns": 2, "clearReward": 1700 },
+          { "id": "mine_ratking", "name": "血牙礦鼠王", "emoji": "🐀", "hp": 3000, "atk": 44, "phase2HpRatio": 0.4, "phase2AtkMult": 2.2, "clearReward": 1600 }
+        ]
       },
       "ruins": {
         "id": "ruins_sleeper",
@@ -237,7 +247,12 @@
         "staminaCost": 3,
         "weaponDurabilityCost": 4,
         "armorTurns": 3,
-        "petExp": 80
+        "clearReward": 1800,
+        "petExp": 80,
+        "variants": [
+          { "id": "ruins_puppet", "name": "遺跡傀儡", "emoji": "🎎", "hp": 4800, "atk": 28, "phase2HpRatio": 0.5, "phase2AtkMult": 1.8, "clearReward": 2000 },
+          { "id": "ruins_pharaoh", "name": "詛咒法老", "emoji": "⚱️", "hp": 3900, "atk": 36, "paralyzeChance": 0.25, "clearReward": 1900 }
+        ]
       },
       "ice":   {
         "id": "ice_queen",
@@ -248,7 +263,12 @@
         "staminaCost": 3,
         "weaponDurabilityCost": 4,
         "paralyzeChance": 0.3,
-        "petExp": 80
+        "clearReward": 2000,
+        "petExp": 80,
+        "variants": [
+          { "id": "ice_direwolf", "name": "霜牙巨狼", "emoji": "🐺", "hp": 4000, "atk": 40, "phase2HpRatio": 0.45, "phase2AtkMult": 2.0, "clearReward": 2100 },
+          { "id": "ice_permafrost", "name": "永凍領主", "emoji": "🧊", "hp": 5200, "atk": 26, "armorTurns": 3, "paralyzeChance": 0.2, "clearReward": 2300 }
+        ]
       }
     },
     "statusEffects": {
@@ -296,6 +316,150 @@
       "systemRakePct": 0.05,
       "scoreRandMax": 30,
       "acceptWindowMs": 120000
+    },
+    "choiceEvents": {
+      "enabled": true,
+      "chance": 0.22,
+      "events": [
+        {
+          "id": "mystery_potion",
+          "weight": 10,
+          "emoji": "🧪",
+          "name": "神秘藥水",
+          "text": "石縫裡卡著一瓶顏色詭異、還冒著泡的藥水。要一飲而盡賭一把，還是收進背包變賣？",
+          "options": [
+            {
+              "id": "drink",
+              "label": "一飲而盡",
+              "emoji": "🥴",
+              "outcomes": [
+                { "weight": 42, "effect": { "type": "restore_full_stamina" }, "text": "🔋 是上等體力藥劑！精神大振，體力全滿！" },
+                { "weight": 42, "effect": { "type": "lose_hp_pct", "pct": 0.3 }, "text": "🤢 苦澀刺喉——是毒藥！你痛得直冒冷汗。" },
+                { "weight": 16, "effect": { "type": "bonus_coins", "min": 400, "max": 800 }, "text": "✨ 竟是煉金藥劑，喝完口袋叮噹作響！" }
+              ]
+            },
+            {
+              "id": "keep",
+              "label": "收起來變賣",
+              "emoji": "💰",
+              "outcomes": [
+                { "weight": 80, "effect": { "type": "bonus_coins", "min": 180, "max": 420 }, "text": "💰 你把藥水轉手賣給商人，穩穩賺了一筆。" },
+                { "weight": 20, "effect": { "type": "gift_hp_potion", "tier": "small", "qty": 1 }, "text": "🔍 商人看走眼，把它當成生命藥水找你換——你倒賺一瓶！" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "abandoned_chest",
+          "weight": 9,
+          "emoji": "🧰",
+          "name": "廢棄寶箱",
+          "text": "角落有一口上了鎖的寶箱，鎖孔隱隱透著綠光。硬撬、還是繞道而行？",
+          "options": [
+            {
+              "id": "force",
+              "label": "硬撬開",
+              "emoji": "🔨",
+              "outcomes": [
+                { "weight": 50, "effect": { "type": "bonus_coins", "min": 500, "max": 1100 }, "text": "💰 鎖應聲而開，滿滿金幣灑了一地！" },
+                { "weight": 35, "effect": { "type": "lose_hp_pct", "pct": 0.25 }, "text": "☠️ 是毒針陷阱！你的手背瞬間發黑。" },
+                { "weight": 15, "effect": { "type": "gift_stamina_potion", "tier": "medium", "qty": 1 }, "text": "🥤 箱底躺著一瓶體力藥水（中），收下！" }
+              ]
+            },
+            {
+              "id": "leave",
+              "label": "繞道離開",
+              "emoji": "🚶",
+              "outcomes": [
+                { "weight": 70, "effect": { "type": "nothing" }, "text": "🚶 你謹慎地繞了過去，什麼也沒發生。" },
+                { "weight": 30, "effect": { "type": "bonus_coins", "min": 80, "max": 200 }, "text": "🪙 路上撿到幾枚散落的錢幣，小賺不虧。" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "wounded_merchant",
+          "weight": 8,
+          "emoji": "🧎",
+          "name": "受傷的商人",
+          "text": "一名商人癱坐在牆邊向你求助。要伸出援手，還是視而不見？",
+          "options": [
+            {
+              "id": "help",
+              "label": "出手相助",
+              "emoji": "🤝",
+              "outcomes": [
+                { "weight": 60, "effect": { "type": "bonus_coins", "min": 350, "max": 750 }, "text": "🤝 商人感激涕零，掏出重金答謝！" },
+                { "weight": 25, "effect": { "type": "gift_hp_potion", "tier": "medium", "qty": 1 }, "text": "💊 他把僅剩的生命藥水（中）塞給你答謝。" },
+                { "weight": 15, "effect": { "type": "lose_coins", "min": 100, "max": 300 }, "text": "🎭 竟是騙子！趁你不備摸走了一些錢幣。" }
+              ]
+            },
+            {
+              "id": "ignore",
+              "label": "視而不見",
+              "emoji": "🙈",
+              "outcomes": [
+                { "weight": 100, "effect": { "type": "nothing" }, "text": "🙈 你別過頭快步離開，沒有多生事端。" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ancient_altar",
+          "weight": 6,
+          "emoji": "🗿",
+          "name": "古老祭壇",
+          "text": "祭壇上刻著「以財換運」。要投入一些金幣獻祭，還是敬而遠之？",
+          "options": [
+            {
+              "id": "offer",
+              "label": "投入金幣獻祭",
+              "emoji": "🪙",
+              "outcomes": [
+                { "weight": 45, "effect": { "type": "bonus_coins", "min": 600, "max": 1400 }, "text": "🌟 祭壇綻放金光，回饋你數倍的財富！" },
+                { "weight": 40, "effect": { "type": "lose_coins", "min": 200, "max": 500 }, "text": "🕳️ 金幣沉入祭壇石縫，石沉大海……" },
+                { "weight": 15, "effect": { "type": "restore_hp_full" }, "text": "💫 一股暖流包覆全身，你的傷勢竟痊癒了！" }
+              ]
+            },
+            {
+              "id": "avoid",
+              "label": "敬而遠之",
+              "emoji": "🚷",
+              "outcomes": [
+                { "weight": 100, "effect": { "type": "nothing" }, "text": "🚷 你決定不惹這來歷不明的東西，轉身離開。" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "flavor": {
+      "win": [
+        "洞穴深處傳來一聲哀嚎，戰利品散落一地。",
+        "你抖了抖劍上的血，繼續向黑暗深處走去。",
+        "又一隻怪物成了你的墊腳石。",
+        "空氣中還殘留著硝煙味，這場你贏得漂亮。",
+        "牆上的火把映著你的影子，宛如傳說中的勇者。"
+      ],
+      "lose": [
+        "你踉蹌著退出洞窟，傷口還在隱隱作痛。",
+        "這次栽了跟頭——養好傷再回來算帳。",
+        "怪物的獰笑在你耳邊回盪，下次一定要贏回來。",
+        "地下城不相信眼淚，磨利你的劍再來吧。"
+      ],
+      "draw": [
+        "纏鬥太久，你決定見好就收，撤出洞窟。",
+        "拖太久了！體力見底，只能先撤退。"
+      ],
+      "boss_win": [
+        "巨影轟然倒下，整座地下城為之震動！",
+        "傳說又添一筆——這一戰將被人們傳頌。",
+        "王座已空，屬於你的榮耀無人能奪。"
+      ],
+      "boss_lose": [
+        "BOSS 的咆哮震碎了你的信心，但英雄從不言棄。",
+        "差一點……就差那麼一點。捲土重來吧。"
+      ]
     }
   }
 }

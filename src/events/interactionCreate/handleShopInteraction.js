@@ -303,7 +303,7 @@ function renderPurchaseResult(item, result) {
   if (item.type === "xp_boost" || item.type === "coin_boost") {
     lines.push("・效果：已自動套用，可用 `/背包` 查看剩餘時間");
   }
-  if (item.type === "mining_stamina_potion") {
+  if (item.type?.startsWith("mining_stamina_potion")) {
     lines.push("・已加入背包，到 `/背包` 點「使用」即可恢復體力");
   }
 

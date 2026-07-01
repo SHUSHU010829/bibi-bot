@@ -116,10 +116,19 @@ function parseUseTreasureMapId(customId) {
   return customId.slice(USE_TREASURE_MAP_PREFIX.length);
 }
 
+// customId 格式：mining_use_stamina_potion_<tier>_<ownerId>（<tier> ∈ small/medium/large）
+// 舊格式 mining_use_stamina_potion_<ownerId>（無 tier）仍相容 → tier=null（用持有中最大的）。
 function parseUseStaminaPotionId(customId) {
   if (!customId || !customId.startsWith(USE_STAMINA_POTION_PREFIX)) return null;
-  const ownerId = customId.slice(USE_STAMINA_POTION_PREFIX.length);
-  return ownerId ? { ownerId } : null;
+  const rest = customId.slice(USE_STAMINA_POTION_PREFIX.length);
+  if (!rest) return null;
+  const parts = rest.split("_");
+  if (["small", "medium", "large"].includes(parts[0])) {
+    const tier = parts[0];
+    const ownerId = parts.slice(1).join("_");
+    return ownerId ? { ownerId, tier } : null;
+  }
+  return { ownerId: rest, tier: null };
 }
 
 function parseUseWhetstoneInferiorId(customId) {
@@ -1025,10 +1034,6 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     }).catch(() => null);
 
     if (status) {
-      const stPotionCount = status.profile?.stamina_potion_count || 0;
-      const stPotionItem = (shop?.items || []).find((it) => it.type === "mining_stamina_potion");
-      const stPotionRestore = stPotionItem?.payload?.restore || 5;
-
       container.addSeparatorComponents(new SeparatorBuilder());
 
       const wdef = (dungeon?.weapons || {})[status.weapon] || {};
@@ -1047,22 +1052,33 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         new TextDisplayBuilder().setContent(headLines.join("\n")),
       );
 
-      // 體力藥水
-      container.addSectionComponents(
-        new SectionBuilder()
-          .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              `🥤 **體力藥水** ×${stPotionCount}\n-# 立即恢復 ${stPotionRestore} 點地下城體力（不超過上限）`,
+      // 體力藥水（小 / 中 / 大）：各級一個「使用」按鈕，緊貼該級數量。
+      const STAMINA_TIERS = [
+        { tier: "small",  emoji: "🥤", label: "小", type: "mining_stamina_potion" },
+        { tier: "medium", emoji: "🧴", label: "中", type: "mining_stamina_potion_medium" },
+        { tier: "large",  emoji: "🍶", label: "大", type: "mining_stamina_potion_large" },
+      ];
+      for (const t of STAMINA_TIERS) {
+        const meta = dungeonService.STAMINA_POTION_TIERS?.[t.tier] || {};
+        const count = status.profile?.[meta.field] || 0;
+        const restore = (shop?.items || []).find((it) => it.type === t.type)?.payload?.restore || 0;
+        const restoreText = restore >= 9999 ? "補滿體力" : `恢復 ${restore} 點體力`;
+        container.addSectionComponents(
+          new SectionBuilder()
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                `${t.emoji} **體力藥水（${t.label}）** ×${count}\n-# 立即${restoreText}（不超過上限）`,
+              ),
+            )
+            .setButtonAccessory(
+              new ButtonBuilder()
+                .setCustomId(`${USE_STAMINA_POTION_PREFIX}${t.tier}_${userId}`)
+                .setLabel("使用")
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(count <= 0),
             ),
-          )
-          .setButtonAccessory(
-            new ButtonBuilder()
-              .setCustomId(`${USE_STAMINA_POTION_PREFIX}${userId}`)
-              .setLabel("使用")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(stPotionCount <= 0),
-          ),
-      );
+        );
+      }
 
       // 生命藥水庫存
       const potionLines = [];

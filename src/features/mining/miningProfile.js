@@ -16,6 +16,8 @@ function defaultProfile(userId, guildId) {
     whetstone_inferior_count: 0,
     repair_tools: { iron: 0, steel: 0, gold: 0, mythril: 0, diamond: 0, legendary: 0 },
     stamina_potion_count: 0,
+    stamina_potion_medium_count: 0,
+    stamina_potion_large_count: 0,
     cd_ticket_count: 0,
     cd_ticket_used_date: null,
     cd_ticket_used_count: 0,
@@ -65,11 +67,12 @@ function defaultProfile(userId, guildId) {
     hp_potion_medium: 0,
     hp_potion_large: 0,
     floor_unlocks: {
-      mine:  { max_floor: 1, clears: {} },
-      ruins: { max_floor: 0, clears: {} },
-      ice:   { max_floor: 0, clears: {} },
+      mine:  { max_floor: 1, clears: {}, mini_boss_claimed_clears: 0 },
+      ruins: { max_floor: 0, clears: {}, mini_boss_claimed_clears: 0 },
+      ice:   { max_floor: 0, clears: {}, mini_boss_claimed_clears: 0 },
     },
     mini_boss_kills: { mine: 0, ruins: 0, ice: 0 },
+    mini_boss_encounter_seq: { mine: 0, ruins: 0, ice: 0 },
     dragon_slayer_kills: 0,
     dungeon_auto_potion: true,
     dungeon_auto_potion_tier: "smallest",
@@ -127,6 +130,8 @@ function normalize(doc) {
   doc.whetstone_inferior_count ??= 0;
   doc.repair_tools = { iron: 0, steel: 0, gold: 0, mythril: 0, diamond: 0, legendary: 0, ...(doc.repair_tools || {}) };
   doc.stamina_potion_count ??= 0;
+  doc.stamina_potion_medium_count ??= 0;
+  doc.stamina_potion_large_count ??= 0;
   doc.cd_ticket_count ??= 0;
   if (doc.cd_ticket_used_date === undefined) doc.cd_ticket_used_date = null;
   doc.cd_ticket_used_count ??= 0;
@@ -183,9 +188,9 @@ function normalize(doc) {
   doc.hp_potion_medium ??= 0;
   doc.hp_potion_large ??= 0;
   doc.floor_unlocks = {
-    mine:  { max_floor: 1, clears: {}, ...(doc.floor_unlocks?.mine || {}) },
-    ruins: { max_floor: 0, clears: {}, ...(doc.floor_unlocks?.ruins || {}) },
-    ice:   { max_floor: 0, clears: {}, ...(doc.floor_unlocks?.ice || {}) },
+    mine:  { max_floor: 1, clears: {}, mini_boss_claimed_clears: 0, ...(doc.floor_unlocks?.mine || {}) },
+    ruins: { max_floor: 0, clears: {}, mini_boss_claimed_clears: 0, ...(doc.floor_unlocks?.ruins || {}) },
+    ice:   { max_floor: 0, clears: {}, mini_boss_claimed_clears: 0, ...(doc.floor_unlocks?.ice || {}) },
   };
   for (const theme of ["mine", "ruins", "ice"]) {
     if (!doc.floor_unlocks[theme].clears || typeof doc.floor_unlocks[theme].clears !== "object") {
@@ -193,6 +198,7 @@ function normalize(doc) {
     }
   }
   doc.mini_boss_kills = { mine: 0, ruins: 0, ice: 0, ...(doc.mini_boss_kills || {}) };
+  doc.mini_boss_encounter_seq = { mine: 0, ruins: 0, ice: 0, ...(doc.mini_boss_encounter_seq || {}) };
   doc.dragon_slayer_kills ??= 0;
 
   // Phase H+ 自動藥水偏好：開關 + 用哪瓶優先

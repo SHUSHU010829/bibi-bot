@@ -15,6 +15,8 @@ const { MessageFlags, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, Ac
 const dungeonCmd = require("../../commands/mining/dungeon");
 const dungeonService = require("../../features/mining/dungeonService");
 const hpService = require("../../features/dungeon/hpService");
+const floorService = require("../../features/dungeon/floorService");
+const choiceEventService = require("../../features/dungeon/choiceEventService");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const { isGameRoom } = require("../../features/gameRoom/service");
 const { dungeon } = require("../../config");
@@ -29,6 +31,8 @@ const PREFIXES = [
   dungeonCmd.RAID_AGAIN_PREFIX,
   dungeonCmd.RAID_FORCE_PREFIX,
   dungeonCmd.RAID_BOSS_PREFIX,
+  dungeonCmd.RAID_PREP_PREFIX,
+  dungeonCmd.RAID_CHOICE_PREFIX,
   dungeonCmd.RAID_USE_STAMINA_PREFIX,
   dungeonCmd.RAID_LOG_PREFIX,
   dungeonCmd.RAID_HEAL_PREFIX,
@@ -74,16 +78,29 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
       const ms = result.miniBossState;
       const r = ms?.requirement || {};
       const p = ms?.progress || {};
-      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## 🔒 mini-BOSS 未解鎖"));
-      container.addSeparatorComponents(new SeparatorBuilder());
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `解鎖條件：${p.floor || 5}F 通關 ${r.clears || 5} 次\n目前：${p.cleared || 0} 次`,
-        ),
-      );
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("-# 多打 5F 累積通關次數。"),
-      );
+      if (r.recharge) {
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## ⏳ mini-BOSS 蓄力中"));
+        container.addSeparatorComponents(new SeparatorBuilder());
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `單次挑戰制：擊敗後需再通關 ${p.floor || 5}F ×${r.clears} 才能再戰\n目前已刷：${p.cleared || 0} 次`,
+          ),
+        );
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 先回主面板多打幾場 5F，累滿就能再挑戰 BOSS。"),
+        );
+      } else {
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## 🔒 mini-BOSS 未解鎖"));
+        container.addSeparatorComponents(new SeparatorBuilder());
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `解鎖條件：${p.floor || 5}F 通關 ${r.clears || 5} 次\n目前：${p.cleared || 0} 次`,
+          ),
+        );
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 多打 5F 累積通關次數。"),
+        );
+      }
     } else if (result.reason === "floor_locked") {
       const fs = result.floorState;
       const f = fs?.floor;
@@ -255,13 +272,16 @@ async function showBattleLog(interaction, runId) {
   if (!doc) return interaction.editReply("找不到這場戰鬥的紀錄（或已過期）。").catch(() => {});
 
   const log = doc.battle_log || [];
-  // L2 修正：把怪物名 / mini-BOSS 中文名帶進日誌格式器，避免一直印「怪物反擊」
+  // L2 修正：把怪物名 / mini-BOSS 中文名帶進日誌格式器，避免一直印「怪物反擊」。
+  // 優先用 run 內存的名稱（涵蓋 mini-BOSS 變體），fallback 才查 config。
   const monsterDef = dungeon?.monsterDefs?.[doc.monster_id]
     || dungeon?.miniBosses?.[doc.theme]
     || null;
-  const monsterLabel = monsterDef
-    ? `${monsterDef.emoji || "👹"} ${monsterDef.name}`
-    : "👹 怪物";
+  const monsterLabel = doc.monster_name
+    ? `${doc.monster_emoji || "👹"} ${doc.monster_name}`
+    : monsterDef
+      ? `${monsterDef.emoji || "👹"} ${monsterDef.name}`
+      : "👹 怪物";
   const lines = [];
   const maxLines = 20;
   if (log.length <= maxLines) {
@@ -381,23 +401,95 @@ module.exports = async (client, interaction) => {
       const themeId = parts[1];
       if (!themeId) return replyEphemeral(interaction, "🔧 主題參數錯誤。");
       if (!(await deferUpdateSafe(interaction))) return;
-      // mini-BOSS 也走低 HP 確認
+      // BOSS 遭遇面板已顯示 HP 並提供「先去準備」，這裡不再攔低 HP，直接迎戰。
+      await runBattleAndRender(client, interaction, { themeId, floor: 5, isMiniBoss: true });
+      trackSuccess("raid-boss");
+      return;
+    }
+
+    if (m.prefix === dungeonCmd.RAID_PREP_PREFIX) {
+      // payload = <ownerId>_<theme>：BOSS 遭遇時的「先去準備」面板（補血/檢視裝備）
+      const parts = m.payload.split("_");
+      const themeId = parts[1];
+      if (!themeId) return replyEphemeral(interaction, "🔧 主題參數錯誤。");
+      if (!(await deferUpdateSafe(interaction))) return;
       const status = await dungeonService.getDungeonStatus(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
         member: interaction.member,
       });
-      if (status.hpLow) {
-        const container = dungeonCmd.buildLowHpConfirmPanel(interaction.user.id, status, themeId, 5);
-        await interaction.editReply({
-          components: [container],
-          flags: MessageFlags.IsComponentsV2,
-        });
-        trackSuccess("raid-boss-confirm");
+      const mbState = floorService.miniBossUnlockState(status.profile, status.level, themeId);
+      // 準備期間 BOSS 已被別的路徑消耗（理論上不會）→ 回主面板即可
+      if (!mbState.unlocked) {
+        await showEntryPanelOnSameMessage(client, interaction, { themeId });
+        trackSuccess("raid-prep-fallback");
         return;
       }
-      await runBattleAndRender(client, interaction, { themeId, floor: 5, isMiniBoss: true });
-      trackSuccess("raid-boss");
+      const container = dungeonCmd.buildBossPrepPanel(interaction.user.id, status, themeId, mbState.miniBoss);
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      trackSuccess("raid-prep");
+      return;
+    }
+
+    if (m.prefix === dungeonCmd.RAID_CHOICE_PREFIX) {
+      // payload = <ownerId>_<optIdx>_<eventId>（eventId 可能含底線 → 取剩餘全部）
+      const parts = m.payload.split("_");
+      const optIdx = parseInt(parts[1], 10);
+      const eventId = parts.slice(2).join("_");
+      if (!eventId || !Number.isFinite(optIdx)) {
+        return replyEphemeral(interaction, "🔧 事件參數錯誤。");
+      }
+      if (!(await deferUpdateSafe(interaction))) return;
+      const event = choiceEventService.getEvent(eventId);
+      const option = event?.options?.[optIdx];
+      if (!event || !option) {
+        return replyEphemeral(interaction, "🔧 這個事件已經過期或不存在了。");
+      }
+      const status = await dungeonService.getDungeonStatus(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+      });
+      const res = await choiceEventService.resolveOption(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+        username: interaction.user.username,
+        eventId,
+        optionId: option.id,
+        status,
+      });
+      const container = new ContainerBuilder().setAccentColor(0x9b59b6);
+      if (!res.ok) {
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## ❓ 事件結束"));
+        container.addSeparatorComponents(new SeparatorBuilder());
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent("這個事件已經無法處理了。"));
+      } else {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`## ${res.event.emoji} ${res.event.name}`),
+        );
+        container.addSeparatorComponents(new SeparatorBuilder());
+        const body = [`你選擇了：**${res.option.emoji || ""} ${res.option.label}**`];
+        if (res.outcomeText) body.push(res.outcomeText);
+        if (res.resultLines?.length) body.push(res.resultLines.join("\n"));
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(body.join("\n")));
+      }
+      container.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${dungeonCmd.RAID_PANEL_PREFIX}${interaction.user.id}`)
+            .setLabel("⬅️ 回主面板")
+            .setStyle(ButtonStyle.Primary),
+        ),
+      );
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      trackSuccess("raid-choice");
       return;
     }
 

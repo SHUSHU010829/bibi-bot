@@ -156,30 +156,61 @@ async function restoreStamina(client, { userId, guildId, member, amount }) {
   };
 }
 
+// 體力藥水分級：小 / 中 / 大，各自對應 shop type 與 profile 欄位。
+const STAMINA_POTION_TIERS = {
+  small:  { field: "stamina_potion_count",        type: "mining_stamina_potion",        name: "體力藥水（小）" },
+  medium: { field: "stamina_potion_medium_count", type: "mining_stamina_potion_medium", name: "體力藥水（中）" },
+  large:  { field: "stamina_potion_large_count",  type: "mining_stamina_potion_large",  name: "體力藥水（大）" },
+};
+const STAMINA_TIER_BY_SIZE_DESC = ["large", "medium", "small"];
+
+function staminaPotionRestore(tier) {
+  const meta = STAMINA_POTION_TIERS[tier];
+  const item = (shop?.items || []).find((i) => i.type === meta?.type);
+  return item?.payload?.restore || 0;
+}
+
+function totalStaminaPotions(profile) {
+  return Object.values(STAMINA_POTION_TIERS).reduce(
+    (s, m) => s + (profile?.[m.field] || 0),
+    0,
+  );
+}
+
+// 未指定 tier 時（緊急快捷補體力），優先用持有中「最大」的那瓶。
+function bestStaminaTier(profile) {
+  for (const t of STAMINA_TIER_BY_SIZE_DESC) {
+    if ((profile?.[STAMINA_POTION_TIERS[t].field] || 0) > 0) return t;
+  }
+  return null;
+}
+
 // 使用一瓶體力藥水：扣 1 罐 + 補體力。庫存或體力滿時各自回傳對應 reason。
-async function useStaminaPotion(client, { userId, guildId, member }) {
+// tier 可選（small/medium/large）；未指定則用持有中最大的一瓶。
+async function useStaminaPotion(client, { userId, guildId, member, tier }) {
   if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
   const club = await getMemberClub(client, userId, guildId);
   const max = staminaMax(member, club);
   const profile = await getOrCreate(client, userId, guildId);
 
-  const owned = profile.stamina_potion_count || 0;
-  if (owned <= 0) return { ok: false, reason: "no_potion" };
+  const useTier = STAMINA_POTION_TIERS[tier] ? tier : bestStaminaTier(profile);
+  if (!useTier) return { ok: false, reason: "no_potion" };
+  const meta = STAMINA_POTION_TIERS[useTier];
+
+  if ((profile[meta.field] || 0) <= 0) return { ok: false, reason: "no_potion" };
 
   const st = resolveStamina(profile, max);
   if (st.stamina >= max) {
     return { ok: false, reason: "full", staminaBefore: st.stamina, max };
   }
 
-  const { shop } = require("../../config");
-  const item = (shop?.items || []).find((i) => i.type === "mining_stamina_potion");
-  const restore = item?.payload?.restore || 5;
+  const restore = staminaPotionRestore(useTier) || 5;
 
-  // 原子扣減：filter 帶 stamina_potion_count >= 1，防止連點重複扣
+  // 原子扣減：filter 帶對應欄位 >= 1，防止連點重複扣
   const updated = await client.miningProfilesCollection.findOneAndUpdate(
-    { userId, guildId, stamina_potion_count: { $gte: 1 } },
-    { $inc: { stamina_potion_count: -1 }, $set: { updatedAt: new Date() } },
+    { userId, guildId, [meta.field]: { $gte: 1 } },
+    { $inc: { [meta.field]: -1 }, $set: { updatedAt: new Date() } },
     { returnDocument: "after" },
   );
   const updatedDoc = updated?.value || updated;
@@ -188,11 +219,14 @@ async function useStaminaPotion(client, { userId, guildId, member }) {
   const restored = await restoreStamina(client, { userId, guildId, member, amount: restore });
   return {
     ok: true,
+    tier: useTier,
+    tierName: meta.name,
     staminaBefore: restored.staminaBefore,
     staminaAfter: restored.staminaAfter,
     restored: restored.restored,
     max: restored.max,
-    potionLeft: updatedDoc.stamina_potion_count || 0,
+    potionLeft: updatedDoc[meta.field] || 0,
+    totalPotionLeft: totalStaminaPotions(updatedDoc),
     nextRegenAt: restored.nextRegenAt,
   };
 }
@@ -262,7 +296,7 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
       nextRegenAt: st.nextRegenAt,
       max,
       staminaBonus: bonus,
-      potionCount: profile.stamina_potion_count || 0,
+      potionCount: totalStaminaPotions(profile),
     };
   }
 
@@ -698,6 +732,7 @@ async function enterDungeonHp(client, {
       staminaCost: miniBossDef.staminaCost || 3,
       weaponDurabilityCost: miniBossDef.weaponDurabilityCost || 4,
       rewardMultiplier: 4.0,
+      clearReward: miniBossDef.clearReward || 0,
       encounterRatePct: 0, // mini-BOSS 不觸發隨機事件，避免戲劇性失焦
       monsterPool: [],
     };
@@ -720,7 +755,7 @@ async function enterDungeonHp(client, {
       nextRegenAt: st.nextRegenAt,
       max: staMaxV,
       staminaBonus: staminaBonus(member),
-      potionCount: profile.stamina_potion_count || 0,
+      potionCount: totalStaminaPotions(profile),
       staCost,
     };
   }
@@ -825,6 +860,7 @@ async function enterDungeonHp(client, {
   let ticketGained = 0;
   let ticketOverflowToCoins = false;
   let slimeGained = 0;
+  let clearRewardCoins = 0;
   // C1：把這兩個變數提到 outer scope（原本 var 在分支裡 hoist，雖能跑但 ESLint 會 warn）
   let floorEvents = [];
   let deathDrop = null;
@@ -924,7 +960,7 @@ async function enterDungeonHp(client, {
         ticketOverflowToCoins = true;
       }
     } else if (kind === "slime") {
-      slimeGained = loot.qty || 1;
+      slimeGained = Math.max(1, Math.floor((loot.qty || 1) * mult));
       inc["backpack.monster_slime"] = (inc["backpack.monster_slime"] || 0) + slimeGained;
     } else if (kind === "seed") {
       const seedKey = loot.seedKey;
@@ -933,6 +969,13 @@ async function enterDungeonHp(client, {
         seedGained = { seedKey, qty };
         inc[`seed_bag.${seedKey}`] = (inc[`seed_bag.${seedKey}`] || 0) + qty;
       }
+    }
+
+    // 通關保底金幣：不論戰利品骰到什麼，勝利就給樓層對應的保底金幣。
+    // 高樓層保底顯著高於低樓層，讓「付出更多耐久 / 體力」換得對得起的回報。
+    if (f.clearReward > 0) {
+      clearRewardCoins = f.clearReward;
+      coinsGained += clearRewardCoins;
     }
 
     if (isMiniBoss) {
@@ -981,6 +1024,14 @@ async function enterDungeonHp(client, {
     }
   }
 
+  // mini-BOSS 是「單次遭遇」：不論勝敗，打過就消耗這次遭遇（推進通關檢查點），
+  // 必須重新刷 5F 才會再遇到 BOSS。放在勝敗分支外，戰敗也照樣消耗，避免被卡死。
+  // 同時 +1 遭遇序號 → 下次遇到會輪替到不同 BOSS 變體（見 floorService.pickMiniBoss）。
+  if (isMiniBoss) {
+    Object.assign(set, floorService.buildMiniBossConsumeUpdate(profile, themeId).set);
+    inc[`mini_boss_encounter_seq.${themeId}`] = (inc[`mini_boss_encounter_seq.${themeId}`] || 0) + 1;
+  }
+
   await client.miningProfilesCollection.updateOne(
     { userId, guildId },
     { $inc: inc, $set: set },
@@ -1014,6 +1065,8 @@ async function enterDungeonHp(client, {
       theme: themeId,
       floor,
       monster_id: monster.id,
+      monster_name: monster.name,
+      monster_emoji: monster.emoji,
       result: battle.result,
       battle_log: battle.log.slice(0, 100),
       damage_dealt: battle.damageDealt,
@@ -1071,6 +1124,7 @@ async function enterDungeonHp(client, {
     loot,
     coinsGained: coinsGrantedTotal,
     coinsBase: coinsGained,
+    clearRewardCoins,
     oreGained,
     oreOverflowToCoins,
     legendaryGained,
@@ -1158,6 +1212,17 @@ async function enterDungeonHp(client, {
     if (enc.diamondGained > 0) result.encounterDiamond = enc.diamondGained;
   }
 
+  // 選擇事件：沒觸發自動突發事件、也非 mini-BOSS 時，有機率丟一個「帶選項」的事件，
+  // 讓玩家在結果面板上做選擇（點按鈕後才擲骰結算，見 choiceEventService）。
+  if (!result.encounter && !isMiniBoss) {
+    const choiceCfg = dungeon?.choiceEvents;
+    if (choiceCfg?.enabled && Math.random() < (choiceCfg.chance || 0)) {
+      const choiceEventService = require("../dungeon/choiceEventService");
+      const picked = choiceEventService.pickChoiceEvent();
+      if (picked) result.choiceEvent = picked;
+    }
+  }
+
   return result;
 }
 
@@ -1227,6 +1292,8 @@ module.exports = {
   resolveStamina,
   restoreStamina,
   useStaminaPotion,
+  totalStaminaPotions,
+  STAMINA_POTION_TIERS,
   staminaMax,
   staminaBonus,
   staminaGuildBonus,

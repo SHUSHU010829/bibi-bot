@@ -90,6 +90,40 @@ function listFloors(profile, level, themeId) {
   );
 }
 
+// 已對該主題 mini-BOSS 建立過的「通關檢查點」：上次擊敗時的 5F 累積通關數。
+// 初次挑戰前為 0；每次擊敗後寫成當下的 5F 通關數（見 buildMiniBossKillUpdate）。
+function miniBossClaimedClears(profile, themeId) {
+  return profile?.floor_unlocks?.[themeId]?.mini_boss_claimed_clears || 0;
+}
+
+// 主題 mini-BOSS 可能有多種變體（config: miniBosses[theme].variants）。
+// 每次遭遇「決定性」挑一隻（用 mini_boss_encounter_seq 當種子），確保面板顯示與實戰是同一隻，
+// 且每次重新遭遇會輪替不同 BOSS。共用成本欄位（體力/耐久/petExp）吃 base，戰鬥數值與機制吃選中者。
+function pickMiniBoss(profile, themeId) {
+  const base = dungeon?.miniBosses?.[themeId];
+  if (!base) return null;
+  const variants = Array.isArray(base.variants) ? base.variants : [];
+  const pool = [base, ...variants];
+  const seq = profile?.mini_boss_encounter_seq?.[themeId] || 0;
+  const chosen = pool.length > 1 ? pool[seq % pool.length] : base;
+  return {
+    id: chosen.id || base.id,
+    name: chosen.name || base.name,
+    emoji: chosen.emoji || base.emoji,
+    hp: chosen.hp ?? base.hp,
+    atk: chosen.atk ?? base.atk,
+    staminaCost: base.staminaCost,
+    weaponDurabilityCost: base.weaponDurabilityCost,
+    clearReward: chosen.clearReward ?? base.clearReward,
+    petExp: base.petExp,
+    // 機制只吃選中者本身，不從 base 繼承（避免變體莫名帶到 base 的階段二/護甲）
+    phase2HpRatio: chosen.phase2HpRatio,
+    phase2AtkMult: chosen.phase2AtkMult,
+    armorTurns: chosen.armorTurns,
+    paralyzeChance: chosen.paralyzeChance,
+  };
+}
+
 function miniBossUnlockState(profile, level, themeId) {
   const f5 = (dungeon?.floors || []).find((x) => x.floor === 5);
   if (!f5?.miniBossUnlock) return { unlocked: false, reason: "not_configured" };
@@ -99,18 +133,37 @@ function miniBossUnlockState(profile, level, themeId) {
     return { unlocked: false, reason: "floor_locked", floorState: f5State };
   }
   const need = f5.miniBossUnlock;
+  // 「打一次就要重新蓄力」：可挑戰次數 = 上次擊敗後累積的 5F 通關數。
+  // 擊敗一次後 claimed 被推到當下通關數 → available 歸零，得再刷 5F 才能再戰。
+  const claimed = miniBossClaimedClears(profile, themeId);
   const cleared = clearsFor(profile, themeId, need.floor);
-  if (cleared < (need.clears || 0)) {
+  const available = cleared - claimed;
+  const recharging = claimed > 0; // 已擊敗過至少一次 → 進入重複挑戰的「蓄力」門檻
+  const requiredClears = recharging
+    ? (need.rechargeClears ?? need.clears ?? 0)
+    : (need.clears || 0);
+
+  if (available < requiredClears) {
     return {
       unlocked: false,
       reason: "prereq_clears",
-      requirement: need,
-      progress: { theme: themeId, floor: need.floor, cleared },
+      requirement: { clears: requiredClears, recharge: recharging },
+      progress: { theme: themeId, floor: need.floor, cleared: available },
     };
   }
-  const def = dungeon?.miniBosses?.[themeId];
+  const def = pickMiniBoss(profile, themeId);
   if (!def) return { unlocked: false, reason: "not_configured" };
   return { unlocked: true, miniBoss: def };
+}
+
+// mini-BOSS 打過一場（不論勝敗）後呼叫：把「通關檢查點」推到當下的 5F 累積通關數，
+// 讓 miniBossUnlockState 的 available 歸零 → 必須重新刷 5F 才能再遇到 BOSS。
+// 用「打過就消耗」而非「擊敗才消耗」，避免戰敗被卡在無限強制遭遇。
+function buildMiniBossConsumeUpdate(profile, themeId) {
+  const f5 = (dungeon?.floors || []).find((x) => x.floor === 5);
+  const bossFloor = f5?.miniBossUnlock?.floor ?? 5;
+  const cleared = clearsFor(profile, themeId, bossFloor);
+  return { set: { [`floor_unlocks.${themeId}.mini_boss_claimed_clears`]: cleared } };
 }
 
 // 戰鬥成功後呼叫：把 floor_unlocks 推進。回傳要寫到 $inc / $set 的 mongo update fragments。
@@ -147,7 +200,9 @@ module.exports = {
   floorUnlockState,
   listFloors,
   miniBossUnlockState,
+  pickMiniBoss,
   buildClearedUpdate,
+  buildMiniBossConsumeUpdate,
   clearsFor,
   maxFloorFor,
 };
