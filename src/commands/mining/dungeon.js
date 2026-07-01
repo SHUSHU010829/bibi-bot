@@ -7,6 +7,7 @@ const {
   MessageFlags,
   InteractionContextType,
   ActionRowBuilder,
+  SectionBuilder,
   ButtonBuilder,
   ButtonStyle,
   StringSelectMenuBuilder,
@@ -40,7 +41,8 @@ const RAID_FORCE_PREFIX = "raid_force_";       // 強制進場（低 HP 確認�
 const RAID_BOSS_PREFIX = "raid_boss_";         // 挑戰 mini-BOSS：raid_boss_<ownerId>_<theme>
 const RAID_PREP_PREFIX = "raid_prep_";         // BOSS 出戰準備面板：raid_prep_<ownerId>_<theme>
 const RAID_CHOICE_PREFIX = "raid_choice_";     // 選擇事件：raid_choice_<ownerId>_<optIdx>_<eventId>
-const RAID_USE_STAMINA_PREFIX = "raid_use_stamina_"; // 體力耗盡時喝體力藥水：raid_use_stamina_<ownerId>
+const RAID_STAMINA_PICK_PREFIX = "raid_stamina_pick_"; // 體力耗盡時先選要喝哪個大小：raid_stamina_pick_<ownerId>
+const RAID_USE_STAMINA_PREFIX = "raid_use_stamina_"; // 喝體力藥水：raid_use_stamina_<ownerId>_<tier?>（tier ∈ small/medium/large；缺省用最大）
 const RAID_SETTINGS_PREFIX = "raid_settings_"; // 開設定面板：raid_settings_<ownerId>
 const RAID_PREF_TOGGLE_PREFIX = "raid_pref_toggle_"; // SelectMenu：自動藥水開關
 const RAID_PREF_TIER_PREFIX = "raid_pref_tier_";     // SelectMenu：用哪瓶偏好
@@ -841,6 +843,65 @@ function buildLowHpConfirmPanel(ownerId, status, themeId, floor) {
   return container;
 }
 
+// 體力耗盡 → 選要喝哪個大小的體力藥水。只列持有中的規格，各級緊貼一顆「喝這瓶」按鈕。
+function buildStaminaPotionPickPanel(ownerId, status) {
+  const container = new ContainerBuilder()
+    .setAccentColor(0x3498db)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("## 🥤 要喝哪瓶體力藥水？"))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `目前 🔋 體力 **${status.stamina}/${status.staminaMax}**\n-# 選一個大小喝下，補完直接回主面板繼續探險。`,
+      ),
+    );
+
+  const TIER_META = [
+    { tier: "small", emoji: "🥤", label: "小" },
+    { tier: "medium", emoji: "🧴", label: "中" },
+    { tier: "large", emoji: "🍶", label: "大" },
+  ];
+  const empty = [];
+  for (const t of TIER_META) {
+    const field = dungeonService.STAMINA_POTION_TIERS?.[t.tier]?.field;
+    const count = status.profile?.[field] || 0;
+    if (count <= 0) {
+      empty.push(`體力藥水（${t.label}）`);
+      continue;
+    }
+    const restore = dungeonService.staminaPotionRestore(t.tier);
+    const restoreText = restore >= 9999 ? "補滿體力" : `恢復 ${restore} 點體力`;
+    container.addSectionComponents(
+      new SectionBuilder()
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `${t.emoji} **體力藥水（${t.label}）** ×${count}\n-# 立即${restoreText}（不超過上限）`,
+          ),
+        )
+        .setButtonAccessory(
+          new ButtonBuilder()
+            .setCustomId(`${RAID_USE_STAMINA_PREFIX}${ownerId}_${t.tier}`)
+            .setLabel("喝這瓶")
+            .setStyle(ButtonStyle.Success),
+        ),
+    );
+  }
+  if (empty.length) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# 尚無：${empty.join("・")}`),
+    );
+  }
+
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}`)
+        .setLabel("⬅️ 回主面板")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+  return container;
+}
+
 // BOSS 出戰準備面板：讓玩家在強制遭遇下，先補血 / 檢視裝備狀態再迎戰。
 // 不消耗遭遇（沒真的打），只是「暫緩」；準備好按「迎戰」才進場。
 function buildBossPrepPanel(ownerId, status, themeId, miniBoss) {
@@ -1217,6 +1278,7 @@ module.exports = {
   RAID_BOSS_PREFIX,
   RAID_PREP_PREFIX,
   RAID_CHOICE_PREFIX,
+  RAID_STAMINA_PICK_PREFIX,
   RAID_USE_STAMINA_PREFIX,
   RAID_SETTINGS_PREFIX,
   RAID_PREF_TOGGLE_PREFIX,
@@ -1225,6 +1287,7 @@ module.exports = {
   buildBattleResultPanel,
   buildBossPrepPanel,
   buildLowHpConfirmPanel,
+  buildStaminaPotionPickPanel,
   buildSettingsPanel,
   publicBroadcastContent,
   showEntryPanel,

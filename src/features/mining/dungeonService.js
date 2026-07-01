@@ -1293,6 +1293,7 @@ module.exports = {
   restoreStamina,
   useStaminaPotion,
   totalStaminaPotions,
+  staminaPotionRestore,
   STAMINA_POTION_TIERS,
   staminaMax,
   staminaBonus,
