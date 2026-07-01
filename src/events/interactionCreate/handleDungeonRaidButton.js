@@ -33,6 +33,7 @@ const PREFIXES = [
   dungeonCmd.RAID_BOSS_PREFIX,
   dungeonCmd.RAID_PREP_PREFIX,
   dungeonCmd.RAID_CHOICE_PREFIX,
+  dungeonCmd.RAID_STAMINA_PICK_PREFIX,
   dungeonCmd.RAID_USE_STAMINA_PREFIX,
   dungeonCmd.RAID_LOG_PREFIX,
   dungeonCmd.RAID_HEAL_PREFIX,
@@ -133,7 +134,7 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
         container.addActionRowComponents(
           new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-              .setCustomId(`${dungeonCmd.RAID_USE_STAMINA_PREFIX}${interaction.user.id}`)
+              .setCustomId(`${dungeonCmd.RAID_STAMINA_PICK_PREFIX}${interaction.user.id}`)
               .setLabel(`🥤 喝體力藥水（剩 ${result.potionCount}）`)
               .setStyle(ButtonStyle.Success),
             new ButtonBuilder()
@@ -538,12 +539,36 @@ module.exports = async (client, interaction) => {
       return;
     }
 
+    if (m.prefix === dungeonCmd.RAID_STAMINA_PICK_PREFIX) {
+      if (!(await deferUpdateSafe(interaction))) return;
+      const status = await dungeonService.getDungeonStatus(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+      });
+      if (dungeonService.totalStaminaPotions(status.profile) <= 0) {
+        return replyEphemeral(interaction, "🥤 你沒有體力藥水了，到 /商店 → 地下城道具 補貨。");
+      }
+      if (status.stamina >= status.staminaMax) {
+        return replyEphemeral(interaction, "🔋 體力已滿，不需要喝。");
+      }
+      await interaction.editReply({
+        components: [dungeonCmd.buildStaminaPotionPickPanel(interaction.user.id, status)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      trackSuccess("raid-stamina-pick");
+      return;
+    }
+
     if (m.prefix === dungeonCmd.RAID_USE_STAMINA_PREFIX) {
+      // payload = <ownerId> 或 <ownerId>_<tier>（tier ∈ small/medium/large）
+      const tier = m.payload.split("_")[1];
       if (!(await deferUpdateSafe(interaction))) return;
       const result = await dungeonService.useStaminaPotion(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
         member: interaction.member,
+        tier,
       });
       if (!result.ok) {
         const msg = {
