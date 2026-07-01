@@ -5,7 +5,7 @@
     "bigHarvestYieldBonusPct": 0.5,
     "maxPlots": 8,
     "veggieBagBaseSlots": 100,
-    "bagLimitEnforceAt": "2026-07-02T00:00:00+08:00",
+    "bagLimitEnforceAt": "2026-07-03T00:00:00+08:00",
     "plotTiers": [
       { "count": 2, "cost": 0 },
       { "count": 4, "cost": 3000 },
