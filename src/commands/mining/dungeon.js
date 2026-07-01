@@ -39,6 +39,7 @@ const RAID_AGAIN_PREFIX = "raid_again_";       // 再戰：raid_again_<ownerId>_
 const RAID_FORCE_PREFIX = "raid_force_";       // 強制進場（低 HP 確認後）：raid_force_<ownerId>_<theme>_<floor>
 const RAID_BOSS_PREFIX = "raid_boss_";         // 挑戰 mini-BOSS：raid_boss_<ownerId>_<theme>
 const RAID_PREP_PREFIX = "raid_prep_";         // BOSS 出戰準備面板：raid_prep_<ownerId>_<theme>
+const RAID_CHOICE_PREFIX = "raid_choice_";     // 選擇事件：raid_choice_<ownerId>_<optIdx>_<eventId>
 const RAID_USE_STAMINA_PREFIX = "raid_use_stamina_"; // 體力耗盡時喝體力藥水：raid_use_stamina_<ownerId>
 const RAID_SETTINGS_PREFIX = "raid_settings_"; // 開設定面板：raid_settings_<ownerId>
 const RAID_PREF_TOGGLE_PREFIX = "raid_pref_toggle_"; // SelectMenu：自動藥水開關
@@ -630,6 +631,27 @@ function buildBattleResultPanel(ownerId, result) {
     );
   }
 
+  // 選擇事件：帶選項的互動事件，玩家點選後才擲骰結算（見 choiceEventService）。
+  if (result.choiceEvent?.options?.length) {
+    const ce = result.choiceEvent;
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${ce.emoji || "❓"} **事件：${ce.name}**\n${ce.text}\n-# 👇 選一個行動（只能選一次）`,
+      ),
+    );
+    const crow = new ActionRowBuilder();
+    ce.options.slice(0, 5).forEach((o, idx) => {
+      const btn = new ButtonBuilder()
+        .setCustomId(`${RAID_CHOICE_PREFIX}${ownerId}_${idx}_${ce.id}`)
+        .setLabel(o.label)
+        .setStyle(ButtonStyle.Primary);
+      if (o.emoji) btn.setEmoji(o.emoji);
+      crow.addComponents(btn);
+    });
+    container.addActionRowComponents(crow);
+  }
+
   const potionsAfter = result.potionsAfter || { small: 0, medium: 0, large: 0 };
   const hasPotion = (potionsAfter.small + potionsAfter.medium + potionsAfter.large) > 0;
   // 補血預設用最小可用瓶（與戰中自動藥水規則一致，避免浪費）
@@ -1194,6 +1216,7 @@ module.exports = {
   RAID_FORCE_PREFIX,
   RAID_BOSS_PREFIX,
   RAID_PREP_PREFIX,
+  RAID_CHOICE_PREFIX,
   RAID_USE_STAMINA_PREFIX,
   RAID_SETTINGS_PREFIX,
   RAID_PREF_TOGGLE_PREFIX,

@@ -16,6 +16,7 @@ const dungeonCmd = require("../../commands/mining/dungeon");
 const dungeonService = require("../../features/mining/dungeonService");
 const hpService = require("../../features/dungeon/hpService");
 const floorService = require("../../features/dungeon/floorService");
+const choiceEventService = require("../../features/dungeon/choiceEventService");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const { isGameRoom } = require("../../features/gameRoom/service");
 const { dungeon } = require("../../config");
@@ -31,6 +32,7 @@ const PREFIXES = [
   dungeonCmd.RAID_FORCE_PREFIX,
   dungeonCmd.RAID_BOSS_PREFIX,
   dungeonCmd.RAID_PREP_PREFIX,
+  dungeonCmd.RAID_CHOICE_PREFIX,
   dungeonCmd.RAID_USE_STAMINA_PREFIX,
   dungeonCmd.RAID_LOG_PREFIX,
   dungeonCmd.RAID_HEAL_PREFIX,
@@ -429,6 +431,65 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.IsComponentsV2,
       });
       trackSuccess("raid-prep");
+      return;
+    }
+
+    if (m.prefix === dungeonCmd.RAID_CHOICE_PREFIX) {
+      // payload = <ownerId>_<optIdx>_<eventId>（eventId 可能含底線 → 取剩餘全部）
+      const parts = m.payload.split("_");
+      const optIdx = parseInt(parts[1], 10);
+      const eventId = parts.slice(2).join("_");
+      if (!eventId || !Number.isFinite(optIdx)) {
+        return replyEphemeral(interaction, "🔧 事件參數錯誤。");
+      }
+      if (!(await deferUpdateSafe(interaction))) return;
+      const event = choiceEventService.getEvent(eventId);
+      const option = event?.options?.[optIdx];
+      if (!event || !option) {
+        return replyEphemeral(interaction, "🔧 這個事件已經過期或不存在了。");
+      }
+      const status = await dungeonService.getDungeonStatus(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+      });
+      const res = await choiceEventService.resolveOption(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+        username: interaction.user.username,
+        eventId,
+        optionId: option.id,
+        status,
+      });
+      const container = new ContainerBuilder().setAccentColor(0x9b59b6);
+      if (!res.ok) {
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## ❓ 事件結束"));
+        container.addSeparatorComponents(new SeparatorBuilder());
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent("這個事件已經無法處理了。"));
+      } else {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`## ${res.event.emoji} ${res.event.name}`),
+        );
+        container.addSeparatorComponents(new SeparatorBuilder());
+        const body = [`你選擇了：**${res.option.emoji || ""} ${res.option.label}**`];
+        if (res.outcomeText) body.push(res.outcomeText);
+        if (res.resultLines?.length) body.push(res.resultLines.join("\n"));
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(body.join("\n")));
+      }
+      container.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${dungeonCmd.RAID_PANEL_PREFIX}${interaction.user.id}`)
+            .setLabel("⬅️ 回主面板")
+            .setStyle(ButtonStyle.Primary),
+        ),
+      );
+      await interaction.editReply({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      trackSuccess("raid-choice");
       return;
     }
 

@@ -1212,6 +1212,17 @@ async function enterDungeonHp(client, {
     if (enc.diamondGained > 0) result.encounterDiamond = enc.diamondGained;
   }
 
+  // 選擇事件：沒觸發自動突發事件、也非 mini-BOSS 時，有機率丟一個「帶選項」的事件，
+  // 讓玩家在結果面板上做選擇（點按鈕後才擲骰結算，見 choiceEventService）。
+  if (!result.encounter && !isMiniBoss) {
+    const choiceCfg = dungeon?.choiceEvents;
+    if (choiceCfg?.enabled && Math.random() < (choiceCfg.chance || 0)) {
+      const choiceEventService = require("../dungeon/choiceEventService");
+      const picked = choiceEventService.pickChoiceEvent();
+      if (picked) result.choiceEvent = picked;
+    }
+  }
+
   return result;
 }
 
