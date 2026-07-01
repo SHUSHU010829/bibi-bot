@@ -17,16 +17,10 @@ function buildNavRow(userId, current) {
       .setDisabled(current === "backpack"),
     new ButtonBuilder()
       .setCustomId(`${PREFIX}${userId}_buff`)
-      .setLabel("加成")
+      .setLabel("狀態")
       .setEmoji("✨")
       .setStyle(current === "buff" ? ButtonStyle.Primary : ButtonStyle.Secondary)
       .setDisabled(current === "buff"),
-    new ButtonBuilder()
-      .setCustomId(`${PREFIX}${userId}_food`)
-      .setLabel("魚袋")
-      .setEmoji("🥡")
-      .setStyle(current === "food" ? ButtonStyle.Primary : ButtonStyle.Secondary)
-      .setDisabled(current === "food"),
     new ButtonBuilder()
       .setCustomId(`${PREFIX}${userId}_refresh_${current}`)
       .setLabel("刷新")
