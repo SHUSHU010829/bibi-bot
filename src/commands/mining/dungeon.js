@@ -38,6 +38,7 @@ const RAID_HEAL_PREFIX = "raid_heal_";         // 補血：raid_heal_<ownerId>_<
 const RAID_AGAIN_PREFIX = "raid_again_";       // 再戰：raid_again_<ownerId>_<theme>_<floor>
 const RAID_FORCE_PREFIX = "raid_force_";       // 強制進場（低 HP 確認後）：raid_force_<ownerId>_<theme>_<floor>
 const RAID_BOSS_PREFIX = "raid_boss_";         // 挑戰 mini-BOSS：raid_boss_<ownerId>_<theme>
+const RAID_PREP_PREFIX = "raid_prep_";         // BOSS 出戰準備面板：raid_prep_<ownerId>_<theme>
 const RAID_USE_STAMINA_PREFIX = "raid_use_stamina_"; // 體力耗盡時喝體力藥水：raid_use_stamina_<ownerId>
 const RAID_SETTINGS_PREFIX = "raid_settings_"; // 開設定面板：raid_settings_<ownerId>
 const RAID_PREF_TOGGLE_PREFIX = "raid_pref_toggle_"; // SelectMenu：自動藥水開關
@@ -282,7 +283,7 @@ function statusLines(status) {
   return lines;
 }
 
-function buildFloorActionRow(ownerId, floorStates, themeId = "mine") {
+function buildFloorActionRow(ownerId, floorStates, themeId = "mine", disabledAll = false) {
   const row = new ActionRowBuilder();
   for (const fs of floorStates) {
     const f = fs.floor;
@@ -292,9 +293,10 @@ function buildFloorActionRow(ownerId, floorStates, themeId = "mine") {
     const btn = new ButtonBuilder()
       .setCustomId(`${RAID_ENTER_PREFIX}${ownerId}_${themeId}_${f.floor}`)
       .setLabel(label)
-      .setStyle(fs.unlocked ? ButtonStyle.Primary : ButtonStyle.Secondary)
-      .setDisabled(!fs.unlocked);
+      .setStyle(fs.unlocked && !disabledAll ? ButtonStyle.Primary : ButtonStyle.Secondary)
+      .setDisabled(!fs.unlocked || disabledAll);
     if (!fs.unlocked) btn.setEmoji("🔒");
+    else if (disabledAll) btn.setEmoji("⚔️");
     row.addComponents(btn);
   }
   return row;
@@ -401,6 +403,10 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
   if (!requested.unlocked) themeId = "mine";
   const floorStates = floorService.listFloors(status.profile, status.level, themeId);
 
+  // mini-BOSS 遭遇：解鎖（蓄力滿）時 BOSS「當道」，強制先處理才能打一般樓層。
+  const mbState = floorService.miniBossUnlockState(status.profile, status.level, themeId);
+  const bossPending = mbState.unlocked;
+
   // 當前主題的中文標題
   const themesAll = floorService.listThemes(status.profile, status.level);
   const curTheme = (dungeon?.themes || []).find((t) => t.id === themeId) || { id: "mine", name: "礦坑", emoji: "⛏️" };
@@ -444,28 +450,37 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
       }
     }
   }
+  if (bossPending) {
+    lines.push(`-# ⚔️ **${mbState.miniBoss.name} 擋在前方！** 一般樓層暫時封鎖，先迎戰或去準備。`);
+  }
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
-  container.addActionRowComponents(buildFloorActionRow(interaction.user.id, floorStates, themeId));
+  container.addActionRowComponents(buildFloorActionRow(interaction.user.id, floorStates, themeId, bossPending));
   container.addActionRowComponents(themeRow);
   container.addActionRowComponents(buildActionsRow(interaction.user.id, status, themeId));
 
-  // Phase H+ mini-BOSS（解鎖時才顯示按鈕；門檻：當前主題 5F 通關 ×5）
-  const mbState = floorService.miniBossUnlockState(status.profile, status.level, themeId);
-  if (mbState.unlocked) {
+  // Phase H+ mini-BOSS 遭遇：蓄力滿即「當道」，強制迎戰（但可先去準備補血/換裝）。
+  if (bossPending) {
     const mb = mbState.miniBoss;
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `### 👹 mini-BOSS：${mb.emoji || ""} ${mb.name}（HP ${mb.hp.toLocaleString()} ・ ATK ${mb.atk}）\n-# 體力 -${mb.staminaCost || 3} ・ 武器耐久 -${mb.weaponDurabilityCost || 4} ・ 必掉傳說碎片 ×1 ・ 屠龍累積 +1\n-# ⚡ 單次挑戰制：擊敗後需再刷幾場 5F 才能再戰。`,
+          `## ⚔️ 遭遇 mini-BOSS：${mb.emoji || ""} ${mb.name}！\n` +
+          `👹 HP ${mb.hp.toLocaleString()} ・ ATK ${mb.atk}\n` +
+          `-# 體力 -${mb.staminaCost || 3} ・ 武器耐久 -${mb.weaponDurabilityCost || 4} ・ 必掉傳說碎片 ×1 ・ 屠龍累積 +1\n` +
+          `-# ⚡ 單次遭遇：打過一場（不論勝敗）就要重新刷 5F 才會再遇到。`,
         ),
       )
       .addActionRowComponents(
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`${RAID_BOSS_PREFIX}${interaction.user.id}_${themeId}`)
-            .setLabel(`⚔️ 挑戰 ${mb.name}`)
+            .setLabel(`⚔️ 迎戰 ${mb.name}`)
             .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId(`${RAID_PREP_PREFIX}${interaction.user.id}_${themeId}`)
+            .setLabel("🛡️ 先去準備")
+            .setStyle(ButtonStyle.Secondary),
         ),
       );
   } else if (mbState.reason === "prereq_clears") {
@@ -619,15 +634,24 @@ function buildBattleResultPanel(ownerId, result) {
   const hasPotion = (potionsAfter.small + potionsAfter.medium + potionsAfter.large) > 0;
   // 補血預設用最小可用瓶（與戰中自動藥水規則一致，避免浪費）
   const healTier = potionsAfter.small > 0 ? "small" : potionsAfter.medium > 0 ? "medium" : potionsAfter.large > 0 ? "large" : null;
-  const againCustomId = result.isMiniBoss
-    ? `${RAID_BOSS_PREFIX}${ownerId}_${result.theme}`
-    : `${RAID_AGAIN_PREFIX}${ownerId}_${result.theme}_${result.floor}`;
-  const againLabel = result.isMiniBoss ? `⚔️ 再戰 mini-BOSS` : `⚔️ 再戰 ${result.floor}F`;
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(againCustomId)
-      .setLabel(againLabel)
-      .setStyle(ButtonStyle.Primary),
+  // mini-BOSS 打完一場就消耗遭遇（勝敗皆然），無法立刻再戰 → 主鈕改為回主面板。
+  const row = new ActionRowBuilder();
+  if (result.isMiniBoss) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${result.theme}`)
+        .setLabel("⬅️ 回主面板")
+        .setStyle(ButtonStyle.Primary),
+    );
+  } else {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${RAID_AGAIN_PREFIX}${ownerId}_${result.theme}_${result.floor}`)
+        .setLabel(`⚔️ 再戰 ${result.floor}F`)
+        .setStyle(ButtonStyle.Primary),
+    );
+  }
+  row.addComponents(
     new ButtonBuilder()
       .setCustomId(`${RAID_LOG_PREFIX}${ownerId}_${result.runId}`)
       .setLabel("📜 戰鬥日誌")
@@ -637,11 +661,15 @@ function buildBattleResultPanel(ownerId, result) {
       .setLabel(hasPotion ? `💊 補血（最小瓶）` : "💊 無生命藥水")
       .setStyle(hasPotion && result.hpAfter < result.hpMax ? ButtonStyle.Success : ButtonStyle.Secondary)
       .setDisabled(!hasPotion || result.hpAfter >= result.hpMax),
-    new ButtonBuilder()
-      .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${result.theme}`)
-      .setLabel("⚙️ 換樓層")
-      .setStyle(ButtonStyle.Secondary),
   );
+  if (!result.isMiniBoss) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${result.theme}`)
+        .setLabel("⚙️ 換樓層")
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
   container.addActionRowComponents(row);
 
   if (result.weaponBroke) {
@@ -788,6 +816,45 @@ function buildLowHpConfirmPanel(ownerId, status, themeId, floor) {
       .setStyle(ButtonStyle.Secondary),
   );
   container.addActionRowComponents(row);
+  return container;
+}
+
+// BOSS 出戰準備面板：讓玩家在強制遭遇下，先補血 / 檢視裝備狀態再迎戰。
+// 不消耗遭遇（沒真的打），只是「暫緩」；準備好按「迎戰」才進場。
+function buildBossPrepPanel(ownerId, status, themeId, miniBoss) {
+  const mb = miniBoss || {};
+  const container = new ContainerBuilder()
+    .setAccentColor(0xfaa61a)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("## 🛡️ 出戰準備"))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(statusLines(status).join("\n")));
+
+  const potions = status.potions || { small: 0, medium: 0, large: 0 };
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `🎒 生命藥水：💊 小 ${potions.small}・中 ${potions.medium}・大 ${potions.large}`,
+    ),
+  );
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# 👹 ${mb.name || "mini-BOSS"} 正在等你（HP ${(mb.hp || 0).toLocaleString()} ・ ATK ${mb.atk || "?"}）。準備好就迎戰！\n` +
+      `-# 換裝到 /裝備・打新武器到 /合成・補生命/體力藥水到 /商店 → 地下城道具。`,
+    ),
+  );
+
+  container.addActionRowComponents(buildActionsRow(ownerId, status, themeId));
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${RAID_BOSS_PREFIX}${ownerId}_${themeId}`)
+        .setLabel(`⚔️ 準備好了，迎戰 ${mb.name || "BOSS"}`)
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${themeId}`)
+        .setLabel("⬅️ 回主面板")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
   return container;
 }
 
@@ -1126,12 +1193,14 @@ module.exports = {
   RAID_AGAIN_PREFIX,
   RAID_FORCE_PREFIX,
   RAID_BOSS_PREFIX,
+  RAID_PREP_PREFIX,
   RAID_USE_STAMINA_PREFIX,
   RAID_SETTINGS_PREFIX,
   RAID_PREF_TOGGLE_PREFIX,
   RAID_PREF_TIER_PREFIX,
   buildEntryPanel,
   buildBattleResultPanel,
+  buildBossPrepPanel,
   buildLowHpConfirmPanel,
   buildSettingsPanel,
   publicBroadcastContent,

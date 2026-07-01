@@ -232,7 +232,11 @@
         "phase2HpRatio": 0.5,
         "phase2AtkMult": 2.0,
         "clearReward": 1500,
-        "petExp": 80
+        "petExp": 80,
+        "variants": [
+          { "id": "mine_golem", "name": "崩岩魔像", "emoji": "🗿", "hp": 4400, "atk": 30, "armorTurns": 2, "clearReward": 1700 },
+          { "id": "mine_ratking", "name": "血牙礦鼠王", "emoji": "🐀", "hp": 3000, "atk": 44, "phase2HpRatio": 0.4, "phase2AtkMult": 2.2, "clearReward": 1600 }
+        ]
       },
       "ruins": {
         "id": "ruins_sleeper",
@@ -244,7 +248,11 @@
         "weaponDurabilityCost": 4,
         "armorTurns": 3,
         "clearReward": 1800,
-        "petExp": 80
+        "petExp": 80,
+        "variants": [
+          { "id": "ruins_puppet", "name": "遺跡傀儡", "emoji": "🎎", "hp": 4800, "atk": 28, "phase2HpRatio": 0.5, "phase2AtkMult": 1.8, "clearReward": 2000 },
+          { "id": "ruins_pharaoh", "name": "詛咒法老", "emoji": "⚱️", "hp": 3900, "atk": 36, "paralyzeChance": 0.25, "clearReward": 1900 }
+        ]
       },
       "ice":   {
         "id": "ice_queen",
@@ -256,7 +264,11 @@
         "weaponDurabilityCost": 4,
         "paralyzeChance": 0.3,
         "clearReward": 2000,
-        "petExp": 80
+        "petExp": 80,
+        "variants": [
+          { "id": "ice_direwolf", "name": "霜牙巨狼", "emoji": "🐺", "hp": 4000, "atk": 40, "phase2HpRatio": 0.45, "phase2AtkMult": 2.0, "clearReward": 2100 },
+          { "id": "ice_permafrost", "name": "永凍領主", "emoji": "🧊", "hp": 5200, "atk": 26, "armorTurns": 3, "paralyzeChance": 0.2, "clearReward": 2300 }
+        ]
       }
     },
     "statusEffects": {

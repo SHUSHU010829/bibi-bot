@@ -954,8 +954,6 @@ async function enterDungeonHp(client, {
       }
       inc[`mini_boss_kills.${themeId}`] = (inc[`mini_boss_kills.${themeId}`] || 0) + 1;
       inc.dragon_slayer_kills = (inc.dragon_slayer_kills || 0) + 1;
-      // 擊敗後推進「通關檢查點」→ 必須重新刷 5F 才能再挑戰（單次挑戰制）
-      Object.assign(set, floorService.buildMiniBossKillUpdate(profile, themeId).set);
       // floorEvents 已預設 []
     } else {
       // 樓層通關推進
@@ -992,6 +990,14 @@ async function enterDungeonHp(client, {
     }
   }
 
+  // mini-BOSS 是「單次遭遇」：不論勝敗，打過就消耗這次遭遇（推進通關檢查點），
+  // 必須重新刷 5F 才會再遇到 BOSS。放在勝敗分支外，戰敗也照樣消耗，避免被卡死。
+  // 同時 +1 遭遇序號 → 下次遇到會輪替到不同 BOSS 變體（見 floorService.pickMiniBoss）。
+  if (isMiniBoss) {
+    Object.assign(set, floorService.buildMiniBossConsumeUpdate(profile, themeId).set);
+    inc[`mini_boss_encounter_seq.${themeId}`] = (inc[`mini_boss_encounter_seq.${themeId}`] || 0) + 1;
+  }
+
   await client.miningProfilesCollection.updateOne(
     { userId, guildId },
     { $inc: inc, $set: set },
@@ -1025,6 +1031,8 @@ async function enterDungeonHp(client, {
       theme: themeId,
       floor,
       monster_id: monster.id,
+      monster_name: monster.name,
+      monster_emoji: monster.emoji,
       result: battle.result,
       battle_log: battle.log.slice(0, 100),
       damage_dealt: battle.damageDealt,
