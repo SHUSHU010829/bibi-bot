@@ -1,6 +1,6 @@
 {
   "stockEventConfig": {
-    "randomEventChance": 0.12,
+    "randomEventChance": 0.2,
     "cooldownHours": 2,
     "events": [
       { "id": "shushu_live",        "name": "SHUSHU 開台帶量",       "effect": 0.08,  "stock": "TSPP", "dir": "up" },
