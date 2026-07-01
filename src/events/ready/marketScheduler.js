@@ -211,6 +211,7 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
   next.setMinutes(nextTickMin % 60, 0, 0);
   if (nextTickMin >= 60) next.setHours(next.getHours() + 1);
   const epoch = Math.floor(next.getTime() / 1000);
+  const nowEpoch = Math.floor(now.getTime() / 1000);
 
   const container = new ContainerBuilder()
     .setAccentColor(0x3498db)
@@ -232,7 +233,7 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+        `-# 🕒 更新於 <t:${nowEpoch}:t>（<t:${nowEpoch}:R>）`,
       ),
     );
 
