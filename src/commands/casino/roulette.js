@@ -154,45 +154,45 @@ module.exports = {
       if (!betResult) return interaction.editReply('🔧 扣款失敗，請稍後再試。');
       let balanceAfter = betResult.doc?.totalCoins ?? balance - wagered;
 
-      // 開轉 + 結算
+      // 開轉 + 結算（純 CPU）
       const result = spinWheel();
       const settlement = settle(bets, result);
-
-      if (settlement.totalPayout > 0) {
-        const pr = await grantCoins(client, {
-          userId,
-          guildId,
-          username,
-          avatarHash: interaction.user.avatar,
-          amount: settlement.totalPayout,
-          source: 'payout',
-          member,
-          meta: {
-            game: 'roulette',
-            roundId,
-            result,
-            totalWin: settlement.totalWin,
-          },
-        });
-        balanceAfter = pr?.doc?.totalCoins ?? balanceAfter + settlement.totalPayout;
-      }
-
       const netResult = settlement.totalPayout - wagered;
 
-      const winLines = settlement.betResults.map(b => {
-        const def = BET_TYPES[b.type];
-        return b.won
-          ? `✅ ${def?.label ?? b.type} +${b.winAmount.toLocaleString()}`
-          : `❌ ${def?.label ?? b.type}`;
-      });
+      // GIF 只需要 result，先開跑，讓編碼與派彩／存檔的 DB 寫入並行（critical path 變成 max 而非 sum）。
+      const gifPromise = generateRouletteGif({ result })
+        .then((buf) =>
+          buf ? new AttachmentBuilder(buf, { name: `roulette-${roundId}.gif` }) : null
+        )
+        .catch((gifErr) => {
+          console.log(`[WARN] 輪盤 gif 生成失敗，降級純文字: ${gifErr.message}`.yellow);
+          return null;
+        });
 
-      const extraLines = [];
-      if (balanceAfter <= 0) {
-        extraLines.push('🚨 **你破產了！** 餘額歸零，去發言、聊天賺金幣再來吧！');
-      }
+      const payoutPromise =
+        settlement.totalPayout > 0
+          ? grantCoins(client, {
+              userId,
+              guildId,
+              username,
+              avatarHash: interaction.user.avatar,
+              amount: settlement.totalPayout,
+              source: 'payout',
+              member,
+              meta: {
+                game: 'roulette',
+                roundId,
+                result,
+                totalWin: settlement.totalWin,
+              },
+            }).catch((e) => {
+              console.log(`[ERROR] 輪盤 payout 失敗: ${e}`.red);
+              return null;
+            })
+          : Promise.resolve(null);
 
       // 供「再來一局」用相同押注 + 金額重跑
-      await saveLastBet(client, {
+      const savePromise = saveLastBet(client, {
         userId,
         guildId,
         game: 'roulette',
@@ -206,15 +206,27 @@ module.exports = {
             金額3: bets[2]?.amount ?? null,
           },
         },
+      }).catch(() => null);
+
+      const [payoutResult, , attachment] = await Promise.all([
+        payoutPromise,
+        savePromise,
+        gifPromise,
+      ]);
+      if (settlement.totalPayout > 0) {
+        balanceAfter = payoutResult?.doc?.totalCoins ?? balanceAfter + settlement.totalPayout;
+      }
+
+      const winLines = settlement.betResults.map(b => {
+        const def = BET_TYPES[b.type];
+        return b.won
+          ? `✅ ${def?.label ?? b.type} +${b.winAmount.toLocaleString()}`
+          : `❌ ${def?.label ?? b.type}`;
       });
 
-      // 結果 GIF（失敗不影響派彩，降級為純文字卡片）
-      let attachment = null;
-      try {
-        const buf = await generateRouletteGif({ result });
-        if (buf) attachment = new AttachmentBuilder(buf, { name: `roulette-${roundId}.gif` });
-      } catch (gifErr) {
-        console.log(`[WARN] 輪盤 gif 生成失敗，降級純文字: ${gifErr.message}`.yellow);
+      const extraLines = [];
+      if (balanceAfter <= 0) {
+        extraLines.push('🚨 **你破產了！** 餘額歸零，去發言、聊天賺金幣再來吧！');
       }
 
       const container = buildCasinoContainer({

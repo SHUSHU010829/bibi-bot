@@ -1,6 +1,6 @@
 // 賽馬比賽動畫 GIF。米色配色，與 generateHorseRaceResultCard 同調。
 // 把 simulateRace 的 keyframes 線性插值成 30 幀平滑動畫，再加 4 幀定格收尾。
-// 尺寸刻意壓在 Discord 8 MB 上限內：640×400, 34 frames, neuquant quality 30。
+// 尺寸刻意壓在 Discord 8 MB 上限內：640×400, 34 frames, octree quality 20。
 
 const path = require("path");
 const { createCanvas, registerFont } = require("canvas");
@@ -298,10 +298,11 @@ async function generateHorseRaceGif({
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
 
-  const encoder = new GIFEncoder(W, H, "neuquant", true, TOTAL_FRAMES);
+  // octree 量化比 neuquant 快很多（賽道為平塗色塊，品質足夠），縮短 GIF 產生時間。
+  const encoder = new GIFEncoder(W, H, "octree", true, TOTAL_FRAMES);
   encoder.setDelay(FRAME_DELAY_MS);
   encoder.setRepeat(0);
-  encoder.setQuality(30);
+  encoder.setQuality(20);
   encoder.start();
 
   // 每 4 幀讓出一次 event loop，避免阻塞 Discord 互動 token。

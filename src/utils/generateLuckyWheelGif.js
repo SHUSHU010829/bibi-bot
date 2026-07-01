@@ -16,6 +16,10 @@ function ensureFonts() {
 // 輪盤本身就是主體：方形畫布、置中放大，不再放右側資訊面板（結果由 embed 呈現）。
 const W = 720;
 const H = 720;
+// 內部繪圖用設計尺寸 W×H；輸出 GIF 縮到 RENDER_W×RENDER_H 讓編碼更快，Discord 客戶端自動放大。
+const RENDER_SCALE = 0.75;
+const RENDER_W = Math.round(W * RENDER_SCALE);
+const RENDER_H = Math.round(H * RENDER_SCALE);
 
 const CX = 360;
 const CY = 340;
@@ -361,8 +365,9 @@ async function generateLuckyWheelGif({ segments, winningIndex, bet, payout, mult
   const list = Array.isArray(segments) && segments.length ? segments : [];
   const idx = Math.max(0, Math.min(winningIndex | 0, list.length - 1));
 
-  const canvas = createCanvas(W, H);
+  const canvas = createCanvas(RENDER_W, RENDER_H);
   const ctx = canvas.getContext('2d');
+  ctx.scale(RENDER_SCALE, RENDER_SCALE);
 
   // 大幅縮短轉動與停留幀數，並改用 octree 量化（比 neuquant 快很多，
   // 輪盤為平塗色塊、品質足夠），讓 GIF 產生時間明顯下降、指令回應更快。
@@ -374,7 +379,7 @@ async function generateLuckyWheelGif({ segments, winningIndex, bet, payout, mult
   // starved while canvas work runs on the main thread (see roulette gif).
   const YIELD_EVERY = 4;
 
-  const encoder = new GIFEncoder(W, H, 'octree', true, TOTAL_FRAMES);
+  const encoder = new GIFEncoder(RENDER_W, RENDER_H, 'octree', true, TOTAL_FRAMES);
   encoder.setDelay(50);
   encoder.setRepeat(0);
   encoder.setQuality(20);

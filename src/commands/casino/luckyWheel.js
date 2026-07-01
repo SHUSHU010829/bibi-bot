@@ -122,25 +122,9 @@ module.exports = {
 
       const outcome = spin({ bet, segments });
 
-      if (outcome.payout > 0) {
-        const payoutResult = await grantCoins(client, {
-          userId,
-          guildId,
-          username,
-          avatarHash: interaction.user.avatar,
-          amount: outcome.payout,
-          source: "payout",
-          member,
-          meta: {
-            game: "luckyWheel",
-            roundId,
-            mult: outcome.mult,
-            payout: outcome.payout,
-          },
-        });
-        balanceAfter =
-          payoutResult?.doc?.totalCoins ?? balanceAfter + outcome.payout;
-      }
+      // 餘額用算術先算好（bet 已扣、payout 是純加項），GIF 就能與派彩／存檔的 DB 寫入並行，
+      // 不必等派彩 doc 回來才開始編碼（比照拉霸）。
+      if (outcome.payout > 0) balanceAfter += outcome.payout;
 
       const seg = outcome.segment;
       const segLabel = `${seg.emoji ? `${seg.emoji} ` : ""}${seg.label}`;
@@ -165,35 +149,60 @@ module.exports = {
       const result = net > 0 ? "win" : net < 0 ? "lose" : "neutral";
       const embedOutcome = outcome.mult >= 25 ? "jackpot" : result;
 
-      await saveLastBet(client, {
+      const payoutPromise =
+        outcome.payout > 0
+          ? grantCoins(client, {
+              userId,
+              guildId,
+              username,
+              avatarHash: interaction.user.avatar,
+              amount: outcome.payout,
+              source: "payout",
+              member,
+              meta: {
+                game: "luckyWheel",
+                roundId,
+                mult: outcome.mult,
+                payout: outcome.payout,
+              },
+            }).catch((e) => {
+              console.log(`[ERROR] 幸運轉盤 payout 失敗: ${e}`.red);
+              return null;
+            })
+          : Promise.resolve(null);
+
+      const savePromise = saveLastBet(client, {
         userId,
         guildId,
         game: "luckyWheel",
         payload: { options: { 金額: bet, 梭哈: false } },
-      });
+      }).catch(() => null);
 
-      let attachment = null;
-      try {
-        const buf = await generateLuckyWheelGif({
-          segments,
-          winningIndex: outcome.segmentIndex,
-          bet,
-          payout: outcome.payout,
-          mult: outcome.mult,
-          label: seg.label,
-          username,
-          balance: balanceAfter,
+      const gifPromise = generateLuckyWheelGif({
+        segments,
+        winningIndex: outcome.segmentIndex,
+        bet,
+        payout: outcome.payout,
+        mult: outcome.mult,
+        label: seg.label,
+        username,
+        balance: balanceAfter,
+      })
+        .then((buf) =>
+          buf ? new AttachmentBuilder(buf, { name: `luckywheel-${roundId}.gif` }) : null
+        )
+        .catch((gifErr) => {
+          console.log(
+            `[WARN] 幸運轉盤 gif render failed, falling back to text: ${gifErr.message}`.yellow
+          );
+          return null;
         });
-        if (buf) {
-          attachment = new AttachmentBuilder(buf, {
-            name: `luckywheel-${roundId}.gif`,
-          });
-        }
-      } catch (gifErr) {
-        console.log(
-          `[WARN] 幸運轉盤 gif render failed, falling back to text: ${gifErr.message}`.yellow
-        );
-      }
+
+      const [, , attachment] = await Promise.all([
+        payoutPromise,
+        savePromise,
+        gifPromise,
+      ]);
 
       const container = buildCasinoContainer({
         game: "🎡 幸運轉盤",

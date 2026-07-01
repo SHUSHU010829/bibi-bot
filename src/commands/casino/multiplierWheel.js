@@ -138,26 +138,9 @@ module.exports = {
 
       const outcome = spin({ bet, choice, segments });
 
-      if (outcome.payout > 0) {
-        const payoutResult = await grantCoins(client, {
-          userId,
-          guildId,
-          username,
-          avatarHash: interaction.user.avatar,
-          amount: outcome.payout,
-          source: "payout",
-          member,
-          meta: {
-            game: "multiplierWheel",
-            roundId,
-            choice,
-            landedMult: outcome.landedMult,
-            payout: outcome.payout,
-          },
-        });
-        balanceAfter =
-          payoutResult?.doc?.totalCoins ?? balanceAfter + outcome.payout;
-      }
+      // 餘額用算術先算好（bet 已扣、payout 是純加項），GIF 就能與派彩／存檔的 DB 寫入並行，
+      // 不必等派彩 doc 回來才開始編碼（比照拉霸）。
+      if (outcome.payout > 0) balanceAfter += outcome.payout;
 
       const net = outcome.net;
       const landedLabel = outcome.landedMult === 0 ? "0" : `×${outcome.landedMult}`;
@@ -176,34 +159,60 @@ module.exports = {
 
       const embedOutcome = net > 0 ? "win" : net < 0 ? "lose" : "neutral";
 
-      await saveLastBet(client, {
+      const payoutPromise =
+        outcome.payout > 0
+          ? grantCoins(client, {
+              userId,
+              guildId,
+              username,
+              avatarHash: interaction.user.avatar,
+              amount: outcome.payout,
+              source: "payout",
+              member,
+              meta: {
+                game: "multiplierWheel",
+                roundId,
+                choice,
+                landedMult: outcome.landedMult,
+                payout: outcome.payout,
+              },
+            }).catch((e) => {
+              console.log(`[ERROR] 倍率轉盤 payout 失敗: ${e}`.red);
+              return null;
+            })
+          : Promise.resolve(null);
+
+      const savePromise = saveLastBet(client, {
         userId,
         guildId,
         game: "multiplierWheel",
         payload: { options: { 金額: bet, 押注: String(choice), 梭哈: false } },
-      });
+      }).catch(() => null);
 
-      let attachment = null;
-      try {
-        const buf = await generateMultiplierWheelGif({
-          segments,
-          winningIndex: outcome.winningIndex,
-          choice,
-          bet,
-          payout: outcome.payout,
-          username,
-          balance: balanceAfter,
+      const gifPromise = generateMultiplierWheelGif({
+        segments,
+        winningIndex: outcome.winningIndex,
+        choice,
+        bet,
+        payout: outcome.payout,
+        username,
+        balance: balanceAfter,
+      })
+        .then((buf) =>
+          buf ? new AttachmentBuilder(buf, { name: `multiplierwheel-${roundId}.gif` }) : null
+        )
+        .catch((gifErr) => {
+          console.log(
+            `[WARN] 倍率轉盤 gif render failed, falling back to text: ${gifErr.message}`.yellow
+          );
+          return null;
         });
-        if (buf) {
-          attachment = new AttachmentBuilder(buf, {
-            name: `multiplierwheel-${roundId}.gif`,
-          });
-        }
-      } catch (gifErr) {
-        console.log(
-          `[WARN] 倍率轉盤 gif render failed, falling back to text: ${gifErr.message}`.yellow
-        );
-      }
+
+      const [, , attachment] = await Promise.all([
+        payoutPromise,
+        savePromise,
+        gifPromise,
+      ]);
 
       const container = buildCasinoContainer({
         game: "🎡 倍率轉盤",

@@ -118,39 +118,52 @@ module.exports = {
 
       const result = play({ bet, risk, rows, multipliers });
 
-      if (result.payout > 0) {
-        const payoutResult = await grantCoins(client, {
-          userId,
-          guildId,
-          username,
-          amount: result.payout,
-          source: "payout",
-          member,
-          meta: {
-            game: "plinko",
-            risk,
-            rows,
-            bucket: result.bucket,
-            multiplier: result.multiplier,
-            bet,
-          },
-        });
-        balanceAfter = payoutResult?.doc?.totalCoins ?? balanceAfter + result.payout;
-      }
+      // 餘額用算術先算好（bet 已扣、payout 是純加項），GIF 就能與派彩／存檔的 DB 寫入並行，
+      // 不必等派彩 doc 回來才開始編碼（比照拉霸）。
+      if (result.payout > 0) balanceAfter += result.payout;
 
-      await saveLastBet(client, {
+      const payoutPromise =
+        result.payout > 0
+          ? grantCoins(client, {
+              userId,
+              guildId,
+              username,
+              amount: result.payout,
+              source: "payout",
+              member,
+              meta: {
+                game: "plinko",
+                risk,
+                rows,
+                bucket: result.bucket,
+                multiplier: result.multiplier,
+                bet,
+              },
+            }).catch((e) => {
+              console.log(`[ERROR] 彈珠台 payout 失敗: ${e}`.red);
+              return null;
+            })
+          : Promise.resolve(null);
+
+      const savePromise = saveLastBet(client, {
         userId,
         guildId,
         game: "plinko",
         payload: { options: { 下注: bet, 梭哈: false } },
-      });
+      }).catch(() => null);
 
-      const payload = await renderMessage(result, {
+      const renderPromise = renderMessage(result, {
         username,
         balance: balanceAfter,
         userId,
         avatarURL: interaction.user.displayAvatarURL(),
       });
+
+      const [, , payload] = await Promise.all([
+        payoutPromise,
+        savePromise,
+        renderPromise,
+      ]);
       await interaction.editReply(payload);
     } catch (error) {
       console.log(`[ERROR] /彈珠台:\n${error}\n${error.stack}`.red);
