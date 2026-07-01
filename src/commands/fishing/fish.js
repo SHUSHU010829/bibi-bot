@@ -671,7 +671,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       used: result.fishBagUsed,
       cap: result.fishBagCap,
       enforceAt: fishing.bagLimitEnforceAt,
-      sellHint: "點下方「立刻賣掉」或到 `/背包` 賣魚",
+      sellHint: "到 `/背包` 賣魚",
     });
     if (fishBagWarn) {
       container.addTextDisplayComponents(
@@ -679,15 +679,11 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       );
     }
 
-    // 快捷操作按鈕：再釣一次 + 立刻賣掉 + 查看魚袋
+    // 快捷操作按鈕：再釣一次 + 查看魚袋（賣魚統一到 /背包，避免一鍵誤賣）
     const userId = interaction.user.id;
     container.addActionRowComponents(
       new ActionRowBuilder().addComponents(
         fishAgainButton(userId, location),
-        new ButtonBuilder()
-          .setCustomId(`fish_sell_${userId}_${result.fish}`)
-          .setLabel(`立刻賣掉（+${fishDef.price} 幣）`)
-          .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId(`fish_bag_${userId}`)
           .setLabel("查看背包")
