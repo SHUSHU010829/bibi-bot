@@ -65,9 +65,9 @@ function defaultProfile(userId, guildId) {
     hp_potion_medium: 0,
     hp_potion_large: 0,
     floor_unlocks: {
-      mine:  { max_floor: 1, clears: {} },
-      ruins: { max_floor: 0, clears: {} },
-      ice:   { max_floor: 0, clears: {} },
+      mine:  { max_floor: 1, clears: {}, mini_boss_claimed_clears: 0 },
+      ruins: { max_floor: 0, clears: {}, mini_boss_claimed_clears: 0 },
+      ice:   { max_floor: 0, clears: {}, mini_boss_claimed_clears: 0 },
     },
     mini_boss_kills: { mine: 0, ruins: 0, ice: 0 },
     dragon_slayer_kills: 0,
@@ -183,9 +183,9 @@ function normalize(doc) {
   doc.hp_potion_medium ??= 0;
   doc.hp_potion_large ??= 0;
   doc.floor_unlocks = {
-    mine:  { max_floor: 1, clears: {}, ...(doc.floor_unlocks?.mine || {}) },
-    ruins: { max_floor: 0, clears: {}, ...(doc.floor_unlocks?.ruins || {}) },
-    ice:   { max_floor: 0, clears: {}, ...(doc.floor_unlocks?.ice || {}) },
+    mine:  { max_floor: 1, clears: {}, mini_boss_claimed_clears: 0, ...(doc.floor_unlocks?.mine || {}) },
+    ruins: { max_floor: 0, clears: {}, mini_boss_claimed_clears: 0, ...(doc.floor_unlocks?.ruins || {}) },
+    ice:   { max_floor: 0, clears: {}, mini_boss_claimed_clears: 0, ...(doc.floor_unlocks?.ice || {}) },
   };
   for (const theme of ["mine", "ruins", "ice"]) {
     if (!doc.floor_unlocks[theme].clears || typeof doc.floor_unlocks[theme].clears !== "object") {

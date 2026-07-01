@@ -74,16 +74,29 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
       const ms = result.miniBossState;
       const r = ms?.requirement || {};
       const p = ms?.progress || {};
-      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## 🔒 mini-BOSS 未解鎖"));
-      container.addSeparatorComponents(new SeparatorBuilder());
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `解鎖條件：${p.floor || 5}F 通關 ${r.clears || 5} 次\n目前：${p.cleared || 0} 次`,
-        ),
-      );
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("-# 多打 5F 累積通關次數。"),
-      );
+      if (r.recharge) {
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## ⏳ mini-BOSS 蓄力中"));
+        container.addSeparatorComponents(new SeparatorBuilder());
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `單次挑戰制：擊敗後需再通關 ${p.floor || 5}F ×${r.clears} 才能再戰\n目前已刷：${p.cleared || 0} 次`,
+          ),
+        );
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 先回主面板多打幾場 5F，累滿就能再挑戰 BOSS。"),
+        );
+      } else {
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## 🔒 mini-BOSS 未解鎖"));
+        container.addSeparatorComponents(new SeparatorBuilder());
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `解鎖條件：${p.floor || 5}F 通關 ${r.clears || 5} 次\n目前：${p.cleared || 0} 次`,
+          ),
+        );
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 多打 5F 累積通關次數。"),
+        );
+      }
     } else if (result.reason === "floor_locked") {
       const fs = result.floorState;
       const f = fs?.floor;

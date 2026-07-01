@@ -698,6 +698,7 @@ async function enterDungeonHp(client, {
       staminaCost: miniBossDef.staminaCost || 3,
       weaponDurabilityCost: miniBossDef.weaponDurabilityCost || 4,
       rewardMultiplier: 4.0,
+      clearReward: miniBossDef.clearReward || 0,
       encounterRatePct: 0, // mini-BOSS 不觸發隨機事件，避免戲劇性失焦
       monsterPool: [],
     };
@@ -825,6 +826,7 @@ async function enterDungeonHp(client, {
   let ticketGained = 0;
   let ticketOverflowToCoins = false;
   let slimeGained = 0;
+  let clearRewardCoins = 0;
   // C1：把這兩個變數提到 outer scope（原本 var 在分支裡 hoist，雖能跑但 ESLint 會 warn）
   let floorEvents = [];
   let deathDrop = null;
@@ -924,7 +926,7 @@ async function enterDungeonHp(client, {
         ticketOverflowToCoins = true;
       }
     } else if (kind === "slime") {
-      slimeGained = loot.qty || 1;
+      slimeGained = Math.max(1, Math.floor((loot.qty || 1) * mult));
       inc["backpack.monster_slime"] = (inc["backpack.monster_slime"] || 0) + slimeGained;
     } else if (kind === "seed") {
       const seedKey = loot.seedKey;
@@ -933,6 +935,13 @@ async function enterDungeonHp(client, {
         seedGained = { seedKey, qty };
         inc[`seed_bag.${seedKey}`] = (inc[`seed_bag.${seedKey}`] || 0) + qty;
       }
+    }
+
+    // 通關保底金幣：不論戰利品骰到什麼，勝利就給樓層對應的保底金幣。
+    // 高樓層保底顯著高於低樓層，讓「付出更多耐久 / 體力」換得對得起的回報。
+    if (f.clearReward > 0) {
+      clearRewardCoins = f.clearReward;
+      coinsGained += clearRewardCoins;
     }
 
     if (isMiniBoss) {
@@ -945,6 +954,8 @@ async function enterDungeonHp(client, {
       }
       inc[`mini_boss_kills.${themeId}`] = (inc[`mini_boss_kills.${themeId}`] || 0) + 1;
       inc.dragon_slayer_kills = (inc.dragon_slayer_kills || 0) + 1;
+      // 擊敗後推進「通關檢查點」→ 必須重新刷 5F 才能再挑戰（單次挑戰制）
+      Object.assign(set, floorService.buildMiniBossKillUpdate(profile, themeId).set);
       // floorEvents 已預設 []
     } else {
       // 樓層通關推進
@@ -1071,6 +1082,7 @@ async function enterDungeonHp(client, {
     loot,
     coinsGained: coinsGrantedTotal,
     coinsBase: coinsGained,
+    clearRewardCoins,
     oreGained,
     oreOverflowToCoins,
     legendaryGained,

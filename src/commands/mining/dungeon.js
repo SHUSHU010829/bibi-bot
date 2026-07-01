@@ -457,7 +457,7 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `### 👹 mini-BOSS：${mb.emoji || ""} ${mb.name}（HP ${mb.hp.toLocaleString()} ・ ATK ${mb.atk}）\n-# 體力 -${mb.staminaCost || 3} ・ 武器耐久 -${mb.weaponDurabilityCost || 4} ・ 必掉傳說碎片 ×1 ・ 屠龍累積 +1`,
+          `### 👹 mini-BOSS：${mb.emoji || ""} ${mb.name}（HP ${mb.hp.toLocaleString()} ・ ATK ${mb.atk}）\n-# 體力 -${mb.staminaCost || 3} ・ 武器耐久 -${mb.weaponDurabilityCost || 4} ・ 必掉傳說碎片 ×1 ・ 屠龍累積 +1\n-# ⚡ 單次挑戰制：擊敗後需再刷幾場 5F 才能再戰。`,
         ),
       )
       .addActionRowComponents(
@@ -473,7 +473,9 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
     const r = mbState.requirement || {};
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 👹 mini-BOSS：當前主題 5F 通關 ${r.clears} 次解鎖（目前 ${p.cleared} 次）`,
+        r.recharge
+          ? `-# 👹 mini-BOSS 蓄力中：擊敗後需再通關 5F ×${r.clears} 才能再挑戰（已刷 ${p.cleared} 次）`
+          : `-# 👹 mini-BOSS：當前主題 5F 通關 ${r.clears} 次解鎖（目前 ${p.cleared} 次）`,
       ),
     );
   }
@@ -522,8 +524,11 @@ function buildBattleResultPanel(ownerId, result) {
   const headLabel = result.isMiniBoss
     ? `🏆 mini-BOSS：${result.monster.emoji} ${result.monster.name}`
     : `${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""}`.trim();
+  // 一般樓層勝利標題掛上通關評價（S / A / B），讓每場結果更有成就感。
+  const grade = isWin && !result.isMiniBoss ? clearGrade(result) : null;
+  const gradeTag = grade ? ` ${grade.emoji}${grade.tag}` : "";
   const title = isWin
-    ? `## ⚔️ ${headLabel} — ✅ 勝利！（${result.turns} 回合）`
+    ? `## ⚔️ ${headLabel} — ✅ 勝利！${gradeTag}（${result.turns} 回合）`
     : result.battleResult === "draw"
       ? `## ⏳ ${headLabel} — 戰鬥逾時（${result.turns} 回合，視同失敗）`
       : `## 💀 ${headLabel} — 戰鬥失敗（${result.turns} 回合）`;
@@ -549,13 +554,26 @@ function buildBattleResultPanel(ownerId, result) {
   if (result.damageDealt) stateLines.push(`-# 造成 ${result.damageDealt} 傷害・受 ${result.damageTaken} 傷害・暴擊 ${result.critCount} 次・格擋 ${result.blockCount} 次`);
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(stateLines.join("\n")));
 
+  // 戰報敘事：亮點（逆轉 / 連暴 / 速殺…）＋ 隨機氣氛台詞，讓每場戰鬥讀起來更有戲。
+  const flavorParts = [];
+  const highlight = battleHighlight(result);
+  if (highlight) flavorParts.push(highlight);
+  const flavor = battleFlavor(result);
+  if (flavor) flavorParts.push(`-# ${flavor}`);
+  if (flavorParts.length) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(flavorParts.join("\n")));
+  }
+
   if (isWin) {
     container.addSeparatorComponents(new SeparatorBuilder());
     const lootLines = [];
+    // 通關保底金幣獨立顯示；戰利品骰出的金幣（含折算）扣掉保底才是「掉落的金幣」。
+    const clearBonus = result.clearRewardCoins || 0;
+    const lootCoins = Math.max(0, (result.coinsGained || 0) - clearBonus);
     if (result.oreGained) {
       lootLines.push(
         result.oreOverflowToCoins
-          ? `背包已滿：${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty} 折算為 +${result.coinsGained.toLocaleString()} ${COIN_EMOJI}`
+          ? `背包已滿：${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty} 折算為 +${lootCoins.toLocaleString()} ${COIN_EMOJI}`
           : `${oreLabel(result.oreGained.ore)} ×${result.oreGained.qty}`,
       );
     }
@@ -570,7 +588,8 @@ function buildBattleResultPanel(ownerId, result) {
         : `🌱 ${result.seedGained.seedKey}`;
       lootLines.push(`${seedName} ×${result.seedGained.qty}`);
     }
-    if (!result.oreGained && result.coinsGained > 0) lootLines.push(`+${result.coinsGained.toLocaleString()} ${COIN_EMOJI}`);
+    if (!result.oreGained && lootCoins > 0) lootLines.push(`+${lootCoins.toLocaleString()} ${COIN_EMOJI}`);
+    if (clearBonus > 0) lootLines.push(`🏅 通關保底 +${clearBonus.toLocaleString()} ${COIN_EMOJI}`);
     if (!lootLines.length) lootLines.push("這次什麼都沒掉落…");
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`✨ **戰利品**\n${lootLines.join("\n")}`));
     if (result.floorEvents?.length) {
@@ -654,6 +673,38 @@ function clearGrade(result) {
     grade = grade === "B" ? "A" : "S";
   }
   return { tag: `【${grade}】`, emoji: GRADE_EMOJI[grade] };
+}
+
+// 戰報亮點：從本場數據挑一句最有戲的描述（優先序：逆轉 > 完美 > 連暴 > 速殺 > 鐵壁）。
+// 沒有特別亮點就回 null，不硬湊。
+function battleHighlight(result) {
+  const ratio = result.hpMax ? result.hpAfter / result.hpMax : 1;
+  if (result.won) {
+    if (ratio > 0 && ratio < 0.15) return "🔥 千鈞一髮的逆轉勝——只差一步就要倒下！";
+    if (result.damageDealt > 0 && result.damageTaken === 0) return "✨ 毫髮無傷的完美勝利！";
+    if (result.critCount >= 3) return `⚡ 華麗連擊！本場暴擊 ${result.critCount} 次，打得對手毫無還手之力。`;
+    const [lo] = result.expectedTurns || [];
+    if (typeof lo === "number" && result.turns <= lo) return "💨 速戰速決，乾淨俐落！";
+    if (result.blockCount >= 3) return `🛡️ 銅牆鐵壁，格擋 ${result.blockCount} 次穩如泰山。`;
+    return null;
+  }
+  if (result.battleResult === "draw") return "⏳ 纏鬥到體力見底，只能鳴金收兵。";
+  if (result.damageDealt > 0 && result.monster?.hp != null) {
+    return "💀 差一點就翻盤……可惜還是倒下了。";
+  }
+  return null;
+}
+
+// 隨機氣氛台詞（config: dungeon.flavor），依勝負 / 是否 mini-BOSS 取池。
+function battleFlavor(result) {
+  const f = dungeon?.flavor || {};
+  let pool;
+  if (result.isMiniBoss) pool = result.won ? f.boss_win : f.boss_lose;
+  else if (result.won) pool = f.win;
+  else if (result.battleResult === "draw") pool = f.draw;
+  else pool = f.lose;
+  if (!Array.isArray(pool) || !pool.length) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 // 事件播報行：事件名稱 ＋ 結果。

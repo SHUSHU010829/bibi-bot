@@ -90,6 +90,12 @@ function listFloors(profile, level, themeId) {
   );
 }
 
+// 已對該主題 mini-BOSS 建立過的「通關檢查點」：上次擊敗時的 5F 累積通關數。
+// 初次挑戰前為 0；每次擊敗後寫成當下的 5F 通關數（見 buildMiniBossKillUpdate）。
+function miniBossClaimedClears(profile, themeId) {
+  return profile?.floor_unlocks?.[themeId]?.mini_boss_claimed_clears || 0;
+}
+
 function miniBossUnlockState(profile, level, themeId) {
   const f5 = (dungeon?.floors || []).find((x) => x.floor === 5);
   if (!f5?.miniBossUnlock) return { unlocked: false, reason: "not_configured" };
@@ -99,18 +105,36 @@ function miniBossUnlockState(profile, level, themeId) {
     return { unlocked: false, reason: "floor_locked", floorState: f5State };
   }
   const need = f5.miniBossUnlock;
+  // 「打一次就要重新蓄力」：可挑戰次數 = 上次擊敗後累積的 5F 通關數。
+  // 擊敗一次後 claimed 被推到當下通關數 → available 歸零，得再刷 5F 才能再戰。
+  const claimed = miniBossClaimedClears(profile, themeId);
   const cleared = clearsFor(profile, themeId, need.floor);
-  if (cleared < (need.clears || 0)) {
+  const available = cleared - claimed;
+  const recharging = claimed > 0; // 已擊敗過至少一次 → 進入重複挑戰的「蓄力」門檻
+  const requiredClears = recharging
+    ? (need.rechargeClears ?? need.clears ?? 0)
+    : (need.clears || 0);
+
+  if (available < requiredClears) {
     return {
       unlocked: false,
       reason: "prereq_clears",
-      requirement: need,
-      progress: { theme: themeId, floor: need.floor, cleared },
+      requirement: { clears: requiredClears, recharge: recharging },
+      progress: { theme: themeId, floor: need.floor, cleared: available },
     };
   }
   const def = dungeon?.miniBosses?.[themeId];
   if (!def) return { unlocked: false, reason: "not_configured" };
   return { unlocked: true, miniBoss: def };
+}
+
+// mini-BOSS 擊敗後呼叫：把「通關檢查點」推到當下的 5F 累積通關數，
+// 讓 miniBossUnlockState 的 available 歸零 → 必須重新刷 5F 才能再挑戰。
+function buildMiniBossKillUpdate(profile, themeId) {
+  const f5 = (dungeon?.floors || []).find((x) => x.floor === 5);
+  const bossFloor = f5?.miniBossUnlock?.floor ?? 5;
+  const cleared = clearsFor(profile, themeId, bossFloor);
+  return { set: { [`floor_unlocks.${themeId}.mini_boss_claimed_clears`]: cleared } };
 }
 
 // 戰鬥成功後呼叫：把 floor_unlocks 推進。回傳要寫到 $inc / $set 的 mongo update fragments。
@@ -148,6 +172,7 @@ module.exports = {
   listFloors,
   miniBossUnlockState,
   buildClearedUpdate,
+  buildMiniBossKillUpdate,
   clearsFor,
   maxFloorFor,
 };
