@@ -118,18 +118,19 @@ async function tickOnce(client) {
       }).catch(() => {});
       ticked += 1;
     }
-    // 每個 guild 5% 機率觸發隨機事件
-    await rollRandomEvent(client, guildId).catch((e) =>
-      console.log(`[STOCK] rollRandomEvent failed guild=${guildId}: ${e?.message || e}`.yellow)
-    );
-    await postMarketBroadcast(client, guildId).catch((e) =>
+    const fired = await rollRandomEvent(client, guildId).catch((e) => {
+      console.log(`[STOCK] rollRandomEvent failed guild=${guildId}: ${e?.message || e}`.yellow);
+      return null;
+    });
+    // 平常就地編輯同一則播報（含圖片）；有觸發事件時才另發新的一則
+    await postMarketBroadcast(client, guildId, { forceNew: !!fired }).catch((e) =>
       console.log(`[STOCK] broadcast failed guild=${guildId}: ${e?.message || e}`.yellow)
     );
   }
   return { ticked, guilds: guildIds.length };
 }
 
-async function postMarketBroadcast(client, guildId) {
+async function postMarketBroadcast(client, guildId, opts = {}) {
   const channelId = stockSystem?.broadcastChannelId || stockSystem?.reportChannelId;
   if (!channelId) return;
   const channel = await client.channels.fetch(channelId).catch(() => null);
@@ -235,15 +236,44 @@ async function postMarketBroadcast(client, guildId) {
       ),
     );
 
-  await channel
-    .send({
-      components: [container],
-      files: [attachment],
-      flags: MessageFlags.IsComponentsV2,
-    })
-    .catch((e) =>
-      console.log(`[STOCK] broadcast send failed: ${e?.message || e}`.yellow),
-    );
+  const payload = {
+    components: [container],
+    files: [attachment],
+    flags: MessageFlags.IsComponentsV2,
+  };
+  const store = client.stockBroadcastCollection;
+  const state = store ? await store.findOne({ guildId }).catch(() => null) : null;
+
+  // 沒觸發事件且已有進行中的播報 → 就地編輯同一則（含換圖、刷新 footer 時間）
+  if (!opts.forceNew && state?.messageId && state.channelId === channelId) {
+    const existing = await channel.messages.fetch(state.messageId).catch(() => null);
+    if (existing) {
+      const edited = await existing
+        .edit({ ...payload, attachments: [] })
+        .catch((e) => {
+          console.log(`[STOCK] broadcast edit failed: ${e?.message || e}`.yellow);
+          return null;
+        });
+      if (edited) return;
+    }
+  }
+
+  // 首次、換頻道、原訊息被刪、或本次有觸發事件 → 另發一則新的並記錄為進行中
+  const sent = await channel
+    .send(payload)
+    .catch((e) => {
+      console.log(`[STOCK] broadcast send failed: ${e?.message || e}`.yellow);
+      return null;
+    });
+  if (sent && store) {
+    await store
+      .updateOne(
+        { guildId },
+        { $set: { guildId, channelId, messageId: sent.id, updatedAt: new Date() } },
+        { upsert: true },
+      )
+      .catch(() => {});
+  }
 }
 
 async function runOpen(client) {
