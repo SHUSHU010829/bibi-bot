@@ -13,6 +13,8 @@ const COL2 = new Set([2,5,8,11,14,17,20,23,26,29,32,35]);
 const COL3 = new Set([3,6,9,12,15,18,21,24,27,30,33,36]);
 
 const BET_TYPES = {
+  // 單一號碼 35:1（唯一能押到綠色 0 的方式）
+  outside_zero:  { label: '0 號',   payout: 35, numbers: [0] },
   // 1:1
   outside_red:   { label: '紅色',   payout: 1, numbers: [...RED_NUMS] },
   outside_black: { label: '黑色',   payout: 1, numbers: [...BLACK_NUMS] },

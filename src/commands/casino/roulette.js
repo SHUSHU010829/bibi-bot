@@ -5,6 +5,10 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
   InteractionContextType,
 } = require("discord.js");
 const { MONEY_EMOJI } = require("../../constants/coin");
@@ -41,6 +45,7 @@ function buildBettingRows(gameId, remainingBudget) {
   const row2 = new ActionRowBuilder().addComponents(
     btn('low',  '1–18'),
     btn('high', '19–36'),
+    btn('zero', '🟢 0', ButtonStyle.Success),
   );
   const row3 = new ActionRowBuilder().addComponents(
     btn('dozen1', '第一打'),
@@ -79,8 +84,24 @@ function buildStatusContent(game) {
   return (
     `🎰 **輪盤**　剩 **${remaining.toLocaleString()}** / ${game.totalBudget.toLocaleString()}　每押 **${unit.toLocaleString()}**\n\n` +
     `${betLines}\n\n` +
+    `-# 🟢 0 為單一號碼、賠率 35×；開出 0 時紅黑・奇偶・大小・打・列 一律不中\n` +
     `-# 90 秒未開轉自動退款`
   );
+}
+
+// 下注面板改用 Components V2：狀態文字 + 分隔線 + 下注按鈕全收進一個容器，
+// 與倍率輪盤等賭場結果卡片外觀一致。
+function buildBettingContainer(game) {
+  const remaining = game.totalBudget - totalWagered(game.bets);
+  const container = new ContainerBuilder().setAccentColor(0x5865f2);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(buildStatusContent(game))
+  );
+  container.addSeparatorComponents(new SeparatorBuilder());
+  for (const row of buildBettingRows(game.gameId, remaining)) {
+    container.addActionRowComponents(row);
+  }
+  return container;
 }
 
 module.exports = {
@@ -183,10 +204,9 @@ module.exports = {
 
       await client.rouletteGamesCollection.insertOne(game);
 
-      const rows = buildBettingRows(gameId, totalBudget);
       await interaction.editReply({
-        content: buildStatusContent(game),
-        components: rows,
+        flags: MessageFlags.IsComponentsV2,
+        components: [buildBettingContainer(game)],
       });
     } catch (err) {
       console.log(`[ERROR] /輪盤:\n${err}\n${err.stack}`.red);
@@ -197,5 +217,6 @@ module.exports = {
   // 供 handleRouletteButton.js 使用
   buildBettingRows,
   buildStatusContent,
+  buildBettingContainer,
   unitAmount,
 };
