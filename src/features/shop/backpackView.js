@@ -28,7 +28,7 @@ const { getPickaxeRepairCost, applyRepairDiscount } = require("../mining/mineSer
 const buildingService = require("../guild_club/buildingService");
 const dungeonService = require("../mining/dungeonService");
 const orePriceEngine = require("../market/orePriceEngine");
-const { getSellableItem, SELL_ITEM_OPEN_PREFIX } = require("./sellableItems");
+const { getSellableItem, SELL_MODAL_OPEN_PREFIX } = require("./sellableItems");
 const foodBag = require("../fishing/foodBag");
 const foodBagView = require("../fishing/foodBagView");
 
@@ -651,9 +651,6 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           new TextDisplayBuilder().setContent(hintLines.join("\n")),
         );
         const sellable = getSellableItem("mining_whetstone_inferior");
-        const sellLabel = sellable && inferiorCount > 0
-          ? `🪙 賣出（+${(sellable.sellPrice * inferiorCount).toLocaleString()}）`
-          : "🪙 賣出";
         container.addActionRowComponents(
           new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -672,8 +669,8 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(!canShield),
             new ButtonBuilder()
-              .setCustomId(`${SELL_ITEM_OPEN_PREFIX}${userId}_mining_whetstone_inferior`)
-              .setLabel(sellLabel)
+              .setCustomId(`${SELL_MODAL_OPEN_PREFIX}${userId}_item_mining_whetstone_inferior`)
+              .setLabel("🪙 賣出")
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(!sellable || inferiorCount <= 0),
           ),
@@ -825,7 +822,6 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         if (qty <= 0) continue;
         const base = def.price || 0;
         const unit = typeof fishPriceMap[key] === "number" ? fishPriceMap[key] : base;
-        const total = qty * unit;
         const matchedRecipe = Object.entries(fishing.recipes || {}).find(
           ([, r]) => r.materials?.[key] !== undefined
         );
@@ -839,8 +835,8 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
             )
             .setButtonAccessory(
               new ButtonBuilder()
-                .setCustomId(`fish_sell_${userId}_${key}`)
-                .setLabel(`賣全部 +${total.toLocaleString()}`)
+                .setCustomId(`${SELL_MODAL_OPEN_PREFIX}${userId}_fish_${key}`)
+                .setLabel("🪙 賣出")
                 .setStyle(ButtonStyle.Secondary)
             )
         );
@@ -892,7 +888,6 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       for (const [key, def] of veggieEntries) {
         const qty = veggieBag[key] || 0;
         const price = cropPriceOf(key);
-        const total = qty * price;
         container.addSectionComponents(
           new SectionBuilder()
             .addTextDisplayComponents(
@@ -902,8 +897,8 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
             )
             .setButtonAccessory(
               new ButtonBuilder()
-                .setCustomId(`farm_sell_${userId}_${key}`)
-                .setLabel(`賣全部 +${total.toLocaleString()}`)
+                .setCustomId(`${SELL_MODAL_OPEN_PREFIX}${userId}_veggie_${key}`)
+                .setLabel("🪙 賣出")
                 .setStyle(ButtonStyle.Secondary),
             ),
         );

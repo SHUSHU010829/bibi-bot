@@ -7,6 +7,9 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -17,7 +20,12 @@ const orePriceEngine = require("../../features/market/orePriceEngine");
 const eventEngine = require("../../features/event/eventEngine");
 const grantCoins = require("../../features/economy/grantCoins");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
-const { getSellableItem, sellableChoices, SELL_ITEM_OPEN_PREFIX } = require("../../features/shop/sellableItems");
+const {
+  getSellableItem,
+  sellableChoices,
+  SELL_MODAL_OPEN_PREFIX,
+  SELL_MODAL_QTY_PREFIX,
+} = require("../../features/shop/sellableItems");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 const SELL_CONFIRM_PREFIX = "sellc_ok_";
@@ -302,16 +310,62 @@ async function executeSell(client, interaction, { userId, guildId, itemType, ite
   }
 }
 
-// 從 /背包 的「賣出」按鈕開啟賣道具確認（賣全部）。原訊息為 ephemeral，確認框也走 ephemeral。
-async function openItemSellConfirm(client, interaction, { userId, guildId, itemKey }) {
-  const preview = await previewSell(client, { userId, guildId, itemType: "item", itemKey, qtyArg: null });
+// 從 /背包 的「賣出」按鈕：先跳彈窗輸入數量（帶入目前持有量），送出後才進確認框。
+function buildSellQtyModal({ ownerId, itemType, itemKey, preview }) {
+  const { def, have, unit } = preview;
+  const modal = new ModalBuilder()
+    .setCustomId(`${SELL_MODAL_QTY_PREFIX}${ownerId}_${itemType}_${itemKey}`)
+    .setTitle(`賣出 ${def.name}`.slice(0, 45));
+  const input = new TextInputBuilder()
+    .setCustomId("qty")
+    .setLabel(`要賣幾${unit}？（目前持有 ${have}）`.slice(0, 45))
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMinLength(1)
+    .setMaxLength(9)
+    .setValue(String(have))
+    .setPlaceholder(`輸入 1～${have}，或輸入 all 賣全部`);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
+async function openSellQtyModal(client, interaction, { userId, guildId, itemType, itemKey }) {
+  const preview = await previewSell(client, { userId, guildId, itemType, itemKey, qtyArg: null });
   if (!preview.ok) {
     return interaction.reply({
       components: [preview.error],
       flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
     });
   }
-  const container = buildConfirmContainer({ userId, itemType: "item", itemKey, preview, qtyArg: null });
+  return interaction.showModal(buildSellQtyModal({ ownerId: userId, itemType, itemKey, preview }));
+}
+
+// 彈窗送出：解析數量 → previewSell → 顯示確認框（沿用 buildConfirmContainer / SELL_CONFIRM_PREFIX）。
+async function handleSellModalSubmit(client, interaction, { userId, guildId, itemType, itemKey }) {
+  const raw = (interaction.fields.getTextInputValue("qty") || "").trim();
+  let qtyArg;
+  if (/^(all|全部|max|最大)$/i.test(raw)) {
+    qtyArg = null;
+  } else {
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) {
+      return interaction.reply({
+        components: [errorContainer("❌ 數量無效", `你輸入了「${raw}」`, "請輸入正整數，或輸入 all 賣全部")],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
+    qtyArg = n;
+  }
+
+  const preview = await previewSell(client, { userId, guildId, itemType, itemKey, qtyArg });
+  if (!preview.ok) {
+    return interaction.reply({
+      components: [preview.error],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+
+  const container = buildConfirmContainer({ userId, itemType, itemKey, preview, qtyArg });
   return interaction.reply({
     components: [container],
     flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
@@ -512,9 +566,11 @@ module.exports = {
 
   SELL_CONFIRM_PREFIX,
   SELL_CANCEL_PREFIX,
-  SELL_ITEM_OPEN_PREFIX,
+  SELL_MODAL_OPEN_PREFIX,
+  SELL_MODAL_QTY_PREFIX,
   executeSell,
-  openItemSellConfirm,
+  openSellQtyModal,
+  handleSellModalSubmit,
 
   run: async (client, interaction) => {
     await interaction.deferReply();

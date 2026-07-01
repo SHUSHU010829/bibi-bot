@@ -1,6 +1,7 @@
 require("colors");
 const { MessageFlags } = require("discord.js");
 const sellCmd = require("../../commands/mining/sell");
+const { parseSellTarget } = require("../../features/shop/sellableItems");
 const { deferUpdateSafe } = require("../../utils/safeAck");
 
 module.exports = async (client, interaction) => {
@@ -16,19 +17,17 @@ module.exports = async (client, interaction) => {
       return interaction.update({ components: [], content: "已取消這次賣出。" }).catch(() => {});
     }
 
-    if (cid.startsWith(sellCmd.SELL_ITEM_OPEN_PREFIX)) {
-      const rest = cid.slice(sellCmd.SELL_ITEM_OPEN_PREFIX.length);
-      const idx = rest.indexOf("_");
-      if (idx < 0) return;
-      const ownerId = rest.slice(0, idx);
-      const itemKey = rest.slice(idx + 1);
-      if (interaction.user.id !== ownerId) {
+    if (cid.startsWith(sellCmd.SELL_MODAL_OPEN_PREFIX)) {
+      const target = parseSellTarget(cid.slice(sellCmd.SELL_MODAL_OPEN_PREFIX.length));
+      if (!target) return;
+      if (interaction.user.id !== target.ownerId) {
         return interaction.reply({ content: "🚫 這不是你的背包。", flags: MessageFlags.Ephemeral });
       }
-      return await sellCmd.openItemSellConfirm(client, interaction, {
+      return await sellCmd.openSellQtyModal(client, interaction, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
-        itemKey,
+        itemType: target.itemType,
+        itemKey: target.itemKey,
       });
     }
 
