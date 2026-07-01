@@ -11,7 +11,7 @@ const { MONEY_EMOJI } = require("../../constants/coin");
 const { coinSystem, casino } = require('../../config');
 const grantCoins = require('../../features/economy/grantCoins');
 const { BET_TYPES } = require('../../features/casino/roulette/numbers');
-const { spinWheel, settle, totalWagered } = require('../../features/casino/roulette/engine');
+const { spinWheel, settle } = require('../../features/casino/roulette/engine');
 const { saveLastBet, buildReplayRow } = require('../../features/casino/replay');
 const { buildCasinoContainer } = require('../../features/casino/casinoEmbed');
 const generateRouletteGif = require('../../utils/generateRouletteGif');
@@ -177,7 +177,7 @@ module.exports = {
         balanceAfter = pr?.doc?.totalCoins ?? balanceAfter + settlement.totalPayout;
       }
 
-      const netResult = settlement.totalWin - totalWagered(bets);
+      const netResult = settlement.totalPayout - wagered;
 
       const winLines = settlement.betResults.map(b => {
         const def = BET_TYPES[b.type];
