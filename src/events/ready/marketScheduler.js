@@ -288,6 +288,10 @@ async function runOpen(client) {
       );
     }
     await postOpenReport(client, guildId, stocks).catch(() => {});
+    // 每日開盤另起一則全新的 ticker，當天後續 tick 就地編輯這則
+    await postMarketBroadcast(client, guildId, { forceNew: true }).catch((e) =>
+      console.log(`[STOCK] open broadcast failed guild=${guildId}: ${e?.message || e}`.yellow)
+    );
   }
   return { guilds: guildIds.length };
 }
