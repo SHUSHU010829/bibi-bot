@@ -1,7 +1,20 @@
 const { getItem } = require("./catalog");
 
-// 從 /背包 的「賣出」按鈕開啟賣道具確認：sell_item_open_<ownerId>_<itemKey>
-const SELL_ITEM_OPEN_PREFIX = "sell_item_open_";
+// 從 /背包 的「賣出」按鈕開啟「輸入數量」彈窗：sellm_open_<ownerId>_<itemType>_<itemKey>
+// 彈窗送出後的 customId：sellm_qty_<ownerId>_<itemType>_<itemKey>
+// itemType 為 ore/fish/veggie/item（無底線），itemKey 可含底線 → 用 split 後首二段解析。
+const SELL_MODAL_OPEN_PREFIX = "sellm_open_";
+const SELL_MODAL_QTY_PREFIX = "sellm_qty_";
+
+function parseSellTarget(rest) {
+  if (!rest) return null;
+  const parts = rest.split("_");
+  if (parts.length < 3) return null;
+  const [ownerId, itemType, ...keyParts] = parts;
+  const itemKey = keyParts.join("_");
+  if (!ownerId || !itemType || !itemKey) return null;
+  return { ownerId, itemType, itemKey };
+}
 
 // 可賣回系統的商店道具：itemKey → 持有量所在的 profile 欄位、顯示用 emoji / 單位。
 // 名稱與賣價（sellPrice）一律讀 shop.json 該商品定義，這裡只補「存哪個欄位 / 怎麼顯示」。
@@ -32,4 +45,11 @@ function sellableChoices() {
     .map((s) => ({ name: `${s.name}（道具）`, value: `item:${s.key}` }));
 }
 
-module.exports = { getSellableItem, sellableChoices, SELLABLE, SELL_ITEM_OPEN_PREFIX };
+module.exports = {
+  getSellableItem,
+  sellableChoices,
+  SELLABLE,
+  SELL_MODAL_OPEN_PREFIX,
+  SELL_MODAL_QTY_PREFIX,
+  parseSellTarget,
+};
