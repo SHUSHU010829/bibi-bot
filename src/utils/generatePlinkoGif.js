@@ -17,6 +17,11 @@ function ensureFonts() {
 
 const W = 760;
 const H = 720;
+// 內部繪圖仍用設計尺寸 W×H；輸出 GIF 縮到 RENDER_W×RENDER_H（編碼量降低、回應更快），
+// Discord 客戶端會自動放大顯示。
+const RENDER_SCALE = 0.72;
+const RENDER_W = Math.round(W * RENDER_SCALE);
+const RENDER_H = Math.round(H * RENDER_SCALE);
 const MARGIN = 56;
 const FRAME = MARGIN / 2; // 白框內縮
 
@@ -103,11 +108,13 @@ async function generatePlinkoGif(result, opts = {}) {
     }
   }
 
-  const canvas = createCanvas(W, H);
+  const canvas = createCanvas(RENDER_W, RENDER_H);
   const ctx = canvas.getContext("2d");
+  ctx.scale(RENDER_SCALE, RENDER_SCALE);
 
   const TOTAL = DROP_FRAMES + SETTLE_FRAMES + STILL_FRAMES;
-  const encoder = new GIFEncoder(W, H, "neuquant", true, TOTAL);
+  // octree 量化比 neuquant 快很多（彈珠台為平塗色塊，品質足夠）。
+  const encoder = new GIFEncoder(RENDER_W, RENDER_H, "octree", true, TOTAL);
   encoder.setDelay(50);
   encoder.setRepeat(0);
   encoder.setQuality(20);

@@ -19,6 +19,10 @@ function ensureFonts() {
 //（結果數字／輸贏改由 embed 卡片呈現）。
 const W = 720;
 const H = 720;
+// 內部繪圖用設計尺寸 W×H；輸出 GIF 縮到 RENDER_W×RENDER_H 讓編碼更快，Discord 客戶端自動放大。
+const RENDER_SCALE = 0.75;
+const RENDER_W = Math.round(W * RENDER_SCALE);
+const RENDER_H = Math.round(H * RENDER_SCALE);
 
 const CX = 360;
 const CY = 320;
@@ -219,8 +223,9 @@ async function generateRouletteGif({ result }) {
 
   const resultIdx = WHEEL_ORDER.indexOf(result);
 
-  const canvas = createCanvas(W, H);
+  const canvas = createCanvas(RENDER_W, RENDER_H);
   const ctx    = canvas.getContext('2d');
+  ctx.scale(RENDER_SCALE, RENDER_SCALE);
 
   const SPIN_FRAMES   = 24;
   const SETTLE_FRAMES = 6;
@@ -230,7 +235,7 @@ async function generateRouletteGif({ result }) {
   const YIELD_EVERY = 4;
 
   // octree 量化：輪盤是平塗色塊，品質足夠且比 neuquant 快很多。
-  const encoder = new GIFEncoder(W, H, 'octree', true, TOTAL_FRAMES);
+  const encoder = new GIFEncoder(RENDER_W, RENDER_H, 'octree', true, TOTAL_FRAMES);
   encoder.setDelay(50);
   encoder.setRepeat(0);
   encoder.setQuality(20);
