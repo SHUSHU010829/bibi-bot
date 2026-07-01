@@ -4,6 +4,7 @@ const {
   SlashCommandBuilder,
   AttachmentBuilder,
   InteractionContextType,
+  MessageFlags,
 } = require("discord.js");
 const { MONEY_EMOJI } = require("../../constants/coin");
 
@@ -11,7 +12,7 @@ const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
 const { spin, DEFAULT_SEGMENTS } = require("../../features/casino/roulette/multiplierWheel");
 const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
-const { buildCasinoEmbed } = require("../../features/casino/casinoEmbed");
+const { buildCasinoContainer } = require("../../features/casino/casinoEmbed");
 const generateMultiplierWheelGif = require("../../utils/generateMultiplierWheelGif");
 
 function getCfg() {
@@ -204,13 +205,9 @@ module.exports = {
         );
       }
 
-      const embed = buildCasinoEmbed({
+      const container = buildCasinoContainer({
         game: "🎡 倍率轉盤",
-        user: {
-          id: interaction.user.id,
-          displayName: username,
-          avatarURL: interaction.user.displayAvatarURL(),
-        },
+        user: { id: interaction.user.id, displayName: username },
         outcome: embedOutcome,
         headline,
         lines,
@@ -218,13 +215,13 @@ module.exports = {
         net,
         balance: balanceAfter,
         imageName: attachment?.name,
+        actionRow: buildReplayRow("multiplierWheel", userId, { name: username }),
       });
 
       await interaction.editReply({
-        content: "",
-        embeds: [embed],
+        flags: MessageFlags.IsComponentsV2,
+        components: [container],
         files: attachment ? [attachment] : [],
-        components: [buildReplayRow("multiplierWheel", userId, { name: username })],
       });
     } catch (error) {
       console.log(`[ERROR] /輪盤:\n${error}\n${error.stack}`.red);

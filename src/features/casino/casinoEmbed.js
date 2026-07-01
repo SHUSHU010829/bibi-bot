@@ -6,7 +6,14 @@
 // - 下注／賠付／淨輸贏／餘額以欄位呈現
 // - 既有的遊戲圖片用 setImage 放進 embed（attachment://<檔名>）
 
-const { EmbedBuilder } = require("discord.js");
+const {
+  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+} = require("discord.js");
 const { MONEY_EMOJI } = require("../../constants/coin");
 
 const CASINO_COLORS = {
@@ -85,4 +92,83 @@ function buildCasinoEmbed({
   return embed;
 }
 
-module.exports = { buildCasinoEmbed, CASINO_COLORS, signedAmount };
+// Components V2 版的結果呈現：把標題、玩家、結果圖（GIF）、戰績與重玩按鈕
+// 全部收進一個 ContainerBuilder，讓賭場結果訊息有一致的卡片外觀。
+// 用法與 buildCasinoEmbed 幾乎相同，差別在回傳 ContainerBuilder，
+// 送出時需帶 flags: MessageFlags.IsComponentsV2。
+function buildCasinoContainer({
+  game, // 遊戲標題，如 "🎡 倍率轉盤"
+  user, // { id, displayName }
+  outcome = "neutral", // win | lose | neutral | jackpot → 決定 accent 顏色
+  headline, // 一行結果標題（可選）
+  lines = [], // 額外狀態敘述（陣列，逐行）
+  bet, // 下注金額
+  payout, // 贏得金額（沒有 net 時顯示）
+  net, // 淨輸贏（有就優先顯示，帶正負）
+  balance, // 餘額
+  imageName, // 放進 media gallery 的附件檔名
+  actionRow, // 收進容器底部的 ActionRowBuilder（如重玩按鈕）
+} = {}) {
+  const container = new ContainerBuilder().setAccentColor(
+    CASINO_COLORS[outcome] || CASINO_COLORS.neutral
+  );
+
+  const titleParts = [];
+  if (game) titleParts.push(`## ${game}`);
+  if (user?.id) titleParts.push(`-# <@${user.id}>`);
+  if (titleParts.length) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(titleParts.join("\n"))
+    );
+  }
+
+  const body = [];
+  if (headline) body.push(headline);
+  if (lines.length) body.push(lines.join("\n"));
+  if (body.length) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(body.join("\n").slice(0, 4096))
+    );
+  }
+
+  if (imageName) {
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems(
+        new MediaGalleryItemBuilder().setURL(`attachment://${imageName}`)
+      )
+    );
+  }
+
+  const stats = [];
+  if (typeof bet === "number") {
+    stats.push(`下注 **${bet.toLocaleString()} ${MONEY_EMOJI}**`);
+  }
+  if (typeof net === "number") {
+    stats.push(`淨輸贏 **${signedAmount(net)}**`);
+  } else if (typeof payout === "number") {
+    stats.push(`賠付 **＋${payout.toLocaleString()} ${MONEY_EMOJI}**`);
+  }
+  if (typeof balance === "number") {
+    stats.push(`餘額 **${balance.toLocaleString()} ${MONEY_EMOJI}**`);
+  }
+  if (stats.length) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(stats.join("　｜　"))
+    );
+  }
+
+  if (actionRow) {
+    container.addActionRowComponents(actionRow);
+  }
+
+  return container;
+}
+
+module.exports = {
+  buildCasinoEmbed,
+  buildCasinoContainer,
+  CASINO_COLORS,
+  signedAmount,
+};
