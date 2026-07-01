@@ -191,6 +191,10 @@ module.exports = async (client, interaction) => {
           await replyEphemeral(interaction, `⚔️ 武器最大耐久只剩 ${maxDur ?? "—"}，不足 20 無法使用劣質磨石。`);
           return;
         }
+        // -10 作用在原始上限；顯示補滿目標與上限用「有效上限」（含鐵匠鋪加成）。
+        const weaponPct = await buildingService.getWeaponMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
+        const effMaxNow = buildingService.effectiveWeaponMaxDurability(maxDur, weaponPct);
+        const effMaxAfter = buildingService.effectiveWeaponMaxDurability(maxDur - 10, weaponPct);
         const wdef = dungeon?.weapons?.[profile.weapon] || {};
         const confirmBtn = new ButtonBuilder()
           .setCustomId(`${USE_WHETSTONE_WEAPON_CONFIRM_PREFIX}${interaction.user.id}`)
@@ -199,8 +203,8 @@ module.exports = async (client, interaction) => {
         await interaction.editReply({
           content:
             `🪨 確認要對 **${wdef.name || profile.weapon}** 使用劣質磨石？\n` +
-            `・耐久：${profile.weapon_durability} → ${maxDur}（補滿）\n` +
-            `・最大耐久上限：${maxDur} → **${maxDur - 10}**（-10）\n\n` +
+            `・耐久：${profile.weapon_durability} → ${effMaxAfter}（補滿）\n` +
+            `・最大耐久上限：${effMaxNow} → **${effMaxAfter}**（原始 -10）\n\n` +
             `-# 此操作無法撤回，最大耐久下降後無法回復。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
         });
@@ -327,10 +331,12 @@ module.exports = async (client, interaction) => {
           await replyEphemeral(interaction, "⚔️ 你目前沒有可修復的武器。");
           return;
         }
+        const weaponPct = await buildingService.getWeaponMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
+        const effMax = buildingService.effectiveWeaponMaxDurability(profile.weapon_max_durability, weaponPct);
         if (
           typeof profile.weapon_durability === "number" &&
-          typeof profile.weapon_max_durability === "number" &&
-          profile.weapon_durability >= profile.weapon_max_durability
+          typeof effMax === "number" &&
+          profile.weapon_durability >= effMax
         ) {
           await replyEphemeral(interaction, "✅ 武器耐久已滿，不需要修復！");
           return;
@@ -341,7 +347,7 @@ module.exports = async (client, interaction) => {
           .setLabel("確認修復")
           .setStyle(ButtonStyle.Danger);
         await interaction.editReply({
-          content: `🛠️ 確認要修復 **${wdef.name || profile.weapon}**（耐久 ${profile.weapon_durability} → ${profile.weapon_max_durability}）？\n\n**消耗材料**：${formatCostLine(cost)}\n\n-# 此操作無法撤回，請確認背包有足夠材料後再按確認。`,
+          content: `🛠️ 確認要修復 **${wdef.name || profile.weapon}**（耐久 ${profile.weapon_durability} → ${effMax}）？\n\n**消耗材料**：${formatCostLine(cost)}\n\n-# 此操作無法撤回，請確認背包有足夠材料後再按確認。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
         });
         return;

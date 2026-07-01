@@ -174,15 +174,25 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
       inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
     }
   }
+  // 儲存的最大耐久一律是「原始上限」（config durability）；公會鐵匠鋪加成不寫死進 DB，
+  // 由讀取端動態換算。新武器現值直接補到「有效上限」，讓剛打造的武器吃滿當前加成。
+  const baseDurability = targetDef.durability ?? null;
+  let currentDurability = baseDurability;
+  if (type === "weapon" && typeof baseDurability === "number") {
+    const buildingService = require("../guild_club/buildingService");
+    const pct = await buildingService.getWeaponMaxDurabilityPct(client, userId, guildId);
+    currentDurability = buildingService.effectiveWeaponMaxDurability(baseDurability, pct);
+  }
+
   await client.miningProfilesCollection.updateOne(
     { userId, guildId },
     {
       $inc: inc,
       $set: {
         [slot.equippedField]: resultId,
-        [slot.durabilityField]: targetDef.durability ?? null,
-        // 鎬子 / 釣竿同步設定最大耐久上限（武器無此欄位）
-        ...(slot.maxDurabilityField ? { [slot.maxDurabilityField]: targetDef.durability ?? null } : {}),
+        [slot.durabilityField]: currentDurability,
+        // 鎬子 / 釣竿 / 武器同步設定原始最大耐久上限
+        ...(slot.maxDurabilityField ? { [slot.maxDurabilityField]: baseDurability } : {}),
         updatedAt: new Date(),
       },
     }
@@ -195,7 +205,7 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
     resultId,
     resultName: targetDef.name || resultId,
     resultEmoji: targetDef.emoji || "",
-    durability: targetDef.durability ?? null,
+    durability: currentDurability,
     craftCountTotal: (profile.craft_count_total || 0) + 1,
   };
 }

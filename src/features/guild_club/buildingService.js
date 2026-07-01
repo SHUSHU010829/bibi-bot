@@ -1,5 +1,5 @@
 require("colors");
-const { guildBuildings, dungeon } = require("../../config");
+const { guildBuildings } = require("../../config");
 const guildClubService = require("./guildClubService");
 
 const buildingCfg = () => guildBuildings || {};
@@ -195,12 +195,6 @@ const upgradeBuilding = async (client, { userId, guildId, kind }) => {
     }).catch(() => {});
   }
 
-  if (kind === "blacksmith") {
-    syncMembersWeaponMaxDurability(client, newDoc).catch((e) => {
-      console.log(`[GUILD_BUILDING] 同步武器耐久失敗：${e.message}`.yellow);
-    });
-  }
-
   return {
     ok: true,
     club: newDoc,
@@ -211,34 +205,20 @@ const upgradeBuilding = async (client, { userId, guildId, kind }) => {
   };
 };
 
-// 鐵匠鋪升級後，把公會內所有有武器的成員 weapon_max_durability 重算。
-// 不調整當前 weapon_durability（不送禮包，避免戰力通膨）；但若舊上限 < 新上限，
-// 玩家修武器到滿時自然會吃到。
-async function syncMembersWeaponMaxDurability(client, club) {
-  if (!club) return;
-  const buffs = buildingsBuffs(club);
-  const pct = buffs.weapon_max_durability_pct || 0;
-  const members = await guildClubService
-    .listMembers(client, club.guild_club_id)
-    .catch(() => []);
-  const weapons = dungeon?.weapons || {};
-  for (const m of members) {
-    const profile = await client.miningProfilesCollection
-      .findOne({ userId: m.userId, guildId: m.guildId })
-      .catch(() => null);
-    if (!profile) continue;
-    if (!profile.weapon || profile.weapon === "fist") continue;
-    const baseDur = weapons[profile.weapon]?.durability;
-    if (typeof baseDur !== "number") continue;
-    const newMax = Math.floor(baseDur * (1 + pct / 100));
-    if (newMax === profile.weapon_max_durability) continue;
-    await client.miningProfilesCollection
-      .updateOne(
-        { userId: m.userId, guildId: m.guildId },
-        { $set: { weapon_max_durability: newMax, updatedAt: new Date() } }
-      )
-      .catch(() => {});
-  }
+// 鐵匠鋪 weapon_max_durability_pct → 有效武器耐久上限。
+// baseMax 為玩家儲存的「原始上限」（config durability，可能被劣質磨石 -10）。
+// 加成不寫進 DB：改由讀取端動態換算，玩家目前公會狀態變了就即時反映。
+const effectiveWeaponMaxDurability = (baseMax, pct) => {
+  if (typeof baseMax !== "number") return baseMax;
+  const p = Number(pct) || 0;
+  if (p <= 0) return baseMax;
+  return Math.floor(baseMax * (1 + p / 100));
+};
+
+// 查玩家目前公會鐵匠鋪提供的武器耐久上限加成（%）；沒公會 → 0。
+async function getWeaponMaxDurabilityPct(client, userId, guildId) {
+  const buffs = await getMemberBuildingBuffs(client, userId, guildId).catch(() => ({}));
+  return buffs.weapon_max_durability_pct || 0;
 }
 
 module.exports = {
@@ -252,5 +232,6 @@ module.exports = {
   getMemberBuildingBuffs,
   checkUpgradeRequirements,
   upgradeBuilding,
-  syncMembersWeaponMaxDurability,
+  effectiveWeaponMaxDurability,
+  getWeaponMaxDurabilityPct,
 };
