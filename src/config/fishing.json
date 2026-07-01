@@ -4,6 +4,8 @@
     "cooldownMs": 9000000,
     "baseSuccessRate": 0.72,
     "successCap": 0.95,
+    "fishBagBaseSlots": 100,
+    "bagLimitEnforceAt": "2026-07-03T00:00:00+08:00",
     "failCooldownMs": 1800000,
     "cdTicketReductionMs": 1800000,
     "cdTicketDailyUseLimit": 0,

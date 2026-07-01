@@ -15,6 +15,7 @@ const {
 
 const { fishing, commandChannels, normalChannelId } = require("../../config");
 const fishService = require("../../features/fishing/fishService");
+const { bagStatusLine } = require("../../features/mining/bagStatus");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
 
@@ -336,6 +337,28 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           flags: MessageFlags.IsComponentsV2,
         });
       }
+      if (result.reason === "fish_bag_full") {
+        const container = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("# 🎣 魚袋滿了，釣不下了！"),
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**目前魚袋**：${result.used} / ${result.cap} 條（已滿）\n先賣掉一些魚，騰出空間再來釣。`,
+            ),
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              "-# 到 `/背包` →「🎣 釣魚」點「賣全部」，或到 `/商店` 買背包擴充（一次擴礦石袋／魚袋／菜籃 各 +5）",
+            ),
+          );
+        return interaction.editReply({
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
       return interaction.editReply("🔧 釣魚失敗，請稍後再試。");
     }
 
@@ -639,6 +662,20 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
         new TextDisplayBuilder().setContent(
           `-# 💡 可烹飪成 ${matchedRecipe[1].emoji} ${matchedRecipe[1].name}（/烹飪）`
         )
+      );
+    }
+
+    // 魚袋快滿 / 超量提示（寬限期只提醒不擋）
+    const fishBagWarn = bagStatusLine({
+      label: "魚袋",
+      used: result.fishBagUsed,
+      cap: result.fishBagCap,
+      enforceAt: fishing.bagLimitEnforceAt,
+      sellHint: "點下方「立刻賣掉」或到 `/背包` 賣魚",
+    });
+    if (fishBagWarn) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(fishBagWarn)
       );
     }
 

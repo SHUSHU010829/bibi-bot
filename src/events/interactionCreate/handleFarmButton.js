@@ -35,6 +35,7 @@ const {
 
 const { farming } = require("../../config");
 const farmService = require("../../features/farm/farmService");
+const { bagStatusLine } = require("../../features/mining/bagStatus");
 const { buildFarmContainer } = require("../../features/farm/farmView");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
@@ -1066,6 +1067,7 @@ module.exports = async (client, interaction) => {
       }
 
       const results = [];
+      let bagFull = null;
       for (const p of readyPlots) {
         const r = await farmService.harvestCrop(client, {
           userId, guildId,
@@ -1074,9 +1076,17 @@ module.exports = async (client, interaction) => {
           plotIndex: p.plotIndex,
         });
         if (r.ok) results.push(r);
+        else if (r.reason === "veggie_bag_full") { bagFull = r; break; }
       }
 
       if (results.length === 0) {
+        if (bagFull) {
+          return replyEphemeralContainer(interaction, errContainer(
+            "🥬 菜籃滿了，收不下！",
+            `**目前菜籃**：${bagFull.used} / ${bagFull.cap} 個（已滿）\n先賣掉一些菜，再回來一鍵收成。`,
+            "到 `/背包` →「🌾 農場」賣菜，或 `/商店` 買背包擴充（一次擴礦石袋／魚袋／菜籃 各 +5）",
+          ));
+        }
         return replyEphemeralContainer(
           interaction,
           errContainer("🔧 收成失敗", "所有可收成的地塊都收成失敗了。", "請呼叫舒舒！"),
@@ -1114,7 +1124,16 @@ module.exports = async (client, interaction) => {
         ...cropLines,
         `💰 總收益：**+${totalCoins.toLocaleString()} 幣**`,
         ...bonusLines,
-      ].join("\n");
+        bagFull
+          ? `-# 🥬 菜籃中途滿了（${bagFull.used}/${bagFull.cap}），剩下的地塊還沒收，賣菜後再收一次`
+          : bagStatusLine({
+              label: "菜籃",
+              used: results[results.length - 1]?.veggieBagUsed,
+              cap: results[results.length - 1]?.veggieBagCap,
+              enforceAt: farming.bagLimitEnforceAt,
+              sellHint: "到 `/背包` →「🌾 農場」賣菜",
+            }) || null,
+      ].filter(Boolean).join("\n");
       const c = buildSuccessContainer("🌟 一鍵收成完成", body, userId);
 
       const hooks = [];
@@ -1154,6 +1173,14 @@ module.exports = async (client, interaction) => {
         plotIndex,
       });
       if (!result.ok) {
+        if (result.reason === "veggie_bag_full") {
+          const def = farming.crops?.[result.crop] || {};
+          return replyEphemeralContainer(interaction, errContainer(
+            "🥬 菜籃滿了，收不下！",
+            `**目前菜籃**：${result.used} / ${result.cap} 個（已滿）\n${def.emoji || ""} ${def.name || "作物"} 還留在地塊上，先賣掉一些菜再收。`,
+            "到 `/背包` →「🌾 農場」賣菜，或 `/商店` 買背包擴充（一次擴礦石袋／魚袋／菜籃 各 +5）",
+          ));
+        }
         const map = {
           rotted: ["🥀 作物已枯萎", "已超過保鮮期，地塊已清空。", "下次成熟後盡快收成！"],
           under_raid: ["⚔️ 地塊被入侵", "怪物正在侵擾這塊地。", "回主畫面點「防禦」擊退牠"],
@@ -1175,6 +1202,13 @@ module.exports = async (client, interaction) => {
             : ""),
         `💰 收益 **+${result.coins} 幣** ${yieldText}`,
         bonusText || null,
+        bagStatusLine({
+          label: "菜籃",
+          used: result.veggieBagUsed,
+          cap: result.veggieBagCap,
+          enforceAt: farming.bagLimitEnforceAt,
+          sellHint: "到 `/背包` →「🌾 農場」賣菜",
+        }) || null,
       ].filter(Boolean).join("\n");
       const c = buildSuccessContainer("🌟 收成成功", body, interaction.user.id);
 

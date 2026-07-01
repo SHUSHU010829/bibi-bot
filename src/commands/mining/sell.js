@@ -17,12 +17,13 @@ const orePriceEngine = require("../../features/market/orePriceEngine");
 const eventEngine = require("../../features/event/eventEngine");
 const grantCoins = require("../../features/economy/grantCoins");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
+const { getSellableItem, sellableChoices, SELL_ITEM_OPEN_PREFIX } = require("../../features/shop/sellableItems");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 const SELL_CONFIRM_PREFIX = "sellc_ok_";
 const SELL_CANCEL_PREFIX = "sellc_no_";
 
-const TYPE_UNIT = { ore: "顆", fish: "條", veggie: "個" };
+const TYPE_UNIT = { ore: "顆", fish: "條", veggie: "個", item: "個" };
 
 function sellChoices() {
   const choices = [];
@@ -36,6 +37,7 @@ function sellChoices() {
   for (const [key, def] of Object.entries(farming?.crops || {})) {
     choices.push({ name: `${def.name}（農產品）`, value: `veggie:${key}` });
   }
+  choices.push(...sellableChoices());
   return choices.slice(0, 25);
 }
 
@@ -190,6 +192,47 @@ async function previewSell(client, { userId, guildId, itemType, itemKey, qtyArg 
     };
   }
 
+  if (itemType === "item") {
+    const s = getSellableItem(itemKey);
+    if (!s) {
+      return { ok: false, error: errorContainer("❌ 這個道具不能賣給系統", `key=${itemKey}`, "請從選單重新選擇可賣的道具") };
+    }
+    const profile = await getOrCreate(client, userId, guildId);
+    const have = profile[s.field] || 0;
+    if (have <= 0) {
+      return {
+        ok: false,
+        error: errorContainer(
+          `📭 背包裡沒有 ${s.name}`,
+          `目前持有：**0** ${s.unit}`,
+          "到 /商店 購買，或地城探索取得後再來"
+        ),
+      };
+    }
+    if (qtyArg && qtyArg > have) {
+      return {
+        ok: false,
+        error: errorContainer(
+          `❌ 數量不足`,
+          `想賣：**${qtyArg}** ${s.unit}\n持有：**${have}** ${s.unit} ${s.name}`,
+          "不填數量即可賣出全部"
+        ),
+      };
+    }
+    const qty = qtyArg ? Math.min(qtyArg, have) : have;
+    return {
+      ok: true,
+      def: { name: s.name, emoji: s.emoji },
+      qty, have,
+      price: s.sellPrice,
+      total: s.sellPrice * qty,
+      trend: "",
+      emoji: s.emoji,
+      unit: s.unit,
+      sellField: s.field,
+    };
+  }
+
   return { ok: false, error: errorContainer("❌ 未知物品類型", `itemType=${itemType}`, "請從選單重新選擇") };
 }
 
@@ -214,7 +257,9 @@ function buildConfirmContainer({ userId, itemType, itemKey, preview, qtyArg }) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `${intentLine}\n` +
-        `-# 💡 想賣給玩家更高價？用 \`/市集 賣礦\` 或 \`/市集 賣魚\` 上架\n` +
+        (itemType === "item"
+          ? ""
+          : "-# 💡 想賣給玩家更高價？用 `/市集 賣礦` 或 `/市集 賣魚` 上架\n") +
         `-# 點下方紅色按鈕確認，否則本次不會扣物品也不會給錢`
       )
     )
@@ -252,6 +297,62 @@ async function executeSell(client, interaction, { userId, guildId, itemType, ite
   if (itemType === "veggie") {
     return finalizeVeggieSell(client, interaction, { userId, guildId, itemKey, preview });
   }
+  if (itemType === "item") {
+    return finalizeItemSell(client, interaction, { userId, guildId, itemKey, preview });
+  }
+}
+
+// 從 /背包 的「賣出」按鈕開啟賣道具確認（賣全部）。原訊息為 ephemeral，確認框也走 ephemeral。
+async function openItemSellConfirm(client, interaction, { userId, guildId, itemKey }) {
+  const preview = await previewSell(client, { userId, guildId, itemType: "item", itemKey, qtyArg: null });
+  if (!preview.ok) {
+    return interaction.reply({
+      components: [preview.error],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+  const container = buildConfirmContainer({ userId, itemType: "item", itemKey, preview, qtyArg: null });
+  return interaction.reply({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+  });
+}
+
+async function finalizeItemSell(client, interaction, { userId, guildId, itemKey, preview }) {
+  const { def, qty, price, total, emoji, unit, sellField } = preview;
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: { [sellField]: -qty }, $set: { updatedAt: new Date() } }
+  );
+
+  const grant = await grantCoins(client, {
+    userId, guildId,
+    username: interaction.user.username,
+    amount: total,
+    source: "item_sell",
+    member: interaction.member,
+    meta: { item: itemKey, qty },
+  });
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ${COIN_EMOJI} 賣出成功\n` +
+        `${emoji} **${def.name}** ×${qty}${unit} ＠${price.toLocaleString()}\n` +
+        `→ **+${total.toLocaleString()} ${COIN_EMOJI}**`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**目前餘額**　${(grant?.doc?.totalCoins ?? 0).toLocaleString()} ${COIN_EMOJI}\n` +
+        `-# 系統固定收購價・到 /商店 可再買回`
+      )
+    );
+
+  await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
 }
 
 async function finalizeOreSell(client, interaction, { userId, guildId, itemKey, preview }) {
@@ -392,7 +493,7 @@ module.exports = {
   channelBuckets: ["mining", "fishing", "marketplace", "farm"],
   data: new SlashCommandBuilder()
     .setName("賣出")
-    .setDescription("把礦石或魚賣給系統換金幣，依當日行情計價 🪙")
+    .setDescription("把礦石、魚、農產品或道具賣給系統換金幣，依當日行情計價 🪙")
     .setContexts(InteractionContextType.Guild)
     .addStringOption((o) =>
       o
@@ -411,7 +512,9 @@ module.exports = {
 
   SELL_CONFIRM_PREFIX,
   SELL_CANCEL_PREFIX,
+  SELL_ITEM_OPEN_PREFIX,
   executeSell,
+  openItemSellConfirm,
 
   run: async (client, interaction) => {
     await interaction.deferReply();
