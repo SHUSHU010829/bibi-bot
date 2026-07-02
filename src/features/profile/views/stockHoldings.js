@@ -10,11 +10,17 @@ const {
 
 const { stockSystem } = require("../../../config");
 const portfolioService = require("../../stock/portfolioService");
+const shortService = require("../../stock/shortService");
 
 const SELL_BUTTON_PREFIX = "pf_stksell_";
+const COVER_BUTTON_PREFIX = "pf_stkcover_";
 
 function buildSellCustomId(symbol, ownerUid) {
   return `${SELL_BUTTON_PREFIX}${symbol}_${ownerUid}`;
+}
+
+function buildCoverCustomId(symbol, ownerUid) {
+  return `${COVER_BUTTON_PREFIX}${symbol}_${ownerUid}`;
 }
 
 async function buildStockHoldingsView(client, { target, member, guildId }) {
@@ -29,11 +35,14 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
     userId,
     guildId
   );
-  if (positions.length === 0) {
-    return { content: "📭 目前沒有任何持股。可用 `/股市 買` 開始投資。" };
+  const shorts = await shortService.getAllShorts(client, userId, guildId);
+  if (positions.length === 0 && shorts.length === 0) {
+    return { content: "📭 目前沒有任何持股。可用 `/股市 買` 開始投資,或 `/股市 融券` 做空。" };
   }
 
-  const symbols = positions.map((p) => p.symbol);
+  const symbols = [
+    ...new Set([...positions.map((p) => p.symbol), ...shorts.map((s) => s.symbol)]),
+  ];
   const marketRows = await client.stockMarketCollection
     .find({ guildId, symbol: { $in: symbols } })
     .toArray();
@@ -91,25 +100,49 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
   const sign = totalPnl >= 0 ? "+" : "";
 
+  // 融券部位（做空）：未實現損益 = (放空均價 − 現價) × 股數
+  const shortViews = [];
+  let shortPnlTotal = 0;
+  for (const sp of shorts) {
+    const m = marketBySymbol.get(sp.symbol);
+    if (!m) continue;
+    const price = m.currentPrice;
+    const pnl = shortService.unrealizedShortPnl(sp, price);
+    shortPnlTotal += pnl;
+    const sign = pnl >= 0 ? "+" : "";
+    const pnlPct = sp.avgShort > 0 ? ((sp.avgShort - price) / sp.avgShort) * 100 : 0;
+    shortViews.push({
+      symbol: sp.symbol,
+      shares: sp.shares,
+      text:
+        `\`${sp.symbol}\` ${m.name}\n` +
+        `　放空 **${sp.shares}** ｜ 均價 ${sp.avgShort.toFixed(2)} ｜ 現價 ${price.toFixed(1)}\n` +
+        `　浮動損益 **${sign}${Math.round(pnl).toLocaleString()}**（${sign}${pnlPct.toFixed(2)}%）`,
+    });
+  }
+
   const displayName = member?.displayName || target.username;
   const accent = totalPnl >= 0 ? 0x2ecc71 : 0xe74c3c;
 
-  const summaryLines = [
-    `💵 總投入：**${Math.round(totalCost).toLocaleString()}**`,
-    `📊 現值：**${Math.round(totalValue).toLocaleString()}**`,
-    `${totalPnl >= 0 ? "📈" : "📉"} 總損益：**${sign}${Math.round(totalPnl).toLocaleString()}**（${sign}${totalPnlPct.toFixed(2)}%）`,
-  ];
-  if (best) {
-    const s = best.pnl >= 0 ? "+" : "";
+  const summaryLines = [];
+  if (positionViews.length > 0) {
     summaryLines.push(
-      `🏆 最大獲利：\`${best.symbol}\` ${best.name}（${s}${Math.round(best.pnl).toLocaleString()}）`
+      `💵 總投入：**${Math.round(totalCost).toLocaleString()}**`,
+      `📊 現值：**${Math.round(totalValue).toLocaleString()}**`,
+      `${totalPnl >= 0 ? "📈" : "📉"} 總損益：**${sign}${Math.round(totalPnl).toLocaleString()}**（${sign}${totalPnlPct.toFixed(2)}%）`,
     );
-  }
-  if (worst && worst.symbol !== best?.symbol) {
-    const s = worst.pnl >= 0 ? "+" : "";
-    summaryLines.push(
-      `💀 最大虧損：\`${worst.symbol}\` ${worst.name}（${s}${Math.round(worst.pnl).toLocaleString()}）`
-    );
+    if (best) {
+      const s = best.pnl >= 0 ? "+" : "";
+      summaryLines.push(
+        `🏆 最大獲利：\`${best.symbol}\` ${best.name}（${s}${Math.round(best.pnl).toLocaleString()}）`
+      );
+    }
+    if (worst && worst.symbol !== best?.symbol) {
+      const s = worst.pnl >= 0 ? "+" : "";
+      summaryLines.push(
+        `💀 最大虧損：\`${worst.symbol}\` ${worst.name}（${s}${Math.round(worst.pnl).toLocaleString()}）`
+      );
+    }
   }
 
   const container = new ContainerBuilder()
@@ -143,6 +176,32 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
     }
   }
 
+  // 融券部位區塊：每筆一個 Section，右側掛「🔄 回補」按鈕
+  if (shortViews.length > 0) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("### 📉 融券部位（做空）")
+      );
+    for (const sv of shortViews) {
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(sv.text))
+          .setButtonAccessory(
+            new ButtonBuilder()
+              .setCustomId(buildCoverCustomId(sv.symbol, target.id))
+              .setLabel(`回補 ${sv.symbol}`)
+              .setEmoji("🔄")
+              .setStyle(ButtonStyle.Primary)
+          )
+      );
+    }
+    const sSign = shortPnlTotal >= 0 ? "+" : "";
+    summaryLines.push(
+      `📉 融券浮動損益：**${sSign}${Math.round(shortPnlTotal).toLocaleString()}**`
+    );
+  }
+
   container
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
@@ -155,4 +214,4 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
   };
 }
 
-module.exports = { buildStockHoldingsView, SELL_BUTTON_PREFIX };
+module.exports = { buildStockHoldingsView, SELL_BUTTON_PREFIX, COVER_BUTTON_PREFIX };

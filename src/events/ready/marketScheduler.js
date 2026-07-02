@@ -13,11 +13,12 @@ const {
 const { DateTime } = require("luxon");
 
 const { stockSystem } = require("../../config");
-const { nextPrice, calcMarketDrift } = require("../../features/stock/priceEngine");
+const { nextPrice, calcMarketDrift, clampToLimit, limitBounds } = require("../../features/stock/priceEngine");
 const { rollRandomEvent } = require("../../features/stock/eventEngine");
 const { isMarketOpen } = require("../../features/stock/tradeService");
 const { renderMultiLine } = require("../../features/stock/chartRenderer");
 const { getDailyVolume } = require("../../features/stock/volumeService");
+const { runMarginScan } = require("../../features/stock/shortService");
 
 const SENTIMENT_LABEL = {
   bull: "🐂 牛市",
@@ -104,7 +105,8 @@ async function tickOnce(client) {
       .toArray();
     for (const s of stocks) {
       const drift = calcMarketDrift(s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways");
-      const next = nextPrice(s.currentPrice, s.sigma, drift, s.floor);
+      const raw = nextPrice(s.currentPrice, s.sigma, drift, s.floor);
+      const next = clampToLimit(raw, s.openPrice || s.currentPrice, stockSystem?.limitBoard);
       await client.stockMarketCollection.updateOne(
         { _id: s._id },
         { $set: { currentPrice: next, updatedAt: new Date() } }
@@ -127,6 +129,12 @@ async function tickOnce(client) {
       console.log(`[STOCK] broadcast failed guild=${guildId}: ${e?.message || e}`.yellow)
     );
   }
+
+  // 價格更新後掃描融券部位，浮虧過大者強制回補（斷頭）
+  await runMarginScan(client).catch((e) =>
+    console.log(`[STOCK] margin scan failed: ${e?.message || e}`.yellow)
+  );
+
   return { ticked, guilds: guildIds.length };
 }
 
@@ -195,8 +203,15 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
       console.log(`[STOCK] broadcast volume fetch failed (${s.symbol}): ${volErr.message}`.yellow);
     }
 
+    const bounds = limitBounds(open, stockSystem?.limitBoard);
+    let limitTag = "";
+    if (bounds) {
+      if (s.currentPrice >= bounds.up) limitTag = "　🚀 漲停";
+      else if (s.currentPrice <= bounds.down) limitTag = "　💥 跌停";
+    }
+
     stockLines.push(
-      `**\`${s.symbol}\` ${s.name}**\n` +
+      `**\`${s.symbol}\` ${s.name}**${limitTag}\n` +
         `現價 **${s.currentPrice.toFixed(1)}**　今日 ${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%\n` +
         `週高 ${wh.toFixed(1)}　週低 ${wl.toFixed(1)}` +
         volLine,

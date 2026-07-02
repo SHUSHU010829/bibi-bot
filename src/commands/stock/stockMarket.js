@@ -36,6 +36,9 @@ const {
 } = require("../../features/stock/tradeService");
 const triggerService = require("../../features/stock/triggerService");
 const portfolioService = require("../../features/stock/portfolioService");
+const shortService = require("../../features/stock/shortService");
+const leaderboardService = require("../../features/stock/leaderboardService");
+const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const { buildChartContainer } = require("../../features/stock/chartView");
 const { getDailyVolume, invalidate: invalidateVolume } = require("../../features/stock/volumeService");
 const {
@@ -181,8 +184,61 @@ module.exports = {
     )
     .addSubcommand((s) =>
       s
+        .setName("融券")
+        .setDescription("借股做空:看跌先高賣、跌了低買回賺價差 📉")
+        .addStringOption((o) =>
+          o
+            .setName("股票代號")
+            .setDescription("要放空的股票")
+            .setRequired(true)
+            .addChoices(...getStaticSymbolChoices())
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName("數量")
+            .setDescription("放空股數(需凍結等額保證金)")
+            .setRequired(true)
+            .setMinValue(1)
+        )
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("回補")
+        .setDescription("買回股票平掉融券部位、結算損益 🔄")
+        .addStringOption((o) =>
+          o
+            .setName("股票代號")
+            .setDescription("要回補的股票")
+            .setRequired(true)
+            .addChoices(...getStaticSymbolChoices())
+        )
+        .addStringOption((o) =>
+          o
+            .setName("數量")
+            .setDescription("股數,或填 all 全部回補")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((s) =>
+      s
         .setName("持股")
         .setDescription("查看自己的持股、損益與一鍵賣出 💼")
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("排行")
+        .setDescription("已實現損益操盤手排行榜 🏆")
+        .addStringOption((o) =>
+          o
+            .setName("期間")
+            .setDescription("排行期間(預設本週)")
+            .addChoices(
+              { name: "本週", value: "week" },
+              { name: "近 30 天", value: "1m" },
+              { name: "近 90 天", value: "3m" }
+            )
+            .setRequired(false)
+        )
     )
     .addSubcommand((s) =>
       s
@@ -222,8 +278,84 @@ module.exports = {
     if (sub === "報價") return runQuotePanel(client, interaction);
     if (sub === "持股") return runHoldings(client, interaction);
     if (sub === "停損停利") return runSetTriggers(client, interaction);
+    if (sub === "融券") return runOpenShort(client, interaction);
+    if (sub === "回補") return runCoverShort(client, interaction);
+    if (sub === "排行") return runLeaderboard(client, interaction);
   },
 };
+
+// ──────────────────────────── /股市 排行 ────────────────────────────
+async function runLeaderboard(client, interaction) {
+  await interaction.deferReply();
+  try {
+    if (!stockSystem?.enabled) return interaction.editReply("🔧 股市系統未啟用。");
+    if (!client.stockTransactionsCollection) {
+      return interaction.editReply("🔧 股市系統尚未就緒。");
+    }
+    const guildId = interaction.guildId;
+    const period = interaction.options.getString("期間") || "week";
+    let window;
+    let periodLabel;
+    if (period === "1m") {
+      window = leaderboardService.rollingWindow(30);
+      periodLabel = "近 30 天";
+    } else if (period === "3m") {
+      window = leaderboardService.rollingWindow(90);
+      periodLabel = "近 90 天";
+    } else {
+      window = leaderboardService.currentWeekWindow();
+      periodLabel = "本週";
+    }
+
+    const ranking = await leaderboardService.rankByWindow(client, guildId, {
+      ...window,
+      limit: 10,
+    });
+    if (ranking.length === 0) {
+      return interaction.editReply(`📭 ${periodLabel}尚無已實現損益紀錄，快用 \`/股市\` 開張！`);
+    }
+
+    const medals = ["🥇", "🥈", "🥉"];
+    const guild = interaction.guild;
+    const lines = ranking.map((r, i) => {
+      const rank = i < 3 ? medals[i] : `\`${String(i + 1).padStart(2, " ")}\``;
+      const name = plainifyUserMentions(guild, `<@${r.userId}>`);
+      const sign = r.pnl >= 0 ? "+" : "";
+      const emoji = r.pnl >= 0 ? "📈" : "📉";
+      return `${rank} ${name}\n　${emoji} 已實現損益 **${sign}${r.pnl.toLocaleString()}**（${r.trades} 筆）`;
+    });
+
+    const me = ranking.find((r) => r.userId === interaction.user.id);
+    const myLine = me
+      ? `你${periodLabel}已實現損益：**${me.pnl >= 0 ? "+" : ""}${me.pnl.toLocaleString()}**`
+      : `你${periodLabel}還沒有已實現損益紀錄，賣出或回補後才會計入。`;
+
+    const container = new ContainerBuilder()
+      .setAccentColor(0xf1c40f)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`# 🏆 操盤手排行榜｜${periodLabel}`)
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(lines.join("\n"))
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(myLine))
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# 已實現損益只計賣出與融券回補；本週冠軍每週一頒發 📊 最強操盤手稱號"
+        )
+      );
+
+    await interaction.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (err) {
+    console.log(`[STOCK] /股市 排行 失敗:${err?.stack || err}`.red);
+    await interaction.editReply("❌ 查詢失敗,請稍後再試。").catch(() => {});
+  }
+}
 
 // ──────────────────────────── /股市 停損停利 ────────────────────────────
 async function runSetTriggers(client, interaction) {
@@ -370,8 +502,16 @@ async function runBuy(client, interaction) {
   }
 }
 
+function buildImpactLine(impact, side) {
+  if (!impact || !impact.delta) return null;
+  const arrow = side === "buy" ? "📈" : "📉";
+  const verb = side === "buy" ? "推升" : "壓低";
+  const sign = impact.delta >= 0 ? "+" : "";
+  return `${arrow} 你的${side === "buy" ? "買" : "賣"}單${verb}股價 ${impact.before.toFixed(1)} → **${impact.after.toFixed(1)}**（${sign}${impact.delta.toFixed(1)}）`;
+}
+
 function buildBuyResultContainer(result) {
-  return new ContainerBuilder()
+  const c = new ContainerBuilder()
     .setAccentColor(0x2ecc71)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -408,7 +548,14 @@ function buildBuyResultContainer(result) {
       new TextDisplayBuilder().setContent(
         `**平均成本**\n${result.newAvgCost.toFixed(2)}`
       )
-    )
+    );
+
+  const impactLine = buildImpactLine(result.impact, "buy");
+  if (impactLine) {
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(impactLine));
+  }
+
+  return c
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -474,7 +621,7 @@ function buildSellResultContainer(result) {
   const pnlPct =
     result.avgCost > 0 ? ((result.price - result.avgCost) / result.avgCost) * 100 : 0;
 
-  return new ContainerBuilder()
+  const container = new ContainerBuilder()
     .setAccentColor(result.pnl >= 0 ? 0x2ecc71 : 0xe74c3c)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -511,7 +658,14 @@ function buildSellResultContainer(result) {
       new TextDisplayBuilder().setContent(
         `**本筆損益**\n**${pnlSign}${result.pnl.toLocaleString()}**(${pnlSign}${pnlPct.toFixed(2)}%)`
       )
-    )
+    );
+
+  const impactLine = buildImpactLine(result.impact, "sell");
+  if (impactLine) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(impactLine));
+  }
+
+  return container
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -527,6 +681,177 @@ function buildSellResultContainer(result) {
       new TextDisplayBuilder().setContent(
         `-# <t:${Math.floor(Date.now() / 1000)}:R>`
       )
+    );
+}
+
+// ──────────────────────────── /股市 融券 ────────────────────────────
+async function runOpenShort(client, interaction) {
+  await interaction.deferReply();
+  try {
+    if (!stockSystem?.enabled) return interaction.editReply("🔧 股市系統未啟用。");
+    if (!stockSystem?.short?.enabled) return interaction.editReply("🔧 融券做空未開放。");
+    if (!client.stockShortsCollection || !client.userCoinsCollection) {
+      return interaction.editReply("🔧 股市系統尚未就緒。");
+    }
+    const tenure = checkServerTenure(interaction.member);
+    if (!tenure.ok) return interaction.editReply(tenure.message);
+    if (!isMarketOpen()) {
+      return interaction.editReply("🌙 目前非開盤時間(09:00–21:00 Asia/Taipei)。");
+    }
+
+    const symbol = interaction.options.getString("股票代號").toUpperCase().trim();
+    const shares = interaction.options.getInteger("數量");
+
+    const result = await shortService.openShort(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      username: interaction.member?.displayName || interaction.user.username,
+      member: interaction.member,
+      symbol,
+      shares,
+    });
+    if (!result.ok) return interaction.editReply(result.message);
+
+    await interaction.editReply({
+      components: [buildShortOpenContainer(result)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (err) {
+    console.log(`[STOCK] /股市 融券 失敗:${err?.stack || err}`.red);
+    await interaction.editReply("❌ 融券失敗,請稍後再試。").catch(() => {});
+  }
+}
+
+function buildShortOpenContainer(result) {
+  const lossPct = stockSystem?.short?.forceCloseLossPct ?? 0.8;
+  const callPrice = result.newAvgShort * (1 + lossPct);
+  const c = new ContainerBuilder()
+    .setAccentColor(0xe67e22)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# 📉 融券放空｜${result.symbol} ${result.name}`)
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**放空價**\n**${result.price.toFixed(1)}** × ${result.shares} 股`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**凍結保證金**\n${result.collateral.toLocaleString()}`)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**手續費**\n${result.fee.toLocaleString()}`)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**目前放空**\n${result.newShares} 股`)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**放空均價**\n${result.newAvgShort.toFixed(2)}`)
+    );
+
+  const impactLine = buildImpactLine(result.impact, "sell");
+  if (impactLine) c.addTextDisplayComponents(new TextDisplayBuilder().setContent(impactLine));
+
+  return c
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**餘額**\n${result.balanceAfter.toLocaleString()}`)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 跌了用 \`/股市 回補\` 賺價差；漲到約 **${callPrice.toFixed(1)}**（+${(lossPct * 100).toFixed(0)}%）會被強制斷頭。`
+      )
+    );
+}
+
+// ──────────────────────────── /股市 回補 ────────────────────────────
+async function runCoverShort(client, interaction) {
+  await interaction.deferReply();
+  try {
+    if (!stockSystem?.enabled) return interaction.editReply("🔧 股市系統未啟用。");
+    if (!client.stockShortsCollection) return interaction.editReply("🔧 股市系統尚未就緒。");
+    const tenure = checkServerTenure(interaction.member);
+    if (!tenure.ok) return interaction.editReply(tenure.message);
+    if (!isMarketOpen()) {
+      return interaction.editReply("🌙 目前非開盤時間(09:00–21:00 Asia/Taipei)。");
+    }
+
+    const symbol = interaction.options.getString("股票代號").toUpperCase().trim();
+    const rawAmount = interaction.options.getString("數量").trim().toLowerCase();
+    let shares;
+    if (rawAmount === "all") {
+      shares = "all";
+    } else {
+      shares = parseInt(rawAmount, 10);
+      if (!Number.isInteger(shares) || shares <= 0) {
+        return interaction.editReply("❌ 數量需為正整數或 `all`。");
+      }
+    }
+
+    const result = await shortService.coverShort(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      username: interaction.member?.displayName || interaction.user.username,
+      member: interaction.member,
+      symbol,
+      shares,
+    });
+    if (!result.ok) return interaction.editReply(result.message);
+
+    await interaction.editReply({
+      components: [buildShortCoverContainer(result)],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (err) {
+    console.log(`[STOCK] /股市 回補 失敗:${err?.stack || err}`.red);
+    await interaction.editReply("❌ 回補失敗,請稍後再試。").catch(() => {});
+  }
+}
+
+function buildShortCoverContainer(result) {
+  const pnlSign = result.pnl >= 0 ? "+" : "";
+  const pnlPct =
+    result.avgShort > 0 ? ((result.avgShort - result.coverPrice) / result.avgShort) * 100 : 0;
+
+  const c = new ContainerBuilder()
+    .setAccentColor(result.pnl >= 0 ? 0x2ecc71 : 0xe74c3c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# 🔄 融券回補｜${result.symbol} ${result.name}`)
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**回補價**\n**${result.coverPrice.toFixed(1)}** × ${result.shares} 股`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**放空均價**\n${result.avgShort.toFixed(2)}`)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**手續費**\n${result.fee.toLocaleString()}`)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**本筆損益**\n**${pnlSign}${result.pnl.toLocaleString()}**(${pnlSign}${pnlPct.toFixed(2)}%)`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**結算入帳**\n**${result.settlement.toLocaleString()}**`)
+    );
+
+  const impactLine = buildImpactLine(result.impact, "buy");
+  if (impactLine) c.addTextDisplayComponents(new TextDisplayBuilder().setContent(impactLine));
+
+  return c
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**剩餘放空**\n${result.remainingShares} 股`)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**餘額**\n${result.balanceAfter.toLocaleString()}`)
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# <t:${Math.floor(Date.now() / 1000)}:R>`)
     );
 }
 

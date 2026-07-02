@@ -3,11 +3,49 @@ const { stockSystem } = require("../../config");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const grantCoins = require("../economy/grantCoins");
 const portfolioService = require("./portfolioService");
+const { priceImpact, limitBounds, clampToLimit, roundPrice } = require("./priceEngine");
 
 function calcFee(amount) {
   const rate = stockSystem?.feeRate ?? 0.01;
   const minFee = stockSystem?.minFee ?? 5;
   return Math.max(minFee, Math.floor(amount * rate));
+}
+
+// 當日漲跌停狀態：以開盤價為基準，判斷現價是否已頂到 ±limitPct。
+function getLimitState(market) {
+  const ref = market.openPrice || market.currentPrice;
+  const b = limitBounds(ref, stockSystem?.limitBoard);
+  if (!b) return { bounded: false, atUp: false, atDown: false };
+  return {
+    bounded: true,
+    refPrice: ref,
+    up: b.up,
+    down: b.down,
+    pct: b.pct,
+    atUp: market.currentPrice >= b.up,
+    atDown: market.currentPrice <= b.down,
+  };
+}
+
+// 成交後把買 / 賣壓反映到股價：買單推升、賣單壓低，並夾在 floor 與漲跌停內。
+async function applyTradeImpact(client, market, guildId, side, shares) {
+  const cfg = stockSystem?.priceImpact;
+  if (!cfg?.enabled) return null;
+  const before = market.currentPrice;
+  const impacted = priceImpact(before, shares, side, cfg, market.floor);
+  const after = clampToLimit(impacted.price, market.openPrice || before, stockSystem?.limitBoard);
+  const delta = roundPrice(after - before);
+  if (delta === 0) return { before, after: before, delta: 0 };
+  await client.stockMarketCollection.updateOne(
+    { _id: market._id },
+    { $set: { currentPrice: after, updatedAt: new Date() } },
+  );
+  if (cfg.recordHistory && client.stockPricesCollection) {
+    await client.stockPricesCollection
+      .insertOne({ guildId, symbol: market.symbol, price: after, timestamp: new Date(), source: "trade" })
+      .catch(() => {});
+  }
+  return { before, after, delta };
 }
 
 async function getMarketEntry(client, guildId, symbol) {
@@ -39,6 +77,15 @@ async function buyMarket(client, opts) {
   const market = await getMarketEntry(client, guildId, symbol);
   if (!market || market.enabled === false) {
     return { ok: false, reason: "no_symbol", message: `❌ 找不到股票代號 \`${symbol}\`。` };
+  }
+
+  const limit = getLimitState(market);
+  if (limit.bounded && limit.atUp) {
+    return {
+      ok: false,
+      reason: "limit_up",
+      message: `🚀 ${market.name}（\`${symbol}\`）已鎖漲停（+${(limit.pct * 100).toFixed(0)}%，${limit.up.toLocaleString()}），買方掛單排隊中，暫時買不進。`,
+    };
   }
 
   const price = market.currentPrice;
@@ -108,6 +155,8 @@ async function buyMarket(client, opts) {
     timestamp: new Date(),
   }).catch(() => {});
 
+  const impact = await applyTradeImpact(client, market, guildId, "buy", shares).catch(() => null);
+
   return {
     ok: true,
     symbol,
@@ -120,6 +169,7 @@ async function buyMarket(client, opts) {
     newShares: newPos.shares,
     newAvgCost: newPos.avgCost,
     balanceAfter: balance - totalOut,
+    impact,
   };
 }
 
@@ -130,6 +180,15 @@ async function sellMarket(client, opts) {
   const market = await getMarketEntry(client, guildId, symbol);
   if (!market || market.enabled === false) {
     return { ok: false, reason: "no_symbol", message: `❌ 找不到股票代號 \`${symbol}\`。` };
+  }
+
+  const limit = getLimitState(market);
+  if (limit.bounded && limit.atDown && !opts.ignoreLimit) {
+    return {
+      ok: false,
+      reason: "limit_down",
+      message: `💥 ${market.name}（\`${symbol}\`）已鎖跌停（-${(limit.pct * 100).toFixed(0)}%，${limit.down.toLocaleString()}），賣方掛單排隊中，暫時賣不掉。`,
+    };
   }
 
   const position = await portfolioService.getPosition(client, userId, guildId, symbol);
@@ -197,6 +256,8 @@ async function sellMarket(client, opts) {
     timestamp: new Date(),
   }).catch(() => {});
 
+  const impact = await applyTradeImpact(client, market, guildId, "sell", shares).catch(() => null);
+
   const userCoins = await client.userCoinsCollection.findOne({ userId, guildId });
   return {
     ok: true,
@@ -211,6 +272,7 @@ async function sellMarket(client, opts) {
     avgCost: position.avgCost,
     remainingShares: position.shares - shares,
     balanceAfter: userCoins?.totalCoins || 0,
+    impact,
   };
 }
 
@@ -220,4 +282,6 @@ module.exports = {
   calcFee,
   isMarketOpen,
   getMarketEntry,
+  getLimitState,
+  applyTradeImpact,
 };
