@@ -733,6 +733,17 @@ function buildShortOpenContainer(result) {
       new TextDisplayBuilder().setContent(`**放空均價**\n${result.newAvgShort.toFixed(2)}`)
     );
 
+  if (result.expiresAt) {
+    c.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**到期強制收盤**\n<t:${Math.floor(result.expiresAt.getTime() / 1000)}:R>`
+      )
+    );
+  }
+
+  const expiryNote = result.expiresAt
+    ? `；持有滿 **${result.maxHoldDays} 天**（<t:${Math.floor(result.expiresAt.getTime() / 1000)}:R>）未回補會被強制收盤`
+    : "";
   return c
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
@@ -740,7 +751,7 @@ function buildShortOpenContainer(result) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 跌了用 \`/股市 回補\` 賺價差；漲到約 **${callPrice.toFixed(1)}**（+${(lossPct * 100).toFixed(0)}%）會被強制斷頭。`
+        `-# 跌了用 \`/股市 回補\` 賺價差；漲到約 **${callPrice.toFixed(1)}**（+${(lossPct * 100).toFixed(0)}%）會被強制斷頭${expiryNote}。`
       )
     );
 }

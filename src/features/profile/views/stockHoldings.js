@@ -117,13 +117,18 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
     shortPnlTotal += pnl;
     const sign = pnl >= 0 ? "+" : "";
     const pnlPct = sp.avgShort > 0 ? ((sp.avgShort - price) / sp.avgShort) * 100 : 0;
+    const deadline = shortService.shortDeadline(sp);
+    const deadlineLine = deadline
+      ? `\n　到期強制收盤 <t:${Math.floor(deadline.getTime() / 1000)}:R>`
+      : "";
     shortViews.push({
       symbol: sp.symbol,
       shares: sp.shares,
       text:
         `\`${sp.symbol}\` ${m.name}\n` +
         `　放空 **${sp.shares}** ｜ 均價 ${sp.avgShort.toFixed(2)} ｜ 現價 ${price.toFixed(1)}\n` +
-        `　浮動損益 **${sign}${Math.round(pnl).toLocaleString()}**（${sign}${pnlPct.toFixed(2)}%）`,
+        `　浮動損益 **${sign}${Math.round(pnl).toLocaleString()}**（${sign}${pnlPct.toFixed(2)}%）` +
+        deadlineLine,
     });
   }
 
