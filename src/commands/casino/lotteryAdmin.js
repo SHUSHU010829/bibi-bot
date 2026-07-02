@@ -21,6 +21,7 @@ const { listLotteryTypes, getLotteryConfig } = require("../../features/casino/lo
 const TYPE_CHOICES = [
   { name: "大樂透 6/49", value: "6_49" },
   { name: "小樂透 3/20", value: "3_20" },
+  { name: "威力彩 6/38", value: "power_38_8" },
 ];
 
 module.exports = {
@@ -69,6 +70,17 @@ module.exports = {
       s
         .setName("ensure-next")
         .setDescription("補建當期(若不存在)")
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("re-announce")
+        .setDescription("重發某一期的開獎結果圖卡(用已結算資料重繪,不重抽號、不重派彩)")
+        .addStringOption((o) =>
+          o
+            .setName("drawid")
+            .setDescription("該期 drawId,例:20260702-power_38_8")
+            .setRequired(true)
+        )
     )
     .addSubcommand((s) =>
       s
@@ -144,6 +156,22 @@ module.exports = {
           else lines.push(`${t}: 跳過`);
         }
         return interaction.editReply(lines.join("\n") || "無動作");
+      }
+
+      if (sub === "re-announce") {
+        const drawId = interaction.options.getString("drawid");
+        const draw = await client.lotteryDrawsCollection.findOne({ drawId });
+        if (!draw) return interaction.editReply(`找不到 drawId \`${drawId}\``);
+        if (draw.status !== "settled") {
+          return interaction.editReply(
+            `該期尚未結算(status=${draw.status}),無法重發。`
+          );
+        }
+        const tickets = await client.lotteryTicketsCollection
+          .find({ drawId })
+          .toArray();
+        await announceDrawResult(client, { draw, tickets }, { skipWinnerDm: true });
+        return interaction.editReply(`✅ 已重發 \`${drawId}\` 的開獎結果圖卡。`);
       }
 
       if (sub === "inspect") {
