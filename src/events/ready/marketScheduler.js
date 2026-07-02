@@ -13,7 +13,7 @@ const {
 const { DateTime } = require("luxon");
 
 const { stockSystem } = require("../../config");
-const { nextPrice, calcMarketDrift, clampToLimit, limitBounds } = require("../../features/stock/priceEngine");
+const { nextPrice, stockDrift, poolParams, clampToLimit, limitBounds } = require("../../features/stock/priceEngine");
 const { rollRandomEvent } = require("../../features/stock/eventEngine");
 const { isMarketOpen } = require("../../features/stock/tradeService");
 const { renderMultiLine } = require("../../features/stock/chartRenderer");
@@ -105,8 +105,10 @@ async function tickOnce(client) {
       .find({ guildId, enabled: { $ne: false } })
       .toArray();
     for (const s of stocks) {
-      const drift = calcMarketDrift(s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways");
-      const raw = nextPrice(s.currentPrice, s.sigma, drift, s.floor);
+      const sentiment = s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways";
+      const drift = stockDrift(s.symbol, sentiment);
+      const sigma = poolParams(s.symbol)?.sigma ?? s.sigma;
+      const raw = nextPrice(s.currentPrice, sigma, drift, s.floor);
       const next = clampToLimit(raw, s.openPrice || s.currentPrice, stockSystem?.limitBoard);
       await client.stockMarketCollection.updateOne(
         { _id: s._id },

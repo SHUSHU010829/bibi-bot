@@ -4,6 +4,7 @@ const {
   TextDisplayBuilder,
   SeparatorBuilder,
   SectionBuilder,
+  ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
@@ -14,6 +15,7 @@ const shortService = require("../../stock/shortService");
 
 const SELL_BUTTON_PREFIX = "pf_stksell_";
 const COVER_BUTTON_PREFIX = "pf_stkcover_";
+const REFRESH_BUTTON_PREFIX = "pf_stkrefresh_";
 
 function buildSellCustomId(symbol, ownerUid) {
   return `${SELL_BUTTON_PREFIX}${symbol}_${ownerUid}`;
@@ -21,6 +23,10 @@ function buildSellCustomId(symbol, ownerUid) {
 
 function buildCoverCustomId(symbol, ownerUid) {
   return `${COVER_BUTTON_PREFIX}${symbol}_${ownerUid}`;
+}
+
+function buildRefreshCustomId(ownerUid) {
+  return `${REFRESH_BUTTON_PREFIX}${ownerUid}`;
 }
 
 async function buildStockHoldingsView(client, { target, member, guildId }) {
@@ -206,6 +212,15 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(summaryLines.join("\n"))
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(buildRefreshCustomId(target.id))
+          .setLabel("重新整理")
+          .setEmoji("🔄")
+          .setStyle(ButtonStyle.Secondary)
+      )
     );
 
   return {
@@ -214,4 +229,9 @@ async function buildStockHoldingsView(client, { target, member, guildId }) {
   };
 }
 
-module.exports = { buildStockHoldingsView, SELL_BUTTON_PREFIX, COVER_BUTTON_PREFIX };
+module.exports = {
+  buildStockHoldingsView,
+  SELL_BUTTON_PREFIX,
+  COVER_BUTTON_PREFIX,
+  REFRESH_BUTTON_PREFIX,
+};
