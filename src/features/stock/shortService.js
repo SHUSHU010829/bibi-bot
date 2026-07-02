@@ -274,7 +274,8 @@ async function coverShort(client, opts) {
   };
 }
 
-// 掃描所有融券部位：浮虧達保證金 forceCloseLossPct 者斷頭、持有滿 maxHoldDays 者到期強制收盤，強制回補後私訊通知
+// 掃描所有融券部位：浮虧達保證金 forceCloseLossPct 者斷頭、持有滿 maxHoldDays 者到期強制收盤，
+// 強制回補後私訊通知；接近到期（expiryWarnHours 內）則先私訊預警一次
 async function runMarginScan(client) {
   if (!shortCfg().enabled) return { scanned: 0, forced: 0, expired: 0 };
   if (!client.stockShortsCollection || !client.stockMarketCollection) {
@@ -282,9 +283,10 @@ async function runMarginScan(client) {
   }
   const lossPct = shortCfg().forceCloseLossPct ?? 0.8;
   const maxHoldDays = shortCfg().maxHoldDays ?? 0;
+  const warnMs = (shortCfg().expiryWarnHours ?? 0) * 60 * 60 * 1000;
   const now = Date.now();
   const positions = await client.stockShortsCollection.find({ shares: { $gt: 0 } }).toArray();
-  if (positions.length === 0) return { scanned: 0, forced: 0, expired: 0 };
+  if (positions.length === 0) return { scanned: 0, forced: 0, expired: 0, warned: 0 };
 
   const marketCache = new Map();
   const getMarket = async (guildId, symbol) => {
@@ -297,6 +299,7 @@ async function runMarginScan(client) {
 
   let forced = 0;
   let expired = 0;
+  let warned = 0;
   for (const pos of positions) {
     const market = await getMarket(pos.guildId, pos.symbol);
     if (!market) continue;
@@ -304,7 +307,31 @@ async function runMarginScan(client) {
     const isMarginCall = loss >= pos.collateral * lossPct;
     const deadline = shortDeadline(pos);
     const isExpired = deadline && now >= deadline.getTime();
-    if (!isMarginCall && !isExpired) continue;
+    if (!isMarginCall && !isExpired) {
+      // 尚未觸發回補：到期前 expiryWarnHours 私訊預警一次（旗標避免每次掃描重複）
+      if (deadline && warnMs > 0 && !pos.expiryWarned && now >= deadline.getTime() - warnMs) {
+        await client.stockShortsCollection
+          .updateOne({ _id: pos._id }, { $set: { expiryWarned: true, expiryWarnedAt: new Date() } })
+          .catch(() => {});
+        warned += 1;
+        const pnl = Math.floor((pos.avgShort - market.currentPrice) * pos.shares);
+        const pnlText = `${pnl >= 0 ? "+" : ""}${pnl.toLocaleString()}`;
+        try {
+          const user = await client.users.fetch(pos.userId).catch(() => null);
+          if (user) {
+            await user.send(
+              `⏳ **${market.name}（${pos.symbol}）** 融券即將到期！\n` +
+                `放空 ${pos.shares} 股（均價 ${pos.avgShort.toFixed(2)}，現價 ${market.currentPrice.toFixed(1)}，浮動損益 ${pnlText}），` +
+                `到期時間 <t:${Math.floor(deadline.getTime() / 1000)}:R>。\n` +
+                `到期未回補會被強制收盤，想提前平倉可用 \`/股市 回補 ${pos.symbol} all\`。`,
+            );
+          }
+        } catch (err) {
+          console.log(`[STOCK-SHORT] 到期預警 DM 失敗 user=${pos.userId}: ${err?.message || err}`.yellow);
+        }
+      }
+      continue;
+    }
     const reason = isMarginCall ? "margin" : "expiry";
 
     const result = await coverShort(client, {
@@ -341,7 +368,7 @@ async function runMarginScan(client) {
       console.log(`[STOCK-SHORT] 強制回補 DM 失敗 user=${pos.userId}: ${err?.message || err}`.yellow);
     }
   }
-  return { scanned: positions.length, forced, expired };
+  return { scanned: positions.length, forced, expired, warned };
 }
 
 module.exports = {
