@@ -171,16 +171,14 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
     minutes >= 60
       ? `${(minutes / 60).toFixed(minutes % 60 === 0 ? 0 : 1)} 小時`
       : `${minutes} 分鐘`;
-  const buf = renderMultiLine(series, {
-    title: `逼逼股市｜最近 ${timeLabel}各股漲跌`,
-  });
-  const attachment = new AttachmentBuilder(buf, { name: "stock_market.png" });
-
   const sentiment = stocks[0]?.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways";
   const sentimentLabel = SENTIMENT_LABEL[sentiment] || sentiment;
 
+  // 每檔完整數據（現價 / 今日% / 週高低 / 成交量）放進走勢圖下方的表格，
+  // 訊息文字只留漲跌停摘要，避免股票數量一多就變成一長串文字牆。
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const stockLines = [];
+  const stats = [];
+  const limitTags = [];
   for (const s of stocks) {
     const open = s.openPrice || s.currentPrice;
     const chg = open > 0 ? ((s.currentPrice - open) / open) * 100 : 0;
@@ -191,35 +189,46 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
     const wh = weekPrices.length ? Math.max(...weekPrices, s.currentPrice) : s.currentPrice;
     const wl = weekPrices.length ? Math.min(...weekPrices, s.currentPrice) : s.currentPrice;
 
-    let volLine = "";
+    let totalShares = 0;
+    let netVol = 0;
     try {
       const vol = await getDailyVolume(client, { guildId, symbol: s.symbol });
-      if (vol.totalShares > 0) {
-        const net = vol.buyShares - vol.sellShares;
-        const netLabel =
-          net === 0 ? "持平" : net > 0 ? `🟢 淨買 +${net.toLocaleString()}` : `🔴 淨賣 ${net.toLocaleString()}`;
-        volLine = `\n今日量 **${vol.totalShares.toLocaleString()}** 股　買 ${vol.buyShares.toLocaleString()} / 賣 ${vol.sellShares.toLocaleString()}　${netLabel}`;
-      } else {
-        volLine = `\n今日量 —`;
-      }
+      totalShares = vol.totalShares || 0;
+      netVol = (vol.buyShares || 0) - (vol.sellShares || 0);
     } catch (volErr) {
       console.log(`[STOCK] broadcast volume fetch failed (${s.symbol}): ${volErr.message}`.yellow);
     }
 
     const bounds = limitBounds(open, stockSystem?.limitBoard);
-    let limitTag = "";
+    let limit = null;
     if (bounds) {
-      if (s.currentPrice >= bounds.up) limitTag = "　🚀 漲停";
-      else if (s.currentPrice <= bounds.down) limitTag = "　💥 跌停";
+      if (s.currentPrice >= bounds.up) {
+        limit = "up";
+        limitTags.push(`🚀 ${s.name}`);
+      } else if (s.currentPrice <= bounds.down) {
+        limit = "down";
+        limitTags.push(`💥 ${s.name}`);
+      }
     }
 
-    stockLines.push(
-      `**\`${s.symbol}\` ${s.name}**${limitTag}\n` +
-        `現價 **${s.currentPrice.toFixed(1)}**　今日 ${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%\n` +
-        `週高 ${wh.toFixed(1)}　週低 ${wl.toFixed(1)}` +
-        volLine,
-    );
+    stats.push({
+      symbol: s.symbol,
+      name: s.name,
+      price: s.currentPrice,
+      changePct: chg,
+      weekHigh: wh,
+      weekLow: wl,
+      volume: totalShares,
+      netVol,
+      limit,
+    });
   }
+
+  const buf = renderMultiLine(series, {
+    title: `逼逼股市｜最近 ${timeLabel}各股漲跌`,
+    stats,
+  });
+  const attachment = new AttachmentBuilder(buf, { name: "stock_market.png" });
 
   // 下次 tick 時間：對齊 tickIntervalMinutes
   const now = new Date();
@@ -242,18 +251,21 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
       new MediaGalleryBuilder().addItems(
         new MediaGalleryItemBuilder()
           .setURL("attachment://stock_market.png")
-          .setDescription("市場走勢圖"),
-      ),
-    )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(stockLines.join("\n\n")),
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# 🕒 更新於 <t:${nowEpoch}:t>（<t:${nowEpoch}:R>）`,
+          .setDescription("市場走勢與各股數據"),
       ),
     );
+
+  if (limitTags.length > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`漲跌停：${limitTags.join("　")}`),
+    );
+  }
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# 🕒 更新於 <t:${nowEpoch}:t>（<t:${nowEpoch}:R>）・完整數據見上圖`,
+    ),
+  );
 
   const payload = {
     components: [container],

@@ -17,14 +17,25 @@ function ensureFonts() {
 const SERIES_COLORS = ["#3498db", "#e67e22", "#9b59b6", "#2ecc71", "#e74c3c", "#f1c40f", "#1abc9c"];
 
 // series: [{ symbol, name, points: [{ price, timestamp }, ...] }]
+// opts.stats: [{ symbol, name, price, changePct, weekHigh, weekLow, volume, netVol, limit }]
+//   有給就在走勢圖下方加一張完整數據表（欄位對齊，資訊不必塞進訊息文字）。
 function renderMultiLine(series, opts = {}) {
   ensureFonts();
+  const stats = Array.isArray(opts.stats) && opts.stats.length ? opts.stats : null;
   const W = opts.width || 900;
-  const H = opts.height || 400;
   const padL = 60;
   const padR = 24;
   const padT = 40;
-  const padB = 48;
+
+  // 有數據表時：繪圖區固定高度，表格接在下方；沒有時維持原本行為
+  const chartH = opts.chartHeight || 300;
+  const rowH = 28;
+  const tableHeaderH = 30;
+  const tableGap = 18;
+  const padB = stats ? 16 : 48;
+  const tableH = stats ? tableHeaderH + stats.length * rowH : 0;
+  const H = stats ? padT + chartH + tableGap + tableH + padB : opts.height || 400;
+  const plotH = stats ? chartH : H - padT - padB;
 
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
@@ -65,7 +76,6 @@ function renderMultiLine(series, opts = {}) {
   const maxPoints = Math.max(2, ...normalized.map((s) => s.normPoints.length));
 
   const plotW = W - padL - padR;
-  const plotH = H - padT - padB;
 
   // 繪格線
   ctx.strokeStyle = "#3a3b46";
@@ -110,21 +120,113 @@ function renderMultiLine(series, opts = {}) {
     ctx.stroke();
   });
 
-  // Legend
-  ctx.font = "12px NotoSans, sans-serif";
-  let lx = padL;
-  const ly = H - 18;
-  normalized.forEach((s, idx) => {
-    const color = SERIES_COLORS[idx % SERIES_COLORS.length];
-    ctx.fillStyle = color;
-    ctx.fillRect(lx, ly - 9, 12, 12);
-    ctx.fillStyle = "#ecf0f1";
-    const label = `${s.symbol} ${s.name || ""}`;
-    ctx.fillText(label, lx + 16, ly + 1);
-    lx += ctx.measureText(label).width + 38;
-  });
+  if (stats) {
+    drawStatsTable(ctx, stats, {
+      x: 24,
+      y: padT + plotH + tableGap,
+      w: W - 48,
+      rowH,
+      headerH: tableHeaderH,
+      colorFor: (i) => SERIES_COLORS[i % SERIES_COLORS.length],
+    });
+  } else {
+    // Legend
+    ctx.font = "12px NotoSans, sans-serif";
+    let lx = padL;
+    const ly = H - 18;
+    normalized.forEach((s, idx) => {
+      const color = SERIES_COLORS[idx % SERIES_COLORS.length];
+      ctx.fillStyle = color;
+      ctx.fillRect(lx, ly - 9, 12, 12);
+      ctx.fillStyle = "#ecf0f1";
+      const label = `${s.symbol} ${s.name || ""}`;
+      ctx.fillText(label, lx + 16, ly + 1);
+      lx += ctx.measureText(label).width + 38;
+    });
+  }
 
   return canvas.toBuffer("image/png");
+}
+
+// 走勢圖下方的完整數據表：色塊｜代號 名稱｜現價｜今日%｜週高｜週低｜今日量｜淨買賣
+function drawStatsTable(ctx, stats, { x, y, w, rowH, headerH, colorFor }) {
+  const right = x + w;
+  // 欄位右緣（數值欄右對齊）／左緣（文字欄左對齊）
+  const COL = {
+    swatch: x + 2,
+    symbol: x + 24,
+    name: x + 96,
+    price: right - 430,
+    chg: right - 320,
+    high: right - 210,
+    low: right - 120,
+    vol: right - 8,
+  };
+
+  // 表頭
+  ctx.font = "bold 13px NotoSans, sans-serif";
+  ctx.fillStyle = "#95a5a6";
+  const hy = y + 20;
+  ctx.textAlign = "left";
+  ctx.fillText("代號", COL.symbol, hy);
+  ctx.fillText("名稱", COL.name, hy);
+  ctx.textAlign = "right";
+  ctx.fillText("現價", COL.price, hy);
+  ctx.fillText("今日%", COL.chg, hy);
+  ctx.fillText("週高", COL.high, hy);
+  ctx.fillText("週低", COL.low, hy);
+  ctx.fillText("今日量", COL.vol, hy);
+  ctx.textAlign = "left";
+
+  ctx.strokeStyle = "#3a3b46";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y + headerH - 4);
+  ctx.lineTo(right, y + headerH - 4);
+  ctx.stroke();
+
+  stats.forEach((s, i) => {
+    const rowY = y + headerH + i * rowH;
+    const baseY = rowY + 19;
+    if (i % 2 === 1) {
+      ctx.fillStyle = "#252631";
+      ctx.fillRect(x, rowY, w, rowH);
+    }
+    // 色塊（對應走勢圖線色）
+    ctx.fillStyle = colorFor(i);
+    ctx.fillRect(COL.swatch, baseY - 11, 12, 12);
+
+    ctx.font = "bold 13px NotoSans, sans-serif";
+    ctx.fillStyle = "#ecf0f1";
+    ctx.textAlign = "left";
+    ctx.fillText(s.symbol, COL.symbol, baseY);
+    ctx.font = "13px NotoSans, sans-serif";
+    ctx.fillStyle = "#bdc3c7";
+    let nm = s.name || "";
+    while (nm && ctx.measureText(nm).width > COL.price - COL.name - 40) nm = nm.slice(0, -1);
+    const limitTag = s.limit === "up" ? " 🔺" : s.limit === "down" ? " 🔻" : "";
+    ctx.fillText(nm + limitTag, COL.name, baseY);
+
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#ecf0f1";
+    ctx.font = "13px NotoSans, sans-serif";
+    ctx.fillText(s.price.toFixed(1), COL.price, baseY);
+
+    const up = s.changePct >= 0;
+    ctx.fillStyle = s.changePct === 0 ? "#95a5a6" : up ? "#2ecc71" : "#e74c3c";
+    ctx.fillText(`${up ? "+" : ""}${s.changePct.toFixed(2)}%`, COL.chg, baseY);
+
+    ctx.fillStyle = "#7f8c8d";
+    ctx.fillText(s.weekHigh.toFixed(1), COL.high, baseY);
+    ctx.fillText(s.weekLow.toFixed(1), COL.low, baseY);
+
+    ctx.fillStyle = "#bdc3c7";
+    const volText = s.volume > 0
+      ? `${s.volume.toLocaleString()}${s.netVol > 0 ? " ↑" : s.netVol < 0 ? " ↓" : ""}`
+      : "—";
+    ctx.fillText(volText, COL.vol, baseY);
+    ctx.textAlign = "left";
+  });
 }
 
 // 單股 K 線/走勢圖（折線版本，價格直接顯示）
