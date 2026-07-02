@@ -502,14 +502,6 @@ async function runBuy(client, interaction) {
   }
 }
 
-function buildImpactLine(impact, side) {
-  if (!impact || !impact.delta) return null;
-  const arrow = side === "buy" ? "📈" : "📉";
-  const verb = side === "buy" ? "推升" : "壓低";
-  const sign = impact.delta >= 0 ? "+" : "";
-  return `${arrow} 你的${side === "buy" ? "買" : "賣"}單${verb}股價 ${impact.before.toFixed(1)} → **${impact.after.toFixed(1)}**（${sign}${impact.delta.toFixed(1)}）`;
-}
-
 function buildBuyResultContainer(result) {
   const c = new ContainerBuilder()
     .setAccentColor(0x2ecc71)
@@ -550,10 +542,6 @@ function buildBuyResultContainer(result) {
       )
     );
 
-  const impactLine = buildImpactLine(result.impact, "buy");
-  if (impactLine) {
-    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(impactLine));
-  }
 
   return c
     .addSeparatorComponents(new SeparatorBuilder())
@@ -660,10 +648,6 @@ function buildSellResultContainer(result) {
       )
     );
 
-  const impactLine = buildImpactLine(result.impact, "sell");
-  if (impactLine) {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(impactLine));
-  }
 
   return container
     .addSeparatorComponents(new SeparatorBuilder())
@@ -748,9 +732,6 @@ function buildShortOpenContainer(result) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`**放空均價**\n${result.newAvgShort.toFixed(2)}`)
     );
-
-  const impactLine = buildImpactLine(result.impact, "sell");
-  if (impactLine) c.addTextDisplayComponents(new TextDisplayBuilder().setContent(impactLine));
 
   return c
     .addSeparatorComponents(new SeparatorBuilder())
@@ -838,9 +819,6 @@ function buildShortCoverContainer(result) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`**結算入帳**\n**${result.settlement.toLocaleString()}**`)
     );
-
-  const impactLine = buildImpactLine(result.impact, "buy");
-  if (impactLine) c.addTextDisplayComponents(new TextDisplayBuilder().setContent(impactLine));
 
   return c
     .addSeparatorComponents(new SeparatorBuilder())
