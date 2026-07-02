@@ -10,7 +10,8 @@ const { getLotteryConfig } = require("./numbers");
 
 const TZ = "Asia/Taipei";
 
-async function announceDrawResult(client, drawResult) {
+async function announceDrawResult(client, drawResult, options = {}) {
+  const { skipWinnerDm = false } = options;
   const cfg = casino?.lottery || {};
   const channelId = cfg.announceChannelId;
   if (!channelId) {
@@ -97,7 +98,11 @@ async function announceDrawResult(client, drawResult) {
     files: [attachment],
   });
 
-  // DM 通知頭獎得主
+  // DM 通知頭獎得主(補發時略過,避免重複私訊)
+  if (skipWinnerDm) {
+    console.log(`[LOTTERY] 開獎公告已重發 ${draw.drawId}(略過得主 DM)`.cyan);
+    return;
+  }
   for (const tid of jackpotIds) {
     const t = tickets.find((x) => x.ticketId === tid);
     if (!t) continue;
