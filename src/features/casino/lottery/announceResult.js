@@ -49,6 +49,7 @@ async function announceDrawResult(client, drawResult) {
     drawNumber: draw.drawNumber,
     drawnAtLabel,
     winningNumbers: draw.winningNumbers,
+    specialNumber: draw.specialNumber,
     pool: draw.pool,
     payout: draw.payout,
     totalTickets: tickets.length,

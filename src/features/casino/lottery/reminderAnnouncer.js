@@ -8,39 +8,49 @@ const {
 } = require("discord.js");
 
 const { casino } = require("../../../config");
+const { getLotteryConfig } = require("./numbers");
 
-const REMINDER_TEMPLATES = {
-  "6_49": (draw) => {
-    const drawAtUnix = Math.floor(new Date(draw.scheduledAt).getTime() / 1000);
-    const ticketCount = draw.totalTickets || 0;
-    const poolFmt = (draw.pool || 0).toLocaleString();
-    const jackpotEst = Math.floor((draw.pool || 0) * 0.7).toLocaleString();
-    return {
-      content:
-        `# 🎰 大樂透 第 ${draw.drawNumber} 期 進度更新\n` +
-        `當前彩池:**${poolFmt}** credits\n` +
-        `頭獎預估:約 ${jackpotEst} credits\n` +
-        `已售出:${ticketCount} 張票\n` +
-        `開獎倒數:<t:${drawAtUnix}:R>\n\n` +
-        `購票指令:\`/彩券 購買\` ・ \`/彩券 包牌\` ・ \`/彩券 訂閱 開啟\``,
-      accentColor: 0x3d6f6a,
-    };
+// 玩法名 / emoji 共用 numbers.js 的 LOTTERY_CONFIG,避免兩份不同步。
+// jackpotRate: 頭獎預估比例(null = 不顯示,固定獎額玩法);buyHint: 購票提示。
+const REMINDER_CFG = {
+  "6_49": {
+    jackpotRate: 0.7,
+    buyHint: "`/彩券 購買` ・ `/彩券 包牌` ・ `/彩券 訂閱 開啟`",
   },
-  "3_20": (draw) => {
-    const drawAtUnix = Math.floor(new Date(draw.scheduledAt).getTime() / 1000);
-    const ticketCount = draw.totalTickets || 0;
-    const poolFmt = (draw.pool || 0).toLocaleString();
-    return {
-      content:
-        `# 🎫 小樂透 第 ${draw.drawNumber} 期 進度更新\n` +
-        `當前彩池:**${poolFmt}** credits\n` +
-        `已售出:${ticketCount} 張票\n` +
-        `開獎倒數:<t:${drawAtUnix}:R>\n\n` +
-        `購票指令:\`/彩券 購買\` 玩法選小樂透`,
-      accentColor: 0x3d6f6a,
-    };
+  "3_20": {
+    jackpotRate: null,
+    buyHint: "`/彩券 購買` 玩法選小樂透",
+  },
+  power_38_8: {
+    jackpotRate: 0.6,
+    buyHint: "`/彩券 購買` 玩法選威力彩",
   },
 };
+
+function buildReminderContent(draw) {
+  const numCfg = getLotteryConfig(draw.lotteryType);
+  const cfg = REMINDER_CFG[draw.lotteryType];
+  if (!numCfg || !cfg) return null;
+
+  const drawAtUnix = Math.floor(new Date(draw.scheduledAt).getTime() / 1000);
+  const poolFmt = (draw.pool || 0).toLocaleString();
+
+  const lines = [
+    `# ${numCfg.emoji} ${numCfg.label} 第 ${draw.drawNumber} 期 進度更新`,
+    `當前彩池:**${poolFmt}** credits`,
+  ];
+  if (cfg.jackpotRate) {
+    lines.push(
+      `頭獎預估:約 ${Math.floor((draw.pool || 0) * cfg.jackpotRate).toLocaleString()} credits`
+    );
+  }
+  lines.push(`已售出:${draw.totalTickets || 0} 張票`);
+  lines.push(`開獎倒數:<t:${drawAtUnix}:R>`);
+  lines.push("");
+  lines.push(`購票指令:${cfg.buyHint}`);
+
+  return { content: lines.join("\n"), accentColor: 0x3d6f6a };
+}
 
 async function announceReminder(client, draw) {
   const cfg = casino?.lottery || {};
@@ -49,10 +59,10 @@ async function announceReminder(client, draw) {
   const channel = client.channels.cache.get(channelId);
   if (!channel) return;
 
-  const builder = REMINDER_TEMPLATES[draw.lotteryType];
-  if (!builder) return;
+  const built = buildReminderContent(draw);
+  if (!built) return;
 
-  const { content, accentColor } = builder(draw);
+  const { content, accentColor } = built;
   const container = new ContainerBuilder()
     .setAccentColor(accentColor)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(content));

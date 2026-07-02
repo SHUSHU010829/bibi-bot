@@ -16,6 +16,50 @@ const PALETTE = {
   orange: "#D94C2A",
 };
 
+// 每種彩券的圖卡外觀與獎項列（key 對應 payout.prizes 的欄位）。
+const CARD_META = {
+  "6_49": {
+    title: "大樂透 LOTTO 6/49",
+    accent: PALETTE.gold,
+    height: 780,
+    prizeRows: [
+      ["頭獎(中 6)", "jackpot", PALETTE.gold],
+      ["二獎(中 5)", "second", PALETTE.red],
+      ["三獎(中 4)", "third", PALETTE.teal],
+      ["四獎(中 3)", "fourth", PALETTE.muted],
+    ],
+  },
+  "3_20": {
+    title: "小樂透 LOTTO 3/20",
+    accent: PALETTE.teal,
+    height: 780,
+    prizeRows: [
+      ["頭獎(中 3)", "jackpot", PALETTE.gold],
+      ["二獎(中 2)", "second", PALETTE.teal],
+    ],
+  },
+  "power_38_8": {
+    title: "威力彩 POWER 6/38",
+    accent: PALETTE.orange,
+    height: 980,
+    prizeRows: [
+      ["頭獎(6+特)", "jackpot", PALETTE.gold],
+      ["貳獎(中 6)", "second", PALETTE.red],
+      ["參獎(5+特)", "third", PALETTE.teal],
+      ["肆獎(中 5)", "fourth", PALETTE.orange],
+      ["伍獎(4+特)", "fifth", PALETTE.gold],
+      ["陸獎(中 4)", "sixth", PALETTE.red],
+      ["柒獎(3+特)", "seventh", PALETTE.teal],
+      ["捌獎(2+特)", "eighth", PALETTE.orange],
+      ["玖獎(3 / 1+特)", "ninth", PALETTE.muted],
+    ],
+  },
+};
+
+function getCardMeta(lotteryType) {
+  return CARD_META[lotteryType] || CARD_META["3_20"];
+}
+
 function renderBall(num, color) {
   return `
     <div style="display:flex;width:78px;height:78px;background:${color};border:3px solid ${PALETTE.ink};box-sizing:border-box;align-items:center;justify-content:center;margin:0 8px;font-family:'NotoSansTC';font-weight:900;font-size:34px;color:${PALETTE.card};line-height:1;padding-right:1px;padding-bottom:2px;">${num}</div>
@@ -69,31 +113,35 @@ function buildMarkup(data) {
     drawNumber,
     drawnAtLabel,
     winningNumbers,
+    specialNumber,
     pool,
     payout,
     totalTickets,
     jackpotWinners,
   } = data;
 
-  const isLarge = lotteryType === "6_49";
-  const accent = isLarge ? PALETTE.gold : PALETTE.teal;
-  const title = isLarge ? "大樂透 LOTTO 6/49" : "小樂透 LOTTO 3/20";
+  const meta = getCardMeta(lotteryType);
+  const { accent, title } = meta;
 
   const ballColors = [PALETTE.gold, PALETTE.red, PALETTE.teal, PALETTE.orange, PALETTE.gold, PALETTE.red];
   const balls = winningNumbers
     .map((n, i) => renderBall(n, ballColors[i % ballColors.length]))
     .join("");
 
-  const rows = [];
-  if (isLarge) {
-    rows.push(buildPrizeRow("頭獎(中 6)", payout.jackpot.winnerCount, payout.jackpot.perWinner, PALETTE.gold));
-    rows.push(buildPrizeRow("二獎(中 5)", payout.second.winnerCount, payout.second.perWinner, PALETTE.red));
-    rows.push(buildPrizeRow("三獎(中 4)", payout.third?.winnerCount || 0, payout.third?.perWinner || 0, PALETTE.teal));
-    rows.push(buildPrizeRow("四獎(中 3)", payout.fourth?.winnerCount || 0, payout.fourth?.perWinner || 0, PALETTE.muted));
-  } else {
-    rows.push(buildPrizeRow("頭獎(中 3)", payout.jackpot.winnerCount, payout.jackpot.perWinner, PALETTE.gold));
-    rows.push(buildPrizeRow("二獎(中 2)", payout.second.winnerCount, payout.second.perWinner, PALETTE.teal));
-  }
+  const specialBall =
+    specialNumber != null
+      ? `
+        <div style="display:flex;height:78px;align-items:center;font-family:'NotoSansTC';font-weight:900;font-size:34px;color:${PALETTE.muted};line-height:1;margin:0 4px;padding-bottom:2px;">＋</div>
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <div style="display:flex;margin-bottom:4px;font-family:'NotoSansTC';font-weight:900;font-size:12px;letter-spacing:3px;color:${PALETTE.muted};line-height:1;padding-right:3px;">第二區</div>
+          ${renderBall(specialNumber, PALETTE.ink)}
+        </div>`
+      : "";
+
+  const rows = meta.prizeRows.map(([label, key, color]) => {
+    const p = payout[key] || {};
+    return buildPrizeRow(label, p.winnerCount || 0, p.perWinner || 0, color);
+  });
 
   const rolledOver = payout.rolledOver?.amount || 0;
   const winnersText = formatWinnersLine(jackpotWinners);
@@ -107,7 +155,7 @@ function buildMarkup(data) {
     : "";
 
   return `
-    <div style="display:flex;width:1080px;height:780px;background:${PALETTE.card};padding:24px;box-sizing:border-box;font-family:'NotoSansTC';">
+    <div style="display:flex;width:1080px;height:${meta.height}px;background:${PALETTE.card};padding:24px;box-sizing:border-box;font-family:'NotoSansTC';">
       <div style="display:flex;flex-direction:column;width:100%;height:100%;background:${PALETTE.card};border:3px solid ${PALETTE.ink};padding:32px 44px;box-sizing:border-box;">
 
         <div style="display:flex;width:100%;justify-content:space-between;align-items:center;">
@@ -125,7 +173,7 @@ function buildMarkup(data) {
 
         <div style="display:flex;flex-direction:column;align-items:center;width:100%;margin-top:18px;">
           <div style="display:flex;font-family:'SpaceMono';font-size:13px;letter-spacing:6px;color:${PALETTE.muted};line-height:1;padding-right:6px;">WINNING NUMBERS</div>
-          <div style="display:flex;margin-top:18px;align-items:center;">${balls}</div>
+          <div style="display:flex;margin-top:18px;align-items:flex-end;">${balls}${specialBall}</div>
         </div>
 
         <div style="display:flex;width:100%;justify-content:space-between;margin-top:24px;padding:14px 0;border-top:2px dashed ${PALETTE.muted};border-bottom:2px dashed ${PALETTE.muted};">
@@ -174,7 +222,7 @@ async function generateLotteryResultCard(data) {
   if (cached) return cached;
 
   const markup = buildMarkup(data);
-  const buf = await renderCard({ markup, width: 1080, height: 780 });
+  const buf = await renderCard({ markup, width: 1080, height: getCardMeta(data.lotteryType).height });
   cardCache.set(cacheKey, buf);
   return buf;
 }
