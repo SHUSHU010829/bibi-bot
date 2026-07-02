@@ -18,6 +18,7 @@ const { rollRandomEvent } = require("../../features/stock/eventEngine");
 const { isMarketOpen } = require("../../features/stock/tradeService");
 const { renderMultiLine } = require("../../features/stock/chartRenderer");
 const { getDailyVolume } = require("../../features/stock/volumeService");
+const { runMarginScan } = require("../../features/stock/shortService");
 
 const SENTIMENT_LABEL = {
   bull: "🐂 牛市",
@@ -128,6 +129,12 @@ async function tickOnce(client) {
       console.log(`[STOCK] broadcast failed guild=${guildId}: ${e?.message || e}`.yellow)
     );
   }
+
+  // 價格更新後掃描融券部位，浮虧過大者強制回補（斷頭）
+  await runMarginScan(client).catch((e) =>
+    console.log(`[STOCK] margin scan failed: ${e?.message || e}`.yellow)
+  );
+
   return { ticked, guilds: guildIds.length };
 }
 
