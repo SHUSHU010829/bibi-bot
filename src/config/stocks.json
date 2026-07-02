@@ -37,7 +37,7 @@
     },
     "limitBoard": {
       "enabled": true,
-      "limitPct": 0.1
+      "limitPct": 0.25
     },
     "short": {
       "enabled": true,
