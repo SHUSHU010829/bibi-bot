@@ -5,11 +5,20 @@ const grantCoins = require("../economy/grantCoins");
 const { getMarketEntry, getLimitState, applyTradeImpact } = require("./tradeService");
 
 // 融券做空：借股票在高點賣出，等跌了再低點回補賺價差。
-// 採 100% 保證金（collateral = 開倉股數 × 開倉價），最大虧損以保證金為限；
-// 當浮虧達保證金的 forceCloseLossPct 時由排程強制回補（斷頭）。
+// 採 100% 保證金（collateral = 開倉股數 × 開倉價），最大虧損以保證金為限。
+// 兩種強制回補（皆由排程掃描）：
+//   1. 斷頭：浮虧達保證金的 forceCloseLossPct。
+//   2. 到期強制收盤：持有滿 maxHoldDays 天。
 
 function shortCfg() {
   return stockSystem?.short || {};
+}
+
+// 融券到期日＝開倉日 + maxHoldDays；回傳 Date 或 null（未設定天數）
+function shortDeadline(position) {
+  const days = shortCfg().maxHoldDays ?? 0;
+  if (!days || !position?.createdAt) return null;
+  return new Date(new Date(position.createdAt).getTime() + days * 24 * 60 * 60 * 1000);
 }
 
 function calcShortFee(amount) {
@@ -113,11 +122,12 @@ async function openShort(client, opts) {
   const newAvg = newShares > 0 ? (oldShares * oldAvg + shares * price) / newShares : price;
   const newCollateral = (existing?.collateral || 0) + collateral;
 
+  const now = new Date();
   await client.stockShortsCollection.updateOne(
     { userId, guildId, symbol },
     {
-      $set: { shares: newShares, avgShort: newAvg, collateral: newCollateral, updatedAt: new Date() },
-      $setOnInsert: { userId, guildId, symbol, createdAt: new Date() },
+      $set: { shares: newShares, avgShort: newAvg, collateral: newCollateral, updatedAt: now },
+      $setOnInsert: { userId, guildId, symbol, createdAt: now },
     },
     { upsert: true },
   );
@@ -148,12 +158,14 @@ async function openShort(client, opts) {
     newShares,
     newAvgShort: newAvg,
     balanceAfter: balance - totalOut,
+    expiresAt: shortDeadline({ createdAt: existing?.createdAt || now }),
+    maxHoldDays: shortCfg().maxHoldDays ?? 0,
     impact,
   };
 }
 
 async function coverShort(client, opts) {
-  const { userId, guildId, username, member, symbol, forced = false } = opts;
+  const { userId, guildId, username, member, symbol, forced = false, reason = null } = opts;
   let { shares } = opts;
 
   const market = await getMarketEntry(client, guildId, symbol);
@@ -236,6 +248,7 @@ async function coverShort(client, opts) {
     pnl,
     avgShort: position.avgShort,
     forced,
+    reason,
     timestamp: new Date(),
   }).catch(() => {});
 
@@ -255,20 +268,25 @@ async function coverShort(client, opts) {
     collateralReturned: collateralPortion,
     remainingShares: remaining,
     forced,
+    reason,
     balanceAfter: userCoins?.totalCoins || 0,
     impact,
   };
 }
 
-// 掃描所有融券部位，浮虧達保證金 forceCloseLossPct 者強制回補（斷頭）並私訊通知
+// 掃描所有融券部位：浮虧達保證金 forceCloseLossPct 者斷頭、持有滿 maxHoldDays 者到期強制收盤，
+// 強制回補後私訊通知；接近到期（expiryWarnHours 內）則先私訊預警一次
 async function runMarginScan(client) {
-  if (!shortCfg().enabled) return { scanned: 0, forced: 0 };
+  if (!shortCfg().enabled) return { scanned: 0, forced: 0, expired: 0 };
   if (!client.stockShortsCollection || !client.stockMarketCollection) {
-    return { scanned: 0, forced: 0 };
+    return { scanned: 0, forced: 0, expired: 0 };
   }
   const lossPct = shortCfg().forceCloseLossPct ?? 0.8;
+  const maxHoldDays = shortCfg().maxHoldDays ?? 0;
+  const warnMs = (shortCfg().expiryWarnHours ?? 0) * 60 * 60 * 1000;
+  const now = Date.now();
   const positions = await client.stockShortsCollection.find({ shares: { $gt: 0 } }).toArray();
-  if (positions.length === 0) return { scanned: 0, forced: 0 };
+  if (positions.length === 0) return { scanned: 0, forced: 0, expired: 0, warned: 0 };
 
   const marketCache = new Map();
   const getMarket = async (guildId, symbol) => {
@@ -280,11 +298,41 @@ async function runMarginScan(client) {
   };
 
   let forced = 0;
+  let expired = 0;
+  let warned = 0;
   for (const pos of positions) {
     const market = await getMarket(pos.guildId, pos.symbol);
     if (!market) continue;
     const loss = (market.currentPrice - pos.avgShort) * pos.shares; // 正值＝浮虧
-    if (loss < pos.collateral * lossPct) continue;
+    const isMarginCall = loss >= pos.collateral * lossPct;
+    const deadline = shortDeadline(pos);
+    const isExpired = deadline && now >= deadline.getTime();
+    if (!isMarginCall && !isExpired) {
+      // 尚未觸發回補：到期前 expiryWarnHours 私訊預警一次（旗標避免每次掃描重複）
+      if (deadline && warnMs > 0 && !pos.expiryWarned && now >= deadline.getTime() - warnMs) {
+        await client.stockShortsCollection
+          .updateOne({ _id: pos._id }, { $set: { expiryWarned: true, expiryWarnedAt: new Date() } })
+          .catch(() => {});
+        warned += 1;
+        const pnl = Math.floor((pos.avgShort - market.currentPrice) * pos.shares);
+        const pnlText = `${pnl >= 0 ? "+" : ""}${pnl.toLocaleString()}`;
+        try {
+          const user = await client.users.fetch(pos.userId).catch(() => null);
+          if (user) {
+            await user.send(
+              `⏳ **${market.name}（${pos.symbol}）** 融券即將到期！\n` +
+                `放空 ${pos.shares} 股（均價 ${pos.avgShort.toFixed(2)}，現價 ${market.currentPrice.toFixed(1)}，浮動損益 ${pnlText}），` +
+                `到期時間 <t:${Math.floor(deadline.getTime() / 1000)}:R>。\n` +
+                `到期未回補會被強制收盤，想提前平倉可用 \`/股市 回補 ${pos.symbol} all\`。`,
+            );
+          }
+        } catch (err) {
+          console.log(`[STOCK-SHORT] 到期預警 DM 失敗 user=${pos.userId}: ${err?.message || err}`.yellow);
+        }
+      }
+      continue;
+    }
+    const reason = isMarginCall ? "margin" : "expiry";
 
     const result = await coverShort(client, {
       userId: pos.userId,
@@ -292,30 +340,35 @@ async function runMarginScan(client) {
       symbol: pos.symbol,
       shares: pos.shares,
       forced: true,
+      reason,
     }).catch((e) => {
-      console.log(`[STOCK-SHORT] 斷頭失敗 user=${pos.userId} ${pos.symbol}: ${e?.message || e}`.yellow);
+      console.log(`[STOCK-SHORT] 強制回補失敗 user=${pos.userId} ${pos.symbol}: ${e?.message || e}`.yellow);
       return null;
     });
     if (!result?.ok) continue;
-    forced += 1;
+    if (reason === "margin") forced += 1;
+    else expired += 1;
 
-    // 斷頭後該股買回會影響價格，刷新快取避免同批其他人用到舊價
+    // 強制回補後該股買回會影響價格，刷新快取避免同批其他人用到舊價
     marketCache.delete(`${pos.guildId}|${pos.symbol}`);
 
+    const pnlText = `${result.pnl >= 0 ? "+" : ""}${result.pnl.toLocaleString()}`;
+    const dm =
+      reason === "margin"
+        ? `⚠️ **${result.name}（${pos.symbol}）** 融券遭強制回補（斷頭）：` +
+          `以 ${result.coverPrice.toLocaleString()} 買回 ${result.shares} 股，` +
+          `保證金結算入帳 ${result.settlement.toLocaleString()}（毛損益 ${pnlText}）。`
+        : `⏰ **${result.name}（${pos.symbol}）** 融券持有已滿 ${maxHoldDays} 天，到期強制收盤：` +
+          `以 ${result.coverPrice.toLocaleString()} 買回 ${result.shares} 股，` +
+          `保證金結算入帳 ${result.settlement.toLocaleString()}（毛損益 ${pnlText}）。`;
     try {
       const user = await client.users.fetch(pos.userId).catch(() => null);
-      if (user) {
-        await user.send(
-          `⚠️ **${result.name}（${pos.symbol}）** 融券遭強制回補（斷頭）：` +
-            `以 ${result.coverPrice.toLocaleString()} 買回 ${result.shares} 股，` +
-            `保證金結算入帳 ${result.settlement.toLocaleString()}（毛損益 ${result.pnl >= 0 ? "+" : ""}${result.pnl.toLocaleString()}）。`,
-        );
-      }
+      if (user) await user.send(dm);
     } catch (err) {
-      console.log(`[STOCK-SHORT] 斷頭 DM 失敗 user=${pos.userId}: ${err?.message || err}`.yellow);
+      console.log(`[STOCK-SHORT] 強制回補 DM 失敗 user=${pos.userId}: ${err?.message || err}`.yellow);
     }
   }
-  return { scanned: positions.length, forced };
+  return { scanned: positions.length, forced, expired, warned };
 }
 
 module.exports = {
@@ -326,4 +379,5 @@ module.exports = {
   unrealizedShortPnl,
   runMarginScan,
   calcShortFee,
+  shortDeadline,
 };

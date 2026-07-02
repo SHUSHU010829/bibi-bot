@@ -1,7 +1,7 @@
-// /股市 持股 的「🔄 重新整理」按鈕。
+// /股市 持股 面板的導覽按鈕：切換「持股 / 融券」分頁、上一頁 / 下一頁、重新整理。
 //
-// customId 格式:`pf_stkrefresh_<ownerUid>`(見 features/profile/views/stockHoldings.js)。
-// 流程:本人按下 → 重抓持股與最新報價 → 就地更新原訊息。
+// customId 格式:`pf_stknav_<tab>_<page>_<ownerUid>`(見 features/profile/views/stockHoldings.js)。
+// 流程:本人按下 → 依 tab/page 重抓持股與最新報價 → 就地更新原訊息。
 
 require("colors");
 const {
@@ -13,15 +13,16 @@ const {
 const { stockSystem } = require("../../config");
 const {
   buildStockHoldingsView,
-  REFRESH_BUTTON_PREFIX,
+  parseNavCustomId,
 } = require("../../features/profile/views/stockHoldings");
 const { consume } = require("../../utils/rateLimiter");
 
 module.exports = async (client, interaction) => {
   if (!interaction.isButton?.()) return;
-  if (!interaction.customId?.startsWith(REFRESH_BUTTON_PREFIX)) return;
+  const parsed = parseNavCustomId(interaction.customId);
+  if (!parsed) return;
 
-  const ownerUid = interaction.customId.slice(REFRESH_BUTTON_PREFIX.length);
+  const { tab, page, ownerUid } = parsed;
 
   if (interaction.user.id !== ownerUid) {
     return interaction
@@ -32,8 +33,8 @@ module.exports = async (client, interaction) => {
       .catch(() => {});
   }
 
-  const rl = consume(interaction.user.id, "btn:profileStockRefresh", {
-    windowMs: 2000,
+  const rl = consume(interaction.user.id, "btn:profileStockNav", {
+    windowMs: 1500,
     max: 1,
   });
   if (!rl.allowed) {
@@ -56,13 +57,13 @@ module.exports = async (client, interaction) => {
       target: interaction.user,
       member: interaction.member,
       guildId: interaction.guildId,
+      tab,
+      page,
     });
 
     if (!view.components || view.components.length === 0) {
       const container = new ContainerBuilder().addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          view.content || "📭 目前沒有任何持股。"
-        )
+        new TextDisplayBuilder().setContent(view.content || "📭 目前沒有任何持股。"),
       );
       return interaction.update({
         components: [container],
@@ -75,9 +76,9 @@ module.exports = async (client, interaction) => {
       flags: MessageFlags.IsComponentsV2,
     });
   } catch (err) {
-    console.log(`[STOCK] 持股重新整理失敗:${err?.stack || err}`.red);
+    console.log(`[STOCK] 持股面板導覽失敗:${err?.stack || err}`.red);
     await interaction
-      .reply({ content: "❌ 重新整理失敗,請稍後再試。", flags: MessageFlags.Ephemeral })
+      .reply({ content: "❌ 操作失敗,請稍後再試。", flags: MessageFlags.Ephemeral })
       .catch(() => {});
   }
 };

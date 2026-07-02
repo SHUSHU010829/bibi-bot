@@ -154,10 +154,25 @@ async function announceEvent(client, def, changes) {
   else if (sector) scope = sector.name;
   else scope = changes[0]?.name || def.stock;
   const title = `${arrow} 突發新聞｜${scope}`;
-  const lines = changes
-    .slice(0, 6)
-    .map((c) => `\`${c.symbol}\` ${c.name}：${c.before.toFixed(1)} → **${c.after.toFixed(1)}**`);
-  if (changes.length > 6) lines.push(`…還有 ${changes.length - 6} 支`);
+  let lines;
+  if (def.stock === "ALL") {
+    // 全市場事件所有個股同幅波動，逐檔列出是重複資訊 → 摘要 + 絕對變動最大的幾檔
+    const movers = [...changes]
+      .sort((a, b) => Math.abs(b.after - b.before) - Math.abs(a.after - a.before))
+      .slice(0, 3);
+    lines = [`全市場 ${changes.length} 支同步 ${sign}${pct}%`];
+    movers.forEach((c, i) => {
+      const diff = c.after - c.before;
+      const dSign = diff >= 0 ? "+" : "";
+      const tag = i === 0 ? (def.dir === "up" ? "漲最多 " : "跌最多 ") : "";
+      lines.push(`${tag}\`${c.symbol}\` ${c.name} ${c.before.toFixed(1)} → **${c.after.toFixed(1)}**（${dSign}${diff.toFixed(1)}）`);
+    });
+  } else {
+    lines = changes
+      .slice(0, 6)
+      .map((c) => `\`${c.symbol}\` ${c.name}：${c.before.toFixed(1)} → **${c.after.toFixed(1)}**`);
+    if (changes.length > 6) lines.push(`…還有 ${changes.length - 6} 支`);
+  }
 
   const container = new ContainerBuilder()
     .setAccentColor(def.dir === "up" ? 0x2ecc71 : 0xe74c3c)
