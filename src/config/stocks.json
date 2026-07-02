@@ -31,8 +31,8 @@
     },
     "priceImpact": {
       "enabled": true,
-      "perShareFrac": 0.0005,
-      "maxStepFrac": 0.06,
+      "perShareFrac": 0.0004,
+      "maxStepFrac": 0.05,
       "recordHistory": true
     },
     "limitBoard": {
