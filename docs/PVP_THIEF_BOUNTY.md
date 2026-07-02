@@ -3,6 +3,14 @@
 > 版本:v1.0　|　由 `PLAN_BRAINSTORM.md` D2「盜賊 / 偷竊 PvP」展開為完整規劃
 > 對照 bibi-bot 現行系統(決鬥託管模式、銀行定存、財富稅、buffResolver、稱號、公會)設計,盡量複用不另起爐灶。
 
+> **實作進度(2026-07-02)**:核心 PvP 迴路已實作。
+> - config `src/config/theft.json`(已接 `config/index.js`)。
+> - service `src/features/theft/{theftProfile,theftService,theftView}.js`(惡名 compute-on-read 衰退、賞金錢包託管、追捕/自首/報案)。
+> - 指令 `src/commands/economy/{steal,wantedList,hunt,surrender,report}.js`(`/偷竊`、`/通緝榜`、`/追捕`、`/自首`、`/報案`)。
+> - 按鈕 `handleTheftButton.js`(追捕 / 查看惡名 / 存款捷徑)、cron `theftExpiryScheduler.js`(通緝時效洗白)。
+> - 三個新 collection + 索引(`TheftProfiles` / `WantedList` / `TheftLogs`),`grantCoins` 已補 sink/peer source。
+> - **尚未接線(下一輪)**:防身道具的商店販售(🐕看門狗 / 🔒保險箱 / 🕶️夜行衣 判定鉤子已寫好,`theftProfile` 讀 `watchdog_count` / `safebox_expires_at` / `night_cloak_count`,待商店可購買後即生效)、稱號(慣竊 / 賞金獵人)。惡名衰退最終採 **compute-on-read**。
+
 ---
 
 ## 一、提案概述
