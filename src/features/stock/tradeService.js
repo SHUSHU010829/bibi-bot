@@ -3,7 +3,7 @@ const { stockSystem } = require("../../config");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const grantCoins = require("../economy/grantCoins");
 const portfolioService = require("./portfolioService");
-const { priceImpact, limitBounds, clampToLimit, roundPrice } = require("./priceEngine");
+const { limitBounds } = require("./priceEngine");
 
 function calcFee(amount) {
   const rate = stockSystem?.feeRate ?? 0.01;
@@ -27,25 +27,17 @@ function getLimitState(market) {
   };
 }
 
-// 成交後把買 / 賣壓反映到股價：買單推升、賣單壓低，並夾在 floor 與漲跌停內。
+// 交易不再即時改價：把買 / 賣壓累積到 pendingImpactShares（買為正、賣為負），
+// 等下一次 tick 連同隨機波動一起反映（見 marketScheduler.tickOnce）。
 async function applyTradeImpact(client, market, guildId, side, shares) {
   const cfg = stockSystem?.priceImpact;
-  if (!cfg?.enabled) return null;
-  const before = market.currentPrice;
-  const impacted = priceImpact(before, shares, side, cfg, market.floor);
-  const after = clampToLimit(impacted.price, market.openPrice || before, stockSystem?.limitBoard);
-  const delta = roundPrice(after - before);
-  if (delta === 0) return { before, after: before, delta: 0 };
+  if (!cfg?.enabled || !(shares > 0)) return null;
+  const signed = (side === "buy" ? 1 : -1) * shares;
   await client.stockMarketCollection.updateOne(
     { _id: market._id },
-    { $set: { currentPrice: after, updatedAt: new Date() } },
+    { $inc: { pendingImpactShares: signed } },
   );
-  if (cfg.recordHistory && client.stockPricesCollection) {
-    await client.stockPricesCollection
-      .insertOne({ guildId, symbol: market.symbol, price: after, timestamp: new Date(), source: "trade" })
-      .catch(() => {});
-  }
-  return { before, after, delta };
+  return { deferred: true, side, shares: signed };
 }
 
 async function getMarketEntry(client, guildId, symbol) {

@@ -13,7 +13,7 @@ const {
 const { DateTime } = require("luxon");
 
 const { stockSystem } = require("../../config");
-const { nextPrice, stockDrift, poolParams, clampToLimit, limitBounds } = require("../../features/stock/priceEngine");
+const { nextPrice, stockDrift, poolParams, clampToLimit, limitBounds, priceImpact } = require("../../features/stock/priceEngine");
 const { rollRandomEvent } = require("../../features/stock/eventEngine");
 const { isMarketOpen } = require("../../features/stock/tradeService");
 const { renderMultiLine } = require("../../features/stock/chartRenderer");
@@ -109,10 +109,27 @@ async function tickOnce(client) {
       const drift = stockDrift(s.symbol, sentiment);
       const sigma = poolParams(s.symbol)?.sigma ?? s.sigma;
       const raw = nextPrice(s.currentPrice, sigma, drift, s.floor);
-      const next = clampToLimit(raw, s.openPrice || s.currentPrice, stockSystem?.limitBoard);
+      const ref = s.openPrice || s.currentPrice;
+      let next = clampToLimit(raw, ref, stockSystem?.limitBoard);
+
+      // 這 5 分鐘累積的買 / 賣壓在此一次反映（買為正、賣為負）。單 tick 衝擊沿用
+      // maxStepFrac 上限，超過上限的股數結轉到下一個 tick 慢慢消化。
+      const impactCfg = stockSystem?.priceImpact;
+      const pending = s.pendingImpactShares || 0;
+      const update = { currentPrice: next, updatedAt: new Date() };
+      if (impactCfg?.enabled && pending !== 0) {
+        const perShare = impactCfg.perShareFrac ?? 0;
+        const capShares = perShare > 0 ? (impactCfg.maxStepFrac ?? 0.05) / perShare : Math.abs(pending);
+        const applyShares = Math.min(Math.abs(pending), capShares);
+        const impacted = priceImpact(next, applyShares, pending > 0 ? "buy" : "sell", impactCfg, s.floor);
+        next = clampToLimit(impacted.price, ref, stockSystem?.limitBoard);
+        update.currentPrice = next;
+        update.pendingImpactShares = pending - Math.sign(pending) * applyShares;
+      }
+
       await client.stockMarketCollection.updateOne(
         { _id: s._id },
-        { $set: { currentPrice: next, updatedAt: new Date() } }
+        { $set: update }
       );
       await client.stockPricesCollection.insertOne({
         guildId,
