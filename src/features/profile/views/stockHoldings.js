@@ -27,16 +27,17 @@ function buildCoverCustomId(symbol, ownerUid) {
   return `${COVER_BUTTON_PREFIX}${symbol}_${ownerUid}`;
 }
 
-function buildNavCustomId(tab, page, ownerUid) {
-  return `${NAV_BUTTON_PREFIX}${tab}_${page}_${ownerUid}`;
+// slot 只用來讓同一訊息內各按鈕的 custom_id 唯一（Discord 不允許重複），handler 不解讀它
+function buildNavCustomId(tab, page, ownerUid, slot) {
+  return `${NAV_BUTTON_PREFIX}${tab}_${page}_${ownerUid}_${slot}`;
 }
 
 function parseNavCustomId(customId) {
   if (!customId?.startsWith(NAV_BUTTON_PREFIX)) return null;
   const parts = customId.slice(NAV_BUTTON_PREFIX.length).split("_");
-  if (parts.length < 3) return null;
-  const [tab, pageStr, ...uid] = parts;
-  return { tab: tab === "short" ? "short" : "long", page: parseInt(pageStr, 10) || 0, ownerUid: uid.join("_") };
+  if (parts.length < 4) return null;
+  const [tab, pageStr, ownerUid] = parts;
+  return { tab: tab === "short" ? "short" : "long", page: parseInt(pageStr, 10) || 0, ownerUid };
 }
 
 async function buildStockHoldingsView(client, { target, member, guildId, tab, page = 0 }) {
@@ -158,12 +159,12 @@ async function buildStockHoldingsView(client, { target, member, guildId, tab, pa
     .addActionRowComponents(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(buildNavCustomId("long", 0, target.id))
+          .setCustomId(buildNavCustomId("long", 0, target.id, "tab"))
           .setLabel(`持股 (${positionViews.length})`)
           .setEmoji("💼")
           .setStyle(activeTab === "long" ? ButtonStyle.Primary : ButtonStyle.Secondary),
         new ButtonBuilder()
-          .setCustomId(buildNavCustomId("short", 0, target.id))
+          .setCustomId(buildNavCustomId("short", 0, target.id, "tab"))
           .setLabel(`融券 (${shortViews.length})`)
           .setEmoji("📉")
           .setStyle(activeTab === "short" ? ButtonStyle.Primary : ButtonStyle.Secondary),
@@ -245,18 +246,18 @@ async function buildStockHoldingsView(client, { target, member, guildId, tab, pa
   if (totalPages > 1) {
     navRow.addComponents(
       new ButtonBuilder()
-        .setCustomId(buildNavCustomId(activeTab, curPage - 1, target.id))
+        .setCustomId(buildNavCustomId(activeTab, curPage - 1, target.id, "prev"))
         .setLabel("上一頁")
         .setEmoji("◀")
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(curPage === 0),
       new ButtonBuilder()
-        .setCustomId(buildNavCustomId(activeTab, curPage, target.id))
+        .setCustomId(buildNavCustomId(activeTab, curPage, target.id, "ind"))
         .setLabel(`${curPage + 1}/${totalPages}`)
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(true),
       new ButtonBuilder()
-        .setCustomId(buildNavCustomId(activeTab, curPage + 1, target.id))
+        .setCustomId(buildNavCustomId(activeTab, curPage + 1, target.id, "next"))
         .setLabel("下一頁")
         .setEmoji("▶")
         .setStyle(ButtonStyle.Secondary)
@@ -265,7 +266,7 @@ async function buildStockHoldingsView(client, { target, member, guildId, tab, pa
   }
   navRow.addComponents(
     new ButtonBuilder()
-      .setCustomId(buildNavCustomId(activeTab, curPage, target.id))
+      .setCustomId(buildNavCustomId(activeTab, curPage, target.id, "rf"))
       .setLabel("重新整理")
       .setEmoji("🔄")
       .setStyle(ButtonStyle.Secondary),
