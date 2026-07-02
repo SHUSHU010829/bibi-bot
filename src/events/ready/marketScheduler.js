@@ -13,12 +13,13 @@ const {
 const { DateTime } = require("luxon");
 
 const { stockSystem } = require("../../config");
-const { nextPrice, calcMarketDrift, clampToLimit, limitBounds } = require("../../features/stock/priceEngine");
+const { nextPrice, stockDrift, poolParams, clampToLimit, limitBounds } = require("../../features/stock/priceEngine");
 const { rollRandomEvent } = require("../../features/stock/eventEngine");
 const { isMarketOpen } = require("../../features/stock/tradeService");
 const { renderMultiLine } = require("../../features/stock/chartRenderer");
 const { getDailyVolume } = require("../../features/stock/volumeService");
 const { runMarginScan } = require("../../features/stock/shortService");
+const { backfillPoolStocks } = require("../../features/stock/seedService");
 
 const SENTIMENT_LABEL = {
   bull: "🐂 牛市",
@@ -104,8 +105,10 @@ async function tickOnce(client) {
       .find({ guildId, enabled: { $ne: false } })
       .toArray();
     for (const s of stocks) {
-      const drift = calcMarketDrift(s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways");
-      const raw = nextPrice(s.currentPrice, s.sigma, drift, s.floor);
+      const sentiment = s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways";
+      const drift = stockDrift(s.symbol, sentiment);
+      const sigma = poolParams(s.symbol)?.sigma ?? s.sigma;
+      const raw = nextPrice(s.currentPrice, sigma, drift, s.floor);
       const next = clampToLimit(raw, s.openPrice || s.currentPrice, stockSystem?.limitBoard);
       await client.stockMarketCollection.updateOne(
         { _id: s._id },
@@ -460,6 +463,12 @@ module.exports = async (client) => {
   }
 
   const tz = stockSystem.timezone || "Asia/Taipei";
+
+  await backfillPoolStocks(client)
+    .then((r) => {
+      if (r.inserted > 0) console.log(`[STOCK] 補上市 ${r.inserted} 檔新股`.green);
+    })
+    .catch((e) => console.log(`[STOCK] pool backfill failed: ${e?.message || e}`.yellow));
 
   registerCron(client, {
     name: "stock.tick",

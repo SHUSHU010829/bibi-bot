@@ -19,6 +19,19 @@ function calcMarketDrift(sentiment) {
   return drifts.sideways ?? 0;
 }
 
+// 個股調校參數以 config pool 為單一來源（sigma / beta），改數值只需編輯
+// stocks.json，不必動 DB。找不到才回退到 DB doc 上的舊值。
+function poolParams(symbol) {
+  return (stockSystem?.pool || []).find((p) => p.symbol === symbol) || null;
+}
+
+// 個股實際 drift = beta × 市場情緒 drift。beta 高的股票對牛熊放大反應，
+// beta 低的（藍籌）相對抗漲抗跌。beta 未設 → 1（等同原本行為）。
+function stockDrift(symbol, sentiment) {
+  const beta = poolParams(symbol)?.beta ?? 1;
+  return beta * calcMarketDrift(sentiment);
+}
+
 function nextPrice(lastPrice, sigma, drift, floor) {
   const epsilon = gaussian();
   const raw = lastPrice * (1 + (drift || 0) + (sigma || 0) * epsilon);
@@ -64,6 +77,8 @@ module.exports = {
   nextPrice,
   applyEvent,
   calcMarketDrift,
+  poolParams,
+  stockDrift,
   roundPrice,
   priceImpact,
   limitBounds,
