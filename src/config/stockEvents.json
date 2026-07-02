@@ -82,7 +82,43 @@
       { "id": "mtkp_auto_adas",     "name": "車用 ADAS 大單入袋",    "effect": 0.10,  "stock": "MTKP", "dir": "up" },
       { "id": "mtkp_inventory_clear","name": "庫存去化完成回補",     "effect": 0.07,  "stock": "MTKP", "dir": "up" },
       { "id": "mtkp_china_weak",    "name": "中國手機需求疲軟",      "effect": -0.08, "stock": "MTKP", "dir": "dn" },
-      { "id": "mtkp_fx_loss",       "name": "新台幣升值匯損",        "effect": -0.06, "stock": "MTKP", "dir": "dn" }
+      { "id": "mtkp_fx_loss",       "name": "新台幣升值匯損",        "effect": -0.06, "stock": "MTKP", "dir": "dn" },
+
+      { "id": "fhpp_ai_server",     "name": "鴻嗶 AI 伺服器組裝大單","effect": 0.14,  "stock": "FHPP", "dir": "up" },
+      { "id": "fhpp_ev_order",      "name": "電動車代工訂單到手",    "effect": 0.11,  "stock": "FHPP", "dir": "up" },
+      { "id": "fhpp_iphone_ramp",   "name": "新機組裝拉貨旺季",      "effect": 0.09,  "stock": "FHPP", "dir": "up" },
+      { "id": "fhpp_india_expand",  "name": "印度新廠量產放量",      "effect": 0.08,  "stock": "FHPP", "dir": "up" },
+      { "id": "fhpp_robot_auto",    "name": "關燈工廠自動化見效",    "effect": 0.06,  "stock": "FHPP", "dir": "up" },
+      { "id": "fhpp_client_inhouse","name": "大客戶自研晶片抽單",    "effect": -0.09, "stock": "FHPP", "dir": "dn" },
+      { "id": "fhpp_labor_stop",    "name": "組裝廠勞資糾紛停工",    "effect": -0.08, "stock": "FHPP", "dir": "dn" },
+      { "id": "fhpp_margin_thin",   "name": "代工毛利保衛戰失守",    "effect": -0.06, "stock": "FHPP", "dir": "dn" },
+
+      { "id": "dlpp_datacenter",    "name": "AI 資料中心電源大單",   "effect": 0.15,  "stock": "DLPP", "dir": "up" },
+      { "id": "dlpp_liquid_cool",   "name": "液冷散熱方案供不應求",  "effect": 0.12,  "stock": "DLPP", "dir": "up" },
+      { "id": "dlpp_ev_charger",    "name": "電動車充電樁佈建放量",  "effect": 0.09,  "stock": "DLPP", "dir": "up" },
+      { "id": "dlpp_green_bid",     "name": "綠能儲能標案入袋",      "effect": 0.07,  "stock": "DLPP", "dir": "up" },
+      { "id": "dlpp_psu_margin",    "name": "高階電源毛利創高",      "effect": 0.06,  "stock": "DLPP", "dir": "up" },
+      { "id": "dlpp_demand_slow",   "name": "工業自動化需求轉弱",    "effect": -0.07, "stock": "DLPP", "dir": "dn" },
+      { "id": "dlpp_copper_cost",   "name": "銅價飆漲侵蝕成本",      "effect": -0.06, "stock": "DLPP", "dir": "dn" },
+      { "id": "dlpp_fx_loss",       "name": "新台幣升值吃掉匯兌",    "effect": -0.05, "stock": "DLPP", "dir": "dn" },
+
+      { "id": "tcpp_energy_pivot",  "name": "跨足儲能綠電轉型見效",  "effect": 0.08,  "stock": "TCPP", "dir": "up" },
+      { "id": "tcpp_infra_boom",    "name": "公共建設大爆發拉抬水泥","effect": 0.07,  "stock": "TCPP", "dir": "up" },
+      { "id": "tcpp_price_hike",    "name": "水泥報價調漲成功",      "effect": 0.06,  "stock": "TCPP", "dir": "up" },
+      { "id": "tcpp_dividend",      "name": "嗶泥穩配高息受青睞",    "effect": 0.05,  "stock": "TCPP", "dir": "up" },
+      { "id": "tcpp_china_demand",  "name": "對岸基建需求回溫",      "effect": 0.05,  "stock": "TCPP", "dir": "up" },
+      { "id": "tcpp_housing_slump", "name": "房市急凍水泥需求萎縮",  "effect": -0.07, "stock": "TCPP", "dir": "dn" },
+      { "id": "tcpp_carbon_cost",   "name": "碳費開徵壓縮獲利",      "effect": -0.06, "stock": "TCPP", "dir": "dn" },
+      { "id": "tcpp_coal_surge",    "name": "煤價飆漲生產成本大增",  "effect": -0.05, "stock": "TCPP", "dir": "dn" },
+
+      { "id": "eapp_revenge_travel","name": "報復性出國需求井噴",    "effect": 0.16,  "stock": "EAPP", "dir": "up" },
+      { "id": "eapp_cargo_surge",   "name": "空運貨運運價飆漲",      "effect": 0.13,  "stock": "EAPP", "dir": "up" },
+      { "id": "eapp_oil_plunge",    "name": "國際油價大跌成本驟降",  "effect": 0.11,  "stock": "EAPP", "dir": "up" },
+      { "id": "eapp_holiday_peak",  "name": "連假訂位一位難求",      "effect": 0.10,  "stock": "EAPP", "dir": "up" },
+      { "id": "eapp_new_route",     "name": "熱門新航線開航滿載",    "effect": 0.09,  "stock": "EAPP", "dir": "up" },
+      { "id": "eapp_oil_spike",     "name": "油價暴衝燃油成本狂燒",  "effect": -0.10, "stock": "EAPP", "dir": "dn" },
+      { "id": "eapp_crew_strike",   "name": "空服員罷工航班停飛",    "effect": -0.09, "stock": "EAPP", "dir": "dn" },
+      { "id": "eapp_typhoon_cancel","name": "颱風連環假航班大亂",    "effect": -0.07, "stock": "EAPP", "dir": "dn" }
     ]
   }
 }
