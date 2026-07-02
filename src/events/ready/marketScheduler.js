@@ -19,6 +19,7 @@ const { isMarketOpen } = require("../../features/stock/tradeService");
 const { renderMultiLine } = require("../../features/stock/chartRenderer");
 const { getDailyVolume } = require("../../features/stock/volumeService");
 const { runMarginScan } = require("../../features/stock/shortService");
+const { backfillPoolStocks } = require("../../features/stock/seedService");
 
 const SENTIMENT_LABEL = {
   bull: "🐂 牛市",
@@ -460,6 +461,12 @@ module.exports = async (client) => {
   }
 
   const tz = stockSystem.timezone || "Asia/Taipei";
+
+  await backfillPoolStocks(client)
+    .then((r) => {
+      if (r.inserted > 0) console.log(`[STOCK] 補上市 ${r.inserted} 檔新股`.green);
+    })
+    .catch((e) => console.log(`[STOCK] pool backfill failed: ${e?.message || e}`.yellow));
 
   registerCron(client, {
     name: "stock.tick",

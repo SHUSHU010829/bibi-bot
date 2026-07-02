@@ -55,9 +55,9 @@
       "announce": true
     },
     "sectors": {
-      "SEMI":     { "name": "半導體族群", "symbols": ["TSPP", "MTKP"] },
-      "DOMESTIC": { "name": "內需族群",   "symbols": ["UPPI", "CTPP"] },
-      "EXPORT":   { "name": "出口族群",   "symbols": ["TSPP", "MTKP", "EGPP"] }
+      "SEMI":     { "name": "半導體族群", "symbols": ["TSPP", "MTKP", "FHPP", "DLPP"] },
+      "DOMESTIC": { "name": "內需族群",   "symbols": ["UPPI", "CTPP", "TCPP", "EAPP"] },
+      "EXPORT":   { "name": "出口族群",   "symbols": ["TSPP", "MTKP", "EGPP", "FHPP", "DLPP"] }
     },
     "dividend": {
       "enabled": true,
@@ -111,6 +111,42 @@
         "floor": 40,
         "type": "tech",
         "dividendYield": 0.025
+      },
+      {
+        "symbol": "FHPP",
+        "name": "鴻嗶科技",
+        "initialPrice": 180,
+        "sigma": 0.045,
+        "floor": 36,
+        "type": "tech",
+        "dividendYield": 0.03
+      },
+      {
+        "symbol": "DLPP",
+        "name": "嗶達電",
+        "initialPrice": 360,
+        "sigma": 0.04,
+        "floor": 72,
+        "type": "tech",
+        "dividendYield": 0.025
+      },
+      {
+        "symbol": "TCPP",
+        "name": "嗶泥",
+        "initialPrice": 90,
+        "sigma": 0.02,
+        "floor": 18,
+        "type": "blue",
+        "dividendYield": 0.045
+      },
+      {
+        "symbol": "EAPP",
+        "name": "長嗶航空",
+        "initialPrice": 65,
+        "sigma": 0.08,
+        "floor": 12,
+        "type": "meme",
+        "dividendYield": 0
       }
     ]
   }
