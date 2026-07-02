@@ -37,6 +37,15 @@
       { "id": "export_twd_weak",    "name": "新台幣狂貶出口大利多",  "effect": 0.07,  "stock": "EXPORT", "dir": "up" },
       { "id": "export_twd_strong",  "name": "新台幣急升侵蝕出口",    "effect": -0.06, "stock": "EXPORT", "dir": "dn" },
 
+      { "id": "ev_penetration",     "name": "電動車滲透率飆破新高",  "effect": 0.08,  "stock": "EV", "dir": "up" },
+      { "id": "ev_charging_net",    "name": "全國充電網加速佈建",    "effect": 0.06,  "stock": "EV", "dir": "up" },
+      { "id": "ev_price_war",       "name": "電動車削價戰衝擊供應鏈","effect": -0.07, "stock": "EV", "dir": "dn" },
+      { "id": "aiinfra_capex",      "name": "雲端巨頭 AI 資本支出井噴","effect": 0.09, "stock": "AIINFRA", "dir": "up" },
+      { "id": "aiinfra_boom",       "name": "AI 資料中心建置潮起",   "effect": 0.07,  "stock": "AIINFRA", "dir": "up" },
+      { "id": "aiinfra_capex_cut",  "name": "AI 泡沫疑慮資本支出踩煞車","effect": -0.08,"stock": "AIINFRA", "dir": "dn" },
+      { "id": "green_net_zero",     "name": "淨零轉型政策加碼綠能",  "effect": 0.06,  "stock": "GREEN", "dir": "up" },
+      { "id": "green_subsidy_cut",  "name": "綠能補貼縮手題材降溫",  "effect": -0.05, "stock": "GREEN", "dir": "dn" },
+
       { "id": "tspp_ai_order",      "name": "嗶積電 AI 訂單塞爆",    "effect": 0.13,  "stock": "TSPP", "dir": "up" },
       { "id": "tspp_sanction",      "name": "美國禁令衝擊嗶積電",    "effect": -0.09, "stock": "TSPP", "dir": "dn" },
       { "id": "tspp_3nm_yield",     "name": "3 奈米良率大突破",      "effect": 0.11,  "stock": "TSPP", "dir": "up" },

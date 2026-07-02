@@ -59,7 +59,10 @@
     "sectors": {
       "SEMI":     { "name": "半導體族群", "symbols": ["TSPP", "MTKP", "FHPP", "DLPP"] },
       "DOMESTIC": { "name": "內需族群",   "symbols": ["UPPI", "CTPP", "TCPP", "EAPP"] },
-      "EXPORT":   { "name": "出口族群",   "symbols": ["TSPP", "MTKP", "EGPP", "FHPP", "DLPP"] }
+      "EXPORT":   { "name": "出口族群",   "symbols": ["TSPP", "MTKP", "EGPP", "FHPP", "DLPP"] },
+      "EV":       { "name": "電動車供應鏈", "symbols": ["FHPP", "DLPP", "MTKP"] },
+      "AIINFRA":  { "name": "AI 基建供應鏈", "symbols": ["TSPP", "FHPP", "DLPP"] },
+      "GREEN":    { "name": "綠能淨零題材", "symbols": ["DLPP", "TCPP"] }
     },
     "dividend": {
       "enabled": true,
