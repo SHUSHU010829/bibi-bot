@@ -37,6 +37,8 @@ const {
 const triggerService = require("../../features/stock/triggerService");
 const portfolioService = require("../../features/stock/portfolioService");
 const shortService = require("../../features/stock/shortService");
+const leaderboardService = require("../../features/stock/leaderboardService");
+const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const { buildChartContainer } = require("../../features/stock/chartView");
 const { getDailyVolume, invalidate: invalidateVolume } = require("../../features/stock/volumeService");
 const {
@@ -224,6 +226,22 @@ module.exports = {
     )
     .addSubcommand((s) =>
       s
+        .setName("排行")
+        .setDescription("已實現損益操盤手排行榜 🏆")
+        .addStringOption((o) =>
+          o
+            .setName("期間")
+            .setDescription("排行期間(預設本週)")
+            .addChoices(
+              { name: "本週", value: "week" },
+              { name: "近 30 天", value: "1m" },
+              { name: "近 90 天", value: "3m" }
+            )
+            .setRequired(false)
+        )
+    )
+    .addSubcommand((s) =>
+      s
         .setName("停損停利")
         .setDescription("設定股票自動停損 / 停利價（命中時開盤掃描會全倉自動賣出）🔔")
         .addStringOption((o) =>
@@ -262,8 +280,82 @@ module.exports = {
     if (sub === "停損停利") return runSetTriggers(client, interaction);
     if (sub === "融券") return runOpenShort(client, interaction);
     if (sub === "回補") return runCoverShort(client, interaction);
+    if (sub === "排行") return runLeaderboard(client, interaction);
   },
 };
+
+// ──────────────────────────── /股市 排行 ────────────────────────────
+async function runLeaderboard(client, interaction) {
+  await interaction.deferReply();
+  try {
+    if (!stockSystem?.enabled) return interaction.editReply("🔧 股市系統未啟用。");
+    if (!client.stockTransactionsCollection) {
+      return interaction.editReply("🔧 股市系統尚未就緒。");
+    }
+    const guildId = interaction.guildId;
+    const period = interaction.options.getString("期間") || "week";
+    let window;
+    let periodLabel;
+    if (period === "1m") {
+      window = leaderboardService.rollingWindow(30);
+      periodLabel = "近 30 天";
+    } else if (period === "3m") {
+      window = leaderboardService.rollingWindow(90);
+      periodLabel = "近 90 天";
+    } else {
+      window = leaderboardService.currentWeekWindow();
+      periodLabel = "本週";
+    }
+
+    const ranking = await leaderboardService.rankByWindow(client, guildId, {
+      ...window,
+      limit: 10,
+    });
+    if (ranking.length === 0) {
+      return interaction.editReply(`📭 ${periodLabel}尚無已實現損益紀錄，快用 \`/股市\` 開張！`);
+    }
+
+    const medals = ["🥇", "🥈", "🥉"];
+    const guild = interaction.guild;
+    const lines = ranking.map((r, i) => {
+      const rank = i < 3 ? medals[i] : `\`${String(i + 1).padStart(2, " ")}\``;
+      const name = plainifyUserMentions(guild, `<@${r.userId}>`);
+      const sign = r.pnl >= 0 ? "+" : "";
+      const emoji = r.pnl >= 0 ? "📈" : "📉";
+      return `${rank} ${name}\n　${emoji} 已實現損益 **${sign}${r.pnl.toLocaleString()}**（${r.trades} 筆）`;
+    });
+
+    const me = ranking.find((r) => r.userId === interaction.user.id);
+    const myLine = me
+      ? `你${periodLabel}已實現損益：**${me.pnl >= 0 ? "+" : ""}${me.pnl.toLocaleString()}**`
+      : `你${periodLabel}還沒有已實現損益紀錄，賣出或回補後才會計入。`;
+
+    const container = new ContainerBuilder()
+      .setAccentColor(0xf1c40f)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`# 🏆 操盤手排行榜｜${periodLabel}`)
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(lines.join("\n"))
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(myLine))
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# 已實現損益只計賣出與融券回補；本週冠軍每週一頒發 📊 最強操盤手稱號"
+        )
+      );
+
+    await interaction.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (err) {
+    console.log(`[STOCK] /股市 排行 失敗:${err?.stack || err}`.red);
+    await interaction.editReply("❌ 查詢失敗,請稍後再試。").catch(() => {});
+  }
+}
 
 // ──────────────────────────── /股市 停損停利 ────────────────────────────
 async function runSetTriggers(client, interaction) {
