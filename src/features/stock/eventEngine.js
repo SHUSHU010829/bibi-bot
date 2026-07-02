@@ -6,7 +6,7 @@ const {
   MessageFlags,
 } = require("discord.js");
 const { stockSystem, stockEventConfig } = require("../../config");
-const { applyEvent } = require("./priceEngine");
+const { applyEvent, clampToLimit } = require("./priceEngine");
 
 function getStaticEventDefs() {
   return stockEventConfig?.events || [];
@@ -86,7 +86,8 @@ async function applyEffectToStocks(client, guildId, targetSymbol, effect) {
   const changes = [];
   for (const s of stocks) {
     const before = s.currentPrice;
-    const after = applyEvent(before, effect, s.floor);
+    const raw = applyEvent(before, effect, s.floor);
+    const after = clampToLimit(raw, s.openPrice || before, stockSystem?.limitBoard);
     if (after === before) continue;
     await client.stockMarketCollection.updateOne(
       { _id: s._id },

@@ -13,7 +13,7 @@ const {
 const { DateTime } = require("luxon");
 
 const { stockSystem } = require("../../config");
-const { nextPrice, calcMarketDrift } = require("../../features/stock/priceEngine");
+const { nextPrice, calcMarketDrift, clampToLimit, limitBounds } = require("../../features/stock/priceEngine");
 const { rollRandomEvent } = require("../../features/stock/eventEngine");
 const { isMarketOpen } = require("../../features/stock/tradeService");
 const { renderMultiLine } = require("../../features/stock/chartRenderer");
@@ -104,7 +104,8 @@ async function tickOnce(client) {
       .toArray();
     for (const s of stocks) {
       const drift = calcMarketDrift(s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways");
-      const next = nextPrice(s.currentPrice, s.sigma, drift, s.floor);
+      const raw = nextPrice(s.currentPrice, s.sigma, drift, s.floor);
+      const next = clampToLimit(raw, s.openPrice || s.currentPrice, stockSystem?.limitBoard);
       await client.stockMarketCollection.updateOne(
         { _id: s._id },
         { $set: { currentPrice: next, updatedAt: new Date() } }
@@ -195,8 +196,15 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
       console.log(`[STOCK] broadcast volume fetch failed (${s.symbol}): ${volErr.message}`.yellow);
     }
 
+    const bounds = limitBounds(open, stockSystem?.limitBoard);
+    let limitTag = "";
+    if (bounds) {
+      if (s.currentPrice >= bounds.up) limitTag = "　🚀 漲停";
+      else if (s.currentPrice <= bounds.down) limitTag = "　💥 跌停";
+    }
+
     stockLines.push(
-      `**\`${s.symbol}\` ${s.name}**\n` +
+      `**\`${s.symbol}\` ${s.name}**${limitTag}\n` +
         `現價 **${s.currentPrice.toFixed(1)}**　今日 ${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%\n` +
         `週高 ${wh.toFixed(1)}　週低 ${wl.toFixed(1)}` +
         volLine,

@@ -29,6 +29,31 @@
     "chart": {
       "historyPoints": 20
     },
+    "priceImpact": {
+      "enabled": true,
+      "perShareFrac": 0.0005,
+      "maxStepFrac": 0.06,
+      "recordHistory": true
+    },
+    "limitBoard": {
+      "enabled": true,
+      "limitPct": 0.1
+    },
+    "short": {
+      "enabled": true,
+      "maxShares": 300,
+      "feeRate": 0.01,
+      "minFee": 5,
+      "forceCloseLossPct": 0.8
+    },
+    "leaderboard": {
+      "enabled": true,
+      "cronSchedule": "1 0 * * 1",
+      "timezone": "Asia/Taipei",
+      "titleId": "stock_king",
+      "topN": 10,
+      "announce": true
+    },
     "sectors": {
       "SEMI":     { "name": "半導體族群", "symbols": ["TSPP", "MTKP"] },
       "DOMESTIC": { "name": "內需族群",   "symbols": ["UPPI", "CTPP"] },

@@ -370,8 +370,16 @@ async function runBuy(client, interaction) {
   }
 }
 
+function buildImpactLine(impact, side) {
+  if (!impact || !impact.delta) return null;
+  const arrow = side === "buy" ? "📈" : "📉";
+  const verb = side === "buy" ? "推升" : "壓低";
+  const sign = impact.delta >= 0 ? "+" : "";
+  return `${arrow} 你的${side === "buy" ? "買" : "賣"}單${verb}股價 ${impact.before.toFixed(1)} → **${impact.after.toFixed(1)}**（${sign}${impact.delta.toFixed(1)}）`;
+}
+
 function buildBuyResultContainer(result) {
-  return new ContainerBuilder()
+  const c = new ContainerBuilder()
     .setAccentColor(0x2ecc71)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -408,7 +416,14 @@ function buildBuyResultContainer(result) {
       new TextDisplayBuilder().setContent(
         `**平均成本**\n${result.newAvgCost.toFixed(2)}`
       )
-    )
+    );
+
+  const impactLine = buildImpactLine(result.impact, "buy");
+  if (impactLine) {
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(impactLine));
+  }
+
+  return c
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -474,7 +489,7 @@ function buildSellResultContainer(result) {
   const pnlPct =
     result.avgCost > 0 ? ((result.price - result.avgCost) / result.avgCost) * 100 : 0;
 
-  return new ContainerBuilder()
+  const container = new ContainerBuilder()
     .setAccentColor(result.pnl >= 0 ? 0x2ecc71 : 0xe74c3c)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -511,7 +526,14 @@ function buildSellResultContainer(result) {
       new TextDisplayBuilder().setContent(
         `**本筆損益**\n**${pnlSign}${result.pnl.toLocaleString()}**(${pnlSign}${pnlPct.toFixed(2)}%)`
       )
-    )
+    );
+
+  const impactLine = buildImpactLine(result.impact, "sell");
+  if (impactLine) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(impactLine));
+  }
+
+  return container
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(

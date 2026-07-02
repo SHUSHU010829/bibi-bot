@@ -30,9 +30,42 @@ function applyEvent(currentPrice, effectRate, floor) {
   return Math.max(floor || 1, roundPrice(raw));
 }
 
+// 交易衝擊：買單把價格頂上去、賣單砸下來。衝擊幅度隨股數線性增加，
+// 但單筆最多推動 maxStepFrac（避免一張大單瞬間拉爆）。
+function priceImpact(currentPrice, shares, side, cfg, floor) {
+  if (!cfg?.enabled || !(shares > 0)) return { price: currentPrice, delta: 0, frac: 0 };
+  const perShare = cfg.perShareFrac ?? 0;
+  const maxStep = cfg.maxStepFrac ?? 0.06;
+  const frac = Math.min(maxStep, shares * perShare);
+  const dir = side === "buy" ? 1 : -1;
+  const raw = currentPrice * (1 + dir * frac);
+  const price = Math.max(floor || 1, roundPrice(raw));
+  return { price, delta: roundPrice(price - currentPrice), frac };
+}
+
+// 當日漲跌停界線：以參考價（當日開盤價）為基準的 ±limitPct。
+function limitBounds(refPrice, cfg) {
+  if (!cfg?.enabled || !(refPrice > 0)) return null;
+  const pct = cfg.limitPct ?? 0.1;
+  return {
+    up: roundPrice(refPrice * (1 + pct)),
+    down: roundPrice(refPrice * (1 - pct)),
+    pct,
+  };
+}
+
+function clampToLimit(price, refPrice, cfg) {
+  const b = limitBounds(refPrice, cfg);
+  if (!b) return price;
+  return Math.min(b.up, Math.max(b.down, price));
+}
+
 module.exports = {
   nextPrice,
   applyEvent,
   calcMarketDrift,
   roundPrice,
+  priceImpact,
+  limitBounds,
+  clampToLimit,
 };
