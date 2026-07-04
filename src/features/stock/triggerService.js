@@ -1,4 +1,10 @@
 require("colors");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  MessageFlags,
+} = require("discord.js");
 const { stockSystem } = require("../../config");
 const portfolioService = require("./portfolioService");
 const tradeService = require("./tradeService");
@@ -118,10 +124,23 @@ async function notifyLimitLockedOnce(client, position, market, kind, price) {
   try {
     const user = await client.users.fetch(userId);
     const verb = kind === "stop_loss" ? "停損" : "停利";
-    await user.send(
-      `⚠️ **${market.name}（${symbol}）** 已觸及你的${verb}價（${price.toLocaleString()}），` +
-        `但目前鎖跌停、暫時無法成交。系統會持續監看，一旦解鎖就立即自動全倉賣出並再通知你。`,
-    );
+    const container = new ContainerBuilder()
+      .setAccentColor(0xf1c40f)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# ⚠️ ${verb}暫時無法成交\n**${market.name}（${symbol}）** 已觸及你的${verb}價 **${price.toLocaleString()}**`,
+        ),
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `目前該股**鎖跌停**，暫時無法成交。\n系統會持續監看，一旦解鎖就立即自動全倉賣出並再通知你。`,
+        ),
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`-# 觸價時間 <t:${Math.floor(Date.now() / 1000)}:R>`),
+      );
+    await user.send({ components: [container], flags: MessageFlags.IsComponentsV2 });
   } catch (err) {
     console.log(`[stock.trigger] 跌停通知 DM 失敗 user=${userId}: ${err?.message || err}`.yellow);
   }
@@ -180,11 +199,28 @@ async function evaluateAndTrigger(client, position, marketBySymbol) {
   try {
     const user = await client.users.fetch(userId);
     const verb = kind === "stop_loss" ? "停損" : "停利";
-    const unlockedNote = position.limitLockNotified ? "跌停解鎖後，" : "";
-    await user.send(
-      `🔔 **${market.name}（${symbol}）** 觸發${verb}：${unlockedNote}以 ${price.toLocaleString()} 自動賣出 ${shares} 股，` +
-        `成交額 ${result.proceeds.toLocaleString()}（淨 ${result.netProceeds.toLocaleString()}，盈虧 ${result.pnl >= 0 ? "+" : ""}${result.pnl.toLocaleString()}）。`,
-    );
+    const unlockedNote = position.limitLockNotified ? "（跌停解鎖後成交）" : "";
+    const pnlSign = result.pnl >= 0 ? "+" : "";
+    const container = new ContainerBuilder()
+      .setAccentColor(kind === "stop_loss" ? 0xe74c3c : 0x2ecc71)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🔔 觸發${verb}自動賣出${unlockedNote}\n**${market.name}（${symbol}）**`,
+        ),
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `成交價　**${price.toLocaleString()}**\n` +
+            `賣出　**${shares.toLocaleString()}** 股\n` +
+            `成交額　${result.proceeds.toLocaleString()}（淨 **${result.netProceeds.toLocaleString()}**）\n` +
+            `盈虧　**${pnlSign}${result.pnl.toLocaleString()}**`,
+        ),
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`-# <t:${Math.floor(Date.now() / 1000)}:R>`),
+      );
+    await user.send({ components: [container], flags: MessageFlags.IsComponentsV2 });
   } catch (err) {
     console.log(`[stock.trigger] DM 失敗 user=${userId}: ${err?.message || err}`.yellow);
   }
