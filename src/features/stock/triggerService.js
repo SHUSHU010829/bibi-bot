@@ -70,16 +70,19 @@ async function clearTriggers(client, { userId, guildId, symbol }) {
   return { ok: true };
 }
 
-// 同一支股票同一玩家 24 小時內最多自動成交 1 次，避免極端波動連續刷洗
-async function recentlyTriggered(client, { userId, guildId, symbol }) {
+// 同一組觸發設定只自動成交 1 次，避免極端波動連續刷洗。
+// 只擋「這組觸發設定生效後」才發生的自動成交（configuredAt = 觸發設定/持倉最後更新時間）；
+// 玩家事後買回並重設觸發（updatedAt 會往後跳），屬於全新設定，不受舊成交紀錄影響。
+async function recentlyTriggered(client, { userId, guildId, symbol, configuredAt }) {
   if (!client.stockTransactionsCollection) return false;
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // 沒有設定時間可比對就不擋（設定觸發時一定寫入 updatedAt，理論上不會落到這）
+  if (!configuredAt) return false;
   const doc = await client.stockTransactionsCollection.findOne({
     userId,
     guildId,
     symbol,
     side: "sell",
-    timestamp: { $gte: since },
+    timestamp: { $gte: configuredAt },
     "meta.autoTrigger": { $exists: true },
   });
   return !!doc;
@@ -111,7 +114,8 @@ async function evaluateAndTrigger(client, position, marketBySymbol) {
   else if (takeProfit != null && price >= takeProfit) kind = "take_profit";
   if (!kind) return null;
 
-  if (await recentlyTriggered(client, { userId, guildId, symbol })) {
+  const configuredAt = position.updatedAt || position.createdAt || null;
+  if (await recentlyTriggered(client, { userId, guildId, symbol, configuredAt })) {
     return null;
   }
 
@@ -123,8 +127,15 @@ async function evaluateAndTrigger(client, position, marketBySymbol) {
     member: null,
     symbol,
     shares,
+    // 停損 / 停利是保護性委託：即使鎖跌停也要以當前價全倉出場，不受漲跌停限制
+    ignoreLimit: true,
   });
-  if (!result.ok) return null;
+  if (!result.ok) {
+    console.log(
+      `[stock.trigger] 自動${kind === "stop_loss" ? "停損" : "停利"}賣出失敗 user=${userId} ${symbol}@${price}: ${result.reason || "unknown"}`.yellow,
+    );
+    return null;
+  }
 
   await client.stockTransactionsCollection
     .updateOne(
