@@ -38,6 +38,7 @@ const PURE_MINT_SOURCES = new Set([
   "fish_sell", "fish_loot",
   "mine_overflow", "gift_overflow", "stone_appraisal_overflow",
   "treasure_map", "levelup", "milestone", "survey",
+  "daily", "item_sell",
 ]);
 const PURE_SINK_SOURCES = new Set([
   "shop_buy", "wealth_tax", "stock_fee", "stone_appraisal",
@@ -838,7 +839,9 @@ async function aggregateStockMarket(client, guildId, fromIso, toIso) {
 // 同時作為「已知金流 source」的權威清單來源，供 getUnclassifiedFlow 偵測漏接的新 source。
 const MARKET_GROUPS = {
   shop: ["shop_buy"],
+  itemSell: ["item_sell"],
   stock: ["stock_buy", "stock_sell", "stock_fee", "stock_dividend"],
+  stockShort: ["stock_short_margin", "stock_short_settle"],
   auction: ["auction_bid", "auction_payout", "auction_refund"],
   market: ["market_buy", "market_escrow", "market_bid", "market_payout", "market_refund"],
   barter: ["barter_fee"],
@@ -855,6 +858,7 @@ const MARKET_GROUPS = {
   fishing: ["fish_sell", "fish_loot"],
   farming: ["farm_plant", "farm_harvest", "farm_sell", "farm_raid", "farm_raid_trap", "farm_expand"],
   treasure: ["treasure_map"],
+  daily: ["daily"],
   leveling: ["levelup", "milestone"],
   donation: ["donation"],
   survey: ["survey"],
