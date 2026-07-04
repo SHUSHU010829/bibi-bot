@@ -478,7 +478,9 @@ module.exports = {
 
       const marketBlocks = [
         ["🛒 商店", market.shop],
+        ["🏷️ 雜物販售", market.itemSell],
         ["📈 股市", market.stock],
+        ["📉 融券做空", market.stockShort],
         ["🔨 拍賣行", market.auction],
         ["🏪 市集", market.market],
         ["🔀 交易所手續費", market.barter],
@@ -504,6 +506,7 @@ module.exports = {
         ["🎣 漁獲相關（販售+雜物）", market.fishing],
         ["🌾 農場相關", market.farming],
         ["🗺️ 藏寶圖", market.treasure],
+        ["📆 每日簽到", market.daily],
         ["🆙 升級 / 里程碑", market.leveling],
         ["💖 抖內贊助", market.donation],
         ["📋 問卷", market.survey],
