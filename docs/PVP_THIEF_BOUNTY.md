@@ -10,7 +10,8 @@
 > - 按鈕 `handleTheftButton.js`(追捕 / 查看惡名 / 存款捷徑)、cron `theftExpiryScheduler.js`(通緝時效洗白)。
 > - 三個新 collection + 索引(`TheftProfiles` / `WantedList` / `TheftLogs`),`grantCoins` 已補 sink/peer source。
 > - **防身道具已接進商店**(新分類「防身道具」):🐕 看門狗($800,擋一次) / 🔒 保險箱($1200,24h −20% 被偷率) / 🕶️ 夜行衣($500,下一次 +15%)。`shop.json` + `buyItem.js`(寫進 `TheftProfiles`)+ `catalog.js`(watchdog/cloak 可堆疊)+ 商店顯示;`bibi-website` 的 `botDefs.ts` 已同步中文名。
-> - **尚未接線(下一輪)**:稱號(慣竊 / 賞金獵人)。惡名衰退最終採 **compute-on-read**。
+> - **稱號已接**(新分類「盜賊」):🥷 慣竊(得手 25 次) / 🕵️ 賞金獵人(追捕成功 15 次)。`titles.json` + `gameTitleService`(RESOLVERS / progress / cache.theft),偷竊得手與追捕成功後非阻塞觸發 `check(...,["theft"])`,自動解鎖 + 公告 + 可 `/稱號 設定` 展示。
+> - 惡名衰退最終採 **compute-on-read**。MVP 全數落地。
 
 ---
 

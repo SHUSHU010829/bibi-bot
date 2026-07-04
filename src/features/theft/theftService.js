@@ -21,6 +21,17 @@ function dayStart() {
   return DateTime.now().setZone(tz()).startOf("day").toJSDate();
 }
 
+// 非阻塞觸發盜賊類稱號解鎖檢查（慣竊 / 賞金獵人）。
+function checkTheftTitles(client, userId, guildId, member) {
+  try {
+    require("../gameTitles/gameTitleService")
+      .check(client, { userId, guildId, member }, ["theft"])
+      .catch(() => {});
+  } catch (_) {
+    /* gameTitleService 未載入就靜默 */
+  }
+}
+
 async function getWallet(client, userId, guildId) {
   const doc = await client.userCoinsCollection
     .findOne({ userId, guildId })
@@ -193,6 +204,8 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
       amount: stolen,
       net,
     });
+
+    checkTheftTitles(client, actorId, guildId, member);
 
     return {
       ok: true,
@@ -384,6 +397,8 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
     success: true,
     amount: wanted.bounty + hunterFineShare,
   });
+
+  checkTheftTitles(client, hunterId, guildId, member);
 
   return {
     ok: true,
