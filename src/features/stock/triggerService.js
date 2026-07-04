@@ -46,6 +46,7 @@ async function setTriggers(client, { userId, guildId, symbol, stopLoss, takeProf
       $set: {
         stopLoss: cleanStop,
         takeProfit: cleanTake,
+        limitLockNotified: false,
         updatedAt: new Date(),
       },
     },
@@ -65,7 +66,7 @@ async function clearTriggers(client, { userId, guildId, symbol }) {
   if (!client.userPortfolioCollection) return { ok: false, reason: "disabled" };
   await client.userPortfolioCollection.updateOne(
     { userId, guildId, symbol },
-    { $set: { stopLoss: null, takeProfit: null, updatedAt: new Date() } },
+    { $set: { stopLoss: null, takeProfit: null, limitLockNotified: false, updatedAt: new Date() } },
   );
   return { ok: true };
 }
@@ -102,6 +103,30 @@ async function listWatched(client) {
     .toArray();
 }
 
+// 鎖跌停導致停損 / 停利暫時無法成交時，只私訊玩家一次（用 limitLockNotified 去重）。
+// updateOne 的 { $ne: true } 條件保證即使 in-memory position 讀到舊值，也只有一次成功翻旗 → 只發一封。
+async function notifyLimitLockedOnce(client, position, market, kind, price) {
+  const { userId, guildId, symbol } = position;
+  const res = await client.userPortfolioCollection
+    .updateOne(
+      { userId, guildId, symbol, limitLockNotified: { $ne: true } },
+      { $set: { limitLockNotified: true } },
+    )
+    .catch(() => null);
+  if (!res || res.modifiedCount !== 1) return;
+
+  try {
+    const user = await client.users.fetch(userId);
+    const verb = kind === "stop_loss" ? "停損" : "停利";
+    await user.send(
+      `⚠️ **${market.name}（${symbol}）** 已觸及你的${verb}價（${price.toLocaleString()}），` +
+        `但目前鎖跌停、暫時無法成交。系統會持續監看，一旦解鎖就立即自動全倉賣出並再通知你。`,
+    );
+  } catch (err) {
+    console.log(`[stock.trigger] 跌停通知 DM 失敗 user=${userId}: ${err?.message || err}`.yellow);
+  }
+}
+
 // 對單一部位判斷是否命中觸發條件；命中即執行 sellMarket 並通知玩家
 async function evaluateAndTrigger(client, position, marketBySymbol) {
   const { userId, guildId, symbol, shares, stopLoss, takeProfit } = position;
@@ -127,13 +152,16 @@ async function evaluateAndTrigger(client, position, marketBySymbol) {
     member: null,
     symbol,
     shares,
-    // 停損 / 停利是保護性委託：即使鎖跌停也要以當前價全倉出場，不受漲跌停限制
-    ignoreLimit: true,
   });
   if (!result.ok) {
-    console.log(
-      `[stock.trigger] 自動${kind === "stop_loss" ? "停損" : "停利"}賣出失敗 user=${userId} ${symbol}@${price}: ${result.reason || "unknown"}`.yellow,
-    );
+    // 鎖跌停賣不掉：保留觸發設定、每分鐘持續重試，解鎖那刻即成交；只在第一次鎖住時私訊一次
+    if (result.reason === "limit_down") {
+      await notifyLimitLockedOnce(client, position, market, kind, price);
+    } else {
+      console.log(
+        `[stock.trigger] 自動${kind === "stop_loss" ? "停損" : "停利"}賣出失敗 user=${userId} ${symbol}@${price}: ${result.reason || "unknown"}`.yellow,
+      );
+    }
     return null;
   }
 
@@ -152,8 +180,9 @@ async function evaluateAndTrigger(client, position, marketBySymbol) {
   try {
     const user = await client.users.fetch(userId);
     const verb = kind === "stop_loss" ? "停損" : "停利";
+    const unlockedNote = position.limitLockNotified ? "跌停解鎖後，" : "";
     await user.send(
-      `🔔 **${market.name}（${symbol}）** 觸發${verb}：以 ${price.toLocaleString()} 自動賣出 ${shares} 股，` +
+      `🔔 **${market.name}（${symbol}）** 觸發${verb}：${unlockedNote}以 ${price.toLocaleString()} 自動賣出 ${shares} 股，` +
         `成交額 ${result.proceeds.toLocaleString()}（淨 ${result.netProceeds.toLocaleString()}，盈虧 ${result.pnl >= 0 ? "+" : ""}${result.pnl.toLocaleString()}）。`,
     );
   } catch (err) {
