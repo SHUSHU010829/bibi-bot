@@ -9,7 +9,8 @@
 > - 指令 `src/commands/economy/{steal,wantedList,hunt,surrender,report}.js`(`/偷竊`、`/通緝榜`、`/追捕`、`/自首`、`/報案`)。
 > - 按鈕 `handleTheftButton.js`(追捕 / 查看惡名 / 存款捷徑)、cron `theftExpiryScheduler.js`(通緝時效洗白)。
 > - 三個新 collection + 索引(`TheftProfiles` / `WantedList` / `TheftLogs`),`grantCoins` 已補 sink/peer source。
-> - **尚未接線(下一輪)**:防身道具的商店販售(🐕看門狗 / 🔒保險箱 / 🕶️夜行衣 判定鉤子已寫好,`theftProfile` 讀 `watchdog_count` / `safebox_expires_at` / `night_cloak_count`,待商店可購買後即生效)、稱號(慣竊 / 賞金獵人)。惡名衰退最終採 **compute-on-read**。
+> - **防身道具已接進商店**(新分類「防身道具」):🐕 看門狗($800,擋一次) / 🔒 保險箱($1200,24h −20% 被偷率) / 🕶️ 夜行衣($500,下一次 +15%)。`shop.json` + `buyItem.js`(寫進 `TheftProfiles`)+ `catalog.js`(watchdog/cloak 可堆疊)+ 商店顯示;`bibi-website` 的 `botDefs.ts` 已同步中文名。
+> - **尚未接線(下一輪)**:稱號(慣竊 / 賞金獵人)。惡名衰退最終採 **compute-on-read**。
 
 ---
 
