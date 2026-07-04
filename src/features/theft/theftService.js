@@ -8,6 +8,22 @@ const theftProfile = require("./theftProfile");
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
+// 累進級距：每一段錢包只抽該段的比例，越後面的錢比例越低。
+// 大戶總額仍隨財富上升，但邊際遞減，避免鯨魚一次被搬空。
+function grossSteal(wallet, brackets) {
+  if (!Array.isArray(brackets) || !brackets.length) return 0;
+  let prev = 0;
+  let total = 0;
+  for (const b of brackets) {
+    const upper = b.upTo == null ? Infinity : b.upTo;
+    const width = Math.max(0, Math.min(wallet, upper) - prev);
+    total += width * (b.pct || 0);
+    prev = upper;
+    if (wallet <= upper) break;
+  }
+  return Math.floor(total);
+}
+
 function cfg() {
   return theft || {};
 }
@@ -158,10 +174,15 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
   }
 
   if (success) {
+    // 上限用惡名解鎖：新手封在 baseCap，越資深的慣竊才偷得到大額
+    const stealCap = Math.min(
+      (s.baseCap ?? 3000) + notoriety * (s.capPerNotoriety ?? 300),
+      s.hardCap ?? 12000
+    );
     let stolen = clamp(
-      Math.floor(targetWallet.balance * (s.stealPct ?? 0.12)),
+      grossSteal(targetWallet.balance, s.brackets),
       s.stealMin ?? 100,
-      s.stealMax ?? 3000
+      stealCap
     );
     stolen = Math.min(stolen, targetWallet.balance);
     const rake = Math.floor(stolen * (s.blackMarketRakePct ?? 0.2));

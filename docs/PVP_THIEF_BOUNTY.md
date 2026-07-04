@@ -85,7 +85,8 @@
 
 **成功**:
 
-- 偷走目標**錢包**的 `stealPct`(預設 **12%**),夾在 `[stealMin 100, stealMax 3000]` 幣之間。
+- 偷走目標**錢包**的金額走**累進級距**(越後面的錢比例越低):0–5k 抽 12%、5k–30k 抽 8%、30k+ 抽 4%,下限 `stealMin 100`。
+  - **單次上限用惡名解鎖**:`上限 = min(baseCap 3000 + 惡名 × capPerNotoriety 300, hardCap 12000)`。新手封在 3000,惡名越高偷得越多,惡名 30 解到 12000 頂。→ 大戶很香,但**只有資深慣竊刮得到大額**(新手盯鯨魚也只拿基礎額),自然防止新帳號一上來就獵鯨。
 - **黑市抽成** `blackMarketRakePct`(預設 **20%**)進系統(coin sink,`source: "steal_rake"`),小偷實得 80%。
 - 目標損失走 `grantCoins(... source:"steal_loss")`,小偷所得走 `source:"steal_gain"`(皆 peer 類,不套倍率)。
 - 惡名 +1。累積「贓款總額」(算入未來自己被追捕的賞金)。
@@ -144,7 +145,7 @@
 bounty = baseBounty(預設 500)
        + notoriety × bountyPerNotoriety(預設 50)
        + 該犯歷史累積贓款 × stolenBountyPct(預設 5%)
-       → clamp [bountyMin 300, min(bountyMax 8000, 小偷當前錢包)]   // 賞金即託管金,不可超過小偷付得起的額度
+       → clamp [bountyMin 300, min(bountyMax 12000, 小偷當前錢包)]   // 賞金即託管金,不可超過小偷付得起的額度
 ```
 
 賞金當下即**從小偷錢包實扣凍結**(escrow),故上限夾在其錢包餘額內。惡名越高、偷越多 → 賞金越肥 → 越多人想抓 → 形成「爬得越高摔得越重」的自然平衡。
