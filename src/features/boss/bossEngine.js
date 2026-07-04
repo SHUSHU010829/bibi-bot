@@ -49,6 +49,31 @@ function rewardsCfg() {
   return cfg().rewards || {};
 }
 
+function rageCfg() {
+  return cfg().rage || {};
+}
+
+// 魔王怒氣：被攻擊次數越多，反擊率越高（戰鬥中「越打越兇」）。
+// 存來源（hits_taken），反擊率在攻擊當下即時換算，不寫死。
+function rageState(bossDoc) {
+  const rc = rageCfg();
+  if (!rc.enabled) return { stacks: 0, counterBonus: 0 };
+  const per = rc.hitsPerStack ?? 15;
+  const stacks = Math.floor((bossDoc?.hits_taken || 0) / per);
+  const counterBonus = stacks * (rc.counterRatePerStack ?? 0.03);
+  return { stacks, counterBonus };
+}
+
+// 反擊率 = 階段基礎 + 怒氣加成（上限 maxCounterRate）。單一來源，engine 與 view 共用。
+function effectiveCounterRate(bossDoc) {
+  const phaseName = bossDoc.phase || phaseOf(bossDoc.current_hp, bossDoc.max_hp);
+  const phase = phaseDef(phaseName);
+  return Math.min(
+    rageCfg().maxCounterRate ?? 0.5,
+    (phase.counterRate ?? 0.1) + rageState(bossDoc).counterBonus,
+  );
+}
+
 async function countOnlineMembers(client) {
   const guild = client.guilds.cache.get(serverId);
   if (!guild) return 0;
@@ -135,6 +160,7 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs }) {
     killer_user_id: null,
     online_count: onlineCount ?? null,
     scaling,
+    hits_taken: 0,
     combo: {
       count: 0,
       last_user: null,
@@ -211,7 +237,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   const comboCfgVal = comboCfg();
   const phaseName = bossDoc.phase || phaseOf(bossDoc.current_hp, bossDoc.max_hp);
   const phase = phaseDef(phaseName);
-  const counterRate = phase.counterRate ?? 0.1;
+  const counterRate = effectiveCounterRate(bossDoc);
   const isCounter = Math.random() < counterRate;
 
   let sameUserStreak = 1;
@@ -288,7 +314,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   const afterRes = await client.bossEventsCollection.findOneAndUpdate(
     { boss_id: bossDoc.boss_id, status: "active" },
     {
-      $inc: { current_hp: -damage },
+      $inc: { current_hp: -damage, hits_taken: 1 },
       $set: {
         "combo.count": comboCount,
         "combo.last_user": comboLastUser,
@@ -370,11 +396,13 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     sameUserStreak,
     killed,
     killerUserId: killed ? userId : null,
-    boss: { ...bossDoc, current_hp: newHp, phase: newPhase },
+    boss: { ...bossDoc, current_hp: newHp, phase: newPhase, hits_taken: afterDoc.hits_taken },
     stamina: newStamina,
     staminaMax: max,
     attackCount: used + 1,
     attackLimit,
+    rageStacks: rageState({ hits_taken: afterDoc.hits_taken }).stacks,
+    counterRate,
   };
 }
 
@@ -580,4 +608,6 @@ module.exports = {
   countOnlineMembers,
   phaseOf,
   phaseDef,
+  rageState,
+  effectiveCounterRate,
 };

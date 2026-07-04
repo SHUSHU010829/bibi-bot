@@ -15,6 +15,12 @@
       "hpBonusPerStep": 0.15,
       "maxGearMultiplier": 2.5
     },
+    "rage": {
+      "enabled": true,
+      "hitsPerStack": 15,
+      "counterRatePerStack": 0.03,
+      "maxCounterRate": 0.5
+    },
     "rareMaterial": "legendary_fragment",
     "saturdaySpawn": {
       "schedule": "0 21 * * 6",

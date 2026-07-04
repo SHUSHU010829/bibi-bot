@@ -21,9 +21,6 @@ async function announceSpawn(client, bossDoc) {
   const onlineSuffix = bossDoc.online_count != null
     ? `\n-# 依當前 ${bossDoc.online_count} 名線上玩家決定`
     : "";
-  const scalingSuffix = bossDoc.scaling && bossDoc.scaling.gear_mult > 1
-    ? `\n-# 🔺 玩家裝備日益精良，魔王強化 ×${bossDoc.scaling.gear_mult}（近期 ${bossDoc.scaling.active_count} 人・平均戰力 ${bossDoc.scaling.avg_atk}）`
-    : "";
   const limit = boss?.attackLimitPerPlayer ?? 5;
   const intro = pickFrom(boss?.spawnIntros) || "傳說中的存在現身了！";
 
@@ -34,7 +31,7 @@ async function announceSpawn(client, bossDoc) {
     .addFields(
       {
         name: "💖 血量",
-        value: `${bossDoc.max_hp.toLocaleString()}${onlineSuffix}${scalingSuffix}`,
+        value: `${bossDoc.max_hp.toLocaleString()}${onlineSuffix}`,
         inline: false,
       },
       { name: "⏳ 戰鬥結束", value: `<t:${endsAt}:R>`, inline: true },

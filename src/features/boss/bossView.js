@@ -9,6 +9,7 @@ const {
 const { boss } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
+const bossEngine = require("./bossEngine");
 
 function nameOf(guild, userId) {
   return plainifyUserMentions(guild, `<@${userId}>`);
@@ -25,6 +26,11 @@ function phaseColor(phase) {
   if (phase === "enraged") return COLOR_ENRAGED;
   if (phase === "broken") return COLOR_BROKEN;
   return COLOR_NORMAL;
+}
+
+function rageLine(stacks, counterRate) {
+  if (!stacks || stacks <= 0) return null;
+  return `-# 😡 魔王怒氣 Lv.${stacks} — 反擊率升至 ${Math.round((counterRate || 0) * 100)}%（越打越兇）`;
 }
 
 function phaseLabel(phase) {
@@ -79,6 +85,8 @@ function buildAttackResultContainer({ userId, displayName, result }) {
           `🔋 體力：${result.stamina}/${result.staminaMax}（被反擊額外 -1）\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}`,
         ),
       );
+    const rl = rageLine(result.rageStacks, result.counterRate);
+    if (rl) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(rl));
   } else if (result.killed) {
     container
       .addTextDisplayComponents(
@@ -125,6 +133,8 @@ function buildAttackResultContainer({ userId, displayName, result }) {
         ),
       );
     }
+    const rl = rageLine(result.rageStacks, result.counterRate);
+    if (rl) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(rl));
   }
 
   if (!result.killed && result.attackCount < result.attackLimit) {
@@ -184,6 +194,8 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
           `🔋 體力：${last.stamina}/${last.staminaMax}${counters > 0 ? `（${counters} 次被反擊）` : ""}\n⚔️ 本場攻擊次數：${last.attackCount}/${last.attackLimit}`,
         ),
       );
+    const rl = rageLine(last.rageStacks, last.counterRate);
+    if (rl) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(rl));
   }
 
   const stopHint = {
@@ -236,6 +248,11 @@ function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive
         `⏰ 剩餘時間：${remainMin}m ${remainSec}s${comboActive ? `\n⚡ Combo 進行中（×${boss?.combo?.bonusMult ?? 1.3}）` : ""}`,
       ),
     );
+
+  const infoRage = rageLine(bossEngine.rageState(b).stacks, bossEngine.effectiveCounterRate(b));
+  if (infoRage) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(infoRage));
+  }
 
   if (ranking?.length) {
     const top = ranking.slice(0, 5);
