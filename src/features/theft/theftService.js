@@ -175,16 +175,16 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
 
   if (success) {
     // 上限用惡名解鎖：新手封在 baseCap，越資深的慣竊才偷得到大額
+    const hardCap = s.hardCap ?? 12000;
     const stealCap = Math.min(
       (s.baseCap ?? 3000) + notoriety * (s.capPerNotoriety ?? 300),
-      s.hardCap ?? 12000
+      hardCap
     );
-    let stolen = clamp(
-      grossSteal(targetWallet.balance, s.brackets),
-      s.stealMin ?? 100,
-      stealCap
-    );
+    const gross = grossSteal(targetWallet.balance, s.brackets);
+    let stolen = clamp(gross, s.stealMin ?? 100, stealCap);
     stolen = Math.min(stolen, targetWallet.balance);
+    // 被惡名上限壓住（且還有成長空間）→ 提示玩家再有名一點能偷更多
+    const cappedByNotoriety = gross > stealCap && stealCap < hardCap;
     const rake = Math.floor(stolen * (s.blackMarketRakePct ?? 0.2));
     const net = stolen - rake;
 
@@ -235,6 +235,9 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
       net,
       rake,
       usedCloak,
+      notoriety,
+      stealCap,
+      cappedByNotoriety,
       newBalance: credit?.doc?.totalCoins ?? null,
     };
   }

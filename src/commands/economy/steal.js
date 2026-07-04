@@ -65,6 +65,9 @@ module.exports = {
 
       // 成功：僅小偷自己可見（潛行），不驚動任何人
       if (result.success) {
+        const notoLine = result.cappedByNotoriety
+          ? `-# 🥷 惡名 ${result.notoriety}：這次收穫被上限 ${result.stealCap.toLocaleString()} 壓住了——**惡名越高偷得越多**（每點 +300，最高 12,000）。`
+          : `-# 🥷 惡名 ${result.notoriety}：目前單次上限 ${result.stealCap.toLocaleString()}（越有名越高，最高 12,000）。`;
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`theft_bank_${interaction.user.id}`)
@@ -87,6 +90,7 @@ module.exports = {
                 (result.usedCloak ? "\n🕶️ 夜行衣已消耗" : "")
             )
           )
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(notoLine))
           .addSeparatorComponents(new SeparatorBuilder())
           .addActionRowComponents(row)
           .addTextDisplayComponents(
