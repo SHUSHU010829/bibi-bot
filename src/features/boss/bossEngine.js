@@ -158,6 +158,7 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs }) {
     started_at: now,
     ends_at: now + duration,
     killer_user_id: null,
+    first_striker: null,
     online_count: onlineCount ?? null,
     scaling,
     hits_taken: 0,
@@ -263,7 +264,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     if (comboCount >= (comboCfgVal.triggerCount ?? 5)) {
       comboTriggered = true;
       comboActiveUntil = now + (comboCfgVal.durationSec ?? 120) * 1000;
-      comboMvp = userId;
+      // 開團王＝「第一個把 Combo 帶滿的人」，之後再次觸發不覆蓋。
+      if (!comboMvp) comboMvp = userId;
       comboCount = 0;
     }
     // 同一人連砍不 refresh combo window，避免延長計時、卡住他人接力空間
@@ -331,6 +333,16 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   const afterDoc = afterRes?.value || afterRes;
   // 期間 boss 已被別人結束（擊殺 / 到期）→ 這刀不算數
   if (!afterDoc) return { ok: false, reason: "expired" };
+
+  // 首刀：第一個造成傷害（非被反擊）的人，原子搶下 first_striker（只有第一人成功）。
+  let firstStrike = false;
+  if (!isCounter && !afterDoc.first_striker) {
+    const res = await client.bossEventsCollection.updateOne(
+      { boss_id: bossDoc.boss_id, first_striker: null },
+      { $set: { first_striker: userId } },
+    );
+    firstStrike = res.modifiedCount === 1;
+  }
 
   const rawHp = afterDoc.current_hp ?? 0;
   const newHp = Math.max(0, rawHp);
@@ -403,6 +415,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     attackLimit,
     rageStacks: rageState({ hits_taken: afterDoc.hits_taken }).stacks,
     counterRate,
+    firstStrike,
   };
 }
 
@@ -490,6 +503,32 @@ async function settleBoss(client, bossDoc) {
     }
   }
 
+  // 首刀獎勵：頒給第一個對 boss 造成傷害的人。
+  let firstStrikeBonus = 0;
+  const firstStrikerUserId = bossDoc.first_striker || null;
+  if (firstStrikerUserId) {
+    firstStrikeBonus = rwd.firstStrikeBonus ?? 0;
+    if (firstStrikeBonus > 0) {
+      const row = payouts.find((p) => p.userId === firstStrikerUserId);
+      if (row) {
+        row.firstStrikeBonus = firstStrikeBonus;
+      } else {
+        payouts.push({
+          userId: firstStrikerUserId,
+          username: logs.find((l) => l.user_id === firstStrikerUserId)?.username || "",
+          damage: 0,
+          rank: payouts.length + 1,
+          share: 0,
+          rareReward: 0,
+          killBonus: 0,
+          firstStrikeBonus,
+          counters: 0,
+          attacks: attackByUser.get(firstStrikerUserId) || 0,
+        });
+      }
+    }
+  }
+
   // 被龍揍王：被反擊次數最多且 ≥3
   let punchingBag = null;
   const counterRanking = [...counterByUser.entries()]
@@ -523,6 +562,8 @@ async function settleBoss(client, bossDoc) {
     punchingBagUserId: punchingBag,
     killerBonus,
     killerRare,
+    firstStrikerUserId,
+    firstStrikeBonus,
   };
 }
 

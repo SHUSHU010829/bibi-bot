@@ -109,10 +109,11 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       : result.comboActive
         ? `\n⚡ Combo 進行中（×${(boss?.combo?.bonusMult ?? 1.3)}）`
         : "";
+    const firstStrikeLine = result.firstStrike ? `\n🥇 **首刀命中！結算時可獲得首刀獎勵**` : "";
     container
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ⚔️ 攻擊命中！\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 點傷害！${phaseChangeLine}${comboLine}`,
+          `# ⚔️ 攻擊命中！\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 點傷害！${firstStrikeLine}${phaseChangeLine}${comboLine}`,
         ),
       )
       .addSeparatorComponents(new SeparatorBuilder())
@@ -169,6 +170,11 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
       ? `# ⚠️ 體力低落\n**${displayName}** 連擊 ${hits.length} 刀，對 **${b.emoji} ${b.name}** 造成共 **${totalDamage.toLocaleString()}** 點傷害！`
       : `# ⚔️ 連擊 ${hits.length} 刀！\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成共 **${totalDamage.toLocaleString()}** 點傷害！`;
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headline));
+  if (hits.some((h) => h.firstStrike)) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`🥇 **首刀命中！結算時可獲得首刀獎勵**`),
+    );
+  }
 
   const hitLines = hits.map((h, i) => {
     if (h.isCounter) return `**第 ${i + 1} 刀** 被反擊（-2 體力）`;
@@ -293,7 +299,7 @@ function buildErrorContainer({ title, body, hint }) {
 }
 
 function buildSettlementContainer(settlement) {
-  const { bossDoc, killed, payouts, totalDamage, totalPool, killerUserId, killerBonus, killerRare, mvpUserId, comboMvpUserId, punchingBagUserId, guild } = settlement;
+  const { bossDoc, killed, payouts, totalDamage, totalPool, killerUserId, killerBonus, killerRare, mvpUserId, comboMvpUserId, punchingBagUserId, firstStrikerUserId, firstStrikeBonus, guild } = settlement;
   const color = killed ? COLOR_VICTORY : COLOR_EXPIRED;
   const container = new ContainerBuilder().setAccentColor(color);
   const headline = killed
@@ -320,6 +326,13 @@ function buildSettlementContainer(settlement) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `⚔️ **本場 MVP**：${nameOf(guild, mvpUserId)}　傷害 ${mvp?.damage.toLocaleString() || 0}（${mvp?.attacks || 0} 次出手）`,
+      ),
+    );
+  }
+  if (firstStrikerUserId && firstStrikeBonus > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🥇 **首刀**：${nameOf(guild, firstStrikerUserId)}　＋${firstStrikeBonus.toLocaleString()} ${COIN_EMOJI}`,
       ),
     );
   }

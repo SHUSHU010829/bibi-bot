@@ -81,6 +81,7 @@
     "rewards": {
       "poolRatio": 0.5,
       "killBonus": 150,
+      "firstStrikeBonus": 150,
       "killerBonusRatio": 0.05,
       "killerRareReward": 1,
       "topRareRewardTiers": [3, 2, 1, 1, 1],
