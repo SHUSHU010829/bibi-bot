@@ -86,6 +86,7 @@ async function distribute(client, guild, settlement) {
   for (const p of settlement.payouts) userIds.add(p.userId);
   if (settlement.killerUserId) userIds.add(settlement.killerUserId);
   if (settlement.mvpUserId) userIds.add(settlement.mvpUserId);
+  if (settlement.firstStrikerUserId) userIds.add(settlement.firstStrikerUserId);
   const membershipByUser = new Map();
   for (const uid of userIds) {
     const m = await lookupMembership(client, uid, guildId);
@@ -148,6 +149,16 @@ async function distribute(client, guild, settlement) {
         member,
         amount: p.killerBonus,
         source: "boss_killer",
+      }).catch(() => {});
+    }
+    if (p.firstStrikeBonus) {
+      await grantCoins(client, {
+        userId: p.userId,
+        guildId,
+        username,
+        member,
+        amount: p.firstStrikeBonus,
+        source: "boss_first_strike",
       }).catch(() => {});
     }
     const totalRare = (p.rareReward || 0) + (p.killerRare || 0);

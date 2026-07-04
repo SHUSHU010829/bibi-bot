@@ -7,6 +7,20 @@
     "minHp": 25000,
     "durationMinutes": 30,
     "attackLimitPerPlayer": 5,
+    "scaling": {
+      "enabled": true,
+      "activeWithinDays": 14,
+      "baseAtk": 20,
+      "atkPerGearStep": 60,
+      "hpBonusPerStep": 0.15,
+      "maxGearMultiplier": 2.5
+    },
+    "rage": {
+      "enabled": true,
+      "hitsPerStack": 15,
+      "counterRatePerStack": 0.03,
+      "maxCounterRate": 0.5
+    },
     "rareMaterial": "legendary_fragment",
     "saturdaySpawn": {
       "schedule": "0 21 * * 6",
@@ -67,6 +81,7 @@
     "rewards": {
       "poolRatio": 0.5,
       "killBonus": 150,
+      "firstStrikeBonus": 150,
       "killerBonusRatio": 0.05,
       "killerRareReward": 1,
       "topRareRewardTiers": [3, 2, 1, 1, 1],

@@ -9,6 +9,7 @@ const {
 const { boss } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
+const bossEngine = require("./bossEngine");
 
 function nameOf(guild, userId) {
   return plainifyUserMentions(guild, `<@${userId}>`);
@@ -25,6 +26,11 @@ function phaseColor(phase) {
   if (phase === "enraged") return COLOR_ENRAGED;
   if (phase === "broken") return COLOR_BROKEN;
   return COLOR_NORMAL;
+}
+
+function rageLine(stacks, counterRate) {
+  if (!stacks || stacks <= 0) return null;
+  return `-# 😡 魔王怒氣 Lv.${stacks} — 反擊率升至 ${Math.round((counterRate || 0) * 100)}%（越打越兇）`;
 }
 
 function phaseLabel(phase) {
@@ -79,6 +85,8 @@ function buildAttackResultContainer({ userId, displayName, result }) {
           `🔋 體力：${result.stamina}/${result.staminaMax}（被反擊額外 -1）\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}`,
         ),
       );
+    const rl = rageLine(result.rageStacks, result.counterRate);
+    if (rl) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(rl));
   } else if (result.killed) {
     container
       .addTextDisplayComponents(
@@ -101,10 +109,11 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       : result.comboActive
         ? `\n⚡ Combo 進行中（×${(boss?.combo?.bonusMult ?? 1.3)}）`
         : "";
+    const firstStrikeLine = result.firstStrike ? `\n🥇 **首刀命中！結算時可獲得首刀獎勵**` : "";
     container
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ⚔️ 攻擊命中！\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 點傷害！${phaseChangeLine}${comboLine}`,
+          `# ⚔️ 攻擊命中！\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 點傷害！${firstStrikeLine}${phaseChangeLine}${comboLine}`,
         ),
       )
       .addSeparatorComponents(new SeparatorBuilder())
@@ -125,6 +134,8 @@ function buildAttackResultContainer({ userId, displayName, result }) {
         ),
       );
     }
+    const rl = rageLine(result.rageStacks, result.counterRate);
+    if (rl) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(rl));
   }
 
   if (!result.killed && result.attackCount < result.attackLimit) {
@@ -159,6 +170,11 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
       ? `# ⚠️ 體力低落\n**${displayName}** 連擊 ${hits.length} 刀，對 **${b.emoji} ${b.name}** 造成共 **${totalDamage.toLocaleString()}** 點傷害！`
       : `# ⚔️ 連擊 ${hits.length} 刀！\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成共 **${totalDamage.toLocaleString()}** 點傷害！`;
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headline));
+  if (hits.some((h) => h.firstStrike)) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`🥇 **首刀命中！結算時可獲得首刀獎勵**`),
+    );
+  }
 
   const hitLines = hits.map((h, i) => {
     if (h.isCounter) return `**第 ${i + 1} 刀** 被反擊（-2 體力）`;
@@ -184,6 +200,8 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
           `🔋 體力：${last.stamina}/${last.staminaMax}${counters > 0 ? `（${counters} 次被反擊）` : ""}\n⚔️ 本場攻擊次數：${last.attackCount}/${last.attackLimit}`,
         ),
       );
+    const rl = rageLine(last.rageStacks, last.counterRate);
+    if (rl) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(rl));
   }
 
   const stopHint = {
@@ -237,6 +255,11 @@ function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive
       ),
     );
 
+  const infoRage = rageLine(bossEngine.rageState(b).stacks, bossEngine.effectiveCounterRate(b));
+  if (infoRage) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(infoRage));
+  }
+
   if (ranking?.length) {
     const top = ranking.slice(0, 5);
     const myIdx = ranking.findIndex((r) => r.userId === userId);
@@ -276,7 +299,7 @@ function buildErrorContainer({ title, body, hint }) {
 }
 
 function buildSettlementContainer(settlement) {
-  const { bossDoc, killed, payouts, totalDamage, totalPool, killerUserId, killerBonus, killerRare, mvpUserId, comboMvpUserId, punchingBagUserId, guild } = settlement;
+  const { bossDoc, killed, payouts, totalDamage, totalPool, killerUserId, killerBonus, killerRare, mvpUserId, comboMvpUserId, punchingBagUserId, firstStrikerUserId, firstStrikeBonus, guild } = settlement;
   const color = killed ? COLOR_VICTORY : COLOR_EXPIRED;
   const container = new ContainerBuilder().setAccentColor(color);
   const headline = killed
@@ -303,6 +326,13 @@ function buildSettlementContainer(settlement) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `⚔️ **本場 MVP**：${nameOf(guild, mvpUserId)}　傷害 ${mvp?.damage.toLocaleString() || 0}（${mvp?.attacks || 0} 次出手）`,
+      ),
+    );
+  }
+  if (firstStrikerUserId && firstStrikeBonus > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🥇 **首刀**：${nameOf(guild, firstStrikerUserId)}　＋${firstStrikeBonus.toLocaleString()} ${COIN_EMOJI}`,
       ),
     );
   }

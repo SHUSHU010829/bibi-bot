@@ -2,7 +2,7 @@ require("colors");
 const { boss, serverId } = require("../../config");
 const buffResolver = require("../buff/buffResolver");
 const { getOrCreate } = require("../mining/miningProfile");
-const { resolveStamina, staminaMax, getMemberClub } = require("../mining/dungeonService");
+const { resolveStamina, staminaMax, getMemberClub, playerAtk } = require("../mining/dungeonService");
 const bus = require("../eventBus");
 
 function cfg() {
@@ -49,6 +49,31 @@ function rewardsCfg() {
   return cfg().rewards || {};
 }
 
+function rageCfg() {
+  return cfg().rage || {};
+}
+
+// 魔王怒氣：被攻擊次數越多，反擊率越高（戰鬥中「越打越兇」）。
+// 存來源（hits_taken），反擊率在攻擊當下即時換算，不寫死。
+function rageState(bossDoc) {
+  const rc = rageCfg();
+  if (!rc.enabled) return { stacks: 0, counterBonus: 0 };
+  const per = rc.hitsPerStack ?? 15;
+  const stacks = Math.floor((bossDoc?.hits_taken || 0) / per);
+  const counterBonus = stacks * (rc.counterRatePerStack ?? 0.03);
+  return { stacks, counterBonus };
+}
+
+// 反擊率 = 階段基礎 + 怒氣加成（上限 maxCounterRate）。單一來源，engine 與 view 共用。
+function effectiveCounterRate(bossDoc) {
+  const phaseName = bossDoc.phase || phaseOf(bossDoc.current_hp, bossDoc.max_hp);
+  const phase = phaseDef(phaseName);
+  return Math.min(
+    rageCfg().maxCounterRate ?? 0.5,
+    (phase.counterRate ?? 0.1) + rageState(bossDoc).counterBonus,
+  );
+}
+
 async function countOnlineMembers(client) {
   const guild = client.guilds.cache.get(serverId);
   if (!guild) return 0;
@@ -59,6 +84,32 @@ async function countOnlineMembers(client) {
     if (status && status !== "offline") online++;
   }
   return online;
+}
+
+// 近期活躍玩家的裝備戰力（用來讓魔王隨玩家資源成長）。
+async function activePlayerStats(client, guildId) {
+  if (!client.miningProfilesCollection) return { activeCount: 0, totalAtk: 0, avgAtk: 0 };
+  const days = cfg().scaling?.activeWithinDays ?? 14;
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const profiles = await client.miningProfilesCollection
+    .find({ guildId, updatedAt: { $gte: cutoff } })
+    .toArray()
+    .catch(() => []);
+  let totalAtk = 0;
+  for (const p of profiles) totalAtk += playerAtk(p);
+  const activeCount = profiles.length;
+  return { activeCount, totalAtk, avgAtk: activeCount ? totalAtk / activeCount : 0 };
+}
+
+// 依「社群平均戰力」換算魔王強化倍率：裝備越好，魔王血量越高。
+function gearMultiplier(avgAtk) {
+  const s = cfg().scaling || {};
+  const baseAtk = s.baseAtk ?? 20;
+  const step = s.atkPerGearStep ?? 60;
+  const bonusPerStep = s.hpBonusPerStep ?? 0.15;
+  const maxMult = s.maxGearMultiplier ?? 2.5;
+  const steps = Math.max(0, (avgAtk - baseAtk) / step);
+  return Math.min(maxMult, 1 + steps * bonusPerStep);
 }
 
 async function getActiveBoss(client, guildId) {
@@ -72,9 +123,24 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs }) {
   if (existing) return { ok: false, reason: "already_active", boss: existing };
 
   const onlineCount = hp == null ? await countOnlineMembers(client) : null;
-  const finalHp = hp != null
-    ? hp
-    : Math.max(cfg().minHp ?? 3000, onlineCount * (cfg().hpPerPlayer ?? 500));
+  let scaling = null;
+  let finalHp;
+  if (hp != null) {
+    finalHp = hp;
+  } else {
+    const base = Math.max(cfg().minHp ?? 3000, onlineCount * (cfg().hpPerPlayer ?? 500));
+    let gearMult = 1;
+    if (cfg().scaling?.enabled) {
+      const stats = await activePlayerStats(client, guildId);
+      gearMult = gearMultiplier(stats.avgAtk);
+      scaling = {
+        active_count: stats.activeCount,
+        avg_atk: Math.round(stats.avgAtk),
+        gear_mult: Number(gearMult.toFixed(2)),
+      };
+    }
+    finalHp = Math.round(base * gearMult);
+  }
   const duration = durationMs ?? (cfg().durationMinutes ?? 30) * 60 * 1000;
   const bossId = `boss_${guildId}_${now}`;
 
@@ -92,7 +158,10 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs }) {
     started_at: now,
     ends_at: now + duration,
     killer_user_id: null,
+    first_striker: null,
     online_count: onlineCount ?? null,
+    scaling,
+    hits_taken: 0,
     combo: {
       count: 0,
       last_user: null,
@@ -169,7 +238,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   const comboCfgVal = comboCfg();
   const phaseName = bossDoc.phase || phaseOf(bossDoc.current_hp, bossDoc.max_hp);
   const phase = phaseDef(phaseName);
-  const counterRate = phase.counterRate ?? 0.1;
+  const counterRate = effectiveCounterRate(bossDoc);
   const isCounter = Math.random() < counterRate;
 
   let sameUserStreak = 1;
@@ -195,7 +264,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     if (comboCount >= (comboCfgVal.triggerCount ?? 5)) {
       comboTriggered = true;
       comboActiveUntil = now + (comboCfgVal.durationSec ?? 120) * 1000;
-      comboMvp = userId;
+      // 開團王＝「第一個把 Combo 帶滿的人」，之後再次觸發不覆蓋。
+      if (!comboMvp) comboMvp = userId;
       comboCount = 0;
     }
     // 同一人連砍不 refresh combo window，避免延長計時、卡住他人接力空間
@@ -242,31 +312,58 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   ).catch(() => {});
 
   // BOSS 血量扣除 + 階段更新
-  let newHp = Math.max(0, (bossDoc.current_hp ?? bossDoc.max_hp) - damage);
-  const killed = newHp <= 0;
+  // 原子扣血：只在 boss 仍存活時生效，避免兩人同時讀到舊血量、各自算出「最後一擊」。
+  const afterRes = await client.bossEventsCollection.findOneAndUpdate(
+    { boss_id: bossDoc.boss_id, status: "active" },
+    {
+      $inc: { current_hp: -damage, hits_taken: 1 },
+      $set: {
+        "combo.count": comboCount,
+        "combo.last_user": comboLastUser,
+        "combo.last_ts": comboLastTs,
+        "combo.same_user_streak": sameUserStreak,
+        "combo.active_until": comboActiveUntil,
+        "combo.combo_mvp": comboMvp,
+        [`attack_counts.${userId}`]: used + 1,
+        updatedAt: new Date(),
+      },
+    },
+    { returnDocument: "after" },
+  );
+  const afterDoc = afterRes?.value || afterRes;
+  // 期間 boss 已被別人結束（擊殺 / 到期）→ 這刀不算數
+  if (!afterDoc) return { ok: false, reason: "expired" };
+
+  // 首刀：第一個造成傷害（非被反擊）的人，原子搶下 first_striker（只有第一人成功）。
+  let firstStrike = false;
+  if (!isCounter && !afterDoc.first_striker) {
+    const res = await client.bossEventsCollection.updateOne(
+      { boss_id: bossDoc.boss_id, first_striker: null },
+      { $set: { first_striker: userId } },
+    );
+    firstStrike = res.modifiedCount === 1;
+  }
+
+  const rawHp = afterDoc.current_hp ?? 0;
+  const newHp = Math.max(0, rawHp);
   const newPhase = phaseOf(newHp, bossDoc.max_hp);
   const phaseChanged = newPhase !== bossDoc.phase;
 
-  const bossUpdate = {
-    $set: {
-      current_hp: newHp,
-      phase: newPhase,
-      "combo.count": comboCount,
-      "combo.last_user": comboLastUser,
-      "combo.last_ts": comboLastTs,
-      "combo.same_user_streak": sameUserStreak,
-      "combo.active_until": comboActiveUntil,
-      "combo.combo_mvp": comboMvp,
-      [`attack_counts.${userId}`]: used + 1,
-      updatedAt: new Date(),
-    },
-  };
-  if (killed) {
-    bossUpdate.$set.status = "defeated";
-    bossUpdate.$set.killer_user_id = userId;
-    bossUpdate.$set.killed_at = now;
+  // 只有第一個把血量打到 0 的人能搶下擊殺（原子 status 轉移），其餘人只算普通命中。
+  let killed = false;
+  if (rawHp <= 0) {
+    const claimRes = await client.bossEventsCollection.findOneAndUpdate(
+      { boss_id: bossDoc.boss_id, status: "active" },
+      { $set: { status: "defeated", killer_user_id: userId, killed_at: now, current_hp: 0, phase: newPhase } },
+      { returnDocument: "after" },
+    );
+    killed = !!(claimRes?.value || claimRes);
+  } else if (phaseChanged) {
+    await client.bossEventsCollection.updateOne(
+      { boss_id: bossDoc.boss_id, status: "active" },
+      { $set: { phase: newPhase } },
+    );
   }
-  await client.bossEventsCollection.updateOne({ boss_id: bossDoc.boss_id }, bossUpdate);
 
   // 傷害紀錄
   await client.bossDamageLogsCollection.insertOne({
@@ -311,17 +408,28 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     sameUserStreak,
     killed,
     killerUserId: killed ? userId : null,
-    boss: { ...bossDoc, current_hp: newHp, phase: newPhase },
+    boss: { ...bossDoc, current_hp: newHp, phase: newPhase, hits_taken: afterDoc.hits_taken },
     stamina: newStamina,
     staminaMax: max,
     attackCount: used + 1,
     attackLimit,
+    rageStacks: rageState({ hits_taken: afterDoc.hits_taken }).stacks,
+    counterRate,
+    firstStrike,
   };
 }
 
 async function settleBoss(client, bossDoc) {
   if (!bossDoc) return null;
   if (bossDoc.status !== "active" && bossDoc.status !== "defeated") return null;
+
+  // 原子搶結算權：擊殺當下的結算與每分鐘掃描可能同時觸發，只讓第一個跑，避免重複發獎。
+  const claimRes = await client.bossEventsCollection.findOneAndUpdate(
+    { boss_id: bossDoc.boss_id, settled_at: { $exists: false } },
+    { $set: { settled_at: Date.now() } },
+    { returnDocument: "after" },
+  );
+  if (!(claimRes?.value || claimRes)) return null;
 
   const logs = await client.bossDamageLogsCollection.find({ boss_id: bossDoc.boss_id }).toArray();
   const dmgByUser = new Map();
@@ -395,6 +503,32 @@ async function settleBoss(client, bossDoc) {
     }
   }
 
+  // 首刀獎勵：頒給第一個對 boss 造成傷害的人。
+  let firstStrikeBonus = 0;
+  const firstStrikerUserId = bossDoc.first_striker || null;
+  if (firstStrikerUserId) {
+    firstStrikeBonus = rwd.firstStrikeBonus ?? 0;
+    if (firstStrikeBonus > 0) {
+      const row = payouts.find((p) => p.userId === firstStrikerUserId);
+      if (row) {
+        row.firstStrikeBonus = firstStrikeBonus;
+      } else {
+        payouts.push({
+          userId: firstStrikerUserId,
+          username: logs.find((l) => l.user_id === firstStrikerUserId)?.username || "",
+          damage: 0,
+          rank: payouts.length + 1,
+          share: 0,
+          rareReward: 0,
+          killBonus: 0,
+          firstStrikeBonus,
+          counters: 0,
+          attacks: attackByUser.get(firstStrikerUserId) || 0,
+        });
+      }
+    }
+  }
+
   // 被龍揍王：被反擊次數最多且 ≥3
   let punchingBag = null;
   const counterRanking = [...counterByUser.entries()]
@@ -428,6 +562,8 @@ async function settleBoss(client, bossDoc) {
     punchingBagUserId: punchingBag,
     killerBonus,
     killerRare,
+    firstStrikerUserId,
+    firstStrikeBonus,
   };
 }
 
@@ -513,4 +649,6 @@ module.exports = {
   countOnlineMembers,
   phaseOf,
   phaseDef,
+  rageState,
+  effectiveCounterRate,
 };
