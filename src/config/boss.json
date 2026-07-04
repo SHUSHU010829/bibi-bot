@@ -7,6 +7,14 @@
     "minHp": 25000,
     "durationMinutes": 30,
     "attackLimitPerPlayer": 5,
+    "scaling": {
+      "enabled": true,
+      "activeWithinDays": 14,
+      "baseAtk": 20,
+      "atkPerGearStep": 60,
+      "hpBonusPerStep": 0.15,
+      "maxGearMultiplier": 2.5
+    },
     "rareMaterial": "legendary_fragment",
     "saturdaySpawn": {
       "schedule": "0 21 * * 6",

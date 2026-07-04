@@ -2,7 +2,7 @@ require("colors");
 const { boss, serverId } = require("../../config");
 const buffResolver = require("../buff/buffResolver");
 const { getOrCreate } = require("../mining/miningProfile");
-const { resolveStamina, staminaMax, getMemberClub } = require("../mining/dungeonService");
+const { resolveStamina, staminaMax, getMemberClub, playerAtk } = require("../mining/dungeonService");
 const bus = require("../eventBus");
 
 function cfg() {
@@ -61,6 +61,32 @@ async function countOnlineMembers(client) {
   return online;
 }
 
+// 近期活躍玩家的裝備戰力（用來讓魔王隨玩家資源成長）。
+async function activePlayerStats(client, guildId) {
+  if (!client.miningProfilesCollection) return { activeCount: 0, totalAtk: 0, avgAtk: 0 };
+  const days = cfg().scaling?.activeWithinDays ?? 14;
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const profiles = await client.miningProfilesCollection
+    .find({ guildId, updatedAt: { $gte: cutoff } })
+    .toArray()
+    .catch(() => []);
+  let totalAtk = 0;
+  for (const p of profiles) totalAtk += playerAtk(p);
+  const activeCount = profiles.length;
+  return { activeCount, totalAtk, avgAtk: activeCount ? totalAtk / activeCount : 0 };
+}
+
+// 依「社群平均戰力」換算魔王強化倍率：裝備越好，魔王血量越高。
+function gearMultiplier(avgAtk) {
+  const s = cfg().scaling || {};
+  const baseAtk = s.baseAtk ?? 20;
+  const step = s.atkPerGearStep ?? 60;
+  const bonusPerStep = s.hpBonusPerStep ?? 0.15;
+  const maxMult = s.maxGearMultiplier ?? 2.5;
+  const steps = Math.max(0, (avgAtk - baseAtk) / step);
+  return Math.min(maxMult, 1 + steps * bonusPerStep);
+}
+
 async function getActiveBoss(client, guildId) {
   if (!client.bossEventsCollection) return null;
   return client.bossEventsCollection.findOne({ guild_id: guildId, status: "active" });
@@ -72,9 +98,24 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs }) {
   if (existing) return { ok: false, reason: "already_active", boss: existing };
 
   const onlineCount = hp == null ? await countOnlineMembers(client) : null;
-  const finalHp = hp != null
-    ? hp
-    : Math.max(cfg().minHp ?? 3000, onlineCount * (cfg().hpPerPlayer ?? 500));
+  let scaling = null;
+  let finalHp;
+  if (hp != null) {
+    finalHp = hp;
+  } else {
+    const base = Math.max(cfg().minHp ?? 3000, onlineCount * (cfg().hpPerPlayer ?? 500));
+    let gearMult = 1;
+    if (cfg().scaling?.enabled) {
+      const stats = await activePlayerStats(client, guildId);
+      gearMult = gearMultiplier(stats.avgAtk);
+      scaling = {
+        active_count: stats.activeCount,
+        avg_atk: Math.round(stats.avgAtk),
+        gear_mult: Number(gearMult.toFixed(2)),
+      };
+    }
+    finalHp = Math.round(base * gearMult);
+  }
   const duration = durationMs ?? (cfg().durationMinutes ?? 30) * 60 * 1000;
   const bossId = `boss_${guildId}_${now}`;
 
@@ -93,6 +134,7 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs }) {
     ends_at: now + duration,
     killer_user_id: null,
     online_count: onlineCount ?? null,
+    scaling,
     combo: {
       count: 0,
       last_user: null,
@@ -242,31 +284,48 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   ).catch(() => {});
 
   // BOSS 血量扣除 + 階段更新
-  let newHp = Math.max(0, (bossDoc.current_hp ?? bossDoc.max_hp) - damage);
-  const killed = newHp <= 0;
+  // 原子扣血：只在 boss 仍存活時生效，避免兩人同時讀到舊血量、各自算出「最後一擊」。
+  const afterRes = await client.bossEventsCollection.findOneAndUpdate(
+    { boss_id: bossDoc.boss_id, status: "active" },
+    {
+      $inc: { current_hp: -damage },
+      $set: {
+        "combo.count": comboCount,
+        "combo.last_user": comboLastUser,
+        "combo.last_ts": comboLastTs,
+        "combo.same_user_streak": sameUserStreak,
+        "combo.active_until": comboActiveUntil,
+        "combo.combo_mvp": comboMvp,
+        [`attack_counts.${userId}`]: used + 1,
+        updatedAt: new Date(),
+      },
+    },
+    { returnDocument: "after" },
+  );
+  const afterDoc = afterRes?.value || afterRes;
+  // 期間 boss 已被別人結束（擊殺 / 到期）→ 這刀不算數
+  if (!afterDoc) return { ok: false, reason: "expired" };
+
+  const rawHp = afterDoc.current_hp ?? 0;
+  const newHp = Math.max(0, rawHp);
   const newPhase = phaseOf(newHp, bossDoc.max_hp);
   const phaseChanged = newPhase !== bossDoc.phase;
 
-  const bossUpdate = {
-    $set: {
-      current_hp: newHp,
-      phase: newPhase,
-      "combo.count": comboCount,
-      "combo.last_user": comboLastUser,
-      "combo.last_ts": comboLastTs,
-      "combo.same_user_streak": sameUserStreak,
-      "combo.active_until": comboActiveUntil,
-      "combo.combo_mvp": comboMvp,
-      [`attack_counts.${userId}`]: used + 1,
-      updatedAt: new Date(),
-    },
-  };
-  if (killed) {
-    bossUpdate.$set.status = "defeated";
-    bossUpdate.$set.killer_user_id = userId;
-    bossUpdate.$set.killed_at = now;
+  // 只有第一個把血量打到 0 的人能搶下擊殺（原子 status 轉移），其餘人只算普通命中。
+  let killed = false;
+  if (rawHp <= 0) {
+    const claimRes = await client.bossEventsCollection.findOneAndUpdate(
+      { boss_id: bossDoc.boss_id, status: "active" },
+      { $set: { status: "defeated", killer_user_id: userId, killed_at: now, current_hp: 0, phase: newPhase } },
+      { returnDocument: "after" },
+    );
+    killed = !!(claimRes?.value || claimRes);
+  } else if (phaseChanged) {
+    await client.bossEventsCollection.updateOne(
+      { boss_id: bossDoc.boss_id, status: "active" },
+      { $set: { phase: newPhase } },
+    );
   }
-  await client.bossEventsCollection.updateOne({ boss_id: bossDoc.boss_id }, bossUpdate);
 
   // 傷害紀錄
   await client.bossDamageLogsCollection.insertOne({
@@ -322,6 +381,14 @@ async function applyAttack(client, { userId, guildId, username, member }) {
 async function settleBoss(client, bossDoc) {
   if (!bossDoc) return null;
   if (bossDoc.status !== "active" && bossDoc.status !== "defeated") return null;
+
+  // 原子搶結算權：擊殺當下的結算與每分鐘掃描可能同時觸發，只讓第一個跑，避免重複發獎。
+  const claimRes = await client.bossEventsCollection.findOneAndUpdate(
+    { boss_id: bossDoc.boss_id, settled_at: { $exists: false } },
+    { $set: { settled_at: Date.now() } },
+    { returnDocument: "after" },
+  );
+  if (!(claimRes?.value || claimRes)) return null;
 
   const logs = await client.bossDamageLogsCollection.find({ boss_id: bossDoc.boss_id }).toArray();
   const dmgByUser = new Map();
