@@ -50,6 +50,15 @@
       "reversion": { "enabled": true, "kappa": 0.02 },
       "fairValueDailyDrift": 0.002
     },
+    "insider": {
+      "enabled": true,
+      "grades": {
+        "normal": { "cost": 500, "fakeChance": 0.4 },
+        "premium": { "cost": 3000, "fakeChance": 0.15 }
+      },
+      "dailyLimit": 5,
+      "tipTtlMinutes": 120
+    },
     "priceImpact": {
       "enabled": true,
       "perShareFrac": 0.0004,

@@ -35,6 +35,7 @@ const {
   isMarketOpen,
 } = require("../../features/stock/tradeService");
 const triggerService = require("../../features/stock/triggerService");
+const insiderService = require("../../features/stock/insiderService");
 const portfolioService = require("../../features/stock/portfolioService");
 const shortService = require("../../features/stock/shortService");
 const leaderboardService = require("../../features/stock/leaderboardService");
@@ -266,6 +267,28 @@ module.exports = {
             .setMinValue(0)
         )
     )
+    .addSubcommand((s) =>
+      s
+        .setName("內線")
+        .setDescription("花錢買一則私密內線快訊（有機率是假消息）🕵️")
+        .addStringOption((o) =>
+          o
+            .setName("等級")
+            .setDescription("情報等級：越貴越可靠")
+            .setRequired(true)
+            .addChoices(
+              { name: "一般線報（便宜・假消息率高）", value: "normal" },
+              { name: "高級內線（貴・假消息率低）", value: "premium" }
+            )
+        )
+        .addStringOption((o) =>
+          o
+            .setName("股票代號")
+            .setDescription("指定探聽的股票（預設隨機）")
+            .setRequired(false)
+            .addChoices(...getStaticSymbolChoices())
+        )
+    )
     .toJSON(),
 
   run: async (client, interaction) => {
@@ -281,6 +304,7 @@ module.exports = {
     if (sub === "融券") return runOpenShort(client, interaction);
     if (sub === "回補") return runCoverShort(client, interaction);
     if (sub === "排行") return runLeaderboard(client, interaction);
+    if (sub === "內線") return runInsider(client, interaction);
   },
 };
 
@@ -354,6 +378,64 @@ async function runLeaderboard(client, interaction) {
   } catch (err) {
     console.log(`[STOCK] /股市 排行 失敗:${err?.stack || err}`.red);
     await interaction.editReply("❌ 查詢失敗,請稍後再試。").catch(() => {});
+  }
+}
+
+// ──────────────────────────── /股市 內線 ────────────────────────────
+async function runInsider(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    if (!stockSystem?.enabled) return interaction.editReply("🔧 股市系統未啟用。");
+    if (!stockSystem?.insider?.enabled) {
+      return interaction.editReply("🔒 內線情報暫未開放。");
+    }
+    const tenure = checkServerTenure(interaction.member);
+    if (!tenure.ok) return interaction.editReply(tenure.message);
+
+    const grade = interaction.options.getString("等級");
+    const symbolOpt = interaction.options.getString("股票代號");
+    const symbol = symbolOpt ? symbolOpt.toUpperCase().trim() : null;
+
+    const result = await insiderService.buyTip(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      username: interaction.member?.displayName || interaction.user.username,
+      member: interaction.member,
+      symbol,
+      grade,
+    });
+    if (!result.ok) return interaction.editReply(result.message);
+
+    const dirLabel = result.up ? "看漲 📈" : "看跌 📉";
+    const container = new ContainerBuilder()
+      .setAccentColor(result.up ? 0x2ecc71 : 0xe74c3c)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`# 🕵️ 內線快訊｜${result.gradeLabel}`)
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**\`${result.symbol}\` ${result.name}**（現價 ${result.price.toFixed(1)}）\n消息面研判：短線 **${dirLabel}**`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# ${result.flavor}・情報費 ${result.cost.toLocaleString()}・今日剩 ${result.remaining} 則`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# ⚠️ 內線有風險，快訊有機率為假消息，請自行判斷"
+        )
+      );
+
+    await interaction.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (err) {
+    console.log(`[STOCK] /股市 內線 失敗:${err?.stack || err}`.red);
+    await interaction.editReply("❌ 探聽失敗,請稍後再試。").catch(() => {});
   }
 }
 

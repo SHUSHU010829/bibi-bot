@@ -41,7 +41,7 @@ const PURE_MINT_SOURCES = new Set([
   "daily", "item_sell",
 ]);
 const PURE_SINK_SOURCES = new Set([
-  "shop_buy", "wealth_tax", "stock_fee", "stock_tax", "stock_daytrade_tax", "stock_div_tax", "stone_appraisal",
+  "shop_buy", "wealth_tax", "stock_fee", "stock_tax", "stock_daytrade_tax", "stock_div_tax", "stock_insider_fee", "stone_appraisal",
   "farm_plant", "farm_expand", "barter_fee",
   "guild_create", "guild_donate",
   "guild_warehouse_fee", "guild_consign_buy",
@@ -840,7 +840,7 @@ async function aggregateStockMarket(client, guildId, fromIso, toIso) {
 const MARKET_GROUPS = {
   shop: ["shop_buy"],
   itemSell: ["item_sell"],
-  stock: ["stock_buy", "stock_sell", "stock_fee", "stock_dividend"],
+  stock: ["stock_buy", "stock_sell", "stock_fee", "stock_tax", "stock_daytrade_tax", "stock_div_tax", "stock_insider_fee", "stock_dividend", "stock_raffle_prize", "stock_rebate"],
   stockShort: ["stock_short_margin", "stock_short_settle"],
   auction: ["auction_bid", "auction_payout", "auction_refund"],
   market: ["market_buy", "market_escrow", "market_bid", "market_payout", "market_refund"],
