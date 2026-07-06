@@ -3,7 +3,7 @@
     "pageSize": 10,
     "maxPage": 20,
     "categories": {
-      "earn": { "label": "📥 一般收入", "sources": ["message", "voice", "reaction", "levelup", "milestone", "survey", "daily", "item_sell"] },
+      "earn": { "label": "📥 一般收入", "sources": ["message", "voice", "reaction", "twitch_chat", "levelup", "milestone", "survey", "daily", "item_sell"] },
       "casino": { "label": "🎰 賭場", "sources": ["bet", "payout"] },
       "shop": { "label": "🛒 商店", "sources": ["shop_buy"] },
       "market": { "label": "🏪 市集", "sources": ["market_buy", "market_escrow", "market_bid", "market_payout", "market_refund", "auction_bid", "auction_payout", "auction_refund"] },
@@ -14,7 +14,7 @@
       "fishing": { "label": "🎣 漁獲", "sources": ["fish_sell", "fish_loot"] },
       "farming": { "label": "🌾 農場", "sources": ["farm_harvest", "farm_raid", "farm_sell", "farm_plant", "farm_expand", "farm_raid_trap"] },
       "guild": { "label": "🏰 公會", "sources": ["guild_create", "guild_donate", "guild_create_refund", "guild_donate_refund", "guild_disband_payout", "guild_warehouse_fee", "guild_consign_buy"] },
-      "adventure": { "label": "🗡️ 冒險", "sources": ["dungeon", "boss_loot", "boss_killer", "boss_kill_bonus"] },
+      "adventure": { "label": "🗡️ 冒險", "sources": ["dungeon", "boss_loot", "boss_killer", "boss_kill_bonus", "boss_first_strike"] },
       "duel": { "label": "⚔️ 對決", "sources": ["duel_stake", "duel_payout", "duel_refund"] },
       "invite": { "label": "🎟️ 邀請", "sources": ["invite_reward", "invite_welcome", "invite_clawback"] },
       "system": { "label": "🏛️ 系統", "sources": ["welfare", "wealth_tax", "donation", "admin"] }
@@ -78,6 +78,8 @@
       "boss_loot": "🐲 BOSS 掉落",
       "boss_killer": "🐲 BOSS 尾刀",
       "boss_kill_bonus": "🐲 BOSS 擊殺獎",
+      "boss_first_strike": "🐲 BOSS 首刀獎",
+      "twitch_chat": "💜 Twitch 聊天獎勵",
       "guild_create": "🏰 公會建立",
       "guild_donate": "🏰 公會捐款",
       "guild_create_refund": "🏰 公會建立返還",
