@@ -92,7 +92,7 @@
 
       { "id": "boost_xp_double_1d", "category": "加成藥水", "type": "xp_boost", "name": "XP 雙倍藥水（1 日）", "description": "24 小時內主動互動獲得的 XP ×2（高額消耗）（發言／語音／表情／簽到／Twitch 聊天）；伺服器加成一次性獎勵與管理員發放不適用", "price": 12000, "payload": { "multiplier": 2.0, "durationMinutes": 1440 } },
       { "id": "boost_coin_double_1h", "category": "加成藥水", "type": "coin_boost", "name": "金幣雙倍藥水（1 小時）", "description": "1 小時內主動互動獲得的金幣 ×2（發言／語音／表情／簽到／升等／里程碑／訂閱／加成／Twitch 聊天／轉盤）；賭場、商店、轉帳與固定任務福利不適用", "price": 2500, "payload": { "multiplier": 2.0, "durationMinutes": 60 } },
-      { "id": "theft_watchdog", "category": "防身道具", "type": "theft_watchdog", "name": "🐕 看門狗", "description": "養一隻看門狗守錢包：下一次被 /偷竊 時完全免疫（擋一次即消耗）。最多持有 5 隻，每日最多購買 5 隻", "price": 800, "payload": { "qty": 1, "maxStack": 5, "dailyLimit": 5 } },
+      { "id": "theft_watchdog", "category": "防身道具", "type": "theft_watchdog", "name": "🐕 看門狗", "description": "養一隻看門狗守錢包：下一次被 /偷竊 時完全免疫（擋一次即消耗）。最多持有 3 隻，每日最多購買 3 隻", "price": 800, "payload": { "qty": 1, "maxStack": 3, "dailyLimit": 3 } },
       { "id": "theft_safebox", "category": "防身道具", "type": "theft_safebox", "name": "🔒 保險箱", "description": "被 /偷竊 的成功率 −20%，每個持續 1 天；可一次買多個累積天數（時效內重買也會延長）。單次最多買 30 天", "price": 1200, "payload": { "durationMinutes": 1440, "maxStack": 30 } },
       { "id": "theft_cloak", "category": "防身道具", "type": "theft_cloak", "name": "🕶️ 夜行衣", "description": "潛行進攻裝：下一次 /偷竊 成功率 +15%（用一次即消耗）。最多持有 5 件，每日最多購買 5 件", "price": 500, "payload": { "qty": 1, "maxStack": 5, "dailyLimit": 5 } }
     ]
