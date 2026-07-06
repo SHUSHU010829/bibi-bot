@@ -61,6 +61,58 @@ async function activeWanted(client, userId, guildId) {
     .catch(() => null);
 }
 
+// ── 治安基金：犯罪者繳的錢（贖罪金燒掉那半 + 自首保釋）累積，週結算發給榜首獵人 ──
+function fundKey(guildId) {
+  return `theft_fund:${guildId}`;
+}
+async function addToFund(client, guildId, amount) {
+  if (!client.countersCollection || !(amount > 0)) return;
+  await client.countersCollection
+    .updateOne(
+      { _id: fundKey(guildId) },
+      { $inc: { pool: amount }, $set: { updatedAt: new Date() } },
+      { upsert: true }
+    )
+    .catch(() => {});
+}
+async function getFund(client, guildId) {
+  if (!client.countersCollection) return 0;
+  const doc = await client.countersCollection.findOne({ _id: fundKey(guildId) }).catch(() => null);
+  return doc?.pool || 0;
+}
+// 週結算：本週賞金收入最高的獵人領走整池，池歸零。無人可領則累積到下週。
+async function payoutWeeklyFund(client, guildId) {
+  const f = cfg().fund || {};
+  if (!client.countersCollection || !client.theftLogsCollection) return null;
+  const pool = await getFund(client, guildId);
+  if (pool < (f.minPool ?? 1)) return { paid: false, pool, reason: "empty" };
+
+  const since = new Date(Date.now() - (f.weekWindowMs ?? 604800000));
+  const agg = await client.theftLogsCollection
+    .aggregate([
+      { $match: { guildId, type: "hunt", success: true, ts: { $gte: since } } },
+      { $group: { _id: "$actor_id", earned: { $sum: "$amount" }, hunts: { $sum: 1 } } },
+      { $sort: { earned: -1, hunts: -1 } },
+      { $limit: 1 },
+    ])
+    .toArray()
+    .catch(() => []);
+  const top = agg[0];
+  if (!top) return { paid: false, pool, reason: "no_hunter" };
+
+  await grantCoins(client, {
+    userId: top._id,
+    guildId,
+    amount: pool,
+    source: "fund_payout",
+    meta: { reason: "weekly_bounty_hunter", hunts: top.hunts },
+  }).catch(() => {});
+  await client.countersCollection
+    .updateOne({ _id: fundKey(guildId) }, { $set: { pool: 0, updatedAt: new Date() } })
+    .catch(() => {});
+  return { paid: true, winnerId: top._id, amount: pool, earned: top.earned, hunts: top.hunts };
+}
+
 async function logEvent(client, doc) {
   return client.theftLogsCollection
     .insertOne({ ...doc, day: dayKey(), ts: new Date() })
@@ -127,15 +179,8 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
   }
 
   const targetProfile = await theftProfile.getOrCreate(client, targetId, guildId);
-  // 看門狗：完全免疫下一次偷竊，擋一次即消耗
-  if ((targetProfile.watchdog_count || 0) > 0) {
-    await client.theftProfilesCollection.updateOne(
-      { userId: targetId, guildId },
-      { $inc: { watchdog_count: -1 }, $set: { updatedAt: new Date() } }
-    );
-    return { ok: false, reason: "target_watchdog" };
-  }
-  // 當日被偷上限
+
+  // 當日被偷上限（免費保護，先擋）——已被偷滿就不該再白白消耗看門狗
   const maxStolen = c.maxStolenPerDayPerTarget ?? 3;
   const targetStolenToday = await client.theftLogsCollection
     .countDocuments({
@@ -148,6 +193,15 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
     .catch(() => 0);
   if (targetStolenToday >= maxStolen) {
     return { ok: false, reason: "target_maxed" };
+  }
+
+  // 看門狗：最後一道防線，只有在目標仍可被偷時才消耗（擋一次即用掉）
+  if ((targetProfile.watchdog_count || 0) > 0) {
+    await client.theftProfilesCollection.updateOne(
+      { userId: targetId, guildId },
+      { $inc: { watchdog_count: -1 }, $set: { updatedAt: new Date() } }
+    );
+    return { ok: false, reason: "target_watchdog" };
   }
 
   // 成功率
@@ -293,6 +347,8 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
         created_at: new Date(),
         expires_at: new Date(expiresAt),
         hunt_cooldown_until: 0,
+        escaped_hunters: [],
+        escape_count: 0,
         updated_at: new Date(),
       },
     },
@@ -326,6 +382,11 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
     return { ok: false, reason: "hunt_cooldown", readyAt: wanted.hunt_cooldown_until };
   }
 
+  // 每人只有一次機會：追捕失敗過的獵人，這次通緝期間不能再追同一人
+  if ((wanted.escaped_hunters || []).includes(hunterId)) {
+    return { ok: false, reason: "already_failed" };
+  }
+
   const huntLimit = h.dailyLimit ?? 3;
   const todayHunts = await client.theftLogsCollection
     .countDocuments({ guildId, type: "hunt", actor_id: hunterId, ts: { $gte: dayStart() } })
@@ -354,8 +415,39 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
   const success = Math.random() < rate;
 
   if (!success) {
-    // 逃脫：復原通緝狀態，並讓通緝犯躲起來一段冷卻，期間不可再被追捕
-    // 冷卻隨通緝犯惡名遞增——越大尾的逃犯躲越久
+    await logEvent(client, {
+      guildId,
+      type: "hunt",
+      actor_id: hunterId,
+      target_id: wantedUserId,
+      success: false,
+      amount: 0,
+    });
+
+    const escapeCount = (wanted.escape_count || 0) + 1;
+    const clearAt = h.escapeClearCount ?? 5;
+
+    // 逃脫達上限 → 成功脫罪：退回託管賞金、惡名 −1、通緝解除
+    if (escapeCount >= clearAt) {
+      await grantCoins(client, {
+        userId: wantedUserId,
+        guildId,
+        username: wanted.username,
+        amount: wanted.bounty,
+        source: "bounty_refund",
+        meta: { reason: "escaped_free", wantedId: wanted.wanted_id },
+      }).catch(() => {});
+      await client.wantedListCollection.updateOne(
+        { userId: wantedUserId, guildId },
+        { $set: { status: "escaped", escape_count: escapeCount, updated_at: new Date() } }
+      );
+      await theftProfile
+        .adjustNotoriety(client, wantedUserId, guildId, -(c.notoriety?.expireLoss ?? 1))
+        .catch(() => {});
+      return { ok: true, success: false, escaped: true, escapeCount, clearAt, hunterAtk, wantedAtk, bounty: wanted.bounty };
+    }
+
+    // 尚未脫罪：復原通緝、記下這名獵人（不能再追）、進入躲藏冷卻（隨惡名遞增，越大尾躲越久）
     const wantedNotoriety = wanted.notoriety_at || 0;
     const cooldownMs = Math.min(
       (h.escapeCooldownBaseMs ?? 1800000) +
@@ -365,17 +457,13 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
     const cooldownUntil = Date.now() + cooldownMs;
     await client.wantedListCollection.updateOne(
       { userId: wantedUserId, guildId },
-      { $set: { status: "wanted", hunt_cooldown_until: cooldownUntil, updated_at: new Date() } }
+      {
+        $set: { status: "wanted", hunt_cooldown_until: cooldownUntil, updated_at: new Date() },
+        $addToSet: { escaped_hunters: hunterId },
+        $inc: { escape_count: 1 },
+      }
     );
-    await logEvent(client, {
-      guildId,
-      type: "hunt",
-      actor_id: hunterId,
-      target_id: wantedUserId,
-      success: false,
-      amount: 0,
-    });
-    return { ok: true, success: false, hunterAtk, wantedAtk, bounty: wanted.bounty, cooldownUntil };
+    return { ok: true, success: false, hunterAtk, wantedAtk, bounty: wanted.bounty, cooldownUntil, escapeCount, clearAt };
   }
 
   // 抓到：託管賞金給獵人
@@ -415,6 +503,8 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
           meta: { wantedUserId },
         });
       }
+      // 沒發給獵人的那半 → 進治安基金（週結算給榜首獵人）
+      await addToFund(client, guildId, fine - hunterFineShare);
     }
   }
 
@@ -483,6 +573,8 @@ async function surrender(client, { guildId, userId, username, member }) {
       source: "bail",
       meta: { wantedId: wanted.wanted_id },
     });
+    // 保釋金 → 進治安基金
+    await addToFund(client, guildId, bail);
   }
 
   await client.wantedListCollection.updateOne(
@@ -526,6 +618,11 @@ async function report(client, { guildId, userId, username }) {
     meta: {},
   });
 
+  // 極小機率：偵探捲款跑路，付了錢卻什麼都查不到
+  if (Math.random() < (r.abscondChance ?? 0.02)) {
+    return { ok: true, charged: true, absconded: true, fee };
+  }
+
   const investigateRate = r.investigateRate ?? 0.7;
   const byActor = new Map();
   for (const ev of events) {
@@ -559,6 +656,72 @@ async function report(client, { guildId, userId, username }) {
     refunded,
     totalCases: events.length,
   };
+}
+
+// ── 報案後的強制決鬥：贏了從兇手錢包討回被偷金額的一半 ──
+async function revengeDuel(client, { guildId, victimId, victimName, culpritId, member }) {
+  const c = cfg();
+  if (!c.enabled || !client.theftLogsCollection) return { ok: false, reason: "disabled" };
+  if (victimId === culpritId) return { ok: false, reason: "self" };
+  const rv = c.revenge || {};
+  const since = new Date(Date.now() - (c.report?.windowHours ?? 24) * 3600 * 1000);
+
+  // 只能決鬥一次：同一窗口內對同一兇手已討過帳
+  const already = await client.theftLogsCollection
+    .findOne({ guildId, type: "revenge", actor_id: victimId, target_id: culpritId, ts: { $gte: since } })
+    .catch(() => null);
+  if (already) return { ok: false, reason: "already_done" };
+
+  // 該兇手在窗口內偷走你的總額
+  const events = await client.theftLogsCollection
+    .find({ guildId, type: "steal", actor_id: culpritId, target_id: victimId, success: true, ts: { $gte: since } })
+    .toArray()
+    .catch(() => []);
+  const stolen = events.reduce((s, e) => s + (e.amount || 0), 0);
+  if (stolen <= 0) return { ok: false, reason: "no_case" };
+
+  // 判定：攻擊力 + 隨機（比照追捕計分）
+  const [victimAtk, culpritAtk] = await Promise.all([
+    buffResolver.getEffectiveAtk(client, victimId, guildId).catch(() => 0),
+    buffResolver.getEffectiveAtk(client, culpritId, guildId).catch(() => 0),
+  ]);
+  const rate = clamp(
+    (rv.baseRate ?? 0.5) + (victimAtk - culpritAtk) * (rv.atkDiffScale ?? 0.003),
+    rv.minRate ?? 0.2,
+    rv.maxRate ?? 0.8
+  );
+  const win = Math.random() < rate;
+
+  // 成敗都記一筆，確保只能決鬥一次
+  await logEvent(client, { guildId, type: "revenge", actor_id: victimId, target_id: culpritId, success: win, amount: 0 });
+
+  if (!win) return { ok: true, win: false, victimAtk, culpritAtk };
+
+  // 贏 → 從兇手錢包討回一半（上限為兇手現有錢包）
+  const wantRecover = Math.floor(stolen * (rv.recoverPct ?? 0.5));
+  const culpritWallet = (await getWallet(client, culpritId, guildId)).balance;
+  const recover = Math.max(0, Math.min(wantRecover, culpritWallet));
+  if (recover > 0) {
+    const debit = await grantCoins(client, {
+      userId: culpritId,
+      guildId,
+      amount: -recover,
+      source: "revenge_pay",
+      meta: { victimId },
+    });
+    if (debit) {
+      await grantCoins(client, {
+        userId: victimId,
+        guildId,
+        username: victimName,
+        amount: recover,
+        source: "revenge_win",
+        member,
+        meta: { culpritId },
+      });
+    }
+  }
+  return { ok: true, win: true, recover, stolen, victimAtk, culpritAtk };
 }
 
 async function listWanted(client, guildId) {
@@ -607,8 +770,11 @@ module.exports = {
   huntWanted,
   surrender,
   report,
+  revengeDuel,
   listWanted,
   activeWanted,
   expireWanted,
   getWallet,
+  getFund,
+  payoutWeeklyFund,
 };

@@ -10,6 +10,7 @@ const {
 const theftService = require("../../features/theft/theftService");
 const theftProfile = require("../../features/theft/theftProfile");
 const { errorContainer, huntResultContainer, broadcast } = require("../../features/theft/theftView");
+const theftBoard = require("../../features/theft/theftBoard");
 const { COIN_EMOJI } = require("../../constants/coin");
 const logger = require("../../utils/logger");
 const { consume } = require("../../utils/rateLimiter");
@@ -58,6 +59,11 @@ module.exports = async (client, interaction) => {
             `這名通緝犯剛甩開一次追捕，正躲風頭。可再次追捕：<t:${cdEpoch}:R>`,
             "等他探頭出來，或先去 /通緝榜 抓別人。",
           ],
+          already_failed: [
+            "🙅 你已經追丟過他了",
+            "你這次通緝期間已追捕他失敗，機會用掉了。",
+            "讓其他人去抓，或等他下次再犯。",
+          ],
           race: ["🌀 慢了一步", "這名通緝犯剛剛已被別人處理掉了。", "刷新 /通緝榜 看看還有誰。"],
         };
         const [t, b, h] = map[result.reason] || ["🔧 追捕失敗", "系統忙碌或未啟動。", "稍後再試。"];
@@ -71,10 +77,59 @@ module.exports = async (client, interaction) => {
       if (result.success) {
         await broadcast(client, resultContainer);
       }
+      theftBoard.refresh(client).catch(() => {});
       return interaction.editReply({
         components: [resultContainer],
         flags: MessageFlags.IsComponentsV2,
       });
+    }
+
+    // ── 報案後強制決鬥（owner 限定）──
+    if (id.startsWith("theft_revenge_")) {
+      const [victimId, culpritId] = id.slice("theft_revenge_".length).split("_");
+      if (interaction.user.id !== victimId) {
+        return interaction.reply({ content: "🚫 這不是你的按鈕！", flags: MessageFlags.Ephemeral });
+      }
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const result = await theftService.revengeDuel(client, {
+        guildId: interaction.guildId,
+        victimId,
+        victimName: interaction.member?.displayName || interaction.user.username,
+        culpritId,
+        member: interaction.member,
+      });
+      if (!result.ok) {
+        const map = {
+          self: ["🪞 不能打自己", "選錯對象了。", null],
+          already_done: ["🗡️ 你已經找他算過帳了", "每個兇手只能強制決鬥一次。", "去 /通緝榜 或找別人吧。"],
+          no_case: ["🕊️ 查無此帳", "近期沒有他偷你的紀錄可討。", null],
+        };
+        const [t, b, h] = map[result.reason] || ["🔧 決鬥失敗", "系統忙碌或未啟動。", "稍後再試。"];
+        return interaction.editReply({
+          components: [errorContainer(t, b, h)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      const container = result.win
+        ? new ContainerBuilder()
+            .setAccentColor(0xf1c40f)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                `# 🗡️ 討回公道！\n你打贏了 <@${culpritId}>，` +
+                  (result.recover > 0
+                    ? `討回 **${result.recover.toLocaleString()}** ${COIN_EMOJI}！`
+                    : "但他錢包空空，一毛也沒討到 😮‍💨") +
+                  `\n\n攻擊力 ${result.victimAtk} vs ${result.culpritAtk}`
+              )
+            )
+        : new ContainerBuilder()
+            .setAccentColor(0x95a5a6)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                `# 💔 討不回來\n你輸給了 <@${culpritId}>，這筆帳只能算了。\n\n攻擊力 ${result.victimAtk} vs ${result.culpritAtk}`
+              )
+            );
+      return interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
     // ── 查看惡名 / 存款捷徑（owner 限定）──

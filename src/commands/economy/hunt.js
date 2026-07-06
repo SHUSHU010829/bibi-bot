@@ -8,6 +8,7 @@ const {
 const { theft } = require("../../config");
 const theftService = require("../../features/theft/theftService");
 const { errorContainer, huntResultContainer, broadcast } = require("../../features/theft/theftView");
+const theftBoard = require("../../features/theft/theftBoard");
 
 module.exports = {
   channelBuckets: ["theft"],
@@ -49,6 +50,7 @@ module.exports = {
       if (result.success) {
         await broadcast(client, resultContainer);
       }
+      theftBoard.refresh(client).catch(() => {});
       return interaction.editReply({
         components: [resultContainer],
         flags: MessageFlags.IsComponentsV2,
@@ -80,6 +82,12 @@ function huntErrorContainer(result, target) {
         "等他探頭出來，或先去 /通緝榜 抓別人。"
       );
     }
+    case "already_failed":
+      return errorContainer(
+        "🙅 你已經追丟過他了",
+        `你這次通緝期間已經追捕 ${target} 失敗，機會用掉了。`,
+        "讓其他人去抓，或等他下次再犯。"
+      );
     case "race":
       return errorContainer("🌀 慢了一步", "這名通緝犯剛剛已被別人處理掉了。", "刷新 /通緝榜 看看還有誰。");
     default:

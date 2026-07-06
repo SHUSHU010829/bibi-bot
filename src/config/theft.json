@@ -35,10 +35,10 @@
       "decayPerDay": 1
     },
     "bounty": {
-      "base": 500,
-      "perNotoriety": 50,
-      "stolenPct": 0.05,
-      "max": 12000,
+      "base": 1000,
+      "perNotoriety": 100,
+      "stolenPct": 0.08,
+      "max": 20000,
       "wantedTtlHours": 48
     },
     "hunt": {
@@ -50,7 +50,8 @@
       "caughtFinePct": 0.1,
       "escapeCooldownBaseMs": 1800000,
       "escapeCooldownPerNotorietyMs": 300000,
-      "escapeCooldownMaxMs": 10800000
+      "escapeCooldownMaxMs": 10800000,
+      "escapeClearCount": 5
     },
     "surrender": {
       "bailForfeitPct": 0.6
@@ -59,7 +60,22 @@
       "detectiveFee": 500,
       "windowHours": 24,
       "investigateRate": 0.7,
-      "refundOnMiss": false
+      "refundOnMiss": false,
+      "abscondChance": 0.02
+    },
+    "revenge": {
+      "recoverPct": 0.5,
+      "baseRate": 0.5,
+      "minRate": 0.2,
+      "maxRate": 0.8,
+      "atkDiffScale": 0.003
+    },
+    "fund": {
+      "enabled": true,
+      "timezone": "Asia/Taipei",
+      "payoutCron": "0 21 * * 0",
+      "weekWindowMs": 604800000,
+      "minPool": 1
     },
     "defense": {
       "safeboxRate": 0.2,

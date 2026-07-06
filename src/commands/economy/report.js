@@ -4,6 +4,9 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -53,6 +56,25 @@ module.exports = {
         });
       }
 
+      if (result.absconded) {
+        return interaction.editReply({
+          components: [
+            new ContainerBuilder()
+              .setAccentColor(0xe67e22)
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(
+                  `# 🕵️‍♂️💨 偵探捲款跑路了！\n` +
+                    `你付了 **${result.fee.toLocaleString()}** ${COIN_EMOJI} 委託費，偵探拿了錢就人間蒸發…`
+                )
+              )
+              .addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("-# 遇到黑心偵探，自認倒楣吧。改天再委託別人試試。")
+              ),
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+
       if (result.noCase) {
         return interaction.editReply({
           components: [
@@ -94,16 +116,28 @@ module.exports = {
         )
       );
       for (const c of result.culprits) {
+        const recover = Math.floor((c.amount || 0) / 2);
         container
           .addSeparatorComponents(new SeparatorBuilder())
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
               `<@${c.actorId}>　偷了你 **${c.amount.toLocaleString()}** ${COIN_EMOJI}（${c.count} 次）`
             )
+          )
+          .addActionRowComponents(
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`theft_revenge_${interaction.user.id}_${c.actorId}`)
+                .setLabel(`強制決鬥討回 ${recover.toLocaleString()}`)
+                .setEmoji("🗡️")
+                .setStyle(ButtonStyle.Danger)
+            )
           );
       }
       container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("-# 討回公道？可以找他 /決鬥 一雪前恥。")
+        new TextDisplayBuilder().setContent(
+          "-# 🗡️ 強制決鬥：對方不用同意，攻擊力高者勝；**贏了討回一半、每個兇手只能打一次**。"
+        )
       );
 
       return interaction.editReply({

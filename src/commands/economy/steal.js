@@ -14,6 +14,7 @@ const {
 const { theft } = require("../../config");
 const theftService = require("../../features/theft/theftService");
 const { errorContainer, broadcast } = require("../../features/theft/theftView");
+const theftBoard = require("../../features/theft/theftBoard");
 const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 
 module.exports = {
@@ -144,6 +145,7 @@ module.exports = {
           ?.send({ components: [announce], flags: MessageFlags.IsComponentsV2 })
           .catch(() => {});
       }
+      theftBoard.refresh(client).catch(() => {});
     } catch (error) {
       console.log(`[ERROR] /偷竊:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 偷竊失敗，請呼叫舒舒！").catch(() => {});
