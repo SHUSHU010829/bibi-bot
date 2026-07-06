@@ -21,7 +21,7 @@ module.exports = {
     ),
 
   run: async (client, interaction) => {
-    // 追捕結果對玩家私人顯示；成功才公開推到通緝廣播頻道
+    // 先私人 defer；成功只公開推到通緝廣播頻道，失敗才私訊回覆玩家
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
@@ -46,11 +46,15 @@ module.exports = {
       }
 
       const resultContainer = huntResultContainer(result, interaction.user.id, target.id);
-      // 抓到人 → 公開推到通緝廣播頻道；玩家本人這裡仍是私人結果
-      if (result.success) {
-        await broadcast(client, resultContainer);
-      }
       theftBoard.refresh(client).catch(() => {});
+
+      // 抓到人 → 只公開推到通緝廣播頻道，不再私訊複製一份給玩家
+      if (result.success) {
+        const announced = await broadcast(client, resultContainer);
+        if (announced) {
+          return interaction.deleteReply().catch(() => {});
+        }
+      }
       return interaction.editReply({
         components: [resultContainer],
         flags: MessageFlags.IsComponentsV2,
