@@ -64,6 +64,17 @@ async function render(client, guildId) {
     }
   }
 
+  const fund = await theftService.getFund(client, guildId).catch(() => 0);
+  if (fund > 0) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🏦 **治安基金**：${fund.toLocaleString()} 🪙\n-# 每週日 21:00 發給本週賞金收入最高的獵人`
+        )
+      );
+  }
+
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent("-# 即時更新 · `/偷竊` 犯案、`/追捕` 領賞、`/自首` 脫身")
   );

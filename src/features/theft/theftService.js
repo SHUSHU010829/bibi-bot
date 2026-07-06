@@ -61,6 +61,58 @@ async function activeWanted(client, userId, guildId) {
     .catch(() => null);
 }
 
+// ── 治安基金：犯罪者繳的錢（贖罪金燒掉那半 + 自首保釋）累積，週結算發給榜首獵人 ──
+function fundKey(guildId) {
+  return `theft_fund:${guildId}`;
+}
+async function addToFund(client, guildId, amount) {
+  if (!client.countersCollection || !(amount > 0)) return;
+  await client.countersCollection
+    .updateOne(
+      { _id: fundKey(guildId) },
+      { $inc: { pool: amount }, $set: { updatedAt: new Date() } },
+      { upsert: true }
+    )
+    .catch(() => {});
+}
+async function getFund(client, guildId) {
+  if (!client.countersCollection) return 0;
+  const doc = await client.countersCollection.findOne({ _id: fundKey(guildId) }).catch(() => null);
+  return doc?.pool || 0;
+}
+// 週結算：本週賞金收入最高的獵人領走整池，池歸零。無人可領則累積到下週。
+async function payoutWeeklyFund(client, guildId) {
+  const f = cfg().fund || {};
+  if (!client.countersCollection || !client.theftLogsCollection) return null;
+  const pool = await getFund(client, guildId);
+  if (pool < (f.minPool ?? 1)) return { paid: false, pool, reason: "empty" };
+
+  const since = new Date(Date.now() - (f.weekWindowMs ?? 604800000));
+  const agg = await client.theftLogsCollection
+    .aggregate([
+      { $match: { guildId, type: "hunt", success: true, ts: { $gte: since } } },
+      { $group: { _id: "$actor_id", earned: { $sum: "$amount" }, hunts: { $sum: 1 } } },
+      { $sort: { earned: -1, hunts: -1 } },
+      { $limit: 1 },
+    ])
+    .toArray()
+    .catch(() => []);
+  const top = agg[0];
+  if (!top) return { paid: false, pool, reason: "no_hunter" };
+
+  await grantCoins(client, {
+    userId: top._id,
+    guildId,
+    amount: pool,
+    source: "fund_payout",
+    meta: { reason: "weekly_bounty_hunter", hunts: top.hunts },
+  }).catch(() => {});
+  await client.countersCollection
+    .updateOne({ _id: fundKey(guildId) }, { $set: { pool: 0, updatedAt: new Date() } })
+    .catch(() => {});
+  return { paid: true, winnerId: top._id, amount: pool, earned: top.earned, hunts: top.hunts };
+}
+
 async function logEvent(client, doc) {
   return client.theftLogsCollection
     .insertOne({ ...doc, day: dayKey(), ts: new Date() })
@@ -451,6 +503,8 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
           meta: { wantedUserId },
         });
       }
+      // 沒發給獵人的那半 → 進治安基金（週結算給榜首獵人）
+      await addToFund(client, guildId, fine - hunterFineShare);
     }
   }
 
@@ -519,6 +573,8 @@ async function surrender(client, { guildId, userId, username, member }) {
       source: "bail",
       meta: { wantedId: wanted.wanted_id },
     });
+    // 保釋金 → 進治安基金
+    await addToFund(client, guildId, bail);
   }
 
   await client.wantedListCollection.updateOne(
@@ -719,4 +775,6 @@ module.exports = {
   activeWanted,
   expireWanted,
   getWallet,
+  getFund,
+  payoutWeeklyFund,
 };

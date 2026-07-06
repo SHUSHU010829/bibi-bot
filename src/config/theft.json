@@ -70,6 +70,13 @@
       "maxRate": 0.8,
       "atkDiffScale": 0.003
     },
+    "fund": {
+      "enabled": true,
+      "timezone": "Asia/Taipei",
+      "payoutCron": "0 21 * * 0",
+      "weekWindowMs": 604800000,
+      "minPool": 1
+    },
     "defense": {
       "safeboxRate": 0.2,
       "cloakRate": 0.15
