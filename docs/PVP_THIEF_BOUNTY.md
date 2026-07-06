@@ -14,6 +14,9 @@
 > - **頻道限制**:偷竊/追捕/自首 標 `channelBuckets: ["theft"]`,限用於 `server.json` 的 `commandChannels.theft`(= 廣播頻道);通緝榜/報案 為 ephemeral 豁免、到處可用。
 > - **稱號已接**(新分類「盜賊」):🥷 慣竊(得手 25 次) / 🕵️ 賞金獵人(追捕成功 15 次)。`titles.json` + `gameTitleService`(RESOLVERS / progress / cache.theft),偷竊得手與追捕成功後非阻塞觸發 `check(...,["theft"])`,自動解鎖 + 公告 + 可 `/稱號 設定` 展示。
 > - **通緝廣播頻道**:config `theft.announceChannelId`,失手通緝 / 追捕成功 / 自首都集中推到該頻道(未設定則退回犯案 / 指令當前頻道)。治安動態集中一處。
+> - **置頂即時通緝看板**(`theftBoard.js`):在廣播頻道維護一則**置頂訊息**,即時顯示在逃罪犯(不寫錢包金額、顯示賞金 / 通緝到期 / 躲藏冷卻 / 躲過次數 + 追捕鈕)。狀態一變即重繪 + cron 每分鐘刷新(處理冷卻/時效這類無事件的變化);訊息 id 存 `countersCollection`。
+> - **報案強制決鬥 + 偵探跑路**:報案查出兇手 → 每人一顆強制決鬥鈕(贏了討回一半、每人一次);報案有 `abscondChance` 機率偵探捲款跑路。
+> - **逃脫規則**:追捕失敗的獵人本次通緝不能再追同人;累積逃 `escapeClearCount`(5)次自動脫罪。
 > - 惡名衰退最終採 **compute-on-read**。MVP 全數落地。
 
 ---

@@ -8,6 +8,7 @@ const {
 const { theft } = require("../../config");
 const theftService = require("../../features/theft/theftService");
 const { errorContainer, huntResultContainer, broadcast } = require("../../features/theft/theftView");
+const theftBoard = require("../../features/theft/theftBoard");
 
 module.exports = {
   channelBuckets: ["theft"],
@@ -49,6 +50,7 @@ module.exports = {
       if (result.success) {
         await broadcast(client, resultContainer);
       }
+      theftBoard.refresh(client).catch(() => {});
       return interaction.editReply({
         components: [resultContainer],
         flags: MessageFlags.IsComponentsV2,

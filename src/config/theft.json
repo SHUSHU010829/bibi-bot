@@ -35,10 +35,10 @@
       "decayPerDay": 1
     },
     "bounty": {
-      "base": 500,
-      "perNotoriety": 50,
-      "stolenPct": 0.05,
-      "max": 12000,
+      "base": 1000,
+      "perNotoriety": 100,
+      "stolenPct": 0.08,
+      "max": 20000,
       "wantedTtlHours": 48
     },
     "hunt": {
