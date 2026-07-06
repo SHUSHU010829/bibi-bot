@@ -6,7 +6,8 @@ const grantCoins = require("../features/economy/grantCoins");
 const grantXp = require("../features/leveling/grantXp");
 
 const SEARCH_LIMIT = 25;
-const TX_RECENT = 10;
+const TX_RECENT_DEFAULT = 50;
+const TX_RECENT_MAX = 200;
 
 module.exports = function createAdminUsersRouter(client) {
   const router = express.Router();
@@ -59,6 +60,11 @@ module.exports = function createAdminUsersRouter(client) {
       const guildId = req.admin.guildId;
       const guild = client.guilds.cache.get(guildId);
 
+      const txLimit = Math.min(
+        Math.max(Number(req.query.tx) || TX_RECENT_DEFAULT, 1),
+        TX_RECENT_MAX,
+      );
+
       const member = await guild.members.fetch(targetId).catch(() => null);
       if (!member) return res.status(404).json({ error: "not a member" });
 
@@ -72,7 +78,7 @@ module.exports = function createAdminUsersRouter(client) {
         client.coinTransactionsCollection
           .find({ userId: targetId, guildId })
           .sort({ createdAt: -1 })
-          .limit(TX_RECENT)
+          .limit(txLimit)
           .toArray()
           .catch(() => []),
         client.coinTransactionsCollection
