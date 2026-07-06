@@ -127,15 +127,8 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
   }
 
   const targetProfile = await theftProfile.getOrCreate(client, targetId, guildId);
-  // 看門狗：完全免疫下一次偷竊，擋一次即消耗
-  if ((targetProfile.watchdog_count || 0) > 0) {
-    await client.theftProfilesCollection.updateOne(
-      { userId: targetId, guildId },
-      { $inc: { watchdog_count: -1 }, $set: { updatedAt: new Date() } }
-    );
-    return { ok: false, reason: "target_watchdog" };
-  }
-  // 當日被偷上限
+
+  // 當日被偷上限（免費保護，先擋）——已被偷滿就不該再白白消耗看門狗
   const maxStolen = c.maxStolenPerDayPerTarget ?? 3;
   const targetStolenToday = await client.theftLogsCollection
     .countDocuments({
@@ -148,6 +141,15 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
     .catch(() => 0);
   if (targetStolenToday >= maxStolen) {
     return { ok: false, reason: "target_maxed" };
+  }
+
+  // 看門狗：最後一道防線，只有在目標仍可被偷時才消耗（擋一次即用掉）
+  if ((targetProfile.watchdog_count || 0) > 0) {
+    await client.theftProfilesCollection.updateOne(
+      { userId: targetId, guildId },
+      { $inc: { watchdog_count: -1 }, $set: { updatedAt: new Date() } }
+    );
+    return { ok: false, reason: "target_watchdog" };
   }
 
   // 成功率
