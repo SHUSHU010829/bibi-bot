@@ -39,7 +39,7 @@
       "perNotoriety": 100,
       "stolenPct": 0.08,
       "max": 20000,
-      "wantedTtlHours": 48
+      "wantedTtlHours": 24
     },
     "hunt": {
       "dailyLimit": 3,
