@@ -295,6 +295,8 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
         created_at: new Date(),
         expires_at: new Date(expiresAt),
         hunt_cooldown_until: 0,
+        escaped_hunters: [],
+        escape_count: 0,
         updated_at: new Date(),
       },
     },
@@ -328,6 +330,11 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
     return { ok: false, reason: "hunt_cooldown", readyAt: wanted.hunt_cooldown_until };
   }
 
+  // 每人只有一次機會：追捕失敗過的獵人，這次通緝期間不能再追同一人
+  if ((wanted.escaped_hunters || []).includes(hunterId)) {
+    return { ok: false, reason: "already_failed" };
+  }
+
   const huntLimit = h.dailyLimit ?? 3;
   const todayHunts = await client.theftLogsCollection
     .countDocuments({ guildId, type: "hunt", actor_id: hunterId, ts: { $gte: dayStart() } })
@@ -356,8 +363,39 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
   const success = Math.random() < rate;
 
   if (!success) {
-    // 逃脫：復原通緝狀態，並讓通緝犯躲起來一段冷卻，期間不可再被追捕
-    // 冷卻隨通緝犯惡名遞增——越大尾的逃犯躲越久
+    await logEvent(client, {
+      guildId,
+      type: "hunt",
+      actor_id: hunterId,
+      target_id: wantedUserId,
+      success: false,
+      amount: 0,
+    });
+
+    const escapeCount = (wanted.escape_count || 0) + 1;
+    const clearAt = h.escapeClearCount ?? 5;
+
+    // 逃脫達上限 → 成功脫罪：退回託管賞金、惡名 −1、通緝解除
+    if (escapeCount >= clearAt) {
+      await grantCoins(client, {
+        userId: wantedUserId,
+        guildId,
+        username: wanted.username,
+        amount: wanted.bounty,
+        source: "bounty_refund",
+        meta: { reason: "escaped_free", wantedId: wanted.wanted_id },
+      }).catch(() => {});
+      await client.wantedListCollection.updateOne(
+        { userId: wantedUserId, guildId },
+        { $set: { status: "escaped", escape_count: escapeCount, updated_at: new Date() } }
+      );
+      await theftProfile
+        .adjustNotoriety(client, wantedUserId, guildId, -(c.notoriety?.expireLoss ?? 1))
+        .catch(() => {});
+      return { ok: true, success: false, escaped: true, escapeCount, clearAt, hunterAtk, wantedAtk, bounty: wanted.bounty };
+    }
+
+    // 尚未脫罪：復原通緝、記下這名獵人（不能再追）、進入躲藏冷卻（隨惡名遞增，越大尾躲越久）
     const wantedNotoriety = wanted.notoriety_at || 0;
     const cooldownMs = Math.min(
       (h.escapeCooldownBaseMs ?? 1800000) +
@@ -367,17 +405,13 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
     const cooldownUntil = Date.now() + cooldownMs;
     await client.wantedListCollection.updateOne(
       { userId: wantedUserId, guildId },
-      { $set: { status: "wanted", hunt_cooldown_until: cooldownUntil, updated_at: new Date() } }
+      {
+        $set: { status: "wanted", hunt_cooldown_until: cooldownUntil, updated_at: new Date() },
+        $addToSet: { escaped_hunters: hunterId },
+        $inc: { escape_count: 1 },
+      }
     );
-    await logEvent(client, {
-      guildId,
-      type: "hunt",
-      actor_id: hunterId,
-      target_id: wantedUserId,
-      success: false,
-      amount: 0,
-    });
-    return { ok: true, success: false, hunterAtk, wantedAtk, bounty: wanted.bounty, cooldownUntil };
+    return { ok: true, success: false, hunterAtk, wantedAtk, bounty: wanted.bounty, cooldownUntil, escapeCount, clearAt };
   }
 
   // 抓到：託管賞金給獵人

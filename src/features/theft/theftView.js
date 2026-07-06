@@ -63,9 +63,30 @@ function huntResultContainer(result, hunterId, wantedUserId) {
         new TextDisplayBuilder().setContent("-# 裝備越好追捕成功率越高；用 /合成 打造更強武器。")
       );
   }
-  const cdLine = result.cooldownUntil
-    ? `-# 他躲起來了，<t:${Math.floor(result.cooldownUntil / 1000)}:R> 之後才能再追捕。`
-    : "-# 賞金續留通緝榜，換人再試試看！";
+  // 逃脫達上限 → 成功脫罪、通緝解除
+  if (result.escaped) {
+    return new ContainerBuilder()
+      .setAccentColor(0x9b59b6)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🕊️ 逍遙法外！\n` +
+            `<@${wantedUserId}> 連續躲過 **${result.clearAt}** 次追捕，成功脫罪，通緝解除！\n\n` +
+            `攻擊力 ${result.hunterAtk} vs ${result.wantedAtk}`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("-# 這隻老狐狸溜了…下次別再讓他失風就沒戲唱了。")
+      );
+  }
+  const lines = [];
+  if (result.escapeCount && result.clearAt) {
+    lines.push(`-# 他已躲過 **${result.escapeCount}/${result.clearAt}** 次，躲滿就脫罪。你這次不能再追他了。`);
+  }
+  lines.push(
+    result.cooldownUntil
+      ? `-# 他躲起來了，<t:${Math.floor(result.cooldownUntil / 1000)}:R> 之後其他人才能再追捕。`
+      : "-# 賞金續留通緝榜，換人再試試看！"
+  );
   return new ContainerBuilder()
     .setAccentColor(0x95a5a6)
     .addTextDisplayComponents(
@@ -75,7 +96,7 @@ function huntResultContainer(result, hunterId, wantedUserId) {
           `攻擊力 ${result.hunterAtk} vs ${result.wantedAtk}`
       )
     )
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(cdLine));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
 }
 
 module.exports = { errorContainer, infoContainer, huntResultContainer, broadcast };
