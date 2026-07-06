@@ -1,13 +1,15 @@
 // 釣魚結果訊息上「🎣 再釣一次」按鈕處理器。
 //
 // 按鈕 customId = fish_again_<ownerId>_<location>（見 commands/fishing/fish.js）。
-// location 延續玩家這一竿的釣場，直接呼叫 executeFish 換成新一次釣魚結果；
-// 若仍在冷卻，executeFish 會回傳冷卻畫面（含切換地點選單與 CD 縮短券按鈕）。
+// location 延續玩家這一竿的釣場。比照賭場「再來一局」與挖礦「再挖一次」：
+// 用 deferReply 另發一則全新的釣魚結果訊息，不覆蓋原本那則，讓每次釣魚
+// 紀錄都留在頻道。若仍在冷卻，executeFish 會回傳冷卻畫面（含切換地點選單與
+// CD 縮短券按鈕）。
 
 const { MessageFlags } = require("discord.js");
 
 const { consume } = require("../../utils/rateLimiter");
-const { deferUpdateSafe } = require("../../utils/safeAck");
+const { deferReplySafe } = require("../../utils/safeAck");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { fishing } = require("../../config");
@@ -55,7 +57,7 @@ module.exports = async (client, interaction) => {
 
     if (!fishing.locations?.[location]) location = "stream";
 
-    if (!(await deferUpdateSafe(interaction))) return;
+    if (!(await deferReplySafe(interaction))) return;
 
     await executeFish(client, interaction, { location });
     trackSuccess("fish-again");
