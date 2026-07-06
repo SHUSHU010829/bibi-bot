@@ -141,6 +141,23 @@ async function tickOnce(client) {
       }).catch(() => {});
       ticked += 1;
     }
+  }
+
+  // 價格更新後掃描融券部位，浮虧過大者強制回補（斷頭）
+  await runMarginScan(client).catch((e) =>
+    console.log(`[STOCK] margin scan failed: ${e?.message || e}`.yellow)
+  );
+
+  return { ticked, guilds: guildIds.length };
+}
+
+// 突發事件 roll + 播報重繪，與價格 tick 拆開跑（較低頻，避免 Discord 編輯過於頻繁撞 rate limit）。
+async function broadcastOnce(client) {
+  if (!isMarketOpen()) {
+    return { skipped: "market_closed" };
+  }
+  const guildIds = await listGuildIdsWithMarket(client);
+  for (const guildId of guildIds) {
     const fired = await rollRandomEvent(client, guildId).catch((e) => {
       console.log(`[STOCK] rollRandomEvent failed guild=${guildId}: ${e?.message || e}`.yellow);
       return null;
@@ -150,13 +167,7 @@ async function tickOnce(client) {
       console.log(`[STOCK] broadcast failed guild=${guildId}: ${e?.message || e}`.yellow)
     );
   }
-
-  // 價格更新後掃描融券部位，浮虧過大者強制回補（斷頭）
-  await runMarginScan(client).catch((e) =>
-    console.log(`[STOCK] margin scan failed: ${e?.message || e}`.yellow)
-  );
-
-  return { ticked, guilds: guildIds.length };
+  return { guilds: guildIds.length };
 }
 
 async function postMarketBroadcast(client, guildId, opts = {}) {
@@ -534,9 +545,17 @@ module.exports = async (client) => {
   registerCron(client, {
     name: "stock.tick",
     label: "股市價格 tick",
-    schedule: stockSystem.tickCronSchedule || "*/5 * * * *",
+    schedule: stockSystem.tickCronSchedule || "* * * * *",
     timezone: tz,
     runner: () => tickOnce(client),
+  });
+
+  registerCron(client, {
+    name: "stock.broadcast",
+    label: "股市播報 / 事件",
+    schedule: stockSystem.broadcastCronSchedule || "*/5 * * * *",
+    timezone: tz,
+    runner: () => broadcastOnce(client),
   });
 
   registerCron(client, {
@@ -568,6 +587,7 @@ module.exports = async (client) => {
 };
 
 module.exports.tickOnce = tickOnce;
+module.exports.broadcastOnce = broadcastOnce;
 module.exports.runOpen = runOpen;
 module.exports.runClose = runClose;
 module.exports.postMarketBroadcast = postMarketBroadcast;
