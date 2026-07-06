@@ -19,7 +19,8 @@ module.exports = {
     ),
 
   run: async (client, interaction) => {
-    await interaction.deferReply();
+    // 追捕結果對玩家私人顯示；成功才公開推到通緝廣播頻道
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
       if (!theft?.enabled || !client.wantedListCollection) {
@@ -43,9 +44,9 @@ module.exports = {
       }
 
       const resultContainer = huntResultContainer(result, interaction.user.id, target.id);
-      // 抓到人時把結果也鏡射到通緝廣播頻道（在該頻道執行則不重複貼）
+      // 抓到人 → 公開推到通緝廣播頻道；玩家本人這裡仍是私人結果
       if (result.success) {
-        await broadcast(client, resultContainer, interaction.channelId);
+        await broadcast(client, resultContainer);
       }
       return interaction.editReply({
         components: [resultContainer],
@@ -70,6 +71,14 @@ function huntErrorContainer(result, target) {
         `你今天已追捕 ${result.todayCount}/${result.dailyLimit} 次。`,
         "明天（台灣時間 00:00）重置。"
       );
+    case "hunt_cooldown": {
+      const e = Math.floor(result.readyAt / 1000);
+      return errorContainer(
+        "🫥 他躲起來了",
+        `${target} 剛甩開一次追捕，正躲風頭。可再次追捕：<t:${e}:R>（<t:${e}:t>）`,
+        "等他探頭出來，或先去 /通緝榜 抓別人。"
+      );
+    }
     case "race":
       return errorContainer("🌀 慢了一步", "這名通緝犯剛剛已被別人處理掉了。", "刷新 /通緝榜 看看還有誰。");
     default:
