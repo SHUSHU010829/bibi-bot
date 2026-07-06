@@ -155,6 +155,14 @@ function stealErrorContainer(result, target) {
         "身為在逃通緝犯還想偷東西？先把自己的事處理完。",
         "用 /自首 或潛伏熬過通緝時效。"
       );
+    case "parole": {
+      const e = Math.floor(result.until / 1000);
+      return errorContainer(
+        "🚔 假釋觀察期",
+        `你剛自首過，警方還盯著你。可再次下手：<t:${e}:R>（<t:${e}:t>）`,
+        "觀察期內先金盆洗手，別急著再犯。"
+      );
+    }
     case "no_bounty_funds":
       return errorContainer(
         "💸 本錢不足",

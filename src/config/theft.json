@@ -54,7 +54,12 @@
       "escapeClearCount": 5
     },
     "surrender": {
-      "bailForfeitPct": 0.6
+      "bailForfeitPct": 0.6,
+      "stolenDisgorgePct": 0.05,
+      "repeatWindowMs": 86400000,
+      "repeatSurchargePct": 0.2,
+      "maxForfeitPct": 1,
+      "paroleCooldownMs": 21600000
     },
     "escapeRun": {
       "enabled": true,

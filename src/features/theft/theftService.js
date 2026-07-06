@@ -135,6 +135,12 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
     return { ok: false, reason: "self_wanted" };
   }
 
+  // 自首後的假釋觀察期：期間不能再犯，代價從「純扣錢」延伸為時間成本
+  const actorProf = await theftProfile.getOrCreate(client, actorId, guildId);
+  if ((actorProf.parole_until || 0) > Date.now()) {
+    return { ok: false, reason: "parole", until: actorProf.parole_until };
+  }
+
   // 賞金本金門檻：錢包須付得起失風的託管賞金
   const actorWallet = await getWallet(client, actorId, guildId);
   const bountyMin = c.bountyMin ?? 300;
@@ -208,7 +214,6 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
   }
 
   // 成功率
-  const actorProf = await theftProfile.getOrCreate(client, actorId, guildId);
   const notoriety = actorProf.notoriety_effective || 0;
   let rate = (s.baseRate ?? 0.55) + Math.min(
     notoriety * (s.notorietyRatePer ?? 0.01),
@@ -566,7 +571,29 @@ async function surrender(client, { guildId, userId, username, member }) {
   const wanted = locked?.value || locked;
   if (!wanted) return { ok: false, reason: "not_wanted" };
 
-  const bail = Math.floor(wanted.bounty * (c.surrender?.bailForfeitPct ?? 0.6));
+  const s = c.surrender || {};
+  const now = Date.now();
+  const prof = await theftProfile.getOrCreate(client, userId, guildId);
+
+  // 累犯遞增：短期內重複自首，保釋比例逐次加碼（洗白越來越貴）
+  const windowMs = s.repeatWindowMs ?? 86400000;
+  const recentSurrenders = (prof.surrender_history || []).filter((t) => now - t < windowMs);
+  const repeatCount = recentSurrenders.length;
+  const forfeitPct = Math.min(
+    (s.bailForfeitPct ?? 0.6) + repeatCount * (s.repeatSurchargePct ?? 0),
+    s.maxForfeitPct ?? 1
+  );
+
+  // 贓款抽成：吐回歷史累積贓款的一定比例，偷越多、自首越貴
+  const disgorge = Math.floor((prof.lifetime_stolen || 0) * (s.stolenDisgorgePct ?? 0));
+
+  // 保釋金上限夾在「退回託管後付得起的額度」內，避免錢包被扣成負值
+  const walletBefore = (await getWallet(client, userId, guildId)).balance;
+  const bail = Math.min(
+    Math.floor(wanted.bounty * forfeitPct) + disgorge,
+    walletBefore + wanted.bounty
+  );
+
   // 先全額退回託管，再沒收保釋（帳本清楚）
   await grantCoins(client, {
     userId,
@@ -584,7 +611,7 @@ async function surrender(client, { guildId, userId, username, member }) {
       username,
       amount: -bail,
       source: "bail",
-      meta: { wantedId: wanted.wanted_id },
+      meta: { wantedId: wanted.wanted_id, disgorge, repeatCount },
     });
     // 保釋金 → 進治安基金
     await addToFund(client, guildId, bail);
@@ -596,7 +623,30 @@ async function surrender(client, { guildId, userId, username, member }) {
   );
   await theftProfile.adjustNotoriety(client, userId, guildId, -(c.notoriety?.surrenderLoss ?? 1));
 
-  return { ok: true, bail, refunded: wanted.bounty - bail, bounty: wanted.bounty };
+  // 假釋觀察期 + 記錄本次自首（供累犯遞增判定，只留窗內時間戳）
+  const paroleMs = s.paroleCooldownMs ?? 0;
+  const paroleUntil = paroleMs > 0 ? now + paroleMs : 0;
+  await client.theftProfilesCollection.updateOne(
+    { userId, guildId },
+    {
+      $set: {
+        parole_until: paroleUntil,
+        surrender_history: [...recentSurrenders, now],
+        updatedAt: new Date(),
+      },
+    }
+  );
+
+  return {
+    ok: true,
+    bail,
+    refunded: wanted.bounty - bail,
+    bounty: wanted.bounty,
+    disgorge,
+    forfeitPct,
+    repeatCount,
+    paroleUntil,
+  };
 }
 
 // ── /報案 ─────────────────────────────────────────────
