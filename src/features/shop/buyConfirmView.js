@@ -27,6 +27,8 @@ function itemMeta(item) {
     return `+${item.payload?.restore || 0} HP／瓶`;
   }
   if (item.type === "mining_hp_potion_large") return `補滿 HP／瓶`;
+  if (item.type === "theft_watchdog") return "擋 1 次／隻";
+  if (item.type === "theft_cloak") return "用 1 次／件";
   return null;
 }
 

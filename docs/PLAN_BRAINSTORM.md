@@ -128,6 +128,8 @@ text-based choice adventure。森林 / 廢墟 / 深海 3 個場景，每場 3–
 
 ### D2. 盜賊 / 偷竊 PvP ⭐⭐
 
+> ✅ **已展開為正式企劃**：見 `docs/PVP_THIEF_BOUNTY.md`（盜賊・通緝・賞金獵人系統）。
+
 每日 1 次偷竊機會，成功偷幣、失敗被通緝（其他人可追捕領賞）。
 **接點**：新 collection `WantedList`、複用 coin。
 **預估**：3–4 天　**亮點**：高戲劇張力、社群話題（「XX 又被通緝了！」）。

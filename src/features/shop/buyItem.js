@@ -5,7 +5,15 @@ const { getItem, isStackable, stackMax } = require("./catalog");
 const { getTodayBoughtQty } = require("./dailyLimits");
 const { addBuff } = require("./activeBuff");
 const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
+const { getOrCreate: getTheftProfile } = require("../theft/theftProfile");
 const { ROD_TIER } = require("../mining/craftService");
+
+const THEFT_ITEM_TYPES = ["theft_watchdog", "theft_safebox", "theft_cloak"];
+// 帶持有上限、寫進 TheftProfiles 的防身道具：type → 對應欄位
+const THEFT_STACK_LIMIT_MAP = {
+  theft_watchdog: "watchdog_count",
+  theft_cloak: "night_cloak_count",
+};
 
 const MINING_ITEM_TYPES = [
   "mining_luck_potion",
@@ -58,6 +66,10 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     return { ok: false, error: "挖礦系統尚未就緒" };
   }
 
+  if (THEFT_ITEM_TYPES.includes(item.type) && !client.theftProfilesCollection) {
+    return { ok: false, error: "盜賊系統尚未就緒" };
+  }
+
   // 數量：非可堆疊商品強制 1，可堆疊商品夾在 [1, 上限] 內
   let qty = Math.floor(Number(quantity) || 1);
   if (!isStackable(item)) {
@@ -75,6 +87,20 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
   if (stackLimitField && item.payload?.maxStack > 0) {
     const prof = await getMiningProfile(client, userId, guildId);
     const owned = prof?.[stackLimitField] || 0;
+    const add = (item.payload?.qty || 0) * qty;
+    if (owned + add > item.payload.maxStack) {
+      return {
+        ok: false,
+        error: `「${item.name}」最多持有 ${item.payload.maxStack} 個，你目前已有 ${owned} 個，這次最多再買 ${Math.max(0, item.payload.maxStack - owned)} 個。`,
+      };
+    }
+  }
+
+  // 持有上限檢查：防身道具（看門狗 / 夜行衣）寫進 TheftProfiles
+  const theftStackField = THEFT_STACK_LIMIT_MAP[item.type];
+  if (theftStackField && item.payload?.maxStack > 0) {
+    const prof = await getTheftProfile(client, userId, guildId);
+    const owned = prof?.[theftStackField] || 0;
     const add = (item.payload?.qty || 0) * qty;
     if (owned + add > item.payload.maxStack) {
       return {
@@ -254,6 +280,25 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
       { userId, guildId },
       { $inc: { [incField]: incAmount }, $set: { updatedAt: now } },
     );
+  } else if (THEFT_ITEM_TYPES.includes(item.type)) {
+    // 防身道具：寫入 TheftProfiles，不進 UserInventory
+    const prof = await getTheftProfile(client, userId, guildId);
+    if (item.type === "theft_safebox") {
+      // 保險箱是限時效果：時效內重購則從現有到期時間往後延長
+      const durMs = (item.payload?.durationMinutes || 0) * 60 * 1000;
+      const base = Math.max(Date.now(), prof?.safebox_expires_at || 0);
+      await client.theftProfilesCollection.updateOne(
+        { userId, guildId },
+        { $set: { safebox_expires_at: base + durMs, updatedAt: now } },
+      );
+    } else {
+      const field = THEFT_STACK_LIMIT_MAP[item.type];
+      const incAmount = (item.payload?.qty || 0) * qty;
+      await client.theftProfilesCollection.updateOne(
+        { userId, guildId },
+        { $inc: { [field]: incAmount }, $set: { updatedAt: now } },
+      );
+    }
   } else {
     // role_color / role_color_custom / wallet_theme / custom_title / card_accent：個別建一筆
     inventoryDoc = await client.userInventoryCollection.insertOne({

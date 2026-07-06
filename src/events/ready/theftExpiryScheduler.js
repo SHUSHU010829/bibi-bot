@@ -1,0 +1,39 @@
+require("colors");
+
+const { registerCron } = require("../../utils/cronRegistry");
+const theftService = require("../../features/theft/theftService");
+
+// 每分鐘掃到期的通緝：退回託管賞金、惡名 −1、標記 expired（潛伏成功）。
+async function sweepOnce(client) {
+  if (!client.wantedListCollection) return { expired: 0 };
+
+  const now = new Date();
+  const cursor = client.wantedListCollection.find({
+    status: "wanted",
+    expires_at: { $lte: now },
+  });
+
+  let expired = 0;
+  while (await cursor.hasNext()) {
+    const wanted = await cursor.next();
+    try {
+      const didExpire = await theftService.expireWanted(client, wanted);
+      if (didExpire) {
+        expired += 1;
+        console.log(`[THEFT] 通緝時效到期洗白：user=${wanted.userId}`.gray);
+      }
+    } catch (e) {
+      console.log(`[ERROR] theft expiry handle ${wanted.userId}: ${e}`.red);
+    }
+  }
+  return { expired };
+}
+
+module.exports = async (client) => {
+  registerCron(client, {
+    name: "theft.expiry",
+    label: "通緝時效洗白",
+    schedule: "* * * * *",
+    runner: () => sweepOnce(client),
+  });
+};

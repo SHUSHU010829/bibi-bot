@@ -196,6 +196,13 @@ function makeCache(client, userId, guildId) {
       }
       return c.coins;
     },
+    async theft() {
+      if (c.theft === undefined) {
+        const d = await client.theftProfilesCollection?.findOne({ userId, guildId }).catch(() => null);
+        c.theft = d || {};
+      }
+      return c.theft;
+    },
     // 舊 AuctionListings 已被 MarketListings 取代，保留遷移寫入的歷史成交基數，
     // 避免拍賣商人頭銜進度因切換 collection 而歸零。
     async legacyAuctionBaseline() {
@@ -306,6 +313,14 @@ const RESOLVERS = {
   dragon_heir: async (cache, ctx, req) => {
     const m = await cache.mining();
     return (m.dragon_slayer_kills || 0) >= req.bossKills;
+  },
+  habitual_thief: async (cache, ctx, req) => {
+    const t = await cache.theft();
+    return (t.steal_success || 0) >= req.stealSuccess;
+  },
+  bounty_hunter: async (cache, ctx, req) => {
+    const t = await cache.theft();
+    return (t.hunt_success || 0) >= req.huntSuccess;
   },
 };
 
@@ -467,6 +482,16 @@ async function progress(client, { userId, guildId }) {
         const clears = m?.floor_unlocks?.ruins?.clears || {};
         const done = [1, 2, 3, 4, 5].filter((f) => (clears[String(f)] || 0) >= 1).length;
         push("廢墟通關樓層", done, 5);
+        break;
+      }
+      case "habitual_thief": {
+        const t = await cache.theft();
+        push("偷竊得手", t.steal_success || 0, req.stealSuccess);
+        break;
+      }
+      case "bounty_hunter": {
+        const t = await cache.theft();
+        push("追捕成功", t.hunt_success || 0, req.huntSuccess);
         break;
       }
     }
