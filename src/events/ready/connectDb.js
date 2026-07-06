@@ -1617,6 +1617,21 @@ module.exports = async (client) => {
       console.log(`[WARNING] 遊戲稱號遷移失敗：${migrateError.message}`.yellow);
     }
 
+    // 修補：舊版採集陷阱把 HP 打到 0 時錯把 hp_updated_at 設為 0，被 resolveHp 當成
+    // 「滿血、計時停擺」而永不自然回復，玩家會卡在 0 HP。滿血玩家 hp_current 不可能為 0，
+    // 故 hp_current:0 + hp_updated_at:0 必為卡住的受害者，重新啟動回復計時。idempotent。
+    try {
+      const stuck = await miningProfilesCollection.updateMany(
+        { hp_current: 0, hp_updated_at: 0 },
+        { $set: { hp_updated_at: Date.now(), updatedAt: new Date() } }
+      );
+      if (stuck.modifiedCount > 0) {
+        console.log(`[DATA] HP 回復修補：重啟 ${stuck.modifiedCount} 位玩家的自然回復計時`.cyan);
+      }
+    } catch (migrateError) {
+      console.log(`[WARNING] HP 回復修補失敗：${migrateError.message}`.yellow);
+    }
+
     // 一次性遷移：把 UserLevels.cardAccent 對應的等級卡顏色補進 UserInventory，
     // 並標記為 equipped。/level cardtheme 已下線改由商店購買，此遷移確保舊用戶
     // 不會因為下線而失去手動設定過的顏色。idempotent。
