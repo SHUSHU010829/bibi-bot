@@ -1,13 +1,14 @@
 // 挖礦成功訊息上「⛏️ 再挖一次」按鈕處理器。
 //
 // 按鈕 customId = mine_again_<ownerId>（見 commands/mining/mine.js）。
-// 直接呼叫 executeMine 把訊息換成新一次挖礦結果；若仍在冷卻，
+// 比照賭場「再來一局」：用 deferReply 另發一則全新的挖礦結果訊息，
+// 不覆蓋原本那則，讓每一次挖礦紀錄都留在頻道裡。若仍在冷卻，
 // executeMine 會回傳冷卻畫面（含 CD 縮短券按鈕），無需另外處理。
 
 const { MessageFlags } = require("discord.js");
 
 const { consume } = require("../../utils/rateLimiter");
-const { deferUpdateSafe } = require("../../utils/safeAck");
+const { deferReplySafe } = require("../../utils/safeAck");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const { parseMineAgainId, executeMine } = require("../../commands/mining/mine");
@@ -51,7 +52,7 @@ module.exports = async (client, interaction) => {
       return;
     }
 
-    if (!(await deferUpdateSafe(interaction))) return;
+    if (!(await deferReplySafe(interaction))) return;
 
     await executeMine(client, interaction, { allowOverflow: false });
     trackSuccess("mine-again");
