@@ -4,6 +4,9 @@ const requireAdmin = require("./middleware/requireAdmin");
 const withAudit = require("./middleware/withAudit");
 const grantCoins = require("../features/economy/grantCoins");
 const grantXp = require("../features/leveling/grantXp");
+const { coinHistory } = require("../config");
+
+const TX_SOURCE_LABELS = coinHistory?.sourceLabels || {};
 
 const SEARCH_LIMIT = 25;
 const TX_RECENT_DEFAULT = 50;
@@ -132,6 +135,7 @@ module.exports = function createAdminUsersRouter(client) {
         recentTx: recentTx.map((t) => ({
           createdAt: t.createdAt,
           source: t.source,
+          sourceLabel: TX_SOURCE_LABELS[t.source] || t.source,
           amount: t.amount,
         })),
       });
