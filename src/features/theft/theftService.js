@@ -528,6 +528,11 @@ async function report(client, { guildId, userId, username }) {
     meta: {},
   });
 
+  // 極小機率：偵探捲款跑路，付了錢卻什麼都查不到
+  if (Math.random() < (r.abscondChance ?? 0.02)) {
+    return { ok: true, charged: true, absconded: true, fee };
+  }
+
   const investigateRate = r.investigateRate ?? 0.7;
   const byActor = new Map();
   for (const ev of events) {
@@ -561,6 +566,72 @@ async function report(client, { guildId, userId, username }) {
     refunded,
     totalCases: events.length,
   };
+}
+
+// ── 報案後的強制決鬥：贏了從兇手錢包討回被偷金額的一半 ──
+async function revengeDuel(client, { guildId, victimId, victimName, culpritId, member }) {
+  const c = cfg();
+  if (!c.enabled || !client.theftLogsCollection) return { ok: false, reason: "disabled" };
+  if (victimId === culpritId) return { ok: false, reason: "self" };
+  const rv = c.revenge || {};
+  const since = new Date(Date.now() - (c.report?.windowHours ?? 24) * 3600 * 1000);
+
+  // 只能決鬥一次：同一窗口內對同一兇手已討過帳
+  const already = await client.theftLogsCollection
+    .findOne({ guildId, type: "revenge", actor_id: victimId, target_id: culpritId, ts: { $gte: since } })
+    .catch(() => null);
+  if (already) return { ok: false, reason: "already_done" };
+
+  // 該兇手在窗口內偷走你的總額
+  const events = await client.theftLogsCollection
+    .find({ guildId, type: "steal", actor_id: culpritId, target_id: victimId, success: true, ts: { $gte: since } })
+    .toArray()
+    .catch(() => []);
+  const stolen = events.reduce((s, e) => s + (e.amount || 0), 0);
+  if (stolen <= 0) return { ok: false, reason: "no_case" };
+
+  // 判定：攻擊力 + 隨機（比照追捕計分）
+  const [victimAtk, culpritAtk] = await Promise.all([
+    buffResolver.getEffectiveAtk(client, victimId, guildId).catch(() => 0),
+    buffResolver.getEffectiveAtk(client, culpritId, guildId).catch(() => 0),
+  ]);
+  const rate = clamp(
+    (rv.baseRate ?? 0.5) + (victimAtk - culpritAtk) * (rv.atkDiffScale ?? 0.003),
+    rv.minRate ?? 0.2,
+    rv.maxRate ?? 0.8
+  );
+  const win = Math.random() < rate;
+
+  // 成敗都記一筆，確保只能決鬥一次
+  await logEvent(client, { guildId, type: "revenge", actor_id: victimId, target_id: culpritId, success: win, amount: 0 });
+
+  if (!win) return { ok: true, win: false, victimAtk, culpritAtk };
+
+  // 贏 → 從兇手錢包討回一半（上限為兇手現有錢包）
+  const wantRecover = Math.floor(stolen * (rv.recoverPct ?? 0.5));
+  const culpritWallet = (await getWallet(client, culpritId, guildId)).balance;
+  const recover = Math.max(0, Math.min(wantRecover, culpritWallet));
+  if (recover > 0) {
+    const debit = await grantCoins(client, {
+      userId: culpritId,
+      guildId,
+      amount: -recover,
+      source: "revenge_pay",
+      meta: { victimId },
+    });
+    if (debit) {
+      await grantCoins(client, {
+        userId: victimId,
+        guildId,
+        username: victimName,
+        amount: recover,
+        source: "revenge_win",
+        member,
+        meta: { culpritId },
+      });
+    }
+  }
+  return { ok: true, win: true, recover, stolen, victimAtk, culpritAtk };
 }
 
 async function listWanted(client, guildId) {
@@ -609,6 +680,7 @@ module.exports = {
   huntWanted,
   surrender,
   report,
+  revengeDuel,
   listWanted,
   activeWanted,
   expireWanted,

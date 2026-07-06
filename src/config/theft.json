@@ -59,7 +59,15 @@
       "detectiveFee": 500,
       "windowHours": 24,
       "investigateRate": 0.7,
-      "refundOnMiss": false
+      "refundOnMiss": false,
+      "abscondChance": 0.02
+    },
+    "revenge": {
+      "recoverPct": 0.5,
+      "baseRate": 0.5,
+      "minRate": 0.2,
+      "maxRate": 0.8,
+      "atkDiffScale": 0.003
     },
     "defense": {
       "safeboxRate": 0.2,

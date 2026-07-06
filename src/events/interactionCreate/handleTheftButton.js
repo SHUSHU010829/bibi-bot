@@ -77,6 +77,54 @@ module.exports = async (client, interaction) => {
       });
     }
 
+    // ── 報案後強制決鬥（owner 限定）──
+    if (id.startsWith("theft_revenge_")) {
+      const [victimId, culpritId] = id.slice("theft_revenge_".length).split("_");
+      if (interaction.user.id !== victimId) {
+        return interaction.reply({ content: "🚫 這不是你的按鈕！", flags: MessageFlags.Ephemeral });
+      }
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const result = await theftService.revengeDuel(client, {
+        guildId: interaction.guildId,
+        victimId,
+        victimName: interaction.member?.displayName || interaction.user.username,
+        culpritId,
+        member: interaction.member,
+      });
+      if (!result.ok) {
+        const map = {
+          self: ["🪞 不能打自己", "選錯對象了。", null],
+          already_done: ["🗡️ 你已經找他算過帳了", "每個兇手只能強制決鬥一次。", "去 /通緝榜 或找別人吧。"],
+          no_case: ["🕊️ 查無此帳", "近期沒有他偷你的紀錄可討。", null],
+        };
+        const [t, b, h] = map[result.reason] || ["🔧 決鬥失敗", "系統忙碌或未啟動。", "稍後再試。"];
+        return interaction.editReply({
+          components: [errorContainer(t, b, h)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      const container = result.win
+        ? new ContainerBuilder()
+            .setAccentColor(0xf1c40f)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                `# 🗡️ 討回公道！\n你打贏了 <@${culpritId}>，` +
+                  (result.recover > 0
+                    ? `討回 **${result.recover.toLocaleString()}** ${COIN_EMOJI}！`
+                    : "但他錢包空空，一毛也沒討到 😮‍💨") +
+                  `\n\n攻擊力 ${result.victimAtk} vs ${result.culpritAtk}`
+              )
+            )
+        : new ContainerBuilder()
+            .setAccentColor(0x95a5a6)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                `# 💔 討不回來\n你輸給了 <@${culpritId}>，這筆帳只能算了。\n\n攻擊力 ${result.victimAtk} vs ${result.culpritAtk}`
+              )
+            );
+      return interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
     // ── 查看惡名 / 存款捷徑（owner 限定）──
     const isNoto = id.startsWith("theft_noto_");
     const isBank = id.startsWith("theft_bank_");
