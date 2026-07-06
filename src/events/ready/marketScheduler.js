@@ -13,7 +13,7 @@ const {
 const { DateTime } = require("luxon");
 
 const { stockSystem } = require("../../config");
-const { nextPrice, stockDrift, poolParams, clampToLimit, limitBounds, priceImpact } = require("../../features/stock/priceEngine");
+const { nextPriceAdvanced, nextFairValue, stockDrift, poolParams, clampToLimit, limitBounds, priceImpact } = require("../../features/stock/priceEngine");
 const { rollRandomEvent } = require("../../features/stock/eventEngine");
 const { isMarketOpen } = require("../../features/stock/tradeService");
 const { renderMultiLine } = require("../../features/stock/chartRenderer");
@@ -109,15 +109,23 @@ async function tickOnce(client) {
       const sentiment = s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways";
       const drift = stockDrift(s.symbol, sentiment);
       const sigma = poolParams(s.symbol)?.sigma ?? s.sigma;
-      const raw = nextPrice(s.currentPrice, sigma, drift, s.floor);
+      const stepped = nextPriceAdvanced(
+        {
+          lastPrice: s.currentPrice,
+          momentum: s.momentum || 0,
+          fairValue: s.fairValue || s.currentPrice,
+        },
+        { sigma, drift, floor: s.floor, symbol: s.symbol },
+      );
+      const raw = stepped.price;
       const ref = s.openPrice || s.currentPrice;
       let next = clampToLimit(raw, ref, stockSystem?.limitBoard);
 
-      // 這 5 分鐘累積的買 / 賣壓在此一次反映（買為正、賣為負）。單 tick 衝擊沿用
+      // 累積的買 / 賣壓在此一次反映（買為正、賣為負）。單 tick 衝擊沿用
       // maxStepFrac 上限，超過上限的股數結轉到下一個 tick 慢慢消化。
       const impactCfg = stockSystem?.priceImpact;
       const pending = s.pendingImpactShares || 0;
-      const update = { currentPrice: next, updatedAt: new Date() };
+      const update = { currentPrice: next, momentum: stepped.momentum, updatedAt: new Date() };
       if (impactCfg?.enabled && pending !== 0) {
         const perShare = impactCfg.perShareFrac ?? 0;
         const capShares = perShare > 0 ? (impactCfg.maxStepFrac ?? 0.05) / perShare : Math.abs(pending);
@@ -339,12 +347,14 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
 async function runOpen(client) {
   const guildIds = await listGuildIdsWithMarket(client);
   for (const guildId of guildIds) {
-    // 把現價寫入今日 openPrice
+    // 把現價寫入今日 openPrice，並依情緒微調合理價（供均值回歸）
     const stocks = await client.stockMarketCollection.find({ guildId, enabled: { $ne: false } }).toArray();
     for (const s of stocks) {
+      const sentiment = s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways";
+      const fairValue = nextFairValue(s.fairValue || s.currentPrice, sentiment);
       await client.stockMarketCollection.updateOne(
         { _id: s._id },
-        { $set: { openPrice: s.currentPrice, openedAt: new Date() } }
+        { $set: { openPrice: s.currentPrice, openedAt: new Date(), fairValue } }
       );
     }
     await postOpenReport(client, guildId, stocks).catch(() => {});
@@ -541,6 +551,14 @@ module.exports = async (client) => {
       if (r.inserted > 0) console.log(`[STOCK] 補上市 ${r.inserted} 檔新股`.green);
     })
     .catch((e) => console.log(`[STOCK] pool backfill failed: ${e?.message || e}`.yellow));
+
+  // 既有個股補上 P4 引擎狀態（動能 / 合理價），避免 legacy doc 缺欄位
+  await client.stockMarketCollection
+    .updateMany(
+      { fairValue: { $exists: false } },
+      [{ $set: { fairValue: "$currentPrice", momentum: 0 } }],
+    )
+    .catch((e) => console.log(`[STOCK] engine state backfill failed: ${e?.message || e}`.yellow));
 
   registerCron(client, {
     name: "stock.tick",

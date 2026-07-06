@@ -45,6 +45,11 @@
       "candleMinutes": { "1d": 15, "1w": 240, "1m": 1440 },
       "candleCount": 40
     },
+    "engine": {
+      "momentum": { "enabled": true, "rho": 0.9, "gamma": 0.5 },
+      "reversion": { "enabled": true, "kappa": 0.02 },
+      "fairValueDailyDrift": 0.002
+    },
     "priceImpact": {
       "enabled": true,
       "perShareFrac": 0.0004,
