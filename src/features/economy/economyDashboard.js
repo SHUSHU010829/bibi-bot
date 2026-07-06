@@ -29,7 +29,7 @@ const PURE_MINT_SOURCES = new Set([
   "mining_sell", "work", "dungeon", "welfare",
   "message", "voice", "reaction",
   "quest_daily", "quest_weekly", "quest_event",
-  "stock_dividend", "invite_reward", "invite_welcome",
+  "stock_dividend", "stock_raffle_prize", "stock_rebate", "invite_reward", "invite_welcome",
   "donation", "encounter",
   "farm_harvest", "farm_raid", "farm_sell", "farm_raid_trap",
   "boss_loot", "boss_killer", "boss_kill_bonus",

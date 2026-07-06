@@ -20,7 +20,11 @@
     },
     "treasury": {
       "enabled": true,
-      "treasuryShare": 0.5
+      "treasuryShare": 0.5,
+      "raffleShare": 0.5,
+      "drawCronSchedule": "0 20 * * 0",
+      "raffleWinners": 3,
+      "rebate": { "eligibleBelow": 50000 }
     },
     "maxSharesPerUser": 500,
     "defaultMarketSentiment": "sideways",
