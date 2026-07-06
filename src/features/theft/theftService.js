@@ -724,6 +724,202 @@ async function revengeDuel(client, { guildId, victimId, victimName, culpritId, m
   return { ok: true, win: true, recover, stolen, victimAtk, culpritAtk };
 }
 
+// ── /潛逃：章節式追逃博弈 ────────────────────────────
+// 通緝犯主動賭一把逃亡：逐關選路線，成功前進、被逮全丟賞金；隨時可躲起來收手鎖定部分賞金。
+// 賞金早已在失風時託管扣走，故各終局只補回應退部分（bounty_refund），沒退的沒收進治安基金。
+function fleeCfg() {
+  return cfg().escapeRun || {};
+}
+
+// 該關某路線的被逮率：熱度隨已逃距離上升，再乘路線風險係數。
+function stepCatchRate(e, distance, route) {
+  const heat = Math.min(
+    (e.baseCatchRate ?? 0.2) + distance * (e.catchRatePerDistance ?? 0.1),
+    e.catchRateMax ?? 0.85
+  );
+  return clamp(heat * (route.riskMul ?? 1), 0.02, e.catchRateMax ?? 0.85);
+}
+
+// 收手可拿回的賞金：躲得越遠、拿回比例越高（全程躲到終點才 100%）。
+function stopRefund(e, bounty, distance) {
+  const pct = Math.min(
+    (e.stopRefundBasePct ?? 0.35) + distance * (e.stopRefundPerDistance ?? 0.1),
+    e.stopRefundMaxPct ?? 0.8
+  );
+  return Math.floor(bounty * pct);
+}
+
+function fleeRoutes(e) {
+  return Array.isArray(e.routes) && e.routes.length ? e.routes : [];
+}
+
+// 把某路線的即時風險組成回傳給 view（含被逮率、前進格數）。
+function fleeStageInfo(e, distance) {
+  const clear = e.distanceToClear ?? 4;
+  return {
+    distance,
+    distanceToClear: clear,
+    routes: fleeRoutes(e).map((r) => ({
+      key: r.key,
+      emoji: r.emoji,
+      name: r.name,
+      advance: r.advance ?? 1,
+      catchRate: stepCatchRate(e, distance, r),
+    })),
+  };
+}
+
+async function startFlee(client, { guildId, userId }) {
+  const c = cfg();
+  const e = fleeCfg();
+  if (!c.enabled || !e.enabled || !client.wantedListCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+  if (!fleeRoutes(e).length) return { ok: false, reason: "disabled" };
+
+  const token = crypto.randomUUID();
+  const locked = await client.wantedListCollection.findOneAndUpdate(
+    { userId, guildId, status: "wanted" },
+    {
+      $set: {
+        status: "fleeing",
+        flee: { distance: 0, token, expires_at: new Date(Date.now() + (e.runExpiresMs ?? 600000)) },
+        updated_at: new Date(),
+      },
+    },
+    { returnDocument: "after" }
+  );
+  const wanted = locked?.value || locked;
+  if (!wanted) {
+    const cur = await client.wantedListCollection.findOne({ userId, guildId }).catch(() => null);
+    return { ok: false, reason: cur?.status === "fleeing" ? "already_fleeing" : "not_wanted" };
+  }
+  return { ok: true, token, bounty: wanted.bounty, stage: fleeStageInfo(e, 0) };
+}
+
+async function fleeStep(client, { guildId, userId, username, token, routeKey }) {
+  const e = fleeCfg();
+  const route = fleeRoutes(e).find((r) => r.key === routeKey);
+  if (!route) return { ok: false, reason: "stale" };
+
+  const doc = await client.wantedListCollection
+    .findOne({ userId, guildId, status: "fleeing" })
+    .catch(() => null);
+  if (!doc || doc.flee?.token !== token) return { ok: false, reason: "stale" };
+
+  const distance = doc.flee?.distance ?? 0;
+  const bounty = doc.bounty;
+  const clear = e.distanceToClear ?? 4;
+  const caught = Math.random() < stepCatchRate(e, distance, route);
+
+  if (caught) {
+    const res = await client.wantedListCollection.findOneAndUpdate(
+      { userId, guildId, status: "fleeing", "flee.token": token },
+      { $set: { status: "caught_fleeing", "flee.distance": distance, updated_at: new Date() } }
+    );
+    if (!(res?.value || res)) return { ok: false, reason: "stale" };
+    // 全額賞金沒收：先照託管帳本退回、再全數沒入治安基金
+    await grantCoins(client, {
+      userId, guildId, username, amount: bounty,
+      source: "bounty_refund", meta: { reason: "flee_caught", wantedId: doc.wanted_id },
+    }).catch(() => {});
+    if (bounty > 0) {
+      await grantCoins(client, {
+        userId, guildId, username, amount: -bounty,
+        source: "flee_forfeit", meta: { reason: "flee_caught" },
+      }).catch(() => {});
+      await addToFund(client, guildId, bounty);
+    }
+    await theftProfile
+      .adjustNotoriety(client, userId, guildId, -(e.caughtNotorietyLoss ?? 2))
+      .catch(() => {});
+    await logEvent(client, { guildId, type: "flee", actor_id: userId, success: false, amount: bounty });
+    return { ok: true, outcome: "caught", route, distance, bounty };
+  }
+
+  const nextDistance = distance + (route.advance ?? 1);
+
+  if (nextDistance >= clear) {
+    const res = await client.wantedListCollection.findOneAndUpdate(
+      { userId, guildId, status: "fleeing", "flee.token": token },
+      { $set: { status: "escaped", "flee.distance": nextDistance, updated_at: new Date() } }
+    );
+    if (!(res?.value || res)) return { ok: false, reason: "stale" };
+    await grantCoins(client, {
+      userId, guildId, username, amount: bounty,
+      source: "bounty_refund", meta: { reason: "flee_clear", wantedId: doc.wanted_id },
+    }).catch(() => {});
+    await theftProfile
+      .adjustNotoriety(client, userId, guildId, -(e.clearNotorietyLoss ?? 1))
+      .catch(() => {});
+    await logEvent(client, { guildId, type: "flee", actor_id: userId, success: true, amount: bounty });
+    return { ok: true, outcome: "clear", route, distance: nextDistance, bounty };
+  }
+
+  const nextToken = crypto.randomUUID();
+  const res = await client.wantedListCollection.findOneAndUpdate(
+    { userId, guildId, status: "fleeing", "flee.token": token },
+    {
+      $set: {
+        "flee.distance": nextDistance,
+        "flee.token": nextToken,
+        "flee.expires_at": new Date(Date.now() + (e.runExpiresMs ?? 600000)),
+        updated_at: new Date(),
+      },
+    }
+  );
+  if (!(res?.value || res)) return { ok: false, reason: "stale" };
+  return { ok: true, outcome: "advance", route, token: nextToken, bounty, stage: fleeStageInfo(e, nextDistance) };
+}
+
+async function fleeStop(client, { guildId, userId, username, token }) {
+  const e = fleeCfg();
+  const doc = await client.wantedListCollection
+    .findOne({ userId, guildId, status: "fleeing" })
+    .catch(() => null);
+  if (!doc || doc.flee?.token !== token) return { ok: false, reason: "stale" };
+
+  const distance = doc.flee?.distance ?? 0;
+  const bounty = doc.bounty;
+  const res = await client.wantedListCollection.findOneAndUpdate(
+    { userId, guildId, status: "fleeing", "flee.token": token },
+    { $set: { status: "escaped", "flee.distance": distance, updated_at: new Date() } }
+  );
+  if (!(res?.value || res)) return { ok: false, reason: "stale" };
+
+  const refund = stopRefund(e, bounty, distance);
+  const forfeit = bounty - refund;
+  await grantCoins(client, {
+    userId, guildId, username, amount: bounty,
+    source: "bounty_refund", meta: { reason: "flee_stop", wantedId: doc.wanted_id },
+  }).catch(() => {});
+  if (forfeit > 0) {
+    await grantCoins(client, {
+      userId, guildId, username, amount: -forfeit,
+      source: "flee_forfeit", meta: { reason: "flee_stop" },
+    }).catch(() => {});
+    await addToFund(client, guildId, forfeit);
+  }
+  await theftProfile
+    .adjustNotoriety(client, userId, guildId, -(e.clearNotorietyLoss ?? 1))
+    .catch(() => {});
+  await logEvent(client, { guildId, type: "flee", actor_id: userId, success: true, amount: refund });
+  return { ok: true, outcome: "stop", distance, bounty, refund, forfeit };
+}
+
+// cron：撿回被中斷 / 逾時未完成的逃亡，還原成可被追捕的通緝狀態（不動賞金）。
+async function revertStaleFlee(client) {
+  if (!client.wantedListCollection) return 0;
+  const now = new Date();
+  const res = await client.wantedListCollection
+    .updateMany(
+      { status: "fleeing", "flee.expires_at": { $lte: now } },
+      { $set: { status: "wanted", hunt_cooldown_until: 0, updated_at: now }, $unset: { flee: "" } }
+    )
+    .catch(() => null);
+  return res?.modifiedCount || 0;
+}
+
 async function listWanted(client, guildId) {
   if (!client.wantedListCollection) return [];
   const rows = await client.wantedListCollection
@@ -771,6 +967,10 @@ module.exports = {
   surrender,
   report,
   revengeDuel,
+  startFlee,
+  fleeStep,
+  fleeStop,
+  revertStaleFlee,
   listWanted,
   activeWanted,
   expireWanted,

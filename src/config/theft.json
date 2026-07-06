@@ -56,6 +56,24 @@
     "surrender": {
       "bailForfeitPct": 0.6
     },
+    "escapeRun": {
+      "enabled": true,
+      "distanceToClear": 4,
+      "baseCatchRate": 0.2,
+      "catchRatePerDistance": 0.1,
+      "catchRateMax": 0.85,
+      "routes": [
+        { "key": "crowd", "emoji": "🌆", "name": "混入人群", "riskMul": 0.6, "advance": 1 },
+        { "key": "alley", "emoji": "🌫️", "name": "鑽暗巷", "riskMul": 1.0, "advance": 2 },
+        { "key": "roof", "emoji": "🏙️", "name": "飛簷走壁", "riskMul": 1.5, "advance": 3 }
+      ],
+      "stopRefundBasePct": 0.35,
+      "stopRefundPerDistance": 0.1,
+      "stopRefundMaxPct": 0.8,
+      "clearNotorietyLoss": 1,
+      "caughtNotorietyLoss": 2,
+      "runExpiresMs": 600000
+    },
     "report": {
       "detectiveFee": 500,
       "windowHours": 24,

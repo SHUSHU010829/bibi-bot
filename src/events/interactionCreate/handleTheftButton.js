@@ -9,7 +9,14 @@ const {
 } = require("discord.js");
 const theftService = require("../../features/theft/theftService");
 const theftProfile = require("../../features/theft/theftProfile");
-const { errorContainer, huntResultContainer, broadcast } = require("../../features/theft/theftView");
+const {
+  errorContainer,
+  huntResultContainer,
+  broadcast,
+  fleeChaseContainer,
+  fleeOutcomeContainer,
+  fleeBroadcastContainer,
+} = require("../../features/theft/theftView");
 const theftBoard = require("../../features/theft/theftBoard");
 const { COIN_EMOJI } = require("../../constants/coin");
 const logger = require("../../utils/logger");
@@ -133,6 +140,102 @@ module.exports = async (client, interaction) => {
               )
             );
       return interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    // ── 從失風訊息直接發起逃亡（owner 限定）──
+    if (id.startsWith("theft_fleego_")) {
+      const ownerId = id.slice("theft_fleego_".length);
+      if (interaction.user.id !== ownerId) {
+        return interaction.reply({ content: "🚫 這不是你的逃亡！", flags: MessageFlags.Ephemeral });
+      }
+      const result = await theftService.startFlee(client, {
+        guildId: interaction.guildId,
+        userId: ownerId,
+      });
+      if (!result.ok) {
+        const map = {
+          not_wanted: ["🕊️ 你目前沒被通緝", "清白之身，無處可逃。", null],
+          already_fleeing: ["🏃 你正在逃亡中", "回原本的逃亡訊息繼續選路線。", "找不到就等逾時後用 /潛逃 重跑。"],
+        };
+        const [t, b, h] = map[result.reason] || ["🔧 逃亡失敗", "系統忙碌或未啟動。", "稍後再試。"];
+        return interaction.update({
+          components: [errorContainer(t, b, h)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      return interaction.update({
+        components: [fleeChaseContainer(ownerId, result.token, result.stage, result.bounty)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+
+    // ── 潛逃追逃小遊戲（owner 限定，同一則訊息 update 推進）──
+    if (id.startsWith("theft_flee_")) {
+      // theft_flee_<ownerId>_<token>_<routeKey|stop>
+      const rest = id.slice("theft_flee_".length);
+      const firstUnderscore = rest.indexOf("_");
+      const ownerId = rest.slice(0, firstUnderscore);
+      const afterOwner = rest.slice(firstUnderscore + 1);
+      const lastUnderscore = afterOwner.lastIndexOf("_");
+      const token = afterOwner.slice(0, lastUnderscore);
+      const action = afterOwner.slice(lastUnderscore + 1);
+
+      if (interaction.user.id !== ownerId) {
+        return interaction.reply({ content: "🚫 這不是你的逃亡！", flags: MessageFlags.Ephemeral });
+      }
+
+      const username = interaction.member?.displayName || interaction.user.username;
+      const result =
+        action === "stop"
+          ? await theftService.fleeStop(client, {
+              guildId: interaction.guildId,
+              userId: ownerId,
+              username,
+              token,
+            })
+          : await theftService.fleeStep(client, {
+              guildId: interaction.guildId,
+              userId: ownerId,
+              username,
+              token,
+              routeKey: action,
+            });
+
+      if (!result.ok) {
+        return interaction.update({
+          components: [
+            errorContainer(
+              "🌀 這局已結束或過期",
+              "這場逃亡已經結算、逾時或被其他操作接手了。",
+              "用 /潛逃 重新發起，或 /通緝榜 看看目前狀態。"
+            ),
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+
+      // 尚未結束 → 換下一關（新 token）
+      if (result.outcome === "advance") {
+        return interaction.update({
+          components: [fleeChaseContainer(ownerId, result.token, result.stage, result.bounty)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+
+      // 終局：私人結果 + 公開廣播 + 刷新看板
+      await interaction.update({
+        components: [fleeOutcomeContainer(result)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      const announce = fleeBroadcastContainer(ownerId, result);
+      const broadcasted = await broadcast(client, announce);
+      if (!broadcasted) {
+        await interaction.channel
+          ?.send({ components: [announce], flags: MessageFlags.IsComponentsV2 })
+          .catch(() => {});
+      }
+      theftBoard.refresh(client).catch(() => {});
+      return;
     }
 
     // ── 查看惡名 / 存款捷徑（owner 限定）──

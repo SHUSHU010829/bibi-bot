@@ -108,14 +108,24 @@ module.exports = {
 
       // 失手：本人 ephemeral 收到壞消息，頻道公開通緝
       const expiresEpoch = Math.floor(result.expiresAt / 1000);
+      const failContainer = errorContainer(
+        "🚨 失風被逮！",
+        `你偷 ${target} 時失手，遭全鎮通緝。\n頭上賞金 **${result.bounty.toLocaleString()}** ${COIN_EMOJI}（已從你錢包凍結託管）。`,
+        "潛伏熬過時效可取回賞金；用 /自首 花保釋金脫身；或 /潛逃 賭一把主動逃亡。"
+      );
+      if (theft?.escapeRun?.enabled) {
+        failContainer.addActionRowComponents(
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`theft_fleego_${interaction.user.id}`)
+              .setLabel("賭一把逃亡")
+              .setEmoji("🏃")
+              .setStyle(ButtonStyle.Primary)
+          )
+        );
+      }
       await interaction.editReply({
-        components: [
-          errorContainer(
-            "🚨 失風被逮！",
-            `你偷 ${target} 時失手，遭全鎮通緝。\n頭上賞金 **${result.bounty.toLocaleString()}** ${COIN_EMOJI}（已從你錢包凍結託管）。`,
-            "潛伏熬過時效可取回賞金；或用 /自首 花保釋金提早脫身。"
-          ),
-        ],
+        components: [failContainer],
         flags: MessageFlags.IsComponentsV2,
       });
 
