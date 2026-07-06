@@ -13,7 +13,12 @@ const {
 
 const { theft } = require("../../config");
 const theftService = require("../../features/theft/theftService");
-const { errorContainer, broadcast } = require("../../features/theft/theftView");
+const {
+  errorContainer,
+  broadcast,
+  fleeChaseContainer,
+  wantedAnnounceContainer,
+} = require("../../features/theft/theftView");
 const theftBoard = require("../../features/theft/theftBoard");
 const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 
@@ -106,8 +111,17 @@ module.exports = {
         });
       }
 
-      // 失手：本人 ephemeral 收到壞消息，頻道公開通緝
-      const expiresEpoch = Math.floor(result.expiresAt / 1000);
+      // 失手 → 立刻進入追逃：ephemeral 顯示逃跑畫面，甩開就清白、被逮才上通緝榜
+      if (result.fleeing) {
+        return interaction.editReply({
+          components: [
+            fleeChaseContainer(interaction.user.id, result.token, result.stage, result.bounty),
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+
+      // 逃亡系統未啟用的退路：維持舊行為，直接通緝並公開
       await interaction.editReply({
         components: [
           errorContainer(
@@ -118,27 +132,7 @@ module.exports = {
         ],
         flags: MessageFlags.IsComponentsV2,
       });
-
-      const huntRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`theft_hunt_${interaction.user.id}`)
-          .setLabel("我要追捕")
-          .setEmoji("🕵️")
-          .setStyle(ButtonStyle.Danger)
-      );
-      const announce = new ContainerBuilder()
-        .setAccentColor(0xe74c3c)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `# 🚨 通緝令\n` +
-              `${interaction.user} 偷竊失風，遭全鎮通緝！\n` +
-              `賞金 **${result.bounty.toLocaleString()}** ${COIN_EMOJI}　|　時效 <t:${expiresEpoch}:R>\n` +
-              `抓到他就能領走賞金——誰要出手？`
-          )
-        )
-        .addSeparatorComponents(new SeparatorBuilder())
-        .addActionRowComponents(huntRow);
-      // 優先推到通緝廣播頻道；未設定才退回犯案的當前頻道
+      const announce = wantedAnnounceContainer(interaction.user.id, result.bounty, result.expiresAt);
       const broadcasted = await broadcast(client, announce);
       if (!broadcasted) {
         await interaction.channel

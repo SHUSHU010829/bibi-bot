@@ -9,7 +9,14 @@ const {
 } = require("discord.js");
 const theftService = require("../../features/theft/theftService");
 const theftProfile = require("../../features/theft/theftProfile");
-const { errorContainer, huntResultContainer, broadcast } = require("../../features/theft/theftView");
+const {
+  errorContainer,
+  huntResultContainer,
+  broadcast,
+  fleeChaseContainer,
+  fleeOutcomeContainer,
+  wantedAnnounceContainer,
+} = require("../../features/theft/theftView");
 const theftBoard = require("../../features/theft/theftBoard");
 const { COIN_EMOJI } = require("../../constants/coin");
 const logger = require("../../utils/logger");
@@ -133,6 +140,69 @@ module.exports = async (client, interaction) => {
               )
             );
       return interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    // ── 失風追逃小遊戲（owner 限定，同一則訊息 update 推進）──
+    if (id.startsWith("theft_flee_")) {
+      // theft_flee_<ownerId>_<token>_<routeKey>
+      const rest = id.slice("theft_flee_".length);
+      const firstUnderscore = rest.indexOf("_");
+      const ownerId = rest.slice(0, firstUnderscore);
+      const afterOwner = rest.slice(firstUnderscore + 1);
+      const lastUnderscore = afterOwner.lastIndexOf("_");
+      const token = afterOwner.slice(0, lastUnderscore);
+      const routeKey = afterOwner.slice(lastUnderscore + 1);
+
+      if (interaction.user.id !== ownerId) {
+        return interaction.reply({ content: "🚫 這不是你的逃亡！", flags: MessageFlags.Ephemeral });
+      }
+
+      const result = await theftService.fleeStep(client, {
+        guildId: interaction.guildId,
+        userId: ownerId,
+        username: interaction.member?.displayName || interaction.user.username,
+        token,
+        routeKey,
+      });
+
+      if (!result.ok) {
+        return interaction.update({
+          components: [
+            errorContainer(
+              "🌀 這局已結束或過期",
+              "這場逃亡已經結算或逾時了。",
+              "看看 /通緝榜 目前的狀態。"
+            ),
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+
+      // 尚未結束 → 換下一關（新 token）
+      if (result.outcome === "advance") {
+        return interaction.update({
+          components: [fleeChaseContainer(ownerId, result.token, result.stage, result.bounty)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+
+      // 終局
+      await interaction.update({
+        components: [fleeOutcomeContainer(result)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      // 清白脫身 → 神不知鬼不覺，不廣播；被逮 → 公開通緝令 + 刷新看板
+      if (result.outcome === "caught") {
+        const announce = wantedAnnounceContainer(ownerId, result.bounty, result.expiresAt);
+        const broadcasted = await broadcast(client, announce);
+        if (!broadcasted) {
+          await interaction.channel
+            ?.send({ components: [announce], flags: MessageFlags.IsComponentsV2 })
+            .catch(() => {});
+        }
+        theftBoard.refresh(client).catch(() => {});
+      }
+      return;
     }
 
     // ── 查看惡名 / 存款捷徑（owner 限定）──
