@@ -250,6 +250,12 @@ async function runAppraisal(client, interaction, { ts, allowOverflow }) {
       ),
     );
 
+    const appraiserName = interaction.member?.displayName || interaction.user.username;
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# 🔍 ${appraiserName} 的賭石結果`),
+    );
+
     // 賭石結果改為公開訊息（行動類）。
     // 注意：ephemeral defer 之後的 followUp 會被 Discord 強制沿用 ephemeral，
     // 無法靠拿掉 flag 變公開；改用 channel.send 直接送一則正常公開訊息，
