@@ -659,15 +659,27 @@ async function report(client, { guildId, userId, username }) {
   const wallet = (await getWallet(client, userId, guildId)).balance;
   if (wallet < fee) return { ok: false, reason: "insufficient", fee, have: wallet };
 
-  const since = new Date(Date.now() - (r.windowHours ?? 24) * 3600 * 1000);
+  const nowMs = Date.now();
+  const windowMs = (r.windowHours ?? 24) * 3600 * 1000;
+  const since = new Date(nowMs - windowMs);
   const events = await client.theftLogsCollection
     .find({ guildId, type: "steal", target_id: userId, success: true, ts: { $gte: since } })
     .sort({ ts: -1 })
     .toArray()
     .catch(() => []);
 
-  // 沒有任何案件可查 → 退費（無事可查不收錢）
-  if (!events.length) {
+  // 已強制決鬥過的兇手視為已結案，不再列入偵查（同窗口只能討一次帳）
+  const revenged = events.length
+    ? await client.theftLogsCollection
+        .find({ guildId, type: "revenge", actor_id: userId, ts: { $gte: since } })
+        .toArray()
+        .catch(() => [])
+    : [];
+  const revengedSet = new Set(revenged.map((e) => e.target_id));
+  const openEvents = events.filter((ev) => !revengedSet.has(ev.actor_id));
+
+  // 沒有任何（未結）案件可查 → 退費（無事可查不收錢）
+  if (!openEvents.length) {
     return { ok: true, charged: false, found: false, culprits: [], noCase: true };
   }
 
@@ -686,10 +698,14 @@ async function report(client, { guildId, userId, username }) {
     return { ok: true, charged: true, absconded: true, fee };
   }
 
+  // 線索隨時間變冷：越久前的竊案越難查，接近窗口邊緣時查到率降到 investigateRateStale
   const investigateRate = r.investigateRate ?? 0.7;
+  const investigateRateStale = r.investigateRateStale ?? investigateRate;
   const byActor = new Map();
-  for (const ev of events) {
-    if (Math.random() >= investigateRate) continue; // 這筆查不出來
+  for (const ev of openEvents) {
+    const ageFrac = clamp((nowMs - new Date(ev.ts).getTime()) / windowMs, 0, 1);
+    const rate = investigateRate + (investigateRateStale - investigateRate) * ageFrac;
+    if (Math.random() >= rate) continue; // 這筆查不出來（時間太久線索也可能斷）
     const cur = byActor.get(ev.actor_id) || { actorId: ev.actor_id, amount: 0, count: 0 };
     cur.amount += ev.amount || 0;
     cur.count += 1;
@@ -717,7 +733,7 @@ async function report(client, { guildId, userId, username }) {
     culprits,
     fee,
     refunded,
-    totalCases: events.length,
+    totalCases: openEvents.length,
   };
 }
 
