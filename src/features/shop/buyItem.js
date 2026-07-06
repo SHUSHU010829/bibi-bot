@@ -284,8 +284,8 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     // 防身道具：寫入 TheftProfiles，不進 UserInventory
     const prof = await getTheftProfile(client, userId, guildId);
     if (item.type === "theft_safebox") {
-      // 保險箱是限時效果：時效內重購則從現有到期時間往後延長
-      const durMs = (item.payload?.durationMinutes || 0) * 60 * 1000;
+      // 保險箱是限時效果：可一次買多個累積天數；時效內重購則從現有到期時間往後延長
+      const durMs = (item.payload?.durationMinutes || 0) * 60 * 1000 * qty;
       const base = Math.max(Date.now(), prof?.safebox_expires_at || 0);
       await client.theftProfilesCollection.updateOne(
         { userId, guildId },

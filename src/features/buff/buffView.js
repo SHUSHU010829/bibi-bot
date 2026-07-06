@@ -17,7 +17,9 @@ const {
   staminaGuildBonus,
   getMemberClub,
 } = require("../mining/dungeonService");
-const { dungeon } = require("../../config");
+const { dungeon, theft } = require("../../config");
+const theftProfile = require("../theft/theftProfile");
+const theftService = require("../theft/theftService");
 
 function pct(mult) {
   return `${Math.round((mult - 1) * 100)}%`;
@@ -270,6 +272,40 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
       container
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+    }
+  }
+
+  // 盜賊 / 防身狀態（惡名、通緝、防身道具）：有任一相關狀態才顯示
+  if (theft?.enabled && client.theftProfilesCollection) {
+    const [tp, wanted] = await Promise.all([
+      theftProfile.getOrCreate(client, userId, guildId).catch(() => null),
+      theftService.activeWanted(client, userId, guildId).catch(() => null),
+    ]);
+    if (tp) {
+      const lines = [];
+      const noto = tp.notoriety_effective || 0;
+      const watchdog = tp.watchdog_count || 0;
+      const cloak = tp.night_cloak_count || 0;
+      const safeboxActive = theftProfile.safeboxActive(tp);
+
+      if (wanted) {
+        const e = Math.floor(new Date(wanted.expires_at).getTime() / 1000);
+        lines.push(`🚨 **通緝中**：賞金 **${wanted.bounty.toLocaleString()}** 🪙，<t:${e}:R> 到期`);
+      }
+      if (noto > 0) lines.push(`🥷 **惡名**：${noto}`);
+      if (safeboxActive) {
+        const e = Math.floor((tp.safebox_expires_at || 0) / 1000);
+        lines.push(`🔒 **保險箱生效中**：被偷成功率 −20%，<t:${e}:R> 到期`);
+      }
+      if (watchdog > 0) lines.push(`🐕 **看門狗**：${watchdog} 隻（各擋一次偷竊）`);
+      if (cloak > 0) lines.push(`🕶️ **夜行衣**：${cloak} 件（各 +15% 偷竊成功率）`);
+
+      if (lines.length) {
+        lines.push("-# 防身道具在 `/商店 → 防身道具` 購買");
+        container
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+      }
     }
   }
 

@@ -17,6 +17,7 @@ const { errorContainer, broadcast } = require("../../features/theft/theftView");
 const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 
 module.exports = {
+  channelBuckets: ["theft"],
   data: new SlashCommandBuilder()
     .setName("偷竊")
     .setDescription("潛入其他玩家的錢包偷金幣，失風會被全鎮通緝 🥷")

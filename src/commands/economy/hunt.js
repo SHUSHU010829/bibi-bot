@@ -10,6 +10,7 @@ const theftService = require("../../features/theft/theftService");
 const { errorContainer, huntResultContainer, broadcast } = require("../../features/theft/theftView");
 
 module.exports = {
+  channelBuckets: ["theft"],
   data: new SlashCommandBuilder()
     .setName("追捕")
     .setDescription("追捕通緝犯，成功搶下他頭上的賞金 🕵️")
