@@ -66,8 +66,8 @@ module.exports = {
       // 成功：僅小偷自己可見（潛行），不驚動任何人
       if (result.success) {
         const notoLine = result.cappedByNotoriety
-          ? `-# 🥷 惡名 ${result.notoriety}：這次收穫被上限 ${result.stealCap.toLocaleString()} 壓住了——**惡名越高偷得越多**（每點 +300，最高 12,000）。`
-          : `-# 🥷 惡名 ${result.notoriety}：目前單次上限 ${result.stealCap.toLocaleString()}（越有名越高，最高 12,000）。`;
+          ? `-# 🥷 這是肥羊！他錢包更多，但你名聲太小（惡名 ${result.notoriety}），一次只偷得走 ${result.stealCap.toLocaleString()}。多偷幾次讓惡名變高，就能偷更多（惡名每 +1、一次多偷 300，最高偷 12,000）。`
+          : `-# 🥷 你的惡名 ${result.notoriety}，現在一次最多能偷 ${result.stealCap.toLocaleString()}。惡名越高偷越多（每 +1 多偷 300，最高 12,000）。`;
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`theft_bank_${interaction.user.id}`)
