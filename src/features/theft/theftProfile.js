@@ -45,7 +45,6 @@ function defaultDoc(userId, guildId) {
     night_cloak_count: 0,
     last_steal_date: null,
     createdAt: now,
-    updatedAt: now,
   };
 }
 
