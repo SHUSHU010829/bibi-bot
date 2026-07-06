@@ -43,6 +43,8 @@ function defaultDoc(userId, guildId) {
     watchdog_count: 0,
     safebox_expires_at: 0,
     night_cloak_count: 0,
+    parole_until: 0,
+    surrender_history: [],
     last_steal_date: null,
     createdAt: now,
   };

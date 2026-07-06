@@ -50,17 +50,34 @@ module.exports = {
         });
       }
 
+      const bailLine =
+        `沒收保釋金 **${result.bail.toLocaleString()}** ${COIN_EMOJI}` +
+        (result.disgorge > 0 ? `（含追繳歷史贓款 ${result.disgorge.toLocaleString()}）` : "") +
+        `，退回凍結賞金 **${result.bounty.toLocaleString()}** ${COIN_EMOJI}。`;
+      const netLine =
+        result.refunded >= 0
+          ? `本次淨拿回 **${result.refunded.toLocaleString()}** ${COIN_EMOJI}，通緝已解除。`
+          : `錢包再倒扣 **${Math.abs(result.refunded).toLocaleString()}** ${COIN_EMOJI}，通緝已解除。`;
+
+      const notes = [];
+      if (result.repeatCount > 0) {
+        notes.push(
+          `⚠️ 近期第 ${result.repeatCount + 1} 次自首，保釋比例已加重至 ${Math.round(result.forfeitPct * 100)}%`
+        );
+      }
+      if (result.paroleUntil > Date.now()) {
+        const p = Math.floor(result.paroleUntil / 1000);
+        notes.push(`🚔 假釋觀察期 <t:${p}:R>（<t:${p}:t>）前不能偷竊`);
+      }
+      notes.push("惡名下降了一些。金盆洗手也是一條路。");
+
       const container = new ContainerBuilder()
         .setAccentColor(0x3498db)
         .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `# 🙇 你自首了\n` +
-              `繳交保釋金 **${result.bail.toLocaleString()}** ${COIN_EMOJI}，` +
-              `拿回託管賞金 **${result.refunded.toLocaleString()}** ${COIN_EMOJI}，通緝已解除。`
-          )
+          new TextDisplayBuilder().setContent(`# 🙇 你自首了\n${bailLine}\n${netLine}`)
         )
         .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("-# 惡名下降了一些。金盆洗手也是一條路。")
+          new TextDisplayBuilder().setContent(notes.map((n) => `-# ${n}`).join("\n"))
         );
 
       // 公開洗白消息（自首是明面上的事）：推到通緝廣播頻道；未設定才退回當前頻道
