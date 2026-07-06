@@ -73,11 +73,14 @@ module.exports = async (client, interaction) => {
         });
       }
       const resultContainer = huntResultContainer(result, interaction.user.id, wantedUserId);
-      // 抓到人 → 公開推到通緝廣播頻道；玩家本人這裡仍是私人結果
-      if (result.success) {
-        await broadcast(client, resultContainer);
-      }
       theftBoard.refresh(client).catch(() => {});
+      // 抓到人 → 只公開推到通緝廣播頻道，不再私訊複製一份給玩家
+      if (result.success) {
+        const announced = await broadcast(client, resultContainer);
+        if (announced) {
+          return interaction.deleteReply().catch(() => {});
+        }
+      }
       return interaction.editReply({
         components: [resultContainer],
         flags: MessageFlags.IsComponentsV2,
