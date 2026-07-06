@@ -48,7 +48,9 @@
       "maxRate": 0.8,
       "atkDiffScale": 0.003,
       "caughtFinePct": 0.1,
-      "escapeCooldownMs": 1800000
+      "escapeCooldownBaseMs": 1800000,
+      "escapeCooldownPerNotorietyMs": 300000,
+      "escapeCooldownMaxMs": 10800000
     },
     "surrender": {
       "bailForfeitPct": 0.6

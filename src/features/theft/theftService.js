@@ -355,7 +355,14 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
 
   if (!success) {
     // 逃脫：復原通緝狀態，並讓通緝犯躲起來一段冷卻，期間不可再被追捕
-    const cooldownUntil = Date.now() + (h.escapeCooldownMs ?? 0);
+    // 冷卻隨通緝犯惡名遞增——越大尾的逃犯躲越久
+    const wantedNotoriety = wanted.notoriety_at || 0;
+    const cooldownMs = Math.min(
+      (h.escapeCooldownBaseMs ?? 1800000) +
+        wantedNotoriety * (h.escapeCooldownPerNotorietyMs ?? 300000),
+      h.escapeCooldownMaxMs ?? 10800000
+    );
+    const cooldownUntil = Date.now() + cooldownMs;
     await client.wantedListCollection.updateOne(
       { userId: wantedUserId, guildId },
       { $set: { status: "wanted", hunt_cooldown_until: cooldownUntil, updated_at: new Date() } }
