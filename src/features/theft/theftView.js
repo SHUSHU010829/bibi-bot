@@ -102,7 +102,7 @@ function huntResultContainer(result, hunterId, wantedUserId) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
 }
 
-// ── /潛逃 追逃小遊戲 ──────────────────────────────────
+// ── 失風追逃小遊戲 ────────────────────────────────────
 function riskWord(rate) {
   if (rate < 0.2) return "穩";
   if (rate < 0.45) return "險";
@@ -114,26 +114,16 @@ function progressBar(distance, clear) {
   return "🟧".repeat(filled) + "⬜".repeat(Math.max(0, clear - filled));
 }
 
-function stopRefundAmount(bounty, distance) {
-  const e = theft?.escapeRun || {};
-  const pct = Math.min(
-    (e.stopRefundBasePct ?? 0.35) + distance * (e.stopRefundPerDistance ?? 0.1),
-    e.stopRefundMaxPct ?? 0.8
-  );
-  return Math.floor(bounty * pct);
-}
-
-// 逃亡進行中：進度條 + 各路線風險 + 每條路線一顆按鈕（+ 收手），全部限本人操作。
+// 逃亡進行中：進度條 + 各路線風險 + 每條路線一顆按鈕，全部限本人操作。
 function fleeChaseContainer(ownerId, token, stage, bounty) {
   const { distance, distanceToClear, routes } = stage;
-  const stopRefund = stopRefundAmount(bounty, distance);
   const container = new ContainerBuilder()
     .setAccentColor(0xe67e22)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# 🏃 逃亡中…\n` +
-          `躲藏進度 ${progressBar(distance, distanceToClear)} **${distance}/${distanceToClear}**\n` +
-          `託管賞金 **${bounty.toLocaleString()}** ${COIN_EMOJI}　躲到終點就全額拿回！`
+        `# 🏃 快跑！被發現了\n` +
+          `逃亡進度 ${progressBar(distance, distanceToClear)} **${distance}/${distanceToClear}**\n` +
+          `躲到終點就**清白脫身**、神不知鬼不覺；被逮才會上通緝榜、凍結賞金 **${bounty.toLocaleString()}** ${COIN_EMOJI}。`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder())
@@ -148,95 +138,81 @@ function fleeChaseContainer(ownerId, token, stage, bounty) {
           )
           .join("\n")
       )
-    );
-
-  const routeRow = new ActionRowBuilder().addComponents(
-    ...routes.map((r) =>
-      new ButtonBuilder()
-        .setCustomId(`theft_flee_${ownerId}_${token}_${r.key}`)
-        .setLabel(r.name)
-        .setEmoji(r.emoji)
-        .setStyle(ButtonStyle.Primary)
     )
-  );
-  container.addActionRowComponents(routeRow);
-
-  if (distance >= 1) {
-    container.addActionRowComponents(
+    .addActionRowComponents(
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`theft_flee_${ownerId}_${token}_stop`)
-          .setLabel(`躲起來收手（拿回 ${stopRefund.toLocaleString()}）`)
-          .setEmoji("🛑")
-          .setStyle(ButtonStyle.Secondary)
+        ...routes.map((r) =>
+          new ButtonBuilder()
+            .setCustomId(`theft_flee_${ownerId}_${token}_${r.key}`)
+            .setLabel(r.name)
+            .setEmoji(r.emoji)
+            .setStyle(ButtonStyle.Primary)
+        )
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 越往後熱度越高、越危險。放著不逃約 10 分鐘後視同沒逃掉，會自動上通緝榜。"
       )
     );
-  }
-
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      "-# 被逮 → 賞金全數充公；躲得越遠、收手拿回越多。越往後熱度越高、越危險。"
-    )
-  );
   return container;
 }
 
-// 逃亡終局（私人）：脫身 / 收手 / 落網。
+// 逃亡終局（私人）：清白脫身 / 被逮上榜。
 function fleeOutcomeContainer(result) {
-  if (result.outcome === "clear") {
+  if (result.outcome === "escaped") {
     return new ContainerBuilder()
       .setAccentColor(0x2ecc71)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🕊️ 甩掉追捕，逍遙法外！\n` +
-            `你一路躲到終點，通緝解除，託管賞金 **${result.bounty.toLocaleString()}** ${COIN_EMOJI} 全額入袋！`
+          `# 🕊️ 甩掉追捕，全身而退！\n` +
+            `你溜進暗處，沒人知道剛剛是你幹的——**沒上通緝榜、賞金一毛沒扣**。`
         )
       )
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent("-# 惡名下降了一些。這波賭對了。"));
-  }
-  if (result.outcome === "stop") {
-    return new ContainerBuilder()
-      .setAccentColor(0x3498db)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `# 🫥 躲好了，通緝解除\n` +
-            `你見好就收，拿回 **${result.refund.toLocaleString()}** ${COIN_EMOJI}` +
-            (result.forfeit > 0
-              ? `，沒收 **${result.forfeit.toLocaleString()}** ${COIN_EMOJI} 進治安基金。`
-              : "。")
-        )
-      )
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent("-# 再往前躲能拿回更多，但風險也更高。"));
+        new TextDisplayBuilder().setContent("-# 這次算你走運。收手金盆洗手，還是再幹一票？")
+      );
   }
+  const expiresEpoch = Math.floor((result.expiresAt || Date.now()) / 1000);
   return new ContainerBuilder()
     .setAccentColor(0xe74c3c)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# 🚔 逃亡失敗，當場落網！\n` +
-          `你在「${result.route?.name || "逃亡途中"}」被逮個正著，託管賞金 **${result.bounty.toLocaleString()}** ${COIN_EMOJI} 全數充公進治安基金。`
+        `# 🚔 被逮個正著！\n` +
+          `你在「${result.route?.name || "逃亡途中"}」被逮，正式遭全鎮通緝。\n` +
+          `頭上賞金 **${result.bounty.toLocaleString()}** ${COIN_EMOJI}（已從你錢包凍結託管）　|　時效 <t:${expiresEpoch}:R>`
       )
     )
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent("-# 惡名又漲了。貪心的代價…"));
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 潛伏熬過時效可取回賞金；或用 /自首 花保釋金提早脫身。"
+      )
+    );
 }
 
-// 逃亡終局（公開廣播）：全鎮看熱鬧。
-function fleeBroadcastContainer(userId, result) {
-  if (result.outcome === "clear") {
-    return infoContainer(
-      0x2ecc71,
-      `# 🕊️ 通緝解除\n<@${userId}> 一路狂奔甩掉所有追兵，逍遙法外、拿回賞金！`
+// 通緝令（公開廣播）：帶「我要追捕」按鈕，逃亡失敗上榜 / 逾時上榜共用。
+function wantedAnnounceContainer(userId, bounty, expiresAt) {
+  const expiresEpoch = Math.floor(expiresAt / 1000);
+  return new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🚨 通緝令\n` +
+          `<@${userId}> 偷竊失風、逃亡未果，遭全鎮通緝！\n` +
+          `賞金 **${bounty.toLocaleString()}** ${COIN_EMOJI}　|　時效 <t:${expiresEpoch}:R>\n` +
+          `抓到他就能領走賞金——誰要出手？`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`theft_hunt_${userId}`)
+          .setLabel("我要追捕")
+          .setEmoji("🕵️")
+          .setStyle(ButtonStyle.Danger)
+      )
     );
-  }
-  if (result.outcome === "stop") {
-    return infoContainer(
-      0x3498db,
-      `# 🫥 通緝解除\n<@${userId}> 見好就收躲了起來，繳了部分賞金換清白。`
-    );
-  }
-  return infoContainer(
-    0xe74c3c,
-    `# 🚔 落網！\n<@${userId}> 逃亡途中當場被逮，賞金全數充公進治安基金。`
-  );
 }
 
 module.exports = {
@@ -246,5 +222,5 @@ module.exports = {
   broadcast,
   fleeChaseContainer,
   fleeOutcomeContainer,
-  fleeBroadcastContainer,
+  wantedAnnounceContainer,
 };

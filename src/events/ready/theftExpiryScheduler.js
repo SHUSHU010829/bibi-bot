@@ -3,14 +3,18 @@ require("colors");
 const { registerCron } = require("../../utils/cronRegistry");
 const theftService = require("../../features/theft/theftService");
 const theftBoard = require("../../features/theft/theftBoard");
+const { broadcast, wantedAnnounceContainer } = require("../../features/theft/theftView");
 
 // 每分鐘掃到期的通緝：退回託管賞金、惡名 −1、標記 expired（潛伏成功）。
 async function sweepOnce(client) {
   if (!client.wantedListCollection) return { expired: 0 };
 
-  // 先撿回逾時未完成的逃亡（還原成通緝），再一併掃到期
-  const reverted = await theftService.revertStaleFlee(client).catch(() => 0);
-  if (reverted) console.log(`[THEFT] 逃亡逾時還原成通緝：${reverted} 筆`.gray);
+  // 先處理逾時未逃成的逃亡：送上通緝榜並公開通緝令
+  const listed = await theftService.sweepFleeingTimeouts(client).catch(() => []);
+  for (const l of listed) {
+    console.log(`[THEFT] 逃亡逾時，送上通緝榜：user=${l.userId}`.gray);
+    await broadcast(client, wantedAnnounceContainer(l.userId, l.bounty, l.expiresAt)).catch(() => {});
+  }
 
   const now = new Date();
   const cursor = client.wantedListCollection.find({
