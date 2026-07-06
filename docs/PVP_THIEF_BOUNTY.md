@@ -9,7 +9,9 @@
 > - 指令 `src/commands/economy/{steal,wantedList,hunt,surrender,report}.js`(`/偷竊`、`/通緝榜`、`/追捕`、`/自首`、`/報案`)。
 > - 按鈕 `handleTheftButton.js`(追捕 / 查看惡名 / 存款捷徑)、cron `theftExpiryScheduler.js`(通緝時效洗白)。
 > - 三個新 collection + 索引(`TheftProfiles` / `WantedList` / `TheftLogs`),`grantCoins` 已補 sink/peer source。
-> - **防身道具已接進商店**(新分類「防身道具」):🐕 看門狗($800,擋一次) / 🔒 保險箱($1200,24h −20% 被偷率) / 🕶️ 夜行衣($500,下一次 +15%)。`shop.json` + `buyItem.js`(寫進 `TheftProfiles`)+ `catalog.js`(watchdog/cloak 可堆疊)+ 商店顯示;`bibi-website` 的 `botDefs.ts` 已同步中文名。
+> - **防身道具已接進商店**(新分類「防身道具」):🐕 看門狗($800,擋一次) / 🔒 保險箱($1200/天,−20% 被偷率,**可一次買多個累積天數**,單次上限 30 天) / 🕶️ 夜行衣($500,下一次 +15%)。`shop.json` + `buyItem.js`(寫進 `TheftProfiles`,保險箱 duration×qty)+ `catalog.js`(三款皆可堆疊)。`bibi-website` 的 `botDefs.ts` 已同步中文名。
+> - **`/狀態` 顯示盜賊區塊**:通緝中 / 惡名 / 保險箱生效到期 / 看門狗・夜行衣 數量(`buffView.buildStatusView`,有狀態才顯示)。
+> - **頻道限制**:偷竊/追捕/自首 標 `channelBuckets: ["theft"]`,限用於 `server.json` 的 `commandChannels.theft`(= 廣播頻道);通緝榜/報案 為 ephemeral 豁免、到處可用。
 > - **稱號已接**(新分類「盜賊」):🥷 慣竊(得手 25 次) / 🕵️ 賞金獵人(追捕成功 15 次)。`titles.json` + `gameTitleService`(RESOLVERS / progress / cache.theft),偷竊得手與追捕成功後非阻塞觸發 `check(...,["theft"])`,自動解鎖 + 公告 + 可 `/稱號 設定` 展示。
 > - **通緝廣播頻道**:config `theft.announceChannelId`,失手通緝 / 追捕成功 / 自首都集中推到該頻道(未設定則退回犯案 / 指令當前頻道)。治安動態集中一處。
 > - 惡名衰退最終採 **compute-on-read**。MVP 全數落地。
@@ -111,15 +113,17 @@
 - 超過 `列表上限` 時用分頁 / Select(對齊 UX #8:先算元件數,列表型優先 Select/分頁)。
 - 零通緝犯時顯示 `-# 本鎮目前海清河晏,無人在逃。`
 
-### 3-3. `/追捕 @通緝犯`(行動類・公開)
+### 3-3. `/追捕 @通緝犯`(行動類・**結果私人**,成功才公開廣播)
 
+- 追捕結果一律 **ephemeral**(只有追捕者看得到),避免頻道被「不在逃 / 慢了一步 / 讓他跑了」洗版;**只有成功逮捕**才把結果推到通緝廣播頻道(`announceChannelId`)。
 - 任何玩家(非通緝犯本人)可追捕。每日追捕次數上限 `huntDailyLimit`(預設 **3**)。
 - 判定:`huntBaseRate`(預設 0.5) 依「追捕者攻擊力 vs 通緝犯攻擊力」微調(複用 `buffResolver.atkFromProfile`,比照決鬥計分),clamp `[0.2, 0.8]`。
 - **成功**:
   - **託管的賞金**全額發給追捕者(`source:"bounty_payout"`,peer)——錢是通緝當下就從小偷凍結的,系統不憑空產幣。
   - 通緝犯**再**賠 `caughtFinePct`(預設 **10%**)當下錢包當「贖罪金」,一半給追捕者、一半進系統 sink(`source:"bounty_fine"`)。
   - 通緝犯脫離通緝、惡名 −2。稱號檢查(賞金獵人)。
-- **失敗**:通緝犯**成功逃脫**這一擊,追捕者今日該次數消耗;賞金續留託管;連續躲過到通緝時效則自動洗白(見 §4)。
+- **失敗(逃脫)**:通緝犯甩開這一擊,**躲起來進入冷卻**,期間**任何人都不能再追捕**他(存 `hunt_cooldown_until` 於通緝doc,重新通緝時清零);賞金續留託管;連續躲過到通緝時效則自動洗白(見 §4)。
+  - **冷卻隨通緝犯惡名遞增**——越大尾躲越久:`min(base 30分 + 惡名 × 5分, max 3 小時)`。惡名 0→30 分、10→80 分、30↑→封頂 3 小時。
 
 ### 3-4. `/自首`(行動類・ephemeral 起手,結果公開)
 

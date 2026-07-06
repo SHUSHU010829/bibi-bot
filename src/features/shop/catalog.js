@@ -15,6 +15,7 @@ const STACKABLE_TYPES = [
   "casino_token",
   "theft_watchdog",
   "theft_cloak",
+  "theft_safebox",
 ];
 
 function getCatalog() {

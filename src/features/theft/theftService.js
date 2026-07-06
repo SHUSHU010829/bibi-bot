@@ -292,6 +292,7 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
         notoriety_at: settledNotoriety,
         created_at: new Date(),
         expires_at: new Date(expiresAt),
+        hunt_cooldown_until: 0,
         updated_at: new Date(),
       },
     },
@@ -319,6 +320,11 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
 
   const wanted = await activeWanted(client, wantedUserId, guildId);
   if (!wanted) return { ok: false, reason: "not_wanted" };
+
+  // 逃脫冷卻：上一次有人追捕失敗後，通緝犯躲起來一陣子，期間任何人都不能追捕
+  if (wanted.hunt_cooldown_until && Date.now() < wanted.hunt_cooldown_until) {
+    return { ok: false, reason: "hunt_cooldown", readyAt: wanted.hunt_cooldown_until };
+  }
 
   const huntLimit = h.dailyLimit ?? 3;
   const todayHunts = await client.theftLogsCollection
@@ -348,10 +354,18 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
   const success = Math.random() < rate;
 
   if (!success) {
-    // 逃脫：復原通緝狀態
+    // 逃脫：復原通緝狀態，並讓通緝犯躲起來一段冷卻，期間不可再被追捕
+    // 冷卻隨通緝犯惡名遞增——越大尾的逃犯躲越久
+    const wantedNotoriety = wanted.notoriety_at || 0;
+    const cooldownMs = Math.min(
+      (h.escapeCooldownBaseMs ?? 1800000) +
+        wantedNotoriety * (h.escapeCooldownPerNotorietyMs ?? 300000),
+      h.escapeCooldownMaxMs ?? 10800000
+    );
+    const cooldownUntil = Date.now() + cooldownMs;
     await client.wantedListCollection.updateOne(
       { userId: wantedUserId, guildId },
-      { $set: { status: "wanted", updated_at: new Date() } }
+      { $set: { status: "wanted", hunt_cooldown_until: cooldownUntil, updated_at: new Date() } }
     );
     await logEvent(client, {
       guildId,
@@ -361,7 +375,7 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
       success: false,
       amount: 0,
     });
-    return { ok: true, success: false, hunterAtk, wantedAtk, bounty: wanted.bounty };
+    return { ok: true, success: false, hunterAtk, wantedAtk, bounty: wanted.bounty, cooldownUntil };
   }
 
   // 抓到：託管賞金給獵人

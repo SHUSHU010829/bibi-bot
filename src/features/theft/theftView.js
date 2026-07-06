@@ -63,18 +63,19 @@ function huntResultContainer(result, hunterId, wantedUserId) {
         new TextDisplayBuilder().setContent("-# 裝備越好追捕成功率越高；用 /合成 打造更強武器。")
       );
   }
+  const cdLine = result.cooldownUntil
+    ? `-# 他躲起來了，<t:${Math.floor(result.cooldownUntil / 1000)}:R> 之後才能再追捕。`
+    : "-# 賞金續留通緝榜，換人再試試看！";
   return new ContainerBuilder()
     .setAccentColor(0x95a5a6)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# 💨 讓他跑了！\n` +
-          `<@${wantedUserId}> 甩開了 <@${hunterId}> 的追捕，繼續在逃。\n\n` +
+          `<@${wantedUserId}> 甩開了 <@${hunterId}> 的追捕，躲了起來。\n\n` +
           `攻擊力 ${result.hunterAtk} vs ${result.wantedAtk}`
       )
     )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# 賞金續留通緝榜，換人再試試看！")
-    );
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(cdLine));
 }
 
 module.exports = { errorContainer, infoContainer, huntResultContainer, broadcast };

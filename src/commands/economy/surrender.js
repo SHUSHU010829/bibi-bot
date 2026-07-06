@@ -13,6 +13,7 @@ const { errorContainer, broadcast } = require("../../features/theft/theftView");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 module.exports = {
+  channelBuckets: ["theft"],
   data: new SlashCommandBuilder()
     .setName("自首")
     .setDescription("向警方自首，繳保釋金解除通緝、拿回部分託管賞金 🙇")

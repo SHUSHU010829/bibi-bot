@@ -34,7 +34,8 @@ module.exports = async (client, interaction) => {
     // ── 追捕（公開）──
     if (id.startsWith("theft_hunt_")) {
       const wantedUserId = id.slice("theft_hunt_".length);
-      await interaction.deferReply();
+      // 追捕結果對玩家私人顯示；成功才公開推到通緝廣播頻道
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const result = await theftService.huntWanted(client, {
         guildId: interaction.guildId,
         hunterId: interaction.user.id,
@@ -43,6 +44,7 @@ module.exports = async (client, interaction) => {
         member: interaction.member,
       });
       if (!result.ok) {
+        const cdEpoch = result.readyAt ? Math.floor(result.readyAt / 1000) : 0;
         const map = {
           self: ["🪞 不能追捕自己", "自首請用 /自首。", null],
           not_wanted: ["🕊️ 對方已不在逃", "這名通緝犯已被處理或自首了。", "刷新 /通緝榜 看看還有誰。"],
@@ -50,6 +52,11 @@ module.exports = async (client, interaction) => {
             "🕵️ 今日追捕次數已用完",
             `你今天已追捕 ${result.todayCount}/${result.dailyLimit} 次。`,
             "明天（台灣時間 00:00）重置。",
+          ],
+          hunt_cooldown: [
+            "🫥 他躲起來了",
+            `這名通緝犯剛甩開一次追捕，正躲風頭。可再次追捕：<t:${cdEpoch}:R>`,
+            "等他探頭出來，或先去 /通緝榜 抓別人。",
           ],
           race: ["🌀 慢了一步", "這名通緝犯剛剛已被別人處理掉了。", "刷新 /通緝榜 看看還有誰。"],
         };
@@ -60,8 +67,9 @@ module.exports = async (client, interaction) => {
         });
       }
       const resultContainer = huntResultContainer(result, interaction.user.id, wantedUserId);
+      // 抓到人 → 公開推到通緝廣播頻道；玩家本人這裡仍是私人結果
       if (result.success) {
-        await broadcast(client, resultContainer, interaction.channelId);
+        await broadcast(client, resultContainer);
       }
       return interaction.editReply({
         components: [resultContainer],

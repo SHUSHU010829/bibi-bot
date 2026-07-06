@@ -2,7 +2,7 @@
   "theft": {
     "enabled": true,
     "timezone": "Asia/Taipei",
-    "announceChannelId": "1511655301953228800",
+    "announceChannelId": "1523630614018916432",
     "dailyLimit": 3,
     "samePairCooldownMs": 28800000,
     "newbieProtectDays": 7,
@@ -47,7 +47,10 @@
       "minRate": 0.2,
       "maxRate": 0.8,
       "atkDiffScale": 0.003,
-      "caughtFinePct": 0.1
+      "caughtFinePct": 0.1,
+      "escapeCooldownBaseMs": 1800000,
+      "escapeCooldownPerNotorietyMs": 300000,
+      "escapeCooldownMaxMs": 10800000
     },
     "surrender": {
       "bailForfeitPct": 0.6
