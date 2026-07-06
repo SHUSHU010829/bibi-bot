@@ -2,6 +2,7 @@
   "theft": {
     "enabled": true,
     "timezone": "Asia/Taipei",
+    "announceChannelId": "1511655301953228800",
     "dailyLimit": 3,
     "samePairCooldownMs": 28800000,
     "newbieProtectDays": 7,

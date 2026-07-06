@@ -9,7 +9,7 @@ const {
 
 const { theft } = require("../../config");
 const theftService = require("../../features/theft/theftService");
-const { errorContainer } = require("../../features/theft/theftView");
+const { errorContainer, broadcast } = require("../../features/theft/theftView");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 module.exports = {
@@ -61,21 +61,20 @@ module.exports = {
           new TextDisplayBuilder().setContent("-# 惡名下降了一些。金盆洗手也是一條路。")
         );
 
-      // 頻道公開洗白消息（自首是明面上的事）
-      await interaction.channel
-        ?.send({
-          components: [
-            new ContainerBuilder()
-              .setAccentColor(0x3498db)
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                  `# 🙇 通緝解除\n${interaction.user} 向警方自首，已繳交保釋金，重新做人。`
-                )
-              ),
-          ],
-          flags: MessageFlags.IsComponentsV2,
-        })
-        .catch(() => {});
+      // 公開洗白消息（自首是明面上的事）：推到通緝廣播頻道；未設定才退回當前頻道
+      const washContainer = new ContainerBuilder()
+        .setAccentColor(0x3498db)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 🙇 通緝解除\n${interaction.user} 向警方自首，已繳交保釋金，重新做人。`
+          )
+        );
+      const broadcasted = await broadcast(client, washContainer);
+      if (!broadcasted) {
+        await interaction.channel
+          ?.send({ components: [washContainer], flags: MessageFlags.IsComponentsV2 })
+          .catch(() => {});
+      }
 
       return interaction.editReply({
         components: [container],

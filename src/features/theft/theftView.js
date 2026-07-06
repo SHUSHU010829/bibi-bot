@@ -2,8 +2,23 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  MessageFlags,
 } = require("discord.js");
 const { COIN_EMOJI } = require("../../constants/coin");
+const { theft } = require("../../config");
+
+// 把治安動態推到設定的通緝廣播頻道。
+// 回傳是否有送出（未設頻道 / 與 skipChannelId 相同 → 不送，回 false，讓呼叫端決定退回原頻道）。
+async function broadcast(client, container, skipChannelId = null) {
+  const chId = theft?.announceChannelId;
+  if (!chId || chId === skipChannelId) return false;
+  const ch = await client.channels.fetch(chId).catch(() => null);
+  if (!ch?.isTextBased?.()) return false;
+  await ch
+    .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
+  return true;
+}
 
 // 紅色錯誤 Container（對齊 CLAUDE.md UX #2）：標題 + 具體差距 + -# 解決提示。
 function errorContainer(title, body, hint) {
@@ -62,4 +77,4 @@ function huntResultContainer(result, hunterId, wantedUserId) {
     );
 }
 
-module.exports = { errorContainer, infoContainer, huntResultContainer };
+module.exports = { errorContainer, infoContainer, huntResultContainer, broadcast };

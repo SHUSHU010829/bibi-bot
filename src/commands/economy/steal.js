@@ -13,7 +13,7 @@ const {
 
 const { theft } = require("../../config");
 const theftService = require("../../features/theft/theftService");
-const { errorContainer } = require("../../features/theft/theftView");
+const { errorContainer, broadcast } = require("../../features/theft/theftView");
 const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 
 module.exports = {
@@ -136,9 +136,13 @@ module.exports = {
         )
         .addSeparatorComponents(new SeparatorBuilder())
         .addActionRowComponents(huntRow);
-      await interaction.channel
-        ?.send({ components: [announce], flags: MessageFlags.IsComponentsV2 })
-        .catch(() => {});
+      // 優先推到通緝廣播頻道；未設定才退回犯案的當前頻道
+      const broadcasted = await broadcast(client, announce);
+      if (!broadcasted) {
+        await interaction.channel
+          ?.send({ components: [announce], flags: MessageFlags.IsComponentsV2 })
+          .catch(() => {});
+      }
     } catch (error) {
       console.log(`[ERROR] /偷竊:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 偷竊失敗，請呼叫舒舒！").catch(() => {});

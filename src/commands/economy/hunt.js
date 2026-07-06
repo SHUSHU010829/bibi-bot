@@ -7,7 +7,7 @@ const {
 
 const { theft } = require("../../config");
 const theftService = require("../../features/theft/theftService");
-const { errorContainer, huntResultContainer } = require("../../features/theft/theftView");
+const { errorContainer, huntResultContainer, broadcast } = require("../../features/theft/theftView");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -42,8 +42,13 @@ module.exports = {
         });
       }
 
+      const resultContainer = huntResultContainer(result, interaction.user.id, target.id);
+      // 抓到人時把結果也鏡射到通緝廣播頻道（在該頻道執行則不重複貼）
+      if (result.success) {
+        await broadcast(client, resultContainer, interaction.channelId);
+      }
       return interaction.editReply({
-        components: [huntResultContainer(result, interaction.user.id, target.id)],
+        components: [resultContainer],
         flags: MessageFlags.IsComponentsV2,
       });
     } catch (error) {

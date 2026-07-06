@@ -9,7 +9,7 @@ const {
 } = require("discord.js");
 const theftService = require("../../features/theft/theftService");
 const theftProfile = require("../../features/theft/theftProfile");
-const { errorContainer, huntResultContainer } = require("../../features/theft/theftView");
+const { errorContainer, huntResultContainer, broadcast } = require("../../features/theft/theftView");
 const { COIN_EMOJI } = require("../../constants/coin");
 const logger = require("../../utils/logger");
 const { consume } = require("../../utils/rateLimiter");
@@ -59,8 +59,12 @@ module.exports = async (client, interaction) => {
           flags: MessageFlags.IsComponentsV2,
         });
       }
+      const resultContainer = huntResultContainer(result, interaction.user.id, wantedUserId);
+      if (result.success) {
+        await broadcast(client, resultContainer, interaction.channelId);
+      }
       return interaction.editReply({
-        components: [huntResultContainer(result, interaction.user.id, wantedUserId)],
+        components: [resultContainer],
         flags: MessageFlags.IsComponentsV2,
       });
     }
