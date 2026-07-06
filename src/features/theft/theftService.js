@@ -668,15 +668,15 @@ async function report(client, { guildId, userId, username }) {
     .toArray()
     .catch(() => []);
 
-  // 已強制決鬥過的兇手視為已結案，不再列入偵查（同窗口只能討一次帳）
-  const revenged = events.length
+  // 已強制決鬥或已放過的兇手視為已結案，不再列入偵查（同窗口只能處理一次）
+  const settled = events.length
     ? await client.theftLogsCollection
-        .find({ guildId, type: "revenge", actor_id: userId, ts: { $gte: since } })
+        .find({ guildId, type: { $in: ["revenge", "forgive"] }, actor_id: userId, ts: { $gte: since } })
         .toArray()
         .catch(() => [])
     : [];
-  const revengedSet = new Set(revenged.map((e) => e.target_id));
-  const openEvents = events.filter((ev) => !revengedSet.has(ev.actor_id));
+  const settledSet = new Set(settled.map((e) => e.target_id));
+  const openEvents = events.filter((ev) => !settledSet.has(ev.actor_id));
 
   // 沒有任何（未結）案件可查 → 退費（無事可查不收錢）
   if (!openEvents.length) {
@@ -801,6 +801,36 @@ async function revengeDuel(client, { guildId, victimId, victimName, culpritId, m
     }
   }
   return { ok: true, win: true, recover, stolen, victimAtk, culpritAtk };
+}
+
+// ── 報案後選擇放過兇手：一筆勾銷，之後報案不再列出他 ──
+async function forgiveCulprit(client, { guildId, victimId, culpritId }) {
+  const c = cfg();
+  if (!c.enabled || !client.theftLogsCollection) return { ok: false, reason: "disabled" };
+  if (victimId === culpritId) return { ok: false, reason: "self" };
+  const since = new Date(Date.now() - (c.report?.windowHours ?? 24) * 3600 * 1000);
+
+  // 已強制決鬥或已放過 → 這筆帳早就結清了
+  const already = await client.theftLogsCollection
+    .findOne({
+      guildId,
+      type: { $in: ["revenge", "forgive"] },
+      actor_id: victimId,
+      target_id: culpritId,
+      ts: { $gte: since },
+    })
+    .catch(() => null);
+  if (already) return { ok: false, reason: "already_done" };
+
+  // 該兇手在窗口內確實偷過你才有帳可勾銷
+  const stole = await client.theftLogsCollection
+    .findOne({ guildId, type: "steal", actor_id: culpritId, target_id: victimId, success: true, ts: { $gte: since } })
+    .catch(() => null);
+  if (!stole) return { ok: false, reason: "no_case" };
+
+  await logEvent(client, { guildId, type: "forgive", actor_id: victimId, target_id: culpritId, success: true, amount: 0 });
+
+  return { ok: true };
 }
 
 // ── 失風追逃：章節式逃跑小遊戲 ───────────────────────
@@ -1012,6 +1042,7 @@ module.exports = {
   surrender,
   report,
   revengeDuel,
+  forgiveCulprit,
   fleeStep,
   becomeWanted,
   sweepFleeingTimeouts,

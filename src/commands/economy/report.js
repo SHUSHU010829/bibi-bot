@@ -130,13 +130,19 @@ module.exports = {
                 .setCustomId(`theft_revenge_${interaction.user.id}_${c.actorId}`)
                 .setLabel(`強制決鬥討回 ${recover.toLocaleString()}`)
                 .setEmoji("🗡️")
-                .setStyle(ButtonStyle.Danger)
+                .setStyle(ButtonStyle.Danger),
+              new ButtonBuilder()
+                .setCustomId(`theft_forgive_${interaction.user.id}_${c.actorId}`)
+                .setLabel("放過他")
+                .setEmoji("🕊️")
+                .setStyle(ButtonStyle.Secondary)
             )
           );
       }
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          "-# 🗡️ 強制決鬥：對方不用同意，攻擊力高者勝；**贏了討回一半、每個兇手只能打一次**。"
+          "-# 🗡️ 強制決鬥：對方不用同意，攻擊力高者勝；**贏了討回一半、每個兇手只能打一次**。\n" +
+            "-# 🕊️ 放過他：這筆帳一筆勾銷，之後報案不會再列出他。"
         )
       );
 

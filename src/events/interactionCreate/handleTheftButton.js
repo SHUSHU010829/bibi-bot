@@ -142,6 +142,40 @@ module.exports = async (client, interaction) => {
       return interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
     }
 
+    // ── 報案後放過兇手（owner 限定）──
+    if (id.startsWith("theft_forgive_")) {
+      const [victimId, culpritId] = id.slice("theft_forgive_".length).split("_");
+      if (interaction.user.id !== victimId) {
+        return interaction.reply({ content: "🚫 這不是你的按鈕！", flags: MessageFlags.Ephemeral });
+      }
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const result = await theftService.forgiveCulprit(client, {
+        guildId: interaction.guildId,
+        victimId,
+        culpritId,
+      });
+      if (!result.ok) {
+        const map = {
+          self: ["🪞 不能放過自己", "選錯對象了。", null],
+          already_done: ["🕊️ 這筆帳已經結清", "你已經決鬥或放過他了。", "去 /通緝榜 或找別人吧。"],
+          no_case: ["🕊️ 查無此帳", "近期沒有他偷你的紀錄可勾銷。", null],
+        };
+        const [t, b, h] = map[result.reason] || ["🔧 操作失敗", "系統忙碌或未啟動。", "稍後再試。"];
+        return interaction.editReply({
+          components: [errorContainer(t, b, h)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      const container = new ContainerBuilder()
+        .setAccentColor(0x2ecc71)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 🕊️ 你放過了 <@${culpritId}>\n這筆帳一筆勾銷，之後報案不會再列出他。`
+          )
+        );
+      return interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
     // ── 失風追逃小遊戲（owner 限定，同一則訊息 update 推進）──
     if (id.startsWith("theft_flee_")) {
       // theft_flee_<ownerId>_<token>_<routeKey>
