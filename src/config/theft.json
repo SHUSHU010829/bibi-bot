@@ -78,6 +78,7 @@
       "detectiveFee": 500,
       "windowHours": 24,
       "investigateRate": 0.7,
+      "investigateRateStale": 0.2,
       "refundOnMiss": false,
       "abscondChance": 0.02
     },

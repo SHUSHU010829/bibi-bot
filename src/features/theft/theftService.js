@@ -659,7 +659,9 @@ async function report(client, { guildId, userId, username }) {
   const wallet = (await getWallet(client, userId, guildId)).balance;
   if (wallet < fee) return { ok: false, reason: "insufficient", fee, have: wallet };
 
-  const since = new Date(Date.now() - (r.windowHours ?? 24) * 3600 * 1000);
+  const nowMs = Date.now();
+  const windowMs = (r.windowHours ?? 24) * 3600 * 1000;
+  const since = new Date(nowMs - windowMs);
   const events = await client.theftLogsCollection
     .find({ guildId, type: "steal", target_id: userId, success: true, ts: { $gte: since } })
     .sort({ ts: -1 })
@@ -696,10 +698,14 @@ async function report(client, { guildId, userId, username }) {
     return { ok: true, charged: true, absconded: true, fee };
   }
 
+  // 線索隨時間變冷：越久前的竊案越難查，接近窗口邊緣時查到率降到 investigateRateStale
   const investigateRate = r.investigateRate ?? 0.7;
+  const investigateRateStale = r.investigateRateStale ?? investigateRate;
   const byActor = new Map();
   for (const ev of openEvents) {
-    if (Math.random() >= investigateRate) continue; // 這筆查不出來
+    const ageFrac = clamp((nowMs - new Date(ev.ts).getTime()) / windowMs, 0, 1);
+    const rate = investigateRate + (investigateRateStale - investigateRate) * ageFrac;
+    if (Math.random() >= rate) continue; // 這筆查不出來（時間太久線索也可能斷）
     const cur = byActor.get(ev.actor_id) || { actorId: ev.actor_id, amount: 0, count: 0 };
     cur.amount += ev.amount || 0;
     cur.count += 1;
