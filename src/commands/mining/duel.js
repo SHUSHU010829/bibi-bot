@@ -16,6 +16,7 @@ const duelService = require("../../features/mining/duelService");
 const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 
 module.exports = {
+  channelBuckets: ["mining", "theft"],
   data: new SlashCommandBuilder()
     .setName("決鬥")
     .setDescription("向其他玩家發起 1v1 金幣決鬥，勝者通吃彩池 ⚔️")
