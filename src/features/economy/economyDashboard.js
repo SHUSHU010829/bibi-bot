@@ -41,7 +41,7 @@ const PURE_MINT_SOURCES = new Set([
   "daily", "item_sell",
 ]);
 const PURE_SINK_SOURCES = new Set([
-  "shop_buy", "wealth_tax", "stock_fee", "stone_appraisal",
+  "shop_buy", "wealth_tax", "stock_fee", "stock_tax", "stock_daytrade_tax", "stock_div_tax", "stone_appraisal",
   "farm_plant", "farm_expand", "barter_fee",
   "guild_create", "guild_donate",
   "guild_warehouse_fee", "guild_consign_buy",

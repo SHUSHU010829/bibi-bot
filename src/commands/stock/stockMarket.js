@@ -609,6 +609,13 @@ function buildSellResultContainer(result) {
   const pnlPct =
     result.avgCost > 0 ? ((result.price - result.avgCost) / result.avgCost) * 100 : 0;
 
+  const taxParts = [];
+  if (result.sellTax > 0) taxParts.push(`證交稅 ${result.sellTax.toLocaleString()}`);
+  if (result.dayTradeTax > 0) taxParts.push(`當沖稅 ${result.dayTradeTax.toLocaleString()}`);
+  const feeTaxContent =
+    `**手續費 / 稅金**\n手續費 ${result.fee.toLocaleString()}` +
+    (taxParts.length ? `・${taxParts.join("・")}` : "");
+
   const container = new ContainerBuilder()
     .setAccentColor(result.pnl >= 0 ? 0x2ecc71 : 0xe74c3c)
     .addTextDisplayComponents(
@@ -628,9 +635,7 @@ function buildSellResultContainer(result) {
       )
     )
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**手續費**\n${result.fee.toLocaleString()}`
-      )
+      new TextDisplayBuilder().setContent(feeTaxContent)
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -1026,8 +1031,9 @@ async function runTradeHistory(client, interaction) {
     let buyShares = 0;
     let sellShares = 0;
     let buyAmount = 0; // 含手續費總支出
-    let sellAmount = 0; // 扣手續費後淨入帳
+    let sellAmount = 0; // 扣手續費 + 稅金後淨入帳
     let totalFee = 0;
+    let totalTax = 0;
     let realizedPnl = 0;
     for (const r of rows) {
       totalFee += r.fee || 0;
@@ -1038,7 +1044,9 @@ async function runTradeHistory(client, interaction) {
       } else {
         sellCount += 1;
         sellShares += r.shares || 0;
-        sellAmount += (r.proceeds || 0) - (r.fee || 0);
+        const tax = (r.sellTax || 0) + (r.dayTradeTax || 0);
+        totalTax += tax;
+        sellAmount += (r.proceeds || 0) - (r.fee || 0) - tax;
         realizedPnl += r.pnl || 0;
       }
     }
@@ -1096,7 +1104,7 @@ async function runTradeHistory(client, interaction) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**手續費合計**\n${totalFee.toLocaleString()}`
+          `**手續費 / 稅金合計**\n手續費 ${totalFee.toLocaleString()}${totalTax > 0 ? `・稅金 ${totalTax.toLocaleString()}` : ""}`
         )
       )
       .addTextDisplayComponents(

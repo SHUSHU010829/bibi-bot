@@ -13,6 +13,15 @@
     "broadcastChannelId": "1505072010949169312",
     "feeRate": 0.01,
     "minFee": 5,
+    "tax": {
+      "sellTaxRate": 0.003,
+      "dayTradeTaxRate": 0.005,
+      "dividendTaxRate": 0.1
+    },
+    "treasury": {
+      "enabled": true,
+      "treasuryShare": 0.5
+    },
     "maxSharesPerUser": 500,
     "defaultMarketSentiment": "sideways",
     "marketDrift": {
@@ -80,7 +89,7 @@
         "beta": 1.3,
         "floor": 100,
         "type": "tech",
-        "dividendYield": 0.05
+        "dividendYield": 0.035
       },
       {
         "symbol": "UPPI",
@@ -90,7 +99,7 @@
         "beta": 0.5,
         "floor": 60,
         "type": "blue",
-        "dividendYield": 0.15
+        "dividendYield": 0.075
       },
       {
         "symbol": "EGPP",
@@ -110,7 +119,7 @@
         "beta": 0.6,
         "floor": 160,
         "type": "blue",
-        "dividendYield": 0.18
+        "dividendYield": 0.09
       },
       {
         "symbol": "MTKP",
@@ -120,7 +129,7 @@
         "beta": 1.5,
         "floor": 40,
         "type": "tech",
-        "dividendYield": 0.045
+        "dividendYield": 0.03
       },
       {
         "symbol": "FHPP",
@@ -130,7 +139,7 @@
         "beta": 1.35,
         "floor": 36,
         "type": "tech",
-        "dividendYield": 0.06
+        "dividendYield": 0.042
       },
       {
         "symbol": "DLPP",
@@ -140,7 +149,7 @@
         "beta": 1.2,
         "floor": 72,
         "type": "tech",
-        "dividendYield": 0.055
+        "dividendYield": 0.038
       },
       {
         "symbol": "TCPP",
@@ -150,7 +159,7 @@
         "beta": 0.45,
         "floor": 18,
         "type": "blue",
-        "dividendYield": 0.14
+        "dividendYield": 0.07
       },
       {
         "symbol": "EAPP",

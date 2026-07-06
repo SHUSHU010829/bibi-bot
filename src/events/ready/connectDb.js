@@ -169,6 +169,7 @@ module.exports = async (client) => {
     const stockEventDefsCollection = database.collection("StockEventDefs");
     const stockBroadcastCollection = database.collection("StockBroadcast");
     const stockShortsCollection = database.collection("StockShorts");
+    const stockTreasuryCollection = database.collection("StockTreasury");
 
     // 挖礦系統 collections
     const miningProfilesCollection = database.collection("MiningProfiles");
@@ -322,6 +323,7 @@ module.exports = async (client) => {
     client.stockEventDefsCollection = stockEventDefsCollection;
     client.stockBroadcastCollection = stockBroadcastCollection;
     client.stockShortsCollection = stockShortsCollection;
+    client.stockTreasuryCollection = stockTreasuryCollection;
     client.recommendationsCollection = recommendationsCollection;
     client.inviteCacheCollection = inviteCacheCollection;
     client.inviteRecordsCollection = inviteRecordsCollection;
@@ -1144,6 +1146,10 @@ module.exports = async (client) => {
       await stockShortsCollection.createIndex(
         { guildId: 1, symbol: 1 },
         { name: "shorts_guild_symbol" }
+      );
+      await stockTreasuryCollection.createIndex(
+        { guildId: 1 },
+        { unique: true, name: "uniq_treasury_guild" }
       );
 
       // 推薦頻道索引（type 過濾 + 全文搜尋）

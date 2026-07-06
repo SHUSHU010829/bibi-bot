@@ -20,6 +20,7 @@ const { renderMultiLine } = require("../../features/stock/chartRenderer");
 const { getDailyVolume } = require("../../features/stock/volumeService");
 const { runMarginScan } = require("../../features/stock/shortService");
 const { backfillPoolStocks } = require("../../features/stock/seedService");
+const treasuryService = require("../../features/stock/treasuryService");
 
 const SENTIMENT_LABEL = {
   bull: "🐂 牛市",
@@ -437,6 +438,30 @@ async function postCloseReport(client, guildId) {
     }
   }
 
+  // 證交所國庫：今日各稅進帳 / 銷毀 / 餘額（透明公示回饋股民）
+  let treasuryLine = null;
+  if (stockSystem?.treasury?.enabled) {
+    try {
+      const [tre, tax] = await Promise.all([
+        treasuryService.getTreasury(client, guildId),
+        treasuryService.getTodayTaxBreakdown(client, guildId),
+      ]);
+      const parts = [];
+      if (tax.sell > 0) parts.push(`證交稅 ${tax.sell.toLocaleString()}`);
+      if (tax.dayTrade > 0) parts.push(`當沖稅 ${tax.dayTrade.toLocaleString()}`);
+      if (tax.div > 0) parts.push(`配息稅 ${tax.div.toLocaleString()}`);
+      const intakeLine = parts.length ? parts.join("・") : "今日無進帳";
+      treasuryLine =
+        `**🏛️ 證交所國庫**\n` +
+        `今日稅收 ${tax.total.toLocaleString()}（${intakeLine}）\n` +
+        `　↳ 入庫 ${tax.toTreasury.toLocaleString()}・銷毀 ${tax.burned.toLocaleString()}\n` +
+        `國庫餘額 **${(tre.balance || 0).toLocaleString()}** credits\n` +
+        `-# 每週回饋股民（交易抽獎 + 散戶回饋）`;
+    } catch (e) {
+      console.log(`[STOCK] treasury close section failed: ${e?.message || e}`.yellow);
+    }
+  }
+
   const fmtList = (list) =>
     list
       .map((r, i) => `${i + 1}. \`${r.symbol}\` ${r.change >= 0 ? "+" : ""}${r.change.toFixed(2)}%`)
@@ -469,12 +494,19 @@ async function postCloseReport(client, guildId) {
       new TextDisplayBuilder().setContent(
         `**今日事件**\n${eventLine}`,
       ),
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
-      ),
     );
+
+  if (treasuryLine) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(treasuryLine));
+  }
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+    ),
+  );
 
   await channel
     .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
