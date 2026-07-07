@@ -55,6 +55,7 @@ async function buildCasinoStatsView(client, { target, member, guildId, period })
           userId,
           guildId,
           source: { $in: ["bet", "payout"] },
+          "meta.game": { $ne: "redPacket" },
           ...dateFilter,
         },
       },
