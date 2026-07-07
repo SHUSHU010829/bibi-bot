@@ -95,15 +95,18 @@ module.exports = async (client, interaction) => {
       .catch(() => null);
     if (!submitted) return;
 
-    await submitted.deferReply({ flags: MessageFlags.Ephemeral });
-
     if (!isMarketOpen()) {
-      return submitted.editReply(
-        "🌙 目前非開盤時間(09:00–21:00 Asia/Taipei),沒辦法回補。"
-      );
+      return submitted.reply({
+        content: "🌙 目前非開盤時間(09:00–21:00 Asia/Taipei),沒辦法回補。",
+        flags: MessageFlags.Ephemeral,
+      });
     }
     const tenure = checkServerTenure(interaction.member);
-    if (!tenure.ok) return submitted.editReply(tenure.message);
+    if (!tenure.ok)
+      return submitted.reply({
+        content: tenure.message,
+        flags: MessageFlags.Ephemeral,
+      });
 
     const rawShares = submitted.fields.getTextInputValue("shares").trim();
     let shares;
@@ -112,9 +115,14 @@ module.exports = async (client, interaction) => {
     } else {
       shares = parseInt(rawShares, 10);
       if (!Number.isInteger(shares) || shares <= 0) {
-        return submitted.editReply("❌ 股數需為正整數或 `all`。");
+        return submitted.reply({
+          content: "❌ 股數需為正整數或 `all`。",
+          flags: MessageFlags.Ephemeral,
+        });
       }
     }
+
+    await submitted.deferReply();
 
     const result = await shortService.coverShort(client, {
       userId: interaction.user.id,
@@ -164,7 +172,7 @@ module.exports = async (client, interaction) => {
 
     await submitted.editReply({
       components: [container],
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      flags: MessageFlags.IsComponentsV2,
     });
     trackSuccess("profile-stock-cover");
   } catch (err) {

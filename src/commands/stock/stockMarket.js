@@ -1407,23 +1407,31 @@ async function runQuotePanel(client, interaction) {
             .catch(() => null);
 
           if (!submitted) return;
-          await submitted.deferReply({ flags: MessageFlags.Ephemeral });
 
           const rawShares = submitted.fields.getTextInputValue("shares").trim();
 
           if (!isMarketOpen()) {
-            return submitted.editReply(
-              "🌙 目前非開盤時間(09:00–21:00 Asia/Taipei)。"
-            );
+            return submitted.reply({
+              content: "🌙 目前非開盤時間(09:00–21:00 Asia/Taipei)。",
+              flags: MessageFlags.Ephemeral,
+            });
           }
           const tenure = checkServerTenure(interaction.member);
-          if (!tenure.ok) return submitted.editReply(tenure.message);
+          if (!tenure.ok)
+            return submitted.reply({
+              content: tenure.message,
+              flags: MessageFlags.Ephemeral,
+            });
 
           if (isBuy) {
             const shares = parseInt(rawShares, 10);
             if (!Number.isInteger(shares) || shares <= 0) {
-              return submitted.editReply("❌ 股數需為正整數。");
+              return submitted.reply({
+                content: "❌ 股數需為正整數。",
+                flags: MessageFlags.Ephemeral,
+              });
             }
+            await submitted.deferReply({ flags: MessageFlags.Ephemeral });
             const result = await buyMarket(client, {
               userId: interaction.user.id,
               guildId,
@@ -1446,9 +1454,13 @@ async function runQuotePanel(client, interaction) {
             } else {
               shares = parseInt(rawShares, 10);
               if (!Number.isInteger(shares) || shares <= 0) {
-                return submitted.editReply("❌ 股數需為正整數或 `all`。");
+                return submitted.reply({
+                  content: "❌ 股數需為正整數或 `all`。",
+                  flags: MessageFlags.Ephemeral,
+                });
               }
             }
+            await submitted.deferReply();
             const result = await sellMarket(client, {
               userId: interaction.user.id,
               guildId,
@@ -1461,7 +1473,7 @@ async function runQuotePanel(client, interaction) {
             if (!result.ok) return submitted.editReply(result.message);
             await submitted.editReply({
               components: [buildSellResultContainer(result)],
-              flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+              flags: MessageFlags.IsComponentsV2,
             });
           }
 
