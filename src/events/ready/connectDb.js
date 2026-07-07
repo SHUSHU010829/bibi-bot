@@ -209,6 +209,11 @@ module.exports = async (client) => {
     // 地下城決鬥對局狀態
     const duelGamesCollection = database.collection("DuelGames");
 
+    // 盜賊系統 collections（惡名/防身狀態、通緝榜、竊案紀錄）
+    const theftProfilesCollection = database.collection("TheftProfiles");
+    const wantedListCollection = database.collection("WantedList");
+    const theftLogsCollection = database.collection("TheftLogs");
+
     // 地下城戰鬥紀錄（Phase H+ 多回合 HP 戰鬥日誌）：30 天 TTL
     const dungeonRunsCollection = database.collection("DungeonRuns");
 
@@ -350,6 +355,9 @@ module.exports = async (client) => {
     client.worldEventAnnouncementsCollection = worldEventAnnouncementsCollection;
     client.workProfilesCollection = workProfilesCollection;
     client.duelGamesCollection = duelGamesCollection;
+    client.theftProfilesCollection = theftProfilesCollection;
+    client.wantedListCollection = wantedListCollection;
+    client.theftLogsCollection = theftLogsCollection;
     client.dungeonRunsCollection = dungeonRunsCollection;
     client.marketListingsCollection = marketListingsCollection;
     client.barterListingsCollection = barterListingsCollection;
@@ -1467,6 +1475,43 @@ module.exports = async (client) => {
         { expireAfterSeconds: 7 * 24 * 60 * 60, name: "duel_ttl_7d" }
       );
 
+      // 盜賊系統索引
+      // 惡名 / 防身狀態：(userId, guildId) 唯一
+      await theftProfilesCollection.createIndex(
+        { userId: 1, guildId: 1 },
+        { unique: true, name: "uniq_theft_profile_user_guild" }
+      ).catch((e) => console.log(`[WARN] TheftProfiles uniq: ${e.message}`.yellow));
+      // 通緝榜：一人同時只有一筆 active 通緝（partial unique）；榜單排序 + cron 掃到期
+      await wantedListCollection.createIndex(
+        { userId: 1, guildId: 1, status: 1 },
+        {
+          unique: true,
+          partialFilterExpression: { status: "wanted" },
+          name: "uniq_wanted_active",
+        }
+      ).catch((e) => console.log(`[WARN] WantedList active uniq: ${e.message}`.yellow));
+      await wantedListCollection.createIndex(
+        { guildId: 1, status: 1, bounty: -1 },
+        { name: "wanted_guild_status_bounty" }
+      ).catch((e) => console.log(`[WARN] WantedList list idx: ${e.message}`.yellow));
+      await wantedListCollection.createIndex(
+        { status: 1, expires_at: 1 },
+        { name: "wanted_status_expiry" }
+      ).catch((e) => console.log(`[WARN] WantedList expiry idx: ${e.message}`.yellow));
+      // 竊案 / 追捕紀錄：每日計數、同對象冷卻、報案查兇手；90 天 TTL
+      await theftLogsCollection.createIndex(
+        { guildId: 1, type: 1, actor_id: 1, ts: -1 },
+        { name: "theft_logs_actor" }
+      ).catch((e) => console.log(`[WARN] TheftLogs actor idx: ${e.message}`.yellow));
+      await theftLogsCollection.createIndex(
+        { guildId: 1, type: 1, target_id: 1, success: 1, ts: -1 },
+        { name: "theft_logs_target" }
+      ).catch((e) => console.log(`[WARN] TheftLogs target idx: ${e.message}`.yellow));
+      await theftLogsCollection.createIndex(
+        { ts: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "theft_logs_ttl_90d" }
+      ).catch((e) => console.log(`[WARN] TheftLogs TTL: ${e.message}`.yellow));
+
       // 地下城戰鬥紀錄索引（Phase H+）：玩家近期戰鬥 / 主題統計 / TTL 30 天
       await dungeonRunsCollection.createIndex(
         { user_id: 1, ended_at: -1 },
@@ -1586,6 +1631,21 @@ module.exports = async (client) => {
       );
     } catch (migrateError) {
       console.log(`[WARNING] 遊戲稱號遷移失敗：${migrateError.message}`.yellow);
+    }
+
+    // 修補：舊版採集陷阱把 HP 打到 0 時錯把 hp_updated_at 設為 0，被 resolveHp 當成
+    // 「滿血、計時停擺」而永不自然回復，玩家會卡在 0 HP。滿血玩家 hp_current 不可能為 0，
+    // 故 hp_current:0 + hp_updated_at:0 必為卡住的受害者，重新啟動回復計時。idempotent。
+    try {
+      const stuck = await miningProfilesCollection.updateMany(
+        { hp_current: 0, hp_updated_at: 0 },
+        { $set: { hp_updated_at: Date.now(), updatedAt: new Date() } }
+      );
+      if (stuck.modifiedCount > 0) {
+        console.log(`[DATA] HP 回復修補：重啟 ${stuck.modifiedCount} 位玩家的自然回復計時`.cyan);
+      }
+    } catch (migrateError) {
+      console.log(`[WARNING] HP 回復修補失敗：${migrateError.message}`.yellow);
     }
 
     // 一次性遷移：把 UserLevels.cardAccent 對應的等級卡顏色補進 UserInventory，

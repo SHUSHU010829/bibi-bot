@@ -305,7 +305,7 @@ async function trigger(client, ctx) {
           const hpCur = typeof profile.hp_current === "number" ? profile.hp_current : 100;
           const hpAfter = Math.max(0, hpCur - eff.hp);
           set.hp_current = hpAfter;
-          set.hp_updated_at = hpAfter > 0 ? Date.now() : 0;
+          set.hp_updated_at = Date.now();
           lines.push(`❤️ HP -${hpCur - hpAfter}（${hpAfter}）`);
         }
 
@@ -444,7 +444,7 @@ async function trigger(client, ctx) {
             const hpAfter = Math.max(0, hpCur - eff.loseHp);
             hpLost = hpCur - hpAfter;
             set.hp_current = hpAfter;
-            set.hp_updated_at = hpAfter > 0 ? Date.now() : 0;
+            set.hp_updated_at = Date.now();
             lines.push(`💥 你被撞傷，HP -${hpLost}（${hpAfter}）`);
           }
 

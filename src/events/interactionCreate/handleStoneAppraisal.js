@@ -46,6 +46,29 @@ function oreLabel(oreKey) {
   return `${def.emoji || "⛏️"} ${def.name || oreKey}`;
 }
 
+// 賭石開完後把原挖礦訊息上的「找鑑定師賭石」按鈕移掉（石頭只能賭一次，
+// 留著會是失效按鈕）。回傳過濾後的 component JSON 與是否有實際移除。
+function stripAppraiseButton(message) {
+  let changed = false;
+  const components = message.components.map((top) => {
+    const json = top.toJSON();
+    if (Array.isArray(json.components)) {
+      const before = json.components.length;
+      json.components = json.components.filter((child) => {
+        if (child.type !== 1 || !Array.isArray(child.components)) return true;
+        return !child.components.some(
+          (b) =>
+            typeof b.custom_id === "string" &&
+            b.custom_id.startsWith(mineCmd.APPRAISE_PREFIX),
+        );
+      });
+      if (json.components.length !== before) changed = true;
+    }
+    return json;
+  });
+  return { changed, components };
+}
+
 async function replyEphemeral(interaction, content) {
   try {
     if (interaction.deferred || interaction.replied) {
@@ -250,6 +273,12 @@ async function runAppraisal(client, interaction, { ts, allowOverflow }) {
       ),
     );
 
+    const appraiserName = interaction.member?.displayName || interaction.user.username;
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# 🔍 ${appraiserName} 的賭石結果`),
+    );
+
     // 賭石結果改為公開訊息（行動類）。
     // 注意：ephemeral defer 之後的 followUp 會被 Discord 強制沿用 ephemeral，
     // 無法靠拿掉 flag 變公開；改用 channel.send 直接送一則正常公開訊息，
@@ -266,6 +295,16 @@ async function runAppraisal(client, interaction, { ts, allowOverflow }) {
         components: [container],
         flags: MessageFlags.IsComponentsV2,
       });
+    }
+
+    // 石頭已賭掉，把原挖礦訊息上的賭石按鈕收掉，避免重複點到失效按鈕。
+    if (interaction.message?.components?.length) {
+      const { changed, components } = stripAppraiseButton(interaction.message);
+      if (changed) {
+        await interaction.message
+          .edit({ components, flags: MessageFlags.IsComponentsV2 })
+          .catch(() => {});
+      }
     }
 
     if (result.gainedDiamond) {

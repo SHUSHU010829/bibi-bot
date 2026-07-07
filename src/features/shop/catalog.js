@@ -13,6 +13,9 @@ const STACKABLE_TYPES = [
   "mining_hp_potion_medium",
   "mining_hp_potion_large",
   "casino_token",
+  "theft_watchdog",
+  "theft_cloak",
+  "theft_safebox",
 ];
 
 function getCatalog() {

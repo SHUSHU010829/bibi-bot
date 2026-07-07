@@ -1,0 +1,105 @@
+{
+  "theft": {
+    "enabled": true,
+    "timezone": "Asia/Taipei",
+    "announceChannelId": "1523630614018916432",
+    "dailyLimit": 3,
+    "samePairCooldownMs": 28800000,
+    "newbieProtectDays": 7,
+    "minTargetWallet": 500,
+    "maxStolenPerDayPerTarget": 3,
+    "bountyMin": 300,
+    "steal": {
+      "baseRate": 0.55,
+      "minRate": 0.15,
+      "maxRate": 0.85,
+      "notorietyRatePer": 0.01,
+      "notorietyRateCap": 0.15,
+      "stealMin": 100,
+      "brackets": [
+        { "upTo": 5000, "pct": 0.12 },
+        { "upTo": 30000, "pct": 0.08 },
+        { "upTo": null, "pct": 0.04 }
+      ],
+      "baseCap": 3000,
+      "capPerNotoriety": 300,
+      "hardCap": 12000,
+      "blackMarketRakePct": 0.2
+    },
+    "notoriety": {
+      "successGain": 1,
+      "failGain": 2,
+      "caughtLoss": 2,
+      "surrenderLoss": 1,
+      "expireLoss": 1,
+      "decayPerDay": 1
+    },
+    "bounty": {
+      "base": 1000,
+      "perNotoriety": 100,
+      "stolenPct": 0.08,
+      "max": 20000,
+      "wantedTtlHours": 24
+    },
+    "hunt": {
+      "dailyLimit": 3,
+      "baseRate": 0.5,
+      "minRate": 0.2,
+      "maxRate": 0.8,
+      "atkDiffScale": 0.003,
+      "caughtFinePct": 0.1,
+      "escapeCooldownBaseMs": 1800000,
+      "escapeCooldownPerNotorietyMs": 300000,
+      "escapeCooldownMaxMs": 10800000,
+      "escapeClearCount": 5
+    },
+    "surrender": {
+      "bailForfeitPct": 0.6,
+      "stolenDisgorgePct": 0.05,
+      "repeatWindowMs": 86400000,
+      "repeatSurchargePct": 0.2,
+      "maxForfeitPct": 1,
+      "paroleCooldownMs": 21600000,
+      "lockMs": 300000
+    },
+    "escapeRun": {
+      "enabled": true,
+      "distanceToClear": 4,
+      "baseCatchRate": 0.2,
+      "catchRatePerDistance": 0.1,
+      "catchRateMax": 0.85,
+      "routes": [
+        { "key": "crowd", "emoji": "🌆", "name": "混入人群", "riskMul": 0.6, "advance": 1 },
+        { "key": "alley", "emoji": "🌫️", "name": "鑽暗巷", "riskMul": 1.0, "advance": 2 },
+        { "key": "roof", "emoji": "🏙️", "name": "飛簷走壁", "riskMul": 1.5, "advance": 3 }
+      ],
+      "runExpiresMs": 600000
+    },
+    "report": {
+      "detectiveFee": 500,
+      "windowHours": 24,
+      "investigateRate": 0.7,
+      "investigateRateStale": 0.2,
+      "refundOnMiss": false,
+      "abscondChance": 0.02
+    },
+    "revenge": {
+      "recoverPct": 0.5,
+      "baseRate": 0.5,
+      "minRate": 0.2,
+      "maxRate": 0.8,
+      "atkDiffScale": 0.003
+    },
+    "fund": {
+      "enabled": true,
+      "timezone": "Asia/Taipei",
+      "payoutCron": "0 21 * * 0",
+      "weekWindowMs": 604800000,
+      "minPool": 1
+    },
+    "defense": {
+      "safeboxRate": 0.2,
+      "cloakRate": 0.15
+    }
+  }
+}
