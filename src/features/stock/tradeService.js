@@ -1,14 +1,28 @@
 require("colors");
+const { DateTime } = require("luxon");
 const { stockSystem } = require("../../config");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const grantCoins = require("../economy/grantCoins");
 const portfolioService = require("./portfolioService");
 const { limitBounds } = require("./priceEngine");
+const { calcSellTax, calcDayTradeTax, routeToTreasury } = require("./stockTax");
 
 function calcFee(amount) {
   const rate = stockSystem?.feeRate ?? 0.01;
   const minFee = stockSystem?.minFee ?? 5;
   return Math.max(minFee, Math.floor(amount * rate));
+}
+
+// 當日沖銷判定：同股在今日（Taipei）曾有買進紀錄。
+async function hasBuyToday(client, userId, guildId, symbol) {
+  if (!client.stockTransactionsCollection) return false;
+  const tz = stockSystem?.timezone || "Asia/Taipei";
+  const today = DateTime.now().setZone(tz).toISODate();
+  const startOfDay = DateTime.fromISO(today, { zone: tz }).toJSDate();
+  const doc = await client.stockTransactionsCollection
+    .findOne({ userId, guildId, symbol, side: "buy", timestamp: { $gte: startOfDay } })
+    .catch(() => null);
+  return !!doc;
 }
 
 // 當日漲跌停狀態：以開盤價為基準，判斷現價是否已頂到 ±limitPct。
@@ -205,11 +219,15 @@ async function sellMarket(client, opts) {
   const price = market.currentPrice;
   const proceeds = Math.floor(price * shares);
   const fee = calcFee(proceeds);
-  const netProceeds = proceeds - fee;
+  const sellTax = calcSellTax(proceeds);
+  const isDayTrade = await hasBuyToday(client, userId, guildId, symbol);
+  const dayTradeTax = isDayTrade ? calcDayTradeTax(proceeds) : 0;
+  const totalTax = sellTax + dayTradeTax;
+  const netProceeds = proceeds - fee - totalTax;
   const pnl = Math.floor((price - position.avgCost) * shares);
 
-  // 收入：proceeds 全額走 stock_sell（正值），fee 另走 stock_fee（負值）
-  // 這樣每日經濟報告 outflow 能完整看到 fee，stock_sell 顯示真實成交金額
+  // 收入：proceeds 全額走 stock_sell（正值）；fee / 證交稅 / 當沖稅 分別另走負值 source，
+  // 每日經濟報告 outflow 才能完整看到各項扣款，stock_sell 顯示真實成交金額。
   const grantSell = await grantCoins(client, {
     userId,
     guildId,
@@ -231,6 +249,30 @@ async function sellMarket(client, opts) {
     member,
     meta: { symbol, shares, side: "sell" },
   });
+  if (sellTax > 0) {
+    await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      amount: -sellTax,
+      source: "stock_tax",
+      member,
+      meta: { symbol, shares, side: "sell" },
+    });
+    await routeToTreasury(client, guildId, sellTax);
+  }
+  if (dayTradeTax > 0) {
+    await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      amount: -dayTradeTax,
+      source: "stock_daytrade_tax",
+      member,
+      meta: { symbol, shares, side: "sell" },
+    });
+    await routeToTreasury(client, guildId, dayTradeTax);
+  }
 
   await portfolioService.reducePosition(client, userId, guildId, symbol, shares);
 
@@ -243,6 +285,8 @@ async function sellMarket(client, opts) {
     price,
     proceeds,
     fee,
+    sellTax,
+    dayTradeTax,
     pnl,
     avgCost: position.avgCost,
     timestamp: new Date(),
@@ -259,6 +303,10 @@ async function sellMarket(client, opts) {
     price,
     proceeds,
     fee,
+    sellTax,
+    dayTradeTax,
+    totalTax,
+    isDayTrade,
     netProceeds,
     pnl,
     avgCost: position.avgCost,

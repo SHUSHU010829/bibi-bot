@@ -8,6 +8,7 @@ const {
 const { stockSystem } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 const { MONEY_EMOJI } = require("../../constants/coin");
+const { calcDividendTax, routeToTreasury } = require("./stockTax");
 
 function getDividendConfig() {
   return stockSystem?.dividend || {};
@@ -42,23 +43,28 @@ async function payoutForStock(client, guildId, stockDoc) {
 
   const perSharePerWeek = (stockDoc.currentPrice * annualYield) / weeksPerYear;
   let totalPaid = 0;
+  let totalTax = 0;
   let recipients = 0;
   const recipientDetails = [];
 
   for (const h of holders) {
-    const payout = computePayout(h.shares, stockDoc.currentPrice, annualYield, weeksPerYear, minPerHolder);
-    if (payout <= 0) continue;
+    const gross = computePayout(h.shares, stockDoc.currentPrice, annualYield, weeksPerYear, minPerHolder);
+    if (gross <= 0) continue;
+    const tax = calcDividendTax(gross);
+    const net = gross - tax;
     try {
       const result = await grantCoins(client, {
         userId: h.userId,
         guildId,
-        amount: payout,
+        amount: net,
         source: "stock_dividend",
         meta: {
           symbol: stockDoc.symbol,
           shares: h.shares,
           perSharePerWeek: Number(perSharePerWeek.toFixed(4)),
           annualYield,
+          gross,
+          tax,
         },
       });
       if (result) {
@@ -69,6 +75,17 @@ async function payoutForStock(client, guildId, stockDoc) {
           shares: h.shares,
           payout: result.granted,
         });
+        if (tax > 0) {
+          await grantCoins(client, {
+            userId: h.userId,
+            guildId,
+            amount: -tax,
+            source: "stock_div_tax",
+            meta: { symbol: stockDoc.symbol, shares: h.shares, gross },
+          }).catch(() => {});
+          await routeToTreasury(client, guildId, tax).catch(() => {});
+          totalTax += tax;
+        }
         await client.stockTransactionsCollection.insertOne({
           userId: h.userId,
           guildId,
@@ -77,6 +94,7 @@ async function payoutForStock(client, guildId, stockDoc) {
           shares: h.shares,
           price: stockDoc.currentPrice,
           payout: result.granted,
+          divTax: tax,
           annualYield,
           timestamp: new Date(),
         }).catch(() => {});
@@ -94,6 +112,7 @@ async function payoutForStock(client, guildId, stockDoc) {
     perSharePerWeek: Number(perSharePerWeek.toFixed(4)),
     recipients,
     totalPaid,
+    totalTax,
     recipientDetails,
   };
 }
@@ -120,6 +139,7 @@ async function announce(client, guildId, summaries) {
 
   const totalAll = summaries.reduce((a, b) => a + b.totalPaid, 0);
   const totalRecipientHits = summaries.reduce((a, b) => a + b.recipients, 0);
+  const totalTaxAll = summaries.reduce((a, b) => a + (b.totalTax || 0), 0);
 
   const lines = summaries.map((s) => {
     const yieldPct = (s.annualYield * 100).toFixed(1);
@@ -141,7 +161,7 @@ async function announce(client, guildId, summaries) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**本週總配發**\n${totalAll.toLocaleString()} credits（累計 ${totalRecipientHits} 筆派息）`,
+        `**本週總配發**\n${totalAll.toLocaleString()} credits（累計 ${totalRecipientHits} 筆派息）${totalTaxAll > 0 ? `\n-# 已代扣股利稅共 ${totalTaxAll.toLocaleString()} credits，撥入證交所國庫` : ""}`,
       ),
     )
     .addTextDisplayComponents(

@@ -169,6 +169,8 @@ module.exports = async (client) => {
     const stockEventDefsCollection = database.collection("StockEventDefs");
     const stockBroadcastCollection = database.collection("StockBroadcast");
     const stockShortsCollection = database.collection("StockShorts");
+    const stockTreasuryCollection = database.collection("StockTreasury");
+    const stockInsiderTipsCollection = database.collection("StockInsiderTips");
 
     // 挖礦系統 collections
     const miningProfilesCollection = database.collection("MiningProfiles");
@@ -327,6 +329,8 @@ module.exports = async (client) => {
     client.stockEventDefsCollection = stockEventDefsCollection;
     client.stockBroadcastCollection = stockBroadcastCollection;
     client.stockShortsCollection = stockShortsCollection;
+    client.stockTreasuryCollection = stockTreasuryCollection;
+    client.stockInsiderTipsCollection = stockInsiderTipsCollection;
     client.recommendationsCollection = recommendationsCollection;
     client.inviteCacheCollection = inviteCacheCollection;
     client.inviteRecordsCollection = inviteRecordsCollection;
@@ -1152,6 +1156,18 @@ module.exports = async (client) => {
       await stockShortsCollection.createIndex(
         { guildId: 1, symbol: 1 },
         { name: "shorts_guild_symbol" }
+      );
+      await stockTreasuryCollection.createIndex(
+        { guildId: 1 },
+        { unique: true, name: "uniq_treasury_guild" }
+      );
+      await stockInsiderTipsCollection.createIndex(
+        { userId: 1, guildId: 1, createdAt: -1 },
+        { name: "insider_user_guild_time" }
+      );
+      await stockInsiderTipsCollection.createIndex(
+        { createdAt: 1 },
+        { expireAfterSeconds: 30 * 24 * 60 * 60, name: "insider_ttl_30d" }
       );
 
       // 推薦頻道索引（type 過濾 + 全文搜尋）

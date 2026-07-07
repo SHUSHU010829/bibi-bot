@@ -150,7 +150,7 @@ module.exports = async (client, interaction) => {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**淨入帳**\n**${result.netProceeds.toLocaleString()}**(手續費 ${result.fee.toLocaleString()})`
+          `**淨入帳**\n**${result.netProceeds.toLocaleString()}**(手續費 ${result.fee.toLocaleString()}${result.totalTax > 0 ? `・稅金 ${result.totalTax.toLocaleString()}` : ""})`
         )
       )
       .addTextDisplayComponents(

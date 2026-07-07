@@ -38,6 +38,45 @@ function nextPrice(lastPrice, sigma, drift, floor) {
   return Math.max(floor || 1, roundPrice(raw));
 }
 
+function engineCfg() {
+  return stockSystem?.engine || {};
+}
+
+function poolOverride(symbol, key) {
+  const p = poolParams(symbol);
+  return p && p[key] != null ? p[key] : null;
+}
+
+// 進階價格步進：drift + 動能(趨勢延續) + 均值回歸(拉回合理價) + 雜訊。
+// 回傳 { price, momentum }；momentum 為報酬的 EMA，需回寫個股 doc 供下一 tick 使用。
+function nextPriceAdvanced(state, params) {
+  const { lastPrice, momentum = 0, fairValue } = state;
+  const { sigma, drift, floor, symbol } = params;
+  const cfg = engineCfg();
+  const mom = cfg.momentum || {};
+  const rev = cfg.reversion || {};
+  const rho = mom.rho ?? 0.9;
+  const gamma = mom.enabled === false ? 0 : (poolOverride(symbol, "gamma") ?? mom.gamma ?? 0);
+  const kappa = rev.enabled === false ? 0 : (poolOverride(symbol, "kappa") ?? rev.kappa ?? 0);
+
+  const epsilon = gaussian();
+  let r = (drift || 0) + gamma * momentum + (sigma || 0) * epsilon;
+  if (kappa > 0 && fairValue > 0 && lastPrice > 0) {
+    r += kappa * Math.log(fairValue / lastPrice);
+  }
+  const raw = lastPrice * (1 + r);
+  const price = Math.max(floor || 1, roundPrice(raw));
+  const newMomentum = rho * momentum + (1 - rho) * r;
+  return { price, momentum: newMomentum };
+}
+
+// 合理價每日依情緒微幅位移，避免死釘 initialPrice（牛市上修、熊市下修）。
+function nextFairValue(fairValue, sentiment) {
+  const d = engineCfg().fairValueDailyDrift ?? 0;
+  const dir = sentiment === "bull" ? 1 : sentiment === "bear" ? -1 : 0;
+  return roundPrice((fairValue || 0) * (1 + dir * d));
+}
+
 function applyEvent(currentPrice, effectRate, floor) {
   const raw = currentPrice * (1 + (effectRate || 0));
   return Math.max(floor || 1, roundPrice(raw));
@@ -75,6 +114,8 @@ function clampToLimit(price, refPrice, cfg) {
 
 module.exports = {
   nextPrice,
+  nextPriceAdvanced,
+  nextFairValue,
   applyEvent,
   calcMarketDrift,
   poolParams,

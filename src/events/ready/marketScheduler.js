@@ -13,13 +13,14 @@ const {
 const { DateTime } = require("luxon");
 
 const { stockSystem } = require("../../config");
-const { nextPrice, stockDrift, poolParams, clampToLimit, limitBounds, priceImpact } = require("../../features/stock/priceEngine");
+const { nextPriceAdvanced, nextFairValue, stockDrift, poolParams, clampToLimit, limitBounds, priceImpact } = require("../../features/stock/priceEngine");
 const { rollRandomEvent } = require("../../features/stock/eventEngine");
 const { isMarketOpen } = require("../../features/stock/tradeService");
 const { renderMultiLine } = require("../../features/stock/chartRenderer");
 const { getDailyVolume } = require("../../features/stock/volumeService");
 const { runMarginScan } = require("../../features/stock/shortService");
 const { backfillPoolStocks } = require("../../features/stock/seedService");
+const treasuryService = require("../../features/stock/treasuryService");
 
 const SENTIMENT_LABEL = {
   bull: "🐂 牛市",
@@ -108,15 +109,23 @@ async function tickOnce(client) {
       const sentiment = s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways";
       const drift = stockDrift(s.symbol, sentiment);
       const sigma = poolParams(s.symbol)?.sigma ?? s.sigma;
-      const raw = nextPrice(s.currentPrice, sigma, drift, s.floor);
+      const stepped = nextPriceAdvanced(
+        {
+          lastPrice: s.currentPrice,
+          momentum: s.momentum || 0,
+          fairValue: s.fairValue || s.currentPrice,
+        },
+        { sigma, drift, floor: s.floor, symbol: s.symbol },
+      );
+      const raw = stepped.price;
       const ref = s.openPrice || s.currentPrice;
       let next = clampToLimit(raw, ref, stockSystem?.limitBoard);
 
-      // 這 5 分鐘累積的買 / 賣壓在此一次反映（買為正、賣為負）。單 tick 衝擊沿用
+      // 累積的買 / 賣壓在此一次反映（買為正、賣為負）。單 tick 衝擊沿用
       // maxStepFrac 上限，超過上限的股數結轉到下一個 tick 慢慢消化。
       const impactCfg = stockSystem?.priceImpact;
       const pending = s.pendingImpactShares || 0;
-      const update = { currentPrice: next, updatedAt: new Date() };
+      const update = { currentPrice: next, momentum: stepped.momentum, updatedAt: new Date() };
       if (impactCfg?.enabled && pending !== 0) {
         const perShare = impactCfg.perShareFrac ?? 0;
         const capShares = perShare > 0 ? (impactCfg.maxStepFrac ?? 0.05) / perShare : Math.abs(pending);
@@ -140,6 +149,23 @@ async function tickOnce(client) {
       }).catch(() => {});
       ticked += 1;
     }
+  }
+
+  // 價格更新後掃描融券部位，浮虧過大者強制回補（斷頭）
+  await runMarginScan(client).catch((e) =>
+    console.log(`[STOCK] margin scan failed: ${e?.message || e}`.yellow)
+  );
+
+  return { ticked, guilds: guildIds.length };
+}
+
+// 突發事件 roll + 播報重繪，與價格 tick 拆開跑（較低頻，避免 Discord 編輯過於頻繁撞 rate limit）。
+async function broadcastOnce(client) {
+  if (!isMarketOpen()) {
+    return { skipped: "market_closed" };
+  }
+  const guildIds = await listGuildIdsWithMarket(client);
+  for (const guildId of guildIds) {
     const fired = await rollRandomEvent(client, guildId).catch((e) => {
       console.log(`[STOCK] rollRandomEvent failed guild=${guildId}: ${e?.message || e}`.yellow);
       return null;
@@ -149,13 +175,7 @@ async function tickOnce(client) {
       console.log(`[STOCK] broadcast failed guild=${guildId}: ${e?.message || e}`.yellow)
     );
   }
-
-  // 價格更新後掃描融券部位，浮虧過大者強制回補（斷頭）
-  await runMarginScan(client).catch((e) =>
-    console.log(`[STOCK] margin scan failed: ${e?.message || e}`.yellow)
-  );
-
-  return { ticked, guilds: guildIds.length };
+  return { guilds: guildIds.length };
 }
 
 async function postMarketBroadcast(client, guildId, opts = {}) {
@@ -327,12 +347,14 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
 async function runOpen(client) {
   const guildIds = await listGuildIdsWithMarket(client);
   for (const guildId of guildIds) {
-    // 把現價寫入今日 openPrice
+    // 把現價寫入今日 openPrice，並依情緒微調合理價（供均值回歸）
     const stocks = await client.stockMarketCollection.find({ guildId, enabled: { $ne: false } }).toArray();
     for (const s of stocks) {
+      const sentiment = s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways";
+      const fairValue = nextFairValue(s.fairValue || s.currentPrice, sentiment);
       await client.stockMarketCollection.updateOne(
         { _id: s._id },
-        { $set: { openPrice: s.currentPrice, openedAt: new Date() } }
+        { $set: { openPrice: s.currentPrice, openedAt: new Date(), fairValue } }
       );
     }
     await postOpenReport(client, guildId, stocks).catch(() => {});
@@ -437,6 +459,30 @@ async function postCloseReport(client, guildId) {
     }
   }
 
+  // 證交所國庫：今日各稅進帳 / 銷毀 / 餘額（透明公示回饋股民）
+  let treasuryLine = null;
+  if (stockSystem?.treasury?.enabled) {
+    try {
+      const [tre, tax] = await Promise.all([
+        treasuryService.getTreasury(client, guildId),
+        treasuryService.getTodayTaxBreakdown(client, guildId),
+      ]);
+      const parts = [];
+      if (tax.sell > 0) parts.push(`證交稅 ${tax.sell.toLocaleString()}`);
+      if (tax.dayTrade > 0) parts.push(`當沖稅 ${tax.dayTrade.toLocaleString()}`);
+      if (tax.div > 0) parts.push(`配息稅 ${tax.div.toLocaleString()}`);
+      const intakeLine = parts.length ? parts.join("・") : "今日無進帳";
+      treasuryLine =
+        `**🏛️ 證交所國庫**\n` +
+        `今日稅收 ${tax.total.toLocaleString()}（${intakeLine}）\n` +
+        `　↳ 入庫 ${tax.toTreasury.toLocaleString()}・銷毀 ${tax.burned.toLocaleString()}\n` +
+        `國庫餘額 **${(tre.balance || 0).toLocaleString()}** credits\n` +
+        `-# 每週回饋股民（交易抽獎 + 散戶回饋）`;
+    } catch (e) {
+      console.log(`[STOCK] treasury close section failed: ${e?.message || e}`.yellow);
+    }
+  }
+
   const fmtList = (list) =>
     list
       .map((r, i) => `${i + 1}. \`${r.symbol}\` ${r.change >= 0 ? "+" : ""}${r.change.toFixed(2)}%`)
@@ -469,12 +515,19 @@ async function postCloseReport(client, guildId) {
       new TextDisplayBuilder().setContent(
         `**今日事件**\n${eventLine}`,
       ),
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
-      ),
     );
+
+  if (treasuryLine) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(treasuryLine));
+  }
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# <t:${Math.floor(Date.now() / 1000)}:R>`,
+    ),
+  );
 
   await channel
     .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
@@ -499,12 +552,28 @@ module.exports = async (client) => {
     })
     .catch((e) => console.log(`[STOCK] pool backfill failed: ${e?.message || e}`.yellow));
 
+  // 既有個股補上 P4 引擎狀態（動能 / 合理價），避免 legacy doc 缺欄位
+  await client.stockMarketCollection
+    .updateMany(
+      { fairValue: { $exists: false } },
+      [{ $set: { fairValue: "$currentPrice", momentum: 0 } }],
+    )
+    .catch((e) => console.log(`[STOCK] engine state backfill failed: ${e?.message || e}`.yellow));
+
   registerCron(client, {
     name: "stock.tick",
     label: "股市價格 tick",
-    schedule: stockSystem.tickCronSchedule || "*/5 * * * *",
+    schedule: stockSystem.tickCronSchedule || "* * * * *",
     timezone: tz,
     runner: () => tickOnce(client),
+  });
+
+  registerCron(client, {
+    name: "stock.broadcast",
+    label: "股市播報 / 事件",
+    schedule: stockSystem.broadcastCronSchedule || "*/5 * * * *",
+    timezone: tz,
+    runner: () => broadcastOnce(client),
   });
 
   registerCron(client, {
@@ -536,6 +605,7 @@ module.exports = async (client) => {
 };
 
 module.exports.tickOnce = tickOnce;
+module.exports.broadcastOnce = broadcastOnce;
 module.exports.runOpen = runOpen;
 module.exports.runClose = runClose;
 module.exports.postMarketBroadcast = postMarketBroadcast;

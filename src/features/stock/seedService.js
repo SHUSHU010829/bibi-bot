@@ -23,6 +23,8 @@ async function backfillPoolStocks(client) {
             name: p.name,
             currentPrice: p.initialPrice,
             openPrice: p.initialPrice,
+            fairValue: p.initialPrice,
+            momentum: 0,
             sigma: p.sigma,
             floor: p.floor,
             marketSentiment: sentiment,

@@ -386,7 +386,112 @@ function drawVolumePanel(ctx, buckets, { x, y, w, h }) {
   ctx.fillText("賣", lx + 14, ly);
 }
 
+// 單股 K 線（蠟燭圖）。candles: [{ open, high, low, close, buyShares?, sellShares? }]
+// 綠漲紅跌，上下影線 = high–low，實體 = open–close；有量就疊下方量柱副圖。
+function renderCandles(symbol, name, candles, opts = {}) {
+  ensureFonts();
+  const pts = (candles || []).filter(
+    (c) => c && Number.isFinite(c.open) && Number.isFinite(c.close)
+  );
+  const hasVolume = pts.some((c) => (c.buyShares || 0) + (c.sellShares || 0) > 0);
+  const W = opts.width || 900;
+  const H = opts.height || (hasVolume ? 520 : 400);
+  const padL = 64;
+  const padR = 24;
+  const padT = 40;
+  const padB = 48;
+
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext("2d");
+
+  ctx.fillStyle = "#1e1f29";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = "#ecf0f1";
+  ctx.font = "bold 18px NotoSans, sans-serif";
+  ctx.fillText(opts.title || `${symbol} ${name || ""} K 線`, padL, 26);
+
+  if (pts.length === 0) {
+    ctx.fillStyle = "#7f8c8d";
+    ctx.font = "14px NotoSans, sans-serif";
+    ctx.fillText("（無歷史資料）", W / 2 - 50, H / 2);
+    return canvas.toBuffer("image/png");
+  }
+
+  const plotW = W - padL - padR;
+  const totalPlotH = H - padT - padB;
+  const priceH = hasVolume ? Math.floor(totalPlotH * 0.7) : totalPlotH;
+  const gapH = hasVolume ? Math.floor(totalPlotH * 0.05) : 0;
+  const volumeH = hasVolume ? totalPlotH - priceH - gapH : 0;
+  const volumeTop = padT + priceH + gapH;
+
+  let minY = Math.min(...pts.map((c) => c.low));
+  let maxY = Math.max(...pts.map((c) => c.high));
+  if (maxY - minY < 0.5) {
+    maxY += 1;
+    minY -= 1;
+  }
+  const yPad = (maxY - minY) * 0.1;
+  minY -= yPad;
+  maxY += yPad;
+  const yOf = (v) => padT + (priceH * (maxY - v)) / (maxY - minY);
+
+  ctx.strokeStyle = "#3a3b46";
+  ctx.lineWidth = 1;
+  ctx.font = "11px NotoSans, sans-serif";
+  ctx.fillStyle = "#7f8c8d";
+  const gridLines = 5;
+  for (let i = 0; i <= gridLines; i++) {
+    const y = padT + (priceH * i) / gridLines;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(W - padR, y);
+    ctx.stroke();
+    const v = maxY - ((maxY - minY) * i) / gridLines;
+    ctx.fillText(v.toFixed(1), 8, y + 4);
+  }
+
+  const slotW = plotW / pts.length;
+  const bodyW = Math.max(2, Math.min(slotW * 0.6, 18));
+  pts.forEach((c, i) => {
+    const xCenter = padL + slotW * (i + 0.5);
+    const up = c.close >= c.open;
+    const color = up ? "#2ecc71" : "#e74c3c";
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    // 影線
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(xCenter, yOf(c.high));
+    ctx.lineTo(xCenter, yOf(c.low));
+    ctx.stroke();
+    // 實體
+    const yTop = yOf(Math.max(c.open, c.close));
+    const yBot = yOf(Math.min(c.open, c.close));
+    ctx.fillRect(xCenter - bodyW / 2, yTop, bodyW, Math.max(1, yBot - yTop));
+  });
+
+  const first = pts[0].open;
+  const last = pts[pts.length - 1].close;
+  const pct = first > 0 ? ((last - first) / first) * 100 : 0;
+  const sign = pct >= 0 ? "+" : "";
+  ctx.fillStyle = "#ecf0f1";
+  ctx.font = "bold 14px NotoSans, sans-serif";
+  ctx.fillText(`${last.toFixed(1)} (${sign}${pct.toFixed(2)}%)`, W - padR - 140, 26);
+
+  if (hasVolume) {
+    drawVolumePanel(
+      ctx,
+      pts.map((c) => ({ buyShares: c.buyShares || 0, sellShares: c.sellShares || 0 })),
+      { x: padL, y: volumeTop, w: plotW, h: volumeH }
+    );
+  }
+
+  return canvas.toBuffer("image/png");
+}
+
 module.exports = {
   renderMultiLine,
   renderSingleLine,
+  renderCandles,
 };

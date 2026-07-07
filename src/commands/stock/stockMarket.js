@@ -35,6 +35,7 @@ const {
   isMarketOpen,
 } = require("../../features/stock/tradeService");
 const triggerService = require("../../features/stock/triggerService");
+const insiderService = require("../../features/stock/insiderService");
 const portfolioService = require("../../features/stock/portfolioService");
 const shortService = require("../../features/stock/shortService");
 const leaderboardService = require("../../features/stock/leaderboardService");
@@ -266,6 +267,28 @@ module.exports = {
             .setMinValue(0)
         )
     )
+    .addSubcommand((s) =>
+      s
+        .setName("內線")
+        .setDescription("花錢買一則私密內線快訊（有機率是假消息）🕵️")
+        .addStringOption((o) =>
+          o
+            .setName("等級")
+            .setDescription("情報等級：越貴越可靠")
+            .setRequired(true)
+            .addChoices(
+              { name: "一般線報（便宜・假消息率高）", value: "normal" },
+              { name: "高級內線（貴・假消息率低）", value: "premium" }
+            )
+        )
+        .addStringOption((o) =>
+          o
+            .setName("股票代號")
+            .setDescription("指定探聽的股票（預設隨機）")
+            .setRequired(false)
+            .addChoices(...getStaticSymbolChoices())
+        )
+    )
     .toJSON(),
 
   run: async (client, interaction) => {
@@ -281,6 +304,7 @@ module.exports = {
     if (sub === "融券") return runOpenShort(client, interaction);
     if (sub === "回補") return runCoverShort(client, interaction);
     if (sub === "排行") return runLeaderboard(client, interaction);
+    if (sub === "內線") return runInsider(client, interaction);
   },
 };
 
@@ -354,6 +378,64 @@ async function runLeaderboard(client, interaction) {
   } catch (err) {
     console.log(`[STOCK] /股市 排行 失敗:${err?.stack || err}`.red);
     await interaction.editReply("❌ 查詢失敗,請稍後再試。").catch(() => {});
+  }
+}
+
+// ──────────────────────────── /股市 內線 ────────────────────────────
+async function runInsider(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    if (!stockSystem?.enabled) return interaction.editReply("🔧 股市系統未啟用。");
+    if (!stockSystem?.insider?.enabled) {
+      return interaction.editReply("🔒 內線情報暫未開放。");
+    }
+    const tenure = checkServerTenure(interaction.member);
+    if (!tenure.ok) return interaction.editReply(tenure.message);
+
+    const grade = interaction.options.getString("等級");
+    const symbolOpt = interaction.options.getString("股票代號");
+    const symbol = symbolOpt ? symbolOpt.toUpperCase().trim() : null;
+
+    const result = await insiderService.buyTip(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      username: interaction.member?.displayName || interaction.user.username,
+      member: interaction.member,
+      symbol,
+      grade,
+    });
+    if (!result.ok) return interaction.editReply(result.message);
+
+    const dirLabel = result.up ? "看漲 📈" : "看跌 📉";
+    const container = new ContainerBuilder()
+      .setAccentColor(result.up ? 0x2ecc71 : 0xe74c3c)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`# 🕵️ 內線快訊｜${result.gradeLabel}`)
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**\`${result.symbol}\` ${result.name}**（現價 ${result.price.toFixed(1)}）\n消息面研判：短線 **${dirLabel}**`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# ${result.flavor}・情報費 ${result.cost.toLocaleString()}・今日剩 ${result.remaining} 則`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# ⚠️ 內線有風險，快訊有機率為假消息，請自行判斷"
+        )
+      );
+
+    await interaction.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (err) {
+    console.log(`[STOCK] /股市 內線 失敗:${err?.stack || err}`.red);
+    await interaction.editReply("❌ 探聽失敗,請稍後再試。").catch(() => {});
   }
 }
 
@@ -609,6 +691,13 @@ function buildSellResultContainer(result) {
   const pnlPct =
     result.avgCost > 0 ? ((result.price - result.avgCost) / result.avgCost) * 100 : 0;
 
+  const taxParts = [];
+  if (result.sellTax > 0) taxParts.push(`證交稅 ${result.sellTax.toLocaleString()}`);
+  if (result.dayTradeTax > 0) taxParts.push(`當沖稅 ${result.dayTradeTax.toLocaleString()}`);
+  const feeTaxContent =
+    `**手續費 / 稅金**\n手續費 ${result.fee.toLocaleString()}` +
+    (taxParts.length ? `・${taxParts.join("・")}` : "");
+
   const container = new ContainerBuilder()
     .setAccentColor(result.pnl >= 0 ? 0x2ecc71 : 0xe74c3c)
     .addTextDisplayComponents(
@@ -628,9 +717,7 @@ function buildSellResultContainer(result) {
       )
     )
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**手續費**\n${result.fee.toLocaleString()}`
-      )
+      new TextDisplayBuilder().setContent(feeTaxContent)
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -1026,8 +1113,9 @@ async function runTradeHistory(client, interaction) {
     let buyShares = 0;
     let sellShares = 0;
     let buyAmount = 0; // 含手續費總支出
-    let sellAmount = 0; // 扣手續費後淨入帳
+    let sellAmount = 0; // 扣手續費 + 稅金後淨入帳
     let totalFee = 0;
+    let totalTax = 0;
     let realizedPnl = 0;
     for (const r of rows) {
       totalFee += r.fee || 0;
@@ -1038,7 +1126,9 @@ async function runTradeHistory(client, interaction) {
       } else {
         sellCount += 1;
         sellShares += r.shares || 0;
-        sellAmount += (r.proceeds || 0) - (r.fee || 0);
+        const tax = (r.sellTax || 0) + (r.dayTradeTax || 0);
+        totalTax += tax;
+        sellAmount += (r.proceeds || 0) - (r.fee || 0) - tax;
         realizedPnl += r.pnl || 0;
       }
     }
@@ -1096,7 +1186,7 @@ async function runTradeHistory(client, interaction) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**手續費合計**\n${totalFee.toLocaleString()}`
+          `**手續費 / 稅金合計**\n手續費 ${totalFee.toLocaleString()}${totalTax > 0 ? `・稅金 ${totalTax.toLocaleString()}` : ""}`
         )
       )
       .addTextDisplayComponents(
