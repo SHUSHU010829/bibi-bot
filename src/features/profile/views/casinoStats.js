@@ -55,7 +55,6 @@ async function buildCasinoStatsView(client, { target, member, guildId, period })
           userId,
           guildId,
           source: { $in: ["bet", "payout"] },
-          "meta.game": { $ne: "redPacket" },
           ...dateFilter,
         },
       },
@@ -76,6 +75,8 @@ async function buildCasinoStatsView(client, { target, member, guildId, period })
   }
 
   const perGame = {};
+  // 紅包屬社交送禮，單獨顯示、不計入賭場統計總計與各遊戲分項
+  const redPacket = { wagered: 0, payout: 0, betCount: 0 };
   let totalWagered = 0;
   let totalPayout = 0;
   let totalBetCount = 0;
@@ -83,15 +84,20 @@ async function buildCasinoStatsView(client, { target, member, guildId, period })
   for (const r of rows) {
     const game = r._id.game || "unknown";
     const src = r._id.source;
-    if (!perGame[game]) perGame[game] = { wagered: 0, payout: 0, betCount: 0 };
+    const isRedPacket = game === "redPacket";
+    const bucket = isRedPacket
+      ? redPacket
+      : (perGame[game] ||= { wagered: 0, payout: 0, betCount: 0 });
     if (src === "bet") {
-      perGame[game].wagered += Math.abs(r.total);
-      perGame[game].betCount += r.count;
-      totalWagered += Math.abs(r.total);
-      totalBetCount += r.count;
+      bucket.wagered += Math.abs(r.total);
+      bucket.betCount += r.count;
+      if (!isRedPacket) {
+        totalWagered += Math.abs(r.total);
+        totalBetCount += r.count;
+      }
     } else if (src === "payout") {
-      perGame[game].payout += r.total;
-      totalPayout += r.total;
+      bucket.payout += r.total;
+      if (!isRedPacket) totalPayout += r.total;
     }
   }
 
@@ -99,16 +105,21 @@ async function buildCasinoStatsView(client, { target, member, guildId, period })
   const overallRtp = totalWagered > 0 ? (totalPayout / totalWagered) * 100 : 0;
   const username = member?.displayName || target.username;
 
-  const overall =
-    `**${username}** 的賭場紀錄 ・ ${describePeriod(effPeriod)}\n\n` +
-    `💸 總下注：**${totalWagered.toLocaleString()}** credits（共 ${totalBetCount.toLocaleString()} 注）\n` +
-    `${MONEY_EMOJI} 總派彩：**${totalPayout.toLocaleString()}** credits\n` +
-    `${netProfit >= 0 ? "📈" : "📉"} 淨輸贏：**${netProfit >= 0 ? "+" : ""}${netProfit.toLocaleString()}**\n` +
-    `🎯 RTP（回收率）：**${overallRtp.toFixed(1)}%**${overallRtp < 100 ? "（賠錢中）" : "（賺錢中）"}`;
-
   const games = Object.entries(perGame).sort(
     (a, b) => b[1].wagered - a[1].wagered
   );
+  const hasGamble = games.length > 0;
+  const hasRedPacket = redPacket.betCount > 0 || redPacket.payout > 0;
+
+  const overall = hasGamble
+    ? `**${username}** 的賭場紀錄 ・ ${describePeriod(effPeriod)}\n\n` +
+      `💸 總下注：**${totalWagered.toLocaleString()}** credits（共 ${totalBetCount.toLocaleString()} 注）\n` +
+      `${MONEY_EMOJI} 總派彩：**${totalPayout.toLocaleString()}** credits\n` +
+      `${netProfit >= 0 ? "📈" : "📉"} 淨輸贏：**${netProfit >= 0 ? "+" : ""}${netProfit.toLocaleString()}**\n` +
+      `🎯 RTP（回收率）：**${overallRtp.toFixed(1)}%**${overallRtp < 100 ? "（賠錢中）" : "（賺錢中）"}`
+    : `**${username}** 的賭場紀錄 ・ ${describePeriod(effPeriod)}\n\n` +
+      `-# 這個期間沒有賭場遊戲紀錄。`;
+
   const perGameLines = games.map(([game, s]) => {
     const label = gameLabel(game);
     const net = s.payout - s.wagered;
@@ -120,7 +131,12 @@ async function buildCasinoStatsView(client, { target, member, guildId, period })
     );
   });
 
-  const accent = netProfit >= 0 ? 0x2ecc71 : 0xe74c3c;
+  const redPacketText = hasRedPacket
+    ? `${gameLabel("redPacket")} ・ 不計入上方統計\n` +
+      `-# 發出 ${redPacket.wagered.toLocaleString()}（${redPacket.betCount} 個）・ 領取 ${redPacket.payout.toLocaleString()}`
+    : null;
+
+  const accent = !hasGamble ? 0x95a5a6 : netProfit >= 0 ? 0x2ecc71 : 0xe74c3c;
 
   const container = new ContainerBuilder()
     .setAccentColor(accent)
@@ -130,11 +146,25 @@ async function buildCasinoStatsView(client, { target, member, guildId, period })
     .addSeparatorComponents(
       new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large)
     )
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(overall))
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(perGameLines.join("\n\n"))
-    )
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(overall));
+
+  if (hasGamble) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(perGameLines.join("\n\n"))
+      );
+  }
+
+  if (redPacketText) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(redPacketText)
+      );
+  }
+
+  container
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(

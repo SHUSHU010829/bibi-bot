@@ -38,6 +38,7 @@ async function fetchCasino(client, { guildId, period }, kind) {
   const baseMatch = {
     guildId,
     source: { $in: ["bet", "payout"] },
+    "meta.game": { $ne: "redPacket" },
     ...getDateFilter(period),
   };
 
