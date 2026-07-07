@@ -17,6 +17,8 @@ const {
   buildMyStallView,
   oreLabel,
   BUY_PREFIX,
+  FULFILL_PREFIX,
+  BULK_SELL_PREFIX,
   VIEW_BROWSE_ID,
   VIEW_MYSTALL_ID,
 } = require("../../features/marketplace/marketplaceView");
@@ -393,7 +395,16 @@ async function handleWant(client, interaction) {
           `**#${l.listing_id}**\n` +
           `徵求 ${wantLabel}，付出 ${payStr}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
-          `-# 無人賣出則取消時退回付款。`
+          `-# 有貨的玩家可直接點下方「賣給他」成交；無人賣出則取消時退回付款。`
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${FULFILL_PREFIX}${l.listing_id}`)
+          .setLabel("賣給他")
+          .setEmoji("📋")
+          .setStyle(ButtonStyle.Primary)
       )
     );
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
@@ -456,11 +467,16 @@ async function handleBulk(client, interaction) {
           `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個　總額 **${l.pay_coin.toLocaleString()}** ${COIN_EMOJI}\n` +
           `已鎖定 **${result.totalEscrow.toLocaleString()}** ${COIN_EMOJI}（含 ${result.fee.toLocaleString()} 手續費）\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
-          `-# 其他玩家可在 \`/市集 逛攤\` 分批賣給你；收滿或到期後，未用完的金額會自動退回。`
+          `-# 其他玩家可直接點下方「賣給他」分批賣給你（可一鍵賣或自訂數量）；收滿或到期後，未用完的金額會自動退回。`
       )
     )
     .addActionRowComponents(
       new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${BULK_SELL_PREFIX}${l.listing_id}`)
+          .setLabel("賣給他")
+          .setEmoji("🛒")
+          .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
           .setCustomId(VIEW_MYSTALL_ID)
           .setLabel("查看我的攤位")
