@@ -278,6 +278,21 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
   const epoch = Math.floor(next.getTime() / 1000);
   const nowEpoch = Math.floor(now.getTime() / 1000);
 
+  let treasuryLine = null;
+  if (stockSystem?.treasury?.enabled) {
+    try {
+      const [tre, tax] = await Promise.all([
+        treasuryService.getTreasury(client, guildId),
+        treasuryService.getTodayTaxBreakdown(client, guildId),
+      ]);
+      treasuryLine =
+        `🏛️ 證交所國庫 **${(tre.balance || 0).toLocaleString()}** credits｜今日入庫 ${tax.toTreasury.toLocaleString()}\n` +
+        `-# 每週日 20:00 交易抽獎 + 散戶回饋`;
+    } catch (e) {
+      console.log(`[STOCK] broadcast treasury fetch failed: ${e?.message || e}`.yellow);
+    }
+  }
+
   const container = new ContainerBuilder()
     .setAccentColor(0x3498db)
     .addTextDisplayComponents(
@@ -296,6 +311,12 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
   if (limitTags.length > 0) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`漲跌停：${limitTags.join("　")}`),
+    );
+  }
+
+  if (treasuryLine) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(treasuryLine),
     );
   }
 
