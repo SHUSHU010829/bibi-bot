@@ -48,7 +48,7 @@ module.exports = {
   channelBuckets: ["marketplace"],
   data: new SlashCommandBuilder()
     .setName("市集")
-    .setDescription("礦石市集：賣礦、徵求、競標 🏪")
+    .setDescription("礦石市集：賣礦、徵求、大量收購、競標 🏪")
     .setContexts(InteractionContextType.Guild)
     // 逛攤
     .addSubcommand((s) =>
@@ -117,6 +117,28 @@ module.exports = {
         )
         .addStringOption((o) =>
           o.setName("標題").setDescription("選填：自訂標題顯示在掛單前").setMaxLength(30)
+        )
+    )
+    // 大量收購
+    .addSubcommand((s) =>
+      s
+        .setName("大量收購")
+        .setDescription("一次收購大量素材，多位玩家可分批賣給你 🛒")
+        .addStringOption((o) =>
+          o.setName("物品").setDescription("你要大量收購的物品").setRequired(true).addChoices(...ITEM_CHOICES)
+        )
+        .addIntegerOption((o) =>
+          o.setName("數量").setDescription("總共要收購多少個").setRequired(true).setMinValue(1)
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName("單價")
+            .setDescription("每個願意付多少金幣（不得低於系統售價）")
+            .setRequired(true)
+            .setMinValue(1)
+        )
+        .addStringOption((o) =>
+          o.setName("標題").setDescription("選填：自訂標題顯示在收購單前").setMaxLength(30)
         )
     )
     // 賣魚
@@ -198,6 +220,7 @@ module.exports = {
       if (sub === "我的攤位") return await handleMyStall(client, interaction);
       if (sub === "賣礦") return await handleSell(client, interaction);
       if (sub === "徵求") return await handleWant(client, interaction);
+      if (sub === "大量收購") return await handleBulk(client, interaction);
       if (sub === "競標") return await handleAuction(client, interaction);
       if (sub === "賣魚") return await handleFishSell(client, interaction);
       if (sub === "賣菜") return await handleVeggieSell(client, interaction);
@@ -371,6 +394,83 @@ async function handleWant(client, interaction) {
           `徵求 ${wantLabel}，付出 ${payStr}\n` +
           `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
           `-# 無人賣出則取消時退回付款。`
+      )
+    );
+  await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+}
+
+// ─── 大量收購 ────────────────────────────────────────────────────────────────
+async function handleBulk(client, interaction) {
+  const itemArg = interaction.options.getString("物品");
+  const qty = interaction.options.getInteger("數量");
+  const unitPrice = interaction.options.getInteger("單價");
+
+  const choice = itemAccess.parseChoice(itemArg);
+  if (!choice) return interaction.editReply("❌ 找不到這種物品。");
+
+  const result = await marketplaceService.createBulkListing(client, {
+    buyerId: interaction.user.id,
+    guildId: interaction.guildId,
+    buyerName: interaction.member?.displayName || interaction.user.username,
+    itemType: choice.type,
+    itemKey: choice.key,
+    qty,
+    unitPrice,
+    member: interaction.member,
+    title: interaction.options.getString("標題"),
+  });
+
+  if (!result.ok) {
+    if (result.reason === "no_item") return interaction.editReply("❌ 找不到這種物品。");
+    if (result.reason === "qty_too_large")
+      return interaction.editReply(`❌ 單筆收購數量上限為 **${result.maxQty.toLocaleString()}** 個。`);
+    if (result.reason === "low_unit_price")
+      return interaction.editReply(
+        `❌ ${result.itemDef.name} 的收購單價不得低於系統售價 **${result.minUnit.toLocaleString()}** ${COIN_EMOJI}／個。`
+      );
+    if (result.reason === "bulk_limit")
+      return interaction.editReply(
+        `📋 你同時只能開 **${result.maxBulk}** 張大量收購單。先用 \`/市集 我的攤位\` 下架舊的再開新的。`
+      );
+    if (result.reason === "too_many")
+      return interaction.editReply(`📦 你同時最多只能掛 **${result.max}** 件掛單。`);
+    if (result.reason === "insufficient_coins")
+      return interaction.editReply(
+        `💰 餘額不足！需要 **${result.need.toLocaleString()}** ${COIN_EMOJI}（含手續費），你目前 **${result.balance.toLocaleString()}** ${COIN_EMOJI}。`
+      );
+    if (result.reason === "grant_failed")
+      return interaction.editReply("🔧 金幣託管失敗，請稍後再試。");
+    return interaction.editReply("🔧 開單失敗，請稍後再試。");
+  }
+
+  const l = result.listing;
+  const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
+  const itemLabelText = itemAccess.itemLabel(choice.type, choice.key);
+  const container = new ContainerBuilder()
+    .setAccentColor(0x16a085)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🛒 大量收購開單成功\n` +
+          (l.title ? `📌 ${l.title}\n` : "") +
+          `**#${l.listing_id}** ・ 收購 ${itemLabelText} ×**${l.qty.toLocaleString()}**\n` +
+          `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個　總額 **${l.pay_coin.toLocaleString()}** ${COIN_EMOJI}\n` +
+          `已鎖定 **${result.totalEscrow.toLocaleString()}** ${COIN_EMOJI}（含 ${result.fee.toLocaleString()} 手續費）\n` +
+          `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
+          `-# 其他玩家可在 \`/市集 逛攤\` 分批賣給你；收滿或到期後，未用完的金額會自動退回。`
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(VIEW_MYSTALL_ID)
+          .setLabel("查看我的攤位")
+          .setEmoji("📦")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(VIEW_BROWSE_ID)
+          .setLabel("查看市集")
+          .setEmoji("🏪")
+          .setStyle(ButtonStyle.Secondary)
       )
     );
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });

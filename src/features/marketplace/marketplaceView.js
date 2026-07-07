@@ -45,6 +45,11 @@ const BUY_PREFIX      = "market_buy_";
 const ACCEPT_PREFIX   = "market_accept_";
 const FULFILL_PREFIX  = "market_fulfill_";
 const BID_PREFIX      = "market_bid_";
+// 大量收購：賣給他 → 預覽面板 → 一鍵賣出 / 自訂數量
+const BULK_SELL_PREFIX    = "market_bulksell_";
+const BULK_CONFIRM_PREFIX = "market_bulkconfirm_";
+const BULK_CUSTOM_PREFIX  = "market_bulkcustom_";
+const BULK_MODAL_PREFIX   = "market_bulkmodal_";
 // CANCEL 格式：market_cancel_<sellerId>_<listingId>（owner 驗證在 handler，渲染時也只給賣家看）
 const CANCEL_PREFIX   = "market_cancel_";
 const CONFIRM_BUY     = "market_confirm_buy_";
@@ -85,6 +90,7 @@ function typeLabel(type) {
     want: "徵求",
     auction: "競標",
     guild_sell: "公會寄售",
+    bulk: "大量收購",
   };
   return map[type] || type;
 }
@@ -96,8 +102,17 @@ function typeBadge(type) {
     want: "📋",
     auction: "🏷️",
     guild_sell: "🏰",
+    bulk: "🛒",
   };
   return map[type] || "📦";
+}
+
+// 收購進度條：▰ 已收 / ▱ 未收（固定 10 格）
+function progressBar(filled, total) {
+  const t = Math.max(1, total);
+  const ratio = Math.max(0, Math.min(1, filled / t));
+  const done = Math.round(ratio * 10);
+  return "▰".repeat(done) + "▱".repeat(10 - done);
 }
 
 // 組單筆掛單的文字敘述
@@ -139,6 +154,17 @@ function listingText(l) {
     return (
       `${header}\n` +
       `徵求 ${wantStr}　付 ${payStr}\n` +
+      `發單：${l.seller_name || "?"}　截止 <t:${expiresEpoch}:R>`
+    );
+  }
+  if (l.listing_type === "bulk") {
+    const item = resolveListingItem(l);
+    const filled = l.filled_qty || 0;
+    const remaining = Math.max(0, l.qty - filled);
+    return (
+      `${header}\n` +
+      `收購 ${itemAccess.itemLabel(item.item_type, item.item_key)}　每個 **${(l.unit_price || 0).toLocaleString()}** ${COIN_EMOJI}\n` +
+      `${progressBar(filled, l.qty)} **${filled.toLocaleString()} / ${l.qty.toLocaleString()}**（尚缺 ${remaining.toLocaleString()}）\n` +
       `發單：${l.seller_name || "?"}　截止 <t:${expiresEpoch}:R>`
     );
   }
@@ -191,6 +217,13 @@ function listingAccessoryButton(l, viewerIsSeller = false) {
       .setEmoji("📋")
       .setStyle(ButtonStyle.Primary);
   }
+  if (l.listing_type === "bulk") {
+    return new ButtonBuilder()
+      .setCustomId(`${BULK_SELL_PREFIX}${l.listing_id}`)
+      .setLabel("賣給他")
+      .setEmoji("🛒")
+      .setStyle(ButtonStyle.Primary);
+  }
   if (l.listing_type === "auction") {
     return new ButtonBuilder()
       .setCustomId(`${BID_PREFIX}${l.listing_id}`)
@@ -236,6 +269,7 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId
           { label: "🏰 公會寄售", value: "guild_sell", default: listingType === "guild_sell" },
           { label: "🔄 換物",     value: "barter",     default: listingType === "barter" },
           { label: "📋 徵求",     value: "want",       default: listingType === "want" },
+          { label: "🛒 大量收購", value: "bulk",       default: listingType === "bulk" },
           { label: "🏷️ 競標",    value: "auction",    default: listingType === "auction" },
         ])
     )
@@ -509,12 +543,82 @@ function buildBidModal(listingId, listing) {
   return modal;
 }
 
+// ─── 大量收購：賣出預覽面板（ephemeral）──────────────────────────────────────
+// preview: { listing, item, have, remaining, sellable }
+function buildBulkFulfillView(preview) {
+  const { listing: l, item, have, remaining, sellable } = preview;
+  const unit = l.unit_price || 0;
+  const filled = l.filled_qty || 0;
+  const itemName = itemAccess.itemLabel(item.item_type, item.item_key);
+  const payout = sellable * unit;
+
+  const container = new ContainerBuilder().setAccentColor(0x16a085);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## 🛒 賣給大量收購單 **#${l.listing_id}**\n` +
+        `收購 ${itemName}　每個 **${unit.toLocaleString()}** ${COIN_EMOJI}\n` +
+        `${progressBar(filled, l.qty)} **${filled.toLocaleString()} / ${l.qty.toLocaleString()}**（尚缺 ${remaining.toLocaleString()}）`
+    )
+  );
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+  );
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `你持有 ${itemName} ×**${have.toLocaleString()}**\n` +
+        `一鍵賣出 **${sellable.toLocaleString()}** 個 → +**${payout.toLocaleString()}** ${COIN_EMOJI}\n` +
+        `-# 想留一些可按「自訂數量」。`
+    )
+  );
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${BULK_CONFIRM_PREFIX}${l.listing_id}`)
+      .setLabel(`賣出 ${sellable.toLocaleString()}（+${payout.toLocaleString()}）`)
+      .setEmoji("✅")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`${BULK_CUSTOM_PREFIX}${l.listing_id}`)
+      .setLabel("自訂數量")
+      .setEmoji("✏️")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(ABORT_ID)
+      .setLabel("取消")
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  return {
+    container,
+    row,
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+  };
+}
+
+function buildBulkQtyModal(listingId, sellable) {
+  const modal = new ModalBuilder()
+    .setCustomId(`${BULK_MODAL_PREFIX}${listingId}`)
+    .setTitle(`賣給 #${listingId}`);
+  const input = new TextInputBuilder()
+    .setCustomId("bulk_qty")
+    .setLabel("要賣出的數量")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMinLength(1)
+    .setMaxLength(9)
+    .setPlaceholder(`最多可賣 ${sellable}`);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
 module.exports = {
   buildBrowseView,
   buildMyStallView,
   buildMyBidsView,
   buildConfirmView,
   buildBidModal,
+  buildBulkFulfillView,
+  buildBulkQtyModal,
   oreLabel,
   itemLabel,
   listingText,
@@ -525,6 +629,10 @@ module.exports = {
   ACCEPT_PREFIX,
   FULFILL_PREFIX,
   BID_PREFIX,
+  BULK_SELL_PREFIX,
+  BULK_CONFIRM_PREFIX,
+  BULK_CUSTOM_PREFIX,
+  BULK_MODAL_PREFIX,
   CANCEL_PREFIX,
   CONFIRM_BUY,
   CONFIRM_ACCEPT,
