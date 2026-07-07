@@ -83,6 +83,12 @@ function minSellPriceFor(itemType, key, qty) {
   return Math.max(1, Math.ceil(itemAccess.basePrice(itemType, key) * qty * factor));
 }
 
+// 大量收購：每件最低收購單價（預設 ≥ 系統售價）
+function minBulkUnitPrice(itemType, key) {
+  const factor = (cfg().bulk || {}).minUnitPriceFactor ?? 1;
+  return Math.max(1, Math.ceil(itemAccess.basePrice(itemType, key) * factor));
+}
+
 // 競標最低出價
 function minNextBid(listing) {
   const c = cfg().auction || {};
@@ -444,6 +450,199 @@ async function createAuctionListing(client, { sellerId, guildId, sellerName, ite
   };
   await client.marketListingsCollection.insertOne(doc);
   return { ok: true, listing: doc, itemDef };
+}
+
+// ─── 掛牌：大量收購（買家鎖定金幣，多位賣家分批賣入）──────────────────────────
+// itemType: "ore" | "fish" | "veggie"；unitPrice 為「每件收購單價」（整數）
+async function createBulkListing(client, { buyerId, guildId, buyerName, itemType, itemKey, qty, unitPrice, member, title }) {
+  const c = cfg();
+  const bc = c.bulk || {};
+  if (!c.enabled || bc.enabled === false) return { ok: false, reason: "disabled" };
+  if (!client.marketListingsCollection || !client.userCoinsCollection) return { ok: false, reason: "disabled" };
+
+  const itemDef = itemAccess.getItemDef(itemType, itemKey);
+  if (!itemDef) return { ok: false, reason: "no_item" };
+  if (!Number.isFinite(qty) || qty <= 0) return { ok: false, reason: "bad_qty" };
+  const maxQty = bc.maxQty ?? 100000;
+  if (qty > maxQty) return { ok: false, reason: "qty_too_large", maxQty };
+
+  const minUnit = minBulkUnitPrice(itemType, itemKey);
+  if (!Number.isFinite(unitPrice) || unitPrice < minUnit) {
+    return { ok: false, reason: "low_unit_price", minUnit, itemDef };
+  }
+
+  // 一人一單：同時只能有 1 筆進行中的大量收購
+  const bulkActive = await client.marketListingsCollection.countDocuments({
+    guild_id: guildId,
+    seller_id: buyerId,
+    listing_type: "bulk",
+    status: "active",
+  });
+  const maxBulk = bc.maxActivePerBuyer ?? 1;
+  if (bulkActive >= maxBulk) return { ok: false, reason: "bulk_limit", maxBulk };
+
+  // 仍受全站同時掛單上限約束
+  const limit = await checkActiveLimit(client, buyerId, guildId);
+  if (!limit.allowed) return { ok: false, reason: "too_many", max: limit.max };
+
+  const principal = unitPrice * qty;
+  const feeRate = bc.feeRate ?? 0.05;
+  const fee = Math.floor(principal * feeRate);
+  const totalEscrow = principal + fee;
+
+  const balanceDoc = await client.userCoinsCollection.findOne({ userId: buyerId, guildId }).catch(() => null);
+  if ((balanceDoc?.totalCoins || 0) < totalEscrow) {
+    return { ok: false, reason: "insufficient_coins", balance: balanceDoc?.totalCoins || 0, need: totalEscrow };
+  }
+
+  const listingId = await genListingId(client, guildId);
+  const debit = await grantCoins(client, {
+    userId: buyerId,
+    guildId,
+    username: buyerName,
+    amount: -totalEscrow,
+    source: "bulk_escrow",
+    member,
+    meta: { listingId, type: "bulk", fee, principal, unitPrice, qty },
+  });
+  if (!debit) return { ok: false, reason: "grant_failed" };
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + (bc.durationMs ?? c.durationMs ?? 86400000));
+  const doc = {
+    listing_id: listingId,
+    listing_type: "bulk",
+    item_type: itemType,
+    item_key: itemKey,
+    seller_id: buyerId,
+    seller_name: buyerName,
+    guild_id: guildId,
+    title: sanitizeTitle(title),
+    ore: itemType === "ore" ? itemKey : null,
+    fish_key: itemType === "fish" ? itemKey : null,
+    veggie_key: itemType === "veggie" ? itemKey : null,
+    qty,
+    filled_qty: 0,
+    unit_price: unitPrice,
+    pay_coin: principal,
+    status: "active",
+    escrow_coin: principal,
+    escrow_fee: fee,
+    created_at: now,
+    expires_at: expiresAt,
+    updated_at: now,
+    settled_at: null,
+  };
+  await client.marketListingsCollection.insertOne(doc);
+  return { ok: true, listing: doc, itemDef, fee, totalEscrow };
+}
+
+// 大量收購賣出前預覽：回傳剩餘需求、賣方持有量、可賣數量
+async function getBulkPreview(client, { listingId, sellerId, guildId }) {
+  if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
+  const listing = await client.marketListingsCollection.findOne({
+    guild_id: guildId, listing_id: listingId, listing_type: "bulk", status: "active",
+  });
+  if (!listing) return { ok: false, reason: "not_found" };
+  if (listing.seller_id === sellerId) return { ok: false, reason: "own_listing", listing };
+  const item = resolveListingItem(listing);
+  const seller = await getOrCreate(client, sellerId, guildId);
+  const have = itemAccess.getInventoryQty(seller, item.item_type, item.item_key);
+  const remaining = Math.max(0, listing.qty - (listing.filled_qty || 0));
+  const sellable = Math.min(have, remaining);
+  return { ok: true, listing, item, have, remaining, sellable };
+}
+
+// ─── 成交：大量收購（賣方分批賣入，可指定數量；未指定則賣「可賣上限」）──────────
+async function fulfillBulk(client, { listingId, sellerId, guildId, sellerName, member, qty: requestedQty }) {
+  if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
+
+  const listing = await client.marketListingsCollection.findOne({
+    guild_id: guildId, listing_id: listingId, listing_type: "bulk", status: "active",
+  });
+  if (!listing) return { ok: false, reason: "not_found" };
+  if (listing.seller_id === sellerId) return { ok: false, reason: "own_listing" };
+
+  const item = resolveListingItem(listing);
+  const unit = listing.unit_price;
+  const seller = await getOrCreate(client, sellerId, guildId);
+  const have = itemAccess.getInventoryQty(seller, item.item_type, item.item_key);
+  if (have <= 0) {
+    return { ok: false, reason: "insufficient", have, itemDef: itemAccess.getItemDef(item.item_type, item.item_key) };
+  }
+
+  // 原子預留：以 filled_qty 為條件避免超收；剩餘不足時夾到目前剩餘再試
+  let sold = 0;
+  let afterDoc = null;
+  for (let attempt = 0; attempt < 4 && sold === 0; attempt++) {
+    const fresh = attempt === 0 ? listing : await client.marketListingsCollection.findOne({
+      guild_id: guildId, listing_id: listingId, listing_type: "bulk", status: "active",
+    });
+    if (!fresh) return { ok: false, reason: "filled" };
+    const remaining = Math.max(0, fresh.qty - (fresh.filled_qty || 0));
+    if (remaining <= 0) return { ok: false, reason: "filled" };
+    const want = requestedQty && requestedQty > 0 ? Math.min(requestedQty, have) : have;
+    const take = Math.min(want, remaining);
+    if (take <= 0) return { ok: false, reason: "insufficient", have };
+
+    const reserved = await client.marketListingsCollection.findOneAndUpdate(
+      {
+        guild_id: guildId, listing_id: listingId, listing_type: "bulk", status: "active",
+        filled_qty: fresh.filled_qty || 0,
+      },
+      { $inc: { filled_qty: take, escrow_coin: -(unit * take) }, $set: { updated_at: new Date() } },
+      { returnDocument: "after" }
+    );
+    const doc = reserved?.value || reserved;
+    if (doc) { sold = take; afterDoc = doc; }
+  }
+  if (sold === 0) return { ok: false, reason: "race" };
+
+  // 扣賣方庫存（有守衛；失敗則回滾預留）
+  const field = itemAccess.bagField(item.item_type, item.item_key);
+  const debited = await client.miningProfilesCollection.findOneAndUpdate(
+    { userId: sellerId, guildId, [field]: { $gte: sold } },
+    { $inc: { [field]: -sold }, $set: { updatedAt: new Date() } },
+    { returnDocument: "after" }
+  );
+  if (!(debited?.value || debited)) {
+    await client.marketListingsCollection.updateOne(
+      { guild_id: guildId, listing_id: listingId },
+      { $inc: { filled_qty: -sold, escrow_coin: unit * sold }, $set: { updated_at: new Date() } }
+    );
+    return { ok: false, reason: "insufficient", have };
+  }
+
+  // 交貨給買家（掛單者）；ore 背包滿的部分進信箱
+  const delivery = await deliverItem(client, {
+    userId: listing.seller_id, guildId,
+    itemType: item.item_type, itemKey: item.item_key, qty: sold,
+    sourceTag: "bulk", listingId, listingType: "bulk", reason: "bulk_fill",
+  });
+
+  // 撥款給賣方（每件 unit_price，無小數誤差）
+  const proceeds = unit * sold;
+  await grantCoins(client, {
+    userId: sellerId, guildId, username: sellerName,
+    amount: proceeds, source: "bulk_payout", member,
+    meta: { listingId, unitPrice: unit, qty: sold },
+  }).catch((e) => console.log(`[ERROR] bulk payout seller: ${e}`.red));
+
+  const newFilled = (afterDoc.filled_qty != null) ? afterDoc.filled_qty : (listing.filled_qty || 0) + sold;
+  const remainingAfter = Math.max(0, listing.qty - newFilled);
+  const completed = remainingAfter <= 0;
+  if (completed) {
+    await client.marketListingsCollection.updateOne(
+      { guild_id: guildId, listing_id: listingId, status: "active" },
+      { $set: { status: "sold", settled_at: new Date() } }
+    );
+  }
+
+  return {
+    ok: true, listing, item, sold, unitPrice: unit, proceeds,
+    mailed: delivery.mailed || 0, newFilled, remaining: remainingAfter, completed,
+    itemDef: itemAccess.getItemDef(item.item_type, item.item_key),
+  };
 }
 
 // ─── 成交：一口價賣礦（買家付金幣）─────────────────────────────────────────────
@@ -925,15 +1124,17 @@ async function cancelListing(client, { listingId, guildId, userId }) {
     { $set: { status: "settling", updated_at: new Date() } },
     { returnDocument: "after" }
   );
-  if (!(locked?.value || locked)) return { ok: false, reason: "race" };
+  const lockedDoc = locked?.value || locked;
+  if (!lockedDoc) return { ok: false, reason: "race" };
 
-  await _refundEscrow(client, listing);
+  // 用剛鎖定的最新 doc 退款（大量收購的 escrow_coin 會隨成交遞減）
+  await _refundEscrow(client, lockedDoc);
 
   await client.marketListingsCollection.updateOne(
     { guild_id: guildId, listing_id: listingId },
     { $set: { status: "cancelled", settled_at: new Date() } }
   );
-  return { ok: true, listing };
+  return { ok: true, listing: lockedDoc };
 }
 
 // ─── cron 到期結算────────────────────────────────────────────────────────────
@@ -943,14 +1144,15 @@ async function settleListing(client, listing) {
     { $set: { status: "settling", updated_at: new Date() } },
     { returnDocument: "after" }
   );
-  if (!(locked?.value || locked)) return null;
+  const lockedDoc = locked?.value || locked;
+  if (!lockedDoc) return null;
 
   if (listing.listing_type === "auction" && listing.bidder_id && listing.current_bid) {
     return finalizeAuction(client, listing);
   }
 
-  // 其他 type 或 auction 無人出價 → 退託管
-  await _refundEscrow(client, listing);
+  // 其他 type 或 auction 無人出價 → 退託管（用最新 doc，大量收購退剩餘 escrow）
+  await _refundEscrow(client, lockedDoc);
   await client.marketListingsCollection.updateOne(
     { listing_id: listing.listing_id, guild_id: listing.guild_id },
     { $set: { status: "expired", settled_at: new Date() } }
@@ -1209,10 +1411,14 @@ module.exports = {
   createBarterListing,
   createWantListing,
   createAuctionListing,
+  createBulkListing,
+  getBulkPreview,
   buyNow,
   acceptBarter,
   fulfillWant,
+  fulfillBulk,
   placeBid,
+  minBulkUnitPrice,
   cancelListing,
   settleListing,
   listActive,

@@ -11,6 +11,14 @@
       "feeRate": 0.05,
       "minStartPriceFactor": 0.8,
       "minBidIncrementRate": 0.05
+    },
+    "bulk": {
+      "enabled": true,
+      "durationMs": 259200000,
+      "maxActivePerBuyer": 1,
+      "minUnitPriceFactor": 1,
+      "feeRate": 0.05,
+      "maxQty": 100000
     }
   }
 }

@@ -18,12 +18,18 @@ const {
   buildBrowseView,
   buildConfirmView,
   buildBidModal,
+  buildBulkFulfillView,
+  buildBulkQtyModal,
   oreLabel,
   itemLabel,
   BUY_PREFIX,
   ACCEPT_PREFIX,
   FULFILL_PREFIX,
   BID_PREFIX,
+  BULK_SELL_PREFIX,
+  BULK_CONFIRM_PREFIX,
+  BULK_CUSTOM_PREFIX,
+  BULK_MODAL_PREFIX,
   CANCEL_PREFIX,
   CONFIRM_BUY,
   CONFIRM_ACCEPT,
@@ -218,6 +224,78 @@ module.exports = async (client, interaction) => {
       }
       const { container, row } = buildConfirmView(listing, "fulfill");
       return interaction.editReply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    // ─── 點「賣給他」（bulk）→ 賣出預覽面板（ephemeral）──────────────────────
+    if (interaction.isButton() && cid.startsWith(BULK_SELL_PREFIX)) {
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+      const listingId = cid.slice(BULK_SELL_PREFIX.length);
+      const preview = await marketplaceService.getBulkPreview(client, {
+        listingId,
+        sellerId: interaction.user.id,
+        guildId: interaction.guildId,
+      });
+      if (!preview.ok) {
+        const msgs = {
+          not_found: "❌ 此收購單已不存在或已收滿。",
+          own_listing: "❌ 不能賣給自己的收購單。",
+        };
+        return interaction.editReply({ content: msgs[preview.reason] || "🔧 讀取收購單失敗，請稍後再試。" });
+      }
+      if (preview.remaining <= 0) {
+        return interaction.editReply({ content: "✅ 這張收購單已經收滿了。" });
+      }
+      if (preview.sellable <= 0) {
+        const name = itemAccess.itemLabel(preview.item.item_type, preview.item.item_key);
+        return interaction.editReply({
+          components: [statusPanel(`📦 你目前沒有可賣的 ${name}（持有 ${preview.have}）。\n-# 去採集一些再回來賣吧！`)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      const { container, row } = buildBulkFulfillView(preview);
+      return interaction.editReply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    // ─── 點「自訂數量」（bulk）→ 彈出 modal ─────────────────────────────────
+    if (interaction.isButton() && cid.startsWith(BULK_CUSTOM_PREFIX)) {
+      const listingId = cid.slice(BULK_CUSTOM_PREFIX.length);
+      const preview = await marketplaceService.getBulkPreview(client, {
+        listingId,
+        sellerId: interaction.user.id,
+        guildId: interaction.guildId,
+      });
+      if (!preview.ok || preview.sellable <= 0) {
+        return interaction.reply({ content: "❌ 此收購單已不可賣（已收滿或你沒有庫存）。", flags: MessageFlags.Ephemeral });
+      }
+      return interaction.showModal(buildBulkQtyModal(listingId, preview.sellable));
+    }
+
+    // ─── 確認賣出（bulk：一鍵賣出可賣上限）────────────────────────────────────
+    if (interaction.isButton() && cid.startsWith(BULK_CONFIRM_PREFIX)) {
+      const rl = consume(interaction.user.id, "market:buy", { windowMs: 2500, max: 1 });
+      if (!rl.allowed) {
+        return interaction.reply({
+          content: `⏳ 別急，${Math.ceil(rl.retryAfterMs / 1000)} 秒後再試。`,
+          flags: MessageFlags.Ephemeral,
+        }).catch(() => {});
+      }
+      await interaction.update({
+        components: [statusPanel("⏳ 處理中…")],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      const listingId = cid.slice(BULK_CONFIRM_PREFIX.length);
+      const result = await marketplaceService.fulfillBulk(client, {
+        listingId,
+        sellerId: interaction.user.id,
+        guildId: interaction.guildId,
+        sellerName: interaction.member?.displayName || interaction.user.username,
+        member: interaction.member,
+      });
+      if (result.ok) notifyBulkBuyer(client, result);
+      return interaction.editReply({
+        components: [statusPanel(formatBulkResult(result))],
+        flags: MessageFlags.IsComponentsV2,
+      });
     }
 
     // ─── 點「出價」（auction bid）→ 彈出 modal ──────────────────────────────
@@ -470,6 +548,37 @@ module.exports = async (client, interaction) => {
       });
     }
 
+    // ─── 大量收購 自訂數量 modal submit ───────────────────────────────────────
+    if (interaction.isModalSubmit() && cid.startsWith(BULK_MODAL_PREFIX)) {
+      const rl = consume(interaction.user.id, "market:buy", { windowMs: 2500, max: 1 });
+      if (!rl.allowed) {
+        return interaction.reply({
+          content: `⏳ 別急，${Math.ceil(rl.retryAfterMs / 1000)} 秒後再試。`,
+          flags: MessageFlags.Ephemeral,
+        }).catch(() => {});
+      }
+      const listingId = cid.slice(BULK_MODAL_PREFIX.length);
+      const raw = interaction.fields.getTextInputValue("bulk_qty");
+      const qty = parseInt(String(raw).replace(/[,，\s]/g, ""), 10);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        return interaction.reply({ content: "❌ 請輸入有效的數量（正整數）。", flags: MessageFlags.Ephemeral });
+      }
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+      const result = await marketplaceService.fulfillBulk(client, {
+        listingId,
+        sellerId: interaction.user.id,
+        guildId: interaction.guildId,
+        sellerName: interaction.member?.displayName || interaction.user.username,
+        member: interaction.member,
+        qty,
+      });
+      if (result.ok) notifyBulkBuyer(client, result);
+      return interaction.editReply({
+        components: [statusPanel(formatBulkResult(result))],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
+
     // ─── 快捷後續：回到 /市集 逛攤 ────────────────────────────────────────────
     if (interaction.isButton() && cid === VIEW_BROWSE_ID) {
       if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
@@ -653,6 +762,52 @@ function formatFulfillResult(result) {
     `**#${l.listing_id}**\n` +
     `你賣出 ${itemAccess.itemLabel(wantItem.item_type, wantItem.item_key, l.qty)}，收到 ${receiveStr} 🎒`
   );
+}
+
+function formatBulkResult(result) {
+  if (!result.ok) {
+    const msgs = {
+      not_found: "❌ 此收購單已不存在或已收滿。",
+      filled: "✅ 這張收購單剛好已被收滿了，你的庫存原封不動。",
+      own_listing: "❌ 不能賣給自己的收購單。",
+      insufficient: `📦 你沒有可賣的庫存（持有 ${result.have || 0}）。`,
+      race: "⚡ 剛好有人同時賣入，請重試。",
+      disabled: "🔧 大量收購暫時無法使用。",
+    };
+    return msgs[result.reason] || "🔧 賣出失敗，請稍後再試。";
+  }
+  const item = result.item;
+  const itemName = itemAccess.itemLabel(item.item_type, item.item_key, result.sold);
+  const bagPhrase =
+    item.item_type === "fish" ? "🎣" : item.item_type === "veggie" ? "🌾" : "🎒";
+  const mailedLine = result.mailed > 0
+    ? `\n-# 對方背包滿了，其中 ${result.mailed} 個已暫存到他的信箱。`
+    : "";
+  const progressLine = result.completed
+    ? `\n🎉 此收購單已收滿並結束！`
+    : `\n目前進度 **${result.newFilled.toLocaleString()} / ${(result.newFilled + result.remaining).toLocaleString()}**（尚缺 ${result.remaining.toLocaleString()}）`;
+  return (
+    `✅ **賣出成功！** ${bagPhrase}\n` +
+    `**#${result.listing.listing_id}** 你賣出 ${itemName}\n` +
+    `收到 **${result.proceeds.toLocaleString()}** ${COIN_EMOJI}（每個 ${result.unitPrice.toLocaleString()}）` +
+    progressLine +
+    mailedLine
+  );
+}
+
+// 通知收購單發起者：有人賣入 / 已收滿 / 溢出進信箱
+function notifyBulkBuyer(client, result) {
+  const l = result.listing;
+  const itemName = itemAccess.itemLabel(result.item.item_type, result.item.item_key, result.sold);
+  let msg =
+    `🛒 你的大量收購單 **#${l.listing_id}** 有人賣入 ${itemName}！\n` +
+    (result.completed
+      ? `🎉 已收滿 **${l.qty.toLocaleString()} / ${l.qty.toLocaleString()}**，收購結束。`
+      : `目前進度 **${result.newFilled.toLocaleString()} / ${l.qty.toLocaleString()}**（尚缺 ${result.remaining.toLocaleString()}）`);
+  if (result.mailed > 0) {
+    msg += `\n📬 背包放不下，其中 ${result.mailed} 個已暫存到你的信箱，請用 \`/信箱\` 領取。`;
+  }
+  marketplaceService.dmUser(client, l.seller_id, msg);
 }
 
 function bidFailContainer(result, amount) {
