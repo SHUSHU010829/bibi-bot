@@ -7,6 +7,7 @@
     "tickCronSchedule": "* * * * *",
     "tickIntervalMinutes": 1,
     "broadcastCronSchedule": "*/5 * * * *",
+    "broadcastIntervalMinutes": 5,
     "openCronSchedule": "0 9 * * *",
     "closeCronSchedule": "0 21 * * *",
     "announceChannelId": "1505072010949169312",

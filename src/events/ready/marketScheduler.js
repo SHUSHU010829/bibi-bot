@@ -192,6 +192,7 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
 
   const historyPoints = stockSystem?.chart?.historyPoints ?? 20;
   const tickMinutes = stockSystem?.tickIntervalMinutes ?? 5;
+  const broadcastMinutes = stockSystem?.broadcastIntervalMinutes ?? 5;
   const series = await Promise.all(
     stocks.map(async (s) => {
       const points = await client.stockPricesCollection
@@ -267,10 +268,10 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
   });
   const attachment = new AttachmentBuilder(buf, { name: "stock_market.png" });
 
-  // 下次 tick 時間：對齊 tickIntervalMinutes
+  // 下次更新時間：對齊播報間隔（價格 tick 較快，但這張圖每 broadcastMinutes 才重繪）
   const now = new Date();
   const mins = now.getMinutes();
-  const nextTickMin = (Math.floor(mins / tickMinutes) + 1) * tickMinutes;
+  const nextTickMin = (Math.floor(mins / broadcastMinutes) + 1) * broadcastMinutes;
   const next = new Date(now);
   next.setMinutes(nextTickMin % 60, 0, 0);
   if (nextTickMin >= 60) next.setHours(next.getHours() + 1);
