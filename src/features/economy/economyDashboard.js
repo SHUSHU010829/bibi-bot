@@ -272,6 +272,7 @@ async function aggregateCasinoEdge(client, guildId, fromIso, toIso) {
   const match = {
     guildId,
     source: { $in: ["bet", "payout"] },
+    "meta.game": { $ne: "redPacket" },
     date: { $gte: fromIso, $lte: toIso },
   };
   const rows = await client.coinTransactionsCollection
