@@ -131,6 +131,7 @@
 
 ### 3-4. `/自首`(行動類・ephemeral 起手,結果公開)
 
+- **通緝鎖定期**:剛上通緝榜的 `lockMs`(預設 5 分鐘,由 `wanted_at` 起算)內**不能自首**,留一段空窗給獵人出手,`surrender()` 前置檢查擋下,回 `reason:"surrender_locked"`(附可自首時間 `readyAt`)。
 - 通緝犯主動認罪:立即解除通緝、惡名 −1,但保釋金不再是「小錢消災」,由三部分疊加(全額退回託管賞金後,再沒收保釋金 `source:"bail"` 進治安基金):
   - **基礎沒收**:託管賞金 × `bailForfeitPct`(預設 60%)。
   - **累犯遞增**:`repeatWindowMs`(預設 24h)內每多自首一次,比例 +`repeatSurchargePct`(預設 20%),上限 `maxForfeitPct`(預設 100% 全沒收)。時間戳存 `theftProfiles.surrender_history`,只留窗內。

@@ -562,6 +562,17 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
 async function surrender(client, { guildId, userId, username, member }) {
   const c = cfg();
   if (!c.enabled || !client.wantedListCollection) return { ok: false, reason: "disabled" };
+  const s = c.surrender || {};
+
+  // 剛上通緝榜的鎖定期：被通緝一段時間內不能立刻自首，留空窗給獵人出手。
+  const lockMs = s.lockMs ?? 0;
+  if (lockMs > 0) {
+    const active = await activeWanted(client, userId, guildId);
+    const wantedAt = active?.wanted_at ? new Date(active.wanted_at).getTime() : null;
+    if (wantedAt && Date.now() - wantedAt < lockMs) {
+      return { ok: false, reason: "surrender_locked", readyAt: wantedAt + lockMs };
+    }
+  }
 
   const locked = await client.wantedListCollection.findOneAndUpdate(
     { userId, guildId, status: "wanted" },
@@ -571,7 +582,6 @@ async function surrender(client, { guildId, userId, username, member }) {
   const wanted = locked?.value || locked;
   if (!wanted) return { ok: false, reason: "not_wanted" };
 
-  const s = c.surrender || {};
   const now = Date.now();
   const prof = await theftProfile.getOrCreate(client, userId, guildId);
 
@@ -902,6 +912,7 @@ async function becomeWanted(client, { userId, guildId, username, token }) {
       $set: {
         status: "wanted",
         bounty: escrowAmount,
+        wanted_at: new Date(),
         expires_at: new Date(expiresAt),
         hunt_cooldown_until: 0,
         escaped_hunters: [],
