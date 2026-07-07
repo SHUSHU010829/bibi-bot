@@ -59,7 +59,8 @@
       "repeatWindowMs": 86400000,
       "repeatSurchargePct": 0.2,
       "maxForfeitPct": 1,
-      "paroleCooldownMs": 21600000
+      "paroleCooldownMs": 21600000,
+      "lockMs": 300000
     },
     "escapeRun": {
       "enabled": true,

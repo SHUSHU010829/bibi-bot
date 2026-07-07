@@ -185,7 +185,7 @@ function fleeOutcomeContainer(result) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 潛伏熬過時效可取回賞金；或用 /自首 花保釋金提早脫身。"
+        `-# 潛伏熬過時效可取回賞金；或撐過 ${Math.round((theft?.surrender?.lockMs ?? 0) / 60000)} 分鐘鎖定期後用 /自首 花保釋金提早脫身。`
       )
     );
 }

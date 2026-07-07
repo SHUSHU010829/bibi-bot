@@ -44,6 +44,19 @@ module.exports = {
             flags: MessageFlags.IsComponentsV2,
           });
         }
+        if (result.reason === "surrender_locked") {
+          const ready = Math.floor(result.readyAt / 1000);
+          return interaction.editReply({
+            components: [
+              errorContainer(
+                "🚔 剛被通緝，還不能自首",
+                `你才剛上通緝榜，警方尚未受理自首。\n可自首時間：<t:${ready}:R>（<t:${ready}:t>）`,
+                "這段空窗留給獵人出手；撐過去再 /自首，或潛伏熬過時效取回賞金。"
+              ),
+            ],
+            flags: MessageFlags.IsComponentsV2,
+          });
+        }
         return interaction.editReply({
           components: [errorContainer("🔧 自首失敗", "系統忙碌或未啟動。", "稍後再試或呼叫舒舒。")],
           flags: MessageFlags.IsComponentsV2,
