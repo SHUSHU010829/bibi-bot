@@ -349,9 +349,14 @@ async function runLeaderboard(client, interaction) {
       return `${rank} ${name}\n　${emoji} 已實現損益 **${sign}${r.pnl.toLocaleString()}**（${r.trades} 筆）`;
     });
 
-    const me = ranking.find((r) => r.userId === interaction.user.id);
+    const me = await leaderboardService.myWindowStats(
+      client,
+      guildId,
+      interaction.user.id,
+      window
+    );
     const myLine = me
-      ? `你${periodLabel}已實現損益：**${me.pnl >= 0 ? "+" : ""}${me.pnl.toLocaleString()}**`
+      ? `你${periodLabel}已實現損益：**${me.pnl >= 0 ? "+" : ""}${me.pnl.toLocaleString()}**（${me.trades} 筆・第 ${me.rank} 名）`
       : `你${periodLabel}還沒有已實現損益紀錄，賣出或回補後才會計入。`;
 
     const container = new ContainerBuilder()

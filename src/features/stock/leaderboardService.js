@@ -50,6 +50,34 @@ async function rankByWindow(client, guildId, { start, end, limit = 10 }) {
   return rows.map((r) => ({ userId: r._id, pnl: r.pnl || 0, trades: r.trades || 0 }));
 }
 
+// 查單一玩家在 [start, end) 區間內的已實現損益與名次（不受排行榜前 N 名限制）。
+async function myWindowStats(client, guildId, userId, { start, end }) {
+  if (!client?.stockTransactionsCollection) return null;
+  const rows = await client.stockTransactionsCollection
+    .aggregate([
+      {
+        $match: {
+          guildId,
+          side: { $in: ["sell", "short_cover"] },
+          timestamp: { $gte: start, $lt: end },
+        },
+      },
+      {
+        $group: {
+          _id: "$userId",
+          pnl: { $sum: "$pnl" },
+          trades: { $sum: 1 },
+        },
+      },
+    ])
+    .toArray()
+    .catch(() => []);
+  const mine = rows.find((r) => r._id === userId);
+  if (!mine) return null;
+  const rank = rows.filter((r) => (r.pnl || 0) > (mine.pnl || 0)).length + 1;
+  return { pnl: mine.pnl || 0, trades: mine.trades || 0, rank, total: rows.length };
+}
+
 async function currentWeekRanking(client, guildId, limit = 10) {
   return rankByWindow(client, guildId, { ...currentWeekWindow(), limit });
 }
@@ -63,6 +91,7 @@ module.exports = {
   previousWeekWindow,
   rollingWindow,
   rankByWindow,
+  myWindowStats,
   currentWeekRanking,
   previousWeekRanking,
 };
