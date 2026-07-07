@@ -192,6 +192,7 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
 
   const historyPoints = stockSystem?.chart?.historyPoints ?? 20;
   const tickMinutes = stockSystem?.tickIntervalMinutes ?? 5;
+  const broadcastMinutes = stockSystem?.broadcastIntervalMinutes ?? 5;
   const series = await Promise.all(
     stocks.map(async (s) => {
       const points = await client.stockPricesCollection
@@ -267,15 +268,30 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
   });
   const attachment = new AttachmentBuilder(buf, { name: "stock_market.png" });
 
-  // 下次 tick 時間：對齊 tickIntervalMinutes
+  // 下次更新時間：對齊播報間隔（價格 tick 較快，但這張圖每 broadcastMinutes 才重繪）
   const now = new Date();
   const mins = now.getMinutes();
-  const nextTickMin = (Math.floor(mins / tickMinutes) + 1) * tickMinutes;
+  const nextTickMin = (Math.floor(mins / broadcastMinutes) + 1) * broadcastMinutes;
   const next = new Date(now);
   next.setMinutes(nextTickMin % 60, 0, 0);
   if (nextTickMin >= 60) next.setHours(next.getHours() + 1);
   const epoch = Math.floor(next.getTime() / 1000);
   const nowEpoch = Math.floor(now.getTime() / 1000);
+
+  let treasuryLine = null;
+  if (stockSystem?.treasury?.enabled) {
+    try {
+      const [tre, tax] = await Promise.all([
+        treasuryService.getTreasury(client, guildId),
+        treasuryService.getTodayTaxBreakdown(client, guildId),
+      ]);
+      treasuryLine =
+        `🏛️ 證交所國庫 **${(tre.balance || 0).toLocaleString()}** credits｜今日入庫 ${tax.toTreasury.toLocaleString()}\n` +
+        `-# 每週日 20:00 交易抽獎 + 散戶回饋`;
+    } catch (e) {
+      console.log(`[STOCK] broadcast treasury fetch failed: ${e?.message || e}`.yellow);
+    }
+  }
 
   const container = new ContainerBuilder()
     .setAccentColor(0x3498db)
@@ -295,6 +311,12 @@ async function postMarketBroadcast(client, guildId, opts = {}) {
   if (limitTags.length > 0) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`漲跌停：${limitTags.join("　")}`),
+    );
+  }
+
+  if (treasuryLine) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(treasuryLine),
     );
   }
 
