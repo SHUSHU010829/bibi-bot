@@ -315,7 +315,7 @@ module.exports = async (client, interaction) => {
 
       if (isBank) {
         return interaction.reply({
-          content: `💰 用 \`/存款 開戶\` 把贓款鎖進定存，就偷不走了！`,
+          content: `💰 用 \`/銀行 定存 開戶\` 把贓款鎖進定存，就偷不走了！`,
           flags: MessageFlags.Ephemeral,
         });
       }
