@@ -57,6 +57,16 @@ function navRow(userId, active) {
 
 const U = () => bank?.gold?.unitLabel || "克";
 
+// 開啟 Modal 的按鈕（customId：bank_<uid>_open_<key>）
+function openBtn(userId, key, label, style, emoji) {
+  const b = new ButtonBuilder()
+    .setCustomId(`bank_${userId}_open_${key}`)
+    .setLabel(label)
+    .setStyle(style);
+  if (emoji) b.setEmoji(emoji);
+  return b;
+}
+
 // ── 各分頁 Container ─────────────────────────────────────────────────────────
 async function buildOverview(client, ctx) {
   const { userId, guildId, displayName } = ctx;
@@ -133,15 +143,19 @@ async function buildDeposit(client, ctx) {
   const container = new ContainerBuilder()
     .setAccentColor(COLOR.blue)
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `# 📜 定期存款\n-# 同時最多 **${limit}** 筆　·　用 /銀行 定存 開戶 開新定存`,
-      ),
+      new TextDisplayBuilder().setContent(`# 📜 定期存款\n-# 同時最多 **${limit}** 筆`),
     );
+
+  const actionRow = new ActionRowBuilder().addComponents(
+    openBtn(userId, "depopen", "開戶", ButtonStyle.Success, "➕"),
+    openBtn(userId, "depclaimid", "提款", ButtonStyle.Primary, "📤"),
+  );
 
   if (!docs.length) {
     container
       .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent("目前沒有任何定期存款。"));
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent("目前沒有任何定期存款。"))
+      .addActionRowComponents(actionRow);
     return container;
   }
 
@@ -189,13 +203,14 @@ async function buildDeposit(client, ctx) {
       `-# 總本金 **${fmt(totalPrincipal)}**　到期總額 **${fmt(totalAtMaturity)}**　·　未到期領回會扣違約金`,
     ),
   );
+  container.addActionRowComponents(actionRow);
   return container;
 }
 
 async function buildSavings(client, ctx) {
   const { balance } = await savingsService.view(client, ctx.userId, ctx.guildId);
   const dailyRate = bank?.savings?.dailyRate || 0;
-  return new ContainerBuilder()
+  const container = new ContainerBuilder()
     .setAccentColor(COLOR.green)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent("# 🏧 活期存款"))
     .addSeparatorComponents(new SeparatorBuilder())
@@ -206,10 +221,15 @@ async function buildSavings(client, ctx) {
       ),
     )
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "-# 隨存隨取，利息每次操作/查詢自動結算　·　/銀行 活存 存入・提領",
-      ),
+      new TextDisplayBuilder().setContent("-# 隨存隨取，利息每次操作/查詢自動結算"),
     );
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      openBtn(ctx.userId, "savdep", "存入", ButtonStyle.Success, "📥"),
+      openBtn(ctx.userId, "savwd", "提領", ButtonStyle.Primary, "📤"),
+    ),
+  );
+  return container;
 }
 
 async function buildGold(client, ctx) {
@@ -250,17 +270,22 @@ async function buildGold(client, ctx) {
     );
   }
 
+  const goldRow = new ActionRowBuilder().addComponents(
+    openBtn(userId, "goldbuy", "買進", ButtonStyle.Success, "🟢"),
+    openBtn(userId, "goldsell", "賣出", ButtonStyle.Danger, "🔴"),
+    openBtn(userId, "goldrefine", "精煉", ButtonStyle.Primary, "🔥"),
+    openBtn(userId, "goldterm", "定存", ButtonStyle.Secondary, "🔒"),
+  );
   if (holding > 0) {
-    container.addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`bank_${userId}_goldsellall`)
-          .setLabel(`賣出全部（+${fmt(value)}）`)
-          .setEmoji("🪙")
-          .setStyle(ButtonStyle.Success),
-      ),
+    goldRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`bank_${userId}_goldsellall`)
+        .setLabel("賣出全部")
+        .setEmoji("💰")
+        .setStyle(ButtonStyle.Secondary),
     );
   }
+  container.addActionRowComponents(goldRow);
 
   if (terms.length) {
     const now = Date.now();
@@ -304,14 +329,20 @@ async function buildLoan(client, ctx) {
     .setAccentColor(COLOR.purple)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# 💳 貸款\n-# 你的信用額度 **${limits.loanCap > 0 ? fmt(limits.loanCap) : "尚未開放（需提升信用分）"}**　·　/銀行 貸款 借款`,
+        `# 💳 貸款\n-# 你的信用額度 **${limits.loanCap > 0 ? fmt(limits.loanCap) : "尚未開放（需提升信用分）"}**`,
       ),
     );
+
+  const actionRow = new ActionRowBuilder().addComponents(
+    openBtn(userId, "loantake", "借款", ButtonStyle.Success, "💵"),
+    openBtn(userId, "loanrepay", "還款", ButtonStyle.Primary, "💳"),
+  );
 
   if (!loans.length) {
     container
       .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent("目前沒有任何貸款。"));
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent("目前沒有任何貸款。"))
+      .addActionRowComponents(actionRow);
     return container;
   }
 
@@ -337,6 +368,7 @@ async function buildLoan(client, ctx) {
         ),
       );
   }
+  container.addActionRowComponents(actionRow);
   return container;
 }
 

@@ -6,6 +6,7 @@ const goldService = require("../../features/bank/goldService");
 const loanService = require("../../features/bank/loanService");
 const depositService = require("../../features/bank/depositService");
 const { ctxOf, renderTab, payload } = require("../../features/bank/bankHandlers");
+const { buildModal } = require("../../features/bank/bankModals");
 const { fmt } = require("../../features/bank/bankView");
 const { deferUpdateSafe } = require("../../utils/safeAck");
 
@@ -27,6 +28,15 @@ module.exports = async (client, interaction) => {
     return interaction.reply({
       content: "🚫 這不是你的銀行帳戶！請自己呼叫 `/銀行`。",
       flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  // 開啟 Modal 的按鈕：showModal 必須是第一個回應，不能先 deferUpdate。
+  if (isButton && action.startsWith("open_")) {
+    const modal = buildModal(ownerId, action.slice(5));
+    if (!modal) return;
+    return interaction.showModal(modal).catch((e) => {
+      console.log(`[ERROR] handleBankButton showModal: ${e.message}`.red);
     });
   }
 
