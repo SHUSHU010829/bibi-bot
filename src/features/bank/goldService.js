@@ -1,28 +1,66 @@
 require("colors");
 const crypto = require("crypto");
-const { bank } = require("../../config");
+const { DateTime } = require("luxon");
+const { bank, coinSystem } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
-const orePriceEngine = require("../market/orePriceEngine");
 const creditService = require("./creditService");
 
-// 黃金存摺：現貨價沿用「黃金礦」每日浮動價（全服同一金價），
-// 銀行買進/賣出各收一段價差（spread）。金庫持有量以「單位（克）」記，
-// 1 黃金礦 = 1 單位，可熔進金庫；不動用錢包，錢包只在買/賣時進出。
+// 黃金存摺（純金）：純金是高單價貴金屬，價格獨立於便宜的黃金礦，每日 seeded 浮動、全服一致。
+// 純金無法直接把礦丟進來，必須用「黃金礦 + 煤炭（燃料）精煉」才能入庫（見 refine）。
+// 金庫持有量以「克」記；買/賣才動用錢包，精煉只消耗挖礦原料。
 
 function cfg() {
   return bank?.gold || {};
 }
 
-async function getPrices(client) {
-  const spotOre = cfg().spotOre || "gold";
-  const spot = await orePriceEngine.getOrePrice(client, spotOre);
-  const buySpread = cfg().buySpread ?? 0.03;
-  const sellSpread = cfg().sellSpread ?? 0.03;
+function timezone() {
+  return coinSystem?.daily?.resetTimezone || "Asia/Taipei";
+}
+
+function todayDate() {
+  return DateTime.now().setZone(timezone()).toFormat("yyyyMMdd");
+}
+
+function hashStr(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i += 1) {
+    h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// 純金每日現貨價：由日期 seed 決定，同一天全服固定。
+function spotPrice(dateStr = todayDate()) {
+  const c = cfg();
+  const base = c.basePrice ?? 3000;
+  const min = typeof c.minFactor === "number" ? c.minFactor : 0.75;
+  const max = typeof c.maxFactor === "number" ? c.maxFactor : 1.25;
+  const dateInt = parseInt(dateStr, 10) || 0;
+  const rng = mulberry32((dateInt ^ hashStr("bank_gold")) >>> 0);
+  const factor = min + rng() * (max - min);
+  return Math.max(1, Math.round(base * factor));
+}
+
+async function getPrices() {
+  const spot = spotPrice();
+  const buySpread = cfg().buySpread ?? 0.04;
+  const sellSpread = cfg().sellSpread ?? 0.04;
   return {
     spot,
     buy: Math.max(1, Math.round(spot * (1 + buySpread))),
     sell: Math.max(1, Math.round(spot * (1 - sellSpread))),
-    date: orePriceEngine.todayDate(),
+    date: todayDate(),
   };
 }
 
@@ -120,28 +158,51 @@ async function sell(client, { userId, guildId, username, member, avatarHash, uni
   return { ok: true, units, gain, prices, holding: deducted.holding, balanceAfter: credit.doc?.totalCoins };
 }
 
-// 熔金：把挖礦背包的黃金礦轉進金庫（不動錢包）。
-async function refine(client, { userId, guildId, oreQty }) {
+function refineRecipe() {
   const c = cfg().refine || {};
-  if (!c.enabled) return { ok: false, reason: "disabled" };
-  const oreKey = c.oreKey || "gold";
-  const perOre = c.unitsPerOre ?? 1;
+  return {
+    enabled: !!c.enabled,
+    oreKey: c.oreKey || "gold",
+    orePerUnit: c.orePerUnit ?? 5,
+    coalKey: c.coalKey || "coal",
+    coalPerUnit: c.coalPerUnit ?? 0,
+    maxBatch: c.maxBatch ?? 100,
+  };
+}
+
+// 精煉：用黃金礦 + 煤炭（燃料）煉出 units 克純金存進金庫（不動錢包）。
+// units = 要煉出的克數；每克消耗 orePerUnit 黃金礦 + coalPerUnit 煤炭。
+async function refine(client, { userId, guildId, units }) {
+  const r = refineRecipe();
+  if (!r.enabled) return { ok: false, reason: "disabled" };
+  if (units < 1) return { ok: false, reason: "min" };
+  if (units > r.maxBatch) return { ok: false, reason: "max", maxBatch: r.maxBatch };
   const col = client.miningProfilesCollection;
   if (!col) return { ok: false, reason: "no_mining" };
 
+  const needOre = units * r.orePerUnit;
+  const needCoal = units * r.coalPerUnit;
   const owned = await col.findOne({ userId, guildId }).catch(() => null);
-  const have = owned?.backpack?.[oreKey] || 0;
-  if (have < oreQty) return { ok: false, reason: "ore", have, oreKey };
+  const haveOre = owned?.backpack?.[r.oreKey] || 0;
+  const haveCoal = owned?.backpack?.[r.coalKey] || 0;
+  if (haveOre < needOre) {
+    return { ok: false, reason: "ore", haveOre, needOre, r };
+  }
+  if (r.coalPerUnit > 0 && haveCoal < needCoal) {
+    return { ok: false, reason: "coal", haveCoal, needCoal, r };
+  }
 
-  const upd = await col.updateOne(
-    { userId, guildId, [`backpack.${oreKey}`]: { $gte: oreQty } },
-    { $inc: { [`backpack.${oreKey}`]: -oreQty } },
-  );
-  if (!upd.modifiedCount) return { ok: false, reason: "ore", have, oreKey };
+  const filter = { userId, guildId, [`backpack.${r.oreKey}`]: { $gte: needOre } };
+  const dec = { [`backpack.${r.oreKey}`]: -needOre };
+  if (r.coalPerUnit > 0) {
+    filter[`backpack.${r.coalKey}`] = { $gte: needCoal };
+    dec[`backpack.${r.coalKey}`] = -needCoal;
+  }
+  const upd = await col.updateOne(filter, { $inc: dec });
+  if (!upd.modifiedCount) return { ok: false, reason: "ore", haveOre, needOre, r };
 
-  const units = oreQty * perOre;
   const holding = await addHolding(client, userId, guildId, units);
-  return { ok: true, oreQty, units, holding };
+  return { ok: true, units, needOre, needCoal, r, holding };
 }
 
 // ── 黃金定存 ────────────────────────────────────────────────────────────────
@@ -232,9 +293,11 @@ module.exports = {
   cfg,
   termCfg,
   findTerm,
+  spotPrice,
   getPrices,
   getHolding,
   addHolding,
+  refineRecipe,
   buy,
   sell,
   refine,

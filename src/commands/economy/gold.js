@@ -61,10 +61,10 @@ module.exports = {
     )
     .addSubcommand((sub) =>
       sub
-        .setName("熔金")
-        .setDescription("把挖礦背包的黃金礦熔進金庫")
+        .setName("精煉")
+        .setDescription("用黃金礦＋煤炭精煉成純金存進金庫")
         .addIntegerOption((o) =>
-          o.setName("數量").setDescription("熔化的黃金礦數量").setRequired(true).setMinValue(1),
+          o.setName("克數").setDescription("要精煉出的純金克數").setRequired(true).setMinValue(1),
         ),
     )
     .addSubcommand((sub) =>
@@ -147,7 +147,7 @@ module.exports = {
             return replyError(interaction, {
               title: "❌ 金庫黃金不足",
               detail: `你金庫只有 **${fmt(res.holding)}** ${U}，無法賣出 ${fmt(units)} ${U}。`,
-              hint: "可用 /黃金 買進 或 /黃金 熔金 累積黃金",
+              hint: "可用 /黃金 買進 或 /黃金 精煉 累積純金",
             });
           }
           if (res.reason === "min") {
@@ -166,24 +166,39 @@ module.exports = {
         );
       }
 
-      if (sub === "熔金") {
-        const oreQty = interaction.options.getInteger("數量");
-        const res = await goldService.refine(client, { userId, guildId, oreQty });
+      if (sub === "精煉") {
+        const units = interaction.options.getInteger("克數");
+        const res = await goldService.refine(client, { userId, guildId, units });
         if (!res.ok) {
           if (res.reason === "ore") {
             return replyError(interaction, {
               title: "❌ 黃金礦不足",
-              detail: `你背包只有 **${fmt(res.have)}** 個黃金礦，無法熔 ${fmt(oreQty)} 個。`,
-              hint: "去 /挖礦 挖黃金，或 /黃金 買進",
+              detail: `精煉 ${fmt(units)} ${U} 純金需要 **${fmt(res.needOre)}** 個黃金礦，你背包只有 ${fmt(res.haveOre)} 個。`,
+              hint: "去 /挖礦 挖黃金，或直接用 /黃金 買進 純金",
             });
           }
-          if (res.reason === "disabled") return interaction.editReply("🔧 熔金功能未開放。");
-          return interaction.editReply("🔧 熔金失敗，請稍後再試。");
+          if (res.reason === "coal") {
+            return replyError(interaction, {
+              title: "❌ 煤炭不足",
+              detail: `精煉 ${fmt(units)} ${U} 純金需要 **${fmt(res.needCoal)}** 個煤炭（燃料），你背包只有 ${fmt(res.haveCoal)} 個。`,
+              hint: "去 /挖礦 挖煤炭補充燃料",
+            });
+          }
+          if (res.reason === "max") {
+            return replyError(interaction, {
+              title: "❌ 單次精煉過多",
+              detail: `單次最多精煉 **${fmt(res.maxBatch)}** ${U}。`,
+            });
+          }
+          if (res.reason === "disabled") return interaction.editReply("🔧 精煉功能未開放。");
+          return interaction.editReply("🔧 精煉失敗，請稍後再試。");
         }
+        const coalLine = res.needCoal > 0 ? `＋ **${fmt(res.needCoal)}** 煤炭` : "";
         return interaction.editReply(
-          `🔥 **熔金成功**\n` +
-            `・熔化 **${fmt(res.oreQty)}** 個黃金礦 → 金庫 +**${fmt(res.units)}** ${U}\n` +
-            `・金庫持有：**${fmt(res.holding)}** ${U}`,
+          `🔥 **精煉成功**\n` +
+            `・消耗 **${fmt(res.needOre)}** 黃金礦${coalLine} → 純金 +**${fmt(res.units)}** ${U}\n` +
+            `・金庫持有：**${fmt(res.holding)}** ${U}\n` +
+            `-# 純金現價高於礦價，可用 /黃金 賣出 變現或存黃金定存`,
         );
       }
 
@@ -259,11 +274,16 @@ async function renderQuery(client, interaction, { userId, guildId, U }) {
 
   const value = holding * prices.sell;
 
+  const r = goldService.refineRecipe();
+  const recipeLine = r.enabled
+    ? `**精煉純金**\n${fmt(r.orePerUnit)} 黃金礦${r.coalPerUnit > 0 ? ` ＋ ${fmt(r.coalPerUnit)} 煤炭` : ""} → **1** ${U} 純金\n-# 挖礦累積原料，用 /黃金 精煉 產出純金`
+    : "";
+
   const container = new ContainerBuilder()
     .setAccentColor(COLOR.gold)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# 🪙 黃金存摺\n-# 現貨價 **${fmt(prices.spot)}** 幣/${U}（每日浮動）`,
+        `# 🪙 黃金存摺（純金）\n-# 現貨價 **${fmt(prices.spot)}** 幣/${U}（每日浮動的高單價貴金屬）`,
       ),
     )
     .addSeparatorComponents(new SeparatorBuilder())
@@ -280,6 +300,12 @@ async function renderQuery(client, interaction, { userId, guildId, U }) {
         `**你的金庫**\n持有 **${fmt(holding)}** ${U}　≈ **${fmt(value)}** 幣（以賣出價估）`,
       ),
     );
+
+  if (recipeLine) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(recipeLine));
+  }
 
   if (terms.length) {
     const now = Date.now();
@@ -298,7 +324,7 @@ async function renderQuery(client, interaction, { userId, guildId, U }) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "-# /黃金 買進・賣出・熔金・定存　·　金價沿用礦石行情每日 00:00 更新",
+      "-# /黃金 買進・賣出・精煉・定存　·　純金現價每日 00:00 更新",
     ),
   );
 
