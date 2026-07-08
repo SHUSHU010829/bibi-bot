@@ -76,7 +76,7 @@ async function render(client, guildId) {
   }
 
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent("-# 即時更新 · `/偷竊` 犯案、`/追捕` 領賞、`/自首` 脫身")
+    new TextDisplayBuilder().setContent("-# 即時更新 · `/偷竊` 犯案、點上方「追捕」鈕領賞、`/自首` 脫身")
   );
   return container;
 }

@@ -210,7 +210,22 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
       { userId: targetId, guildId },
       { $inc: { watchdog_count: -1 }, $set: { updatedAt: new Date() } }
     );
-    return { ok: false, reason: "target_watchdog" };
+    // 被狗擋下仍算一次出手：記 steal log，照樣吃每日次數與同目標冷卻
+    // （但不上通緝、不加惡名——被擋下不算失風）
+    await logEvent(client, {
+      guildId,
+      type: "steal",
+      actor_id: actorId,
+      target_id: targetId,
+      success: false,
+      amount: 0,
+      watchdog: true,
+    });
+    return {
+      ok: false,
+      reason: "target_watchdog",
+      pairReadyAt: pairCdMs > 0 ? Date.now() + pairCdMs : null,
+    };
   }
 
   // 成功率
