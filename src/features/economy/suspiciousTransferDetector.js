@@ -1,6 +1,7 @@
 require("colors");
 
-const { coinSystem } = require("../../config");
+const { coinSystem, bank } = require("../../config");
+const creditService = require("../bank/creditService");
 
 // 偵測過去 N 小時內 A↔B 雙向轉帳，回傳超過閾值的配對。
 // 用於：
@@ -160,6 +161,12 @@ function fireImmediateCheck(client, { guildId, senderId, recipientId }) {
         userB: recipientId,
       });
       if (!pair) return;
+
+      // 判定洗幣 → 扣雙方信用分（每人每天最多一次）
+      if (bank?.credit?.enabled) {
+        await creditService.flagSuspicious(client, senderId, guildId).catch(() => {});
+        await creditService.flagSuspicious(client, recipientId, guildId).catch(() => {});
+      }
 
       const channelId =
         coinSystem?.adminGrant?.auditLogChannelId ||

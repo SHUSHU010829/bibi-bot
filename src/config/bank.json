@@ -1,0 +1,69 @@
+{
+  "bank": {
+    "credit": {
+      "enabled": true,
+      "baseScore": 100,
+      "minScore": 0,
+      "maxScore": 1000,
+      "tenureBonusPerDay": 0.4,
+      "tenureBonusCap": 120,
+      "scoring": {
+        "transfer_complete": 2,
+        "deposit_matured": 5,
+        "gold_trade": 1,
+        "loan_repaid": 15,
+        "savings_kept": 1,
+        "suspicious_flag": -80,
+        "loan_overdue_daily": -8,
+        "loan_default": -150,
+        "early_withdraw": -3
+      },
+      "dailyGainCap": 20,
+      "tiers": [
+        { "min": 0,   "name": "信用 D", "emoji": "🔴", "transferMax": 50000,   "dailyCap": 100000,  "dailyCount": 3,  "feeDiscount": 0,    "depositSlotBonus": 0,  "loanCap": 0 },
+        { "min": 150, "name": "信用 C", "emoji": "🟠", "transferMax": 100000,  "dailyCap": 300000,  "dailyCount": 6,  "feeDiscount": 0.10, "depositSlotBonus": 2,  "loanCap": 50000 },
+        { "min": 350, "name": "信用 B", "emoji": "🟡", "transferMax": 250000,  "dailyCap": 800000,  "dailyCount": 10, "feeDiscount": 0.20, "depositSlotBonus": 4,  "loanCap": 200000 },
+        { "min": 600, "name": "信用 A", "emoji": "🟢", "transferMax": 500000,  "dailyCap": 2000000, "dailyCount": 15, "feeDiscount": 0.35, "depositSlotBonus": 6,  "loanCap": 500000 },
+        { "min": 850, "name": "信用 S", "emoji": "💎", "transferMax": 1000000, "dailyCap": 5000000, "dailyCount": 25, "feeDiscount": 0.50, "depositSlotBonus": 10, "loanCap": 1500000 }
+      ]
+    },
+    "gold": {
+      "enabled": true,
+      "unitLabel": "克",
+      "emoji": "🪙",
+      "spotOre": "gold",
+      "buySpread": 0.03,
+      "sellSpread": 0.03,
+      "minTradeUnits": 1,
+      "maxTradeUnits": 2000,
+      "refine": { "enabled": true, "oreKey": "gold", "unitsPerOre": 1 },
+      "term": {
+        "enabled": true,
+        "maxActivePerUser": 5,
+        "minUnits": 5,
+        "earlyWithdrawPenaltyRate": 0.15,
+        "terms": [
+          { "days": 7,  "rate": 0.01 },
+          { "days": 30, "rate": 0.05 },
+          { "days": 90, "rate": 0.18 }
+        ]
+      }
+    },
+    "loan": {
+      "enabled": true,
+      "maxActivePerUser": 1,
+      "minAmount": 1000,
+      "interestRate": 0.10,
+      "termDays": 7,
+      "overdueDailyPenaltyRate": 0.03,
+      "defaultAfterDays": 14,
+      "blockNewOnDefault": true
+    },
+    "savings": {
+      "enabled": true,
+      "dailyRate": 0.001,
+      "maxBalance": 5000000,
+      "minOp": 100
+    }
+  }
+}

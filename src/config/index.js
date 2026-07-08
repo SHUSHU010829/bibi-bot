@@ -43,6 +43,7 @@ const survey = require("./survey");
 const gameRoom = require("./gameRoom.json");
 const rssWeeklySchedule = require("./rssWeeklySchedule.json");
 const theft = require("./theft.json");
+const bank = require("./bank.json");
 
 module.exports = {
   ...server,
@@ -88,4 +89,5 @@ module.exports = {
   ...gameRoom,
   ...rssWeeklySchedule,
   ...theft,
+  ...bank,
 };

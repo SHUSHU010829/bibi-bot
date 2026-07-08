@@ -7,9 +7,10 @@ const {
 } = require("discord.js");
 const { MONEY_EMOJI } = require("../../constants/coin");
 
-const { coinSystem } = require("../../config");
+const { coinSystem, bank } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
 const twitchPerks = require("../../features/mining/twitchPerks");
+const creditService = require("../../features/bank/creditService");
 
 function getDepositCfg() {
   return coinSystem?.deposit || {};
@@ -129,7 +130,10 @@ async function openDeposit(client, interaction, { userId, guildId, username }) {
   }
 
   const slotBonus = twitchPerks.resolvePerks(interaction.member)?.depositSlotBonus || 0;
-  const maxActive = (cfg.maxActivePerUser ?? 5) + slotBonus;
+  const creditBonus = bank?.credit?.enabled
+    ? (await creditService.getLimits(client, userId, guildId, interaction.member)).depositSlotBonus
+    : 0;
+  const maxActive = (cfg.maxActivePerUser ?? 5) + slotBonus + creditBonus;
   const activeCount = await client.coinDepositsCollection.countDocuments({
     userId,
     guildId,
@@ -322,9 +326,19 @@ async function claimDeposit(client, interaction, { userId, guildId, username }) 
   }
 
   if (kind === "matured") {
+    if (bank?.credit?.enabled) {
+      creditService
+        .award(client, userId, guildId, "deposit_matured", { member: interaction.member })
+        .catch(() => {});
+    }
     return interaction.editReply(
       `✅ 已領回到期存款 \`${depositId}\`：本金 ${doc.principal.toLocaleString()} + 利息 ${doc.interest.toLocaleString()} = **${payout.toLocaleString()}** credits`
     );
+  }
+  if (bank?.credit?.enabled) {
+    creditService
+      .penalize(client, userId, guildId, "early_withdraw", 1)
+      .catch(() => {});
   }
   return interaction.editReply(
     `⚠️ 提早領回 \`${depositId}\`：扣違約金 ${penaltyAmount.toLocaleString()}，實領 **${payout.toLocaleString()}** credits（本金 ${doc.principal.toLocaleString()}）`

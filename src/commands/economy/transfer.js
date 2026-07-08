@@ -7,36 +7,35 @@ const {
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { DateTime } = require("luxon");
 
-const { coinSystem } = require("../../config");
+const { coinSystem, bank } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
 const { checkServerTenure } = require("../../features/economy/eligibility");
+const creditService = require("../../features/bank/creditService");
+const { errorContainer } = require("../../features/bank/bankView");
 const {
   fireImmediateCheck: fireSuspiciousTransferCheck,
 } = require("../../features/economy/suspiciousTransferDetector");
 
-function formatRemaining(seconds) {
-  const s = Math.max(0, Math.ceil(seconds));
-  if (s < 60) return `${s} 秒`;
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return r === 0 ? `${m} 分` : `${m} 分 ${r} 秒`;
-}
-
-function computeTransferFee(amount, cfg) {
+function computeTransferFee(amount, cfg, discount = 0) {
   const baseRate = cfg?.feeRate ?? 0.02;
   const highRate = cfg?.feeRateHigh ?? 0.05;
   const threshold = cfg?.highFeeThreshold ?? 1000;
   const rate = amount > threshold ? highRate : baseRate;
-  return { fee: Math.floor(amount * rate), rate };
+  const raw = Math.floor(amount * rate);
+  const fee = Math.max(0, Math.floor(raw * (1 - discount)));
+  return { fee, rate };
 }
 
-async function getLastTransferOutAt(client, userId, guildId) {
-  if (!client.coinTransactionsCollection) return null;
-  const last = await client.coinTransactionsCollection.findOne(
-    { userId, guildId, source: "transfer_out" },
-    { sort: { createdAt: -1 }, projection: { createdAt: 1 } }
-  );
-  return last?.createdAt ? new Date(last.createdAt).getTime() : null;
+async function getTodayTransferCount(client, userId, guildId) {
+  if (!client.coinTransactionsCollection) return 0;
+  const tz = coinSystem?.daily?.resetTimezone || "Asia/Taipei";
+  const today = DateTime.now().setZone(tz).toISODate();
+  return client.coinTransactionsCollection.countDocuments({
+    userId,
+    guildId,
+    source: "transfer_out",
+    date: today,
+  });
 }
 
 async function getTodayTransferOut(client, userId, guildId) {
@@ -119,24 +118,44 @@ module.exports = {
         return interaction.editReply("❌ 不能轉給自己。");
       }
 
-      const minAmount = cfg.minAmount ?? 10;
-      const maxAmount = cfg.maxAmount ?? 20000;
-      if (amount < minAmount || amount > maxAmount) {
-        return interaction.editReply(
-          `❌ 單筆金額需在 **${minAmount.toLocaleString()}** ~ **${maxAmount.toLocaleString()}** 之間。`
-        );
-      }
-
       const senderId = interaction.user.id;
       const guildId = interaction.guildId;
       const senderName = interaction.member?.displayName || interaction.user.username;
+
+      const creditEnabled = bank?.credit?.enabled;
+      const limits = creditEnabled
+        ? await creditService.getLimits(client, senderId, guildId, interaction.member)
+        : null;
+      const maxAmount = limits ? limits.transferMax : cfg.maxAmount ?? 20000;
+      const dailyCap = limits ? limits.dailyCap : cfg.dailyCapPerSender ?? 20000;
+      const dailyCount = limits ? limits.dailyCount : cfg.dailyCountFallback ?? 5;
+      const feeDiscount = limits ? limits.feeDiscount : 0;
+
+      const minAmount = cfg.minAmount ?? 10;
+      if (amount < minAmount || amount > maxAmount) {
+        const tierLine = limits
+          ? `\n-# 你的信用評等：${limits.tier.emoji} ${limits.tier.name}（信用分 ${limits.score}）`
+          : "";
+        return interaction.editReply({
+          components: [
+            errorContainer({
+              title: "❌ 超過轉帳上限",
+              detail:
+                `單筆金額需在 **${minAmount.toLocaleString()}** ~ **${maxAmount.toLocaleString()}** 之間，你輸入了 **${amount.toLocaleString()}**。` +
+                tierLine,
+              hint: "提升信用分可解鎖更高的轉帳上限（用 /銀行 查詢）",
+            }),
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
 
       const before = await client.userCoinsCollection.findOne({
         userId: senderId,
         guildId,
       });
       const balance = before?.totalCoins || 0;
-      const { fee, rate: feeRate } = computeTransferFee(amount, cfg);
+      const { fee, rate: feeRate } = computeTransferFee(amount, cfg, feeDiscount);
       const totalDeduct = amount + fee;
 
       if (balance < totalDeduct) {
@@ -145,28 +164,35 @@ module.exports = {
         );
       }
 
-      const cooldownSec = cfg.cooldownSeconds ?? 1800;
-      if (cooldownSec > 0) {
-        const lastAt = await getLastTransferOutAt(client, senderId, guildId);
-        if (lastAt) {
-          const elapsed = (Date.now() - lastAt) / 1000;
-          if (elapsed < cooldownSec) {
-            const readyEpoch = Math.floor((lastAt + cooldownSec * 1000) / 1000);
-            return interaction.editReply(
-              `⏳ 轉帳冷卻中，還要 **${formatRemaining(cooldownSec - elapsed)}**。\n` +
-                `下次可轉：<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）`
-            );
-          }
-        }
+      const countToday = await getTodayTransferCount(client, senderId, guildId);
+      if (countToday >= dailyCount) {
+        return interaction.editReply({
+          components: [
+            errorContainer({
+              title: "🔁 今日轉帳次數已用完",
+              detail:
+                `今日已轉帳 **${countToday} / ${dailyCount}** 次。` +
+                (limits ? `\n信用評等：${limits.tier.emoji} ${limits.tier.name}（信用分 ${limits.score}）` : ""),
+              hint: "次數每日 00:00 重置；提升信用分可增加每日次數（用 /銀行 查詢）",
+            }),
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        });
       }
 
-      const dailyCap = cfg.dailyCapPerSender ?? 20000;
       const usedToday = await getTodayTransferOut(client, senderId, guildId);
       if (usedToday + amount > dailyCap) {
         const remain = Math.max(0, dailyCap - usedToday);
-        return interaction.editReply(
-          `📈 今日轉帳額度已達上限（防洗幣）。今日已轉 **${usedToday.toLocaleString()}** / ${dailyCap.toLocaleString()}，剩 **${remain.toLocaleString()}**。`
-        );
+        return interaction.editReply({
+          components: [
+            errorContainer({
+              title: "📈 今日轉帳額度已達上限",
+              detail: `今日已轉 **${usedToday.toLocaleString()}** / ${dailyCap.toLocaleString()}，剩 **${remain.toLocaleString()}**。`,
+              hint: "額度每日 00:00 重置；提升信用分可提高每日額度（防洗幣機制）",
+            }),
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        });
       }
 
       const targetMember = await interaction.guild.members
@@ -278,10 +304,20 @@ module.exports = {
         recipientId: target.id,
       });
 
+      // 完成正常轉帳 → 累積信用分（非阻塞）
+      if (creditEnabled) {
+        creditService
+          .award(client, senderId, guildId, "transfer_complete", { member: interaction.member })
+          .catch(() => {});
+      }
+
+      const discountLine =
+        feeDiscount > 0 ? `（已折 ${Math.round(feeDiscount * 100)}%）` : "";
       await interaction.editReply(
-        `✅ 已轉帳 <@${target.id}> **${amount.toLocaleString()}** credits（手續費 ${fee.toLocaleString()}・${(feeRate * 100).toFixed(0)}%）\n` +
+        `✅ 已轉帳 <@${target.id}> **${amount.toLocaleString()}** credits（手續費 ${fee.toLocaleString()}・${(feeRate * 100).toFixed(0)}%${discountLine}）\n` +
           `・你的餘額：**${senderAfter.toLocaleString()}**\n` +
-          `・今日累計轉出：${(usedToday + amount).toLocaleString()} / ${dailyCap.toLocaleString()}` +
+          `・今日累計轉出：${(usedToday + amount).toLocaleString()} / ${dailyCap.toLocaleString()}\n` +
+          `・今日轉帳次數：${countToday + 1} / ${dailyCount}` +
           noteLine
       );
     } catch (error) {

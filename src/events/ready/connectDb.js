@@ -132,6 +132,13 @@ module.exports = async (client) => {
     // 定期存款
     const coinDepositsCollection = database.collection("CoinDeposits");
 
+    // 銀行系統：信用分、黃金存摺、黃金定存、活期存款、貸款
+    const creditProfilesCollection = database.collection("CreditProfiles");
+    const goldHoldingsCollection = database.collection("GoldHoldings");
+    const goldDepositsCollection = database.collection("GoldDeposits");
+    const savingsAccountsCollection = database.collection("SavingsAccounts");
+    const loansCollection = database.collection("Loans");
+
     // 救濟金領取紀錄（連續天數、最後領取日期）
     const welfareClaimsCollection = database.collection("WelfareClaims");
 
@@ -314,6 +321,11 @@ module.exports = async (client) => {
     client.jackpotPoolCollection = jackpotPoolCollection;
     client.coinTransfersCollection = coinTransfersCollection;
     client.coinDepositsCollection = coinDepositsCollection;
+    client.creditProfilesCollection = creditProfilesCollection;
+    client.goldHoldingsCollection = goldHoldingsCollection;
+    client.goldDepositsCollection = goldDepositsCollection;
+    client.savingsAccountsCollection = savingsAccountsCollection;
+    client.loansCollection = loansCollection;
     client.welfareClaimsCollection = welfareClaimsCollection;
     client.questProgressCollection = questProgressCollection;
     client.questSettingsCollection = questSettingsCollection;
@@ -547,6 +559,38 @@ module.exports = async (client) => {
       .catch((e) =>
         console.log(`[WARN] EconomySnapshots index 建立失敗：${e.message}`.yellow),
       );
+
+    // 銀行系統索引
+    await coinDepositsCollection
+      .createIndex({ userId: 1, guildId: 1, status: 1 }, { name: "coin_deposit_user_status" })
+      .catch((e) => console.log(`[WARN] CoinDeposits index 建立失敗：${e.message}`.yellow));
+    await coinDepositsCollection
+      .createIndex({ depositId: 1 }, { unique: true, name: "uniq_coin_deposit_id" })
+      .catch((e) => console.log(`[WARN] CoinDeposits depositId index 建立失敗：${e.message}`.yellow));
+    await creditProfilesCollection
+      .createIndex({ userId: 1, guildId: 1 }, { unique: true, name: "uniq_credit_user_guild" })
+      .catch((e) => console.log(`[WARN] CreditProfiles index 建立失敗：${e.message}`.yellow));
+    await goldHoldingsCollection
+      .createIndex({ userId: 1, guildId: 1 }, { unique: true, name: "uniq_gold_holding_user_guild" })
+      .catch((e) => console.log(`[WARN] GoldHoldings index 建立失敗：${e.message}`.yellow));
+    await goldDepositsCollection
+      .createIndex({ depositId: 1 }, { unique: true, name: "uniq_gold_deposit_id" })
+      .catch((e) => console.log(`[WARN] GoldDeposits index 建立失敗：${e.message}`.yellow));
+    await goldDepositsCollection
+      .createIndex({ userId: 1, guildId: 1, status: 1 }, { name: "gold_deposit_user_status" })
+      .catch((e) => console.log(`[WARN] GoldDeposits user index 建立失敗：${e.message}`.yellow));
+    await savingsAccountsCollection
+      .createIndex({ userId: 1, guildId: 1 }, { unique: true, name: "uniq_savings_user_guild" })
+      .catch((e) => console.log(`[WARN] SavingsAccounts index 建立失敗：${e.message}`.yellow));
+    await loansCollection
+      .createIndex({ loanId: 1 }, { unique: true, name: "uniq_loan_id" })
+      .catch((e) => console.log(`[WARN] Loans index 建立失敗：${e.message}`.yellow));
+    await loansCollection
+      .createIndex({ userId: 1, guildId: 1, status: 1 }, { name: "loan_user_status" })
+      .catch((e) => console.log(`[WARN] Loans user index 建立失敗：${e.message}`.yellow));
+    await loansCollection
+      .createIndex({ status: 1, dueAt: 1 }, { name: "loan_status_due" })
+      .catch((e) => console.log(`[WARN] Loans due index 建立失敗：${e.message}`.yellow));
     // 礦石市價：date unique 作冪等鍵（freeze 當日只寫一次），走勢查詢靠 date 排序
     await oreMarketPricesCollection
       .createIndex({ date: 1 }, { unique: true, name: "uniq_ore_market_date" })
