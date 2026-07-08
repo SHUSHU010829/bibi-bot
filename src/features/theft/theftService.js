@@ -722,15 +722,57 @@ async function surrender(client, { guildId, userId, username, member }) {
   };
 }
 
+// ── 偵探分級 ───────────────────────────────────────────
+// 報案可挑不同等級的偵探：越貴查到率越高、遇上壞事件（跑路/被收買/黑吃黑）機率越低、
+// 好事件（線人爆料保證破案）機率越高。所有數值 config 驅動，指令選單也由這份清單生成。
+function reportTiers() {
+  return cfg().report?.tiers || [];
+}
+
+function resolveTier(tierKey) {
+  const r = cfg().report || {};
+  const tiers = reportTiers();
+  const chosen =
+    (tierKey && tiers.find((t) => t.key === tierKey)) ||
+    tiers.find((t) => t.key === r.defaultTier) ||
+    tiers[0];
+  if (chosen) return chosen;
+  // 沒設分級 → 退回單一偵探（相容舊 config）
+  return {
+    key: "default",
+    name: "偵探",
+    emoji: "🔎",
+    fee: r.detectiveFee ?? 500,
+    investigateRate: r.investigateRate ?? 0.7,
+    investigateRateStale: r.investigateRateStale ?? 0.2,
+    goodEventChance: 0,
+    badEventChance: r.abscondChance ?? 0.02,
+  };
+}
+
+// 依 weight 隨機挑一個 event key；空清單回 null。
+function pickWeighted(list) {
+  const items = (list || []).filter((e) => (e.weight ?? 1) > 0);
+  if (!items.length) return null;
+  const total = items.reduce((s, e) => s + (e.weight ?? 1), 0);
+  let roll = Math.random() * total;
+  for (const e of items) {
+    roll -= e.weight ?? 1;
+    if (roll < 0) return e.key;
+  }
+  return items[items.length - 1].key;
+}
+
 // ── /報案 ─────────────────────────────────────────────
-async function report(client, { guildId, userId, username }) {
+async function report(client, { guildId, userId, username, tierKey }) {
   const c = cfg();
   if (!c.enabled || !client.theftLogsCollection) return { ok: false, reason: "disabled" };
   const r = c.report || {};
+  const tier = resolveTier(tierKey);
 
-  const fee = r.detectiveFee ?? 500;
+  const fee = tier.fee ?? 500;
   const wallet = (await getWallet(client, userId, guildId)).balance;
-  if (wallet < fee) return { ok: false, reason: "insufficient", fee, have: wallet };
+  if (wallet < fee) return { ok: false, reason: "insufficient", fee, have: wallet, tier };
 
   const nowMs = Date.now();
   const windowMs = (r.windowHours ?? 24) * 3600 * 1000;
@@ -753,7 +795,7 @@ async function report(client, { guildId, userId, username }) {
 
   // 沒有任何（未結）案件可查 → 退費（無事可查不收錢）
   if (!openEvents.length) {
-    return { ok: true, charged: false, found: false, culprits: [], noCase: true };
+    return { ok: true, charged: false, found: false, culprits: [], noCase: true, tier };
   }
 
   // 收委託費
@@ -763,13 +805,40 @@ async function report(client, { guildId, userId, username }) {
     username,
     amount: -fee,
     source: "detective_fee",
-    meta: {},
+    meta: { tier: tier.key },
   });
 
-  // 極小機率：偵探捲款跑路，付了錢卻什麼都查不到
-  if (Math.random() < (r.abscondChance ?? 0.02)) {
-    return { ok: true, charged: true, absconded: true, fee };
+  // 壞事件（互斥、優先於調查）：越菜的偵探越常出包，王牌不會。
+  //   abscond 捲款跑路 / bribed 被兇手收買 → 收費、查無結果；
+  //   crooked 壞人偵探 → 收費之外還黑吃黑，再從你錢包偷一筆。
+  const eventsCfg = r.events || {};
+  if (Math.random() < (tier.badEventChance ?? 0)) {
+    const bad = pickWeighted(eventsCfg.bad) || "abscond";
+    if (bad === "crooked") {
+      const w2 = (await getWallet(client, userId, guildId)).balance;
+      const extra = Math.min(
+        Math.floor(w2 * (r.crookedStealPct ?? 0.1)),
+        r.crookedStealMax ?? 2000,
+        w2
+      );
+      if (extra > 0) {
+        await grantCoins(client, {
+          userId,
+          guildId,
+          username,
+          amount: -extra,
+          source: "detective_crooked",
+          meta: { tier: tier.key },
+        });
+      }
+      return { ok: true, charged: true, badEvent: "crooked", fee, extraStolen: extra, tier };
+    }
+    return { ok: true, charged: true, badEvent: bad, fee, tier };
   }
+
+  // 好事件：線人爆料 → 保證破案（即使調查 RNG 全落空，也強制鎖定窗口內偷最多的主嫌）
+  const goodEvent =
+    Math.random() < (tier.goodEventChance ?? 0) ? pickWeighted(eventsCfg.good) : null;
 
   // 線索隨時間變冷：越久前的竊案越難查，接近窗口邊緣時查到率降到 investigateRateStale
   // 該兇手在窗口內偷你的總額（不受偵查 RNG 影響）→ 懸賞金基準，與 placeBounty 實扣同源
@@ -778,8 +847,8 @@ async function report(client, { guildId, userId, username }) {
     fullByActor.set(ev.actor_id, (fullByActor.get(ev.actor_id) || 0) + (ev.amount || 0));
   }
 
-  const investigateRate = r.investigateRate ?? 0.7;
-  const investigateRateStale = r.investigateRateStale ?? investigateRate;
+  const investigateRate = tier.investigateRate ?? 0.7;
+  const investigateRateStale = tier.investigateRateStale ?? investigateRate;
   const byActor = new Map();
   for (const ev of openEvents) {
     const ageFrac = clamp((nowMs - new Date(ev.ts).getTime()) / windowMs, 0, 1);
@@ -790,6 +859,34 @@ async function report(client, { guildId, userId, username }) {
     cur.count += 1;
     byActor.set(ev.actor_id, cur);
   }
+
+  // 線人爆料：把窗口內偷最多的主嫌強制納入（即使上面 RNG 沒查到他）
+  let informant = false;
+  if (goodEvent === "informant") {
+    let topId = null;
+    let topAmt = -1;
+    for (const [aid, amt] of fullByActor) {
+      if (amt > topAmt) {
+        topAmt = amt;
+        topId = aid;
+      }
+    }
+    if (topId) {
+      if (!byActor.has(topId)) {
+        let amount = 0;
+        let count = 0;
+        for (const ev of openEvents) {
+          if (ev.actor_id === topId) {
+            amount += ev.amount || 0;
+            count += 1;
+          }
+        }
+        byActor.set(topId, { actorId: topId, amount, count });
+      }
+      informant = true;
+    }
+  }
+
   const culprits = [...byActor.values()]
     .map((c) => ({ ...c, totalStolen: fullByActor.get(c.actorId) || c.amount }))
     .sort((a, b) => b.amount - a.amount);
@@ -815,6 +912,8 @@ async function report(client, { guildId, userId, username }) {
     fee,
     refunded,
     totalCases: openEvents.length,
+    tier,
+    informant,
   };
 }
 
@@ -1218,6 +1317,7 @@ module.exports = {
   huntWanted,
   surrender,
   report,
+  reportTiers,
   revengeDuel,
   forgiveCulprit,
   placeBounty,

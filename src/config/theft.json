@@ -79,14 +79,67 @@
       "runExpiresMs": 600000
     },
     "report": {
-      "detectiveFee": 500,
       "windowHours": 24,
-      "investigateRate": 0.7,
-      "investigateRateStale": 0.2,
       "refundOnMiss": false,
-      "abscondChance": 0.02,
-      "bountyPlacePct": 0.75,
-      "bountyPlaceMin": 500
+      "bountyPlacePct": 2,
+      "bountyPlaceMin": 2000,
+      "defaultTier": "pro",
+      "tiers": [
+        {
+          "key": "rookie",
+          "name": "菜鳥偵探",
+          "emoji": "🕵️",
+          "fee": 300,
+          "investigateRate": 0.5,
+          "investigateRateStale": 0.12,
+          "goodEventChance": 0.05,
+          "badEventChance": 0.28,
+          "desc": "便宜，但線索常常斷、也容易出包"
+        },
+        {
+          "key": "pro",
+          "name": "資深偵探",
+          "emoji": "🕵️‍♂️",
+          "fee": 800,
+          "investigateRate": 0.72,
+          "investigateRateStale": 0.3,
+          "goodEventChance": 0.12,
+          "badEventChance": 0.1,
+          "desc": "標準水準，穩定破案"
+        },
+        {
+          "key": "ace",
+          "name": "神探",
+          "emoji": "🎩",
+          "fee": 2000,
+          "investigateRate": 0.9,
+          "investigateRateStale": 0.55,
+          "goodEventChance": 0.25,
+          "badEventChance": 0.03,
+          "desc": "昂貴，幾乎必破案、很少出包"
+        },
+        {
+          "key": "master",
+          "name": "王牌偵探",
+          "emoji": "👑",
+          "fee": 5000,
+          "investigateRate": 1,
+          "investigateRateStale": 0.85,
+          "goodEventChance": 0.45,
+          "badEventChance": 0,
+          "desc": "頂級，必破案、絕不出包，常有線人爆料"
+        }
+      ],
+      "events": {
+        "good": [{ "key": "informant", "weight": 1 }],
+        "bad": [
+          { "key": "abscond", "weight": 1 },
+          { "key": "bribed", "weight": 1 },
+          { "key": "crooked", "weight": 1 }
+        ]
+      },
+      "crookedStealPct": 0.12,
+      "crookedStealMax": 2500
     },
     "revenge": {
       "recoverPct": 0.5,
