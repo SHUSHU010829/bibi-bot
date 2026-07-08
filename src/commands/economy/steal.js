@@ -191,8 +191,16 @@ function stealErrorContainer(result, target) {
         `${target} 錢包不到 **${result.minWallet.toLocaleString()}**，別欺負窮人。`,
         "挑錢包飽一點的目標。"
       );
-    case "target_watchdog":
-      return errorContainer("🐕 被看門狗擋下", `${target} 養了看門狗，這次偷竊被擋下（狗也累了消耗一次）。`, "改天再試，或換目標。");
+    case "target_watchdog": {
+      const cd = result.pairReadyAt
+        ? `可再對他下手：<t:${Math.floor(result.pairReadyAt / 1000)}:R>（<t:${Math.floor(result.pairReadyAt / 1000)}:t>）。`
+        : "";
+      return errorContainer(
+        "🐕 被看門狗擋下",
+        `${target} 養了看門狗，這次偷竊被擋下（狗也累了消耗一次）。\n不過這仍算你出手一次：計入今日偷竊次數，並對 ${target} 進入冷卻。${cd}`,
+        "先換個目標，或等冷卻結束再回頭。"
+      );
+    }
     case "target_maxed":
       return errorContainer("🚧 目標今日已被偷太多次", `${target} 今天已被偷到上限，暫時受保護。`, "明天再來，或換目標。");
     case "race":
