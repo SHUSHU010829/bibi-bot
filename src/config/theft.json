@@ -60,7 +60,9 @@
       "repeatSurchargePct": 0.2,
       "maxForfeitPct": 1,
       "paroleCooldownMs": 21600000,
-      "lockMs": 600000
+      "lockMs": 600000,
+      "lockDiscountPerNotorietyMs": 30000,
+      "lockMinMs": 240000
     },
     "escapeRun": {
       "enabled": true,
