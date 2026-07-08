@@ -42,7 +42,7 @@ module.exports = async (client, interaction) => {
     // ── 追捕（公開）──
     if (id.startsWith("theft_hunt_")) {
       const wantedUserId = id.slice("theft_hunt_".length);
-      // 追捕結果對玩家私人顯示；成功才公開推到通緝廣播頻道
+      // 先私人 defer；追捕結果（成功 / 失敗）皆公開推到通緝廣播頻道
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const result = await theftService.huntWanted(client, {
         guildId: interaction.guildId,
@@ -81,12 +81,10 @@ module.exports = async (client, interaction) => {
       }
       const resultContainer = huntResultContainer(result, interaction.user.id, wantedUserId);
       theftBoard.refresh(client).catch(() => {});
-      // 抓到人 → 只公開推到通緝廣播頻道，不再私訊複製一份給玩家
-      if (result.success) {
-        const announced = await broadcast(client, resultContainer);
-        if (announced) {
-          return interaction.deleteReply().catch(() => {});
-        }
+      // 追捕結果（逮捕成功 / 讓他跑了）都公開推到通緝廣播頻道，不再私訊複製一份給玩家
+      const announced = await broadcast(client, resultContainer);
+      if (announced) {
+        return interaction.deleteReply().catch(() => {});
       }
       return interaction.editReply({
         components: [resultContainer],
