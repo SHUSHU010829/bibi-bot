@@ -44,6 +44,30 @@ module.exports = {
             flags: MessageFlags.IsComponentsV2,
           });
         }
+        if (result.reason === "bounty_no_surrender") {
+          return interaction.editReply({
+            components: [
+              errorContainer(
+                "🎯 你被懸賞通緝，不能自首",
+                "有人花錢把你掛上通緝榜，這種懸賞沒辦法用保釋金買回自由。",
+                "只能認真躲過追捕脫罪，或潛伏熬到時效結束（賞金會進治安基金）。"
+              ),
+            ],
+            flags: MessageFlags.IsComponentsV2,
+          });
+        }
+        if (result.reason === "surrender_needs_hunt") {
+          return interaction.editReply({
+            components: [
+              errorContainer(
+                "🚨 還沒被追捕過，不能自首",
+                `至少要被獵人追捕 **${result.need}** 次才能自首洗白。\n目前被追捕：**${result.have}** 次`,
+                "撐在通緝榜上等獵人出手；成功躲過一次追捕後就能 /自首，或潛伏熬過時效取回賞金。"
+              ),
+            ],
+            flags: MessageFlags.IsComponentsV2,
+          });
+        }
         if (result.reason === "surrender_locked") {
           const ready = Math.floor(result.readyAt / 1000);
           return interaction.editReply({

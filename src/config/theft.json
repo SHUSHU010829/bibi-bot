@@ -48,9 +48,9 @@
       "maxRate": 0.8,
       "atkDiffScale": 0.003,
       "caughtFinePct": 0.1,
-      "escapeCooldownBaseMs": 1800000,
-      "escapeCooldownPerNotorietyMs": 300000,
-      "escapeCooldownMaxMs": 10800000,
+      "escapeCooldownBaseMs": 240000,
+      "escapeCooldownDiscountPerNotorietyMs": 30000,
+      "escapeCooldownMinMs": 60000,
       "escapeClearCount": 5
     },
     "surrender": {
@@ -60,7 +60,10 @@
       "repeatSurchargePct": 0.2,
       "maxForfeitPct": 1,
       "paroleCooldownMs": 21600000,
-      "lockMs": 300000
+      "lockMs": 600000,
+      "lockDiscountPerNotorietyMs": 30000,
+      "lockMinMs": 240000,
+      "minHuntsBeforeSurrender": 1
     },
     "escapeRun": {
       "enabled": true,
@@ -81,7 +84,9 @@
       "investigateRate": 0.7,
       "investigateRateStale": 0.2,
       "refundOnMiss": false,
-      "abscondChance": 0.02
+      "abscondChance": 0.02,
+      "bountyPlacePct": 0.75,
+      "bountyPlaceMin": 500
     },
     "revenge": {
       "recoverPct": 0.5,
