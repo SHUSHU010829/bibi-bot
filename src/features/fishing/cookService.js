@@ -143,6 +143,36 @@ async function consumeFoodBuffUse(client, userId, guildId, profile, type) {
   return cleaned;
 }
 
+// 一次消耗多份指定 type 的次數型食物 buff（批次收成用，一次寫回）。
+// 依序從各 buff 扣，扣滿 count 或用光為止；有扣到才寫 DB。
+async function consumeFoodBuffUses(client, userId, guildId, profile, type, count = 1) {
+  if (count <= 0) return;
+  const buffs = getActiveFoodBuffs(profile);
+  let remaining = count;
+  const updated = buffs.map((b) => {
+    if (remaining > 0 && b.type === type && b.uses_left > 0) {
+      const take = Math.min(remaining, b.uses_left);
+      remaining -= take;
+      return { ...b, uses_left: b.uses_left - take };
+    }
+    return b;
+  });
+  if (remaining === count) return;
+  const cleaned = cleanExpiredBuffs(updated);
+  await client.miningProfilesCollection
+    .updateOne(
+      { userId, guildId },
+      { $set: { active_food_buffs: cleaned, updatedAt: new Date() } }
+    )
+    .catch((e) => console.log(`[ERROR] consumeFoodBuffUses(${type}): ${e}`.red));
+  return cleaned;
+}
+
+// 一次消耗多次 farm_yield（一鍵收成時呼叫，避免逐塊寫 DB）
+function consumeFarmYieldUses(client, userId, guildId, profile, count) {
+  return consumeFoodBuffUses(client, userId, guildId, profile, "farm_yield", count);
+}
+
 // 消耗一次 mine_luck 的使用次數（挖礦時呼叫）
 function consumeMineLuckUse(client, userId, guildId, profile) {
   return consumeFoodBuffUse(client, userId, guildId, profile, "mine_luck");
@@ -453,6 +483,7 @@ module.exports = {
   consumeWorkIncomeUse,
   consumeFishFortuneUse,
   consumeFarmYieldUse,
+  consumeFarmYieldUses,
   maxCookable,
   cook,
   useFood,

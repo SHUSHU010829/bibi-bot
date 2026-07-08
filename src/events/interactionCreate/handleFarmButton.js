@@ -1052,46 +1052,35 @@ module.exports = async (client, interaction) => {
       if (!(await deferReplySafe(interaction))) return;
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
-      const profile = await getOrCreate(client, userId, guildId);
-      const plotCount = farmService.getPlotCount(profile);
-      const plots = await farmService.getPlots(client, userId, guildId, plotCount);
-      const readyPlots = plots
-        .map((p) => farmService.resolveLiveStatus(p))
-        .filter((p) => p.status === "ready");
+      const harvestAll = await farmService.harvestAllCrops(client, {
+        userId, guildId,
+        username: interaction.user.username,
+        member: interaction.member,
+      });
 
-      if (readyPlots.length === 0) {
-        return replyEphemeralContainer(
-          interaction,
-          errContainer("🌱 沒有可收成的地塊", "目前沒有任何成熟的作物。", "等成熟後再回來"),
-        );
-      }
-
-      const results = [];
-      let bagFull = null;
-      for (const p of readyPlots) {
-        const r = await farmService.harvestCrop(client, {
-          userId, guildId,
-          username: interaction.user.username,
-          member: interaction.member,
-          plotIndex: p.plotIndex,
-        });
-        if (r.ok) results.push(r);
-        else if (r.reason === "veggie_bag_full") { bagFull = r; break; }
-      }
-
-      if (results.length === 0) {
-        if (bagFull) {
+      if (!harvestAll.ok) {
+        if (harvestAll.reason === "veggie_bag_full" && harvestAll.bagFull) {
+          const bf = harvestAll.bagFull;
           return replyEphemeralContainer(interaction, errContainer(
             "🥬 菜籃滿了，收不下！",
-            `**目前菜籃**：${bagFull.used} / ${bagFull.cap} 個（已滿）\n先賣掉一些菜，再回來一鍵收成。`,
+            `**目前菜籃**：${bf.used} / ${bf.cap} 個（已滿）\n先賣掉一些菜，再回來一鍵收成。`,
             "到 `/背包` →「🌾 農場」賣菜，或 `/商店` 買背包擴充（一次擴礦石袋／魚袋／菜籃 各 +5）",
           ));
+        }
+        if (harvestAll.reason === "no_ready_plot") {
+          return replyEphemeralContainer(
+            interaction,
+            errContainer("🌱 沒有可收成的地塊", "目前沒有任何成熟的作物。", "等成熟後再回來"),
+          );
         }
         return replyEphemeralContainer(
           interaction,
           errContainer("🔧 收成失敗", "所有可收成的地塊都收成失敗了。", "請呼叫舒舒！"),
         );
       }
+
+      const results = harvestAll.results;
+      const bagFull = harvestAll.bagFull;
 
       const cropAgg = new Map();
       let totalCoins = 0;
