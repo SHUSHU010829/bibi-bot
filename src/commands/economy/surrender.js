@@ -44,6 +44,18 @@ module.exports = {
             flags: MessageFlags.IsComponentsV2,
           });
         }
+        if (result.reason === "bounty_no_surrender") {
+          return interaction.editReply({
+            components: [
+              errorContainer(
+                "🎯 你被懸賞通緝，不能自首",
+                "有人花錢把你掛上通緝榜，這種懸賞沒辦法用保釋金買回自由。",
+                "只能認真躲過追捕脫罪，或潛伏熬到時效結束（賞金會進治安基金）。"
+              ),
+            ],
+            flags: MessageFlags.IsComponentsV2,
+          });
+        }
         if (result.reason === "surrender_needs_hunt") {
           return interaction.editReply({
             components: [

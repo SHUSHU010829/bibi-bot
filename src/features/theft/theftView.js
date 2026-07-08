@@ -215,6 +215,31 @@ function wantedAnnounceContainer(userId, bounty, expiresAt) {
     );
 }
 
+// 懸賞通緝令（公開廣播）：報案人出錢把兇手掛上榜，帶「我要追捕」按鈕。
+function bountyAnnounceContainer(victimId, culpritId, bounty, expiresAt) {
+  const expiresEpoch = Math.floor(expiresAt / 1000);
+  return new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🎯 懸賞通緝\n` +
+          `<@${victimId}> 花錢懸賞捉拿 <@${culpritId}>——他偷了東西還逍遙法外！\n` +
+          `賞金 **${bounty.toLocaleString()}** ${COIN_EMOJI}　|　時效 <t:${expiresEpoch}:R>\n` +
+          `抓到他就能領走賞金，他無法自首、只能被抓或逃亡——誰要出手？`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`theft_hunt_${culpritId}`)
+          .setLabel("我要追捕")
+          .setEmoji("🕵️")
+          .setStyle(ButtonStyle.Danger)
+      )
+    );
+}
+
 module.exports = {
   errorContainer,
   infoContainer,
@@ -223,4 +248,5 @@ module.exports = {
   fleeChaseContainer,
   fleeOutcomeContainer,
   wantedAnnounceContainer,
+  bountyAnnounceContainer,
 };

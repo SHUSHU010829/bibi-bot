@@ -84,7 +84,8 @@
       "investigateRate": 0.7,
       "investigateRateStale": 0.2,
       "refundOnMiss": false,
-      "abscondChance": 0.02
+      "abscondChance": 0.02,
+      "bountyPlaceAmount": 2000
     },
     "revenge": {
       "recoverPct": 0.5,

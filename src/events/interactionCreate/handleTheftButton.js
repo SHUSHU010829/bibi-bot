@@ -16,6 +16,7 @@ const {
   fleeChaseContainer,
   fleeOutcomeContainer,
   wantedAnnounceContainer,
+  bountyAnnounceContainer,
 } = require("../../features/theft/theftView");
 const theftBoard = require("../../features/theft/theftBoard");
 const { COIN_EMOJI } = require("../../constants/coin");
@@ -172,6 +173,69 @@ module.exports = async (client, interaction) => {
           )
         );
       return interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    // ── 報案後懸賞通緝（owner 限定）──
+    if (id.startsWith("theft_bounty_")) {
+      const [victimId, culpritId] = id.slice("theft_bounty_".length).split("_");
+      if (interaction.user.id !== victimId) {
+        return interaction.reply({ content: "🚫 這不是你的按鈕！", flags: MessageFlags.Ephemeral });
+      }
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const culpritName = await interaction.guild?.members
+        .fetch(culpritId)
+        .then((m) => m?.displayName)
+        .catch(() => null);
+      const result = await theftService.placeBounty(client, {
+        guildId: interaction.guildId,
+        victimId,
+        victimName: interaction.member?.displayName || interaction.user.username,
+        culpritId,
+        culpritName,
+      });
+      if (!result.ok) {
+        const map = {
+          self: ["🪞 不能懸賞自己", "選錯對象了。", null],
+          already_done: ["🎯 這筆帳已經處理過", "你已經對他決鬥 / 放過 / 懸賞了。", "去 /通緝榜 或找別人吧。"],
+          no_case: ["🕊️ 查無此帳", "近期沒有他成功偷你的紀錄可懸賞。", null],
+          already_wanted: [
+            "🚨 他已經在通緝榜上了",
+            "這名兇手目前正被通緝或在逃，不用再花錢掛。",
+            "直接去 /通緝榜 點「追捕」抓他。",
+          ],
+          insufficient: [
+            "💸 懸賞金不足",
+            `掛懸賞需要 **${(result.need ?? 0).toLocaleString()}** ${COIN_EMOJI}，你只有 **${(result.have ?? 0).toLocaleString()}**。`,
+            "先賺點錢，或改用強制決鬥。",
+          ],
+        };
+        const [t, b, h] = map[result.reason] || ["🔧 懸賞失敗", "系統忙碌或未啟動。", "稍後再試。"];
+        return interaction.editReply({
+          components: [errorContainer(t, b, h)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      const announce = bountyAnnounceContainer(victimId, culpritId, result.bounty, result.expiresAt);
+      theftBoard.refresh(client).catch(() => {});
+      const broadcasted = await broadcast(client, announce);
+      if (!broadcasted) {
+        await interaction.channel
+          ?.send({ components: [announce], flags: MessageFlags.IsComponentsV2 })
+          .catch(() => {});
+      }
+      const confirm = new ContainerBuilder()
+        .setAccentColor(0x3498db)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `# 🎯 懸賞已發出\n你花 **${result.bounty.toLocaleString()}** ${COIN_EMOJI} 把 <@${culpritId}> 掛上通緝榜，全服都能追捕他了。`
+          )
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            "-# 他被抓到你會拿回贖罪金分成；他逃掉或撐到時效，賞金就進治安基金。"
+          )
+        );
+      return interaction.editReply({ components: [confirm], flags: MessageFlags.IsComponentsV2 });
     }
 
     // ── 失風追逃小遊戲（owner 限定，同一則訊息 update 推進）──

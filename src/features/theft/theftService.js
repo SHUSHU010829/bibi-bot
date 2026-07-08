@@ -119,6 +119,25 @@ async function logEvent(client, doc) {
     .catch((e) => console.log(`[THEFT] log insert 失敗：${e.message}`.yellow));
 }
 
+// 釋放託管的賞金（脫罪 / 到期時）：
+//   一般通緝＝通緝犯自己凍結的錢 → 退還本人；
+//   懸賞通緝（funded_by＝報案人出的錢）→ 進治安基金，不退兇手也不退報案人。
+async function releaseEscrowedBounty(client, wanted, reason) {
+  if (!(wanted.bounty > 0)) return;
+  if (wanted.funded_by) {
+    await addToFund(client, wanted.guildId, wanted.bounty);
+    return;
+  }
+  await grantCoins(client, {
+    userId: wanted.userId,
+    guildId: wanted.guildId,
+    username: wanted.username,
+    amount: wanted.bounty,
+    source: "bounty_refund",
+    meta: { reason, wantedId: wanted.wanted_id },
+  }).catch(() => {});
+}
+
 // ── /偷竊 ─────────────────────────────────────────────
 async function steal(client, { guildId, actorId, actorName, targetId, targetName, member }) {
   const c = cfg();
@@ -371,7 +390,8 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
         },
         updated_at: new Date(),
       },
-      $unset: { caught_by: "", caught_at: "" },
+      // 自己偷竊失風＝自己出賞金：清掉上一輪可能殘留的懸賞標記（別人出錢的 funded_by）
+      $unset: { caught_by: "", caught_at: "", funded_by: "" },
     },
     { upsert: true }
   );
@@ -460,16 +480,9 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
     const escapeCount = (wanted.escape_count || 0) + 1;
     const clearAt = h.escapeClearCount ?? 5;
 
-    // 逃脫達上限 → 成功脫罪：退回託管賞金、惡名 −1、通緝解除
+    // 逃脫達上限 → 成功脫罪：釋放託管賞金（自己的錢退還／懸賞金進基金）、惡名 −1、通緝解除
     if (escapeCount >= clearAt) {
-      await grantCoins(client, {
-        userId: wantedUserId,
-        guildId,
-        username: wanted.username,
-        amount: wanted.bounty,
-        source: "bounty_refund",
-        meta: { reason: "escaped_free", wantedId: wanted.wanted_id },
-      }).catch(() => {});
+      await releaseEscrowedBounty(client, wanted, "escaped_free");
       await client.wantedListCollection.updateOne(
         { userId: wantedUserId, guildId },
         { $set: { status: "escaped", escape_count: escapeCount, updated_at: new Date() } }
@@ -537,8 +550,21 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
           meta: { wantedUserId },
         });
       }
-      // 沒發給獵人的那半 → 進治安基金（週結算給榜首獵人）
-      await addToFund(client, guildId, fine - hunterFineShare);
+      // 沒發給獵人的那半：一般通緝 → 進治安基金；懸賞通緝 → 補償出錢掛榜的報案人
+      const otherHalf = fine - hunterFineShare;
+      if (otherHalf > 0) {
+        if (wanted.funded_by) {
+          await grantCoins(client, {
+            userId: wanted.funded_by,
+            guildId,
+            amount: otherHalf,
+            source: "bounty_victim_compensation",
+            meta: { culpritId: wantedUserId, wantedId: wanted.wanted_id },
+          }).catch(() => {});
+        } else {
+          await addToFund(client, guildId, otherHalf);
+        }
+      }
     }
   }
 
@@ -581,6 +607,9 @@ async function surrender(client, { guildId, userId, username, member }) {
   const s = c.surrender || {};
 
   const active = await activeWanted(client, userId, guildId);
+
+  // 懸賞通緝（別人出錢掛的）不能自首洗白：只能被追捕、或撐到時效（賞金進基金）。
+  if (active?.funded_by) return { ok: false, reason: "bounty_no_surrender" };
 
   // 硬性前提：不管時間鎖 / 惡名優惠怎麼算，至少要被追捕過一次才能自首。
   // escape_count 為通緝期間被追捕失敗的次數，沒人挑戰過（0）就不准洗白。
@@ -715,7 +744,7 @@ async function report(client, { guildId, userId, username }) {
   // 已強制決鬥或已放過的兇手視為已結案，不再列入偵查（同窗口只能處理一次）
   const settled = events.length
     ? await client.theftLogsCollection
-        .find({ guildId, type: { $in: ["revenge", "forgive"] }, actor_id: userId, ts: { $gte: since } })
+        .find({ guildId, type: { $in: ["revenge", "forgive", "bounty"] }, actor_id: userId, ts: { $gte: since } })
         .toArray()
         .catch(() => [])
     : [];
@@ -875,6 +904,100 @@ async function forgiveCulprit(client, { guildId, victimId, culpritId }) {
   await logEvent(client, { guildId, type: "forgive", actor_id: victimId, target_id: culpritId, success: true, amount: 0 });
 
   return { ok: true };
+}
+
+// ── 報案後「懸賞通緝」：報案人出錢把成功偷他的兇手掛上通緝榜 ──
+// 賞金由報案人託管：被抓→獵人領走 + 贖罪金補償報案人；逃掉/到期→賞金進治安基金（不退兇手也不退報案人）。
+// 被懸賞者不能自首（見 surrender 的 funded_by 檢查），只能被追捕或撐到時效。
+async function placeBounty(client, { guildId, victimId, victimName, culpritId, culpritName }) {
+  const c = cfg();
+  if (!c.enabled || !client.wantedListCollection || !client.theftLogsCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+  if (victimId === culpritId) return { ok: false, reason: "self" };
+  const r = c.report || {};
+  const since = new Date(Date.now() - (r.windowHours ?? 24) * 3600 * 1000);
+
+  // 同一窗口對同一兇手只能處理一次（決鬥 / 放過 / 懸賞 三選一）
+  const already = await client.theftLogsCollection
+    .findOne({
+      guildId,
+      type: { $in: ["revenge", "forgive", "bounty"] },
+      actor_id: victimId,
+      target_id: culpritId,
+      ts: { $gte: since },
+    })
+    .catch(() => null);
+  if (already) return { ok: false, reason: "already_done" };
+
+  // 該兇手在窗口內確實成功偷過你才能懸賞
+  const stole = await client.theftLogsCollection
+    .findOne({ guildId, type: "steal", actor_id: culpritId, target_id: victimId, success: true, ts: { $gte: since } })
+    .catch(() => null);
+  if (!stole) return { ok: false, reason: "no_case" };
+
+  // 兇手已在逃 / 通緝中 → 不能再掛（他已經在榜上了）
+  const ongoing = await client.wantedListCollection
+    .findOne({ userId: culpritId, guildId, status: { $in: ["wanted", "fleeing", "resolving"] } })
+    .catch(() => null);
+  if (ongoing) return { ok: false, reason: "already_wanted" };
+
+  // 報案人付得起固定懸賞金
+  const bounty = r.bountyPlaceAmount ?? 2000;
+  const wallet = (await getWallet(client, victimId, guildId)).balance;
+  if (wallet < bounty) return { ok: false, reason: "insufficient", need: bounty, have: wallet };
+
+  const debit = await grantCoins(client, {
+    userId: victimId,
+    guildId,
+    username: victimName,
+    amount: -bounty,
+    source: "bounty_place_escrow",
+    meta: { culpritId },
+  });
+  if (!debit) return { ok: false, reason: "insufficient", need: bounty, have: wallet };
+
+  const b = c.bounty || {};
+  const culpritProf = await theftProfile.getOrCreate(client, culpritId, guildId);
+  const wantedTtlMs = (b.wantedTtlHours ?? 48) * 3600 * 1000;
+  const expiresAt = Date.now() + wantedTtlMs;
+
+  await client.wantedListCollection.updateOne(
+    { userId: culpritId, guildId },
+    {
+      $set: {
+        wanted_id: crypto.randomUUID(),
+        userId: culpritId,
+        guildId,
+        username: culpritName || null,
+        status: "wanted",
+        bounty,
+        funded_by: victimId,
+        reason_target_id: victimId,
+        notoriety_at: culpritProf.notoriety_effective || 0,
+        wanted_at: new Date(),
+        created_at: new Date(),
+        expires_at: new Date(expiresAt),
+        hunt_cooldown_until: 0,
+        escaped_hunters: [],
+        escape_count: 0,
+        updated_at: new Date(),
+      },
+      $unset: { flee: "", caught_by: "", caught_at: "" },
+    },
+    { upsert: true }
+  );
+
+  await logEvent(client, {
+    guildId,
+    type: "bounty",
+    actor_id: victimId,
+    target_id: culpritId,
+    success: true,
+    amount: bounty,
+  });
+
+  return { ok: true, bounty, expiresAt, culpritId };
 }
 
 // ── 失風追逃：章節式逃跑小遊戲 ───────────────────────
@@ -1063,14 +1186,7 @@ async function expireWanted(client, wanted) {
   );
   if (!(locked?.value || locked)) return false;
 
-  await grantCoins(client, {
-    userId: wanted.userId,
-    guildId: wanted.guildId,
-    username: wanted.username,
-    amount: wanted.bounty,
-    source: "bounty_refund",
-    meta: { reason: "wanted_expired", wantedId: wanted.wanted_id },
-  }).catch(() => {});
+  await releaseEscrowedBounty(client, wanted, "wanted_expired");
   await client.wantedListCollection.updateOne(
     { userId: wanted.userId, guildId: wanted.guildId },
     { $set: { status: "expired", updated_at: new Date() } }
@@ -1088,6 +1204,7 @@ module.exports = {
   report,
   revengeDuel,
   forgiveCulprit,
+  placeBounty,
   fleeStep,
   becomeWanted,
   sweepFleeingTimeouts,
