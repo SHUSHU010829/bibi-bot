@@ -6,6 +6,7 @@ const grantCoins = require("../economy/grantCoins");
 const {
   getFoodFarmYieldBonus,
   consumeFarmYieldUse,
+  consumeFarmYieldUses,
 } = require("../fishing/cookService");
 const buildingService = require("../guild_club/buildingService");
 const bus = require("../eventBus");
@@ -165,6 +166,8 @@ async function plantCrop(client, { userId, guildId, username, member, cropKey, p
 }
 
 // 一鍵種植：把同一種作物種在所有空地（含已枯萎），扣不夠時自然停止。
+// 共用資料（profile、建築 buff、金幣、種子）只查一次，於記憶體結算後批次寫入，
+// 避免逐塊重複查庫 / 逐塊 grantCoins 造成 8 塊地要跑數十次 DB 來回。
 async function plantAllCrops(client, { userId, guildId, username, member, cropKey }) {
   if (!farming?.enabled) return { ok: false, reason: "disabled" };
   if (!coll(client)) return { ok: false, reason: "disabled" };
@@ -183,27 +186,111 @@ async function plantAllCrops(client, { userId, guildId, username, member, cropKe
     return { ok: false, reason: "no_empty_plot" };
   }
 
-  const planted = [];
+  // 公會農膳坊成長減免：整批共用同一份 buff。
+  const buildingBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const growthCutPct = buildingBuffs.farm_growth_reduction_pct || 0;
+  const cap = farming.growthReductionCapPct ?? 0.6;
+  const maxReduction = Math.floor((crop.growMs || 0) * cap);
+  const buildingReductionMs = Math.min(
+    maxReduction,
+    Math.floor((crop.growMs || 0) * (growthCutPct / 100)),
+  );
+
+  const now = Date.now();
+  const ready_at = now + (crop.growMs - buildingReductionMs);
+  const expires_at = ready_at + crop.rotMs;
+
+  // 種子與金幣在記憶體結算：逐塊決定扣種子或扣幣，超出預算即停。
+  let seedRemaining = crop.seedKey ? (profile.seed_bag?.[crop.seedKey] || 0) : 0;
+  const coinDoc = await client.userCoinsCollection
+    ?.findOne({ userId, guildId })
+    .catch(() => null);
+  let coinsRemaining = coinDoc?.totalCoins || 0;
+
+  const plantedIndexes = [];
   let totalCoinsPaid = 0;
   let totalSeedsUsed = 0;
   let stopReason = null;
   for (const plotIndex of targets) {
-    const r = await plantCrop(client, { userId, guildId, username, member, cropKey, plotIndex });
-    if (r.ok) {
-      planted.push(r.plot);
-      totalCoinsPaid += r.coinsPaid || 0;
-      if (r.seedConsumed) totalSeedsUsed += 1;
-      continue;
+    let seedConsumed = false;
+    if (crop.seedKey) {
+      if (seedRemaining >= 1) {
+        seedConsumed = true;
+      } else if (!crop.seedOptional) {
+        stopReason = { reason: "missing_seed", seedKey: crop.seedKey };
+        break;
+      }
     }
-    if (r.reason === "insufficient_coins" || r.reason === "missing_seed") {
-      stopReason = r;
+    const coinsNeeded = seedConsumed && crop.seedOptional ? 0 : (crop.plantCost || 0);
+    if (coinsNeeded > coinsRemaining) {
+      stopReason = { reason: "insufficient_coins", need: coinsNeeded, have: coinsRemaining };
       break;
     }
+    if (seedConsumed) { seedRemaining -= 1; totalSeedsUsed += 1; }
+    coinsRemaining -= coinsNeeded;
+    totalCoinsPaid += coinsNeeded;
+    plantedIndexes.push(plotIndex);
+  }
+
+  if (plantedIndexes.length === 0) {
+    return {
+      ok: false,
+      reason: stopReason?.reason || "plant_failed",
+      planted: [],
+      crop,
+      stopReason,
+      totalTargets: targets.length,
+      totalCoinsPaid: 0,
+      totalSeedsUsed: 0,
+    };
+  }
+
+  const planted = plantedIndexes.map((plotIndex) => ({
+    userId, guildId, plotIndex,
+    crop: cropKey,
+    planted_at: now,
+    ready_at,
+    expires_at,
+    fertilizers: [],
+    growth_reduction_ms: buildingReductionMs,
+    yield_bonus_pct: 0,
+    status: "growing",
+    raid: null,
+    updatedAt: new Date(),
+  }));
+
+  await coll(client).bulkWrite(
+    planted.map((doc) => ({
+      updateOne: {
+        filter: { userId, guildId, plotIndex: doc.plotIndex },
+        update: { $set: doc },
+        upsert: true,
+      },
+    })),
+    { ordered: false },
+  );
+
+  const profileInc = { farm_count_total: planted.length };
+  if (totalSeedsUsed > 0) profileInc[`seed_bag.${crop.seedKey}`] = -totalSeedsUsed;
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: profileInc, $set: { updatedAt: new Date() } },
+  );
+
+  if (totalCoinsPaid > 0) {
+    await grantCoins(client, {
+      userId, guildId, username, member,
+      amount: -totalCoinsPaid,
+      source: "farm_plant",
+      meta: { crop: cropKey, plots: plantedIndexes, count: planted.length },
+    });
   }
 
   return {
-    ok: planted.length > 0,
-    reason: planted.length > 0 ? null : (stopReason?.reason || "plant_failed"),
+    ok: true,
+    reason: null,
     planted,
     crop,
     stopReason,
@@ -356,6 +443,141 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
     veggieBagCap: veggieCap,
     veggieBagUsed: veggieUsedNow + harvestCount,
   };
+}
+
+// 一鍵收成：把所有成熟地塊一次結算。共用資料（profile、建築 buff、食物 / 世界事件 buff）
+// 只算一次，逐塊在記憶體累加收益後，批次刪地塊 + 一次寫 profile + 一次 grantCoins，
+// 避免逐塊各自 getOrCreate / getMemberBuildingBuffs / grantCoins 的數十次 DB 來回。
+async function harvestAllCrops(client, { userId, guildId, username, member }) {
+  if (!farming?.enabled) return { ok: false, reason: "disabled", results: [] };
+  if (!coll(client)) return { ok: false, reason: "disabled", results: [] };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const plotCount = getPlotCount(profile);
+  const plots = await getPlots(client, userId, guildId, plotCount);
+  const now = Date.now();
+  const readyPlots = plots
+    .map((p) => resolveLiveStatus(p, now))
+    .filter((p) => p.status === "ready");
+
+  if (readyPlots.length === 0) {
+    return { ok: false, reason: "no_ready_plot", results: [] };
+  }
+
+  const foodBonus = getFoodFarmYieldBonus(profile);
+  const worldEventBuffs = require("../world_event/worldEventBuffs");
+  const worldBuffs = worldEventBuffs.getCachedBuffs();
+  const worldYieldPct = (worldBuffs.farm_yield_pct || 0) / 100;
+  const worldYieldCountBonus = worldBuffs.farm_yield_count_bonus || 0;
+  const buildingBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const harvestCoinPct = (buildingBuffs.harvest_coin_pct || 0) / 100;
+
+  const veggieCap = veggieBagCapacity(profile, farming);
+  let veggieUsed = veggieBagUsed(profile);
+  const enforceBag = isBagLimitEnforced(farming.bagLimitEnforceAt);
+
+  const results = [];
+  const inc = {};
+  const deleteIndexes = [];
+  let totalCoins = 0;
+  let bagFull = null;
+
+  for (const live of readyPlots) {
+    if (enforceBag && veggieUsed >= veggieCap) {
+      bagFull = { reason: "veggie_bag_full", used: veggieUsed, cap: veggieCap, crop: live.crop };
+      break;
+    }
+    const crop = farming.crops?.[live.crop];
+    if (!crop) continue;
+
+    const [lo, hi] = crop.payout || [0, 0];
+    const baseCoins = randInt(lo, hi);
+    const fertBonus = live.yield_bonus_pct || 0;
+    const lowTierExtra = LOW_TIER_CROPS.has(live.crop)
+      ? buildingBuffs.farm_low_tier_extra_count || 0
+      : 0;
+    const yieldBonus = fertBonus + foodBonus + worldYieldPct;
+    const coins = Math.round(baseCoins * (1 + yieldBonus) * (1 + harvestCoinPct));
+    const harvestCount = 1 + worldYieldCountBonus + lowTierExtra;
+
+    inc[`veggie_bag.${live.crop}`] = (inc[`veggie_bag.${live.crop}`] || 0) + harvestCount;
+    inc.farm_harvest_total = (inc.farm_harvest_total || 0) + 1;
+
+    const bonusDropsResult = [];
+    for (const drop of crop.bonusDrops || []) {
+      if (Math.random() < (drop.chance || 0)) {
+        const amount = drop.amount || 1;
+        if (drop.kind === "fragment") {
+          inc.legendary_fragments = (inc.legendary_fragments || 0) + amount;
+          bonusDropsResult.push({ kind: "fragment", amount });
+        } else if (drop.kind === "rare_bait") {
+          inc.rare_bait = (inc.rare_bait || 0) + amount;
+          bonusDropsResult.push({ kind: "rare_bait", amount });
+        }
+      }
+    }
+
+    totalCoins += coins;
+    veggieUsed += harvestCount;
+    deleteIndexes.push(live.plotIndex);
+    results.push({
+      ok: true,
+      crop: live.crop,
+      cropDef: crop,
+      coins,
+      baseCoins,
+      yieldBonus,
+      fertBonus,
+      foodBonus,
+      harvestCount,
+      worldYieldCountBonus,
+      bonusDrops: bonusDropsResult,
+      fertilizers: live.fertilizers || [],
+      veggieBagCap: veggieCap,
+      veggieBagUsed: veggieUsed,
+      plotIndex: live.plotIndex,
+    });
+  }
+
+  if (results.length === 0) {
+    return { ok: false, reason: bagFull ? "veggie_bag_full" : "harvest_failed", bagFull, results: [] };
+  }
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: inc, $set: { updatedAt: new Date() } },
+  );
+  await coll(client).bulkWrite(
+    deleteIndexes.map((plotIndex) => ({ deleteOne: { filter: { userId, guildId, plotIndex } } })),
+    { ordered: false },
+  );
+
+  if (totalCoins > 0) {
+    await grantCoins(client, {
+      userId, guildId, username, member,
+      amount: totalCoins,
+      source: "farm_harvest",
+      meta: { plots: deleteIndexes, count: results.length },
+    });
+  }
+
+  if (foodBonus > 0) {
+    consumeFarmYieldUses(client, userId, guildId, profile, results.length).catch(() => {});
+  }
+
+  const worldEventService = require("../world_event/worldEventService");
+  for (const r of results) {
+    worldEventService.rollTrigger(client, "farm_harvest", { crop: r.crop }).catch(() => {});
+    bus.emit("harvest.done", { userId, guildId, crop: r.crop, coins: r.coins, plotIndex: r.plotIndex });
+    bus.emit("item.gained", { userId, guildId, itemType: "veggie", itemId: r.crop, qty: r.harvestCount, source: "harvest" });
+    for (const drop of r.bonusDrops) {
+      bus.emit("item.gained", { userId, guildId, itemType: drop.kind, itemId: drop.kind, qty: drop.amount, source: "harvest" });
+    }
+  }
+
+  return { ok: true, results, bagFull };
 }
 
 // 施肥：扣材料、套用效果（縮短時間 / 提升收成上限）。
@@ -540,6 +762,7 @@ async function previewFertilizeAll(client, { userId, guildId, fertilizerKey }) {
 
 // 一鍵施肥：對所有 growing 地塊各施 1 份；材料用完即停。
 // excludePlotIndex：用在「對其他成長中地塊也施一份」的快捷按鈕，跳過剛剛已處理的那塊。
+// profile / plots / 材料一次讀，逐塊在記憶體結算單份施用，最後批次寫地塊 + 一次扣材料。
 async function fertilizeAll(client, { userId, guildId, fertilizerKey, excludePlotIndex = null }) {
   if (!farming?.enabled) return { ok: false, reason: "disabled" };
   if (!coll(client)) return { ok: false, reason: "disabled" };
@@ -552,30 +775,94 @@ async function fertilizeAll(client, { userId, guildId, fertilizerKey, excludePlo
   const plots = await getPlots(client, userId, guildId, plotCount);
   const now = Date.now();
 
+  const sourceField = fert.source === "fish_bag" ? "fish_bag" : "backpack";
+  const perPlot = fert.qty || 1;
+  let materialRemaining = (profile[sourceField] || {})[fert.key] || 0;
+  const cap = farming.growthReductionCapPct ?? 0.6;
+  const yieldCap = farming.yieldBonusCapPct ?? 2;
+  const perYield = fert.yieldBonusPct || 0;
+
   const applied = [];
   const skipped = [];
+  const bulkOps = [];
   let stoppedByMaterial = false;
+  let totalConsumed = 0;
   for (const p of plots) {
     const live = resolveLiveStatus(p, now);
     if (!live.crop || live.status !== "growing") continue;
     if (excludePlotIndex != null && live.plotIndex === excludePlotIndex) continue;
-    const r = await fertilize(client, {
-      userId, guildId, plotIndex: live.plotIndex, fertilizerKey, count: 1,
-    });
-    if (r.ok) {
-      applied.push({ plotIndex: live.plotIndex, ...r });
+    if (Array.isArray(fert.onlyCrops) && !fert.onlyCrops.includes(live.crop)) {
+      skipped.push({ plotIndex: live.plotIndex, reason: "fertilizer_not_applicable" });
       continue;
     }
-    if (r.reason === "insufficient_material") {
-      stoppedByMaterial = true;
-      break;
+    if (materialRemaining < perPlot) { stoppedByMaterial = true; break; }
+
+    const crop = farming.crops?.[live.crop];
+    const maxReduction = Math.floor((crop?.growMs || 0) * cap);
+    const perApply = Math.floor((crop?.growMs || 0) * (fert.growReductionPct || 0));
+    const startYield = live.yield_bonus_pct || 0;
+    const baseReduction = live.growth_reduction_ms || 0;
+
+    // 單份施用：先擋收成上限，再擋成長上限（與 fertilize count=1 等價）
+    let appliedReductionMs = 0;
+    let reason = null;
+    if (perYield > 0 && startYield + perYield > yieldCap) {
+      reason = "yield_cap_reached";
+    } else if (perApply > 0) {
+      const room = maxReduction - baseReduction;
+      if (room <= 0) reason = "growth_cap_reached";
+      else appliedReductionMs = Math.min(perApply, room);
     }
-    skipped.push({ plotIndex: live.plotIndex, reason: r.reason });
+    if (reason) { skipped.push({ plotIndex: live.plotIndex, reason }); continue; }
+
+    const newReadyAt = Math.max(now, live.ready_at - appliedReductionMs);
+    const newExpiresAt = newReadyAt + (crop?.rotMs || 0);
+    const newYieldBonus = Math.min(yieldCap, startYield + perYield);
+    bulkOps.push({
+      updateOne: {
+        filter: { userId, guildId, plotIndex: live.plotIndex },
+        update: {
+          $set: {
+            ready_at: newReadyAt,
+            expires_at: newExpiresAt,
+            growth_reduction_ms: baseReduction + appliedReductionMs,
+            yield_bonus_pct: newYieldBonus,
+            updatedAt: new Date(),
+          },
+          $push: { fertilizers: fertilizerKey },
+        },
+      },
+    });
+    materialRemaining -= perPlot;
+    totalConsumed += perPlot;
+    applied.push({
+      plotIndex: live.plotIndex,
+      fert,
+      appliedCount: 1,
+      consumed: perPlot,
+      newReadyAt,
+      newExpiresAt,
+      newYieldBonus,
+      reductionMs: appliedReductionMs,
+    });
   }
 
+  if (applied.length === 0) {
+    return { ok: false, reason: "no_eligible_plot", fert, applied, skipped, stoppedByMaterial };
+  }
+
+  await coll(client).bulkWrite(bulkOps, { ordered: false });
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    {
+      $inc: { [`${sourceField}.${fert.key}`]: -totalConsumed },
+      $set: { updatedAt: new Date() },
+    },
+  );
+
   return {
-    ok: applied.length > 0,
-    reason: applied.length > 0 ? null : "no_eligible_plot",
+    ok: true,
+    reason: null,
     fert,
     applied,
     skipped,
@@ -891,6 +1178,7 @@ module.exports = {
   plantCrop,
   plantAllCrops,
   harvestCrop,
+  harvestAllCrops,
   fertilize,
   fertilizeAll,
   previewFertilizeAll,
