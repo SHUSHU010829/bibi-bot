@@ -62,7 +62,8 @@
       "paroleCooldownMs": 21600000,
       "lockMs": 600000,
       "lockDiscountPerNotorietyMs": 30000,
-      "lockMinMs": 240000
+      "lockMinMs": 240000,
+      "minHuntsBeforeSurrender": 1
     },
     "escapeRun": {
       "enabled": true,

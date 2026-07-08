@@ -580,14 +580,27 @@ async function surrender(client, { guildId, userId, username, member }) {
   if (!c.enabled || !client.wantedListCollection) return { ok: false, reason: "disabled" };
   const s = c.surrender || {};
 
+  const active = await activeWanted(client, userId, guildId);
+
+  // 硬性前提：不管時間鎖 / 惡名優惠怎麼算，至少要被追捕過一次才能自首。
+  // escape_count 為通緝期間被追捕失敗的次數，沒人挑戰過（0）就不准洗白。
+  const minHunts = s.minHuntsBeforeSurrender ?? 0;
+  if (active && minHunts > 0 && (active.escape_count || 0) < minHunts) {
+    return {
+      ok: false,
+      reason: "surrender_needs_hunt",
+      need: minHunts,
+      have: active.escape_count || 0,
+    };
+  }
+
   // 剛上通緝榜的鎖定期：被通緝一段時間內不能立刻自首，留空窗給獵人出手。
   // 惡名越高鎖定期越短（老手優惠，能更早自首洗白），但夾在下限之上保留最短空窗。
   const baseLockMs = s.lockMs ?? 0;
-  if (baseLockMs > 0) {
-    const active = await activeWanted(client, userId, guildId);
-    const wantedAt = active?.wanted_at ? new Date(active.wanted_at).getTime() : null;
+  if (baseLockMs > 0 && active) {
+    const wantedAt = active.wanted_at ? new Date(active.wanted_at).getTime() : null;
     const lockMs = Math.max(
-      baseLockMs - (active?.notoriety_at || 0) * (s.lockDiscountPerNotorietyMs ?? 0),
+      baseLockMs - (active.notoriety_at || 0) * (s.lockDiscountPerNotorietyMs ?? 0),
       s.lockMinMs ?? 0
     );
     if (wantedAt && Date.now() - wantedAt < lockMs) {
