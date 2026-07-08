@@ -772,6 +772,12 @@ async function report(client, { guildId, userId, username }) {
   }
 
   // 線索隨時間變冷：越久前的竊案越難查，接近窗口邊緣時查到率降到 investigateRateStale
+  // 該兇手在窗口內偷你的總額（不受偵查 RNG 影響）→ 懸賞金基準，與 placeBounty 實扣同源
+  const fullByActor = new Map();
+  for (const ev of openEvents) {
+    fullByActor.set(ev.actor_id, (fullByActor.get(ev.actor_id) || 0) + (ev.amount || 0));
+  }
+
   const investigateRate = r.investigateRate ?? 0.7;
   const investigateRateStale = r.investigateRateStale ?? investigateRate;
   const byActor = new Map();
@@ -784,7 +790,9 @@ async function report(client, { guildId, userId, username }) {
     cur.count += 1;
     byActor.set(ev.actor_id, cur);
   }
-  const culprits = [...byActor.values()].sort((a, b) => b.amount - a.amount);
+  const culprits = [...byActor.values()]
+    .map((c) => ({ ...c, totalStolen: fullByActor.get(c.actorId) || c.amount }))
+    .sort((a, b) => b.amount - a.amount);
 
   let refunded = false;
   if (!culprits.length && r.refundOnMiss) {
@@ -906,6 +914,12 @@ async function forgiveCulprit(client, { guildId, victimId, culpritId }) {
   return { ok: true };
 }
 
+// 懸賞金 = 被偷總額 × 比例，夾最低值。/報案 按鈕標示與 placeBounty 實扣共用這一份，保證一致。
+function bountyPlaceAmount(stolen) {
+  const r = cfg().report || {};
+  return Math.max(Math.floor((stolen || 0) * (r.bountyPlacePct ?? 0.5)), r.bountyPlaceMin ?? 0);
+}
+
 // ── 報案後「懸賞通緝」：報案人出錢把成功偷他的兇手掛上通緝榜 ──
 // 賞金由報案人託管：被抓→獵人領走 + 贖罪金補償報案人；逃掉/到期→賞金進治安基金（不退兇手也不退報案人）。
 // 被懸賞者不能自首（見 surrender 的 funded_by 檢查），只能被追捕或撐到時效。
@@ -930,11 +944,13 @@ async function placeBounty(client, { guildId, victimId, victimName, culpritId, c
     .catch(() => null);
   if (already) return { ok: false, reason: "already_done" };
 
-  // 該兇手在窗口內確實成功偷過你才能懸賞
-  const stole = await client.theftLogsCollection
-    .findOne({ guildId, type: "steal", actor_id: culpritId, target_id: victimId, success: true, ts: { $gte: since } })
-    .catch(() => null);
-  if (!stole) return { ok: false, reason: "no_case" };
+  // 該兇手在窗口內成功偷你的總額 → 懸賞金依此比例計（與 /報案 按鈕標示同源）
+  const events = await client.theftLogsCollection
+    .find({ guildId, type: "steal", actor_id: culpritId, target_id: victimId, success: true, ts: { $gte: since } })
+    .toArray()
+    .catch(() => []);
+  const stolen = events.reduce((s, e) => s + (e.amount || 0), 0);
+  if (stolen <= 0) return { ok: false, reason: "no_case" };
 
   // 兇手已在逃 / 通緝中 → 不能再掛（他已經在榜上了）
   const ongoing = await client.wantedListCollection
@@ -942,8 +958,8 @@ async function placeBounty(client, { guildId, victimId, victimName, culpritId, c
     .catch(() => null);
   if (ongoing) return { ok: false, reason: "already_wanted" };
 
-  // 報案人付得起固定懸賞金
-  const bounty = r.bountyPlaceAmount ?? 2000;
+  // 報案人付得起懸賞金（被偷總額 × 比例，夾最低值）
+  const bounty = bountyPlaceAmount(stolen);
   const wallet = (await getWallet(client, victimId, guildId)).balance;
   if (wallet < bounty) return { ok: false, reason: "insufficient", need: bounty, have: wallet };
 
@@ -1205,6 +1221,7 @@ module.exports = {
   revengeDuel,
   forgiveCulprit,
   placeBounty,
+  bountyPlaceAmount,
   fleeStep,
   becomeWanted,
   sweepFleeingTimeouts,

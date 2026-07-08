@@ -115,9 +115,9 @@ module.exports = {
           `# 🔎 偵探回報\n花了 **${result.fee.toLocaleString()}** ${COIN_EMOJI}，查出以下嫌犯：`
         )
       );
-      const bountyAmount = theft?.report?.bountyPlaceAmount ?? 2000;
       for (const c of result.culprits) {
         const recover = Math.floor((c.amount || 0) / 2);
+        const bountyAmount = theftService.bountyPlaceAmount(c.totalStolen ?? c.amount);
         container
           .addSeparatorComponents(new SeparatorBuilder())
           .addTextDisplayComponents(
@@ -145,10 +145,11 @@ module.exports = {
             )
           );
       }
+      const bountyPct = Math.round((theft?.report?.bountyPlacePct ?? 0.5) * 100);
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           "-# 🗡️ 強制決鬥：對方不用同意，攻擊力高者勝；**贏了討回一半、每個兇手只能打一次**。\n" +
-            `-# 🎯 懸賞通緝：付 ${bountyAmount.toLocaleString()} ${COIN_EMOJI} 把他掛上通緝榜給全服追捕，他不能自首；被抓你拿回贖罪金分成，逃掉賞金進治安基金。\n` +
+            `-# 🎯 懸賞通緝：付「被偷金額的 ${bountyPct}%」把他掛上通緝榜給全服追捕（按鈕上的數字就是要付的懸賞金），他不能自首；被抓你拿回贖罪金分成，逃掉賞金進治安基金。\n` +
             "-# 🕊️ 放過他：這筆帳一筆勾銷，之後報案不會再列出他。"
         )
       );
