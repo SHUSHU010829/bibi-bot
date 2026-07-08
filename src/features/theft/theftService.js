@@ -480,12 +480,13 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
       return { ok: true, success: false, escaped: true, escapeCount, clearAt, hunterAtk, wantedAtk, bounty: wanted.bounty };
     }
 
-    // 尚未脫罪：復原通緝、記下這名獵人（不能再追）、進入躲藏冷卻（隨惡名遞增，越大尾躲越久）
+    // 尚未脫罪：復原通緝、記下這名獵人（不能再追）、進入躲藏冷卻。
+    // 惡名越高躲藏 CD 越短（老手優惠，能更快洗清通緝繼續行竊），但夾在下限之上。
     const wantedNotoriety = wanted.notoriety_at || 0;
-    const cooldownMs = Math.min(
-      (h.escapeCooldownBaseMs ?? 1800000) +
-        wantedNotoriety * (h.escapeCooldownPerNotorietyMs ?? 300000),
-      h.escapeCooldownMaxMs ?? 10800000
+    const cooldownMs = Math.max(
+      (h.escapeCooldownBaseMs ?? 240000) -
+        wantedNotoriety * (h.escapeCooldownDiscountPerNotorietyMs ?? 30000),
+      h.escapeCooldownMinMs ?? 60000
     );
     const cooldownUntil = Date.now() + cooldownMs;
     await client.wantedListCollection.updateOne(
