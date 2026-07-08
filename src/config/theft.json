@@ -85,7 +85,7 @@
       "investigateRateStale": 0.2,
       "refundOnMiss": false,
       "abscondChance": 0.02,
-      "bountyPlacePct": 0.5,
+      "bountyPlacePct": 0.75,
       "bountyPlaceMin": 500
     },
     "revenge": {
