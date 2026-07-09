@@ -77,14 +77,13 @@ module.exports = async (client, interaction) => {
         amount,
         note,
       });
-      // 轉帳成功 → 在頻道公開播報（與 /轉帳 一致讓頻道看到動態），非阻塞
-      if (res.ok && interaction.channel?.send) {
-        const disc = res.feeDiscount > 0 ? `（折 ${Math.round(res.feeDiscount * 100)}%）` : "";
-        interaction.channel
-          .send({
-            content: `💸 <@${interaction.user.id}> 轉帳給 <@${res.targetId}> **${fmt(res.amount)}** credits（手續費 ${fmt(res.fee)}${disc}）`,
-            allowedMentions: { users: [res.targetId] },
-          })
+      // 轉帳成功 → 私訊通知收款人（非阻塞；對方關 DM 就靜默略過）
+      if (res.ok && targetMember?.user) {
+        const senderName = interaction.member?.displayName || interaction.user.username;
+        const guildName = interaction.guild?.name || "伺服器";
+        const noteLine = res.note ? `\n📝 備註：${res.note}` : "";
+        targetMember.user
+          .send(`💸 你在「${guildName}」收到 **${senderName}** 轉帳 **${fmt(res.amount)}** credits！${noteLine}`)
           .catch(() => {});
       }
       return interaction.editReply(payload(await renderTab(client, ctx, "overview", transferNote(res))));
