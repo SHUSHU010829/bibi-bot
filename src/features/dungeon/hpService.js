@@ -74,13 +74,14 @@ function hpFullAt(profile, max) {
 
 // 使用 HP 藥水：扣 1 瓶 + 補 HP。
 // tier: 'small' | 'medium' | 'large'
-async function useHpPotion(client, { userId, guildId, tier, level = 0, extras = {} }) {
+async function useHpPotion(client, { userId, guildId, tier, level = 0, extras = {}, hpMaxVal }) {
   if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
   const def = dungeon?.hpPotions?.[tier];
   if (!def) return { ok: false, reason: "unknown_potion" };
 
   const field = `hp_potion_${tier}`;
-  const max = hpMax(level, extras);
+  // 上限以呼叫端算好的口徑為準（含食物 / 公會 / 世界事件 buff）；沒帶就退回 base + 等級。
+  const max = typeof hpMaxVal === "number" ? hpMaxVal : hpMax(level, extras);
   const profile = await getOrCreate(client, userId, guildId);
   const owned = profile[field] || 0;
   if (owned <= 0) return { ok: false, reason: "no_potion" };
