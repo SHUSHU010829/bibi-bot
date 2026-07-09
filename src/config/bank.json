@@ -12,7 +12,6 @@
         "deposit_matured": 5,
         "gold_trade": 1,
         "loan_repaid": 15,
-        "savings_kept": 1,
         "suspicious_flag": -80,
         "loan_overdue_daily": -8,
         "loan_default": -150,
@@ -68,12 +67,6 @@
       "defaultAfterDays": 14,
       "blockNewOnDefault": true,
       "freezeWithdrawOnOverdue": true
-    },
-    "savings": {
-      "enabled": true,
-      "dailyRate": 0.001,
-      "maxBalance": 5000000,
-      "minOp": 100
     }
   }
 }

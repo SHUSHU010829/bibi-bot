@@ -15,7 +15,6 @@ const {
 const { coinSystem, bank } = require("../../config");
 const creditService = require("./creditService");
 const goldService = require("./goldService");
-const savingsService = require("./savingsService");
 const loanService = require("./loanService");
 const depositService = require("./depositService");
 const { COLOR, fmt, creditCard } = require("./bankView");
@@ -24,7 +23,6 @@ const TABS = [
   { key: "overview", label: "總覽", emoji: "🏦" },
   { key: "credit", label: "信用分", emoji: "📊" },
   { key: "deposit", label: "定期存款", emoji: "📜" },
-  { key: "savings", label: "活期存款", emoji: "🏧" },
   { key: "gold", label: "黃金存摺", emoji: "🪙" },
   { key: "loan", label: "貸款", emoji: "💳" },
 ];
@@ -71,11 +69,10 @@ function openBtn(userId, key, label, style, emoji) {
 // ── 各分頁 Container ─────────────────────────────────────────────────────────
 async function buildOverview(client, ctx) {
   const { userId, guildId, displayName } = ctx;
-  const [limits, wallet, savings, goldPrices, goldHolding, activeDeposits, loans] =
+  const [limits, wallet, goldPrices, goldHolding, activeDeposits, loans] =
     await Promise.all([
       creditService.getLimits(client, userId, guildId, ctx.member),
       client.userCoinsCollection.findOne({ userId, guildId }),
-      bank?.savings?.enabled ? savingsService.view(client, userId, guildId) : null,
       bank?.gold?.enabled ? goldService.getPrices() : null,
       bank?.gold?.enabled ? goldService.getHolding(client, userId, guildId) : 0,
       client.coinDepositsCollection
@@ -115,7 +112,7 @@ async function buildOverview(client, ctx) {
     const total = overdueLoans.reduce((s, l) => s + (l.dueAmount - (l.paid || 0)), 0);
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `⚠️ **你有逾期貸款待還 ${fmt(total)}**${frozen ? "，活存提領與黃金定存領回已凍結" : ""}\n-# 逾期每日加罰並扣信用分，請盡快用下方「還清貸款」還款`,
+        `⚠️ **你有逾期貸款待還 ${fmt(total)}**${frozen ? "，黃金定存領回已凍結" : ""}\n-# 逾期每日加罰並扣信用分，請盡快用下方「還清貸款」還款`,
       ),
     );
   }
@@ -123,11 +120,6 @@ async function buildOverview(client, ctx) {
   container.addSeparatorComponents(new SeparatorBuilder());
 
   const lines = [];
-  if (bank?.savings?.enabled) {
-    lines.push(
-      `🏧 活期存款　**${fmt(savings?.balance || 0)}**　-# 年化約 ${((bank.savings.dailyRate || 0) * 365 * 100).toFixed(0)}%`,
-    );
-  }
   if (bank?.gold?.enabled) {
     lines.push(
       `🪙 黃金金庫　**${fmt(goldHolding)}** ${U()}　≈ ${fmt(goldValue)} 幣　-# 賣出價 ${fmt(goldPrices.sell)}/${U()}`,
@@ -263,45 +255,6 @@ async function buildDeposit(client, ctx) {
     ),
   );
   container.addActionRowComponents(actionRow);
-  return container;
-}
-
-async function buildSavings(client, ctx) {
-  const [{ balance }, block] = await Promise.all([
-    savingsService.view(client, ctx.userId, ctx.guildId),
-    loanService.repaymentBlock(client, ctx.userId, ctx.guildId),
-  ]);
-  const dailyRate = bank?.savings?.dailyRate || 0;
-  const container = new ContainerBuilder()
-    .setAccentColor(block ? COLOR.red : COLOR.green)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent("# 🏧 活期存款"))
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `目前餘額　**${fmt(balance)}** credits\n` +
-          `利率　每日 ${(dailyRate * 100).toFixed(2)}%（年化約 ${(dailyRate * 365 * 100).toFixed(0)}%）` +
-          (balance > 0 ? `\n預估每日利息　**+${fmt(balance * dailyRate)}**` : ""),
-      ),
-    );
-  if (block) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `🔒 **提領凍結中**：有逾期貸款未清（待還 ${fmt(block.outstanding)}），請先到貸款頁還款`,
-      ),
-    );
-  } else {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# 隨存隨取，利息每次操作/查詢自動結算"),
-    );
-  }
-  const withdrawBtn = openBtn(ctx.userId, "savwd", "提領", ButtonStyle.Primary, block ? "🔒" : "📤");
-  if (block) withdrawBtn.setDisabled(true);
-  container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(
-      openBtn(ctx.userId, "savdep", "存入", ButtonStyle.Success, "📥"),
-      withdrawBtn,
-    ),
-  );
   return container;
 }
 
@@ -441,7 +394,7 @@ async function buildLoan(client, ctx) {
   if (overdue) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `🔒 有逾期貸款：每日加罰並扣信用分，還清後即解除活存/黃金定存的提領凍結\n-# 準時（或現在）還清可累積信用分`,
+        `🔒 有逾期貸款：每日加罰並扣信用分，還清後即解除黃金定存的領回凍結\n-# 準時（或現在）還清可累積信用分`,
       ),
     );
   }
@@ -490,7 +443,6 @@ const BUILDERS = {
   transfer: buildTransfer,
   credit: buildCredit,
   deposit: buildDeposit,
-  savings: buildSavings,
   gold: buildGold,
   loan: buildLoan,
 };

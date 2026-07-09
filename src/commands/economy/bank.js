@@ -13,7 +13,6 @@ const SUB_TO_TAB = {
   總覽: "overview",
   信用: "credit",
   定存: "deposit",
-  活存: "savings",
   黃金: "gold",
   貸款: "loan",
 };
@@ -22,12 +21,11 @@ module.exports = {
   ephemeral: true,
   data: new SlashCommandBuilder()
     .setName("銀行")
-    .setDescription("逼逼銀行：信用分、定存、活存、黃金存摺、貸款一站搞定 🏦")
+    .setDescription("逼逼銀行：信用分、定存、黃金存摺、貸款一站搞定 🏦")
     .setContexts(InteractionContextType.Guild)
-    .addSubcommand((s) => s.setName("總覽").setDescription("錢包、信用分、定存、活存、黃金、貸款一次看"))
+    .addSubcommand((s) => s.setName("總覽").setDescription("錢包、信用分、定存、黃金、貸款一次看"))
     .addSubcommand((s) => s.setName("信用").setDescription("信用評等與各項銀行權益"))
     .addSubcommand((s) => s.setName("定存").setDescription("定期存款（開戶 / 提款 / 領回）"))
-    .addSubcommand((s) => s.setName("活存").setDescription("活期存款（存入 / 提領）"))
     .addSubcommand((s) => s.setName("黃金").setDescription("黃金存摺（買進 / 賣出 / 精煉 / 定存）"))
     .addSubcommand((s) => s.setName("貸款").setDescription("貸款（借款 / 還款）"))
     .toJSON(),

@@ -8,7 +8,6 @@ const {
 
 const { bank, coinSystem } = require("../../config");
 const goldService = require("./goldService");
-const savingsService = require("./savingsService");
 const loanService = require("./loanService");
 const depositService = require("./depositService");
 const { fmt } = require("./bankView");
@@ -95,39 +94,6 @@ const ACTIONS = {
       }
       const u = Math.floor(new Date(res.maturesAt).getTime() / 1000);
       return { tab: "gold", note: `✅ 黃金定存 \`${res.depositId}\`：${fmt(res.units)}${U()}・${res.days} 天・到期 **${fmt(res.units + res.interestUnits)}**${U()}（<t:${u}:R>）` };
-    },
-  },
-  savdep: {
-    title: "活期存入",
-    tab: "savings",
-    fields: [{ id: "amount", label: "存入金額", placeholder: "例如 1000" }],
-    submit: async (client, ctx, v) => {
-      const amount = toInt(v.amount);
-      if (!(amount >= 1)) return { tab: "savings", note: "⚠️ 請輸入有效金額" };
-      const res = await savingsService.deposit(client, { ...ctx, amount });
-      if (!res.ok) {
-        if (res.reason === "min") return { tab: "savings", note: `⚠️ 活期單筆最少 ${fmt(res.minOp)}` };
-        if (res.reason === "cap") return { tab: "savings", note: `⚠️ 超過活期上限 ${fmt(res.maxBalance)}（目前 ${fmt(res.curBalance)}）` };
-        if (res.reason === "wallet") return { tab: "savings", note: `⚠️ 錢包只有 ${fmt(res.wallet)}` };
-        return { tab: "savings", note: "🔧 存入失敗，請稍後再試" };
-      }
-      return { tab: "savings", note: `✅ 已存入活期 **${fmt(res.amount)}**，餘額 ${fmt(res.balance)}` };
-    },
-  },
-  savwd: {
-    title: "活期提領",
-    tab: "savings",
-    fields: [{ id: "amount", label: "提領金額", placeholder: "例如 1000" }],
-    submit: async (client, ctx, v) => {
-      const amount = toInt(v.amount);
-      if (!(amount >= 1)) return { tab: "savings", note: "⚠️ 請輸入有效金額" };
-      const res = await savingsService.withdraw(client, { ...ctx, amount });
-      if (!res.ok) {
-        if (res.reason === "loan_frozen") return { tab: "savings", note: `🔒 有逾期貸款未清（待還 ${fmt(res.block.outstanding)}），提領暫停。請先到貸款頁還款` };
-        if (res.reason === "balance") return { tab: "savings", note: `⚠️ 活期只有 ${fmt(res.balance)}` };
-        return { tab: "savings", note: "🔧 提領失敗，請稍後再試" };
-      }
-      return { tab: "savings", note: `✅ 已從活期領回 **${fmt(res.amount)}**，餘額 ${fmt(res.balance)}` };
     },
   },
   depopen: {
