@@ -156,7 +156,7 @@
 
 - **壞事件**(`badEventChance`,由 `events.bad` 加權抽):`abscond` 捲款跑路 / `bribed` 被兇手收買 → 收費、查無;`crooked` 壞人偵探 → 收費外再從你錢包黑吃黑(`crookedStealPct`,上限 `crookedStealMax`)。
 - **好事件**(`goodEventChance`):`informant` 線人爆料 → 保證鎖定主嫌。
-- **專屬事件**(`tier.specialEvents`,獨立擲骰):王牌偵探仍有極小機率 `abscond` 捲款跑路,或 5% `arale` 變身阿拉雷抄棒子捅你、固定捲走 `loss`(5000)。
+- **專屬事件**(`tier.specialEvents`,獨立擲骰):王牌偵探仍有極小機率 `abscond` 捲款跑路,或 5% `arale` 變身阿拉蕾抄棒子捅你、固定捲走 `loss`(5000)。
 
 **壞事件後的選擇**:任一壞事件的 ephemeral 回覆都附兩顆按鈕(`theft_catch_` / `theft_giveup_`),交由 `catchDetective()` 結算——
 

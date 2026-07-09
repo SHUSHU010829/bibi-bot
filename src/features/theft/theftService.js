@@ -809,7 +809,7 @@ async function report(client, { guildId, userId, username, tierKey }) {
   });
 
   // 專屬特殊事件（各偵探獨立擲骰、優先於一般壞事件）：
-  //   王牌偵探極小機率「變身阿拉雷」抄棒子捅你，除委託費外再捲走固定一筆。
+  //   王牌偵探極小機率「變身阿拉蕾」抄棒子捅你，除委託費外再捲走固定一筆。
   for (const sp of tier.specialEvents || []) {
     if (Math.random() >= (sp.chance ?? 0)) continue;
     if (sp.key === "arale") {

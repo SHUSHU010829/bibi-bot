@@ -243,14 +243,30 @@ function bountyAnnounceContainer(victimId, culpritId, bounty, expiresAt) {
 // ── 報案壞事件（偵探出包）：私人 Container + 公開廣播文案 ──
 const n = (v) => (v || 0).toLocaleString();
 
-// 每種壞事件的呈現資料：私人標題/內文 + 公開廣播一句話。
+// 每種壞事件的呈現資料：私人標題/內文、公開廣播、以及「二選一」的專屬選項與結果文案。
+// action = 主動反擊（走 catchDetective 的 50% 賭一把，各事件換皮）；giveup = 認賠退場。
 const REPORT_BAD_EVENTS = {
   abscond: {
     accent: 0xe67e22,
     heading: "🕵️‍♂️💨 偵探捲款跑路了！",
-    detail: (tl, fee) =>
-      `你付了 **${n(fee)}** ${COIN_EMOJI} 委託 ${tl}，他拿了錢就人間蒸發…`,
+    detail: (tl, fee) => `你付了 **${n(fee)}** ${COIN_EMOJI} 委託 ${tl}，他拿了錢就人間蒸發…`,
     broadcast: (uid, tl) => `🕵️‍♂️💨 <@${uid}> 委託的 ${tl} 拿了委託金就人間蒸發、捲款跑路了！`,
+    prompt: "要摸摸鼻子認了，還是追上去逮他？",
+    action: {
+      emoji: "🏃",
+      verb: "追上去逮他",
+      winHead: "🏃 逮個正著！",
+      win: (rec) => `你死命追上落跑的偵探，揪著他討回了 **${n(rec)}** ${COIN_EMOJI}！`,
+      loseHead: "😭 追丟還挨揍",
+      lose: (pen) => `你沒追上他，半路反被剪徑，又被搶走 **${n(pen)}** ${COIN_EMOJI}…`,
+      loseZero: "你沒追上他，好在錢包空空，他也懶得再踹你一腳。",
+      bcWin: (uid, rec) => `🏃 <@${uid}> 追上落跑的偵探，成功討回 **${n(rec)}** ${COIN_EMOJI}！`,
+      bcLose: (uid, pen) =>
+        pen > 0
+          ? `😭 <@${uid}> 追偵探反被剪徑，又被搶走 **${n(pen)}** ${COIN_EMOJI}！`
+          : `😭 <@${uid}> 追偵探撲了個空，兩手空空回家。`,
+    },
+    giveup: { emoji: "🤷", label: "自認倒楣", head: "🤷 算了，自認倒楣", body: "你摸摸鼻子，把這筆委託金當作繳學費。" },
   },
   bribed: {
     accent: 0xe67e22,
@@ -258,6 +274,22 @@ const REPORT_BAD_EVENTS = {
     detail: (tl, fee) =>
       `${tl} 收了你 **${n(fee)}** ${COIN_EMOJI}，卻反過來被兇手買通，回報「查無此人」…`,
     broadcast: (uid, tl) => `🤝💰 <@${uid}> 委託的 ${tl} 被兇手收買，兩手一攤說查無此人！`,
+    prompt: "要嚥下這口氣，還是當場拆穿這個雙面偵探？",
+    action: {
+      emoji: "🔨",
+      verb: "拆穿雙面偵探",
+      winHead: "🔨 當場拆穿！",
+      win: (rec) => `你抓到他收買的把柄，逼這個雙面偵探把 **${n(rec)}** ${COIN_EMOJI} 全吐了出來！`,
+      loseHead: "😤 反被倒打一耙",
+      lose: (pen) => `他惱羞成怒、反咬你誣賴，你摸摸鼻子又賠了 **${n(pen)}** ${COIN_EMOJI}…`,
+      loseZero: "他惱羞成怒，好在你錢包空空，訛不到什麼。",
+      bcWin: (uid, rec) => `🔨 <@${uid}> 當場拆穿被收買的偵探，逼他吐回 **${n(rec)}** ${COIN_EMOJI}！`,
+      bcLose: (uid, pen) =>
+        pen > 0
+          ? `😤 <@${uid}> 想拆穿偵探，反被倒打一耙又賠 **${n(pen)}** ${COIN_EMOJI}！`
+          : `😤 <@${uid}> 想拆穿偵探，鬧了個沒趣。`,
+    },
+    giveup: { emoji: "😮‍💨", label: "算了認栽", head: "😮‍💨 算了認栽", body: "你嚥下這口氣，錢就當花錢消災。" },
   },
   crooked: {
     accent: 0xe74c3c,
@@ -268,24 +300,60 @@ const REPORT_BAD_EVENTS = {
         ? `，從你錢包又捲走 **${n(extra)}** ${COIN_EMOJI}！`
         : "，還好你錢包沒剩多少沒得偷。"),
     broadcast: (uid, tl) => `🕵️‍♂️🔪 <@${uid}> 遇到壞人偵探，委託費之外還被黑吃黑捲走一筆！`,
+    prompt: "要自認倒楣，還是當場跟他翻臉討回來？",
+    action: {
+      emoji: "🗡️",
+      verb: "當場翻臉討錢",
+      winHead: "🗡️ 討回公道！",
+      win: (rec) => `你當場翻臉，逼這個爛偵探把 **${n(rec)}** ${COIN_EMOJI} 全數吐回來！`,
+      loseHead: "🩸 反被打劫",
+      lose: (pen) => `打不過他，反被狠狠打劫，又被搶走 **${n(pen)}** ${COIN_EMOJI}…`,
+      loseZero: "打不過他，好在錢包空空，他也搜刮不到。",
+      bcWin: (uid, rec) => `🗡️ <@${uid}> 跟壞人偵探翻臉，硬是討回 **${n(rec)}** ${COIN_EMOJI}！`,
+      bcLose: (uid, pen) =>
+        pen > 0
+          ? `🩸 <@${uid}> 跟壞人偵探翻臉，反被打劫又搶走 **${n(pen)}** ${COIN_EMOJI}！`
+          : `🩸 <@${uid}> 跟壞人偵探翻臉，討了個沒趣。`,
+    },
+    giveup: { emoji: "🤷", label: "自認倒楣", head: "🤷 算了，自認倒楣", body: "惹不起躲得起，你摸摸鼻子走人。" },
   },
   arale: {
     accent: 0xe74c3c,
-    heading: "🤖⚡ 王牌偵探變身阿拉雷了！",
+    heading: "🤖⚡ 王牌偵探變身阿拉蕾了！",
     detail: (tl, fee, extra) =>
-      `你花 **${n(fee)}** ${COIN_EMOJI} 請的 ${tl} 突然大喊「んちゃ——！」變身成阿拉雷，抄起棒子朝你捅——捅——` +
+      `你花 **${n(fee)}** ${COIN_EMOJI} 請的 ${tl} 突然大喊「んちゃ——！」變身成阿拉蕾，抄起棒子朝你捅——捅——` +
       (extra > 0
         ? `，蹦蹦跳跳捲走 **${n(extra)}** ${COIN_EMOJI} 就跑掉了！`
         : "，還好你錢包空空沒得捅。"),
-    broadcast: (uid, tl) => `🤖⚡ <@${uid}> 花大錢請的王牌偵探竟變身阿拉雷，抄棒子把他捅跑了！`,
+    broadcast: (uid, tl) => `🤖⚡ <@${uid}> 花大錢請的王牌偵探竟變身阿拉蕾，抄棒子把他捅跑了！`,
+    prompt: "要拔腿就跑，還是想辦法哄住這隻暴走的機器娃娃？",
+    action: {
+      emoji: "🍡",
+      verb: "拿零食哄她",
+      winHead: "🍡 哄住她了！",
+      win: (rec) => `你塞了零食給阿拉蕾，她開心地「んちゃ！」把 **${n(rec)}** ${COIN_EMOJI} 還你了！`,
+      loseHead: "🤖 她玩瘋了",
+      lose: (pen) => `阿拉蕾玩瘋了，抄起棒子又把你捅了一頓，再捲走 **${n(pen)}** ${COIN_EMOJI}…`,
+      loseZero: "阿拉蕾玩瘋了，好在你錢包空空沒得捅。",
+      bcWin: (uid, rec) => `🍡 <@${uid}> 拿零食哄住暴走的阿拉蕾，把 **${n(rec)}** ${COIN_EMOJI} 討了回來！`,
+      bcLose: (uid, pen) =>
+        pen > 0
+          ? `🤖 <@${uid}> 想哄阿拉蕾，反被她玩瘋捅走 **${n(pen)}** ${COIN_EMOJI}！`
+          : `🤖 <@${uid}> 想哄阿拉蕾，被她蹦蹦跳跳耍著玩。`,
+    },
+    giveup: { emoji: "😱", label: "拔腿就跑", head: "😱 拔腿就跑", body: "惹不起這隻機器娃娃，你頭也不回地開溜。" },
   },
 };
 
-// 報案壞事件（私人 ephemeral）：說明損失 + 兩顆選擇按鈕（試圖逮捕 / 自認倒楣）。
+function catchWinPct() {
+  return Math.round((theft?.report?.catch?.winRate ?? 0.5) * 100);
+}
+
+// 報案壞事件（私人 ephemeral）：說明損失 + 該事件專屬的兩顆選項按鈕。
 function reportBadEventContainer(event, { tierLabel, fee, extra = 0, ownerId }) {
   const meta = REPORT_BAD_EVENTS[event] || REPORT_BAD_EVENTS.abscond;
   const recoverable = (fee || 0) + (extra || 0);
-  const winPct = Math.round((theft?.report?.catch?.winRate ?? 0.5) * 100);
+  const a = meta.action;
   return new ContainerBuilder()
     .setAccentColor(meta.accent)
     .addTextDisplayComponents(
@@ -294,26 +362,26 @@ function reportBadEventContainer(event, { tierLabel, fee, extra = 0, ownerId }) 
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `這一趟你損失了 **${n(recoverable)}** ${COIN_EMOJI}。要自認倒楣，還是追上去逮捕他？`
+        `這一趟你損失了 **${n(recoverable)}** ${COIN_EMOJI}。${meta.prompt}`
       )
     )
     .addActionRowComponents(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`theft_catch_${ownerId}_${event}_${recoverable}`)
-          .setLabel(`試圖逮捕他（${winPct}% 討回 ${n(recoverable)}）`)
-          .setEmoji("🏃")
+          .setLabel(`${a.verb}（${catchWinPct()}% 討回 ${n(recoverable)}）`)
+          .setEmoji(a.emoji)
           .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
-          .setCustomId(`theft_giveup_${ownerId}`)
-          .setLabel("自認倒楣")
-          .setEmoji("🤷")
+          .setCustomId(`theft_giveup_${ownerId}_${event}`)
+          .setLabel(meta.giveup.label)
+          .setEmoji(meta.giveup.emoji)
           .setStyle(ButtonStyle.Secondary)
       )
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 🏃 逮到 → 討回全部 **${n(recoverable)}** ${COIN_EMOJI}；失敗 → 被他反咬一口、再搶走一筆。`
+        `-# ${a.emoji} 成功 → 討回全部 **${n(recoverable)}** ${COIN_EMOJI}；失敗 → 被他反咬一口、再搶走一筆。`
       )
     );
 }
@@ -324,49 +392,44 @@ function reportBadEventBroadcast(event, victimId, tierLabel) {
   return infoContainer(meta.accent, meta.broadcast(victimId, tierLabel));
 }
 
-// 逮捕偵探結果（私人）：討回 / 追丟挨揍。
+// 反擊結果（私人）：討回 / 反被坑，文案依事件換皮。
 function reportCatchContainer(event, result) {
+  const a = (REPORT_BAD_EVENTS[event] || REPORT_BAD_EVENTS.abscond).action;
   if (result.win) {
-    const araleWin =
-      event === "arale"
-        ? "你死命追上暴走的阿拉雷，"
-        : "你追上了那個落跑的偵探，揪著他";
     return new ContainerBuilder()
       .setAccentColor(0xf1c40f)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `# 🏃 逮個正著！\n${araleWin}討回了 **${n(result.recovered)}** ${COIN_EMOJI}！`
-        )
+        new TextDisplayBuilder().setContent(`# ${a.winHead}\n${a.win(result.recovered)}`)
       )
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("-# 這次沒讓他得逞，委託金全數奉還。")
+        new TextDisplayBuilder().setContent("-# 這次沒讓他得逞，損失全數討回。")
       );
   }
   return new ContainerBuilder()
     .setAccentColor(0x95a5a6)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        result.penalty > 0
-          ? `# 😭 追丟還挨揍\n你沒追上他，反被他反咬一口，又被搶走 **${n(result.penalty)}** ${COIN_EMOJI}…`
-          : `# 😭 撲了個空\n你沒追上他，好在錢包空空，他也懶得再踹你一腳。`
+        result.penalty > 0 ? `# ${a.loseHead}\n${a.lose(result.penalty)}` : `# 😭 撲了個空\n${a.loseZero}`
       )
     )
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# 早知道就自認倒楣了…下次找靠譜點的偵探吧。")
+      new TextDisplayBuilder().setContent("-# 早知道就別逞強…下次找靠譜點的偵探吧。")
     );
 }
 
-// 逮捕偵探結果（公開廣播）。
-function reportCatchBroadcast(victimId, result) {
-  if (result.win) {
-    return infoContainer(0xf1c40f, `🏃 <@${victimId}> 追上落跑的偵探，成功討回 **${n(result.recovered)}** ${COIN_EMOJI}！`);
-  }
+// 反擊結果（公開廣播），文案依事件換皮。
+function reportCatchBroadcast(event, victimId, result) {
+  const a = (REPORT_BAD_EVENTS[event] || REPORT_BAD_EVENTS.abscond).action;
   return infoContainer(
-    0x95a5a6,
-    result.penalty > 0
-      ? `😭 <@${victimId}> 追偵探反被扁，又被搶走 **${n(result.penalty)}** ${COIN_EMOJI}！`
-      : `😭 <@${victimId}> 追偵探撲了個空，兩手空空回家。`
+    result.win ? 0xf1c40f : 0x95a5a6,
+    result.win ? a.bcWin(victimId, result.recovered) : a.bcLose(victimId, result.penalty)
   );
+}
+
+// 認賠退場（私人），文案依事件換皮。
+function reportGiveupContainer(event) {
+  const g = (REPORT_BAD_EVENTS[event] || REPORT_BAD_EVENTS.abscond).giveup;
+  return infoContainer(0x95a5a6, `# ${g.head}\n${g.body}`);
 }
 
 module.exports = {
@@ -378,6 +441,7 @@ module.exports = {
   reportBadEventBroadcast,
   reportCatchContainer,
   reportCatchBroadcast,
+  reportGiveupContainer,
   fleeChaseContainer,
   fleeOutcomeContainer,
   wantedAnnounceContainer,
