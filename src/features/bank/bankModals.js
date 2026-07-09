@@ -231,6 +231,32 @@ function buildModal(userId, key) {
   return modal;
 }
 
+// 轉帳彈窗（收款人已由 UserSelect 選定，id 編進 customId）
+function buildTransferModal(userId, targetId) {
+  const modal = new ModalBuilder()
+    .setCustomId(`bankmodal_${userId}_xfer_${targetId}`)
+    .setTitle("轉帳給玩家");
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("amount")
+        .setLabel("轉帳金額")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setPlaceholder("例如 1000"),
+    ),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("note")
+        .setLabel("備註（選填）")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(80),
+    ),
+  );
+  return modal;
+}
+
 async function submitModal(client, ctx, key, interaction) {
   const def = ACTIONS[key];
   if (!def) return { tab: "overview", note: "⚠️ 未知的操作" };
@@ -241,4 +267,4 @@ async function submitModal(client, ctx, key, interaction) {
   return def.submit(client, ctx, values);
 }
 
-module.exports = { ACTIONS, buildModal, submitModal };
+module.exports = { ACTIONS, buildModal, buildTransferModal, submitModal, toInt };

@@ -8,6 +8,7 @@ const {
   ButtonStyle,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
+  UserSelectMenuBuilder,
   MessageFlags,
 } = require("discord.js");
 
@@ -121,11 +122,35 @@ async function buildOverview(client, ctx) {
   container
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "-# 下方選單切換功能　·　行動用 /銀行 定存・活存・黃金・貸款",
+      new TextDisplayBuilder().setContent("-# 下方選單切換功能　·　各頁用按鈕操作"),
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`bank_${userId}_xferstart`)
+          .setLabel("轉帳給玩家")
+          .setEmoji("💸")
+          .setStyle(ButtonStyle.Primary),
       ),
     );
   return container;
+}
+
+async function buildTransfer(client, ctx) {
+  return new ContainerBuilder()
+    .setAccentColor(COLOR.blue)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("# 💸 轉帳給玩家\n-# 選擇收款人後會跳出視窗輸入金額與備註"),
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId(`bank_${ctx.userId}_xferuser`)
+          .setPlaceholder("選擇收款人…")
+          .setMinValues(1)
+          .setMaxValues(1),
+      ),
+    );
 }
 
 async function buildCredit(client, ctx) {
@@ -374,6 +399,7 @@ async function buildLoan(client, ctx) {
 
 const BUILDERS = {
   overview: buildOverview,
+  transfer: buildTransfer,
   credit: buildCredit,
   deposit: buildDeposit,
   savings: buildSavings,

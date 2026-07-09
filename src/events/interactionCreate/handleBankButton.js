@@ -6,15 +6,16 @@ const goldService = require("../../features/bank/goldService");
 const loanService = require("../../features/bank/loanService");
 const depositService = require("../../features/bank/depositService");
 const { ctxOf, renderTab, payload } = require("../../features/bank/bankHandlers");
-const { buildModal } = require("../../features/bank/bankModals");
+const { buildModal, buildTransferModal } = require("../../features/bank/bankModals");
 const { fmt } = require("../../features/bank/bankView");
 const { deferUpdateSafe } = require("../../utils/safeAck");
 
-// /銀行 Hub 的下拉導覽與快捷按鈕：全部原地更新同一則 ephemeral 訊息。
+// /銀行 Hub 的下拉導覽、使用者選擇與快捷按鈕：全部原地更新同一則 ephemeral 訊息。
 module.exports = async (client, interaction) => {
   const isButton = interaction.isButton?.();
   const isSelect = interaction.isStringSelectMenu?.();
-  if (!isButton && !isSelect) return;
+  const isUserSelect = interaction.isUserSelectMenu?.();
+  if (!isButton && !isSelect && !isUserSelect) return;
   const cid = interaction.customId;
   if (!cid?.startsWith("bank_")) return;
 
@@ -31,12 +32,20 @@ module.exports = async (client, interaction) => {
     });
   }
 
-  // 開啟 Modal 的按鈕：showModal 必須是第一個回應，不能先 deferUpdate。
+  // 開啟 Modal 的回應：showModal 必須是第一個回應，不能先 deferUpdate。
   if (isButton && action.startsWith("open_")) {
     const modal = buildModal(ownerId, action.slice(5));
     if (!modal) return;
     return interaction.showModal(modal).catch((e) => {
       console.log(`[ERROR] handleBankButton showModal: ${e.message}`.red);
+    });
+  }
+  // 選定收款人 → 跳出轉帳金額 Modal
+  if (isUserSelect && action === "xferuser") {
+    const targetId = interaction.values?.[0];
+    if (!targetId) return;
+    return interaction.showModal(buildTransferModal(ownerId, targetId)).catch((e) => {
+      console.log(`[ERROR] handleBankButton transfer modal: ${e.message}`.red);
     });
   }
 
@@ -54,6 +63,9 @@ module.exports = async (client, interaction) => {
       const tab = interaction.values?.[0] || "overview";
       return show(tab);
     }
+
+    // 開啟轉帳頁（選收款人）
+    if (action === "xferstart") return show("transfer");
 
     // 賣出全部黃金
     if (action === "goldsellall") {
