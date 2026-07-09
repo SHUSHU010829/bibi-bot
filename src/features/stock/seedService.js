@@ -29,6 +29,7 @@ async function backfillPoolStocks(client) {
             floor: p.floor,
             marketSentiment: sentiment,
             enabled: true,
+            listingStatus: "normal",
             listedAt: new Date(),
           },
         },
