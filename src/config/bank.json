@@ -11,7 +11,7 @@
         "transfer_complete": 2,
         "deposit_matured": 5,
         "gold_trade": 1,
-        "loan_repaid": 15,
+        "loan_repaid": 8,
         "suspicious_flag": -80,
         "loan_overdue_daily": -8,
         "loan_default": -150,
