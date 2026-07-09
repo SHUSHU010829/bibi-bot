@@ -149,50 +149,145 @@ async function scanAllPairs(client, { guildId, hours, threshold } = {}) {
   return out;
 }
 
-// transfer.js 完成轉帳後呼叫；非阻塞、錯誤吞掉只寫 console
+// ── 圈狀轉帳偵測（A→B→C→A，資金繞一圈回到起點）─────────────────────────────
+const getRingMinEdge = () => coinSystem?.transfer?.ringMinEdge ?? getThreshold();
+const getRingMaxLen = () => coinSystem?.transfer?.ringMaxLen ?? 4;
+
+// 建有向邊：from → Map(to → 期間內累積轉出金額)。自轉、0 額不計。
+async function buildDirectedEdges(client, { guildId, hours } = {}) {
+  if (!client?.coinTransactionsCollection) return new Map();
+  const since = lookbackDate(hours ?? getLookbackHours());
+  const filter = { source: TRANSFER_OUT, createdAt: { $gte: since } };
+  if (guildId) filter.guildId = guildId;
+  const docs = await client.coinTransactionsCollection.find(filter).toArray();
+  const edges = new Map();
+  for (const d of docs) {
+    const from = d.userId;
+    const to = d?.meta?.counterparty;
+    if (!from || !to || from === to) continue;
+    const amt = transferAmountOf(d);
+    if (amt <= 0) continue;
+    if (!edges.has(from)) edges.set(from, new Map());
+    const m = edges.get(from);
+    m.set(to, (m.get(to) || 0) + amt);
+  }
+  return edges;
+}
+
+// 從 start 找一條長度 3~maxLen、每段 ≥ minEdge、且回到 start 的環（DFS，找到即回傳）。
+function detectRingFrom(edges, start, { maxLen = 4, minEdge = 0 } = {}) {
+  const path = [start];
+  const visited = new Set([start]);
+  let found = null;
+  function dfs(node, minAmt) {
+    if (found || path.length > maxLen) return;
+    const outs = edges.get(node);
+    if (!outs) return;
+    for (const [to, amt] of outs) {
+      if (amt < minEdge) continue;
+      if (to === start) {
+        if (path.length >= 3) found = { cycle: [...path], minEdge: Math.min(minAmt, amt) };
+        continue;
+      }
+      if (visited.has(to)) continue;
+      visited.add(to);
+      path.push(to);
+      dfs(to, Math.min(minAmt, amt));
+      path.pop();
+      visited.delete(to);
+      if (found) return;
+    }
+  }
+  dfs(start, Infinity);
+  return found;
+}
+
+// 掃全服環（每日報表用），依成員集合去重、環內最小單邊由大到小排序。
+async function scanRings(client, { guildId, hours, minEdge, maxLen } = {}) {
+  const edges = await buildDirectedEdges(client, { guildId, hours });
+  const min = minEdge ?? getRingMinEdge();
+  const len = maxLen ?? getRingMaxLen();
+  const seen = new Set();
+  const rings = [];
+  for (const start of edges.keys()) {
+    const r = detectRingFrom(edges, start, { maxLen: len, minEdge: min });
+    if (!r) continue;
+    const key = [...r.cycle].sort().join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rings.push(r);
+  }
+  rings.sort((a, b) => b.minEdge - a.minEdge);
+  return rings;
+}
+
+async function getAlertChannel(client) {
+  const channelId =
+    coinSystem?.adminGrant?.auditLogChannelId || coinSystem?.dailyEconomyReport?.channelId;
+  if (!channelId) return null;
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  return channel?.isTextBased?.() ? channel : null;
+}
+
+async function penalizeUsers(client, guildId, userIds) {
+  if (!bank?.credit?.enabled) return;
+  for (const uid of userIds) {
+    await creditService.flagSuspicious(client, uid, guildId).catch(() => {});
+  }
+}
+
+// transfer.js 完成轉帳後呼叫；非阻塞、錯誤吞掉只寫 console。同時查雙向對敲與圈狀轉帳。
 function fireImmediateCheck(client, { guildId, senderId, recipientId }) {
   Promise.resolve()
     .then(async () => {
       const cfg = coinSystem?.transfer;
       if (!cfg) return;
-      const pair = await detectPair(client, {
-        guildId,
-        userA: senderId,
-        userB: recipientId,
+
+      const pair = await detectPair(client, { guildId, userA: senderId, userB: recipientId });
+      const edges = await buildDirectedEdges(client, { guildId });
+      const ring = detectRingFrom(edges, senderId, {
+        maxLen: getRingMaxLen(),
+        minEdge: getRingMinEdge(),
       });
-      if (!pair) return;
+      if (!pair && !ring) return;
 
-      // 判定洗幣 → 扣雙方信用分（每人每天最多一次）
-      if (bank?.credit?.enabled) {
-        await creditService.flagSuspicious(client, senderId, guildId).catch(() => {});
-        await creditService.flagSuspicious(client, recipientId, guildId).catch(() => {});
-      }
-
-      const channelId =
-        coinSystem?.adminGrant?.auditLogChannelId ||
-        coinSystem?.dailyEconomyReport?.channelId;
-      if (!channelId) return;
-
-      const channel = await client.channels.fetch(channelId).catch(() => null);
-      if (!channel?.isTextBased?.()) return;
-
-      // 哪邊是「剛剛」（lastBtoA 應該就是當前 transfer，因為 detectPair 把 userA 設為 sender）
-      // 這裡沿用 senderId 作為 userA：
-      // - aToB = sender → recipient 24h 內加總（含本次）
-      // - bToA = recipient → sender 24h 內加總
+      const channel = await getAlertChannel(client);
       const minutesAgo = (date) =>
         Math.max(0, Math.round((Date.now() - new Date(date).getTime()) / 60000));
 
-      const lines = [
-        "⚠️ 可疑雙向轉帳",
-        `<@${senderId}> → <@${recipientId}>：${pair.aToB.toLocaleString()} credits（最近 ${minutesAgo(pair.lastAtoBAt)} 分鐘前）`,
-        `<@${recipientId}> → <@${senderId}>：${pair.bToA.toLocaleString()} credits（最近 ${minutesAgo(pair.lastBtoAAt)} 分鐘前）`,
-        `${pair.hours}h 雙向總額：**${pair.total.toLocaleString()}** credits（閾值 ${pair.threshold.toLocaleString()}）`,
-      ];
-      await channel.send({
-        content: lines.join("\n"),
-        allowedMentions: { parse: [] },
-      });
+      if (pair) {
+        await penalizeUsers(client, guildId, [senderId, recipientId]);
+        if (channel) {
+          await channel
+            .send({
+              content: [
+                "⚠️ 可疑雙向轉帳",
+                `<@${senderId}> → <@${recipientId}>：${pair.aToB.toLocaleString()} credits（最近 ${minutesAgo(pair.lastAtoBAt)} 分鐘前）`,
+                `<@${recipientId}> → <@${senderId}>：${pair.bToA.toLocaleString()} credits（最近 ${minutesAgo(pair.lastBtoAAt)} 分鐘前）`,
+                `${pair.hours}h 雙向總額：**${pair.total.toLocaleString()}** credits（閾值 ${pair.threshold.toLocaleString()}）`,
+              ].join("\n"),
+              allowedMentions: { parse: [] },
+            })
+            .catch(() => {});
+        }
+      }
+
+      if (ring) {
+        await penalizeUsers(client, guildId, ring.cycle);
+        if (channel) {
+          const chain = `${ring.cycle.map((u) => `<@${u}>`).join(" → ")} → <@${ring.cycle[0]}>`;
+          await channel
+            .send({
+              content: [
+                "⚠️ 可疑圈狀轉帳（資金繞一圈回到起點）",
+                chain,
+                `環內最小單邊：**${ring.minEdge.toLocaleString()}** credits（${ring.cycle.length} 人參與）`,
+              ].join("\n"),
+              allowedMentions: { parse: [] },
+            })
+            .catch(() => {});
+        }
+      }
     })
     .catch((e) => {
       console.log(`[SUSP-XFER] 偵測失敗: ${e?.message || e}`.red);
@@ -202,6 +297,9 @@ function fireImmediateCheck(client, { guildId, senderId, recipientId }) {
 module.exports = {
   detectPair,
   scanAllPairs,
+  scanRings,
+  buildDirectedEdges,
+  detectRingFrom,
   fireImmediateCheck,
   transferAmountOf,
 };
