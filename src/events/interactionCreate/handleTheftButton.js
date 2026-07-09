@@ -12,6 +12,7 @@ const theftProfile = require("../../features/theft/theftProfile");
 const {
   errorContainer,
   huntResultContainer,
+  huntEventContainer,
   broadcast,
   fleeChaseContainer,
   fleeOutcomeContainer,
@@ -88,6 +89,17 @@ module.exports = async (client, interaction) => {
         const [t, b, h] = map[result.reason] || ["🔧 追捕失敗", "系統忙碌或未啟動。", "稍後再試。"];
         return interaction.editReply({
           components: [errorContainer(t, b, h)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      // 追捕途中的壞事件（食物誘拐等）：告吹但不算追丟，通緝犯還在榜上
+      if (result.huntEvent && !result.success) {
+        const evContainer = huntEventContainer(result.huntEvent, interaction.user.id, wantedUserId);
+        theftBoard.refresh(client).catch(() => {});
+        const bc = await broadcast(client, evContainer);
+        if (bc) return interaction.deleteReply().catch(() => {});
+        return interaction.editReply({
+          components: [evContainer],
           flags: MessageFlags.IsComponentsV2,
         });
       }

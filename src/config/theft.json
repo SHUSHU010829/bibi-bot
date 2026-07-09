@@ -3,7 +3,7 @@
     "enabled": true,
     "timezone": "Asia/Taipei",
     "announceChannelId": "1523630614018916432",
-    "dailyLimit": 3,
+    "dailyLimit": 5,
     "samePairCooldownMs": 28800000,
     "newbieProtectDays": 7,
     "minTargetWallet": 500,
@@ -42,7 +42,7 @@
       "wantedTtlHours": 24
     },
     "hunt": {
-      "dailyLimit": 3,
+      "dailyLimit": 5,
       "baseRate": 0.5,
       "minRate": 0.2,
       "maxRate": 0.8,
@@ -51,7 +51,17 @@
       "escapeCooldownBaseMs": 240000,
       "escapeCooldownDiscountPerNotorietyMs": 30000,
       "escapeCooldownMinMs": 60000,
-      "escapeClearCount": 5
+      "escapeClearCount": 5,
+      "events": {
+        "chance": 0.2,
+        "goodChance": 0.35,
+        "good": [{ "key": "backup", "weight": 1 }],
+        "bad": [
+          { "key": "lured", "weight": 2 },
+          { "key": "asleep", "weight": 1 },
+          { "key": "tripped", "weight": 1 }
+        ]
+      }
     },
     "surrender": {
       "bailForfeitPct": 0.6,
@@ -183,7 +193,8 @@
     },
     "defense": {
       "safeboxRate": 0.2,
-      "cloakRate": 0.15
+      "cloakRate": 0.15,
+      "watchdogBlockRate": 0.7
     }
   }
 }
