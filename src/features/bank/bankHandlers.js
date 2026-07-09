@@ -89,18 +89,38 @@ async function buildOverview(client, ctx) {
   const balance = wallet?.totalCoins || 0;
   const goldValue = goldPrices ? goldHolding * goldPrices.sell : 0;
   const loanOutstanding = (loans || []).reduce((s, l) => s + (l.dueAmount - (l.paid || 0)), 0);
+  const now = Date.now();
+  const overdueLoans = (loans || []).filter(
+    (l) => l.status === "defaulted" || (l.status === "active" && new Date(l.dueAt).getTime() < now),
+  );
+  const overdue = overdueLoans.length > 0;
+  const frozen = overdue && bank?.loan?.freezeWithdrawOnOverdue;
+
+  const nextLine = limits.next
+    ? `\n-# 距 ${limits.next.emoji} ${limits.next.name} 還差 **${limits.next.min - limits.score}** 分`
+    : "";
 
   const container = new ContainerBuilder()
-    .setAccentColor(COLOR.gold)
+    .setAccentColor(overdue ? COLOR.red : COLOR.gold)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 🏦 ${displayName} 的銀行`))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `💰 錢包餘額　**${fmt(balance)}**\n` +
-          `${limits.tier.emoji} 信用評等　**${limits.tier.name}**（信用分 ${limits.score}）`,
+          `${limits.tier.emoji} 信用評等　**${limits.tier.name}**（信用分 ${limits.score}）${nextLine}`,
       ),
-    )
-    .addSeparatorComponents(new SeparatorBuilder());
+    );
+
+  if (overdue) {
+    const total = overdueLoans.reduce((s, l) => s + (l.dueAmount - (l.paid || 0)), 0);
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `⚠️ **你有逾期貸款待還 ${fmt(total)}**${frozen ? "，活存提領與黃金定存領回已凍結" : ""}\n-# 逾期每日加罰並扣信用分，請盡快用下方「還清貸款」還款`,
+      ),
+    );
+  }
+
+  container.addSeparatorComponents(new SeparatorBuilder());
 
   const lines = [];
   if (bank?.savings?.enabled) {
@@ -123,16 +143,25 @@ async function buildOverview(client, ctx) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent("-# 下方選單切換功能　·　各頁用按鈕操作"),
-    )
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`bank_${userId}_xferstart`)
-          .setLabel("轉帳給玩家")
-          .setEmoji("💸")
-          .setStyle(ButtonStyle.Primary),
-      ),
     );
+
+  const actionRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`bank_${userId}_xferstart`)
+      .setLabel("轉帳給玩家")
+      .setEmoji("💸")
+      .setStyle(ButtonStyle.Primary),
+  );
+  if (loanOutstanding > 0 && loans[0]) {
+    actionRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`bank_${userId}_loanrepay_${loans[0].loanId}`)
+        .setLabel(`還清貸款（${fmt(loanOutstanding)}）`)
+        .setEmoji("💳")
+        .setStyle(overdue ? ButtonStyle.Danger : ButtonStyle.Secondary),
+    );
+  }
+  container.addActionRowComponents(actionRow);
   return container;
 }
 
@@ -165,10 +194,15 @@ async function buildDeposit(client, ctx) {
     depositService.maxActive(client, userId, guildId, ctx.member),
   ]);
 
+  const rateStr = (coinSystem?.deposit?.terms || [])
+    .map((t) => `${t.days}天+${(t.rate * 100).toFixed(0)}%`)
+    .join("・");
   const container = new ContainerBuilder()
     .setAccentColor(COLOR.blue)
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`# 📜 定期存款\n-# 同時最多 **${limit}** 筆`),
+      new TextDisplayBuilder().setContent(
+        `# 📜 定期存款\n-# 同時最多 **${limit}** 筆　·　${rateStr}`,
+      ),
     );
 
   const actionRow = new ActionRowBuilder().addComponents(
@@ -245,7 +279,8 @@ async function buildSavings(client, ctx) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `目前餘額　**${fmt(balance)}** credits\n` +
-          `利率　每日 ${(dailyRate * 100).toFixed(2)}%（年化約 ${(dailyRate * 365 * 100).toFixed(0)}%）`,
+          `利率　每日 ${(dailyRate * 100).toFixed(2)}%（年化約 ${(dailyRate * 365 * 100).toFixed(0)}%）` +
+          (balance > 0 ? `\n預估每日利息　**+${fmt(balance * dailyRate)}**` : ""),
       ),
     );
   if (block) {
@@ -259,10 +294,12 @@ async function buildSavings(client, ctx) {
       new TextDisplayBuilder().setContent("-# 隨存隨取，利息每次操作/查詢自動結算"),
     );
   }
+  const withdrawBtn = openBtn(ctx.userId, "savwd", "提領", ButtonStyle.Primary, block ? "🔒" : "📤");
+  if (block) withdrawBtn.setDisabled(true);
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       openBtn(ctx.userId, "savdep", "存入", ButtonStyle.Success, "📥"),
-      openBtn(ctx.userId, "savwd", "提領", ButtonStyle.Primary, "📤"),
+      withdrawBtn,
     ),
   );
   return container;
@@ -270,20 +307,27 @@ async function buildSavings(client, ctx) {
 
 async function buildGold(client, ctx) {
   const { userId, guildId } = ctx;
-  const [prices, holding, terms, block] = await Promise.all([
+  const [prices, holding, terms, block, mineProfile] = await Promise.all([
     goldService.getPrices(),
     goldService.getHolding(client, userId, guildId),
     goldService.listTerms(client, userId, guildId),
     loanService.repaymentBlock(client, userId, guildId),
+    client.miningProfilesCollection
+      ? client.miningProfilesCollection.findOne({ userId, guildId }).catch(() => null)
+      : null,
   ]);
   const value = holding * prices.sell;
   const r = goldService.refineRecipe();
+
+  const base = bank?.gold?.basePrice || prices.spot;
+  const pct = Math.round((prices.spot / base - 1) * 100);
+  const trend = pct > 0 ? `▲ +${pct}%` : pct < 0 ? `▼ ${pct}%` : "▬ ±0%";
 
   const container = new ContainerBuilder()
     .setAccentColor(COLOR.gold)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# 🪙 黃金存摺（純金）\n-# 現貨價 **${fmt(prices.spot)}** 幣/${U()}（高單價貴金屬，每日浮動）`,
+        `# 🪙 黃金存摺（純金）\n-# 現貨價 **${fmt(prices.spot)}** 幣/${U()}　${trend}（每日浮動貴金屬）`,
       ),
     )
     .addSeparatorComponents(new SeparatorBuilder())
@@ -308,9 +352,19 @@ async function buildGold(client, ctx) {
   }
 
   if (r.enabled) {
+    const haveOre = mineProfile?.backpack?.[r.oreKey] || 0;
+    const haveCoal = mineProfile?.backpack?.[r.coalKey] || 0;
+    const refinable = Math.min(
+      Math.floor(haveOre / r.orePerUnit),
+      r.coalPerUnit > 0 ? Math.floor(haveCoal / r.coalPerUnit) : Infinity,
+    );
+    const stockLine =
+      haveOre > 0 || haveCoal > 0
+        ? `\n-# 你的原料：黃金礦 ${fmt(haveOre)}${r.coalPerUnit > 0 ? ` / 煤炭 ${fmt(haveCoal)}` : ""} → 可精煉約 **${fmt(refinable)}** ${U()}`
+        : "";
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 精煉：${fmt(r.orePerUnit)} 黃金礦${r.coalPerUnit > 0 ? ` ＋ ${fmt(r.coalPerUnit)} 煤炭` : ""} → 1 ${U()}　·　/銀行 黃金 精煉`,
+        `-# 精煉：${fmt(r.orePerUnit)} 黃金礦${r.coalPerUnit > 0 ? ` ＋ ${fmt(r.coalPerUnit)} 煤炭` : ""} → 1 ${U()}${stockLine}`,
       ),
     );
   }
@@ -353,8 +407,9 @@ async function buildGold(client, ctx) {
           new ButtonBuilder()
             .setCustomId(`bank_${userId}_goldclaim_${d.depositId}`)
             .setLabel(`領回 ${fmt(d.units + d.interestUnits)}${U()}`)
-            .setEmoji("✅")
-            .setStyle(ButtonStyle.Success),
+            .setEmoji(block ? "🔒" : "✅")
+            .setStyle(ButtonStyle.Success)
+            .setDisabled(!!block),
         ),
       );
       container.addActionRowComponents(row);
@@ -370,13 +425,26 @@ async function buildLoan(client, ctx) {
     creditService.getLimits(client, userId, guildId, ctx.member),
   ]);
 
+  const now0 = Date.now();
+  const overdue = loans.some(
+    (l) => l.status === "defaulted" || (l.status === "active" && new Date(l.dueAt).getTime() < now0),
+  );
+
   const container = new ContainerBuilder()
-    .setAccentColor(COLOR.purple)
+    .setAccentColor(overdue ? COLOR.red : COLOR.purple)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# 💳 貸款\n-# 你的信用額度 **${limits.loanCap > 0 ? fmt(limits.loanCap) : "尚未開放（需提升信用分）"}**`,
       ),
     );
+
+  if (overdue) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🔒 有逾期貸款：每日加罰並扣信用分，還清後即解除活存/黃金定存的提領凍結\n-# 準時（或現在）還清可累積信用分`,
+      ),
+    );
+  }
 
   const actionRow = new ActionRowBuilder().addComponents(
     openBtn(userId, "loantake", "借款", ButtonStyle.Success, "💵"),

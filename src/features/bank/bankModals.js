@@ -76,7 +76,7 @@ const ACTIONS = {
     tab: "gold",
     fields: [
       { id: "units", label: "鎖倉克數", placeholder: "例如 20" },
-      { id: "days", label: `天數（${(bank?.gold?.term?.terms || []).map((t) => t.days).join(" / ") || "7"}）`, placeholder: "7" },
+      { id: "days", label: `天數（${(bank?.gold?.term?.terms || []).map((t) => `${t.days}天+${(t.rate * 100).toFixed(0)}%`).join(" ") || "7"}）`, placeholder: "7" },
     ],
     submit: async (client, ctx, v) => {
       const units = toInt(v.units);
@@ -135,7 +135,7 @@ const ACTIONS = {
     tab: "deposit",
     fields: [
       { id: "amount", label: "存款金額", placeholder: "例如 10000" },
-      { id: "days", label: `天數（${(coinSystem?.deposit?.terms || []).map((t) => t.days).join(" / ") || "7"}）`, placeholder: "30" },
+      { id: "days", label: `天數（${(coinSystem?.deposit?.terms || []).map((t) => `${t.days}天+${(t.rate * 100).toFixed(0)}%`).join(" ") || "7"}）`, placeholder: "30" },
     ],
     submit: async (client, ctx, v) => {
       const amount = toInt(v.amount);
