@@ -92,7 +92,10 @@ module.exports = async (client, interaction) => {
           return show("loan", `⚠️ 餘額不足！還清需要 **${fmt(res.outstanding)}**，錢包只有 ${fmt(res.wallet)}（可用 /銀行 貸款 還款 部分還款）`);
         return show("loan", "🔧 還款失敗，請稍後再試");
       }
-      return show("loan", res.cleared ? `✅ 貸款 \`${loanId}\` 已全部還清！📈` : `✅ 已還款 **${fmt(res.pay)}**，尚欠 **${fmt(res.remaining)}**`);
+      if (!res.cleared) return show("loan", `✅ 已還款 **${fmt(res.pay)}**，尚欠 **${fmt(res.remaining)}**`);
+      return show("loan", res.creditGain > 0
+        ? `✅ 貸款 \`${loanId}\` 已全部還清！信用分 +${res.creditGain} 📈`
+        : `✅ 貸款 \`${loanId}\` 已全部還清！\n-# 持有未滿 ${loanService.cfg().creditMinHoldDays ?? 0} 天，本次未累積信用分`);
     }
 
     // 領回到期定存
