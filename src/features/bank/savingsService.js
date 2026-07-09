@@ -2,6 +2,7 @@ require("colors");
 const { bank } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 const creditService = require("./creditService");
+const loanService = require("./loanService");
 
 // 活期存款：隨存隨取，利息以「上次結算時間」compute-on-read。
 // 本金存在帳戶（不在錢包），存入時錢包扣款（sink），提領時錢包入帳（flat reward）。
@@ -90,6 +91,9 @@ async function deposit(client, { userId, guildId, username, member, avatarHash, 
 }
 
 async function withdraw(client, { userId, guildId, username, member, avatarHash, amount }) {
+  const block = await loanService.repaymentBlock(client, userId, guildId);
+  if (block) return { ok: false, reason: "loan_frozen", block };
+
   await settle(client, userId, guildId);
   const acc = await getAccount(client, userId, guildId);
   const balance = acc?.balance || 0;

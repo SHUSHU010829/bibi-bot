@@ -101,7 +101,11 @@ module.exports = async (client, interaction) => {
     if (action.startsWith("goldclaim_")) {
       const depositId = action.slice("goldclaim_".length);
       const res = await goldService.claimTerm(client, { ...ctx, depositId });
-      if (!res.ok) return show("gold", "⚠️ 此黃金存單無法領回（可能已領過）");
+      if (!res.ok) {
+        if (res.reason === "loan_frozen")
+          return show("gold", `🔒 有逾期貸款未清（待還 ${fmt(res.block.outstanding)}），領回暫停。請先到貸款頁還款`);
+        return show("gold", "⚠️ 此黃金存單無法領回（可能已領過）");
+      }
       return show("gold", `✅ 黃金定存到期領回 **${fmt(res.payoutUnits)}** ${uLabel}`);
     }
   } catch (error) {

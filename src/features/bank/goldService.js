@@ -4,6 +4,7 @@ const { DateTime } = require("luxon");
 const { bank, coinSystem } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 const creditService = require("./creditService");
+const loanService = require("./loanService");
 
 // 黃金存摺（純金）：純金是高單價貴金屬，價格獨立於便宜的黃金礦，每日 seeded 浮動、全服一致。
 // 純金無法直接把礦丟進來，必須用「黃金礦 + 煤炭（燃料）精煉」才能入庫（見 refine）。
@@ -259,6 +260,9 @@ async function listTerms(client, userId, guildId) {
 }
 
 async function claimTerm(client, { userId, guildId, member, depositId }) {
+  const block = await loanService.repaymentBlock(client, userId, guildId);
+  if (block) return { ok: false, reason: "loan_frozen", block };
+
   const doc = await client.goldDepositsCollection.findOne({ depositId, userId, guildId });
   if (!doc) return { ok: false, reason: "notfound" };
   if (doc.status !== "active") return { ok: false, reason: "claimed" };

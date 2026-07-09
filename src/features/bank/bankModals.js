@@ -123,6 +123,7 @@ const ACTIONS = {
       if (!(amount >= 1)) return { tab: "savings", note: "⚠️ 請輸入有效金額" };
       const res = await savingsService.withdraw(client, { ...ctx, amount });
       if (!res.ok) {
+        if (res.reason === "loan_frozen") return { tab: "savings", note: `🔒 有逾期貸款未清（待還 ${fmt(res.block.outstanding)}），提領暫停。請先到貸款頁還款` };
         if (res.reason === "balance") return { tab: "savings", note: `⚠️ 活期只有 ${fmt(res.balance)}` };
         return { tab: "savings", note: "🔧 提領失敗，請稍後再試" };
       }

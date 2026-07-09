@@ -23,6 +23,27 @@ async function hasDefault(client, userId, guildId) {
   return n > 0;
 }
 
+// 逾期（已過期未還）或已違約的貸款 → 用來凍結提領。回傳 { loanId, outstanding, defaulted } 或 null。
+async function repaymentBlock(client, userId, guildId) {
+  if (!cfg().freezeWithdrawOnOverdue) return null;
+  const col = client.loansCollection;
+  if (!col) return null;
+  const loan = await col.findOne(
+    {
+      userId,
+      guildId,
+      $or: [{ status: "defaulted" }, { status: "active", dueAt: { $lt: new Date() } }],
+    },
+    { sort: { dueAt: 1 } },
+  );
+  if (!loan) return null;
+  return {
+    loanId: loan.loanId,
+    outstanding: loan.dueAmount - (loan.paid || 0),
+    defaulted: loan.status === "defaulted",
+  };
+}
+
 async function take(client, { userId, guildId, member, username, avatarHash, amount }) {
   const c = cfg();
   if (!c.enabled) return { ok: false, reason: "disabled" };
@@ -173,6 +194,7 @@ module.exports = {
   cfg,
   listActive,
   hasDefault,
+  repaymentBlock,
   take,
   repay,
   processOverdue,
