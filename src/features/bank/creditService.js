@@ -2,7 +2,7 @@ require("colors");
 const { DateTime } = require("luxon");
 const { bank, coinSystem } = require("../../config");
 
-// 信用分：只存「累積分數」這個來源，實際額度/次數/手續費折扣一律讀取時由 tier 換算，
+// 信用分：只存「累積分數」這個來源，實際額度/次數/定存加開/貸款額度一律讀取時由 tier 換算，
 // 伺服器年資加成也在讀取時即時算（compute-on-read，不寫死進 DB）。
 
 function cfg() {
@@ -20,7 +20,7 @@ function tiers() {
 
 function resolveTier(score) {
   const list = tiers();
-  let cur = list[0] || { name: "信用", emoji: "⚪", transferMax: 0, dailyCap: 0, dailyCount: 1, feeDiscount: 0, depositSlotBonus: 0, loanCap: 0 };
+  let cur = list[0] || { name: "信用", emoji: "⚪", transferMax: 0, dailyCap: 0, dailyCount: 1, depositSlotBonus: 0, loanCap: 0 };
   for (const t of list) {
     if (score >= t.min) cur = t;
   }
@@ -86,7 +86,6 @@ async function getLimits(client, userId, guildId, member) {
     transferMax: tier.transferMax,
     dailyCap: tier.dailyCap,
     dailyCount: tier.dailyCount,
-    feeDiscount: tier.feeDiscount || 0,
     depositSlotBonus: tier.depositSlotBonus || 0,
     loanCap: tier.loanCap || 0,
   };

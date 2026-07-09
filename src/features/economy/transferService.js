@@ -8,13 +8,12 @@ const { fireImmediateCheck: fireSuspiciousTransferCheck } = require("./suspiciou
 
 // 玩家轉帳核心邏輯，/轉帳 指令與 /銀行 轉帳按鈕共用。回傳結構化結果，呈現交給呼叫端。
 
-function computeFee(amount, cfg, discount = 0) {
+function computeFee(amount, cfg) {
   const baseRate = cfg?.feeRate ?? 0.02;
   const highRate = cfg?.feeRateHigh ?? 0.05;
   const threshold = cfg?.highFeeThreshold ?? 1000;
   const rate = amount > threshold ? highRate : baseRate;
-  const raw = Math.floor(amount * rate);
-  return { fee: Math.max(0, Math.floor(raw * (1 - discount))), rate };
+  return { fee: Math.floor(amount * rate), rate };
 }
 
 function today() {
@@ -68,7 +67,6 @@ async function performTransfer(client, { senderMember, targetMember, amount, not
   const maxAmount = limits ? limits.transferMax : cfg.maxAmount ?? 20000;
   const dailyCap = limits ? limits.dailyCap : cfg.dailyCapPerSender ?? 20000;
   const dailyCount = limits ? limits.dailyCount : cfg.dailyCountFallback ?? 5;
-  const feeDiscount = limits ? limits.feeDiscount : 0;
   const minAmount = cfg.minAmount ?? 10;
 
   if (!(amount >= minAmount) || amount > maxAmount) {
@@ -77,7 +75,7 @@ async function performTransfer(client, { senderMember, targetMember, amount, not
 
   const before = await client.userCoinsCollection.findOne({ userId: senderId, guildId });
   const balance = before?.totalCoins || 0;
-  const { fee, rate: feeRate } = computeFee(amount, cfg, feeDiscount);
+  const { fee, rate: feeRate } = computeFee(amount, cfg);
   const totalDeduct = amount + fee;
   if (balance < totalDeduct) return { ok: false, reason: "balance", need: totalDeduct, balance, amount, fee };
 
@@ -164,7 +162,6 @@ async function performTransfer(client, { senderMember, targetMember, amount, not
     amount,
     fee,
     feeRate,
-    feeDiscount,
     note: note2,
     senderAfter: feeDebit?.doc?.totalCoins ?? debit.doc?.totalCoins ?? balance - totalDeduct,
     usedTodayAfter: usedToday + amount,

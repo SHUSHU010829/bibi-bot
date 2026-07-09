@@ -73,7 +73,6 @@ function creditCard(limits, displayName) {
         `💸 轉帳單筆上限　**${fmt(tier.transferMax)}**\n` +
         `📅 每日轉帳額度　**${fmt(tier.dailyCap)}**\n` +
         `🔁 每日轉帳次數　**${tier.dailyCount}** 次\n` +
-        `🏷️ 轉帳手續費折扣　**${Math.round((tier.feeDiscount || 0) * 100)}%**\n` +
         `🏦 定存加開額度　**+${tier.depositSlotBonus || 0}** 筆\n` +
         `💰 貸款額度　**${tier.loanCap > 0 ? fmt(tier.loanCap) : "尚未開放"}**`,
     ),

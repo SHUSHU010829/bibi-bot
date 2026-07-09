@@ -53,10 +53,9 @@ module.exports = {
 
       if (!res.ok) return interaction.editReply(renderError(res));
 
-      const discountLine = res.feeDiscount > 0 ? `（已折 ${Math.round(res.feeDiscount * 100)}%）` : "";
       const noteLine = res.note ? `\n📝 備註：${res.note}` : "";
       return interaction.editReply(
-        `✅ 已轉帳 <@${res.targetId}> **${res.amount.toLocaleString()}** credits（手續費 ${res.fee.toLocaleString()}・${(res.feeRate * 100).toFixed(0)}%${discountLine}）\n` +
+        `✅ 已轉帳 <@${res.targetId}> **${res.amount.toLocaleString()}** credits（手續費 ${res.fee.toLocaleString()}・${(res.feeRate * 100).toFixed(0)}%）\n` +
           `・你的餘額：**${res.senderAfter.toLocaleString()}**\n` +
           `・今日累計轉出：${res.usedTodayAfter.toLocaleString()} / ${res.dailyCap.toLocaleString()}\n` +
           `・今日轉帳次數：${res.countAfter} / ${res.dailyCount}` +

@@ -10,8 +10,7 @@ const { deferUpdateSafe } = require("../../utils/safeAck");
 
 function transferNote(res) {
   if (res.ok) {
-    const disc = res.feeDiscount > 0 ? `（折 ${Math.round(res.feeDiscount * 100)}%）` : "";
-    return `✅ 已轉帳 <@${res.targetId}> **${fmt(res.amount)}**（手續費 ${fmt(res.fee)}${disc}），今日 ${res.countAfter}/${res.dailyCount} 次，餘額 ${fmt(res.senderAfter)}`;
+    return `✅ 已轉帳 <@${res.targetId}> **${fmt(res.amount)}**（手續費 ${fmt(res.fee)}），今日 ${res.countAfter}/${res.dailyCount} 次，餘額 ${fmt(res.senderAfter)}`;
   }
   switch (res.reason) {
     case "tenure_sender":
