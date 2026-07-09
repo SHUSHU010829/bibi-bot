@@ -18,7 +18,24 @@ const {
   broadcast,
   reportBadEventContainer,
   reportBadEventBroadcast,
+  reportFishingContainer,
+  reportFishingBroadcast,
+  reportDrunkContainer,
+  reportDrunkBroadcast,
 } = require("../../features/theft/theftView");
+
+// 抓錯人事件：從公會成員裡挑一個無辜路人當代罪羔羊（純呈現，不對他做任何事）
+function pickInnocent(interaction) {
+  try {
+    const me = interaction.user.id;
+    const pool = interaction.guild?.members?.cache?.filter((m) => !m.user.bot && m.id !== me);
+    if (!pool || pool.size === 0) return null;
+    const ids = [...pool.keys()];
+    return ids[Math.floor(Math.random() * ids.length)];
+  } catch {
+    return null;
+  }
+}
 const { COIN_EMOJI } = require("../../constants/coin");
 
 module.exports = {
@@ -77,11 +94,31 @@ module.exports = {
         });
       }
 
+      // 好事件・釣魚執法：終局，偵探幫你設下陷阱（沒揪兇手）
+      if (result.goodEvent === "fishing") {
+        broadcast(client, reportFishingBroadcast(interaction.user.id)).catch(() => {});
+        return interaction.editReply({
+          components: [reportFishingContainer({ stingLeft: result.stingLeft })],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+
+      // 壞事件・偵探喝掛：終局，無後續選擇
+      if (result.badEvent === "drunk") {
+        broadcast(client, reportDrunkBroadcast(interaction.user.id)).catch(() => {});
+        return interaction.editReply({
+          components: [reportDrunkContainer({ refunded: result.refunded })],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+
       if (result.badEvent) {
         const extra = result.extraStolen || result.araleLoss || 0;
-        broadcast(client, reportBadEventBroadcast(result.badEvent, interaction.user.id, tierLabel)).catch(
-          () => {}
-        );
+        const accused = result.badEvent === "misid" ? pickInnocent(interaction) : null;
+        broadcast(
+          client,
+          reportBadEventBroadcast(result.badEvent, interaction.user.id, tierLabel, accused)
+        ).catch(() => {});
         return interaction.editReply({
           components: [
             reportBadEventContainer(result.badEvent, {
@@ -89,6 +126,7 @@ module.exports = {
               fee: result.fee,
               extra,
               ownerId: interaction.user.id,
+              accused,
             }),
           ],
           flags: MessageFlags.IsComponentsV2,
@@ -116,8 +154,9 @@ module.exports = {
         container
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              `# 🔎 查無結果\n${tierLabel} 收了 **${result.fee.toLocaleString()}** ${COIN_EMOJI}，` +
-                `近期有 ${result.totalCases} 起竊案，但線索太少查不出兇手…` +
+              `# 🔎 查無結果\n${tierLabel}${
+                result.freeReport ? "（內應免費）" : ` 收了 **${result.fee.toLocaleString()}** ${COIN_EMOJI}，`
+              }近期有 ${result.totalCases} 起竊案，但線索太少查不出兇手…` +
                 (result.refunded ? "\n（已退還委託費）" : "")
             )
           )
@@ -132,8 +171,13 @@ module.exports = {
 
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🔎 偵探回報\n${tierLabel} 收了 **${result.fee.toLocaleString()}** ${COIN_EMOJI}，查出以下嫌犯：` +
-            (result.informant ? "\n🐦 **線人爆料**，直接鎖定了主嫌！" : "")
+          `# 🔎 偵探回報\n${tierLabel}${
+            result.freeReport ? "（內應免費）" : ` 收了 **${result.fee.toLocaleString()}** ${COIN_EMOJI}，`
+          }查出以下嫌犯：` +
+            (result.informant ? "\n🐦 **線人爆料**，直接鎖定了主嫌！" : "") +
+            (result.counterRob?.amount > 0
+              ? `\n💎 **黑吃黑反殺**，偵探從主嫌搶了 **${result.counterRob.amount.toLocaleString()}** ${COIN_EMOJI} 賠給你！`
+              : "")
         )
       );
       for (const c of result.culprits) {

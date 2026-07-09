@@ -20,6 +20,14 @@ const {
   reportCatchContainer,
   reportCatchBroadcast,
   reportGiveupContainer,
+  reportSelfHeistContainer,
+  reportSelfHeistBroadcast,
+  reportRecruitContainer,
+  reportGambleContainer,
+  reportGambleBroadcast,
+  reportGambleSkipContainer,
+  reportMisidContainer,
+  reportMisidBroadcast,
 } = require("../../features/theft/theftView");
 const theftBoard = require("../../features/theft/theftBoard");
 const { COIN_EMOJI } = require("../../constants/coin");
@@ -241,44 +249,62 @@ module.exports = async (client, interaction) => {
       return interaction.editReply({ components: [confirm], flags: MessageFlags.IsComponentsV2 });
     }
 
-    // ── 報案壞事件：試圖逮捕落跑偵探（owner 限定）──
-    if (id.startsWith("theft_catch_")) {
-      // theft_catch_<ownerId>_<event>_<recoverable>
-      const [ownerId, event, recStr] = id.slice("theft_catch_".length).split("_");
+    // ── 報案壞事件的二選一（owner 限定，同一則 ephemeral update）──
+    if (id.startsWith("theft_ev_")) {
+      // theft_ev_<action>_<ownerId>_<event>_<amount>
+      const [action, ownerId, event, amtStr] = id.slice("theft_ev_".length).split("_");
       if (interaction.user.id !== ownerId) {
         return interaction.reply({ content: "🚫 這不是你的委託！", flags: MessageFlags.Ephemeral });
       }
-      const result = await theftService.catchDetective(client, {
+      const amount = parseInt(amtStr, 10) || 0;
+      const base = {
         guildId: interaction.guildId,
         userId: ownerId,
         username: interaction.member?.displayName || interaction.user.username,
-        recoverable: parseInt(recStr, 10) || 0,
-      });
-      if (!result.ok) {
-        return interaction.update({
-          components: [errorContainer("🔧 追捕失敗", "系統忙碌或未啟動。", "稍後再試。")],
-          flags: MessageFlags.IsComponentsV2,
-        });
-      }
-      await interaction.update({
-        components: [reportCatchContainer(event, result)],
-        flags: MessageFlags.IsComponentsV2,
-      });
-      broadcast(client, reportCatchBroadcast(event, ownerId, result)).catch(() => {});
-      return;
-    }
+      };
+      const V2 = MessageFlags.IsComponentsV2;
+      const show = (container) => interaction.update({ components: [container], flags: V2 });
 
-    // ── 報案壞事件：認賠退場（owner 限定）──
-    if (id.startsWith("theft_giveup_")) {
-      // theft_giveup_<ownerId>_<event>
-      const [ownerId, event] = id.slice("theft_giveup_".length).split("_");
-      if (interaction.user.id !== ownerId) {
-        return interaction.reply({ content: "🚫 這不是你的委託！", flags: MessageFlags.Ephemeral });
+      if (action === "giveup") return show(reportGiveupContainer(event));
+
+      if (action === "catch") {
+        const result = await theftService.catchDetective(client, { ...base, recoverable: amount });
+        if (!result.ok) return show(errorContainer("🔧 追捕失敗", "系統忙碌或未啟動。", "稍後再試。"));
+        await show(reportCatchContainer(event, result));
+        broadcast(client, reportCatchBroadcast(event, ownerId, result)).catch(() => {});
+        return;
       }
-      return interaction.update({
-        components: [reportGiveupContainer(event)],
-        flags: MessageFlags.IsComponentsV2,
-      });
+      if (action === "shreport") {
+        const result = await theftService.selfHeistReport(client, { ...base, fee: amount });
+        await show(reportSelfHeistContainer(result));
+        broadcast(client, reportSelfHeistBroadcast(ownerId, result)).catch(() => {});
+        return;
+      }
+      if (action === "shrecruit") {
+        await theftService.recruitInsider(client, { guildId: interaction.guildId, userId: ownerId });
+        return show(reportRecruitContainer());
+      }
+      if (action === "bet") {
+        const result = await theftService.gambleBet(client, { ...base, fee: amount });
+        await show(reportGambleContainer(result));
+        broadcast(client, reportGambleBroadcast(ownerId, result)).catch(() => {});
+        return;
+      }
+      if (action === "betskip") {
+        const result = await theftService.gambleSkip(client, { ...base, fee: amount });
+        return show(reportGambleSkipContainer(result));
+      }
+      if (action === "frame" || action === "apolo") {
+        const result = await theftService.misidAct(client, {
+          ...base,
+          fee: amount,
+          kind: action === "frame" ? "frame" : "apologize",
+        });
+        await show(reportMisidContainer(result));
+        broadcast(client, reportMisidBroadcast(ownerId, result)).catch(() => {});
+        return;
+      }
+      return;
     }
 
     // ── 失風追逃小遊戲（owner 限定，同一則訊息 update 推進）──

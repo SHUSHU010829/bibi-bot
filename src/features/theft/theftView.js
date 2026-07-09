@@ -243,8 +243,28 @@ function bountyAnnounceContainer(victimId, culpritId, bounty, expiresAt) {
 // ── 報案壞事件（偵探出包）：私人 Container + 公開廣播文案 ──
 const n = (v) => (v || 0).toLocaleString();
 
-// 每種壞事件的呈現資料：私人標題/內文、公開廣播、以及「二選一」的專屬選項與結果文案。
-// action = 主動反擊（走 catchDetective 的 50% 賭一把，各事件換皮）；giveup = 認賠退場。
+const STYLE = {
+  Danger: ButtonStyle.Danger,
+  Primary: ButtonStyle.Primary,
+  Secondary: ButtonStyle.Secondary,
+  Success: ButtonStyle.Success,
+};
+
+// 反擊型事件（走 catchDetective 的 50% 賭一把，各事件換皮）共用的兩顆按鈕
+function catchChoices(ctx, m) {
+  return [
+    {
+      action: "catch",
+      emoji: m.action.emoji,
+      style: "Danger",
+      label: `${m.action.verb}（${ctx.winPct}% 討回 ${n(ctx.recoverable)}）`,
+      amount: ctx.recoverable,
+    },
+    { action: "giveup", emoji: m.giveup.emoji, style: "Secondary", label: m.giveup.label, amount: 0 },
+  ];
+}
+
+// 每種壞事件的呈現資料：私人標題/內文、公開廣播、prompt、以及 choices（二選一按鈕）。
 const REPORT_BAD_EVENTS = {
   abscond: {
     accent: 0xe67e22,
@@ -267,6 +287,7 @@ const REPORT_BAD_EVENTS = {
           : `😭 <@${uid}> 追偵探撲了個空，兩手空空回家。`,
     },
     giveup: { emoji: "🤷", label: "自認倒楣", head: "🤷 算了，自認倒楣", body: "你摸摸鼻子，把這筆委託金當作繳學費。" },
+    choices: catchChoices,
   },
   bribed: {
     accent: 0xe67e22,
@@ -290,6 +311,7 @@ const REPORT_BAD_EVENTS = {
           : `😤 <@${uid}> 想拆穿偵探，鬧了個沒趣。`,
     },
     giveup: { emoji: "😮‍💨", label: "算了認栽", head: "😮‍💨 算了認栽", body: "你嚥下這口氣，錢就當花錢消災。" },
+    choices: catchChoices,
   },
   crooked: {
     accent: 0xe74c3c,
@@ -316,6 +338,7 @@ const REPORT_BAD_EVENTS = {
           : `🩸 <@${uid}> 跟壞人偵探翻臉，討了個沒趣。`,
     },
     giveup: { emoji: "🤷", label: "自認倒楣", head: "🤷 算了，自認倒楣", body: "惹不起躲得起，你摸摸鼻子走人。" },
+    choices: catchChoices,
   },
   arale: {
     accent: 0xe74c3c,
@@ -342,6 +365,44 @@ const REPORT_BAD_EVENTS = {
           : `🤖 <@${uid}> 想哄阿拉蕾，被她蹦蹦跳跳耍著玩。`,
     },
     giveup: { emoji: "😱", label: "拔腿就跑", head: "😱 拔腿就跑", body: "惹不起這隻機器娃娃，你頭也不回地開溜。" },
+    choices: catchChoices,
+  },
+  selfheist: {
+    accent: 0x8e44ad,
+    heading: "🕳️🔍 監守自盜！",
+    detail: (tl, fee) =>
+      `你花 **${n(fee)}** ${COIN_EMOJI} 委託 ${tl} 查案，查到最後線索全指向他自己——原來偷你的就是這位偵探！`,
+    broadcast: (uid, tl) => `🕳️ <@${uid}> 委託的 ${tl} 查到最後，兇手竟然就是偵探自己！`,
+    prompt: "要報警把這個賊偵探抓起來，還是乾脆收編他當你的內應？",
+    choices: (ctx) => [
+      { action: "shreport", emoji: "📢", style: "Danger", label: `報警抓他（${ctx.winPct}% 討回+獎金）`, amount: ctx.fee },
+      { action: "shrecruit", emoji: "🤝", style: "Primary", label: "收編當內應（下次報案免費）", amount: 0 },
+    ],
+  },
+  gambler: {
+    accent: 0x16a085,
+    heading: "🎰 你遇到賭徒偵探！",
+    detail: (tl, fee) =>
+      `${tl} 收了你 **${n(fee)}** ${COIN_EMOJI}，卻眼睛發亮地說：「與其查案，不如來賭一把？」`,
+    broadcast: (uid, tl) => `🎰 <@${uid}> 遇到賭徒偵探，被慫恿拿委託費賭一把！`,
+    prompt: "要跟他賭運氣，還是叫他別鬧、把錢還來？",
+    choices: (ctx) => [
+      { action: "bet", emoji: "🎲", style: "Danger", label: `跟他賭（${ctx.winPct}% 委託費雙倍）`, amount: ctx.fee },
+      { action: "betskip", emoji: "🚶", style: "Secondary", label: "不賭，退我錢", amount: ctx.fee },
+    ],
+  },
+  misid: {
+    accent: 0xe67e22,
+    heading: "🐛 偵探抓錯人了！",
+    detail: (tl, fee, extra, accused) =>
+      `${tl} 收了你 **${n(fee)}** ${COIN_EMOJI}，信誓旦旦指認兇手是 ${accused ? `<@${accused}>` : "一個查無此人的路人"}——但你很清楚他根本沒偷你…`,
+    broadcast: (uid, tl, accused) =>
+      `🐛 <@${uid}> 委託的 ${tl} 亂指一通，一口咬定 ${accused ? `<@${accused}>` : "某個路人"} 是兇手！`,
+    prompt: "要將錯就錯叫偵探硬辦他，還是道個歉放人？",
+    choices: (ctx) => [
+      { action: "frame", emoji: "🤥", style: "Danger", label: "將錯就錯辦他", amount: ctx.fee },
+      { action: "apolo", emoji: "🙏", style: "Secondary", label: "道歉放人", amount: ctx.fee },
+    ],
   },
 };
 
@@ -349,47 +410,34 @@ function catchWinPct() {
   return Math.round((theft?.report?.catch?.winRate ?? 0.5) * 100);
 }
 
-// 報案壞事件（私人 ephemeral）：說明損失 + 該事件專屬的兩顆選項按鈕。
-function reportBadEventContainer(event, { tierLabel, fee, extra = 0, ownerId }) {
+// 報案壞事件（私人 ephemeral）：標題/內文 + 該事件專屬的兩顆選項按鈕。
+function reportBadEventContainer(event, { tierLabel, fee, extra = 0, ownerId, accused = null }) {
   const meta = REPORT_BAD_EVENTS[event] || REPORT_BAD_EVENTS.abscond;
   const recoverable = (fee || 0) + (extra || 0);
-  const a = meta.action;
+  const ctx = { fee: fee || 0, extra: extra || 0, recoverable, winPct: catchWinPct() };
+  const buttons = meta.choices(ctx, meta).map((ch) =>
+    new ButtonBuilder()
+      .setCustomId(`theft_ev_${ch.action}_${ownerId}_${event}_${ch.amount}`)
+      .setLabel(ch.label)
+      .setEmoji(ch.emoji)
+      .setStyle(STYLE[ch.style] || ButtonStyle.Secondary)
+  );
   return new ContainerBuilder()
     .setAccentColor(meta.accent)
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`# ${meta.heading}\n${meta.detail(tierLabel, fee, extra)}`)
+      new TextDisplayBuilder().setContent(
+        `# ${meta.heading}\n${meta.detail(tierLabel, fee, extra, accused)}`
+      )
     )
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `這一趟你損失了 **${n(recoverable)}** ${COIN_EMOJI}。${meta.prompt}`
-      )
-    )
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`theft_catch_${ownerId}_${event}_${recoverable}`)
-          .setLabel(`${a.verb}（${catchWinPct()}% 討回 ${n(recoverable)}）`)
-          .setEmoji(a.emoji)
-          .setStyle(ButtonStyle.Danger),
-        new ButtonBuilder()
-          .setCustomId(`theft_giveup_${ownerId}_${event}`)
-          .setLabel(meta.giveup.label)
-          .setEmoji(meta.giveup.emoji)
-          .setStyle(ButtonStyle.Secondary)
-      )
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# ${a.emoji} 成功 → 討回全部 **${n(recoverable)}** ${COIN_EMOJI}；失敗 → 被他反咬一口、再搶走一筆。`
-      )
-    );
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(meta.prompt))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(...buttons));
 }
 
 // 報案壞事件（公開廣播）：把偵探的糗事推到治安頻道增加趣味。
-function reportBadEventBroadcast(event, victimId, tierLabel) {
+function reportBadEventBroadcast(event, victimId, tierLabel, accused = null) {
   const meta = REPORT_BAD_EVENTS[event] || REPORT_BAD_EVENTS.abscond;
-  return infoContainer(meta.accent, meta.broadcast(victimId, tierLabel));
+  return infoContainer(meta.accent, meta.broadcast(victimId, tierLabel, accused));
 }
 
 // 反擊結果（私人）：討回 / 反被坑，文案依事件換皮。
@@ -432,6 +480,146 @@ function reportGiveupContainer(event) {
   return infoContainer(0x95a5a6, `# ${g.head}\n${g.body}`);
 }
 
+// ── 監守自盜「報警抓他」──
+function reportSelfHeistContainer(result) {
+  if (result.win) {
+    return new ContainerBuilder()
+      .setAccentColor(0xf1c40f)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🚔 賊偵探落網！\n你報了警，人贓俱獲，討回委託費還領到獎金，共入袋 **${n(result.recovered)}** ${COIN_EMOJI}！`
+        )
+      )
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent("-# 大快人心，這種偵探就該關起來。"));
+  }
+  return new ContainerBuilder()
+    .setAccentColor(0x95a5a6)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        result.penalty > 0
+          ? `# 🏃 讓他跑了\n他早有準備，反手誣賴你，你又被搜刮 **${n(result.penalty)}** ${COIN_EMOJI}…`
+          : `# 🏃 讓他跑了\n他溜得比誰都快，好在你錢包空空沒得訛。`
+      )
+    )
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("-# 監守自盜的老油條，跑起來也專業。"));
+}
+function reportSelfHeistBroadcast(victimId, result) {
+  return infoContainer(
+    result.win ? 0xf1c40f : 0x95a5a6,
+    result.win
+      ? `🚔 <@${victimId}> 報警逮到監守自盜的賊偵探，入袋 **${n(result.recovered)}** ${COIN_EMOJI}！`
+      : result.penalty > 0
+        ? `🏃 <@${victimId}> 想抓賊偵探反被誣賴，又被搜刮 **${n(result.penalty)}** ${COIN_EMOJI}！`
+        : `🏃 <@${victimId}> 想抓賊偵探，被他溜了。`
+  );
+}
+
+// ── 監守自盜「收編當內應」──
+function reportRecruitContainer() {
+  return infoContainer(
+    0x2ecc71,
+    "# 🤝 收編成功！\n你把這個賊偵探收編成內應，他答應**下次 `/報案` 免費**幫你查——以後有他罩著，查案不出包。"
+  );
+}
+
+// ── 賭徒偵探「跟他賭」──
+function reportGambleContainer(result) {
+  if (result.win) {
+    return new ContainerBuilder()
+      .setAccentColor(0xf1c40f)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🎲 賭贏了！\n偵探大手一揮，委託費雙倍奉還，你拿回 **${n(result.payout)}** ${COIN_EMOJI}！`
+        )
+      )
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent("-# 手氣正旺，見好就收。"));
+  }
+  return new ContainerBuilder()
+    .setAccentColor(0x95a5a6)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("# 🎲 賭輸了…\n偵探摸走你的委託費揚長而去，血本無歸。")
+    )
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("-# 賭博一時爽…下次還是乖乖查案吧。"));
+}
+function reportGambleBroadcast(victimId, result) {
+  return infoContainer(
+    result.win ? 0xf1c40f : 0x95a5a6,
+    result.win
+      ? `🎲 <@${victimId}> 跟賭徒偵探賭一把，委託費雙倍入袋 **${n(result.payout)}** ${COIN_EMOJI}！`
+      : `🎲 <@${victimId}> 跟賭徒偵探賭一把，血本無歸！`
+  );
+}
+
+// ── 賭徒偵探「不賭」──
+function reportGambleSkipContainer(result) {
+  return infoContainer(
+    0x95a5a6,
+    `# 🚶 不賭\n你叫偵探別鬧，他摸摸鼻子把 **${n(result.refunded)}** ${COIN_EMOJI} 委託費退你了。`
+  );
+}
+
+// ── 抓錯人「將錯就錯 / 道歉放人」──
+function reportMisidContainer(result) {
+  if (result.kind === "frame") {
+    return new ContainerBuilder()
+      .setAccentColor(0x95a5a6)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🤥 將錯就錯\n你再塞了 **${n(result.cost)}** ${COIN_EMOJI} 叫偵探硬辦那個無辜的人，結果查無實據、錢照樣打了水漂。`
+        )
+      )
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent("-# 冤枉好人不會有好報的啦。"));
+  }
+  return infoContainer(
+    0x2ecc71,
+    `# 🙏 道歉放人\n你付了 **${n(result.cost)}** ${COIN_EMOJI} 名譽費向對方賠不是，把人放了。`
+  );
+}
+function reportMisidBroadcast(victimId, result) {
+  return infoContainer(
+    0x95a5a6,
+    result.kind === "frame"
+      ? `🤥 <@${victimId}> 將錯就錯要偵探硬辦無辜的人，又白花 **${n(result.cost)}** ${COIN_EMOJI}！`
+      : `🙏 <@${victimId}> 為偵探的烏龍向人賠罪，付了 **${n(result.cost)}** ${COIN_EMOJI} 名譽費。`
+  );
+}
+
+// ── 釣魚執法（好事件・終局・私人）──
+function reportFishingContainer({ stingLeft }) {
+  return new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "# 🎣 釣魚執法！\n偵探這次沒揪出兇手，但幫你在錢包周圍布下陷阱——**下一個偷你的人會當場失風被通緝**！"
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# 目前陷阱數：**${stingLeft}**。守株待兔，就等賊上門。`)
+    );
+}
+function reportFishingBroadcast(victimId) {
+  return infoContainer(
+    0x2ecc71,
+    `🎣 <@${victimId}> 的偵探設下釣魚執法陷阱，下個手癢的小偷準備當場失風吧！`
+  );
+}
+
+// ── 偵探喝掛（壞事件・終局・無選擇・私人）──
+function reportDrunkContainer({ refunded }) {
+  return new ContainerBuilder()
+    .setAccentColor(0xe67e22)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "# 🍺 偵探喝掛了…\n你的偵探跑去喝到不省人事，案子沒查成" +
+          (refunded > 0 ? `，酒醒後良心發現退你 **${n(refunded)}** ${COIN_EMOJI}。` : "。")
+      )
+    )
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("-# 下次找個清醒點的偵探吧。"));
+}
+function reportDrunkBroadcast(victimId) {
+  return infoContainer(0xe67e22, `🍺 <@${victimId}> 委託的偵探喝到不省人事，案子直接辦砸！`);
+}
+
 module.exports = {
   errorContainer,
   infoContainer,
@@ -442,6 +630,18 @@ module.exports = {
   reportCatchContainer,
   reportCatchBroadcast,
   reportGiveupContainer,
+  reportSelfHeistContainer,
+  reportSelfHeistBroadcast,
+  reportRecruitContainer,
+  reportGambleContainer,
+  reportGambleBroadcast,
+  reportGambleSkipContainer,
+  reportMisidContainer,
+  reportMisidBroadcast,
+  reportFishingContainer,
+  reportFishingBroadcast,
+  reportDrunkContainer,
+  reportDrunkBroadcast,
   fleeChaseContainer,
   fleeOutcomeContainer,
   wantedAnnounceContainer,

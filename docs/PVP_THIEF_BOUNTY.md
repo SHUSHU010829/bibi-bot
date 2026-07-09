@@ -152,18 +152,25 @@
 
 #### 偵探分級與壞事件(`report.tiers` / `report.events`)
 
-四位偵探(菜鳥 `rookie` / 資深 `pro` / 神探 `ace` / 王牌 `master`)費用越貴、破案率越高、出包率越低。委託後可能觸發:
+四位偵探(菜鳥 `rookie` / 資深 `pro` / 神探 `ace` / 王牌 `master`)費用越貴、破案率越高、出包率越低。委託後 `report()` 依序擲:**專屬事件 → 壞事件 → 好事件 → 調查**(收編的內應這次免費、且跳過專屬 / 壞事件)。事件皆 config 驅動(`report.events` 加權池 + `report.eventParams` 數值),UI 與後續選擇集中在 `theftView`。
 
-- **壞事件**(`badEventChance`,由 `events.bad` 加權抽):`abscond` 捲款跑路 / `bribed` 被兇手收買 → 收費、查無;`crooked` 壞人偵探 → 收費外再從你錢包黑吃黑(`crookedStealPct`,上限 `crookedStealMax`)。
-- **好事件**(`goodEventChance`):`informant` 線人爆料 → 保證鎖定主嫌。
-- **專屬事件**(`tier.specialEvents`,獨立擲骰):王牌偵探仍有極小機率 `abscond` 捲款跑路,或 5% `arale` 變身阿拉蕾抄棒子捅你、固定捲走 `loss`(5000)。
+**好事件**(`events.good`):
 
-**壞事件後的選擇**:任一壞事件的 ephemeral 回覆都附兩顆按鈕(`theft_catch_` / `theft_giveup_`),交由 `catchDetective()` 結算——
+- `informant` 線人爆料 → 保證鎖定主嫌。
+- `counterrob` 黑吃黑反殺 → 保證鎖定主嫌之外,再從主嫌錢包搶 `counterRobPct`(上限 `counterRobMax`)賠給報案人(主嫌 `detective_counterrob` sink,報案人 `detective_reward`)。
+- `fishing` 釣魚執法 → **終局**:沒揪兇手,但幫報案人 `sting_count += 1`。`steal()` 命中有 `sting_count` 的目標時**必定失手**、消耗一格,小偷直接進追逃 / 通緝(`result.stung` 讓 `/偷竊` 顯示中陷阱)。
 
-- 🏃 **試圖逮捕他**:`report.catch.winRate`(預設 **50%**)討回全部損失(委託費 + 被捲走的錢,`source:"detective_catch_win"`);失敗 → 被反咬,再依 `losePenaltyPct`/`Min`/`Max` 從錢包多搶一筆(`source:"detective_catch_lose"`)。
-- 🤷 **自認倒楣**:認賠委託金,結束。
+**壞事件**(`events.bad`,`badEventChance`)——每個事件的「二選一」由 `event.choices` 定義,統一走 `theft_ev_<action>_<owner>_<event>_<amount>` 按鈕,handler 依 `action` 分派:
 
-> 所有偵探壞事件(含逮捕結果)都會 `broadcast()` 到 `announceChannelId` 公開頻道增加趣味。相關扣款 source(`detective_crooked`/`detective_arale`/`detective_catch_lose`)須登記進 `grantCoins` 的 `SINK_SOURCES`,退款 source(`detective_catch_win`)登記進 `FLAT_REWARD_SOURCES`,否則負向 grant 會被守門擋掉、正向 grant 會被倍率灌水。
+| 事件 | 選項 A | 選項 B |
+|---|---|---|
+| `abscond` / `bribed` / `crooked` / `arale` | 反擊 `catch`(`catchDetective` 50% 討回全部損失,失敗被反咬) | `giveup` 認賠 |
+| `selfheist` 監守自盜(兇手是偵探) | `shreport` 報警(50% 討回委託費 + `selfHeistBonus`,失敗被反咬) | `shrecruit` 收編內應(`free_report = true`,下次報案免費) |
+| `gambler` 賭徒偵探 | `bet` 跟他賭(50% 委託費雙倍) | `betskip` 不賭、退回委託費 |
+| `misid` 抓錯人(亂指無辜路人,純呈現不對他動手) | `frame` 將錯就錯(再花 `misidFrameMul×fee` 白花錢) | `apolo` 道歉(付 `misidApologyMul×fee` 名譽費) |
+| `drunk` 偵探喝掛 | **無選擇**:退回 `drunkRefundPct×fee` | — |
+
+> 所有偵探壞事件(含後續選擇結果)都 `broadcast()` 到 `announceChannelId` 公開頻道。金流 source 須在 `grantCoins` 登記正確類別,否則負向 grant 被守門擋掉、正向 grant 被倍率灌水:SINK — `detective_fee`/`detective_crooked`/`detective_arale`/`detective_catch_lose`/`detective_penalty`/`detective_counterrob`;FLAT_REWARD — `detective_catch_win`/`detective_reward`。
 
 ---
 

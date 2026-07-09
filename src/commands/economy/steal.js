@@ -15,6 +15,7 @@ const { theft } = require("../../config");
 const theftService = require("../../features/theft/theftService");
 const {
   errorContainer,
+  infoContainer,
   broadcast,
   fleeChaseContainer,
   wantedAnnounceContainer,
@@ -113,12 +114,16 @@ module.exports = {
 
       // 失手 → 立刻進入追逃：ephemeral 顯示逃跑畫面，甩開就清白、被逮才上通緝榜
       if (result.fleeing) {
-        return interaction.editReply({
-          components: [
-            fleeChaseContainer(interaction.user.id, result.token, result.stage, result.bounty),
-          ],
-          flags: MessageFlags.IsComponentsV2,
-        });
+        const components = [];
+        if (result.stung) {
+          components.push(
+            infoContainer(0x2ecc71, `🎣 你踩到 ${target} 的偵探設下的**釣魚執法**陷阱，當場失風！`)
+          );
+        }
+        components.push(
+          fleeChaseContainer(interaction.user.id, result.token, result.stage, result.bounty)
+        );
+        return interaction.editReply({ components, flags: MessageFlags.IsComponentsV2 });
       }
 
       // 逃亡系統未啟用的退路：維持舊行為，直接通緝並公開

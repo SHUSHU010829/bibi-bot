@@ -260,12 +260,20 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
   if (theftProfile.safeboxActive(targetProfile)) rate -= c.defense?.safeboxRate ?? 0.2;
   rate = clamp(rate, s.minRate ?? 0.15, s.maxRate ?? 0.85);
 
-  const success = Math.random() < rate;
+  // 釣魚執法：報案偵探幫目標設的陷阱 → 這次偷竊必定失手、當場失風
+  const stung = (targetProfile.sting_count || 0) > 0;
+  const success = !stung && Math.random() < rate;
 
   if (usedCloak) {
     await client.theftProfilesCollection.updateOne(
       { userId: actorId, guildId },
       { $inc: { night_cloak_count: -1 }, $set: { updatedAt: new Date() } }
+    );
+  }
+  if (stung) {
+    await client.theftProfilesCollection.updateOne(
+      { userId: targetId, guildId },
+      { $inc: { sting_count: -1 }, $set: { updatedAt: new Date() } }
     );
   }
 
@@ -411,12 +419,13 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
       ok: true,
       success: false,
       fleeing: false,
+      stung,
       bounty: w?.bounty ?? bounty,
       expiresAt: w?.expiresAt ?? Date.now() + wantedTtlMs,
     };
   }
 
-  return { ok: true, success: false, fleeing: true, token: fleeToken, bounty, stage: fleeStageInfo(e, 0) };
+  return { ok: true, success: false, fleeing: true, stung, token: fleeToken, bounty, stage: fleeStageInfo(e, 0) };
 }
 
 // ── /追捕 ─────────────────────────────────────────────
@@ -770,7 +779,10 @@ async function report(client, { guildId, userId, username, tierKey }) {
   const r = c.report || {};
   const tier = resolveTier(tierKey);
 
-  const fee = tier.fee ?? 500;
+  const ep = r.eventParams || {};
+  const prof = await theftProfile.getOrCreate(client, userId, guildId);
+  const freeReport = !!prof.free_report; // 監守自盜「收編內應」給的免費報案額度
+  const fee = freeReport ? 0 : tier.fee ?? 500;
   const wallet = (await getWallet(client, userId, guildId)).balance;
   if (wallet < fee) return { ok: false, reason: "insufficient", fee, have: wallet, tier };
 
@@ -798,70 +810,108 @@ async function report(client, { guildId, userId, username, tierKey }) {
     return { ok: true, charged: false, found: false, culprits: [], noCase: true, tier };
   }
 
+  // 收編的內應這次免費 → 有案可查才用掉免費額度
+  if (freeReport) {
+    await client.theftProfilesCollection.updateOne(
+      { userId, guildId },
+      { $set: { free_report: false, updatedAt: new Date() } }
+    );
+  }
   // 收委託費
-  await grantCoins(client, {
-    userId,
-    guildId,
-    username,
-    amount: -fee,
-    source: "detective_fee",
-    meta: { tier: tier.key },
-  });
-
-  // 專屬特殊事件（各偵探獨立擲骰、優先於一般壞事件）：
-  //   王牌偵探極小機率「變身阿拉蕾」抄棒子捅你，除委託費外再捲走固定一筆。
-  for (const sp of tier.specialEvents || []) {
-    if (Math.random() >= (sp.chance ?? 0)) continue;
-    if (sp.key === "arale") {
-      const w2 = (await getWallet(client, userId, guildId)).balance;
-      const loss = Math.min(sp.loss ?? 0, w2);
-      if (loss > 0) {
-        await grantCoins(client, {
-          userId,
-          guildId,
-          username,
-          amount: -loss,
-          source: "detective_arale",
-          meta: { tier: tier.key },
-        });
-      }
-      return { ok: true, charged: true, badEvent: "arale", fee, araleLoss: loss, tier };
-    }
-    // 其餘專屬壞事件（如王牌偵探也會捲款跑路）走一般壞事件呈現與後續選擇
-    return { ok: true, charged: true, badEvent: sp.key, fee, tier };
+  if (fee > 0) {
+    await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      amount: -fee,
+      source: "detective_fee",
+      meta: { tier: tier.key },
+    });
   }
 
-  // 壞事件（互斥、優先於調查）：越菜的偵探越常出包，王牌不會。
-  //   abscond 捲款跑路 / bribed 被兇手收買 → 收費、查無結果；
-  //   crooked 壞人偵探 → 收費之外還黑吃黑，再從你錢包偷一筆。
   const eventsCfg = r.events || {};
-  if (Math.random() < (tier.badEventChance ?? 0)) {
-    const bad = pickWeighted(eventsCfg.bad) || "abscond";
-    if (bad === "crooked") {
-      const w2 = (await getWallet(client, userId, guildId)).balance;
-      const extra = Math.min(
-        Math.floor(w2 * (r.crookedStealPct ?? 0.1)),
-        r.crookedStealMax ?? 2000,
-        w2
-      );
-      if (extra > 0) {
-        await grantCoins(client, {
-          userId,
-          guildId,
-          username,
-          amount: -extra,
-          source: "detective_crooked",
-          meta: { tier: tier.key },
-        });
+
+  // 收編的內應忠心耿耿，不會出包（跳過專屬 / 一般壞事件），直接查案。
+  if (!freeReport) {
+    // 專屬特殊事件（各偵探獨立擲骰、優先於一般壞事件）：
+    //   王牌偵探極小機率「變身阿拉蕾」抄棒子捅你，除委託費外再捲走固定一筆。
+    for (const sp of tier.specialEvents || []) {
+      if (Math.random() >= (sp.chance ?? 0)) continue;
+      if (sp.key === "arale") {
+        const w2 = (await getWallet(client, userId, guildId)).balance;
+        const loss = Math.min(sp.loss ?? 0, w2);
+        if (loss > 0) {
+          await grantCoins(client, {
+            userId,
+            guildId,
+            username,
+            amount: -loss,
+            source: "detective_arale",
+            meta: { tier: tier.key },
+          });
+        }
+        return { ok: true, charged: true, badEvent: "arale", fee, araleLoss: loss, tier };
       }
-      return { ok: true, charged: true, badEvent: "crooked", fee, extraStolen: extra, tier };
+      // 其餘專屬壞事件（如王牌偵探也會捲款跑路）走一般壞事件呈現與後續選擇
+      return { ok: true, charged: true, badEvent: sp.key, fee, tier };
     }
-    return { ok: true, charged: true, badEvent: bad, fee, tier };
+
+    // 壞事件（互斥、優先於調查）：越菜的偵探越常出包。
+    if (Math.random() < (tier.badEventChance ?? 0)) {
+      const bad = pickWeighted(eventsCfg.bad) || "abscond";
+      if (bad === "crooked") {
+        const w2 = (await getWallet(client, userId, guildId)).balance;
+        const extra = Math.min(
+          Math.floor(w2 * (r.crookedStealPct ?? 0.1)),
+          r.crookedStealMax ?? 2000,
+          w2
+        );
+        if (extra > 0) {
+          await grantCoins(client, {
+            userId,
+            guildId,
+            username,
+            amount: -extra,
+            source: "detective_crooked",
+            meta: { tier: tier.key },
+          });
+        }
+        return { ok: true, charged: true, badEvent: "crooked", fee, extraStolen: extra, tier };
+      }
+      // 偵探喝掛：醉倒沒查成，但良心發現退你一部分委託費（無後續選擇）
+      if (bad === "drunk") {
+        const refund = Math.floor(fee * (ep.drunkRefundPct ?? 0.5));
+        if (refund > 0) {
+          await grantCoins(client, {
+            userId,
+            guildId,
+            username,
+            amount: refund,
+            source: "detective_reward",
+            meta: { event: "drunk", tier: tier.key },
+          });
+        }
+        return { ok: true, charged: true, badEvent: "drunk", fee, refunded: refund, tier };
+      }
+      // selfheist 監守自盜 / gambler 賭徒偵探 / misid 抓錯人 → 交由後續按鈕選擇處理
+      return { ok: true, charged: true, badEvent: bad, fee, tier };
+    }
   }
 
-  // 好事件：線人爆料 → 保證破案（即使調查 RNG 全落空，也強制鎖定窗口內偷最多的主嫌）
+  // 好事件：線人爆料 / 黑吃黑反殺 → 保證破案；釣魚執法 → 幫你設陷阱。
   const goodEvent =
     Math.random() < (tier.goodEventChance ?? 0) ? pickWeighted(eventsCfg.good) : null;
+
+  // 釣魚執法：偵探沒揪出兇手，但幫你在錢包設下陷阱 → 下一個偷你的人必定失風被通緝
+  if (goodEvent === "fishing") {
+    const upd = await client.theftProfilesCollection.findOneAndUpdate(
+      { userId, guildId },
+      { $inc: { sting_count: 1 }, $set: { updatedAt: new Date() } },
+      { returnDocument: "after" }
+    );
+    const stingLeft = (upd?.value || upd)?.sting_count ?? 1;
+    return { ok: true, charged: true, goodEvent: "fishing", fee, tier, stingLeft };
+  }
 
   // 線索隨時間變冷：越久前的竊案越難查，接近窗口邊緣時查到率降到 investigateRateStale
   // 該兇手在窗口內偷你的總額（不受偵查 RNG 影響）→ 懸賞金基準，與 placeBounty 實扣同源
@@ -883,9 +933,10 @@ async function report(client, { guildId, userId, username, tierKey }) {
     byActor.set(ev.actor_id, cur);
   }
 
-  // 線人爆料：把窗口內偷最多的主嫌強制納入（即使上面 RNG 沒查到他）
+  // 線人爆料 / 黑吃黑反殺：把窗口內偷最多的主嫌強制納入（即使上面 RNG 沒查到他）
   let informant = false;
-  if (goodEvent === "informant") {
+  let counterRob = null;
+  if (goodEvent === "informant" || goodEvent === "counterrob") {
     let topId = null;
     let topAmt = -1;
     for (const [aid, amt] of fullByActor) {
@@ -906,7 +957,34 @@ async function report(client, { guildId, userId, username, tierKey }) {
         }
         byActor.set(topId, { actorId: topId, amount, count });
       }
-      informant = true;
+      if (goodEvent === "informant") informant = true;
+      // 黑吃黑反殺：偵探順手從主嫌錢包搶一筆賠給你
+      if (goodEvent === "counterrob") {
+        const cWallet = (await getWallet(client, topId, guildId)).balance;
+        const amt = Math.min(
+          Math.floor(cWallet * (ep.counterRobPct ?? 0.15)),
+          ep.counterRobMax ?? 2500,
+          cWallet
+        );
+        if (amt > 0) {
+          await grantCoins(client, {
+            userId: topId,
+            guildId,
+            amount: -amt,
+            source: "detective_counterrob",
+            meta: { victimId: userId },
+          });
+          await grantCoins(client, {
+            userId,
+            guildId,
+            username,
+            amount: amt,
+            source: "detective_reward",
+            meta: { event: "counterrob", culpritId: topId },
+          });
+        }
+        counterRob = { culpritId: topId, amount: amt };
+      }
     }
   }
 
@@ -937,6 +1015,8 @@ async function report(client, { guildId, userId, username, tierKey }) {
     totalCases: openEvents.length,
     tier,
     informant,
+    counterRob,
+    freeReport,
   };
 }
 
@@ -978,6 +1058,125 @@ async function catchDetective(client, { guildId, userId, username, recoverable }
     });
   }
   return { ok: true, win: false, penalty };
+}
+
+// 反擊失敗時被反咬多搶的金額（與 catchDetective 同一套 catch 參數）
+async function catchPenalty(client, userId, guildId) {
+  const cc = cfg().report?.catch || {};
+  const wallet = (await getWallet(client, userId, guildId)).balance;
+  return Math.min(
+    Math.max(Math.floor(wallet * (cc.losePenaltyPct ?? 0.12)), cc.losePenaltyMin ?? 0),
+    cc.losePenaltyMax ?? Infinity,
+    wallet
+  );
+}
+
+// ── 監守自盜「報警抓他」：50% 討回委託費 + 獎金，失敗被反咬 ──
+async function selfHeistReport(client, { guildId, userId, username, fee }) {
+  const c = cfg();
+  if (!c.enabled) return { ok: false, reason: "disabled" };
+  const cc = c.report?.catch || {};
+  const ep = c.report?.eventParams || {};
+  if (Math.random() < (cc.winRate ?? 0.5)) {
+    const bonus = Math.max(0, Math.floor(ep.selfHeistBonus ?? 0));
+    const recovered = Math.max(0, Math.floor(fee || 0)) + bonus;
+    if (recovered > 0) {
+      await grantCoins(client, {
+        userId,
+        guildId,
+        username,
+        amount: recovered,
+        source: "detective_reward",
+        meta: { event: "selfheist" },
+      });
+    }
+    return { ok: true, win: true, recovered, bonus };
+  }
+  const penalty = await catchPenalty(client, userId, guildId);
+  if (penalty > 0) {
+    await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      amount: -penalty,
+      source: "detective_penalty",
+      meta: { event: "selfheist" },
+    });
+  }
+  return { ok: true, win: false, penalty };
+}
+
+// ── 監守自盜「收編當內應」：下次報案免費 ──
+async function recruitInsider(client, { guildId, userId }) {
+  const c = cfg();
+  if (!c.enabled || !client.theftProfilesCollection) return { ok: false, reason: "disabled" };
+  await client.theftProfilesCollection.updateOne(
+    { userId, guildId },
+    { $set: { free_report: true, updatedAt: new Date() } },
+    { upsert: true }
+  );
+  return { ok: true };
+}
+
+// ── 賭徒偵探「跟他賭」：50% 委託費雙倍退還，失敗全沒 ──
+async function gambleBet(client, { guildId, userId, username, fee }) {
+  const c = cfg();
+  if (!c.enabled) return { ok: false, reason: "disabled" };
+  const cc = c.report?.catch || {};
+  if (Math.random() < (cc.winRate ?? 0.5)) {
+    const payout = Math.max(0, Math.floor(fee || 0)) * 2;
+    if (payout > 0) {
+      await grantCoins(client, {
+        userId,
+        guildId,
+        username,
+        amount: payout,
+        source: "detective_reward",
+        meta: { event: "gambler" },
+      });
+    }
+    return { ok: true, win: true, payout };
+  }
+  return { ok: true, win: false, payout: 0 };
+}
+
+// ── 賭徒偵探「不賭」：偵探摸魚沒查，退回委託費 ──
+async function gambleSkip(client, { guildId, userId, username, fee }) {
+  const c = cfg();
+  if (!c.enabled) return { ok: false, reason: "disabled" };
+  const refunded = Math.max(0, Math.floor(fee || 0));
+  if (refunded > 0) {
+    await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      amount: refunded,
+      source: "detective_reward",
+      meta: { event: "gambler_skip" },
+    });
+  }
+  return { ok: true, refunded };
+}
+
+// ── 抓錯人：將錯就錯付錢辦人（白花錢）/ 道歉放人（付名譽費）──
+async function misidAct(client, { guildId, userId, username, fee, kind }) {
+  const c = cfg();
+  if (!c.enabled) return { ok: false, reason: "disabled" };
+  const ep = c.report?.eventParams || {};
+  const mul = kind === "frame" ? ep.misidFrameMul ?? 1 : ep.misidApologyMul ?? 0.3;
+  const wallet = (await getWallet(client, userId, guildId)).balance;
+  const cost = Math.min(Math.floor((fee || 0) * mul), wallet);
+  if (cost > 0) {
+    await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      amount: -cost,
+      source: "detective_penalty",
+      meta: { event: "misid", kind },
+    });
+  }
+  return { ok: true, kind, cost };
 }
 
 // ── 報案後的強制決鬥：贏了從兇手錢包討回被偷金額的一半 ──
@@ -1382,6 +1581,11 @@ module.exports = {
   report,
   reportTiers,
   catchDetective,
+  selfHeistReport,
+  recruitInsider,
+  gambleBet,
+  gambleSkip,
+  misidAct,
   revengeDuel,
   forgiveCulprit,
   placeBounty,

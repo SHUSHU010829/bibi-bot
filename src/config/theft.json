@@ -135,11 +135,19 @@
         }
       ],
       "events": {
-        "good": [{ "key": "informant", "weight": 1 }],
+        "good": [
+          { "key": "informant", "weight": 3 },
+          { "key": "counterrob", "weight": 2 },
+          { "key": "fishing", "weight": 2 }
+        ],
         "bad": [
-          { "key": "abscond", "weight": 1 },
-          { "key": "bribed", "weight": 1 },
-          { "key": "crooked", "weight": 1 }
+          { "key": "abscond", "weight": 2 },
+          { "key": "bribed", "weight": 2 },
+          { "key": "crooked", "weight": 2 },
+          { "key": "selfheist", "weight": 1 },
+          { "key": "gambler", "weight": 1 },
+          { "key": "drunk", "weight": 1 },
+          { "key": "misid", "weight": 1 }
         ]
       },
       "crookedStealPct": 0.12,
@@ -149,6 +157,14 @@
         "losePenaltyPct": 0.12,
         "losePenaltyMin": 500,
         "losePenaltyMax": 3000
+      },
+      "eventParams": {
+        "drunkRefundPct": 0.5,
+        "counterRobPct": 0.15,
+        "counterRobMax": 2500,
+        "selfHeistBonus": 1500,
+        "misidFrameMul": 1,
+        "misidApologyMul": 0.3
       }
     },
     "revenge": {
