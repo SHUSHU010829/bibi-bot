@@ -25,6 +25,13 @@ function poolParams(symbol) {
   return (stockSystem?.pool || []).find((p) => p.symbol === symbol) || null;
 }
 
+// 掛牌價（合理價的錨點）：現役 + 候補 pool 為單一來源。下市補位的候補股
+// 不在 pool，故需一併查 candidatePool，否則錨定會失效。
+function poolInitialPrice(symbol) {
+  const all = [...(stockSystem?.pool || []), ...(stockSystem?.candidatePool || [])];
+  return all.find((p) => p.symbol === symbol)?.initialPrice ?? null;
+}
+
 // 個股實際 drift = beta × 市場情緒 drift。beta 高的股票對牛熊放大反應，
 // beta 低的（藍籌）相對抗漲抗跌。beta 未設 → 1（等同原本行為）。
 function stockDrift(symbol, sentiment) {
@@ -70,11 +77,20 @@ function nextPriceAdvanced(state, params) {
   return { price, momentum: newMomentum };
 }
 
-// 合理價每日依情緒微幅位移，避免死釘 initialPrice（牛市上修、熊市下修）。
-function nextFairValue(fairValue, sentiment) {
-  const d = engineCfg().fairValueDailyDrift ?? 0;
+// 合理價每日依情緒微幅位移（牛市上修、熊市下修），並緩步向掛牌價 anchor 收斂。
+// anchor 收斂是為了修復下市崩盤把 fairValue 砍到地板後永遠回不來的問題：
+// 只要傳入 anchor（掛牌價），偏離的 fairValue 會每日補一小段回歸，均值回歸才有往上的動力。
+// 整理期（warning）的個股刻意不傳 anchor，讓 fairValue 續黏地板、維持下市張力。
+function nextFairValue(fairValue, sentiment, anchor) {
+  const cfg = engineCfg();
+  const d = cfg.fairValueDailyDrift ?? 0;
   const dir = sentiment === "bull" ? 1 : sentiment === "bear" ? -1 : 0;
-  return roundPrice((fairValue || 0) * (1 + dir * d));
+  let fv = (fairValue || 0) * (1 + dir * d);
+  const pull = cfg.fairValueAnchorPull ?? 0;
+  if (pull > 0 && anchor > 0 && fv > 0) {
+    fv += (anchor - fv) * pull;
+  }
+  return roundPrice(fv);
 }
 
 function applyEvent(currentPrice, effectRate, floor) {
@@ -119,6 +135,7 @@ module.exports = {
   applyEvent,
   calcMarketDrift,
   poolParams,
+  poolInitialPrice,
   stockDrift,
   roundPrice,
   priceImpact,

@@ -7,7 +7,7 @@ const {
 } = require("discord.js");
 const { stockSystem } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
-const { roundPrice } = require("./priceEngine");
+const { roundPrice, poolInitialPrice } = require("./priceEngine");
 const shortService = require("./shortService");
 
 // 個股下市：由稀有「基本面崩壞」觸發把 fairValue 一併砍到地板 → 股票黏在地板進整理期
@@ -224,9 +224,14 @@ async function advanceWarnings(client, guildId, nowMs) {
     if (m.currentPrice >= escapePrice) {
       const streak = (m.recoverStreak || 0) + 1;
       if (streak >= recoverDays) {
+        // 洗白復活：把 enterWarning 砍到地板的 fairValue 還原回掛牌價，
+        // 否則均值回歸會繼續把股價釘死在地板、永遠漲不回來。
+        const anchor = poolInitialPrice(m.symbol);
+        const recovered = { listingStatus: "normal", recoverStreak: 0, updatedAt: new Date() };
+        if (anchor > 0) recovered.fairValue = anchor;
         await client.stockMarketCollection.updateOne(
           { _id: m._id },
-          { $set: { listingStatus: "normal", recoverStreak: 0, updatedAt: new Date() }, $unset: { crashHeadline: "" } },
+          { $set: recovered, $unset: { crashHeadline: "" } },
         );
         const c = new ContainerBuilder()
           .setAccentColor(0x2ecc71)
