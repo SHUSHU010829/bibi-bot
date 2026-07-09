@@ -240,11 +240,144 @@ function bountyAnnounceContainer(victimId, culpritId, bounty, expiresAt) {
     );
 }
 
+// ── 報案壞事件（偵探出包）：私人 Container + 公開廣播文案 ──
+const n = (v) => (v || 0).toLocaleString();
+
+// 每種壞事件的呈現資料：私人標題/內文 + 公開廣播一句話。
+const REPORT_BAD_EVENTS = {
+  abscond: {
+    accent: 0xe67e22,
+    heading: "🕵️‍♂️💨 偵探捲款跑路了！",
+    detail: (tl, fee) =>
+      `你付了 **${n(fee)}** ${COIN_EMOJI} 委託 ${tl}，他拿了錢就人間蒸發…`,
+    broadcast: (uid, tl) => `🕵️‍♂️💨 <@${uid}> 委託的 ${tl} 拿了委託金就人間蒸發、捲款跑路了！`,
+  },
+  bribed: {
+    accent: 0xe67e22,
+    heading: "🤝💰 偵探被兇手收買了！",
+    detail: (tl, fee) =>
+      `${tl} 收了你 **${n(fee)}** ${COIN_EMOJI}，卻反過來被兇手買通，回報「查無此人」…`,
+    broadcast: (uid, tl) => `🤝💰 <@${uid}> 委託的 ${tl} 被兇手收買，兩手一攤說查無此人！`,
+  },
+  crooked: {
+    accent: 0xe74c3c,
+    heading: "🕵️‍♂️🔪 遇到壞人偵探！",
+    detail: (tl, fee, extra) =>
+      `${tl} 收了你 **${n(fee)}** ${COIN_EMOJI} 委託費，還趁機黑吃黑` +
+      (extra > 0
+        ? `，從你錢包又捲走 **${n(extra)}** ${COIN_EMOJI}！`
+        : "，還好你錢包沒剩多少沒得偷。"),
+    broadcast: (uid, tl) => `🕵️‍♂️🔪 <@${uid}> 遇到壞人偵探，委託費之外還被黑吃黑捲走一筆！`,
+  },
+  arale: {
+    accent: 0xe74c3c,
+    heading: "🤖⚡ 王牌偵探變身阿拉雷了！",
+    detail: (tl, fee, extra) =>
+      `你花 **${n(fee)}** ${COIN_EMOJI} 請的 ${tl} 突然大喊「んちゃ——！」變身成阿拉雷，抄起棒子朝你捅——捅——` +
+      (extra > 0
+        ? `，蹦蹦跳跳捲走 **${n(extra)}** ${COIN_EMOJI} 就跑掉了！`
+        : "，還好你錢包空空沒得捅。"),
+    broadcast: (uid, tl) => `🤖⚡ <@${uid}> 花大錢請的王牌偵探竟變身阿拉雷，抄棒子把他捅跑了！`,
+  },
+};
+
+// 報案壞事件（私人 ephemeral）：說明損失 + 兩顆選擇按鈕（試圖逮捕 / 自認倒楣）。
+function reportBadEventContainer(event, { tierLabel, fee, extra = 0, ownerId }) {
+  const meta = REPORT_BAD_EVENTS[event] || REPORT_BAD_EVENTS.abscond;
+  const recoverable = (fee || 0) + (extra || 0);
+  const winPct = Math.round((theft?.report?.catch?.winRate ?? 0.5) * 100);
+  return new ContainerBuilder()
+    .setAccentColor(meta.accent)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# ${meta.heading}\n${meta.detail(tierLabel, fee, extra)}`)
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `這一趟你損失了 **${n(recoverable)}** ${COIN_EMOJI}。要自認倒楣，還是追上去逮捕他？`
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`theft_catch_${ownerId}_${event}_${recoverable}`)
+          .setLabel(`試圖逮捕他（${winPct}% 討回 ${n(recoverable)}）`)
+          .setEmoji("🏃")
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId(`theft_giveup_${ownerId}`)
+          .setLabel("自認倒楣")
+          .setEmoji("🤷")
+          .setStyle(ButtonStyle.Secondary)
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 🏃 逮到 → 討回全部 **${n(recoverable)}** ${COIN_EMOJI}；失敗 → 被他反咬一口、再搶走一筆。`
+      )
+    );
+}
+
+// 報案壞事件（公開廣播）：把偵探的糗事推到治安頻道增加趣味。
+function reportBadEventBroadcast(event, victimId, tierLabel) {
+  const meta = REPORT_BAD_EVENTS[event] || REPORT_BAD_EVENTS.abscond;
+  return infoContainer(meta.accent, meta.broadcast(victimId, tierLabel));
+}
+
+// 逮捕偵探結果（私人）：討回 / 追丟挨揍。
+function reportCatchContainer(event, result) {
+  if (result.win) {
+    const araleWin =
+      event === "arale"
+        ? "你死命追上暴走的阿拉雷，"
+        : "你追上了那個落跑的偵探，揪著他";
+    return new ContainerBuilder()
+      .setAccentColor(0xf1c40f)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🏃 逮個正著！\n${araleWin}討回了 **${n(result.recovered)}** ${COIN_EMOJI}！`
+        )
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("-# 這次沒讓他得逞，委託金全數奉還。")
+      );
+  }
+  return new ContainerBuilder()
+    .setAccentColor(0x95a5a6)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        result.penalty > 0
+          ? `# 😭 追丟還挨揍\n你沒追上他，反被他反咬一口，又被搶走 **${n(result.penalty)}** ${COIN_EMOJI}…`
+          : `# 😭 撲了個空\n你沒追上他，好在錢包空空，他也懶得再踹你一腳。`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# 早知道就自認倒楣了…下次找靠譜點的偵探吧。")
+    );
+}
+
+// 逮捕偵探結果（公開廣播）。
+function reportCatchBroadcast(victimId, result) {
+  if (result.win) {
+    return infoContainer(0xf1c40f, `🏃 <@${victimId}> 追上落跑的偵探，成功討回 **${n(result.recovered)}** ${COIN_EMOJI}！`);
+  }
+  return infoContainer(
+    0x95a5a6,
+    result.penalty > 0
+      ? `😭 <@${victimId}> 追偵探反被扁，又被搶走 **${n(result.penalty)}** ${COIN_EMOJI}！`
+      : `😭 <@${victimId}> 追偵探撲了個空，兩手空空回家。`
+  );
+}
+
 module.exports = {
   errorContainer,
   infoContainer,
   huntResultContainer,
   broadcast,
+  reportBadEventContainer,
+  reportBadEventBroadcast,
+  reportCatchContainer,
+  reportCatchBroadcast,
   fleeChaseContainer,
   fleeOutcomeContainer,
   wantedAnnounceContainer,

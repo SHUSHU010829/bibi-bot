@@ -808,6 +808,29 @@ async function report(client, { guildId, userId, username, tierKey }) {
     meta: { tier: tier.key },
   });
 
+  // 專屬特殊事件（各偵探獨立擲骰、優先於一般壞事件）：
+  //   王牌偵探極小機率「變身阿拉雷」抄棒子捅你，除委託費外再捲走固定一筆。
+  for (const sp of tier.specialEvents || []) {
+    if (Math.random() >= (sp.chance ?? 0)) continue;
+    if (sp.key === "arale") {
+      const w2 = (await getWallet(client, userId, guildId)).balance;
+      const loss = Math.min(sp.loss ?? 0, w2);
+      if (loss > 0) {
+        await grantCoins(client, {
+          userId,
+          guildId,
+          username,
+          amount: -loss,
+          source: "detective_arale",
+          meta: { tier: tier.key },
+        });
+      }
+      return { ok: true, charged: true, badEvent: "arale", fee, araleLoss: loss, tier };
+    }
+    // 其餘專屬壞事件（如王牌偵探也會捲款跑路）走一般壞事件呈現與後續選擇
+    return { ok: true, charged: true, badEvent: sp.key, fee, tier };
+  }
+
   // 壞事件（互斥、優先於調查）：越菜的偵探越常出包，王牌不會。
   //   abscond 捲款跑路 / bribed 被兇手收買 → 收費、查無結果；
   //   crooked 壞人偵探 → 收費之外還黑吃黑，再從你錢包偷一筆。
@@ -915,6 +938,46 @@ async function report(client, { guildId, userId, username, tierKey }) {
     tier,
     informant,
   };
+}
+
+// ── 報案壞事件後「試圖逮捕偵探」：50% 討回全部損失，失敗被反咬多搶一筆 ──
+async function catchDetective(client, { guildId, userId, username, recoverable }) {
+  const c = cfg();
+  if (!c.enabled || !client.theftLogsCollection) return { ok: false, reason: "disabled" };
+  const cc = c.report?.catch || {};
+
+  if (Math.random() < (cc.winRate ?? 0.5)) {
+    const recovered = Math.max(0, Math.floor(recoverable || 0));
+    if (recovered > 0) {
+      await grantCoins(client, {
+        userId,
+        guildId,
+        username,
+        amount: recovered,
+        source: "detective_catch_win",
+        meta: {},
+      });
+    }
+    return { ok: true, win: true, recovered };
+  }
+
+  const wallet = (await getWallet(client, userId, guildId)).balance;
+  const penalty = Math.min(
+    Math.max(Math.floor(wallet * (cc.losePenaltyPct ?? 0.12)), cc.losePenaltyMin ?? 0),
+    cc.losePenaltyMax ?? Infinity,
+    wallet
+  );
+  if (penalty > 0) {
+    await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      amount: -penalty,
+      source: "detective_catch_lose",
+      meta: {},
+    });
+  }
+  return { ok: true, win: false, penalty };
 }
 
 // ── 報案後的強制決鬥：贏了從兇手錢包討回被偷金額的一半 ──
@@ -1318,6 +1381,7 @@ module.exports = {
   surrender,
   report,
   reportTiers,
+  catchDetective,
   revengeDuel,
   forgiveCulprit,
   placeBounty,

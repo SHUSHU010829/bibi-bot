@@ -13,7 +13,12 @@ const {
 
 const { theft } = require("../../config");
 const theftService = require("../../features/theft/theftService");
-const { errorContainer } = require("../../features/theft/theftView");
+const {
+  errorContainer,
+  broadcast,
+  reportBadEventContainer,
+  reportBadEventBroadcast,
+} = require("../../features/theft/theftView");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 module.exports = {
@@ -72,68 +77,19 @@ module.exports = {
         });
       }
 
-      if (result.badEvent === "abscond") {
+      if (result.badEvent) {
+        const extra = result.extraStolen || result.araleLoss || 0;
+        broadcast(client, reportBadEventBroadcast(result.badEvent, interaction.user.id, tierLabel)).catch(
+          () => {}
+        );
         return interaction.editReply({
           components: [
-            new ContainerBuilder()
-              .setAccentColor(0xe67e22)
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                  `# 🕵️‍♂️💨 偵探捲款跑路了！\n` +
-                    `你付了 **${result.fee.toLocaleString()}** ${COIN_EMOJI} 委託 ${tierLabel}，他拿了錢就人間蒸發…`
-                )
-              )
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                  "-# 便宜的偵探比較容易落跑。改天換位靠譜的（神探 / 王牌）試試。"
-                )
-              ),
-          ],
-          flags: MessageFlags.IsComponentsV2,
-        });
-      }
-
-      if (result.badEvent === "bribed") {
-        return interaction.editReply({
-          components: [
-            new ContainerBuilder()
-              .setAccentColor(0xe67e22)
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                  `# 🤝💰 偵探被兇手收買了！\n` +
-                    `${tierLabel} 收了你 **${result.fee.toLocaleString()}** ${COIN_EMOJI}，卻反過來被兇手買通，回報「查無此人」…`
-                )
-              )
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                  "-# 越菜的偵探越容易被收買。想要買不動的，就找神探或王牌。"
-                )
-              ),
-          ],
-          flags: MessageFlags.IsComponentsV2,
-        });
-      }
-
-      if (result.badEvent === "crooked") {
-        const extra = result.extraStolen || 0;
-        return interaction.editReply({
-          components: [
-            new ContainerBuilder()
-              .setAccentColor(0xe74c3c)
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                  `# 🕵️‍♂️🔪 遇到壞人偵探！\n` +
-                    `${tierLabel} 收了你 **${result.fee.toLocaleString()}** ${COIN_EMOJI} 委託費，還趁機黑吃黑` +
-                    (extra > 0
-                      ? `，從你錢包又捲走 **${extra.toLocaleString()}** ${COIN_EMOJI}！`
-                      : "，還好你錢包沒剩多少沒得偷。")
-                )
-              )
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                  "-# 貪小便宜找爛偵探的下場。名聲好的神探 / 王牌絕不會這樣坑你。"
-                )
-              ),
+            reportBadEventContainer(result.badEvent, {
+              tierLabel,
+              fee: result.fee,
+              extra,
+              ownerId: interaction.user.id,
+            }),
           ],
           flags: MessageFlags.IsComponentsV2,
         });

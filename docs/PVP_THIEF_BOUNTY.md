@@ -150,6 +150,21 @@
   - **查無** → 「線索太少,查不出來…」(退還?→ 預設**不退**,委託本身就是消耗;可設 config `refundOnMiss`)。
 - 平時(沒被偷)`/金幣紀錄` 只會看到匿名的 `遭竊 -N`,想知道是誰就得報案——把「被偷」變成一段可追查的懸疑,而不是單向挨打。
 
+#### 偵探分級與壞事件(`report.tiers` / `report.events`)
+
+四位偵探(菜鳥 `rookie` / 資深 `pro` / 神探 `ace` / 王牌 `master`)費用越貴、破案率越高、出包率越低。委託後可能觸發:
+
+- **壞事件**(`badEventChance`,由 `events.bad` 加權抽):`abscond` 捲款跑路 / `bribed` 被兇手收買 → 收費、查無;`crooked` 壞人偵探 → 收費外再從你錢包黑吃黑(`crookedStealPct`,上限 `crookedStealMax`)。
+- **好事件**(`goodEventChance`):`informant` 線人爆料 → 保證鎖定主嫌。
+- **專屬事件**(`tier.specialEvents`,獨立擲骰):王牌偵探仍有極小機率 `abscond` 捲款跑路,或 5% `arale` 變身阿拉雷抄棒子捅你、固定捲走 `loss`(5000)。
+
+**壞事件後的選擇**:任一壞事件的 ephemeral 回覆都附兩顆按鈕(`theft_catch_` / `theft_giveup_`),交由 `catchDetective()` 結算——
+
+- 🏃 **試圖逮捕他**:`report.catch.winRate`(預設 **50%**)討回全部損失(委託費 + 被捲走的錢,`source:"detective_catch_win"`);失敗 → 被反咬,再依 `losePenaltyPct`/`Min`/`Max` 從錢包多搶一筆(`source:"detective_catch_lose"`)。
+- 🤷 **自認倒楣**:認賠委託金,結束。
+
+> 所有偵探壞事件(含逮捕結果)都會 `broadcast()` 到 `announceChannelId` 公開頻道增加趣味。相關扣款 source(`detective_crooked`/`detective_arale`/`detective_catch_lose`)須登記進 `grantCoins` 的 `SINK_SOURCES`,退款 source(`detective_catch_win`)登記進 `FLAT_REWARD_SOURCES`,否則負向 grant 會被守門擋掉、正向 grant 會被倍率灌水。
+
 ---
 
 ## 四、通緝 / 賞金 / 時效

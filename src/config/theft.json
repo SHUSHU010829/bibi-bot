@@ -127,7 +127,11 @@
           "investigateRateStale": 0.85,
           "goodEventChance": 0.45,
           "badEventChance": 0,
-          "desc": "頂級，必破案、絕不出包，常有線人爆料"
+          "specialEvents": [
+            { "key": "abscond", "chance": 0.05 },
+            { "key": "arale", "chance": 0.05, "loss": 5000 }
+          ],
+          "desc": "頂級，幾乎必破案，但仍有極小機率捲款跑路或變身阿拉雷捅你"
         }
       ],
       "events": {
@@ -139,7 +143,13 @@
         ]
       },
       "crookedStealPct": 0.12,
-      "crookedStealMax": 2500
+      "crookedStealMax": 2500,
+      "catch": {
+        "winRate": 0.5,
+        "losePenaltyPct": 0.12,
+        "losePenaltyMin": 500,
+        "losePenaltyMax": 3000
+      }
     },
     "revenge": {
       "recoverPct": 0.5,

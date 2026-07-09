@@ -11,12 +11,15 @@ const theftService = require("../../features/theft/theftService");
 const theftProfile = require("../../features/theft/theftProfile");
 const {
   errorContainer,
+  infoContainer,
   huntResultContainer,
   broadcast,
   fleeChaseContainer,
   fleeOutcomeContainer,
   wantedAnnounceContainer,
   bountyAnnounceContainer,
+  reportCatchContainer,
+  reportCatchBroadcast,
 } = require("../../features/theft/theftView");
 const theftBoard = require("../../features/theft/theftBoard");
 const { COIN_EMOJI } = require("../../constants/coin");
@@ -236,6 +239,47 @@ module.exports = async (client, interaction) => {
           )
         );
       return interaction.editReply({ components: [confirm], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    // ── 報案壞事件：試圖逮捕落跑偵探（owner 限定）──
+    if (id.startsWith("theft_catch_")) {
+      // theft_catch_<ownerId>_<event>_<recoverable>
+      const [ownerId, event, recStr] = id.slice("theft_catch_".length).split("_");
+      if (interaction.user.id !== ownerId) {
+        return interaction.reply({ content: "🚫 這不是你的委託！", flags: MessageFlags.Ephemeral });
+      }
+      const result = await theftService.catchDetective(client, {
+        guildId: interaction.guildId,
+        userId: ownerId,
+        username: interaction.member?.displayName || interaction.user.username,
+        recoverable: parseInt(recStr, 10) || 0,
+      });
+      if (!result.ok) {
+        return interaction.update({
+          components: [errorContainer("🔧 追捕失敗", "系統忙碌或未啟動。", "稍後再試。")],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      await interaction.update({
+        components: [reportCatchContainer(event, result)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      broadcast(client, reportCatchBroadcast(ownerId, result)).catch(() => {});
+      return;
+    }
+
+    // ── 報案壞事件：自認倒楣（owner 限定）──
+    if (id.startsWith("theft_giveup_")) {
+      const ownerId = id.slice("theft_giveup_".length);
+      if (interaction.user.id !== ownerId) {
+        return interaction.reply({ content: "🚫 這不是你的委託！", flags: MessageFlags.Ephemeral });
+      }
+      return interaction.update({
+        components: [
+          infoContainer(0x95a5a6, "# 🤷 算了，自認倒楣\n你摸摸鼻子，把這筆委託金當作繳學費。"),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
     }
 
     // ── 失風追逃小遊戲（owner 限定，同一則訊息 update 推進）──
