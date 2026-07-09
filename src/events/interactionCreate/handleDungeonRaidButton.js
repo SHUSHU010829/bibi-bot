@@ -353,7 +353,7 @@ async function doHeal(client, interaction, tier, themeId) {
     guildId: interaction.guildId,
     tier,
     level: status.level,
-    extras: {},
+    hpMaxVal: status.hpMax,
   });
   if (!result.ok) {
     if (result.reason === "no_potion") return replyEphemeral(interaction, "你沒有這瓶藥水了。");
