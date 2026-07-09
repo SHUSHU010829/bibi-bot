@@ -13,7 +13,7 @@ const {
 const { DateTime } = require("luxon");
 
 const { stockSystem } = require("../../config");
-const { nextPriceAdvanced, nextFairValue, stockDrift, poolParams, clampToLimit, limitBounds, priceImpact } = require("../../features/stock/priceEngine");
+const { nextPriceAdvanced, nextFairValue, stockDrift, poolParams, poolInitialPrice, clampToLimit, limitBounds, priceImpact } = require("../../features/stock/priceEngine");
 const { rollRandomEvent } = require("../../features/stock/eventEngine");
 const { isMarketOpen } = require("../../features/stock/tradeService");
 const { renderMultiLine } = require("../../features/stock/chartRenderer");
@@ -373,7 +373,9 @@ async function runOpen(client) {
     const stocks = await client.stockMarketCollection.find({ guildId, enabled: { $ne: false } }).toArray();
     for (const s of stocks) {
       const sentiment = s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways";
-      const fairValue = nextFairValue(s.fairValue || s.currentPrice, sentiment);
+      // 整理期個股不錨定，維持崩到地板的 fairValue；其餘向掛牌價緩步收斂。
+      const anchor = s.listingStatus === "warning" ? null : poolInitialPrice(s.symbol);
+      const fairValue = nextFairValue(s.fairValue || s.currentPrice, sentiment, anchor);
       await client.stockMarketCollection.updateOne(
         { _id: s._id },
         { $set: { openPrice: s.currentPrice, openedAt: new Date(), fairValue } }
