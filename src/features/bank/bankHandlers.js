@@ -213,9 +213,14 @@ async function buildDeposit(client, ctx) {
   const now = Date.now();
   const totalPrincipal = docs.reduce((s, d) => s + d.principal, 0);
   const totalAtMaturity = docs.reduce((s, d) => s + d.principal + d.interest, 0);
-  const shown = docs.slice(0, 8); // 元件數上限保護
+
+  const pageSize = 5;
+  const totalPages = Math.max(1, Math.ceil(docs.length / pageSize));
+  const page = Math.min(Math.max(0, ctx.page || 0), totalPages - 1);
+  const pageDocs = docs.slice(page * pageSize, page * pageSize + pageSize);
+
   const matured = [];
-  for (const d of shown) {
+  for (const d of pageDocs) {
     const maturesUnix = Math.floor(new Date(d.maturesAt).getTime() / 1000);
     const isMatured = new Date(d.maturesAt).getTime() <= now;
     if (isMatured) matured.push(d);
@@ -228,13 +233,8 @@ async function buildDeposit(client, ctx) {
         ),
       );
   }
-  if (docs.length > shown.length) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`-# 僅顯示前 ${shown.length} 筆，其餘用 /銀行 定存 提款 領回`),
-    );
-  }
 
-  // 到期存款直接給領回按鈕（UX #1：緊貼列表；最多 5 顆一排）
+  // 本頁到期存款直接給領回按鈕（UX #1：緊貼列表；最多 5 顆一排）
   if (matured.length) {
     const row = new ActionRowBuilder();
     matured.slice(0, 5).forEach((d) =>
@@ -251,9 +251,28 @@ async function buildDeposit(client, ctx) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `-# 總本金 **${fmt(totalPrincipal)}**　到期總額 **${fmt(totalAtMaturity)}**　·　未到期領回會扣違約金`,
+      `-# 第 ${page + 1} / ${totalPages} 頁（共 ${docs.length} 筆）　·　總本金 **${fmt(totalPrincipal)}**　到期總額 **${fmt(totalAtMaturity)}**`,
     ),
   );
+
+  if (totalPages > 1) {
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`bank_${userId}_deppage_${page - 1}`)
+          .setLabel("上一頁")
+          .setEmoji("◀️")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(page <= 0),
+        new ButtonBuilder()
+          .setCustomId(`bank_${userId}_deppage_${page + 1}`)
+          .setLabel("下一頁")
+          .setEmoji("▶️")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(page >= totalPages - 1),
+      ),
+    );
+  }
   container.addActionRowComponents(actionRow);
   return container;
 }

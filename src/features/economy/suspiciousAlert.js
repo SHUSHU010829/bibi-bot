@@ -37,26 +37,34 @@ async function raiseSuspicion(client, { guildId, kind, users, description, field
   }
 
   const flagId = `flag_${crypto.randomBytes(5).toString("hex")}`;
+  const flag = { flagId, guildId, kind, description, fields: fields || [], deltas, restored: false, createdAt: new Date() };
   if (client.creditFlagsCollection) {
-    await client.creditFlagsCollection
-      .insertOne({ flagId, guildId, kind, deltas, restored: false, createdAt: new Date() })
-      .catch(() => {});
+    await client.creditFlagsCollection.insertOne(flag).catch(() => {});
   }
 
-  // 即時告警關閉時：仍扣分並記錄可復原 flag，只是不發頻道訊息。
+  // 即時告警關閉時：仍扣分並記錄可復原 flag（由每日日報統一呈現），不即時發訊息。
   if (coinSystem?.suspiciousImmediateAlert === false) return { flagId, deltas };
 
   const channel = await alertChannel(client);
   if (!channel) return { flagId, deltas };
+  const { embed, row } = buildFlagMessage(flag);
+  await channel
+    .send({ embeds: [embed], components: [row], allowedMentions: { parse: [] } })
+    .catch((e) => console.log(`[SUSP] 告警發送失敗: ${e?.message || e}`.yellow));
+  return { flagId, deltas };
+}
 
-  const meta = KIND_META[kind] || { title: "⚠️ 可疑金流", color: 0xe67e22 };
+// 由 flag 紀錄重建告警 embed + 復原按鈕（即時告警與每日日報共用）。
+function buildFlagMessage(flag) {
+  const meta = KIND_META[flag.kind] || { title: "⚠️ 可疑金流", color: 0xe67e22 };
   const embed = new EmbedBuilder()
-    .setColor(meta.color)
+    .setColor(flag.restored ? 0x2ecc71 : meta.color)
     .setTitle(meta.title)
-    .setDescription(description)
-    .setTimestamp();
-  if (fields?.length) embed.addFields(fields);
+    .setDescription(flag.description || "")
+    .setTimestamp(flag.createdAt ? new Date(flag.createdAt) : null);
+  if (flag.fields?.length) embed.addFields(flag.fields);
 
+  const deltas = flag.deltas || {};
   const docked = Object.keys(deltas).length;
   embed.addFields({
     name: "信用分扣分",
@@ -69,16 +77,13 @@ async function raiseSuspicion(client, { guildId, kind, users, description, field
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`creditrestore_${flagId}`)
-      .setLabel("誤報，復原扣分")
-      .setEmoji("↩️")
+      .setCustomId(`creditrestore_${flag.flagId}`)
+      .setLabel(flag.restored ? "已復原" : "誤報，復原扣分")
+      .setEmoji(flag.restored ? "✅" : "↩️")
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(docked === 0),
+      .setDisabled(!!flag.restored || docked === 0),
   );
-
-  await channel
-    .send({ embeds: [embed], components: [row], allowedMentions: { parse: [] } })
-    .catch((e) => console.log(`[SUSP] 告警發送失敗: ${e?.message || e}`.yellow));
+  return { embed, row };
 }
 
-module.exports = { raiseSuspicion, alertChannel };
+module.exports = { raiseSuspicion, alertChannel, buildFlagMessage };

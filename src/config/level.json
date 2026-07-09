@@ -190,7 +190,7 @@
       "medianDays": 30,
       "minSamples": 5
     },
-    "suspiciousImmediateAlert": false
+    "suspiciousImmediateAlert": true
   },
 
   "twitchSync": {
