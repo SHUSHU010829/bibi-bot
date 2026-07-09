@@ -233,10 +233,13 @@ async function buildDeposit(client, ctx) {
 }
 
 async function buildSavings(client, ctx) {
-  const { balance } = await savingsService.view(client, ctx.userId, ctx.guildId);
+  const [{ balance }, block] = await Promise.all([
+    savingsService.view(client, ctx.userId, ctx.guildId),
+    loanService.repaymentBlock(client, ctx.userId, ctx.guildId),
+  ]);
   const dailyRate = bank?.savings?.dailyRate || 0;
   const container = new ContainerBuilder()
-    .setAccentColor(COLOR.green)
+    .setAccentColor(block ? COLOR.red : COLOR.green)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent("# 🏧 活期存款"))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
@@ -244,10 +247,18 @@ async function buildSavings(client, ctx) {
         `目前餘額　**${fmt(balance)}** credits\n` +
           `利率　每日 ${(dailyRate * 100).toFixed(2)}%（年化約 ${(dailyRate * 365 * 100).toFixed(0)}%）`,
       ),
-    )
-    .addTextDisplayComponents(
+    );
+  if (block) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🔒 **提領凍結中**：有逾期貸款未清（待還 ${fmt(block.outstanding)}），請先到貸款頁還款`,
+      ),
+    );
+  } else {
+    container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent("-# 隨存隨取，利息每次操作/查詢自動結算"),
     );
+  }
   container.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       openBtn(ctx.userId, "savdep", "存入", ButtonStyle.Success, "📥"),
@@ -259,10 +270,11 @@ async function buildSavings(client, ctx) {
 
 async function buildGold(client, ctx) {
   const { userId, guildId } = ctx;
-  const [prices, holding, terms] = await Promise.all([
+  const [prices, holding, terms, block] = await Promise.all([
     goldService.getPrices(),
     goldService.getHolding(client, userId, guildId),
     goldService.listTerms(client, userId, guildId),
+    loanService.repaymentBlock(client, userId, guildId),
   ]);
   const value = holding * prices.sell;
   const r = goldService.refineRecipe();
@@ -286,6 +298,14 @@ async function buildGold(client, ctx) {
         `**你的金庫**\n持有 **${fmt(holding)}** ${U()}　≈ **${fmt(value)}** 幣（以賣出價估）`,
       ),
     );
+
+  if (block) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🔒 **黃金定存領回凍結中**：有逾期貸款未清（待還 ${fmt(block.outstanding)}），請先到貸款頁還款`,
+      ),
+    );
+  }
 
   if (r.enabled) {
     container.addTextDisplayComponents(
