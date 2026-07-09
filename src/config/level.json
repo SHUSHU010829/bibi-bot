@@ -150,12 +150,13 @@
     "transfer": {
       "enabled": true,
       "minAmount": 100,
-      "maxAmount": 20000,
-      "dailyCapPerSender": 20000,
+      "maxAmount": 100000,
+      "dailyCapPerSender": 100000,
+      "dailyCountFallback": 5,
       "feeRate": 0.02,
       "feeRateHigh": 0.05,
       "highFeeThreshold": 1000,
-      "cooldownSeconds": 1800,
+      "cooldownSeconds": 0,
       "suspiciousThreshold": 5000
     },
     "dailyEconomyReport": {
@@ -170,13 +171,14 @@
     "deposit": {
       "enabled": true,
       "minAmount": 100,
-      "maxAmount": 100000,
-      "maxActivePerUser": 5,
+      "maxAmount": 500000,
+      "maxActivePerUser": 10,
       "earlyWithdrawPenaltyRate": 0.1,
       "terms": [
         { "days": 7,  "rate": 0.02 },
         { "days": 14, "rate": 0.05 },
-        { "days": 30, "rate": 0.12 }
+        { "days": 30, "rate": 0.12 },
+        { "days": 90, "rate": 0.40 }
       ]
     }
   },
