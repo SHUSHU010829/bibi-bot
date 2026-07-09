@@ -58,6 +58,14 @@ async function openShort(client, opts) {
     return { ok: false, reason: "no_symbol", message: `❌ 找不到股票代號 \`${symbol}\`。` };
   }
 
+  if (market.listingStatus === "warning") {
+    return {
+      ok: false,
+      reason: "delist_warning",
+      message: `⚠️ ${market.name}（\`${symbol}\`）進入下市整理，暫停放空，僅開放回補出場。`,
+    };
+  }
+
   // 做空＝賣壓，跌停時鎖住不能再放空
   const limit = getLimitState(market);
   if (limit.bounded && limit.atDown) {

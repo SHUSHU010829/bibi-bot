@@ -1540,7 +1540,8 @@ function buildPanelEmbed(stocks, selected, { expired = false, volumeBySymbol } =
     const volLabel = vol && vol.totalShares > 0
       ? `量 \`${String(vol.totalShares).padStart(5, " ")}\``
       : "量 \`    -\`";
-    return `${tag} \`${s.symbol}\`　${padName(s.name)}　\`${price}\`　${volLabel}`;
+    const warn = s.listingStatus === "warning" ? "　⚠️下市整理" : "";
+    return `${tag} \`${s.symbol}\`　${padName(s.name)}　\`${price}\`　${volLabel}${warn}`;
   });
 
   const embed = new EmbedBuilder()

@@ -1,9 +1,19 @@
 # 【股市新增企劃】—— 個股下市・整理期・強制結算
 
-> 版本:v0.2（四大決策已拍板，見 §九；尚未實作）
+> 版本:v1.0（已實作，2026-07-09）
 > 對照 bibi-bot 現行股市系統（`src/features/stock/*`、`src/config/stocks.json`）設計，盡量複用既有的 `enabled` 停牌判斷、`floor` 地板、`grantCoins` 金流、排程掃描，不另起爐灶。
 
 > **背景**：目前每支股票都有 `floor`（約開盤價 20%）在所有價格路徑上用 `Math.max(floor, ...)` 夾住（`priceEngine.js` 的 `nextPrice` / `nextPriceAdvanced` / `applyEvent` / `priceImpact`），股價**永遠不會歸零**。本企劃討論「爛股被淘汰下市」這個機制要不要做、以及**怎麼做才不會變成隨機沒收玩家資產**。
+
+> **實作進度（2026-07-09）**：MVP 全數落地。
+> - config `stockSystem.delisting`（門檻/結算/冷卻/崩壞文案）+ `stockSystem.candidatePool`（6 檔候補新股）。
+> - service `src/features/stock/delistService.js`：狀態機（`enterWarning` / `advanceWarnings` / `settleAndDelist`）、每日低機率觸發（`rollNewTrigger`）、換新股補位（`relist`）、`runDailyScan`。
+> - cron `src/events/ready/stockDelistScheduler.js`（收盤後 21:05 掃描）。
+> - 交易限制：`tradeService.buyMarket` / `shortService.openShort` 內聯擋 `listingStatus === "warning"`（避免 delistService 循環依賴）。
+> - 結算金流：`grantCoins` 補 `stock_delist_settlement`（FLAT，不套倍率）；融券走既有 `shortService.coverShort`（forced）在停牌前結清。
+> - UI：`/持股`（`stockHoldings.js`）與 `/股市 報價`（`stockMarket.js`）標記「⚠️ 下市整理」。
+> - 網站 `bibi-website` `botDefs.ts` `STOCKS` 已補 6 檔候補新股中文名。
+> - **與原規劃差異**：觸發**不走隨機事件池**（`stockEvents.json` 無權重、會太頻繁且綁死單一 symbol），改由 `delistService` 每日 `dailyTriggerChance` 自己 roll、限 `eligibleTypes` 產業，較可控且不動既有事件熱路徑。`eventEngine.js` / `priceEngine.js` 因此**未改動**（僅複用 `roundPrice`）。
 
 ---
 
@@ -173,21 +183,21 @@ pool 現役只有 9 支，下市一支就少一支 → 採**換新股**補位：
 
 ## 七、需要動到的檔案（實作時）
 
+實際改動（✅ 已完成）：
+
 | 檔案 | 改動 |
 |---|---|
-| `src/config/stocks.json` | 新增 `stockSystem.delisting` 區塊 + `stockSystem.candidatePool` 候補新股清單 |
-| `src/config/stockEvents.json` | 新增稀有「基本面崩壞」事件（極低權重、限 meme 股、帶 `fairEffect`） |
-| `src/features/stock/eventEngine.js` | 事件套用時多一條 `fairEffect` 路徑：可選擇性改寫 `fairValue`（預設不動，只有基本面崩壞帶）；命中時把該股設 `warning` |
-| `src/features/stock/priceEngine.js` | `applyEvent` 增加可選 `fairEffect` 回傳，或新增 `applyFairCrash`（不動核心均值回歸公式，只多一條寫 fairValue 的入口） |
-| `src/features/stock/delistService.js` | **新增**：整理期/ recover 判定、期滿強制結算（多頭 lastClose 退幣 + 融券強制回補）、狀態機推進 |
-| `src/features/stock/tradeService.js` | 買進檢查 `listingStatus === "warning"` → 擋；賣出照常 |
-| `src/features/stock/shortService.js` | 開倉檢查 `warning` → 擋；`runMarginScan` 對 `delisted` 的殘留部位收斂 |
-| `src/features/stock/seedService.js` | market doc 補 `listingStatus: "normal"`、`statusSince` 預設；抽候補新股上市（換新股補位）|
-| `src/events/ready/stockDelistScheduler.js` | **新增**：收盤後 cron 呼叫 `delistService` 掃描 |
-| `src/events/ready/marketScheduler.js` | 開盤排程加「冷卻期滿／名額空出 → 抽候補新股上市」檢查 |
-| `src/commands/stock/stockMarket.js` / `src/features/profile/views/stockHoldings.js` | 顯示 `warning` / `delisted` 狀態 |
-| `src/features/economy/grantCoins.js` | 補 source：`stock_delist_settlement`（flat，不套倍率） |
-| `bibi-website` `src/lib/dashboard/botDefs.ts` | **候補清單全部先補進名稱表**（不等上市），避免網站 fallback `(id)` |
+| `src/config/stocks.json` | ✅ 新增 `stockSystem.delisting` 區塊 + `stockSystem.candidatePool` 候補新股清單 |
+| `src/features/stock/delistService.js` | ✅ **新增**：狀態機（warning / recover / delist）、每日觸發 roll、強制結算（多頭 lastClose 退幣 + 融券 `coverShort` 回補）、換新股補位 |
+| `src/features/stock/tradeService.js` | ✅ 買進檢查 `listingStatus === "warning"` → 擋（內聯，避免循環依賴）；賣出照常 |
+| `src/features/stock/shortService.js` | ✅ 開倉檢查 `warning` → 擋（內聯）；回補/斷頭沿用既有邏輯 |
+| `src/features/stock/seedService.js` | ✅ market doc 補 `listingStatus: "normal"` 預設 |
+| `src/events/ready/stockDelistScheduler.js` | ✅ **新增**：收盤後（21:05）cron 呼叫 `delistService.runDailyScan`（掃整理期 + 抽觸發 + 換股補位一次做完） |
+| `src/commands/stock/stockMarket.js` / `src/features/profile/views/stockHoldings.js` | ✅ 報價列表與持股顯示標「⚠️ 下市整理」 |
+| `src/features/economy/grantCoins.js` | ✅ `FLAT_REWARD_SOURCES` 補 `stock_delist_settlement`（不套倍率） |
+| `bibi-website` `src/lib/dashboard/botDefs.ts` | ✅ `STOCKS` 補 6 檔候補新股中文名 |
+
+未改動（原規劃有列、實作改採別法）：`stockEvents.json`、`eventEngine.js`、`priceEngine.js`（見頂部實作進度的「與原規劃差異」）；換股補位併入 `stockDelistScheduler` 的每日掃描，未動 `marketScheduler.js`。
 
 ---
 

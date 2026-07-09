@@ -79,6 +79,7 @@ async function buildStockHoldingsView(client, { target, member, guildId, tab, pa
     totalValue += value;
     const sign = pnl >= 0 ? "+" : "";
 
+    const warnLine = m.listingStatus === "warning" ? "\n　⚠️ **下市整理中**，建議儘早賣出出場" : "";
     const hasStop = p.stopLoss != null;
     const hasTake = p.takeProfit != null;
     let triggerLine;
@@ -97,7 +98,8 @@ async function buildStockHoldingsView(client, { target, member, guildId, tab, pa
         `\`${p.symbol}\` ${m.name}\n` +
         `　持股 **${p.shares}** ｜ 均價 ${p.avgCost.toFixed(2)} ｜ 現價 ${price.toFixed(1)}\n` +
         `　損益 **${sign}${Math.round(pnl).toLocaleString()}**（${sign}${pnlPct.toFixed(2)}%）\n` +
-        triggerLine,
+        triggerLine +
+        warnLine,
     });
     if (!best || pnl > best.pnl) best = { symbol: p.symbol, name: m.name, pnl };
     if (!worst || pnl < worst.pnl) worst = { symbol: p.symbol, name: m.name, pnl };
@@ -131,7 +133,8 @@ async function buildStockHoldingsView(client, { target, member, guildId, tab, pa
         `\`${sp.symbol}\` ${m.name}\n` +
         `　放空 **${sp.shares}** ｜ 均價 ${sp.avgShort.toFixed(2)} ｜ 現價 ${price.toFixed(1)}\n` +
         `　浮動損益 **${sign}${Math.round(pnl).toLocaleString()}**（${sign}${pnlPct.toFixed(2)}%）` +
-        deadlineLine,
+        deadlineLine +
+        (m.listingStatus === "warning" ? "\n　⚠️ **下市整理中**，到期將按結算價強制回補" : ""),
     });
   }
 

@@ -85,6 +85,14 @@ async function buyMarket(client, opts) {
     return { ok: false, reason: "no_symbol", message: `❌ 找不到股票代號 \`${symbol}\`。` };
   }
 
+  if (market.listingStatus === "warning") {
+    return {
+      ok: false,
+      reason: "delist_warning",
+      message: `⚠️ ${market.name}（\`${symbol}\`）進入下市整理，暫停買進，僅開放賣出出場。`,
+    };
+  }
+
   const limit = getLimitState(market);
   if (limit.bounded && limit.atUp) {
     return {
