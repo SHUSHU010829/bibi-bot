@@ -77,6 +77,16 @@ module.exports = async (client, interaction) => {
         amount,
         note,
       });
+      // 轉帳成功 → 在頻道公開播報（與 /轉帳 一致讓頻道看到動態），非阻塞
+      if (res.ok && interaction.channel?.send) {
+        const disc = res.feeDiscount > 0 ? `（折 ${Math.round(res.feeDiscount * 100)}%）` : "";
+        interaction.channel
+          .send({
+            content: `💸 <@${interaction.user.id}> 轉帳給 <@${res.targetId}> **${fmt(res.amount)}** credits（手續費 ${fmt(res.fee)}${disc}）`,
+            allowedMentions: { users: [res.targetId] },
+          })
+          .catch(() => {});
+      }
       return interaction.editReply(payload(await renderTab(client, ctx, "overview", transferNote(res))));
     }
 
