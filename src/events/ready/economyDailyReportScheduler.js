@@ -4,7 +4,7 @@ const { registerCron } = require("../../utils/cronRegistry");
 const { DateTime } = require("luxon");
 
 const { coinSystem } = require("../../config");
-const { scanAllPairs } = require("../../features/economy/suspiciousTransferDetector");
+const { scanAllPairs, scanRings } = require("../../features/economy/suspiciousTransferDetector");
 const { gameShortLabel } = require("../../features/casino/gameLabels");
 
 // 每天 08:00 Asia/Taipei 在指定頻道播報：
@@ -298,6 +298,22 @@ async function buildSuspiciousSection(client, guildId, opts) {
   return `${head}\n${lines.join("\n")}${tail}`;
 }
 
+// ===== Task 3b：圈狀轉帳異常（A→B→C→A）=====
+async function buildRingSection(client, guildId, opts) {
+  const hours = opts.suspiciousLookbackHours;
+  const rings = await scanRings(client, { guildId, hours });
+  if (rings.length === 0) {
+    return `🔄 **圈狀轉帳異常（過去 ${hours}h）**\n✅ 無達閾值的資金環。`;
+  }
+  const head = `🔄 **圈狀轉帳異常（過去 ${hours}h）**`;
+  const lines = rings.slice(0, 10).map((r, i) => {
+    const chain = `${r.cycle.map((u) => `<@${u}>`).join(" → ")} → <@${r.cycle[0]}>`;
+    return `${i + 1}. ${chain}\n   環內最小單邊 **${fmt(r.minEdge)}** credits（${r.cycle.length} 人）`;
+  });
+  const tail = rings.length > 10 ? `\n…還有 ${rings.length - 10} 組未列出` : "";
+  return `${head}\n${lines.join("\n")}${tail}`;
+}
+
 // ===== 主流程 =====
 async function runReport(client) {
   const cfg = coinSystem?.dailyEconomyReport;
@@ -334,6 +350,7 @@ async function runReport(client) {
       sections.push(await buildDailyNetSection(client, guildId, opts));
       sections.push(await buildCasinoSection(client, guildId, opts));
       sections.push(await buildSuspiciousSection(client, guildId, opts));
+      sections.push(await buildRingSection(client, guildId, opts));
 
       // Discord 訊息上限 2000 字，分段送
       const combined = sections.join("\n\n");

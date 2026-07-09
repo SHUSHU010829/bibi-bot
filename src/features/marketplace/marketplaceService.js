@@ -6,6 +6,7 @@ const grantCoins = require("../economy/grantCoins");
 const twitchPerks = require("../mining/twitchPerks");
 const mailbox = require("./marketplaceMailbox");
 const itemAccess = require("./itemAccess");
+const marketSaleMonitor = require("../economy/marketSaleMonitor");
 
 function cfg() {
   return marketplace || {};
@@ -628,6 +629,18 @@ async function fulfillBulk(client, { listingId, sellerId, guildId, sellerName, m
     meta: { listingId, unitPrice: unit, qty: sold },
   }).catch((e) => console.log(`[ERROR] bulk payout seller: ${e}`.red));
 
+  marketSaleMonitor.recordAndCheck(client, {
+    guildId,
+    itemType: item.item_type,
+    itemKey: item.item_key,
+    qty: sold,
+    unitPrice: unit,
+    totalPaid: proceeds,
+    buyerId: listing.seller_id,
+    sellerId,
+    listingType: "bulk",
+  });
+
   const newFilled = (afterDoc.filled_qty != null) ? afterDoc.filled_qty : (listing.filled_qty || 0) + sold;
   const remainingAfter = Math.max(0, listing.qty - newFilled);
   const completed = remainingAfter <= 0;
@@ -743,6 +756,18 @@ async function buyNow(client, { listingId, buyerId, guildId, buyerName, member }
     { guild_id: guildId, listing_id: listingId },
     { $set: { status: "sold", fee, proceeds, buyer_id: buyerId, buyer_name: buyerName, settled_at: new Date() } }
   );
+
+  marketSaleMonitor.recordAndCheck(client, {
+    guildId,
+    itemType: item.item_type,
+    itemKey: item.item_key,
+    qty: listing.qty,
+    unitPrice: listing.price / listing.qty,
+    totalPaid: listing.price,
+    buyerId,
+    sellerId: listing.seller_id,
+    listingType: "sell",
+  });
 
   return {
     ok: true,
@@ -1092,6 +1117,18 @@ async function finalizeAuction(client, listing) {
     { listing_id: listing.listing_id, guild_id: listing.guild_id },
     { $set: { status: "sold", fee, proceeds, settled_at: new Date() } }
   );
+
+  marketSaleMonitor.recordAndCheck(client, {
+    guildId: listing.guild_id,
+    itemType: item.item_type,
+    itemKey: item.item_key,
+    qty: listing.qty,
+    unitPrice: listing.current_bid / listing.qty,
+    totalPaid: listing.current_bid,
+    buyerId: listing.bidder_id,
+    sellerId: listing.seller_id,
+    listingType: "auction",
+  });
 
   // 通知賣家：競標已成交
   const itemText = itemAccess.itemLabel(item.item_type, item.item_key, listing.qty);

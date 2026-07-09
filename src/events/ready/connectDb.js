@@ -138,6 +138,7 @@ module.exports = async (client) => {
     const goldDepositsCollection = database.collection("GoldDeposits");
     const savingsAccountsCollection = database.collection("SavingsAccounts");
     const loansCollection = database.collection("Loans");
+    const creditFlagsCollection = database.collection("CreditFlags");
 
     // 救濟金領取紀錄（連續天數、最後領取日期）
     const welfareClaimsCollection = database.collection("WelfareClaims");
@@ -233,6 +234,9 @@ module.exports = async (client) => {
     // 市集 / 交易所退款信箱：背包滿時退回的礦石暫存在此
     const marketplaceMailboxCollection = database.collection("MarketplaceMailbox");
 
+    // 市集成交樣本（算近期單價中位數，供反洗幣溢價偵測）
+    const marketSalesCollection = database.collection("MarketSales");
+
     // 打工 / 挖礦到點通知訂閱
     const cooldownRemindersCollection = database.collection("CooldownReminders");
 
@@ -326,6 +330,7 @@ module.exports = async (client) => {
     client.goldDepositsCollection = goldDepositsCollection;
     client.savingsAccountsCollection = savingsAccountsCollection;
     client.loansCollection = loansCollection;
+    client.creditFlagsCollection = creditFlagsCollection;
     client.welfareClaimsCollection = welfareClaimsCollection;
     client.questProgressCollection = questProgressCollection;
     client.questSettingsCollection = questSettingsCollection;
@@ -374,6 +379,7 @@ module.exports = async (client) => {
     client.marketListingsCollection = marketListingsCollection;
     client.barterListingsCollection = barterListingsCollection;
     client.marketplaceMailboxCollection = marketplaceMailboxCollection;
+    client.marketSalesCollection = marketSalesCollection;
     client.cooldownRemindersCollection = cooldownRemindersCollection;
     client.notifySettingsCollection = notifySettingsCollection;
     client.oreMarketPricesCollection = oreMarketPricesCollection;
@@ -591,6 +597,12 @@ module.exports = async (client) => {
     await loansCollection
       .createIndex({ status: 1, dueAt: 1 }, { name: "loan_status_due" })
       .catch((e) => console.log(`[WARN] Loans due index 建立失敗：${e.message}`.yellow));
+    await creditFlagsCollection
+      .createIndex({ flagId: 1 }, { unique: true, name: "uniq_credit_flag_id" })
+      .catch((e) => console.log(`[WARN] CreditFlags index 建立失敗：${e.message}`.yellow));
+    await creditFlagsCollection
+      .createIndex({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60, name: "credit_flag_ttl_90d" })
+      .catch((e) => console.log(`[WARN] CreditFlags TTL 索引建立失敗：${e.message}`.yellow));
     // 礦石市價：date unique 作冪等鍵（freeze 當日只寫一次），走勢查詢靠 date 排序
     await oreMarketPricesCollection
       .createIndex({ date: 1 }, { unique: true, name: "uniq_ore_market_date" })
@@ -1604,6 +1616,16 @@ module.exports = async (client) => {
         { settled_at: 1 },
         { expireAfterSeconds: 7 * 24 * 60 * 60, name: "market_ttl_7d", sparse: true }
       ).catch((e) => console.log(`[WARN] MarketListings TTL 索引：${e.message}`.yellow));
+
+      // 市集成交樣本索引：依物品查近期單價；90 天 TTL 自動清
+      await marketSalesCollection.createIndex(
+        { guildId: 1, item_type: 1, item_key: 1, settledAt: -1 },
+        { name: "market_sales_item_time" }
+      ).catch((e) => console.log(`[WARN] MarketSales item 索引：${e.message}`.yellow));
+      await marketSalesCollection.createIndex(
+        { settledAt: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "market_sales_ttl_90d" }
+      ).catch((e) => console.log(`[WARN] MarketSales TTL 索引：${e.message}`.yellow));
 
       // 交易所掛單索引
       await barterListingsCollection.createIndex(

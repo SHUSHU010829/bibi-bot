@@ -157,7 +157,9 @@
       "feeRateHigh": 0.05,
       "highFeeThreshold": 1000,
       "cooldownSeconds": 0,
-      "suspiciousThreshold": 5000
+      "suspiciousThreshold": 30000,
+      "ringMinEdge": 10000,
+      "ringMaxLen": 4
     },
     "dailyEconomyReport": {
       "enabled": false,
@@ -166,7 +168,7 @@
       "timezone": "Asia/Taipei",
       "lookbackDays": 7,
       "casinoLookbackDays": 7,
-      "suspiciousLookbackHours": 24
+      "suspiciousLookbackHours": 12
     },
     "deposit": {
       "enabled": true,
@@ -180,7 +182,15 @@
         { "days": 30, "rate": 0.12 },
         { "days": 90, "rate": 0.40 }
       ]
-    }
+    },
+    "marketAntiLaundering": {
+      "enabled": true,
+      "overpayRatio": 5,
+      "overpayAbs": 30000,
+      "medianDays": 30,
+      "minSamples": 5
+    },
+    "suspiciousImmediateAlert": true
   },
 
   "twitchSync": {

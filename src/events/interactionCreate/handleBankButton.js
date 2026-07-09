@@ -67,6 +67,12 @@ module.exports = async (client, interaction) => {
     // 開啟轉帳頁（選收款人）
     if (action === "xferstart") return show("transfer");
 
+    // 定存分頁
+    if (action.startsWith("deppage_")) {
+      ctx.page = parseInt(action.slice("deppage_".length), 10) || 0;
+      return show("deposit");
+    }
+
     // 賣出全部黃金
     if (action === "goldsellall") {
       const holding = await goldService.getHolding(client, ctx.userId, ctx.guildId);
