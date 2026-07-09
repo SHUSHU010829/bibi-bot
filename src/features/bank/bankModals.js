@@ -176,7 +176,10 @@ const ACTIONS = {
         if (res.reason === "wallet") return { tab: "loan", note: `⚠️ 餘額不足：需 ${fmt(res.outstanding)}（可部分還），有 ${fmt(res.wallet)}` };
         return { tab: "loan", note: "🔧 還款失敗，請稍後再試" };
       }
-      return { tab: "loan", note: res.cleared ? `✅ 貸款 \`${res.loan.loanId}\` 已全部還清 📈` : `✅ 已還款 **${fmt(res.pay)}**，尚欠 **${fmt(res.remaining)}**` };
+      if (!res.cleared) return { tab: "loan", note: `✅ 已還款 **${fmt(res.pay)}**，尚欠 **${fmt(res.remaining)}**` };
+      return { tab: "loan", note: res.creditGain > 0
+        ? `✅ 貸款 \`${res.loan.loanId}\` 已全部還清，信用分 +${res.creditGain} 📈`
+        : `✅ 貸款 \`${res.loan.loanId}\` 已全部還清\n-# 持有未滿 ${loanService.cfg().creditMinHoldDays ?? 0} 天，本次未累積信用分` };
     },
   },
 };

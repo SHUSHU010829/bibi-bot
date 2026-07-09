@@ -92,11 +92,12 @@ async function getLimits(client, userId, guildId, member) {
 }
 
 // 依 reason 調整分數。正向增益受每日上限限制；扣分不受限。回傳 { score, delta }。
+// opts.amount：動態獎勵（例如貸款依本金級距換算），有給就蓋過 scoring 表的固定值。
 async function award(client, userId, guildId, reason, opts = {}) {
   if (!cfg().enabled) return null;
   const col = client.creditProfilesCollection;
   if (!col) return null;
-  const baseDelta = (cfg().scoring || {})[reason];
+  const baseDelta = typeof opts.amount === "number" ? opts.amount : (cfg().scoring || {})[reason];
   if (typeof baseDelta !== "number" || baseDelta === 0) return null;
 
   const profile = await getProfile(client, userId, guildId);

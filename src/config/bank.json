@@ -11,7 +11,6 @@
         "transfer_complete": 2,
         "deposit_matured": 5,
         "gold_trade": 1,
-        "loan_repaid": 8,
         "suspicious_flag": -80,
         "loan_overdue_daily": -8,
         "loan_default": -150,
@@ -66,7 +65,14 @@
       "overdueDailyPenaltyRate": 0.03,
       "defaultAfterDays": 14,
       "blockNewOnDefault": true,
-      "freezeWithdrawOnOverdue": true
+      "freezeWithdrawOnOverdue": true,
+      "creditMinHoldDays": 2,
+      "creditByPrincipal": [
+        { "min": 0,      "credit": 3 },
+        { "min": 50000,  "credit": 6 },
+        { "min": 200000, "credit": 10 },
+        { "min": 500000, "credit": 15 }
+      ]
     }
   }
 }

@@ -11,6 +11,20 @@ function cfg() {
   return bank?.loan || {};
 }
 
+// 準時還清的信用分獎勵：持有未滿最短天數（防即借即還刷分）不給分；
+// 給分金額依貸款本金級距換算（大額借款＝更高利息成本，才給較高信用分）。
+function repayCredit(loan) {
+  const c = cfg();
+  const heldDays = (Date.now() - new Date(loan.disbursedAt).getTime()) / 86400000;
+  if (heldDays < (c.creditMinHoldDays ?? 0)) return 0;
+  const tiers = [...(c.creditByPrincipal || [])].sort((a, b) => a.min - b.min);
+  let credit = 0;
+  for (const t of tiers) {
+    if (loan.principal >= t.min) credit = t.credit;
+  }
+  return credit;
+}
+
 async function listActive(client, userId, guildId) {
   return client.loansCollection
     .find({ userId, guildId, status: { $in: ["active", "defaulted"] } })
@@ -144,13 +158,18 @@ async function repay(client, { userId, guildId, member, username, avatarHash, lo
       },
     },
   );
+  let creditGain = 0;
   if (cleared && loan.status === "active") {
-    creditService.award(client, userId, guildId, "loan_repaid", { member }).catch(() => {});
+    creditGain = repayCredit(loan);
+    if (creditGain > 0) {
+      creditService.award(client, userId, guildId, "loan_repaid", { member, amount: creditGain }).catch(() => {});
+    }
   }
   return {
     ok: true,
     pay,
     cleared,
+    creditGain,
     remaining: Math.max(0, loan.dueAmount - newPaid),
     loan,
     walletAfter: debit.doc?.totalCoins ?? wallet - pay,
