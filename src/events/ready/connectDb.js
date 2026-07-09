@@ -233,6 +233,9 @@ module.exports = async (client) => {
     // 市集 / 交易所退款信箱：背包滿時退回的礦石暫存在此
     const marketplaceMailboxCollection = database.collection("MarketplaceMailbox");
 
+    // 市集成交樣本（算近期單價中位數，供反洗幣溢價偵測）
+    const marketSalesCollection = database.collection("MarketSales");
+
     // 打工 / 挖礦到點通知訂閱
     const cooldownRemindersCollection = database.collection("CooldownReminders");
 
@@ -374,6 +377,7 @@ module.exports = async (client) => {
     client.marketListingsCollection = marketListingsCollection;
     client.barterListingsCollection = barterListingsCollection;
     client.marketplaceMailboxCollection = marketplaceMailboxCollection;
+    client.marketSalesCollection = marketSalesCollection;
     client.cooldownRemindersCollection = cooldownRemindersCollection;
     client.notifySettingsCollection = notifySettingsCollection;
     client.oreMarketPricesCollection = oreMarketPricesCollection;
@@ -1604,6 +1608,16 @@ module.exports = async (client) => {
         { settled_at: 1 },
         { expireAfterSeconds: 7 * 24 * 60 * 60, name: "market_ttl_7d", sparse: true }
       ).catch((e) => console.log(`[WARN] MarketListings TTL 索引：${e.message}`.yellow));
+
+      // 市集成交樣本索引：依物品查近期單價；90 天 TTL 自動清
+      await marketSalesCollection.createIndex(
+        { guildId: 1, item_type: 1, item_key: 1, settledAt: -1 },
+        { name: "market_sales_item_time" }
+      ).catch((e) => console.log(`[WARN] MarketSales item 索引：${e.message}`.yellow));
+      await marketSalesCollection.createIndex(
+        { settledAt: 1 },
+        { expireAfterSeconds: 90 * 24 * 60 * 60, name: "market_sales_ttl_90d" }
+      ).catch((e) => console.log(`[WARN] MarketSales TTL 索引：${e.message}`.yellow));
 
       // 交易所掛單索引
       await barterListingsCollection.createIndex(
