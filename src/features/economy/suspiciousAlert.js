@@ -43,8 +43,11 @@ async function raiseSuspicion(client, { guildId, kind, users, description, field
       .catch(() => {});
   }
 
+  // 即時告警關閉時：仍扣分並記錄可復原 flag，只是不發頻道訊息。
+  if (coinSystem?.suspiciousImmediateAlert === false) return { flagId, deltas };
+
   const channel = await alertChannel(client);
-  if (!channel) return;
+  if (!channel) return { flagId, deltas };
 
   const meta = KIND_META[kind] || { title: "⚠️ 可疑金流", color: 0xe67e22 };
   const embed = new EmbedBuilder()

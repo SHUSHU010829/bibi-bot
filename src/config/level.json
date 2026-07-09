@@ -189,7 +189,8 @@
       "overpayAbs": 30000,
       "medianDays": 30,
       "minSamples": 5
-    }
+    },
+    "suspiciousImmediateAlert": false
   },
 
   "twitchSync": {
