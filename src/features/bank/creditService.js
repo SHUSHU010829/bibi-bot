@@ -154,13 +154,31 @@ async function flagSuspicious(client, userId, guildId) {
   const profile = await getProfile(client, userId, guildId);
   if (profile.suspiciousFlagDate === today) return null;
   const nextScore = clampScore((profile.score || 0) + per);
+  const applied = nextScore - (profile.score || 0); // 實際扣掉的分（可能因觸底而小於設定值）
   await col
     .updateOne(
       { userId, guildId },
       { $set: { score: nextScore, suspiciousFlagDate: today, updatedAt: new Date() } },
     )
     .catch((e) => console.log(`[CREDIT] flagSuspicious 失敗: ${e.message}`.yellow));
-  return { score: nextScore, delta: per };
+  return { score: nextScore, delta: applied };
+}
+
+// 復原誤扣：把 points（正數）加回，並清掉今日洗幣標記。
+async function restore(client, userId, guildId, points) {
+  const col = client.creditProfilesCollection;
+  if (!col) return null;
+  const p = Math.abs(Number(points) || 0);
+  if (p <= 0) return null;
+  const profile = await getProfile(client, userId, guildId);
+  const nextScore = clampScore((profile.score || 0) + p);
+  await col
+    .updateOne(
+      { userId, guildId },
+      { $set: { score: nextScore, suspiciousFlagDate: null, updatedAt: new Date() } },
+    )
+    .catch((e) => console.log(`[CREDIT] restore 失敗: ${e.message}`.yellow));
+  return { score: nextScore, restored: p };
 }
 
 module.exports = {
@@ -175,4 +193,5 @@ module.exports = {
   award,
   penalize,
   flagSuspicious,
+  restore,
 };

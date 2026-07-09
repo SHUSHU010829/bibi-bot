@@ -1,7 +1,7 @@
 require("colors");
 
-const { coinSystem, bank } = require("../../config");
-const creditService = require("../bank/creditService");
+const { coinSystem } = require("../../config");
+const { raiseSuspicion } = require("./suspiciousAlert");
 
 // 偵測過去 N 小時內 A↔B 雙向轉帳，回傳超過閾值的配對。
 // 用於：
@@ -221,21 +221,6 @@ async function scanRings(client, { guildId, hours, minEdge, maxLen } = {}) {
   return rings;
 }
 
-async function getAlertChannel(client) {
-  const channelId =
-    coinSystem?.adminGrant?.auditLogChannelId || coinSystem?.dailyEconomyReport?.channelId;
-  if (!channelId) return null;
-  const channel = await client.channels.fetch(channelId).catch(() => null);
-  return channel?.isTextBased?.() ? channel : null;
-}
-
-async function penalizeUsers(client, guildId, userIds) {
-  if (!bank?.credit?.enabled) return;
-  for (const uid of userIds) {
-    await creditService.flagSuspicious(client, uid, guildId).catch(() => {});
-  }
-}
-
 // transfer.js 完成轉帳後呼叫；非阻塞、錯誤吞掉只寫 console。同時查雙向對敲與圈狀轉帳。
 function fireImmediateCheck(client, { guildId, senderId, recipientId }) {
   Promise.resolve()
@@ -251,42 +236,40 @@ function fireImmediateCheck(client, { guildId, senderId, recipientId }) {
       });
       if (!pair && !ring) return;
 
-      const channel = await getAlertChannel(client);
       const minutesAgo = (date) =>
         Math.max(0, Math.round((Date.now() - new Date(date).getTime()) / 60000));
 
       if (pair) {
-        await penalizeUsers(client, guildId, [senderId, recipientId]);
-        if (channel) {
-          await channel
-            .send({
-              content: [
-                "⚠️ 可疑雙向轉帳",
-                `<@${senderId}> → <@${recipientId}>：${pair.aToB.toLocaleString()} credits（最近 ${minutesAgo(pair.lastAtoBAt)} 分鐘前）`,
-                `<@${recipientId}> → <@${senderId}>：${pair.bToA.toLocaleString()} credits（最近 ${minutesAgo(pair.lastBtoAAt)} 分鐘前）`,
-                `${pair.hours}h 雙向總額：**${pair.total.toLocaleString()}** credits（閾值 ${pair.threshold.toLocaleString()}）`,
-              ].join("\n"),
-              allowedMentions: { parse: [] },
-            })
-            .catch(() => {});
-        }
+        await raiseSuspicion(client, {
+          guildId,
+          kind: "pair",
+          users: [senderId, recipientId],
+          description:
+            `<@${senderId}> → <@${recipientId}>：${pair.aToB.toLocaleString()} credits（最近 ${minutesAgo(pair.lastAtoBAt)} 分鐘前）\n` +
+            `<@${recipientId}> → <@${senderId}>：${pair.bToA.toLocaleString()} credits（最近 ${minutesAgo(pair.lastBtoAAt)} 分鐘前）`,
+          fields: [
+            {
+              name: `${pair.hours}h 雙向總額`,
+              value: `**${pair.total.toLocaleString()}** credits（閾值 ${pair.threshold.toLocaleString()}）`,
+            },
+          ],
+        });
       }
 
       if (ring) {
-        await penalizeUsers(client, guildId, ring.cycle);
-        if (channel) {
-          const chain = `${ring.cycle.map((u) => `<@${u}>`).join(" → ")} → <@${ring.cycle[0]}>`;
-          await channel
-            .send({
-              content: [
-                "⚠️ 可疑圈狀轉帳（資金繞一圈回到起點）",
-                chain,
-                `環內最小單邊：**${ring.minEdge.toLocaleString()}** credits（${ring.cycle.length} 人參與）`,
-              ].join("\n"),
-              allowedMentions: { parse: [] },
-            })
-            .catch(() => {});
-        }
+        const chain = `${ring.cycle.map((u) => `<@${u}>`).join(" → ")} → <@${ring.cycle[0]}>`;
+        await raiseSuspicion(client, {
+          guildId,
+          kind: "ring",
+          users: ring.cycle,
+          description: `資金繞一圈回到起點：\n${chain}`,
+          fields: [
+            {
+              name: "環內最小單邊",
+              value: `**${ring.minEdge.toLocaleString()}** credits（${ring.cycle.length} 人參與）`,
+            },
+          ],
+        });
       }
     })
     .catch((e) => {

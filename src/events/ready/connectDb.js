@@ -138,6 +138,7 @@ module.exports = async (client) => {
     const goldDepositsCollection = database.collection("GoldDeposits");
     const savingsAccountsCollection = database.collection("SavingsAccounts");
     const loansCollection = database.collection("Loans");
+    const creditFlagsCollection = database.collection("CreditFlags");
 
     // 救濟金領取紀錄（連續天數、最後領取日期）
     const welfareClaimsCollection = database.collection("WelfareClaims");
@@ -329,6 +330,7 @@ module.exports = async (client) => {
     client.goldDepositsCollection = goldDepositsCollection;
     client.savingsAccountsCollection = savingsAccountsCollection;
     client.loansCollection = loansCollection;
+    client.creditFlagsCollection = creditFlagsCollection;
     client.welfareClaimsCollection = welfareClaimsCollection;
     client.questProgressCollection = questProgressCollection;
     client.questSettingsCollection = questSettingsCollection;
@@ -595,6 +597,12 @@ module.exports = async (client) => {
     await loansCollection
       .createIndex({ status: 1, dueAt: 1 }, { name: "loan_status_due" })
       .catch((e) => console.log(`[WARN] Loans due index 建立失敗：${e.message}`.yellow));
+    await creditFlagsCollection
+      .createIndex({ flagId: 1 }, { unique: true, name: "uniq_credit_flag_id" })
+      .catch((e) => console.log(`[WARN] CreditFlags index 建立失敗：${e.message}`.yellow));
+    await creditFlagsCollection
+      .createIndex({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60, name: "credit_flag_ttl_90d" })
+      .catch((e) => console.log(`[WARN] CreditFlags TTL 索引建立失敗：${e.message}`.yellow));
     // 礦石市價：date unique 作冪等鍵（freeze 當日只寫一次），走勢查詢靠 date 排序
     await oreMarketPricesCollection
       .createIndex({ date: 1 }, { unique: true, name: "uniq_ore_market_date" })

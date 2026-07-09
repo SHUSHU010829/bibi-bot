@@ -168,7 +168,7 @@
       "timezone": "Asia/Taipei",
       "lookbackDays": 7,
       "casinoLookbackDays": 7,
-      "suspiciousLookbackHours": 24
+      "suspiciousLookbackHours": 12
     },
     "deposit": {
       "enabled": true,

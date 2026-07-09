@@ -1,7 +1,7 @@
 require("colors");
-const { coinSystem, bank } = require("../../config");
+const { coinSystem } = require("../../config");
 const itemAccess = require("../marketplace/itemAccess");
-const creditService = require("../bank/creditService");
+const { raiseSuspicion } = require("./suspiciousAlert");
 
 // 市集/拍賣反洗幣：記錄每筆成交單價樣本，並以「近期成交中位數」為合理價，
 // 抓「買方明顯超額付款給賣方」的變相轉帳（樣本不足時退回 basePrice）。
@@ -33,14 +33,6 @@ async function medianUnitPrice(client, guildId, itemType, itemKey) {
   return { median: median(prices), samples: prices.length };
 }
 
-async function getAlertChannel(client) {
-  const channelId =
-    coinSystem?.adminGrant?.auditLogChannelId || coinSystem?.dailyEconomyReport?.channelId;
-  if (!channelId) return null;
-  const channel = await client.channels.fetch(channelId).catch(() => null);
-  return channel?.isTextBased?.() ? channel : null;
-}
-
 // 成交後呼叫（非阻塞）：先比對參考價偵測溢價，再記錄本次樣本。
 function recordAndCheck(client, sale) {
   Promise.resolve()
@@ -61,25 +53,21 @@ function recordAndCheck(client, sale) {
           const overpayRatio = cfg().overpayRatio ?? 5;
           const overpayAbs = cfg().overpayAbs ?? 30000;
           if (ratio >= overpayRatio && overpay >= overpayAbs) {
-            if (bank?.credit?.enabled) {
-              await creditService.flagSuspicious(client, buyerId, guildId).catch(() => {});
-              await creditService.flagSuspicious(client, sellerId, guildId).catch(() => {});
-            }
-            const channel = await getAlertChannel(client);
-            if (channel) {
-              const label = itemAccess.itemLabel(itemType, itemKey, qty);
-              const refKind = usingMedian ? `近 ${cfg().medianDays ?? 30} 天中位` : "基準";
-              await channel
-                .send({
-                  content: [
-                    "⚠️ 可疑市集成交（疑似變相轉帳）",
-                    `${label}　單價 **${Math.round(unitPrice).toLocaleString()}**（${refKind}價 ${Math.round(ref).toLocaleString()}，約 ${ratio.toFixed(1)} 倍）`,
-                    `買方 <@${buyerId}> → 賣方 <@${sellerId}>　溢付 **${overpay.toLocaleString()}** credits（${listingType}）`,
-                  ].join("\n"),
-                  allowedMentions: { parse: [] },
-                })
-                .catch(() => {});
-            }
+            const label = itemAccess.itemLabel(itemType, itemKey, qty);
+            const refKind = usingMedian ? `近 ${cfg().medianDays ?? 30} 天中位` : "基準";
+            await raiseSuspicion(client, {
+              guildId,
+              kind: "market",
+              users: [buyerId, sellerId],
+              description: `買方 <@${buyerId}> 以高價向賣方 <@${sellerId}> 買入（${listingType}），疑似變相轉帳。`,
+              fields: [
+                {
+                  name: label,
+                  value: `單價 **${Math.round(unitPrice).toLocaleString()}**（${refKind}價 ${Math.round(ref).toLocaleString()}，約 ${ratio.toFixed(1)} 倍）`,
+                },
+                { name: "溢付金額", value: `**${overpay.toLocaleString()}** credits` },
+              ],
+            });
           }
         }
       }
