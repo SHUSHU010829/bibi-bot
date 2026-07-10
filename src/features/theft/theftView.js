@@ -52,14 +52,11 @@ function huntResultContainer(result, hunterId, wantedUserId) {
       result.hunterFineShare > 0
         ? `，另收到贖罪金分成 **${result.hunterFineShare.toLocaleString()}** ${COIN_EMOJI}`
         : "";
-    const backupNote =
-      result.huntEvent === "backup" ? "🍀 **神助攻**！熱心路人幫你攔下了通緝犯——\n" : "";
     return new ContainerBuilder()
       .setAccentColor(0xf1c40f)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `# 🕵️ 逮捕成功！\n` +
-            backupNote +
             `<@${hunterId}> 將通緝犯 <@${wantedUserId}> 繩之以法，` +
             `領走賞金 **${result.bounty.toLocaleString()}** ${COIN_EMOJI}${fineNote}！\n\n` +
             `攻擊力 ${result.hunterAtk} vs ${result.wantedAtk}`
@@ -243,42 +240,14 @@ function bountyAnnounceContainer(victimId, culpritId, bounty, expiresAt) {
     );
 }
 
-// ── 追捕途中的意外事件（食物誘拐等，公開）──
-const HUNT_EVENTS = {
-  lured: {
-    heading: "🍖 被食物誘拐了！",
-    body: (h, w) => `<@${h}> 正要逮捕 <@${w}>，卻被路邊烤肉的香味勾走，通緝犯趁機溜了…`,
-    broadcast: (h, w) => `🍖 <@${h}> 追捕 <@${w}> 時被烤肉香味誘拐，讓通緝犯溜了！`,
-  },
-  asleep: {
-    heading: "💤 埋伏到睡著了…",
-    body: (h, w) => `<@${h}> 蹲點等 <@${w}> 等到打瞌睡，一睜眼人早就不見蹤影…`,
-    broadcast: (h, w) => `💤 <@${h}> 埋伏 <@${w}> 埋到睡著，眼睜睜錯過通緝犯！`,
-  },
-  tripped: {
-    heading: "🐈 被野貓絆倒！",
-    body: (h, w) => `<@${h}> 追 <@${w}> 追到一半被野貓絆了個狗吃屎，通緝犯揚長而去…`,
-    broadcast: (h, w) => `🐈 <@${h}> 追捕 <@${w}> 時被野貓絆倒，摔了個四腳朝天！`,
-  },
+// ── 看門狗被引開（沒擋下時的私人 flavor，只有小偷看得到）──
+const WATCHDOG_DISTRACTIONS = {
+  lured: "🍖 你丟了根骨頭把看門狗引開，趁牠低頭啃食時得手！",
+  asleep: "💤 看門狗正趴著打盹，你躡手躡腳摸了進去！",
+  chase: "🐈 看門狗追野貓去了，你趁牠不在偷偷下手！",
 };
-
-// 追捕壞事件（私人 ephemeral，終局）：告吹但不算追丟。
-function huntEventContainer(event, hunterId, wantedUserId) {
-  const m = HUNT_EVENTS[event] || HUNT_EVENTS.lured;
-  return new ContainerBuilder()
-    .setAccentColor(0xe67e22)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`# ${m.heading}\n${m.body(hunterId, wantedUserId)}`)
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "-# 這次不算你追丟，通緝犯還在榜上——喘口氣再追一次吧。"
-      )
-    );
-}
-function huntEventBroadcast(event, hunterId, wantedUserId) {
-  const m = HUNT_EVENTS[event] || HUNT_EVENTS.lured;
-  return infoContainer(0xe67e22, m.broadcast(hunterId, wantedUserId));
+function watchdogDistractionLine(event) {
+  return WATCHDOG_DISTRACTIONS[event] || WATCHDOG_DISTRACTIONS.lured;
 }
 
 // ── 報案壞事件（偵探出包）：私人 Container + 公開廣播文案 ──
@@ -665,8 +634,7 @@ module.exports = {
   errorContainer,
   infoContainer,
   huntResultContainer,
-  huntEventContainer,
-  huntEventBroadcast,
+  watchdogDistractionLine,
   broadcast,
   reportBadEventContainer,
   reportBadEventBroadcast,

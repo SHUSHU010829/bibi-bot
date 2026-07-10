@@ -19,6 +19,7 @@ const {
   broadcast,
   fleeChaseContainer,
   wantedAnnounceContainer,
+  watchdogDistractionLine,
 } = require("../../features/theft/theftView");
 const theftBoard = require("../../features/theft/theftBoard");
 const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
@@ -93,6 +94,7 @@ module.exports = {
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
               `# 🥷 得手！\n` +
+                (result.watchdogDistracted ? `${watchdogDistractionLine(result.watchdogDistracted)}\n` : "") +
                 `你神不知鬼不覺地摸走了 ${target} 的 **${result.stolen.toLocaleString()}** ${COIN_EMOJI}。\n` +
                 `黑市抽成 ${result.rake.toLocaleString()}，實際入袋 **${result.net.toLocaleString()}** ${COIN_EMOJI}` +
                 (result.usedCloak ? "\n🕶️ 夜行衣已消耗" : "")
