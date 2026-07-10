@@ -146,13 +146,17 @@ module.exports = async (client, interaction) => {
     const statLine = (char) =>
       `${char.weaponEmoji} ${char.name}｜攻擊 **${char.atk}**・防禦 **${char.def}**・爆擊 **${Math.round((char.critRate || 0) * 100)}%**`;
 
+    const resultHeadline = res.mutualKO
+      ? `# ⚔️ 決鬥結果\n` +
+        `💥 **同歸於盡！** 兩敗俱傷，接下決鬥的 <@${res.winnerId}> 拿走 **${res.pot.toLocaleString()}** ${COIN_EMOJI}！${rakeNote}\n\n`
+      : `# ⚔️ 決鬥結果\n` +
+        `**勝者 🏆 <@${res.winnerId}>** 贏走了 **${res.pot.toLocaleString()}** ${COIN_EMOJI}！${rakeNote}\n\n`;
+
     const container = new ContainerBuilder()
-      .setAccentColor(0xf1c40f)
+      .setAccentColor(res.mutualKO ? 0xe74c3c : 0xf1c40f)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ⚔️ 決鬥結果\n` +
-            `**勝者 🏆 <@${res.winnerId}>** 贏走了 **${res.pot.toLocaleString()}** ${COIN_EMOJI}！${rakeNote}\n\n` +
-            `${statLine(cChar)}\n${statLine(oChar)}`,
+          resultHeadline + `${statLine(cChar)}\n${statLine(oChar)}`,
         ),
       )
       .addSeparatorComponents(new SeparatorBuilder())

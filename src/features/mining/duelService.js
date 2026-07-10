@@ -74,12 +74,16 @@ function simulateBattle(cChar, oChar, b) {
     }
   }
 
+  // 同歸於盡：雙方同回合一起倒下 → 不比傷害，改由接下決鬥者（對手）拿彩池
+  const mutualKO = hpC <= 0 && hpO <= 0;
+
   let challengerWins;
-  if (hpC !== hpO) challengerWins = hpC > hpO;
+  if (mutualKO) challengerWins = false; // 接下者（對手）勝
+  else if (hpC !== hpO) challengerWins = hpC > hpO;
   else if (dmgByC !== dmgByO) challengerWins = dmgByC > dmgByO;
   else challengerWins = true; // 完全平手 → 判挑戰者勝
 
-  return { rounds, hpC, hpO, dmgByC, dmgByO, ko, challengerWins, hp0 };
+  return { rounds, hpC, hpO, dmgByC, dmgByO, ko, challengerWins, mutualKO, hp0 };
 }
 
 async function getBalance(client, userId, guildId) {
@@ -244,7 +248,7 @@ async function acceptDuel(client, { duelId, opponentId, opponentName, member }) 
   const cChar = { ...combatStats(cProfile), name: duel.challenger_name };
   const oChar = { ...combatStats(oProfile), name: opponentName };
   const battle = simulateBattle(cChar, oChar, c.battle || {});
-  const { challengerWins } = battle;
+  const { challengerWins, mutualKO } = battle;
   const winnerId = challengerWins ? duel.challenger_id : opponentId;
   const winnerName = challengerWins ? duel.challenger_name : opponentName;
   const loserId = challengerWins ? opponentId : duel.challenger_id;
@@ -289,6 +293,7 @@ async function acceptDuel(client, { duelId, opponentId, opponentName, member }) 
     winnerId,
     loserId,
     challengerWins,
+    mutualKO,
     challenger: cChar,
     opponent: oChar,
     battle,
