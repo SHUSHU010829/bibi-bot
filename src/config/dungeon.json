@@ -312,7 +312,7 @@
       "minBet": 100,
       "maxBet": 50000,
       "dailyLimit": 3,
-      "samePairCooldownMs": 21600000,
+      "samePairCooldownMs": 0,
       "systemRakePct": 0.05,
       "acceptWindowMs": 120000,
       "battle": {
