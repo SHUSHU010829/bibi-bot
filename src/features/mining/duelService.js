@@ -51,10 +51,13 @@ function pickMove(b) {
 // 多回合對戰模擬：雙方同時出手，先掉到 0 HP 者落敗（同回合雙殺 → 比總傷害）。
 // 回合上限用滿仍未分出勝負 → 比剩餘 HP、再比總傷害，最後平手判挑戰者勝。
 function simulateBattle(cChar, oChar, b) {
-  const hp0 = b.hp ?? 150;
+  // 起始血量＝各自地下城血量上限（決鬥不消耗真實 hp_current），沒帶則退回設定值。
+  const fallback = b.hp ?? 150;
+  const hpC0 = cChar.hpMax ?? fallback;
+  const hpO0 = oChar.hpMax ?? fallback;
   const maxRounds = b.maxRounds ?? 6;
-  let hpC = hp0;
-  let hpO = hp0;
+  let hpC = hpC0;
+  let hpO = hpO0;
   let dmgByC = 0;
   let dmgByO = 0;
   const rounds = [];
@@ -74,12 +77,16 @@ function simulateBattle(cChar, oChar, b) {
     }
   }
 
+  // 同歸於盡：雙方同回合一起倒下 → 不比傷害，改由接下決鬥者（對手）拿彩池
+  const mutualKO = hpC <= 0 && hpO <= 0;
+
   let challengerWins;
-  if (hpC !== hpO) challengerWins = hpC > hpO;
+  if (mutualKO) challengerWins = false; // 接下者（對手）勝
+  else if (hpC !== hpO) challengerWins = hpC > hpO;
   else if (dmgByC !== dmgByO) challengerWins = dmgByC > dmgByO;
   else challengerWins = true; // 完全平手 → 判挑戰者勝
 
-  return { rounds, hpC, hpO, dmgByC, dmgByO, ko, challengerWins, hp0 };
+  return { rounds, hpC, hpO, dmgByC, dmgByO, ko, challengerWins, mutualKO, hpC0, hpO0 };
 }
 
 async function getBalance(client, userId, guildId) {
@@ -237,14 +244,28 @@ async function acceptDuel(client, { duelId, opponentId, opponentName, member }) 
   }
 
   // 判定勝負：多回合對戰模擬（攻擊力 / 防禦 / 爆擊率 + 隨機事件），詳見 simulateBattle。
+  const dungeonService = require("./dungeonService");
   const [cProfile, oProfile] = await Promise.all([
     getOrCreate(client, duel.challenger_id, duel.guild_id),
     getOrCreate(client, opponentId, duel.guild_id),
   ]);
-  const cChar = { ...combatStats(cProfile), name: duel.challenger_name };
-  const oChar = { ...combatStats(oProfile), name: opponentName };
+  // 起始血量與地下城同口徑（含等級 / 食物 / 公會 / 世界事件 buff），但不消耗真實 hp_current。
+  const [cHpMax, oHpMax] = await Promise.all([
+    dungeonService.effectiveHpMax(client, {
+      userId: duel.challenger_id,
+      guildId: duel.guild_id,
+      profile: cProfile,
+    }),
+    dungeonService.effectiveHpMax(client, {
+      userId: opponentId,
+      guildId: duel.guild_id,
+      profile: oProfile,
+    }),
+  ]);
+  const cChar = { ...combatStats(cProfile), name: duel.challenger_name, hpMax: cHpMax };
+  const oChar = { ...combatStats(oProfile), name: opponentName, hpMax: oHpMax };
   const battle = simulateBattle(cChar, oChar, c.battle || {});
-  const { challengerWins } = battle;
+  const { challengerWins, mutualKO } = battle;
   const winnerId = challengerWins ? duel.challenger_id : opponentId;
   const winnerName = challengerWins ? duel.challenger_name : opponentName;
   const loserId = challengerWins ? opponentId : duel.challenger_id;
@@ -289,6 +310,7 @@ async function acceptDuel(client, { duelId, opponentId, opponentName, member }) 
     winnerId,
     loserId,
     challengerWins,
+    mutualKO,
     challenger: cChar,
     opponent: oChar,
     battle,
