@@ -3,7 +3,7 @@
     "enabled": true,
     "timezone": "Asia/Taipei",
     "announceChannelId": "1523630614018916432",
-    "dailyLimit": 3,
+    "dailyLimit": 5,
     "samePairCooldownMs": 28800000,
     "newbieProtectDays": 7,
     "minTargetWallet": 500,
@@ -42,7 +42,7 @@
       "wantedTtlHours": 24
     },
     "hunt": {
-      "dailyLimit": 3,
+      "dailyLimit": 5,
       "baseRate": 0.5,
       "minRate": 0.2,
       "maxRate": 0.8,
@@ -51,7 +51,17 @@
       "escapeCooldownBaseMs": 240000,
       "escapeCooldownDiscountPerNotorietyMs": 30000,
       "escapeCooldownMinMs": 60000,
-      "escapeClearCount": 5
+      "escapeClearCount": 5,
+      "events": {
+        "chance": 0.2,
+        "goodChance": 0.35,
+        "good": [{ "key": "backup", "weight": 1 }],
+        "bad": [
+          { "key": "lured", "weight": 2 },
+          { "key": "asleep", "weight": 1 },
+          { "key": "tripped", "weight": 1 }
+        ]
+      }
     },
     "surrender": {
       "bailForfeitPct": 0.6,
@@ -127,19 +137,45 @@
           "investigateRateStale": 0.85,
           "goodEventChance": 0.45,
           "badEventChance": 0,
-          "desc": "頂級，必破案、絕不出包，常有線人爆料"
+          "specialEvents": [
+            { "key": "abscond", "chance": 0.05 },
+            { "key": "arale", "chance": 0.05, "loss": 5000 }
+          ],
+          "desc": "頂級，幾乎必破案，但仍有極小機率捲款跑路或變身阿拉蕾捅你"
         }
       ],
       "events": {
-        "good": [{ "key": "informant", "weight": 1 }],
+        "good": [
+          { "key": "informant", "weight": 3 },
+          { "key": "counterrob", "weight": 2 },
+          { "key": "fishing", "weight": 2 }
+        ],
         "bad": [
-          { "key": "abscond", "weight": 1 },
-          { "key": "bribed", "weight": 1 },
-          { "key": "crooked", "weight": 1 }
+          { "key": "abscond", "weight": 2 },
+          { "key": "bribed", "weight": 2 },
+          { "key": "crooked", "weight": 2 },
+          { "key": "selfheist", "weight": 1 },
+          { "key": "gambler", "weight": 1 },
+          { "key": "drunk", "weight": 1 },
+          { "key": "misid", "weight": 1 }
         ]
       },
       "crookedStealPct": 0.12,
-      "crookedStealMax": 2500
+      "crookedStealMax": 2500,
+      "catch": {
+        "winRate": 0.5,
+        "losePenaltyPct": 0.12,
+        "losePenaltyMin": 500,
+        "losePenaltyMax": 3000
+      },
+      "eventParams": {
+        "drunkRefundPct": 0.5,
+        "counterRobPct": 0.15,
+        "counterRobMax": 2500,
+        "selfHeistBonus": 1500,
+        "misidFrameMul": 1,
+        "misidApologyMul": 0.3
+      }
     },
     "revenge": {
       "recoverPct": 0.5,
@@ -157,7 +193,8 @@
     },
     "defense": {
       "safeboxRate": 0.2,
-      "cloakRate": 0.15
+      "cloakRate": 0.15,
+      "watchdogBlockRate": 0.7
     }
   }
 }

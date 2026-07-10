@@ -68,7 +68,7 @@
 
 **前置檢查(任一不過→紅色 Container 錯誤訊息,對齊 UX #2)**:
 
-1. **每日次數**:每人每日 `dailyLimit`(折衷基準 **3** 次)。以當日(UTC+8)已完成的偷竊動作計。
+1. **每日次數**:每人每日 `dailyLimit`(**5** 次)。以當日(UTC+8)已完成的偷竊動作計。
 2. **同目標冷卻**:對同一目標 `samePairCooldownMs`(折衷基準 **8 小時**)內不可再偷(比照 `duelService` 的 pair cooldown)。
 3. **自身狀態**:自己正在通緝中不可偷竊(先把自己的事處理完)。
 4. **賞金本金門檻**:小偷**自己錢包**須 ≥ `bountyMin`(預設 **300** 幣)才能動手。理由——失風時賞金**從小偷錢包託管**(見 §4),若允許把錢全存銀行、錢包空空去偷,失手也沒錢可託管 = 零風險。此門檻堵住「銀行避險 + 無本偷竊」的漏洞,並呼應主題:**當賊也要先備妥失風的本錢**。訊息:「你的錢包不足以支付失風的賞金保證金,先賺點本錢或從銀行提領。」
@@ -76,7 +76,7 @@
    - 目標入服 / 首次活躍未滿 `newbieProtectDays`(預設 **7** 天)。
    - 目標錢包 < `minTargetWallet`(預設 **500** 幣)——沒油水,免得欺負窮人。
    - 目標**當日已被成功偷 `maxStolenPerDayPerTarget` 次**(折衷基準 **3**),當日不再受害。此為**免費保護**(不需道具)。
-   - 🐕「看門狗」**最後一道防線**:上面的免費保護都沒擋下、目標仍可被偷時,才消耗 1 隻看門狗擋下這次(所以看門狗不會被「反正今天已偷滿」的無效攻擊白白吃掉)。
+   - 🐕「看門狗」**最後一道防線**:上面的免費保護都沒擋下、目標仍可被偷時,以 `defense.watchdogBlockRate`(預設 **70%**)機率擋下這次——**擋下才消耗 1 隻**;沒擋下代表這次牠沒察覺、看門狗留著下次繼續守,小偷照常進成功率判定(所以看門狗不是 100% 免疫、也不會被無效攻擊白白吃掉)。
 
 **判定(非純亂數,對齊「更有趣」)**:
 
@@ -120,7 +120,8 @@
 ### 3-3. `/追捕 @通緝犯`(行動類・**結果私人**,成功才公開廣播)
 
 - 追捕結果一律 **ephemeral**(只有追捕者看得到),避免頻道被「不在逃 / 慢了一步 / 讓他跑了」洗版;**只有成功逮捕**才把結果推到通緝廣播頻道(`announceChannelId`)。
-- 任何玩家(非通緝犯本人)可追捕。每日追捕次數上限 `huntDailyLimit`(預設 **3**)。
+- 任何玩家(非通緝犯本人)可追捕。每日追捕次數上限 `hunt.dailyLimit`(**5**)。
+- **追捕途中的意外事件**(`hunt.events`,鎖定後、對決前擲 `chance`):壞事件(`lured` 被食物誘拐 / `asleep` 埋伏睡著 / `tripped` 被野貓絆倒)→ 追捕告吹,但**不算追丟**(通緝犯留榜、不加逃脫數、獵人未列入 `escaped_hunters`),獵人這次照樣用掉一次每日次數;好事件(`backup` 神助攻)→ 強制成功直接抓到。皆公開廣播,`theftView` 的 `huntEventContainer` 呈現。
 - 判定:`huntBaseRate`(預設 0.5) 依「追捕者攻擊力 vs 通緝犯攻擊力」微調(複用 `buffResolver.atkFromProfile`,比照決鬥計分),clamp `[0.2, 0.8]`。
 - **成功**:
   - **託管的賞金**全額發給追捕者(`source:"bounty_payout"`,peer)——錢是通緝當下就從小偷凍結的,系統不憑空產幣。
@@ -149,6 +150,28 @@
   - **查出** → ephemeral 告知兇手是誰、偷走多少;並附按鈕:若對方目前有把柄可**懸賞通緝**(進階,Phase 2)或直接 `🗡️ 找他決鬥`(串現有 `/決鬥`)討回公道。
   - **查無** → 「線索太少,查不出來…」(退還?→ 預設**不退**,委託本身就是消耗;可設 config `refundOnMiss`)。
 - 平時(沒被偷)`/金幣紀錄` 只會看到匿名的 `遭竊 -N`,想知道是誰就得報案——把「被偷」變成一段可追查的懸疑,而不是單向挨打。
+
+#### 偵探分級與壞事件(`report.tiers` / `report.events`)
+
+四位偵探(菜鳥 `rookie` / 資深 `pro` / 神探 `ace` / 王牌 `master`)費用越貴、破案率越高、出包率越低。委託後 `report()` 依序擲:**專屬事件 → 壞事件 → 好事件 → 調查**(收編的內應這次免費、且跳過專屬 / 壞事件)。事件皆 config 驅動(`report.events` 加權池 + `report.eventParams` 數值),UI 與後續選擇集中在 `theftView`。
+
+**好事件**(`events.good`):
+
+- `informant` 線人爆料 → 保證鎖定主嫌。
+- `counterrob` 黑吃黑反殺 → 保證鎖定主嫌之外,再從主嫌錢包搶 `counterRobPct`(上限 `counterRobMax`)賠給報案人(主嫌 `detective_counterrob` sink,報案人 `detective_reward`)。
+- `fishing` 釣魚執法 → **終局**:沒揪兇手,但幫報案人 `sting_count += 1`。`steal()` 命中有 `sting_count` 的目標時**必定失手**、消耗一格,小偷直接進追逃 / 通緝(`result.stung` 讓 `/偷竊` 顯示中陷阱)。
+
+**壞事件**(`events.bad`,`badEventChance`)——每個事件的「二選一」由 `event.choices` 定義,統一走 `theft_ev_<action>_<owner>_<event>_<amount>` 按鈕,handler 依 `action` 分派:
+
+| 事件 | 選項 A | 選項 B |
+|---|---|---|
+| `abscond` / `bribed` / `crooked` / `arale` | 反擊 `catch`(`catchDetective` 50% 討回全部損失,失敗被反咬) | `giveup` 認賠 |
+| `selfheist` 監守自盜(兇手是偵探) | `shreport` 報警(50% 討回委託費 + `selfHeistBonus`,失敗被反咬) | `shrecruit` 收編內應(`free_report = true`,下次報案免費) |
+| `gambler` 賭徒偵探 | `bet` 跟他賭(50% 委託費雙倍) | `betskip` 不賭、退回委託費 |
+| `misid` 抓錯人(亂指無辜路人,純呈現不對他動手) | `frame` 將錯就錯(再花 `misidFrameMul×fee` 白花錢) | `apolo` 道歉(付 `misidApologyMul×fee` 名譽費) |
+| `drunk` 偵探喝掛 | **無選擇**:退回 `drunkRefundPct×fee` | — |
+
+> 所有偵探壞事件(含後續選擇結果)都 `broadcast()` 到 `announceChannelId` 公開頻道。金流 source 須在 `grantCoins` 登記正確類別,否則負向 grant 被守門擋掉、正向 grant 被倍率灌水:SINK — `detective_fee`/`detective_crooked`/`detective_arale`/`detective_catch_lose`/`detective_penalty`/`detective_counterrob`;FLAT_REWARD — `detective_catch_win`/`detective_reward`。
 
 ---
 
