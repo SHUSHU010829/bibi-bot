@@ -76,7 +76,7 @@
    - 目標入服 / 首次活躍未滿 `newbieProtectDays`(預設 **7** 天)。
    - 目標錢包 < `minTargetWallet`(預設 **500** 幣)——沒油水,免得欺負窮人。
    - 目標**當日已被成功偷 `maxStolenPerDayPerTarget` 次**(折衷基準 **3**),當日不再受害。此為**免費保護**(不需道具)。
-   - 🐕「看門狗」**最後一道防線**:上面的免費保護都沒擋下、目標仍可被偷時,以 `defense.watchdogBlockRate`(預設 **70%**)機率擋下這次——**擋下才消耗 1 隻**;沒擋下代表這次牠沒察覺、看門狗留著下次繼續守,小偷照常進成功率判定(所以看門狗不是 100% 免疫、也不會被無效攻擊白白吃掉)。
+   - 🐕「看門狗」**最後一道防線**:上面的免費保護都沒擋下、目標仍可被偷時,以 `defense.watchdogBlockRate`(預設 **70%**)機率擋下這次——**擋下才消耗 1 隻**;沒擋下代表看門狗被引開(從 `defense.distractions` 加權抽 `lured` 食物誘拐 / `asleep` 打盹 / `chase` 追野貓,存進 `result.watchdogDistracted`,`/偷竊` 得手訊息以 `watchdogDistractionLine` 顯示 flavor),狗沒消耗、留著下次繼續守,小偷照常進成功率判定(所以看門狗不是 100% 免疫、也不會被無效攻擊白白吃掉)。
 
 **判定(非純亂數,對齊「更有趣」)**:
 
@@ -121,7 +121,6 @@
 
 - 追捕結果一律 **ephemeral**(只有追捕者看得到),避免頻道被「不在逃 / 慢了一步 / 讓他跑了」洗版;**只有成功逮捕**才把結果推到通緝廣播頻道(`announceChannelId`)。
 - 任何玩家(非通緝犯本人)可追捕。每日追捕次數上限 `hunt.dailyLimit`(**5**)。
-- **追捕途中的意外事件**(`hunt.events`,鎖定後、對決前擲 `chance`):壞事件(`lured` 被食物誘拐 / `asleep` 埋伏睡著 / `tripped` 被野貓絆倒)→ 追捕告吹,但**不算追丟**(通緝犯留榜、不加逃脫數、獵人未列入 `escaped_hunters`),獵人這次照樣用掉一次每日次數;好事件(`backup` 神助攻)→ 強制成功直接抓到。皆公開廣播,`theftView` 的 `huntEventContainer` 呈現。
 - 判定:`huntBaseRate`(預設 0.5) 依「追捕者攻擊力 vs 通緝犯攻擊力」微調(複用 `buffResolver.atkFromProfile`,比照決鬥計分),clamp `[0.2, 0.8]`。
 - **成功**:
   - **託管的賞金**全額發給追捕者(`source:"bounty_payout"`,peer)——錢是通緝當下就從小偷凍結的,系統不憑空產幣。

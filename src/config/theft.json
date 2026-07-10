@@ -51,17 +51,7 @@
       "escapeCooldownBaseMs": 240000,
       "escapeCooldownDiscountPerNotorietyMs": 30000,
       "escapeCooldownMinMs": 60000,
-      "escapeClearCount": 5,
-      "events": {
-        "chance": 0.2,
-        "goodChance": 0.35,
-        "good": [{ "key": "backup", "weight": 1 }],
-        "bad": [
-          { "key": "lured", "weight": 2 },
-          { "key": "asleep", "weight": 1 },
-          { "key": "tripped", "weight": 1 }
-        ]
-      }
+      "escapeClearCount": 5
     },
     "surrender": {
       "bailForfeitPct": 0.6,
@@ -194,7 +184,12 @@
     "defense": {
       "safeboxRate": 0.2,
       "cloakRate": 0.15,
-      "watchdogBlockRate": 0.7
+      "watchdogBlockRate": 0.7,
+      "distractions": [
+        { "key": "lured", "weight": 2 },
+        { "key": "asleep", "weight": 1 },
+        { "key": "chase", "weight": 1 }
+      ]
     }
   }
 }

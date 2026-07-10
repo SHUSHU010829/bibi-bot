@@ -223,32 +223,34 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
     return { ok: false, reason: "target_maxed" };
   }
 
-  // 看門狗：最後一道防線，有 watchdogBlockRate 機率擋下（非必定）；擋下才消耗一隻，
-  // 沒擋下這次牠沒察覺、留著下次繼續守（小偷照常進成功率判定）。
-  if (
-    (targetProfile.watchdog_count || 0) > 0 &&
-    Math.random() < (c.defense?.watchdogBlockRate ?? 0.7)
-  ) {
-    await client.theftProfilesCollection.updateOne(
-      { userId: targetId, guildId },
-      { $inc: { watchdog_count: -1 }, $set: { updatedAt: new Date() } }
-    );
-    // 被狗擋下仍算一次出手：記 steal log，照樣吃每日次數與同目標冷卻
-    // （但不上通緝、不加惡名——被擋下不算失風）
-    await logEvent(client, {
-      guildId,
-      type: "steal",
-      actor_id: actorId,
-      target_id: targetId,
-      success: false,
-      amount: 0,
-      watchdog: true,
-    });
-    return {
-      ok: false,
-      reason: "target_watchdog",
-      pairReadyAt: pairCdMs > 0 ? Date.now() + pairCdMs : null,
-    };
+  // 看門狗：最後一道防線，有 watchdogBlockRate 機率擋下（非必定）。
+  //   擋下 → 消耗一隻、回 target_watchdog；
+  //   沒擋下 → 看門狗被引開（食物 / 睡著 / 追貓），小偷趁隙得手，狗沒消耗、留著下次守。
+  let watchdogDistracted = null;
+  if ((targetProfile.watchdog_count || 0) > 0) {
+    if (Math.random() < (c.defense?.watchdogBlockRate ?? 0.7)) {
+      await client.theftProfilesCollection.updateOne(
+        { userId: targetId, guildId },
+        { $inc: { watchdog_count: -1 }, $set: { updatedAt: new Date() } }
+      );
+      // 被狗擋下仍算一次出手：記 steal log，照樣吃每日次數與同目標冷卻
+      // （但不上通緝、不加惡名——被擋下不算失風）
+      await logEvent(client, {
+        guildId,
+        type: "steal",
+        actor_id: actorId,
+        target_id: targetId,
+        success: false,
+        amount: 0,
+        watchdog: true,
+      });
+      return {
+        ok: false,
+        reason: "target_watchdog",
+        pairReadyAt: pairCdMs > 0 ? Date.now() + pairCdMs : null,
+      };
+    }
+    watchdogDistracted = pickWeighted(c.defense?.distractions) || "lured";
   }
 
   // 成功率
@@ -343,6 +345,7 @@ async function steal(client, { guildId, actorId, actorName, targetId, targetName
       net,
       rake,
       usedCloak,
+      watchdogDistracted,
       notoriety,
       stealCap,
       cappedByNotoriety,
@@ -469,37 +472,6 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
   );
   if (!(locked?.value || locked)) return { ok: false, reason: "race" };
 
-  // 追捕途中的意外事件（食物誘拐、埋伏睡著…）：鎖定後、對決前擲。
-  //   壞事件 → 追捕告吹，通緝犯留榜、不算脫罪、不加逃脫數（獵人這次照樣用掉一次機會）；
-  //   好事件 → 神助攻，直接抓到（強制成功）。
-  const he = h.events || {};
-  let forcedSuccess = false;
-  let huntEvent = null;
-  if (Math.random() < (he.chance ?? 0)) {
-    if (Math.random() < (he.goodChance ?? 0.35)) {
-      huntEvent = pickWeighted(he.good) || null;
-      if (huntEvent) forcedSuccess = true;
-    } else {
-      const bad = pickWeighted(he.bad);
-      if (bad) {
-        await client.wantedListCollection.updateOne(
-          { userId: wantedUserId, guildId },
-          { $set: { status: "wanted", updated_at: new Date() } }
-        );
-        await logEvent(client, {
-          guildId,
-          type: "hunt",
-          actor_id: hunterId,
-          target_id: wantedUserId,
-          success: false,
-          amount: 0,
-          event: bad,
-        });
-        return { ok: true, success: false, huntEvent: bad, wantedUserId, bounty: wanted.bounty };
-      }
-    }
-  }
-
   const [hunterAtk, wantedAtk] = await Promise.all([
     buffResolver.getEffectiveAtk(client, hunterId, guildId).catch(() => 0),
     buffResolver.getEffectiveAtk(client, wantedUserId, guildId).catch(() => 0),
@@ -509,7 +481,7 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
     h.minRate ?? 0.2,
     h.maxRate ?? 0.8
   );
-  const success = forcedSuccess || Math.random() < rate;
+  const success = Math.random() < rate;
 
   if (!success) {
     await logEvent(client, {
@@ -640,7 +612,6 @@ async function huntWanted(client, { guildId, hunterId, hunterName, wantedUserId,
     hunterFineShare,
     hunterAtk,
     wantedAtk,
-    huntEvent,
     hunterBalance: payout?.doc?.totalCoins ?? null,
   };
 }
