@@ -144,7 +144,7 @@ module.exports = async (client, interaction) => {
     });
 
     const statLine = (char) =>
-      `${char.weaponEmoji} ${char.name}｜攻擊 **${char.atk}**・防禦 **${char.def}**・爆擊 **${Math.round((char.critRate || 0) * 100)}%**`;
+      `${char.weaponEmoji} ${char.name}｜❤️ 體力 **${char.hpMax}**・攻擊 **${char.atk}**・防禦 **${char.def}**・爆擊 **${Math.round((char.critRate || 0) * 100)}%**`;
 
     const resultHeadline = res.mutualKO
       ? `# ⚔️ 決鬥結果\n` +

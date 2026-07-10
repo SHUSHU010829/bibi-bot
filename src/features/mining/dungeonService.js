@@ -699,6 +699,21 @@ async function getPlayerLevel(client, userId, guildId) {
   }
 }
 
+// 玩家有效血量上限：base + 等級 + 食物 / 公會 / 世界事件 dungeon_hp_max buff。
+// 地下城面板、實戰、決鬥三邊都走這支，確保數值一致；帶入已取好的 profile/club/level 可省查詢。
+async function effectiveHpMax(client, { userId, guildId, profile, club, level } = {}) {
+  const lv = typeof level === "number" ? level : await getPlayerLevel(client, userId, guildId);
+  const p = profile || (await getOrCreate(client, userId, guildId));
+  const cl = club !== undefined ? club : await getMemberClub(client, userId, guildId);
+  return (
+    hpService.hpMax(lv, {
+      food: getFoodHpMaxBonus(p),
+      guild: clubBuildingPct(cl, "dungeon_hp_max"),
+      pet: 0,
+    }) + (worldEventPct("dungeon_hp_max") || 0)
+  );
+}
+
 // 進入 HP 多回合戰鬥。回傳給呼叫端（指令層）一份完整結果，含戰鬥日誌。
 // 體力 / 武器耐久 / 盾耐久 / HP / 戰利品 / DB 寫入 / event / quest 一次處理完。
 async function enterDungeonHp(client, {
@@ -768,11 +783,7 @@ async function enterDungeonHp(client, {
   }
 
   // 4) 組玩家戰鬥屬性（食物 + 世界事件 + 公會 buff 全部疊上）
-  const hpMaxV = hpService.hpMax(level, {
-    food: getFoodHpMaxBonus(profile),
-    guild: clubBuildingPct(club, "dungeon_hp_max"), // 公會訓練場若有此 buff（暫無，留 hook）
-    pet: 0, // Phase H 寵物 hp_max bonus 留 hook
-  }) + (worldEventPct("dungeon_hp_max") || 0);
+  const hpMaxV = await effectiveHpMax(client, { userId, guildId, profile, club, level });
   const hpSt = hpService.resolveHp(profile, hpMaxV);
   const dmgPct = clubBuildingPct(club, "dungeon_damage_pct") + worldEventPct("dungeon_damage_pct");
   const baseAtk = playerAtk(profile);
@@ -1234,11 +1245,7 @@ async function getDungeonStatus(client, { userId, guildId, member }) {
   const profile = await getOrCreate(client, userId, guildId);
   const st = resolveStamina(profile, staMaxV);
   // 與 enterDungeonHp 同口徑：把世界事件 + 公會 buff dungeon_hp_max 都加上，避免面板與實戰數值不一致
-  const hpMaxV = hpService.hpMax(level, {
-    food: getFoodHpMaxBonus(profile),
-    guild: clubBuildingPct(club, "dungeon_hp_max"),
-    pet: 0,
-  }) + (worldEventPct("dungeon_hp_max") || 0);
+  const hpMaxV = await effectiveHpMax(client, { userId, guildId, profile, club, level });
   const hpSt = hpService.resolveHp(profile, hpMaxV);
   const themes = floorService.listThemes(profile, level);
   return {
@@ -1287,6 +1294,7 @@ module.exports = {
   enterDungeon,
   enterDungeonHp,
   getDungeonStatus,
+  effectiveHpMax,
   setAutoPotionPref,
   rollbackDungeon,
   resolveStamina,
