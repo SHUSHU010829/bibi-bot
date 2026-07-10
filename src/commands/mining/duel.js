@@ -15,8 +15,11 @@ const { dungeon } = require("../../config");
 const duelService = require("../../features/mining/duelService");
 const { COIN_EMOJI, MONEY_EMOJI } = require("../../constants/coin");
 
+const DUEL_MIN_BET = dungeon?.duel?.minBet ?? 100;
+const DUEL_MAX_BET = dungeon?.duel?.maxBet ?? 50000;
+
 module.exports = {
-  channelBuckets: ["mining", "theft"],
+  channelBuckets: ["mining", "theft", "duel"],
   data: new SlashCommandBuilder()
     .setName("決鬥")
     .setDescription("向其他玩家發起 1v1 金幣決鬥，勝者通吃彩池 ⚔️")
@@ -27,10 +30,12 @@ module.exports = {
     .addIntegerOption((o) =>
       o
         .setName("賭注")
-        .setDescription("雙方各押的金幣數（100 ~ 5000）")
+        .setDescription(
+          `雙方各押的金幣數（${DUEL_MIN_BET.toLocaleString()} ~ ${DUEL_MAX_BET.toLocaleString()}）`
+        )
         .setRequired(true)
-        .setMinValue(100)
-        .setMaxValue(5000)
+        .setMinValue(DUEL_MIN_BET)
+        .setMaxValue(DUEL_MAX_BET)
     ),
 
   run: async (client, interaction) => {
@@ -121,7 +126,7 @@ module.exports = {
         .addActionRowComponents(row)
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            "-# 勝負＝攻擊力＋隨機值，分數高者勝；裝備越好底分越高！",
+            "-# 接受後進行多回合對戰，攻擊力、武器防禦與爆擊率＋隨機事件決定勝負，弱者也有翻盤機會！",
           ),
         );
 
