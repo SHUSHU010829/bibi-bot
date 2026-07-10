@@ -12,7 +12,75 @@ function cfg() {
   return dungeon?.duel || {};
 }
 
-const randInt = (max) => Math.floor(Math.random() * (max + 1)); // 0..max（含）
+// 從 profile 取得決鬥用的戰鬥數值：攻擊力（含食物 buff）＋ 武器防禦 / 爆擊率。
+function combatStats(profile) {
+  const weapons = dungeon?.weapons || {};
+  const w = weapons[profile?.weapon] || weapons.fist || {};
+  return {
+    atk: buffResolver.atkFromProfile(profile),
+    def: w.def || 0,
+    critRate: w.critRate || 0,
+    weaponName: w.name || "赤手空拳",
+    weaponEmoji: w.emoji || "👊",
+  };
+}
+
+// 單次攻擊擲骰：基礎傷害 + 攻擊力縮放，套上隨機浮動、閃避、會心、扣防禦。
+function attackRoll(attacker, defender, b) {
+  if (Math.random() < (b.dodgeChance ?? 0.1)) {
+    return { dmg: 0, event: "dodge" };
+  }
+  const base = (b.baseDamage ?? 30) + attacker.atk * (b.atkScale ?? 0.35);
+  const v = b.variance ?? 0.4;
+  let dmg = base * (1 + (Math.random() * 2 - 1) * v);
+  let event = null;
+  const critChance = (b.baseCritChance ?? 0.08) + (attacker.critRate ?? 0);
+  if (Math.random() < critChance) {
+    dmg *= b.critMult ?? 1.8;
+    event = "crit";
+  }
+  dmg = Math.max(1, dmg - (defender.def ?? 0) * (b.defScale ?? 0.5));
+  return { dmg: Math.round(dmg), event };
+}
+
+function pickMove(b) {
+  const moves = b.moves || [];
+  return moves.length ? moves[Math.floor(Math.random() * moves.length)] : "一擊";
+}
+
+// 多回合對戰模擬：雙方同時出手，先掉到 0 HP 者落敗（同回合雙殺 → 比總傷害）。
+// 回合上限用滿仍未分出勝負 → 比剩餘 HP、再比總傷害，最後平手判挑戰者勝。
+function simulateBattle(cChar, oChar, b) {
+  const hp0 = b.hp ?? 150;
+  const maxRounds = b.maxRounds ?? 6;
+  let hpC = hp0;
+  let hpO = hp0;
+  let dmgByC = 0;
+  let dmgByO = 0;
+  const rounds = [];
+  let ko = false;
+
+  for (let r = 1; r <= maxRounds; r++) {
+    const cHit = { ...attackRoll(cChar, oChar, b), move: pickMove(b) };
+    const oHit = { ...attackRoll(oChar, cChar, b), move: pickMove(b) };
+    hpO = Math.max(0, hpO - cHit.dmg);
+    hpC = Math.max(0, hpC - oHit.dmg);
+    dmgByC += cHit.dmg;
+    dmgByO += oHit.dmg;
+    rounds.push({ r, cHit, oHit, hpC, hpO });
+    if (hpC <= 0 || hpO <= 0) {
+      ko = true;
+      break;
+    }
+  }
+
+  let challengerWins;
+  if (hpC !== hpO) challengerWins = hpC > hpO;
+  else if (dmgByC !== dmgByO) challengerWins = dmgByC > dmgByO;
+  else challengerWins = true; // 完全平手 → 判挑戰者勝
+
+  return { rounds, hpC, hpO, dmgByC, dmgByO, ko, challengerWins, hp0 };
+}
 
 async function getBalance(client, userId, guildId) {
   const doc = await client.userCoinsCollection
@@ -168,17 +236,15 @@ async function acceptDuel(client, { duelId, opponentId, opponentName, member }) 
     return { ok: false, reason: "race" };
   }
 
-  // 判定勝負：分數 = 攻擊力 + 隨機(0~scoreRandMax)，分數高者勝（平手判挑戰者勝）
+  // 判定勝負：多回合對戰模擬（攻擊力 / 防禦 / 爆擊率 + 隨機事件），詳見 simulateBattle。
   const [cProfile, oProfile] = await Promise.all([
     getOrCreate(client, duel.challenger_id, duel.guild_id),
     getOrCreate(client, opponentId, duel.guild_id),
   ]);
-  const atkC = buffResolver.atkFromProfile(cProfile);
-  const atkO = buffResolver.atkFromProfile(oProfile);
-  const randMax = c.scoreRandMax ?? 30;
-  const scoreC = atkC + randInt(randMax);
-  const scoreO = atkO + randInt(randMax);
-  const challengerWins = scoreC >= scoreO;
+  const cChar = { ...combatStats(cProfile), name: duel.challenger_name };
+  const oChar = { ...combatStats(oProfile), name: opponentName };
+  const battle = simulateBattle(cChar, oChar, c.battle || {});
+  const { challengerWins } = battle;
   const winnerId = challengerWins ? duel.challenger_id : opponentId;
   const winnerName = challengerWins ? duel.challenger_name : opponentName;
   const loserId = challengerWins ? opponentId : duel.challenger_id;
@@ -206,8 +272,9 @@ async function acceptDuel(client, { duelId, opponentId, opponentName, member }) 
         status: "completed",
         winner_id: winnerId,
         loser_id: loserId,
-        score_challenger: scoreC,
-        score_opponent: scoreO,
+        hp_challenger: battle.hpC,
+        hp_opponent: battle.hpO,
+        battle_rounds: battle.rounds.length,
         pot,
         rake: rakeAmount,
         completed_at: new Date(),
@@ -222,10 +289,9 @@ async function acceptDuel(client, { duelId, opponentId, opponentName, member }) 
     winnerId,
     loserId,
     challengerWins,
-    atkChallenger: atkC,
-    atkOpponent: atkO,
-    scoreChallenger: scoreC,
-    scoreOpponent: scoreO,
+    challenger: cChar,
+    opponent: oChar,
+    battle,
     pot,
     rakeAmount,
     winnerBalance: payout?.doc?.totalCoins ?? null,

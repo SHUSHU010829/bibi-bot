@@ -5,6 +5,7 @@
 const {
   ContainerBuilder,
   TextDisplayBuilder,
+  SeparatorBuilder,
   MessageFlags,
 } = require("discord.js");
 const duelService = require("../../features/mining/duelService");
@@ -115,25 +116,62 @@ module.exports = async (client, interaction) => {
       res.rakeAmount > 0
         ? `（已扣系統手續費 ${res.rakeAmount.toLocaleString()} ${COIN_EMOJI}）`
         : "";
+
+    const { challenger: cChar, opponent: oChar, battle } = res;
+    const cId = res.duel.challenger_id;
+    const oId = res.duel.opponent_id;
+
+    const hitText = (hit) => {
+      if (hit.event === "dodge") return `${hit.move}，被閃開了！`;
+      if (hit.event === "crit") return `${hit.move}・會心一擊 💥 ${hit.dmg}`;
+      return `${hit.move}・${hit.dmg} 傷害`;
+    };
+    const roundLines = battle.rounds.map((rd) => {
+      const koTag =
+        rd.hpC <= 0 && rd.hpO <= 0
+          ? "　💥 同歸於盡！"
+          : rd.hpO <= 0
+            ? `　☠️ ${oChar.name} 倒下！`
+            : rd.hpC <= 0
+              ? `　☠️ ${cChar.name} 倒下！`
+              : "";
+      return (
+        `**第 ${rd.r} 回合**\n` +
+        `　${cChar.weaponEmoji} ${cChar.name}：${hitText(rd.cHit)}\n` +
+        `　${oChar.weaponEmoji} ${oChar.name}：${hitText(rd.oHit)}\n` +
+        `　❤️ ${cChar.name} ${rd.hpC}　·　${oChar.name} ${rd.hpO}${koTag}`
+      );
+    });
+
+    const statLine = (char) =>
+      `${char.weaponEmoji} ${char.name}｜攻擊 **${char.atk}**・防禦 **${char.def}**・爆擊 **${Math.round((char.critRate || 0) * 100)}%**`;
+
     const container = new ContainerBuilder()
       .setAccentColor(0xf1c40f)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `# ⚔️ 決鬥結果\n` +
             `**勝者 🏆 <@${res.winnerId}>** 贏走了 **${res.pot.toLocaleString()}** ${COIN_EMOJI}！${rakeNote}\n\n` +
-            `挑戰者 <@${res.duel.challenger_id}>（攻擊 ${res.atkChallenger} → 分數 **${res.scoreChallenger}**）\n` +
-            `對手 <@${res.duel.opponent_id}>（攻擊 ${res.atkOpponent} → 分數 **${res.scoreOpponent}**）`,
+            `${statLine(cChar)}\n${statLine(oChar)}`,
+        ),
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `## 📜 戰報\n${roundLines.join("\n")}\n\n` +
+            `🏁 剩餘體力：<@${cId}> **${battle.hpC}**　·　<@${oId}> **${battle.hpO}**`,
         ),
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          "-# 分數 = 攻擊力 + 隨機值；用 /合成 打造更強的鎬子提高底分！",
+          "-# 攻擊力、武器防禦與爆擊率都會影響勝負；用 /合成 打造更強的武器，或吃加攻食物再開戰！",
         ),
       );
 
     await interaction.editReply({
       components: [container],
       flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { parse: [] },
     });
     trackSuccess("duel-accept");
   } catch (error) {

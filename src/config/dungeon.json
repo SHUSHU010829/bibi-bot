@@ -310,12 +310,32 @@
     "duel": {
       "enabled": true,
       "minBet": 100,
-      "maxBet": 5000,
+      "maxBet": 50000,
       "dailyLimit": 3,
       "samePairCooldownMs": 21600000,
       "systemRakePct": 0.05,
-      "scoreRandMax": 30,
-      "acceptWindowMs": 120000
+      "acceptWindowMs": 120000,
+      "battle": {
+        "hp": 180,
+        "maxRounds": 8,
+        "baseDamage": 40,
+        "atkScale": 0.15,
+        "variance": 0.65,
+        "defScale": 0.5,
+        "baseCritChance": 0.12,
+        "critMult": 1.8,
+        "dodgeChance": 0.13,
+        "moves": [
+          "一記橫掃",
+          "蓄力重砸",
+          "刁鑽突刺",
+          "旋身斬擊",
+          "貼身猛攻",
+          "凌厲下劈",
+          "迅捷連擊",
+          "全力揮擊"
+        ]
+      }
     },
     "choiceEvents": {
       "enabled": true,
