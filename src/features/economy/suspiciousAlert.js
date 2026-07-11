@@ -29,11 +29,20 @@ async function alertChannel(client) {
 // { guildId, kind, users:[id...], description, fields?:[{name,value}] }
 async function raiseSuspicion(client, { guildId, kind, users, description, fields }) {
   const deltas = {};
+  const scores = {};
   if (bank?.credit?.enabled) {
     for (const uid of users) {
       const r = await creditService.flagSuspicious(client, uid, guildId).catch(() => null);
-      if (r && r.delta) deltas[uid] = r.delta; // 實際扣的分（負數）
+      if (r && r.delta) {
+        deltas[uid] = r.delta; // 實際扣的分（負數）
+        scores[uid] = r.score;
+      }
     }
+  }
+
+  // 扣分後 DM 通知各自涉事玩家（僅通知本次真的有扣到分的人）。
+  for (const uid of Object.keys(deltas)) {
+    dmDocked(client, uid, kind, deltas[uid], scores[uid]);
   }
 
   const flagId = `flag_${crypto.randomBytes(5).toString("hex")}`;
@@ -84,6 +93,30 @@ function buildFlagMessage(flag) {
       .setDisabled(!!flag.restored || docked === 0),
   );
   return { embed, row };
+}
+
+// 扣分後私訊涉事玩家（非阻塞、送不到就吞掉）。
+function dmDocked(client, userId, kind, delta, score) {
+  Promise.resolve()
+    .then(async () => {
+      const user = await client.users.fetch(userId).catch(() => null);
+      if (!user) return;
+      const meta = KIND_META[kind] || { title: "⚠️ 可疑金流" };
+      const embed = new EmbedBuilder()
+        .setColor(0xe74c3c)
+        .setTitle("⚠️ 你的信用分被扣分")
+        .setDescription(
+          `系統偵測到你參與了**${meta.title.replace(/^⚠️\s*/, "")}**，判定為可疑洗幣行為，已扣除信用分。`,
+        )
+        .addFields(
+          { name: "本次扣分", value: `**${delta}** 分`, inline: true },
+          { name: "目前信用分", value: `**${score}**`, inline: true },
+        )
+        .setFooter({ text: "若你認為這是誤判，請聯絡管理員協助復原。" })
+        .setTimestamp(new Date());
+      await user.send({ embeds: [embed] });
+    })
+    .catch((e) => console.log(`[SUSP] 扣分 DM 失敗 ${userId}: ${e?.message || e}`.yellow));
 }
 
 module.exports = { raiseSuspicion, alertChannel, buildFlagMessage };

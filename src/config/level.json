@@ -157,8 +157,8 @@
       "feeRateHigh": 0.05,
       "highFeeThreshold": 1000,
       "cooldownSeconds": 0,
-      "suspiciousThreshold": 30000,
-      "ringMinEdge": 10000,
+      "suspiciousThreshold": 60000,
+      "ringMinEdge": 25000,
       "ringMaxLen": 4
     },
     "dailyEconomyReport": {
@@ -185,8 +185,8 @@
     },
     "marketAntiLaundering": {
       "enabled": true,
-      "overpayRatio": 5,
-      "overpayAbs": 30000,
+      "overpayRatio": 8,
+      "overpayAbs": 60000,
       "medianDays": 30,
       "minSamples": 5
     },
