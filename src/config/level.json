@@ -158,7 +158,7 @@
       "highFeeThreshold": 1000,
       "cooldownSeconds": 0,
       "suspiciousThreshold": 60000,
-      "ringMinEdge": 25000,
+      "ringMinEdge": 50000,
       "ringMaxLen": 4
     },
     "dailyEconomyReport": {
