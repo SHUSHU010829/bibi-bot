@@ -277,17 +277,35 @@ async function buildDeposit(client, ctx) {
   return container;
 }
 
+// 金庫區塊：持有量 + 估值，若有成本資料再附上「平均成本」與「現在賣出的損益」（像股市）。
+function vaultText(holding, value, position, prices) {
+  let text = `**你的金庫**\n持有 **${fmt(holding)}** ${U()}　≈ **${fmt(value)}** 幣（以賣出價估）`;
+  if (holding > 0 && position.costBasis > 0) {
+    const pnl = Math.round(value - position.costBasis);
+    const pnlPct = position.costBasis > 0 ? (pnl / position.costBasis) * 100 : 0;
+    const arrow = pnl > 0 ? "📈" : pnl < 0 ? "📉" : "➖";
+    const sign = pnl > 0 ? "+" : pnl < 0 ? "−" : "";
+    const pctSign = pnl > 0 ? "+" : pnl < 0 ? "" : "";
+    text +=
+      `\n平均成本 **${fmt(position.avgCost)}** 幣/${U()}` +
+      `\n${arrow} 現在賣出損益 **${sign}${fmt(Math.abs(pnl))}** 幣（${pctSign}${pnlPct.toFixed(1)}%）` +
+      `\n-# 損益＝現在全部賣出（賣出價 ${fmt(prices.sell)}/${U()}）− 買進 / 精煉的平均成本`;
+  }
+  return text;
+}
+
 async function buildGold(client, ctx) {
   const { userId, guildId } = ctx;
-  const [prices, holding, terms, block, mineProfile] = await Promise.all([
+  const [prices, position, terms, block, mineProfile] = await Promise.all([
     goldService.getPrices(),
-    goldService.getHolding(client, userId, guildId),
+    goldService.getPosition(client, userId, guildId),
     goldService.listTerms(client, userId, guildId),
     loanService.repaymentBlock(client, userId, guildId),
     client.miningProfilesCollection
       ? client.miningProfilesCollection.findOne({ userId, guildId }).catch(() => null)
       : null,
   ]);
+  const holding = position.units;
   const value = holding * prices.sell;
   const r = goldService.refineRecipe();
 
@@ -310,9 +328,7 @@ async function buildGold(client, ctx) {
     )
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**你的金庫**\n持有 **${fmt(holding)}** ${U()}　≈ **${fmt(value)}** 幣（以賣出價估）`,
-      ),
+      new TextDisplayBuilder().setContent(vaultText(holding, value, position, prices)),
     );
 
   if (block) {

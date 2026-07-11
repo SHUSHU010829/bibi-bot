@@ -72,13 +72,17 @@ async function getHolding(client, userId, guildId) {
   return doc?.units || 0;
 }
 
-async function addHolding(client, userId, guildId, delta) {
+// 加庫存並累計成本：unitCost = 每克入庫成本（買進價 / 精煉現貨價 / 定存還原成本）。
+// 平均成本採「移動平均」：只存來源（units 總量 + costBasis 總成本），均價與損益都讀取時才算。
+async function addHolding(client, userId, guildId, delta, unitCost = 0) {
   const col = client.goldHoldingsCollection;
   const now = new Date();
+  const inc = { units: delta };
+  if (delta > 0 && unitCost > 0) inc.costBasis = Math.round(delta * unitCost);
   const res = await col.findOneAndUpdate(
     { userId, guildId },
     {
-      $inc: { units: delta },
+      $inc: inc,
       $setOnInsert: { userId, guildId, createdAt: now },
       $set: { updatedAt: now },
     },
@@ -87,15 +91,39 @@ async function addHolding(client, userId, guildId, delta) {
   return (res.value || res)?.units || 0;
 }
 
-// 有條件扣減：庫存足夠才扣，避免並發把庫存扣成負數（憑空變幣）。回傳是否成功。
+// 有條件扣減：庫存足夠才扣，避免並發把庫存扣成負數（憑空變幣）。
+// 同步按均價扣掉對應成本（costBasis），回傳被扣掉的成本 removedCost 供顯示損益 / 回滾。
 async function tryDeduct(client, userId, guildId, units) {
-  const res = await client.goldHoldingsCollection.findOneAndUpdate(
+  const col = client.goldHoldingsCollection;
+  const doc = await col.findOne({ userId, guildId }).catch(() => null);
+  const have = doc?.units || 0;
+  if (have < units) return { ok: false };
+  const costBasis = doc?.costBasis || 0;
+  const avgCost = have > 0 ? costBasis / have : 0;
+  const removedCost = Math.round(avgCost * units);
+  const res = await col.findOneAndUpdate(
     { userId, guildId, units: { $gte: units } },
-    { $inc: { units: -units }, $set: { updatedAt: new Date() } },
+    { $inc: { units: -units, costBasis: -removedCost }, $set: { updatedAt: new Date() } },
     { returnDocument: "after" },
   );
-  const doc = res.value || res;
-  return doc ? { ok: true, holding: doc.units } : { ok: false };
+  const updated = res.value || res;
+  if (!updated) return { ok: false };
+  // 全數賣光後成本歸零，避免比例四捨五入的殘值長期累積。
+  if (updated.units <= 0 && (updated.costBasis || 0) !== 0) {
+    await col.updateOne({ userId, guildId }, { $set: { costBasis: 0 } }).catch(() => {});
+    updated.costBasis = 0;
+  }
+  return { ok: true, holding: updated.units, removedCost, avgCost };
+}
+
+// 讀取黃金部位：持有量、總成本、移動平均成本。
+async function getPosition(client, userId, guildId) {
+  const col = client.goldHoldingsCollection;
+  if (!col) return { units: 0, costBasis: 0, avgCost: 0 };
+  const doc = await col.findOne({ userId, guildId }).catch(() => null);
+  const units = doc?.units || 0;
+  const costBasis = doc?.costBasis || 0;
+  return { units, costBasis, avgCost: units > 0 ? costBasis / units : 0 };
 }
 
 // 買進黃金：扣錢包、加金庫。回傳 { ok, reason, ... }。
@@ -124,9 +152,18 @@ async function buy(client, { userId, guildId, username, member, avatarHash, unit
     meta: { units, unitPrice: prices.buy },
   });
   if (!debit) return { ok: false, reason: "debit" };
-  const holding = await addHolding(client, userId, guildId, units);
+  const holding = await addHolding(client, userId, guildId, units, prices.buy);
+  const position = await getPosition(client, userId, guildId);
   creditService.award(client, userId, guildId, "gold_trade", { member }).catch(() => {});
-  return { ok: true, units, cost, prices, holding, balanceAfter: debit.doc?.totalCoins ?? balance - cost };
+  return {
+    ok: true,
+    units,
+    cost,
+    prices,
+    holding,
+    avgCost: position.avgCost,
+    balanceAfter: debit.doc?.totalCoins ?? balance - cost,
+  };
 }
 
 // 賣出黃金：扣金庫、加錢包。
@@ -152,11 +189,22 @@ async function sell(client, { userId, guildId, username, member, avatarHash, uni
     meta: { units, unitPrice: prices.sell },
   });
   if (!credit) {
-    await addHolding(client, userId, guildId, units); // 回滾金庫
+    // 回滾金庫並還原被扣掉的成本
+    await addHolding(client, userId, guildId, units, deducted.removedCost / units);
     return { ok: false, reason: "credit" };
   }
   creditService.award(client, userId, guildId, "gold_trade", { member }).catch(() => {});
-  return { ok: true, units, gain, prices, holding: deducted.holding, balanceAfter: credit.doc?.totalCoins };
+  return {
+    ok: true,
+    units,
+    gain,
+    prices,
+    holding: deducted.holding,
+    avgCost: deducted.avgCost,
+    costRemoved: deducted.removedCost,
+    pnl: gain - deducted.removedCost,
+    balanceAfter: credit.doc?.totalCoins,
+  };
 }
 
 function refineRecipe() {
@@ -202,7 +250,8 @@ async function refine(client, { userId, guildId, units }) {
   const upd = await col.updateOne(filter, { $inc: dec });
   if (!upd.modifiedCount) return { ok: false, reason: "ore", haveOre, needOre, r };
 
-  const holding = await addHolding(client, userId, guildId, units);
+  // 精煉入庫的成本以當日現貨價計（原料換算的公允市值），使平均成本貼近市場。
+  const holding = await addHolding(client, userId, guildId, units, spotPrice());
   return { ok: true, units, needOre, needCoal, r, holding };
 }
 
@@ -244,6 +293,7 @@ async function openTerm(client, { userId, guildId, member, units, days }) {
     days,
     rate: term.rate,
     interestUnits,
+    costBasis: deducted.removedCost, // 鎖倉時帶走的成本，領回時原樣還原
     status: "active",
     createdAt: now,
     maturesAt,
@@ -286,7 +336,14 @@ async function claimTerm(client, { userId, guildId, member, depositId }) {
   );
   if (!(upd.value || upd)) return { ok: false, reason: "race" };
 
-  const holding = await addHolding(client, userId, guildId, payoutUnits);
+  // 還原鎖倉時帶走的成本：到期＝本金成本原樣（利息為免費金，稀釋均價）；
+  // 提前解約＝按實領比例還原成本。
+  const origCost = doc.costBasis || 0;
+  let restoreUnitCost = 0;
+  if (payoutUnits > 0) {
+    restoreUnitCost = matured ? origCost / payoutUnits : doc.units > 0 ? origCost / doc.units : 0;
+  }
+  const holding = await addHolding(client, userId, guildId, payoutUnits, restoreUnitCost);
   if (matured) {
     creditService.award(client, userId, guildId, "deposit_matured", { member }).catch(() => {});
   }
@@ -300,6 +357,7 @@ module.exports = {
   spotPrice,
   getPrices,
   getHolding,
+  getPosition,
   addHolding,
   refineRecipe,
   buy,

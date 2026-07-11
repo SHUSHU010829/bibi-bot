@@ -36,6 +36,11 @@
       "sellSpread": 0.04,
       "minTradeUnits": 1,
       "maxTradeUnits": 2000,
+      "broadcast": {
+        "enabled": true,
+        "cronSchedule": "0 9 * * *",
+        "channelId": ""
+      },
       "refine": {
         "enabled": true,
         "oreKey": "gold",

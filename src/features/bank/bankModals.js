@@ -19,6 +19,14 @@ function toInt(v) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+// 賣出損益文字（像股市）：本次相對平均成本賺 / 賠多少。
+function pnlText(pnl) {
+  if (typeof pnl !== "number") return "損益 —";
+  if (pnl > 0) return `賺 📈 **+${fmt(pnl)}** 幣`;
+  if (pnl < 0) return `賠 📉 **−${fmt(Math.abs(pnl))}** 幣`;
+  return "損益 ➖ 打平";
+}
+
 // action → { title, tab, fields:[{id,label,placeholder,required}], submit(client,ctx,values)->{tab,note} }
 const ACTIONS = {
   goldbuy: {
@@ -34,7 +42,7 @@ const ACTIONS = {
         if (res.reason === "balance") return { tab: "gold", note: `⚠️ 餘額不足，買 ${fmt(units)} ${U()} 需 ${fmt(res.cost)}（有 ${fmt(res.balance)}）` };
         return { tab: "gold", note: "🔧 買進失敗，請稍後再試" };
       }
-      return { tab: "gold", note: `✅ 買進 **${fmt(res.units)}** ${U()}（共 ${fmt(res.cost)} 幣），金庫 ${fmt(res.holding)} ${U()}` };
+      return { tab: "gold", note: `✅ 買進 **${fmt(res.units)}** ${U()}（共 ${fmt(res.cost)} 幣），平均成本 ${fmt(res.avgCost)} 幣/${U()}，金庫 ${fmt(res.holding)} ${U()}` };
     },
   },
   goldsell: {
@@ -49,7 +57,7 @@ const ACTIONS = {
         if (res.reason === "holding") return { tab: "gold", note: `⚠️ 金庫只有 ${fmt(res.holding)} ${U()}` };
         return { tab: "gold", note: "🔧 賣出失敗，請稍後再試" };
       }
-      return { tab: "gold", note: `✅ 賣出 **${fmt(res.units)}** ${U()}（+${fmt(res.gain)} 幣），金庫剩 ${fmt(res.holding)} ${U()}` };
+      return { tab: "gold", note: `✅ 賣出 **${fmt(res.units)}** ${U()}（+${fmt(res.gain)} 幣），${pnlText(res.pnl)}，金庫剩 ${fmt(res.holding)} ${U()}` };
     },
   },
   goldrefine: {

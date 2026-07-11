@@ -79,7 +79,11 @@ module.exports = async (client, interaction) => {
       if (holding <= 0) return show("gold", "⚠️ 金庫沒有黃金可賣");
       const res = await goldService.sell(client, { ...ctx, units: holding });
       if (!res.ok) return show("gold", "🔧 賣出失敗，請稍後再試");
-      return show("gold", `✅ 已賣出全部 **${fmt(res.units)}** ${uLabel}（+${fmt(res.gain)} 幣）`);
+      const pnl = res.pnl;
+      const pnlStr = typeof pnl === "number"
+        ? pnl > 0 ? `，賺 📈 +${fmt(pnl)} 幣` : pnl < 0 ? `，賠 📉 −${fmt(Math.abs(pnl))} 幣` : "，打平"
+        : "";
+      return show("gold", `✅ 已賣出全部 **${fmt(res.units)}** ${uLabel}（+${fmt(res.gain)} 幣${pnlStr}）`);
     }
 
     // 一鍵還清貸款
