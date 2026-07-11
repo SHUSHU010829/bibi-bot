@@ -46,7 +46,9 @@ function recordAndCheck(client, sale) {
         const { median: med, samples } = await medianUnitPrice(client, guildId, itemType, itemKey);
         const minSamples = cfg().minSamples ?? 5;
         const usingMedian = samples >= minSamples && med > 0;
-        const ref = usingMedian ? med : itemAccess.basePrice(itemType, itemKey);
+        // 樣本不足時不判定：basePrice（NPC 基礎價）常遠低於玩家市場行情，
+        // 拿它當參考價會把正常成交誤判成洗幣。只信任「真實成交中位數」路徑。
+        const ref = usingMedian ? med : 0;
         if (ref > 0) {
           const ratio = unitPrice / ref;
           const overpay = Math.round(totalPaid - ref * qty);
@@ -54,7 +56,7 @@ function recordAndCheck(client, sale) {
           const overpayAbs = cfg().overpayAbs ?? 30000;
           if (ratio >= overpayRatio && overpay >= overpayAbs) {
             const label = itemAccess.itemLabel(itemType, itemKey, qty);
-            const refKind = usingMedian ? `近 ${cfg().medianDays ?? 30} 天中位` : "基準";
+            const refKind = `近 ${cfg().medianDays ?? 30} 天中位`;
             await raiseSuspicion(client, {
               guildId,
               kind: "market",
