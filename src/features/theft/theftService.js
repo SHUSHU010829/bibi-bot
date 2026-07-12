@@ -80,37 +80,54 @@ async function getFund(client, guildId) {
   const doc = await client.countersCollection.findOne({ _id: fundKey(guildId) }).catch(() => null);
   return doc?.pool || 0;
 }
-// 週結算：本週賞金收入最高的獵人領走整池，池歸零。無人可領則累積到下週。
+// 週結算：本週賞金收入前幾名的獵人依名次權重瓜分整池，池歸零。無人可領則累積到下週。
 async function payoutWeeklyFund(client, guildId) {
   const f = cfg().fund || {};
   if (!client.countersCollection || !client.theftLogsCollection) return null;
   const pool = await getFund(client, guildId);
   if (pool < (f.minPool ?? 1)) return { paid: false, pool, reason: "empty" };
 
+  const shares = f.shares && f.shares.length ? f.shares : [1];
   const since = new Date(Date.now() - (f.weekWindowMs ?? 604800000));
   const agg = await client.theftLogsCollection
     .aggregate([
       { $match: { guildId, type: "hunt", success: true, ts: { $gte: since } } },
       { $group: { _id: "$actor_id", earned: { $sum: "$amount" }, hunts: { $sum: 1 } } },
       { $sort: { earned: -1, hunts: -1 } },
-      { $limit: 1 },
+      { $limit: shares.length },
     ])
     .toArray()
     .catch(() => []);
-  const top = agg[0];
-  if (!top) return { paid: false, pool, reason: "no_hunter" };
+  if (!agg.length) return { paid: false, pool, reason: "no_hunter" };
 
-  await grantCoins(client, {
-    userId: top._id,
-    guildId,
-    amount: pool,
-    source: "fund_payout",
-    meta: { reason: "weekly_bounty_hunter", hunts: top.hunts },
-  }).catch(() => {});
+  // 名次不足時把權重重新歸一化，確保整池發完；餘數歸榜首。
+  const weights = shares.slice(0, agg.length);
+  const weightSum = weights.reduce((s, w) => s + w, 0) || 1;
+  const amounts = weights.map((w) => Math.floor((pool * w) / weightSum));
+  amounts[0] += pool - amounts.reduce((s, a) => s + a, 0);
+
+  const winners = agg.map((row, i) => ({
+    userId: row._id,
+    rank: i + 1,
+    amount: amounts[i],
+    earned: row.earned,
+    hunts: row.hunts,
+  }));
+
+  for (const w of winners) {
+    if (w.amount <= 0) continue;
+    await grantCoins(client, {
+      userId: w.userId,
+      guildId,
+      amount: w.amount,
+      source: "fund_payout",
+      meta: { reason: "weekly_bounty_hunter", rank: w.rank, hunts: w.hunts },
+    }).catch(() => {});
+  }
   await client.countersCollection
     .updateOne({ _id: fundKey(guildId) }, { $set: { pool: 0, updatedAt: new Date() } })
     .catch(() => {});
-  return { paid: true, winnerId: top._id, amount: pool, earned: top.earned, hunts: top.hunts };
+  return { paid: true, pool, winners };
 }
 
 async function logEvent(client, doc) {

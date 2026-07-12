@@ -17,7 +17,7 @@
 > - **置頂即時通緝看板**(`theftBoard.js`):在廣播頻道維護一則**置頂訊息**,即時顯示在逃罪犯(不寫錢包金額、顯示賞金 / 通緝到期 / 躲藏冷卻 / 躲過次數 + 追捕鈕)。狀態一變即重繪 + cron 每分鐘刷新(處理冷卻/時效這類無事件的變化);訊息 id 存 `countersCollection`。
 > - **報案強制決鬥 + 偵探跑路**:報案查出兇手 → 每人一顆強制決鬥鈕(贏了討回一半、每人一次);報案有 `abscondChance` 機率偵探捲款跑路。
 > - **逃脫規則**:追捕失敗的獵人本次通緝不能再追同人;累積逃 `escapeClearCount`(5)次自動脫罪。
-> - **治安基金**(`fund`):被逮贖罪金(燒掉那半)+ 自首保釋金累積成池,存 `countersCollection`,**每週日 21:00 發給本週賞金收入最高的獵人**(`theftFundScheduler.js` 週 cron + 公告),看板顯示基金額度。`grantCoins` 補 `fund_payout`(flat)。
+> - **治安基金**(`fund`):被逮贖罪金(燒掉那半)+ 自首保釋金累積成池,存 `countersCollection`,**每週日 21:00 由本週賞金收入前五名的獵人依名次權重(`fund.shares`)瓜分整池**(`theftFundScheduler.js` 週 cron + 公告),看板顯示基金額度。`grantCoins` 補 `fund_payout`(flat,`meta.rank` 記名次)。
 > - 惡名衰退最終採 **compute-on-read**。MVP 全數落地。
 
 ---
