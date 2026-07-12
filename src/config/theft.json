@@ -179,7 +179,8 @@
       "timezone": "Asia/Taipei",
       "payoutCron": "0 21 * * 0",
       "weekWindowMs": 604800000,
-      "minPool": 1
+      "minPool": 1,
+      "shares": [0.4, 0.25, 0.18, 0.1, 0.07]
     },
     "defense": {
       "safeboxRate": 0.2,

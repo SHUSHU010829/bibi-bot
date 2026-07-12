@@ -21,20 +21,30 @@ async function payoutOnce(client) {
 
   const res = await theftService.payoutWeeklyFund(client, guildId);
   if (res?.paid) {
+    const medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"];
+    const rankLines = res.winners
+      .map(
+        (w) =>
+          `${medals[w.rank - 1] || `${w.rank}.`} <@${w.userId}> — 逮捕 **${w.hunts}** 名、賞金收入 **${w.earned.toLocaleString()}** 🪙\n` +
+          `　　　　瓜分治安基金 **+${w.amount.toLocaleString()}** 🪙`
+      )
+      .join("\n");
     const container = new ContainerBuilder()
       .setAccentColor(0xf1c40f)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🏆 本週賞金獵人榜首！\n` +
-            `<@${res.winnerId}> 本週逮捕 **${res.hunts}** 名通緝犯、賞金收入 **${res.earned.toLocaleString()}** 🪙，\n` +
-            `額外領走整池**治安基金 ${res.amount.toLocaleString()}** 🪙！`
+          `# 🏆 本週賞金獵人榜！\n` +
+            `本週前 ${res.winners.length} 名獵人依名次瓜分整池**治安基金 ${res.pool.toLocaleString()}** 🪙：\n\n` +
+            rankLines
         )
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent("-# 治安基金由被逮贖罪金與自首保釋金累積 · 下週再戰")
       );
     await ch.send({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
-    console.log(`[THEFT] 治安基金週結算：winner=${res.winnerId} amount=${res.amount}`.cyan);
+    console.log(
+      `[THEFT] 治安基金週結算：pool=${res.pool} winners=${res.winners.map((w) => `${w.userId}(+${w.amount})`).join(",")}`.cyan
+    );
   }
   await theftBoard.refresh(client);
   return res || { paid: false };
