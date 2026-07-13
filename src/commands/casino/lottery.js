@@ -40,7 +40,6 @@ const {
   checkAndAnnouncePoolMilestones,
 } = require("../../features/casino/lottery/poolAnnouncer");
 const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
-const twitchPerks = require("../../features/mining/twitchPerks");
 
 const TYPE_CHOICES = [
   { name: "大樂透 6/49", value: "6_49" },
@@ -74,9 +73,6 @@ function getLotteryFeatureConfig() {
 }
 function getTypeConfig(t) {
   return getLotteryFeatureConfig().types?.[t] || {};
-}
-function getSubConfig() {
-  return casino?.lottery?.subscription || {};
 }
 
 module.exports = {
@@ -162,7 +158,6 @@ module.exports = {
                 .setDescription("自動買幾期")
                 .setRequired(true)
                 .setMinValue(1)
-                .setMaxValue(12)
             )
             .addIntegerOption((o) =>
               o
@@ -170,7 +165,6 @@ module.exports = {
                 .setDescription("每期買幾張")
                 .setRequired(false)
                 .setMinValue(1)
-                .setMaxValue(10)
             )
             .addStringOption((o) =>
               o
@@ -435,7 +429,7 @@ async function runWheel(client, interaction) {
     }
 
     const cfg = getLotteryConfig(lotteryType);
-    const maxBase = typeCfg.wheelingMaxBaseNumbers || 10;
+    const maxBase = cfg.range;
     const ticketPrice = typeCfg.ticketPrice || 0;
 
     const numbersInput = interaction.options.getString("號碼");
@@ -927,21 +921,9 @@ async function runSubscribe(client, interaction) {
     }
 
     const cfg = getLotteryConfig(lotteryType);
-    const subCfg = getSubConfig();
     const totalDraws = interaction.options.getInteger("期數");
     const ticketsPerDraw = interaction.options.getInteger("每期張數") || 1;
     const numbersInput = interaction.options.getString("號碼");
-
-    const maxDraws = subCfg.maxDrawsPerSubscription || 12;
-    const ticketBonus =
-      twitchPerks.resolvePerks(interaction.member)?.lotteryTicketBonus || 0;
-    const maxTickets = (subCfg.maxTicketsPerDraw || 10) + ticketBonus;
-    if (totalDraws > maxDraws) {
-      return interaction.editReply(`❌ 期數最多 ${maxDraws}`);
-    }
-    if (ticketsPerDraw > maxTickets) {
-      return interaction.editReply(`❌ 每期張數最多 ${maxTickets}`);
-    }
 
     let numbers;
     if (numbersInput && numbersInput.trim()) {
