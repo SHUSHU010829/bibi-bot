@@ -16,6 +16,7 @@ const BUFF_META = {
   boss_damage_pct: { label: "世界王傷害", unit: "+{v}%" },
   boss_attack_limit_bonus: { label: "世界王每場攻擊次數", unit: "+{v}" },
   fishing_success_rate_pct: { label: "釣魚成功率", unit: "+{v}%" },
+  fishing_cooldown_pct: { label: "釣魚冷卻", unit: "-{v}%" },
   farm_yield_count_bonus: { label: "農場額外產出", unit: "+{v} 個" },
   farm_yield_pct: { label: "農場收成", unit: "+{v}%" },
   ore_sell_price_pct: { label: "礦石賣價", unit: "+{v}%" },

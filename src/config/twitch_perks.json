@@ -5,11 +5,13 @@
       "tier1": {
         "miningLuckBonus": 0.05,
         "miningCdReductionMs": 900000,
+        "fishingCdReductionMs": 900000,
         "workCdReductionMs": 1800000
       },
       "tier2": {
         "miningLuckBonus": 0.1,
         "miningCdReductionMs": 1800000,
+        "fishingCdReductionMs": 1800000,
         "workCdReductionMs": 1800000,
         "staminaBonus": 1,
         "depositSlotBonus": 2,
@@ -18,6 +20,7 @@
       "tier3": {
         "miningLuckBonus": 0.15,
         "miningCdReductionMs": 2700000,
+        "fishingCdReductionMs": 2700000,
         "workCdReductionMs": 1800000,
         "staminaBonus": 2,
         "depositSlotBonus": 2,

@@ -29,6 +29,32 @@
           }
         ]
       },
+      "harbor": {
+        "label": "漁港",
+        "emoji": "⚓",
+        "maxLevel": 3,
+        "unlockClubLevel": 2,
+        "levels": [
+          {
+            "level": 1,
+            "cost": { "building_material": 1 },
+            "buffs": [{ "type": "fishing_cooldown_pct", "value": 5 }]
+          },
+          {
+            "level": 2,
+            "cost": { "building_material": 5 },
+            "buffs": [{ "type": "fishing_cooldown_pct", "value": 10 }]
+          },
+          {
+            "level": 3,
+            "cost": { "building_material": 15, "steel_ingot": 5 },
+            "buffs": [
+              { "type": "fishing_cooldown_pct", "value": 15 },
+              { "type": "fishing_success_rate_pct", "value": 5 }
+            ]
+          }
+        ]
+      },
       "training": {
         "label": "訓練場",
         "emoji": "🏋️",

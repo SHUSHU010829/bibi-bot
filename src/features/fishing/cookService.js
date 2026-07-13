@@ -128,6 +128,15 @@ function getFoodFarmYieldBonus(profile) {
   return bonus;
 }
 
+// 取得食物 buff 對釣魚冷卻的減免（fish_haste，計時型）。回傳小數（0.10 = -10%）。
+function getFoodFishingCdBonus(profile) {
+  let bonus = 0;
+  for (const b of getActiveFoodBuffs(profile)) {
+    if (b.type === "fish_haste") bonus += currentBuffValue(b);
+  }
+  return bonus;
+}
+
 // 消耗一次 farm_yield 的使用次數（收成時呼叫）
 function consumeFarmYieldUse(client, userId, guildId, profile) {
   return consumeFoodBuffUse(client, userId, guildId, profile, "farm_yield");
@@ -214,7 +223,7 @@ function consumeMineLuckUse(client, userId, guildId, profile) {
 // 各行為會吃到的食物 buff 類型對照表。all_boost 是全屬性增幅，列入所有行為。
 const FOOD_BUFF_ACTION_TYPES = {
   mine: ["mine_luck", "all_boost"],
-  fish: ["fish_fortune", "all_boost"],
+  fish: ["fish_fortune", "fish_haste", "all_boost"],
   work: ["work_income", "all_boost"],
   // Phase H+ 新增 dungeon_def / dungeon_hp_max 也吃進地下城分類
   dungeon: ["dungeon_atk", "dungeon_def", "dungeon_hp_max", "all_boost"],
@@ -241,6 +250,7 @@ function describeFoodBuff(b) {
   else if (b.type === "all_boost") desc = `全屬性 +${Math.round(v * 100)}%`;
   else if (b.type === "fish_fortune")
     desc = `釣魚成功率 +${Math.round(v * 100)}% ・ 稀有度提升`;
+  else if (b.type === "fish_haste") desc = `釣魚冷卻 -${Math.round(v * 100)}%`;
   else if (b.type === "farm_yield") desc = `農場收成 +${Math.round(v * 100)}%`;
   else desc = b.type;
   let expire = "";
@@ -579,6 +589,7 @@ module.exports = {
   getFoodWorkBonus,
   getFoodFishBonus,
   getFoodFarmYieldBonus,
+  getFoodFishingCdBonus,
   consumeMineLuckUse,
   consumeWorkIncomeUse,
   consumeFishFortuneUse,

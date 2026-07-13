@@ -32,6 +32,7 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
   ]);
 
   const cdMin = s.miningCdMs ? Math.round((s.miningCdMs / 60000) * 10) / 10 : null;
+  const fishCdMin = s.fishingCdMs ? Math.round((s.fishingCdMs / 60000) * 10) / 10 : null;
 
   const miningProfileForStamina = await getMiningProfile(client, userId, guildId).catch(() => null);
   const club = await getMemberClub(client, userId, guildId).catch(() => null);
@@ -69,6 +70,7 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
     `**⛏️ 挖礦數量**：+${s.qtyBonus}`,
   ];
   if (cdMin != null) overviewLines.push(`**⏱️ 挖礦冷卻**：${cdMin} 分鐘`);
+  if (fishCdMin != null) overviewLines.push(`**🎣 釣魚冷卻**：${fishCdMin} 分鐘`);
   if (s.farmYieldBonus > 0)
     overviewLines.push(`**🌾 農場收成**：+${Math.round(s.farmYieldBonus * 100)}%`);
   overviewLines.push(`**📈 經驗加成**：${s.xpBoost > 1 ? `+${pct(s.xpBoost)}` : "無"}`);
@@ -146,6 +148,8 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
     // 公會建築（礦坑 / 訓練場 / 倉庫擴建）buff
     if (s.guildClub.miningCooldownPct > 0)
       lines.push(`• ⏱️ 挖礦冷卻 -${s.guildClub.miningCooldownPct}%（礦坑）`);
+    if (s.guildClub.fishingCooldownPct > 0)
+      lines.push(`• 🎣 釣魚冷卻 -${s.guildClub.fishingCooldownPct}%（漁港）`);
     if (s.guildClub.dungeonDamagePct > 0)
       lines.push(`• ⚔️ 地下城傷害 +${s.guildClub.dungeonDamagePct}%（訓練場）`);
     if (s.guildClub.critRatePct > 0)

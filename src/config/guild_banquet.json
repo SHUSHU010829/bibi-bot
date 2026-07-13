@@ -26,6 +26,17 @@
         "durationMs": 7200000,
         "description": "公會主廚親自掌勺，下副本的兄弟刀刀致命"
       },
+      "deep_sea_feast": {
+        "name": "深海盛宴",
+        "emoji": "🐙",
+        "materials": { "shark": 60, "octopus": 40, "lava_fish": 15 },
+        "buffs": [
+          { "type": "fishing_cooldown_pct", "value": 10 },
+          { "type": "fishing_success_rate_pct", "value": 10 }
+        ],
+        "durationMs": 5400000,
+        "description": "公會漁船滿載歸來，深海珍饈讓全員甩竿如飛、竿竿有魚"
+      },
       "black_rose_grand": {
         "name": "黑玫瑰盛宴",
         "emoji": "🌹",
