@@ -33,7 +33,7 @@ const COOK_MODAL_PREFIX = "cookModal_";
 // 依 buff.type 分類食譜（一種食譜只屬一類）。
 const COOK_CATS = [
   { id: "mine", label: "挖礦", emoji: "⛏️", types: ["mine_luck"] },
-  { id: "fish", label: "釣魚", emoji: "🎣", types: ["fish_fortune"] },
+  { id: "fish", label: "釣魚", emoji: "🎣", types: ["fish_fortune", "fish_haste"] },
   { id: "work", label: "打工", emoji: "💼", types: ["work_income"] },
   { id: "battle", label: "戰鬥", emoji: "⚔️", types: ["dungeon_atk", "dungeon_def", "dungeon_hp_max"] },
   { id: "farm", label: "農場", emoji: "🌾", types: ["farm_yield"] },
@@ -60,6 +60,7 @@ function describeBuff(buff) {
   if (buff.type === "mine_luck") return `挖礦幸運 +${Math.round(buff.value * 100)}%`;
   if (buff.type === "all_boost") return `全屬性 +${Math.round(buff.value * 100)}%`;
   if (buff.type === "fish_fortune") return `釣魚成功率 +${Math.round(buff.value * 100)}% ・ 稀有度提升`;
+  if (buff.type === "fish_haste") return `釣魚冷卻 -${Math.round(buff.value * 100)}%`;
   if (buff.type === "farm_yield") return `農場收成 +${Math.round(buff.value * 100)}%`;
   return `${buff.type} +${buff.value}`;
 }
