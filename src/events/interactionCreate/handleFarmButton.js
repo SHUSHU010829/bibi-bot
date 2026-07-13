@@ -1195,8 +1195,14 @@ module.exports = async (client, interaction) => {
           ]
         : [
             `💀 被 **${monster.monsterEmoji} ${monster.monsterName}** 擊敗，作物被毀！`,
+            (result.coinsGained > 0 || result.slimeGained > 0)
+              ? `🪙 撿回殘局：${[
+                  result.coinsGained > 0 ? `+${result.coinsGained} 幣` : null,
+                  result.slimeGained > 0 ? `💧 黏液 ×${result.slimeGained}` : null,
+                ].filter(Boolean).join("、")}`
+              : null,
             `下次更早回來收成吧 🥲`,
-          ];
+          ].filter(Boolean);
       if (result.won && result.droppedTrapFragment) {
         lines.push(`-# 集 5 個損壞的陷阱碎片可在工坊合成「高級陷阱」，被動抵擋 4 次來犯`);
       }
@@ -1251,6 +1257,7 @@ module.exports = async (client, interaction) => {
           ].filter(Boolean)
         : [
             `💀 陷阱失靈，**${monster.monsterEmoji} ${monster.monsterName}** 把作物啃光了…`,
+            result.coinsGained > 0 ? `🪙 撿回 +${result.coinsGained} 幣` : null,
             result.flavor ? `-# ${result.flavor}` : null,
             `-# 想穩一點就乖乖等體力回復用「防禦」`,
           ].filter(Boolean);

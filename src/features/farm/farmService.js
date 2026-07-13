@@ -1099,6 +1099,13 @@ async function defendRaid(client, { userId, guildId, username, member, plotIndex
       droppedTrapFragment = true;
       inc.broken_trap_fragments = 1;
     }
+  } else {
+    // 戰敗安慰：作物照樣毀，但撿回一點殘局（金幣＋少量黏液），降低「全損」的痛感。
+    const [cLo, cHi] = farming.raid?.loseRewards?.coins || [0, 0];
+    coinsGained = randInt(cLo, cHi);
+    const [sLo, sHi] = farming.raid?.loseRewards?.slime || [0, 0];
+    slimeGained = randInt(sLo, sHi);
+    if (slimeGained > 0) inc["backpack.monster_slime"] = slimeGained;
   }
 
   await client.miningProfilesCollection.updateOne(
@@ -1164,6 +1171,8 @@ async function setTrap(client, { userId, guildId, username, member, plotIndex })
     const [cLo, cHi] = trapCfg.winCoins || [0, 0];
     coinsGained = randInt(cLo, cHi);
   } else {
+    const [cLo, cHi] = trapCfg.loseCoins || [0, 0];
+    coinsGained = randInt(cLo, cHi);
     const flavors = trapCfg.failFlavors || [];
     if (flavors.length) flavor = flavors[Math.floor(Math.random() * flavors.length)];
   }
