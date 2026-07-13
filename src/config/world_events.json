@@ -32,6 +32,16 @@
         "rewards": { "buffs": { "fishing_success_rate_pct": 10 } }
       },
       {
+        "id": "ocean_current",
+        "label": "洋流順風",
+        "emoji": "🌊",
+        "color": 3447003,
+        "description": "順洋流帶來大批魚群，全服釣魚冷卻縮短。",
+        "trigger": { "kind": "fish_catch", "fish": "crucian", "chancePct": 5 },
+        "requirements": { "crucian": 40, "octopus": 15 },
+        "rewards": { "buffs": { "fishing_cooldown_pct": 15 } }
+      },
+      {
         "id": "expedition",
         "label": "遠征軍備戰",
         "emoji": "⚔️",

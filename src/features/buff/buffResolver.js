@@ -20,7 +20,7 @@ const eventEngine = require("../event/eventEngine");
 const twitchPerks = require("../mining/twitchPerks");
 const { getFoodFarmYieldBonus } = require("../fishing/cookService");
 const { MONEY_EMOJI } = require("../../constants/coin");
-const { donation, levelSystem, guildClub } = require("../../config");
+const { donation, levelSystem, guildClub, fishing } = require("../../config");
 const buildingService = require("../guild_club/buildingService");
 const worldEventBuffs = require("../world_event/worldEventBuffs");
 
@@ -121,7 +121,44 @@ async function getEffectiveCdMs(client, userId, guildId, member, source = "mine"
   if (source === "mine") {
     return (await getMiningResolve(client, userId, guildId, member)).actualCdMs;
   }
+  if (source === "fish") {
+    return (await getFishingResolve(client, userId, guildId, member)).actualCdMs;
+  }
   return null; // 其他來源尚無 CD 減免
+}
+
+// ── 釣魚冷卻 ──────────────────────────────────────────
+// 固定毫秒（釣竿 + Twitch 訂閱）先扣，再套百分比（公會建築/等級/宴會 + 世界事件），
+// 最後保底 60 秒。與挖礦同構：存來源、用時即時算，不寫死進 DB。
+function applyFishingCdReduction({ baseCdMs, rodCdMs, twitchCdMs, guildCdPct, worldCdPct }) {
+  let cdMs = (baseCdMs || 0) - (rodCdMs || 0) - (twitchCdMs || 0);
+  const totalCdPct = Math.min(70, (guildCdPct || 0) + (worldCdPct || 0));
+  if (totalCdPct > 0) cdMs = Math.floor((cdMs * (100 - totalCdPct)) / 100);
+  return { actualCdMs: Math.max(60000, cdMs), totalCdPct };
+}
+
+// 釣魚冷卻各來源即時解析。供 fishService 套用、/加成 顯示。
+// rodKey 省略時取玩家目前釣竿；base 走 fishing.cooldownMs。
+async function getFishingResolve(client, userId, guildId, member, rodKey) {
+  const rods = fishing?.rods || {};
+  const profile = rodKey ? null : await getOrCreate(client, userId, guildId);
+  const rod = rods[rodKey || profile?.fishing_rod || "bamboo"] || rods.bamboo || {};
+
+  const gc = await getGuildClubBuffs(client, userId, guildId);
+  const guildCdPct = gc.buffsByType.fishing_cooldown_pct || 0;
+  const worldCdPct = worldEventBuffs.getCachedBuffs().fishing_cooldown_pct || 0;
+  const perks = twitchPerks.resolvePerks(member);
+  const twitchCdMs = perks?.fishingCdReductionMs || 0;
+
+  const { actualCdMs, totalCdPct } = applyFishingCdReduction({
+    baseCdMs: fishing?.cooldownMs || 0,
+    rodCdMs: rod.cdReductionMs || 0,
+    twitchCdMs,
+    guildCdPct,
+    worldCdPct,
+  });
+
+  return { actualCdMs, guildCdPct, worldCdPct, twitchCdMs, totalCdPct };
 }
 
 // ── INCOME 倍率（查詢用，套用仍在 grantCoins）────────────
@@ -160,6 +197,7 @@ async function summary(client, userId, guildId, member) {
   const guildBossAtk = gc.buffsByType.boss_atk_pct || 0;
   const guildBossAttackLimitBonus = gc.buffsByType.boss_attack_limit_bonus || 0;
   const guildMiningCdPct = gc.buffsByType.mining_cooldown_pct || 0;
+  const guildFishingCdPct = gc.buffsByType.fishing_cooldown_pct || 0;
   const guildDungeonDmgPct = gc.buffsByType.dungeon_damage_pct || 0;
   const guildCritPct = gc.buffsByType.crit_rate_pct || 0;
   const guildBossDmgPct = gc.buffsByType.boss_damage_pct || 0;
@@ -171,11 +209,21 @@ async function summary(client, userId, guildId, member) {
   const guildRepairDiscountPct = gc.buffsByType.equipment_repair_discount_pct || 0;
   const guildCombatDurSavePct = gc.buffsByType.combat_durability_save_pct || 0;
   const guildWhBonus = gc.club ? buildingService.warehouseCapacityBonus(gc.club) : 0;
+  const fishRodDef = fishing?.rods?.[profile.fishing_rod || "bamboo"] || {};
+  const fishingPerks = twitchPerks.resolvePerks(member);
+  const { actualCdMs: fishingCdMs } = applyFishingCdReduction({
+    baseCdMs: fishing?.cooldownMs || 0,
+    rodCdMs: fishRodDef.cdReductionMs || 0,
+    twitchCdMs: fishingPerks?.fishingCdReductionMs || 0,
+    guildCdPct: guildFishingCdPct,
+    worldCdPct: worldEventBuffs.getCachedBuffs().fishing_cooldown_pct || 0,
+  });
   return {
     atk: atkFromProfile(profile),
     luckBonus: m.luckBonus + guildLuck,
     qtyBonus: m.qtyBonus + guildQty,
     miningCdMs: m.actualCdMs,
+    fishingCdMs,
     income: {
       twitch: getCoinTwitchSubBonus(member, "mining_sell"),
       serverBoost: getCoinServerBoostBonus(member, "mining_sell"),
@@ -207,6 +255,7 @@ async function summary(client, userId, guildId, member) {
           bossAtkBonus: guildBossAtk,
           bossAttackLimitBonus: guildBossAttackLimitBonus,
           miningCooldownPct: guildMiningCdPct,
+          fishingCooldownPct: guildFishingCdPct,
           dungeonDamagePct: guildDungeonDmgPct,
           critRatePct: guildCritPct,
           bossDamagePct: guildBossDmgPct,
@@ -272,6 +321,8 @@ async function roleBuffSummary(client, userId, guildId, member) {
       lines.push(`🍀 挖礦幸運 +${Math.round(perks.miningLuckBonus * 100)}%`);
     if (perks?.miningCdReductionMs > 0)
       lines.push(`⏱️ 挖礦冷卻 -${Math.round(perks.miningCdReductionMs / 60000)} 分`);
+    if (perks?.fishingCdReductionMs > 0)
+      lines.push(`🎣 釣魚冷卻 -${Math.round(perks.fishingCdReductionMs / 60000)} 分`);
     if (lines.length) groups.push({ header: `💜 Twitch 訂閱（${tierLabel}）`, lines });
   }
 
@@ -318,6 +369,7 @@ module.exports = {
   atkFromProfile,
   getEffectiveAtk,
   getMiningResolve,
+  getFishingResolve,
   getEffectiveLuck,
   getEffectiveCdMs,
   getEffectiveIncomeMultiplier,
