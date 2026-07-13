@@ -40,7 +40,6 @@ const {
   checkAndAnnouncePoolMilestones,
 } = require("../../features/casino/lottery/poolAnnouncer");
 const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
-const twitchPerks = require("../../features/mining/twitchPerks");
 
 const TYPE_CHOICES = [
   { name: "大樂透 6/49", value: "6_49" },
@@ -75,9 +74,6 @@ function getLotteryFeatureConfig() {
 function getTypeConfig(t) {
   return getLotteryFeatureConfig().types?.[t] || {};
 }
-function getSubConfig() {
-  return casino?.lottery?.subscription || {};
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -101,7 +97,6 @@ module.exports = {
             .setDescription("買幾張(隨機選號模式才用)")
             .setRequired(false)
             .setMinValue(1)
-            .setMaxValue(100)
         )
         .addStringOption((o) =>
           o
@@ -163,7 +158,6 @@ module.exports = {
                 .setDescription("自動買幾期")
                 .setRequired(true)
                 .setMinValue(1)
-                .setMaxValue(12)
             )
             .addIntegerOption((o) =>
               o
@@ -171,7 +165,6 @@ module.exports = {
                 .setDescription("每期買幾張")
                 .setRequired(false)
                 .setMinValue(1)
-                .setMaxValue(10)
             )
             .addStringOption((o) =>
               o
@@ -237,15 +230,11 @@ async function runBuy(client, interaction) {
     const numbersInput = interaction.options.getString("號碼");
     const specialInput = interaction.options.getInteger("第二區");
     const ticketPrice = typeCfg.ticketPrice || 0;
-    const maxTicketsPerOrder = typeCfg.maxTicketsPerOrder || 100;
     const withSpecial = hasSecondZone(lotteryType);
 
     // entries: [{ numbers:number[], special:number|null }]
     let entries = [];
     const count = ticketCountInput || 1;
-    if (count > maxTicketsPerOrder) {
-      return interaction.editReply(`❌ 單筆最多買 ${maxTicketsPerOrder} 張票`);
-    }
     if (numbersInput && numbersInput.trim()) {
       const v = validateNumbers(numbersInput, lotteryType);
       if (!v.ok) {
@@ -440,7 +429,7 @@ async function runWheel(client, interaction) {
     }
 
     const cfg = getLotteryConfig(lotteryType);
-    const maxBase = typeCfg.wheelingMaxBaseNumbers || 10;
+    const maxBase = cfg.range;
     const ticketPrice = typeCfg.ticketPrice || 0;
 
     const numbersInput = interaction.options.getString("號碼");
@@ -455,6 +444,14 @@ async function runWheel(client, interaction) {
       lotteryType,
       ticketPrice
     );
+
+    const maxCombinations = typeCfg.wheelingMaxCombinations || 10000;
+    if (combinations > maxCombinations) {
+      return interaction.editReply(
+        `❌ 包牌組合數過多!${baseNumbers.length} 個號碼會展開 **${combinations.toLocaleString()}** 組,` +
+          `單筆上限 **${maxCombinations.toLocaleString()}** 組。請減少 base 號碼再試。`
+      );
+    }
 
     let draw = await getCurrentOpenDraw(client, lotteryType);
     if (!draw) draw = await ensureNextDraw(client, lotteryType);
@@ -932,21 +929,9 @@ async function runSubscribe(client, interaction) {
     }
 
     const cfg = getLotteryConfig(lotteryType);
-    const subCfg = getSubConfig();
     const totalDraws = interaction.options.getInteger("期數");
     const ticketsPerDraw = interaction.options.getInteger("每期張數") || 1;
     const numbersInput = interaction.options.getString("號碼");
-
-    const maxDraws = subCfg.maxDrawsPerSubscription || 12;
-    const ticketBonus =
-      twitchPerks.resolvePerks(interaction.member)?.lotteryTicketBonus || 0;
-    const maxTickets = (subCfg.maxTicketsPerDraw || 10) + ticketBonus;
-    if (totalDraws > maxDraws) {
-      return interaction.editReply(`❌ 期數最多 ${maxDraws}`);
-    }
-    if (ticketsPerDraw > maxTickets) {
-      return interaction.editReply(`❌ 每期張數最多 ${maxTickets}`);
-    }
 
     let numbers;
     if (numbersInput && numbersInput.trim()) {
