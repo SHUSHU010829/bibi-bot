@@ -496,6 +496,25 @@
           "durationMs": 5400000,
           "label": "全屬性 +15%（90 分鐘，煤炭烤製）"
         }
+      },
+      "swift_fish_congee": {
+        "name": "順風魚粥",
+        "emoji": "🥣",
+        "description": "熱騰騰的鯽魚粥暖身又提神，接下來一段時間收竿下竿都特別快",
+        "materials": { "crucian": 4, "small_fish": 6 },
+        "coalFuel": 4,
+        "buff": {
+          "type": "fish_haste",
+          "value": 0.10,
+          "durationMs": 3600000,
+          "label": "釣魚冷卻 -10%（60 分鐘）"
+        },
+        "coalBuff": {
+          "type": "fish_haste",
+          "value": 0.15,
+          "durationMs": 5400000,
+          "label": "釣魚冷卻 -15%（90 分鐘，煤炭烤製）"
+        }
       }
     }
   }

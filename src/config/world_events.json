@@ -39,7 +39,7 @@
         "description": "順洋流帶來大批魚群，全服釣魚冷卻縮短。",
         "trigger": { "kind": "fish_catch", "fish": "crucian", "chancePct": 5 },
         "requirements": { "crucian": 40, "octopus": 15 },
-        "rewards": { "buffs": { "fishing_cooldown_pct": 15 } }
+        "rewards": { "buffs": { "fishing_cooldown_pct": 20 } }
       },
       {
         "id": "expedition",

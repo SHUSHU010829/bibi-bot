@@ -7,6 +7,10 @@
       "donor": "1509577270040461342",
       "vipDonor": "1509576114811703436"
     },
+    "fishingCdReductionMs": {
+      "donor": 300000,
+      "vipDonor": 600000
+    },
     "themes": {
       "donor": "theme_donor"
     },

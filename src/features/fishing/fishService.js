@@ -195,7 +195,7 @@ async function fish(client, { userId, guildId, location = "stream", member, user
   // ── 成功上鉤 ──：先算「魚 / 非魚」共用的冷卻、耐久、漁網消耗
   // 冷卻減免（釣竿 + Twitch 訂閱 + 公會建築/等級/宴會 + 世界事件）統一走 buffResolver，與挖礦同構。
   const buffResolver = require("../buff/buffResolver");
-  const fishingCd = await buffResolver.getFishingResolve(client, userId, guildId, member, rodKey);
+  const fishingCd = await buffResolver.getFishingResolve(client, userId, guildId, member, { profile });
   const newCooldownAt = now + fishingCd.actualCdMs;
 
   const inc = { fish_count_total: 1 };

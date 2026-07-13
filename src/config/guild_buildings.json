@@ -49,7 +49,7 @@
             "level": 3,
             "cost": { "building_material": 15, "steel_ingot": 5 },
             "buffs": [
-              { "type": "fishing_cooldown_pct", "value": 10 },
+              { "type": "fishing_cooldown_pct", "value": 15 },
               { "type": "fishing_success_rate_pct", "value": 5 }
             ]
           }

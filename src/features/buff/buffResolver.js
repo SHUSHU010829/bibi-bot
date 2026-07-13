@@ -18,7 +18,7 @@ const {
 const { getActiveBuffMultiplier } = require("../shop/activeBuff");
 const eventEngine = require("../event/eventEngine");
 const twitchPerks = require("../mining/twitchPerks");
-const { getFoodFarmYieldBonus } = require("../fishing/cookService");
+const { getFoodFarmYieldBonus, getFoodFishingCdBonus } = require("../fishing/cookService");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { donation, levelSystem, guildClub, fishing } = require("../../config");
 const buildingService = require("../guild_club/buildingService");
@@ -128,37 +128,48 @@ async function getEffectiveCdMs(client, userId, guildId, member, source = "mine"
 }
 
 // ── 釣魚冷卻 ──────────────────────────────────────────
-// 固定毫秒（釣竿 + Twitch 訂閱）先扣，再套百分比（公會建築/等級/宴會 + 世界事件），
-// 最後保底 60 秒。與挖礦同構：存來源、用時即時算，不寫死進 DB。
-function applyFishingCdReduction({ baseCdMs, rodCdMs, twitchCdMs, guildCdPct, worldCdPct }) {
-  let cdMs = (baseCdMs || 0) - (rodCdMs || 0) - (twitchCdMs || 0);
-  const totalCdPct = Math.min(70, (guildCdPct || 0) + (worldCdPct || 0));
+// 固定毫秒（釣竿 + Twitch 訂閱 + 贊助身分組）先扣，再套百分比（公會建築/等級/宴會 +
+// 世界事件 + 食物 buff），最後保底 60 秒。與挖礦同構：存來源、用時即時算，不寫死進 DB。
+function applyFishingCdReduction({ baseCdMs, fixedCdMs, cdPct }) {
+  let cdMs = (baseCdMs || 0) - (fixedCdMs || 0);
+  const totalCdPct = Math.min(70, cdPct || 0);
   if (totalCdPct > 0) cdMs = Math.floor((cdMs * (100 - totalCdPct)) / 100);
   return { actualCdMs: Math.max(60000, cdMs), totalCdPct };
 }
 
-// 釣魚冷卻各來源即時解析。供 fishService 套用、/加成 顯示。
-// rodKey 省略時取玩家目前釣竿；base 走 fishing.cooldownMs。
-async function getFishingResolve(client, userId, guildId, member, rodKey) {
-  const rods = fishing?.rods || {};
-  const profile = rodKey ? null : await getOrCreate(client, userId, guildId);
-  const rod = rods[rodKey || profile?.fishing_rod || "bamboo"] || rods.bamboo || {};
+// 贊助身分組的釣魚冷卻固定減免（VIP 優先，取單一最高檔，不與一般贊助疊加）。
+function donationFishingCdMs(member) {
+  if (!member?.roles?.cache) return 0;
+  const cfg = donation?.fishingCdReductionMs || {};
+  const ids = donation?.roleIds || {};
+  if (ids.vipDonor && member.roles.cache.has(ids.vipDonor)) return cfg.vipDonor || 0;
+  if (ids.donor && member.roles.cache.has(ids.donor)) return cfg.donor || 0;
+  return 0;
+}
 
-  const gc = await getGuildClubBuffs(client, userId, guildId);
+// 釣魚冷卻各來源即時解析。供 fishService 套用、/加成 顯示。
+// opts.profile / opts.gc 省略時自行讀取；呼叫端已有就傳入避免重複查詢。
+async function getFishingResolve(client, userId, guildId, member, opts = {}) {
+  const profile = opts.profile || (await getOrCreate(client, userId, guildId));
+  const gc = opts.gc || (await getGuildClubBuffs(client, userId, guildId));
+  const rods = fishing?.rods || {};
+  const rod = rods[profile?.fishing_rod || "bamboo"] || rods.bamboo || {};
+
+  const rodCdMs = rod.cdReductionMs || 0;
+  const twitchCdMs = twitchPerks.resolvePerks(member)?.fishingCdReductionMs || 0;
+  const donationCdMs = donationFishingCdMs(member);
+
   const guildCdPct = gc.buffsByType.fishing_cooldown_pct || 0;
   const worldCdPct = worldEventBuffs.getCachedBuffs().fishing_cooldown_pct || 0;
-  const perks = twitchPerks.resolvePerks(member);
-  const twitchCdMs = perks?.fishingCdReductionMs || 0;
+  const foodCdPct = (getFoodFishingCdBonus(profile) || 0) * 100;
 
   const { actualCdMs, totalCdPct } = applyFishingCdReduction({
     baseCdMs: fishing?.cooldownMs || 0,
-    rodCdMs: rod.cdReductionMs || 0,
-    twitchCdMs,
-    guildCdPct,
-    worldCdPct,
+    fixedCdMs: rodCdMs + twitchCdMs + donationCdMs,
+    cdPct: guildCdPct + worldCdPct + foodCdPct,
   });
 
-  return { actualCdMs, guildCdPct, worldCdPct, twitchCdMs, totalCdPct };
+  return { actualCdMs, rodCdMs, twitchCdMs, donationCdMs, guildCdPct, worldCdPct, foodCdPct, totalCdPct };
 }
 
 // ── INCOME 倍率（查詢用，套用仍在 grantCoins）────────────
@@ -209,15 +220,7 @@ async function summary(client, userId, guildId, member) {
   const guildRepairDiscountPct = gc.buffsByType.equipment_repair_discount_pct || 0;
   const guildCombatDurSavePct = gc.buffsByType.combat_durability_save_pct || 0;
   const guildWhBonus = gc.club ? buildingService.warehouseCapacityBonus(gc.club) : 0;
-  const fishRodDef = fishing?.rods?.[profile.fishing_rod || "bamboo"] || {};
-  const fishingPerks = twitchPerks.resolvePerks(member);
-  const { actualCdMs: fishingCdMs } = applyFishingCdReduction({
-    baseCdMs: fishing?.cooldownMs || 0,
-    rodCdMs: fishRodDef.cdReductionMs || 0,
-    twitchCdMs: fishingPerks?.fishingCdReductionMs || 0,
-    guildCdPct: guildFishingCdPct,
-    worldCdPct: worldEventBuffs.getCachedBuffs().fishing_cooldown_pct || 0,
-  });
+  const { actualCdMs: fishingCdMs } = await getFishingResolve(client, userId, guildId, member, { profile, gc });
   return {
     atk: atkFromProfile(profile),
     luckBonus: m.luckBonus + guildLuck,
@@ -358,7 +361,11 @@ async function roleBuffSummary(client, userId, guildId, member) {
     const lines =
       luck > 0
         ? [`🍀 挖礦幸運 +${Math.round(luck * 100)}%（<t:${Math.floor(exp / 1000)}:R>）`]
-        : ["・專屬身分組與外觀"];
+        : [];
+    const donationCdMs = donationFishingCdMs(member);
+    if (donationCdMs > 0)
+      lines.push(`🎣 釣魚冷卻 -${Math.round(donationCdMs / 60000)} 分`);
+    if (lines.length === 0) lines.push("・專屬身分組與外觀");
     groups.push({ header: `💖 ${hasVip ? "VIP 贊助者" : "贊助者"}`, lines });
   }
 
