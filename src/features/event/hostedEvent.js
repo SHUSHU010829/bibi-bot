@@ -13,8 +13,15 @@ const {
   MessageFlags,
 } = require("discord.js");
 
+const crypto = require("crypto");
 const grantCoins = require("../economy/grantCoins");
-const { computeRefundFee, computePrizeFee } = require("../economy/refundFee");
+const {
+  computeRefundFee,
+  computePrizeFee,
+  getRefundFeeRate,
+  getPrizeFeeRate,
+  getPrizeFeeExemptParticipants,
+} = require("../economy/refundFee");
 const { checkServerTenure } = require("../economy/eligibility");
 const { fireEventPayoutCheck } = require("../economy/suspiciousTransferDetector");
 const { hostedEvents: hostedEventsConfig } = require("../../config");
@@ -385,6 +392,125 @@ async function createEvent(client, opts) {
   }
 }
 
+// 建立活動的待確認草稿（扣款前）。key=token → { draft, hostId, ts }。
+const pendingCreateDrafts = new Map();
+const CREATE_DRAFT_TTL_MS = 5 * 60 * 1000;
+
+function putCreateDraft(hostId, draft) {
+  const token = crypto.randomBytes(6).toString("hex");
+  pendingCreateDrafts.set(token, { draft, hostId, ts: Date.now() });
+  return token;
+}
+
+function takeCreateDraft(token) {
+  const entry = pendingCreateDrafts.get(token);
+  if (!entry) return null;
+  pendingCreateDrafts.delete(token);
+  if (Date.now() - entry.ts > CREATE_DRAFT_TTL_MS) return null;
+  return entry;
+}
+
+// 驗證參數與餘額（與 createEvent 的前置檢查一致），通過則暫存草稿並回傳 token/餘額。
+async function prepareEventDraft(client, opts) {
+  const { guild, hostId, name, description, prizePool, rankCount, minParticipants, maxParticipants } = opts;
+
+  if (!client.hostedEventsCollection) {
+    throw new Error("活動系統尚未啟動（資料庫未連線）");
+  }
+  if (rankCount < 1 || rankCount > MAX_RANK_COUNT) {
+    throw new Error(`名次數需在 1 ~ ${MAX_RANK_COUNT} 之間。`);
+  }
+  if (prizePool < rankCount) {
+    throw new Error("獎金池必須 ≥ 名次數（每名至少 1 credit）。");
+  }
+  if (minParticipants < 1) {
+    throw new Error("最少人數需 ≥ 1。");
+  }
+  if (maxParticipants && maxParticipants < minParticipants) {
+    throw new Error("最多人數不能小於最少人數。");
+  }
+
+  const before = await client.userCoinsCollection.findOne({ userId: hostId, guildId: guild.id });
+  const balance = before?.totalCoins || 0;
+  if (balance < prizePool) {
+    throw new Error(
+      `餘額不足！活動需鎖定 ${prizePool.toLocaleString()} credits，目前 ${balance.toLocaleString()}。`
+    );
+  }
+
+  const draft = {
+    name,
+    description: description || null,
+    prizePool,
+    rankCount,
+    minParticipants,
+    maxParticipants: maxParticipants || null,
+  };
+  const token = putCreateDraft(hostId, draft);
+  return { token, draft, balance };
+}
+
+function buildCreateConfirmContainer(draft, balance, hostId, token) {
+  const { name, description, prizePool, rankCount, minParticipants, maxParticipants } = draft;
+  const afterBalance = balance - prizePool;
+  const capacity = maxParticipants
+    ? `最少 ${minParticipants} 人・最多 ${maxParticipants} 人`
+    : `最少 ${minParticipants} 人・無上限`;
+  const prizePct = Math.round(getPrizeFeeRate() * 100);
+  const exemptN = getPrizeFeeExemptParticipants();
+  const refundPct = Math.round(getRefundFeeRate() * 100);
+
+  return new ContainerBuilder()
+    .setAccentColor(EMBED_COLOR_ACTIVE)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🎉 建立活動確認\n**${name}**${description ? `\n${description}` : ""}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**立即扣除並鎖定**：${prizePool.toLocaleString()} credits\n` +
+          `**名次**：${rankCount} 名\n` +
+          `**報名人數**：${capacity}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**目前餘額**：${balance.toLocaleString()} → 建立後 **${afterBalance.toLocaleString()}**`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 結算發獎時，參賽未滿 ${exemptN} 人每筆獎金抽 ${prizePct}%（達 ${exemptN} 人免收）；未發完的餘額退回你時抽 ${refundPct}%。防洗錢機制。`,
+      ),
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`eventcreate_confirm_${hostId}_${token}`)
+          .setLabel("確認建立")
+          .setEmoji("✅")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`eventcreate_cancel_${hostId}_${token}`)
+          .setLabel("取消")
+          .setEmoji("✖️")
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    );
+}
+
+// Components v2 訊息不能帶 content，確認/取消後的更新一律用單段 Container。
+function buildNoticeContainer(content, kind = "ok") {
+  const color =
+    kind === "cancel" ? EMBED_COLOR_CANCELLED : kind === "warn" ? 0x95a5a6 : EMBED_COLOR_ACTIVE;
+  return new ContainerBuilder()
+    .setAccentColor(color)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+}
+
 async function refreshEventMessage(client, eventDoc) {
   const channel = await client.channels.fetch(eventDoc.channelId).catch(() => null);
   if (!channel) return null;
@@ -669,6 +795,10 @@ module.exports = {
   EVENT_CHANNEL_ID,
   MAX_RANK_COUNT,
   createEvent,
+  prepareEventDraft,
+  takeCreateDraft,
+  buildCreateConfirmContainer,
+  buildNoticeContainer,
   toggleJoin,
   cancelEvent,
   settleEvent,
