@@ -35,8 +35,9 @@
     },
     "raid": {
       "minElapsedMs": 1800000,
-      "rollChance": 0.08,
-      "winRewards": { "coins": [200, 600], "slime": [1, 2], "brokenTrapFragmentChance": 0.20 },
+      "chance": 0.35,
+      "winRewards": { "coins": [400, 1000], "slime": [2, 4], "brokenTrapFragmentChance": 0.30 },
+      "loseRewards": { "coins": [80, 200], "slime": [0, 1] },
       "loseBehavior": "destroy_crop",
       "monsters": [
         { "name": "田鼠強盜", "emoji": "🐀", "hp": 80 },
@@ -45,7 +46,8 @@
       ],
       "trap": {
         "successRate": 0.30,
-        "winCoins": [50, 150],
+        "winCoins": [120, 300],
+        "loseCoins": [30, 80],
         "failFlavors": [
           "陷阱繩沒綁好，怪物路過踩了一下就掙脫了。",
           "陷阱被風吹翻，怪物看了一眼繼續啃菜。",

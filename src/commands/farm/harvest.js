@@ -14,6 +14,7 @@ const {
 const { farming } = require("../../config");
 const farmService = require("../../features/farm/farmService");
 const { bagStatusLine } = require("../../features/mining/bagStatus");
+const { buildHarvestAllContainer } = require("../../features/farm/farmView");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const {
@@ -30,16 +31,98 @@ function errorContainer(title, body, hint) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${hint}`));
 }
 
+// /農場 收成（免填地塊）：收成所有成熟地塊。與面板「一鍵收成」按鈕共用呈現與 side effects。
+async function harvestAll(client, interaction) {
+  const userId = interaction.user.id;
+  const guildId = interaction.guildId;
+  const result = await farmService.harvestAllCrops(client, {
+    userId,
+    guildId,
+    username: interaction.user.username,
+    member: interaction.member,
+  });
+
+  if (!result.ok) {
+    if (result.reason === "disabled") return interaction.editReply("🔧 農場系統尚未啟動！");
+    if (result.reason === "no_ready_plot") {
+      return interaction.editReply({
+        components: [errorContainer(
+          "🌱 沒有可收成的地塊",
+          "目前沒有任何成熟的作物。",
+          "用 `/農場 查看` 看看成長進度，或先 `/農場` 種點什麼",
+        )],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+    if (result.reason === "veggie_bag_full" && result.bagFull) {
+      const bf = result.bagFull;
+      return interaction.editReply({
+        components: [errorContainer(
+          "🥬 菜籃滿了，收不下！",
+          `**目前菜籃**：${bf.used} / ${bf.cap} 個（已滿）\n先賣掉一些菜，再回來一鍵收成。`,
+          "到 `/背包` →「🌾 農場」賣菜，或 `/商店` 買背包擴充（一次擴礦石袋／魚袋／菜籃 各 +5）",
+        )],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+    return interaction.editReply("🔧 收成失敗，請稍後再試。");
+  }
+
+  const container = buildHarvestAllContainer({
+    results: result.results,
+    bagFull: result.bagFull,
+    userId,
+  });
+  await interaction.editReply({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
+
+  for (const r of result.results) {
+    const note = buildHarvestAnnouncement({ user: interaction.user, result: r });
+    if (note) {
+      sendFarmAnnouncement(client, interaction.channel, note).catch(() => {});
+    }
+  }
+
+  const nextReadyAt = await farmService.getNextReadyAt(client, userId, guildId);
+  reminder.refreshIfEnabled(client, {
+    userId,
+    guildId,
+    type: "farm",
+    readyAt: nextReadyAt,
+  }).catch(() => {});
+
+  const hooks = [];
+  for (const r of result.results) {
+    hooks.push({ questId: "daily_farm_harvest" });
+    hooks.push({ questId: "weekly_farm_harvest" });
+    if (r.crop === "black_rose") hooks.push({ questId: "weekly_farm_rose" });
+  }
+  await applyQuestHooks(
+    client,
+    {
+      interaction,
+      user: interaction.user,
+      userId,
+      guildId,
+      member: interaction.member,
+      username: interaction.user.username,
+    },
+    hooks,
+  ).catch(() => {});
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("收成")
-    .setDescription("收成成熟的作物 🌟")
+    .setDescription("收成成熟的作物 🌟（不填地塊＝一鍵收成全部）")
     .setContexts(InteractionContextType.Guild)
     .addIntegerOption((o) =>
       o
         .setName("地塊")
-        .setDescription("地塊編號（1 起算）")
-        .setRequired(true)
+        .setDescription("地塊編號（1 起算）；不填＝收成所有成熟地塊")
+        .setRequired(false)
         .setMinValue(1)
         .setMaxValue(farming?.maxPlots || 8),
     ),
@@ -49,7 +132,13 @@ module.exports = {
   run: async (client, interaction) => {
     await interaction.deferReply();
     try {
-      const plotIndex = (interaction.options.getInteger("地塊") || 1) - 1;
+      // 不填地塊 → 一鍵收成所有成熟地塊（與農場面板「一鍵收成」共用呈現）
+      const plotArg = interaction.options.getInteger("地塊");
+      if (plotArg == null) {
+        return harvestAll(client, interaction);
+      }
+
+      const plotIndex = plotArg - 1;
       const result = await farmService.harvestCrop(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
