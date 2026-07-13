@@ -6,6 +6,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
   MessageFlags,
 } = require("discord.js");
 
@@ -17,6 +18,10 @@ const OPEN_PREFIX     = "food_open_";     // food_open_<userId>
 const USE_ONE_PREFIX  = "food_useone_";   // food_useone_<userId>_<instanceId>
 const USE_OK_PREFIX   = "food_useok_";    // food_useok_<userId>_<instanceId>
 const USE_CANCEL_PREFIX = "food_usecancel_"; // food_usecancel_<userId>
+// 次數型食物：選份數食用（recipeId 內含底線，故 qty 一律放在 recipeId 前面）
+const QTY_OPEN_PREFIX = "food_useqty_";   // food_useqty_<userId>_<recipeId>
+const QTY_SELECT_PREFIX = "food_qtysel_"; // food_qtysel_<userId>_<recipeId>（value = qty）
+const QTY_OK_PREFIX   = "food_qtyok_";    // food_qtyok_<userId>_<qty>_<recipeId>
 
 function freshnessTag(fresh) {
   const pct = Math.round(fresh * 100);
@@ -36,7 +41,8 @@ function buffShortDesc(type, value) {
   return `${type}`;
 }
 
-function buildOverwriteConfirmView({ userId, instance, existingBuffs, preview }) {
+// okCustomId：確認覆蓋後要觸發的按鈕 customId（單份走 instance、多份走 qty+recipe）。
+function buildOverwriteConfirmView({ userId, existingBuffs, preview, okCustomId, qty = 1 }) {
   const recipe = preview.recipe;
   const newDesc = buffShortDesc(preview.type, preview.value);
   const existingLines = existingBuffs.map((b) => {
@@ -57,6 +63,7 @@ function buildOverwriteConfirmView({ userId, instance, existingBuffs, preview })
     : existingBuffs.some((b) => b.type === "all_boost")
       ? "單屬性與全屬性 buff 互斥"
       : "同類型 buff 互斥";
+  const qtyLabel = qty > 1 ? ` ×${qty} 份` : "";
 
   const container = new ContainerBuilder()
     .setAccentColor(0xe67e22)
@@ -67,7 +74,7 @@ function buildOverwriteConfirmView({ userId, instance, existingBuffs, preview })
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `**目前生效**：\n${existingLines.join("\n")}\n` +
-        `**即將食用**：${recipe.emoji} ${recipe.name} → ${newDesc}\n` +
+        `**即將食用**：${recipe.emoji} ${recipe.name}${qtyLabel} → ${newDesc}\n` +
         `-# 新鮮度 ${freshPct}%（最強為 ${baseDesc}）・${conflictNote}\n\n` +
         `食用後**上述效果會全部被覆蓋**，要繼續嗎？`
       )
@@ -75,7 +82,7 @@ function buildOverwriteConfirmView({ userId, instance, existingBuffs, preview })
     .addActionRowComponents(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`${USE_OK_PREFIX}${userId}_${instance.id}`)
+          .setCustomId(okCustomId)
           .setLabel("✅ 確認食用（覆蓋）")
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
@@ -88,27 +95,87 @@ function buildOverwriteConfirmView({ userId, instance, existingBuffs, preview })
   return { components: [container], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral };
 }
 
+// 次數型食物選份數食用的中間視圖（StringSelect 選 1..N 份）。
+function buildQtyChooserView({ userId, recipeId, recipe, items }) {
+  const oldest = items[0];
+  const buffDef = oldest.useCoal && (recipe.coalFuel || 0) > 0 && recipe.coalBuff
+    ? recipe.coalBuff
+    : recipe.buff;
+  const usesPer = buffDef?.uses || 1;
+  const total = items.length;
+  const maxPick = Math.min(total, 25);
+
+  const options = [];
+  for (let n = 1; n <= maxPick; n++) {
+    options.push({
+      label: `食用 ${n} 份`,
+      description: `累計 +${n * usesPer} 次效果`,
+      value: String(n),
+    });
+  }
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🍽️ ${recipe.emoji} ${recipe.name}：要吃幾份？`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**效果**：${buffDef?.label || buffShortDesc(buffDef?.type, buffDef?.value)}\n` +
+        `-# 每份 +${usesPer} 次，可累計。倉庫共有 ${total} 份，` +
+        `會從最舊那份開始吃${total > 25 ? "（一次最多選 25 份）" : ""}。`
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(`${QTY_SELECT_PREFIX}${userId}_${recipeId}`)
+          .setPlaceholder("選擇食用份數")
+          .addOptions(options)
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${USE_CANCEL_PREFIX}${userId}`)
+          .setLabel("❌ 取消")
+          .setStyle(ButtonStyle.Secondary)
+      )
+    );
+
+  return { components: [container], flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral };
+}
+
 function buildUseSuccessView({ userId, result }) {
-  const { instance, preview, newBuff, overwritten } = result;
+  const { preview, newBuff, overwritten, accumulated, qty = 1 } = result;
   const recipe = preview.recipe;
   const freshPct = Math.round(preview.freshness * 100);
   const desc = buffShortDesc(newBuff.type, newBuff.value);
   let duration = "";
   if (newBuff.uses_left != null) duration = `（共 ${newBuff.uses_left} 次）`;
   else if (newBuff.expires_at) duration = `（<t:${Math.floor(newBuff.expires_at / 1000)}:R> 到期）`;
+  const qtyTitle = qty > 1 ? ` ×${qty}` : "";
+  const note = accumulated
+    ? "・已累計到現有效果"
+    : overwritten
+      ? "・已覆蓋舊效果"
+      : "";
 
   const container = new ContainerBuilder()
     .setAccentColor(0x2ecc71)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# 🍽️ 享用 ${recipe.emoji} ${recipe.name}！`
+        `# 🍽️ 享用 ${recipe.emoji} ${recipe.name}${qtyTitle}！`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `✨ **效果**：${desc}${duration}\n` +
-        `-# 食用當下新鮮度 ${freshPct}%${overwritten ? "・已覆蓋舊效果" : ""}`
+        `-# 食用當下新鮮度 ${freshPct}%${note}`
       )
     )
     .addActionRowComponents(
@@ -176,21 +243,36 @@ function buildBagView({ userId, profile, sweepInfo }) {
       ? recipe.coalBuff
       : recipe.buff;
     const effectFull = buffDef?.label || buffShortDesc(buffDef?.type, buffDef?.value);
+    const isUseBased = buffDef?.uses != null;
 
     const rangeText = items.length === 1
       ? freshnessTag(oldest.freshness)
       : `最舊 ${oldestPct}% ～ 最新 ${newestPct}%`;
+    const hint = isUseBased
+      ? "-# 次數型可累計；多份時可選要吃幾份（從最舊開始）"
+      : `-# 食用會挑「最舊那份」（${oldestPct}%）`;
 
-    container
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `## ${recipe.emoji} ${recipe.name}　×${items.length}${oldest.useCoal ? " 🔥" : ""}\n` +
-          `**新鮮度**：${rangeText}\n` +
-          `**效果**：${effectFull}\n` +
-          `-# 食用會挑「最舊那份」（${oldestPct}%）`
-        )
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `## ${recipe.emoji} ${recipe.name}　×${items.length}${oldest.useCoal ? " 🔥" : ""}\n` +
+        `**新鮮度**：${rangeText}\n` +
+        `**效果**：${effectFull}\n` +
+        hint
       )
-      .addActionRowComponents(
+    );
+
+    // 次數型且有多份 → 選份數食用；否則單份食用最舊那份。
+    if (isUseBased && items.length > 1) {
+      container.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${QTY_OPEN_PREFIX}${userId}_${recipeId}`)
+            .setLabel(`🍽️ 選份數食用（1–${items.length} 份）`)
+            .setStyle(ButtonStyle.Success)
+        )
+      );
+    } else {
+      container.addActionRowComponents(
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`${USE_ONE_PREFIX}${userId}_${oldest.id}`)
@@ -198,6 +280,7 @@ function buildBagView({ userId, profile, sweepInfo }) {
             .setStyle(ButtonStyle.Success)
         )
       );
+    }
   }
 
   container
@@ -241,10 +324,14 @@ module.exports = {
   USE_ONE_PREFIX,
   USE_OK_PREFIX,
   USE_CANCEL_PREFIX,
+  QTY_OPEN_PREFIX,
+  QTY_SELECT_PREFIX,
+  QTY_OK_PREFIX,
   freshnessTag,
   buffShortDesc,
   buildBagView,
   buildOverwriteConfirmView,
+  buildQtyChooserView,
   buildUseSuccessView,
   buildCanceledView,
   buildErrorView,
