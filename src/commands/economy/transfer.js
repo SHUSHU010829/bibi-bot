@@ -26,7 +26,7 @@ module.exports = {
     .addIntegerOption((opt) =>
       opt
         .setName("金額")
-        .setDescription("轉帳金額（手續費另計：>1000 額外 5%，否則 2%）")
+        .setDescription("轉帳金額（手續費另計：>1000 收 3%，否則 1%）")
         .setRequired(true)
         .setMinValue(1),
     )
