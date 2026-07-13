@@ -18,7 +18,11 @@ const {
 const { getActiveBuffMultiplier } = require("../shop/activeBuff");
 const eventEngine = require("../event/eventEngine");
 const twitchPerks = require("../mining/twitchPerks");
-const { getFoodFarmYieldBonus, getFoodFishingCdBonus } = require("../fishing/cookService");
+const {
+  getFoodFarmYieldBonus,
+  getFoodFishingCdBonus,
+  getFoodMiningCdBonus,
+} = require("../fishing/cookService");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { donation, levelSystem, guildClub, fishing } = require("../../config");
 const buildingService = require("../guild_club/buildingService");
@@ -101,12 +105,14 @@ async function getMiningResolve(client, userId, guildId, member) {
   const worldQty = worldBuffs.mining_qty_bonus || 0;
   if (worldQty > 0) base.qtyBonus += worldQty;
   const worldCdPct = worldBuffs.mining_cooldown_pct || 0;
-  const totalCdPct = Math.min(70, buildingCdPct + worldCdPct);
+  const foodCdPct = (getFoodMiningCdBonus(profile) || 0) * 100;
+  const totalCdPct = Math.min(70, buildingCdPct + worldCdPct + foodCdPct);
   if (totalCdPct > 0) {
     base.actualCdMs = Math.max(60000, Math.floor(base.actualCdMs * (100 - totalCdPct) / 100));
   }
   base.guildBuildingCdPct = buildingCdPct;
   base.worldEventCdPct = worldCdPct;
+  base.foodCdPct = foodCdPct;
   base.guildClub = gc.club
     ? { id: gc.club.guild_club_id, name: gc.club.name, level: gc.level }
     : null;

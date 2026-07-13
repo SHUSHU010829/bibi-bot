@@ -75,6 +75,16 @@ function getFoodLuckBonus(profile) {
   return bonus;
 }
 
+// 取得食物 buff 對挖礦冷卻的減免（all_boost 半值，計時型；與釣魚冷卻對稱）。
+// 回傳小數（0.10 = -10%）。挖礦數量為整數掉落數、單位不合，不納入 all_boost。
+function getFoodMiningCdBonus(profile) {
+  let bonus = 0;
+  for (const b of getActiveFoodBuffs(profile)) {
+    if (b.type === "all_boost") bonus += currentBuffValue(b) / 2;
+  }
+  return bonus;
+}
+
 // 取得食物 buff 對地下城 ATK 的加成（dungeon_atk + all_boost × baseAtk）
 // baseAtk 傳入是為了讓 all_boost 能按比例計算，若未傳入就只加絕對值
 function getFoodAtkBonus(profile, baseAtk = 0) {
@@ -128,11 +138,13 @@ function getFoodFarmYieldBonus(profile) {
   return bonus;
 }
 
-// 取得食物 buff 對釣魚冷卻的減免（fish_haste，計時型）。回傳小數（0.10 = -10%）。
+// 取得食物 buff 對釣魚冷卻的減免（fish_haste 全值 + all_boost 半值，皆計時型）。
+// 回傳小數（0.10 = -10%）。all_boost 與單屬性 buff 互斥，故兩者不會同時計入。
 function getFoodFishingCdBonus(profile) {
   let bonus = 0;
   for (const b of getActiveFoodBuffs(profile)) {
     if (b.type === "fish_haste") bonus += currentBuffValue(b);
+    else if (b.type === "all_boost") bonus += currentBuffValue(b) / 2;
   }
   return bonus;
 }
@@ -590,6 +602,7 @@ module.exports = {
   getFoodFishBonus,
   getFoodFarmYieldBonus,
   getFoodFishingCdBonus,
+  getFoodMiningCdBonus,
   consumeMineLuckUse,
   consumeWorkIncomeUse,
   consumeFishFortuneUse,
