@@ -29,6 +29,20 @@ function randInt(min, max) {
   return Math.floor(Math.random() * (hi - lo + 1)) + lo;
 }
 
+// 種植時一次性擲骰決定「這批作物會不會、以及何時」被入侵：以 raid.chance 機率排定一個
+// 落在 [種下 + minElapsedMs, 凋萎前] 的 raid_at；沒中就回 null（這批完全不會有怪物）。
+// 之後任何讀取路徑到時間才把它「兌現」成入侵（見 applyPendingRaids），不再每次開農場重擲，
+// 所以看幾次都不影響命運，也無法用 /收成 繞過。
+function rollRaidAt(plantedAt, expiresAt) {
+  const raidCfg = farming?.raid;
+  if (!raidCfg) return null;
+  if (Math.random() >= (raidCfg.chance ?? 0)) return null;
+  const minElapsed = raidCfg.minElapsedMs ?? 30 * 60 * 1000;
+  const start = plantedAt + minElapsed;
+  if (expiresAt <= start) return null;
+  return start + Math.floor(Math.random() * (expiresAt - start));
+}
+
 function coll(client) {
   return client?.farmPlotsCollection || null;
 }
@@ -148,6 +162,7 @@ async function plantCrop(client, { userId, guildId, username, member, cropKey, p
     yield_bonus_pct: 0,
     status: "growing",
     raid: null,
+    raid_at: rollRaidAt(now, expires_at),
     updatedAt: new Date(),
   };
   await coll(client).updateOne(
@@ -258,6 +273,7 @@ async function plantAllCrops(client, { userId, guildId, username, member, cropKe
     yield_bonus_pct: 0,
     status: "growing",
     raid: null,
+    raid_at: rollRaidAt(now, expires_at),
     updatedAt: new Date(),
   }));
 
@@ -309,6 +325,12 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
   if (!plot || plot.status === "empty" || !plot.crop) {
     return { ok: false, reason: "empty_plot" };
   }
+
+  // 收成前先兌現待處理的入侵：raid_at 已到就翻成 raided，擋下這次收成，
+  // 讓玩家無法用 /收成 繞過怪物（觸發與 /農場 查看 完全一致）。
+  const profileForBuff = await getOrCreate(client, userId, guildId);
+  await applyPendingRaids(client, { userId, guildId, plots: [plot], profile: profileForBuff });
+
   const live = resolveLiveStatus(plot);
   if (live.status === "rotted") {
     // 直接清掉爛掉的地塊
@@ -327,7 +349,6 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
 
   const [lo, hi] = crop.payout || [0, 0];
   const baseCoins = randInt(lo, hi);
-  const profileForBuff = await getOrCreate(client, userId, guildId);
 
   // 菜籃容量：寬限期（bagLimitEnforceAt 未到）只在結果提醒、不擋；
   // 到期後菜籃滿了擋下收成（作物留在地塊，先賣菜再收）。
@@ -456,6 +477,8 @@ async function harvestAllCrops(client, { userId, guildId, username, member }) {
   const plotCount = getPlotCount(profile);
   const plots = await getPlots(client, userId, guildId, plotCount);
   const now = Date.now();
+  // 一鍵收成同樣先兌現入侵：被翻成 raided 的地塊會自然被下面的 ready 篩選排除，收不到。
+  await applyPendingRaids(client, { userId, guildId, plots, profile, now });
   const readyPlots = plots
     .map((p) => resolveLiveStatus(p, now))
     .filter((p) => p.status === "ready");
@@ -932,20 +955,56 @@ async function expandFarm(client, { userId, guildId, username, member }) {
   return { ok: true, from: current, to: nextTier.count, cost: nextTier.cost };
 }
 
-// Raid 觸發判定：種下後超過 minElapsedMs 即可能被偷襲；不再綁成熟時間。
-// 採每次開 /農場 時擲骰，rollChance% 機率觸發；同時涵蓋 growing 與 ready。
+// Raid 兌現判定：地塊是否「已排定 raid_at 且到時間」→ 該翻成入侵。
+// raid_at 於種植時一次決定（見 rollRaidAt），這裡不再擲骰，所以看幾次都不影響命運、
+// 也無法用 /收成 繞過（收成路徑同樣先走 applyPendingRaids）。
+// 已枯萎的作物不再被攻擊（以即時推算為準，不依賴 cron 對齊）。
 function shouldTriggerRaid(plot, now = Date.now()) {
   if (!plot || plot.status === "empty" || !plot.crop) return false;
   if (plot.raid?.active) return true;
-  // 已枯萎的作物不再被怪物攻擊（即使 DB status 尚未被 cron 對齊，也以即時推算為準）。
+  if (!plot.raid_at || now < plot.raid_at) return false;
   const live = resolveLiveStatus(plot, now);
-  if (live.status !== "growing" && live.status !== "ready") return false;
-  const raidCfg = farming?.raid;
-  if (!raidCfg) return false;
-  const minElapsed = raidCfg.minElapsedMs ?? 30 * 60 * 1000;
-  const elapsed = now - (plot.planted_at || 0);
-  if (elapsed < minElapsed) return false;
-  return Math.random() < (raidCfg.rollChance || 0.1);
+  return live.status === "growing" || live.status === "ready";
+}
+
+// 共用兌現：把所有「已到 raid_at」的地塊翻成入侵（高級陷阱優先抵擋）。view / 收成 /
+// 施肥 各路徑都走這支，確保觸發一致、無法繞過。直接 mutate 傳入的 plots，
+// 回傳陷阱使用摘要與本次真正被入侵的地塊，供 UI 顯示與主動通知使用。
+async function applyPendingRaids(client, { userId, guildId, plots, profile, now = Date.now() }) {
+  let trapBlocksRemaining = profile?.advanced_trap_uses || 0;
+  let trapBlocksUsedThisOpen = 0;
+  const raided = [];
+  for (const p of plots) {
+    if (p.raid?.active) continue;
+    if (!shouldTriggerRaid(p, now)) continue;
+    if (trapBlocksRemaining > 0) {
+      trapBlocksRemaining -= 1;
+      trapBlocksUsedThisOpen += 1;
+      await coll(client).updateOne(
+        { userId, guildId, plotIndex: p.plotIndex },
+        { $set: { raid_at: null, updatedAt: new Date() } },
+      );
+      p.raid_at = null;
+      continue;
+    }
+    const live = resolveLiveStatus(p, now);
+    const raid = await markRaid(client, {
+      userId, guildId, plotIndex: p.plotIndex, fromStatus: live.status,
+    });
+    if (raid) {
+      p.status = "raided";
+      p.raid = raid;
+      p.raid_at = null;
+      raided.push(p);
+    }
+  }
+  if (trapBlocksUsedThisOpen > 0) {
+    await client.miningProfilesCollection.updateOne(
+      { userId, guildId },
+      { $inc: { advanced_trap_uses: -trapBlocksUsedThisOpen }, $set: { updatedAt: new Date() } },
+    );
+  }
+  return { trapBlocksRemaining, trapBlocksUsedThisOpen, raided };
 }
 
 // 標記地塊進入 raid 狀態。回傳怪物資訊。
@@ -966,7 +1025,7 @@ async function markRaid(client, { userId, guildId, plotIndex, fromStatus }) {
   };
   await coll(client).updateOne(
     { userId, guildId, plotIndex },
-    { $set: { status: "raided", raid, updatedAt: new Date() } },
+    { $set: { status: "raided", raid, raid_at: null, updatedAt: new Date() } },
   );
   return raid;
 }
@@ -1187,6 +1246,7 @@ module.exports = {
   defendRaid,
   setTrap,
   shouldTriggerRaid,
+  applyPendingRaids,
   markRaid,
   runDecaySweep,
   getPlots,

@@ -35,7 +35,7 @@
     },
     "raid": {
       "minElapsedMs": 1800000,
-      "rollChance": 0.08,
+      "chance": 0.35,
       "winRewards": { "coins": [200, 600], "slime": [1, 2], "brokenTrapFragmentChance": 0.20 },
       "loseBehavior": "destroy_crop",
       "monsters": [

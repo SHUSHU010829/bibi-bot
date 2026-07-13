@@ -36,7 +36,11 @@ const {
 const { farming } = require("../../config");
 const farmService = require("../../features/farm/farmService");
 const { bagStatusLine } = require("../../features/mining/bagStatus");
-const { buildFarmContainer } = require("../../features/farm/farmView");
+const {
+  buildFarmContainer,
+  buildSuccessContainer,
+  buildHarvestAllContainer,
+} = require("../../features/farm/farmView");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const grantCoins = require("../../features/economy/grantCoins");
@@ -103,17 +107,8 @@ async function renderFarm(interaction, client) {
   const profile = await getOrCreate(client, userId, guildId);
   const plotCount = farmService.getPlotCount(profile);
   const plots = await farmService.getPlots(client, userId, guildId, plotCount);
-  for (const p of plots) {
-    if (farmService.shouldTriggerRaid(p) && !p.raid?.active) {
-      const raid = await farmService.markRaid(client, {
-        userId, guildId, plotIndex: p.plotIndex, fromStatus: p.status,
-      });
-      if (raid) {
-        p.status = "raided";
-        p.raid = raid;
-      }
-    }
-  }
+  const { trapBlocksRemaining, trapBlocksUsedThisOpen } =
+    await farmService.applyPendingRaids(client, { userId, guildId, plots, profile });
   const club = await getMemberClub(client, interaction.user.id, interaction.guildId);
   const sMax = staminaMax(interaction.member, club);
   const stamina = resolveStamina(profile, sMax).stamina;
@@ -123,6 +118,8 @@ async function renderFarm(interaction, client) {
     plotCount,
     maxPlots: farming.maxPlots || 8,
     stamina,
+    trapBlocksRemaining,
+    trapBlocksUsedThisOpen,
   });
 }
 
@@ -304,24 +301,6 @@ function skippedSummaryLine(skipped) {
   }
   const parts = [...counts.entries()].map(([k, v]) => `${k} ${v}`);
   return `-# 跳過 ${skipped.length} 塊：${parts.join("・")}`;
-}
-
-// 成功訊息（ephemeral Container），附「回到農場」按鈕
-function buildSuccessContainer(title, body, userId, accent = 0x2ecc71) {
-  return new ContainerBuilder()
-    .setAccentColor(accent)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${title}`))
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(body))
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`farm_view_${userId}`)
-          .setLabel("回到農場")
-          .setEmoji("🌾")
-          .setStyle(ButtonStyle.Secondary),
-      ),
-    );
 }
 
 module.exports = async (client, interaction) => {
@@ -1080,50 +1059,7 @@ module.exports = async (client, interaction) => {
       }
 
       const results = harvestAll.results;
-      const bagFull = harvestAll.bagFull;
-
-      const cropAgg = new Map();
-      let totalCoins = 0;
-      let totalWorldBonus = 0;
-      const bonusAgg = new Map();
-      for (const r of results) {
-        totalCoins += r.coins || 0;
-        totalWorldBonus += r.worldYieldCountBonus || 0;
-        const entry = cropAgg.get(r.crop) || { def: r.cropDef, count: 0, coins: 0 };
-        entry.count += r.harvestCount || 1;
-        entry.coins += r.coins || 0;
-        cropAgg.set(r.crop, entry);
-        for (const d of r.bonusDrops || []) {
-          bonusAgg.set(d.kind, (bonusAgg.get(d.kind) || 0) + d.amount);
-        }
-      }
-
-      const cropLines = [...cropAgg.values()].map(
-        (e) => `${e.def.emoji} **${e.def.name}** ×${e.count}（+${e.coins.toLocaleString()} 幣）`,
-      );
-      if (totalWorldBonus > 0) {
-        cropLines.push(`-# 含世界事件額外產出 +${totalWorldBonus} 個`);
-      }
-      const bonusLines = [];
-      if (bonusAgg.get("fragment")) bonusLines.push(`✨ 傳說碎片 ×${bonusAgg.get("fragment")}`);
-      if (bonusAgg.get("rare_bait")) bonusLines.push(`✨ 稀有魚餌 ×${bonusAgg.get("rare_bait")}`);
-
-      const body = [
-        `🌾 收成 **${results.length}** 塊地`,
-        ...cropLines,
-        `💰 總收益：**+${totalCoins.toLocaleString()} 幣**`,
-        ...bonusLines,
-        bagFull
-          ? `-# 🥬 菜籃中途滿了（${bagFull.used}/${bagFull.cap}），剩下的地塊還沒收，賣菜後再收一次`
-          : bagStatusLine({
-              label: "菜籃",
-              used: results[results.length - 1]?.veggieBagUsed,
-              cap: results[results.length - 1]?.veggieBagCap,
-              enforceAt: farming.bagLimitEnforceAt,
-              sellHint: "到 `/背包` →「🌾 農場」賣菜",
-            }) || null,
-      ].filter(Boolean).join("\n");
-      const c = buildSuccessContainer("🌟 一鍵收成完成", body, userId);
+      const c = buildHarvestAllContainer({ results, bagFull: harvestAll.bagFull, userId });
 
       const hooks = [];
       for (const r of results) {
