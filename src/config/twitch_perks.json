@@ -25,7 +25,6 @@
         "staminaBonus": 2,
         "depositSlotBonus": 2,
         "auctionFeeRate": 0.02,
-        "lotteryTicketBonus": 5,
         "exclusiveThemeId": "theme_subscriber_t3",
         "exclusiveColorRoleId": ""
       }

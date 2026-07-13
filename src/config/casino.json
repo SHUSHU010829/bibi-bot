@@ -314,7 +314,6 @@
           "ticketPrice": 50,
           "systemSeed": 5000,
           "fourthPrizeFixed": 100,
-          "maxTicketsPerOrder": 100,
           "wheelingEnabled": true,
           "wheelingMaxCombinations": 10000,
           "drawWeekdays": [7],
@@ -327,7 +326,6 @@
           "ticketPrice": 10,
           "systemSeed": 500,
           "secondPrizeFixed": 50,
-          "maxTicketsPerOrder": 100,
           "wheelingEnabled": false,
           "drawWeekdays": [3, 7],
           "drawHour": 21
@@ -336,7 +334,6 @@
           "enabled": true,
           "ticketPrice": 50,
           "systemSeed": 20000,
-          "maxTicketsPerOrder": 100,
           "wheelingEnabled": false,
           "drawWeekdays": [1, 4],
           "drawHour": 21,
@@ -352,8 +349,6 @@
         }
       },
       "subscription": {
-        "maxDrawsPerSubscription": 12,
-        "maxTicketsPerDraw": 10,
         "consecutiveFailureThreshold": 2
       },
       "poolMilestones": {
