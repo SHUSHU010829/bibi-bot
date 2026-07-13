@@ -41,8 +41,31 @@ function resolveWorkLevel(count) {
   };
 }
 
-// 執行一次打工。每日次數用 CoinTransactions(source=work) 當日筆數判定，免額外計數欄位。
-async function doWork(client, { userId, guildId, member, username }) {
+// 依 key 取工作類型定義；找不到（或未設定）時退回第一種，再退回一個中性預設。
+function resolveWorkType(key) {
+  const types = work?.workTypes;
+  if (!Array.isArray(types) || types.length === 0) {
+    return { key: "default", name: "打工", emoji: "💼", events: [] };
+  }
+  return types.find((t) => t.key === key) || types[0];
+}
+
+// 依 weight 從事件表擲骰。空表或全 0 權重時回傳一個中性 normal 事件（mult=1）。
+function rollWorkEvent(type) {
+  const events = Array.isArray(type?.events) ? type.events : [];
+  const total = events.reduce((sum, e) => sum + (e.weight || 0), 0);
+  if (total <= 0) return { key: "normal", mult: 1, tier: "normal" };
+  let roll = Math.random() * total;
+  for (const e of events) {
+    roll -= e.weight || 0;
+    if (roll < 0) return e;
+  }
+  return events[events.length - 1];
+}
+
+// 打工可用性檢查（冷卻 / 每日上限）。供指令層在顯示選項前先擋、button handler 執行前再擋一次。
+// 回傳成功時附帶 profile 與 claimsToday，讓 doWork 免得重查。
+async function checkAvailability(client, { userId, guildId }) {
   if (!work?.enabled) return { ok: false, reason: "disabled" };
   if (!client.workProfilesCollection || !client.coinTransactionsCollection) {
     return { ok: false, reason: "disabled" };
@@ -73,6 +96,22 @@ async function doWork(client, { userId, guildId, member, username }) {
     };
   }
 
+  return { ok: true, profile, claimsToday, maxClaims };
+}
+
+// 執行一次打工。workTypeKey 決定工作類型（穩定 / 拚一波），連帶決定事件表。
+// 每日次數用 CoinTransactions(source=work) 當日筆數判定，免額外計數欄位。
+async function doWork(client, { userId, guildId, member, username, workTypeKey }) {
+  const avail = await checkAvailability(client, { userId, guildId });
+  if (!avail.ok) return avail;
+
+  const now = Date.now();
+  const profile = avail.profile;
+  const claimsToday = avail.claimsToday;
+  const maxClaims = avail.maxClaims;
+
+  const workType = resolveWorkType(workTypeKey);
+
   const jobs = work.jobs || [];
   const job = jobs.length
     ? jobs[Math.floor(Math.random() * jobs.length)]
@@ -82,7 +121,11 @@ async function doWork(client, { userId, guildId, member, username }) {
   const levelInfo = resolveWorkLevel(workCount);
   const min = levelInfo.minReward;
   const max = levelInfo.maxReward;
-  let baseAmount = Math.floor(Math.random() * (max - min + 1)) + min;
+  const baseAmount = Math.floor(Math.random() * (max - min + 1)) + min;
+
+  // 隨機事件倍率（小費 / 大獎 / 衰事…）
+  const event = rollWorkEvent(workType);
+  const eventMult = event.mult ?? 1;
 
   // 食物 buff：work_income / all_boost 類型加成
   let foodWorkBonus = 0;
@@ -94,9 +137,7 @@ async function doWork(client, { userId, guildId, member, username }) {
     }
   } catch { /* 讀不到 profile 就忽略食物加成 */ }
 
-  const amount = foodWorkBonus > 0
-    ? Math.floor(baseAmount * (1 + foodWorkBonus))
-    : baseAmount;
+  const amount = Math.max(1, Math.floor(baseAmount * eventMult * (1 + foodWorkBonus)));
 
   const grant = await grantCoins(client, {
     userId,
@@ -105,7 +146,7 @@ async function doWork(client, { userId, guildId, member, username }) {
     amount,
     source: "work",
     member,
-    meta: { job },
+    meta: { job, workType: workType.key, event: event.key },
   });
   if (!grant) return { ok: false, reason: "grant_failed" };
 
@@ -139,6 +180,9 @@ async function doWork(client, { userId, guildId, member, username }) {
   return {
     ok: true,
     job,
+    workType,
+    event,
+    eventMult,
     amount: grant.granted,
     baseAmount,
     foodWorkBonus,
@@ -157,4 +201,4 @@ async function doWork(client, { userId, guildId, member, username }) {
   };
 }
 
-module.exports = { doWork };
+module.exports = { doWork, checkAvailability, resolveWorkType };
