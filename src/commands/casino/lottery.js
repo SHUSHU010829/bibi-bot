@@ -101,7 +101,6 @@ module.exports = {
             .setDescription("買幾張(隨機選號模式才用)")
             .setRequired(false)
             .setMinValue(1)
-            .setMaxValue(100)
         )
         .addStringOption((o) =>
           o
@@ -237,15 +236,11 @@ async function runBuy(client, interaction) {
     const numbersInput = interaction.options.getString("號碼");
     const specialInput = interaction.options.getInteger("第二區");
     const ticketPrice = typeCfg.ticketPrice || 0;
-    const maxTicketsPerOrder = typeCfg.maxTicketsPerOrder || 100;
     const withSpecial = hasSecondZone(lotteryType);
 
     // entries: [{ numbers:number[], special:number|null }]
     let entries = [];
     const count = ticketCountInput || 1;
-    if (count > maxTicketsPerOrder) {
-      return interaction.editReply(`❌ 單筆最多買 ${maxTicketsPerOrder} 張票`);
-    }
     if (numbersInput && numbersInput.trim()) {
       const v = validateNumbers(numbersInput, lotteryType);
       if (!v.ok) {
