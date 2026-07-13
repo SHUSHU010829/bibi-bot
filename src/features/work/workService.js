@@ -123,9 +123,12 @@ async function doWork(client, { userId, guildId, member, username, workTypeKey }
   const max = levelInfo.maxReward;
   const baseAmount = Math.floor(Math.random() * (max - min + 1)) + min;
 
-  // 隨機事件倍率（小費 / 大獎 / 衰事…）
+  // 隨機事件倍率（小費 / 大獎 / 衰事…），同一事件從台詞池隨機挑一句
   const event = rollWorkEvent(workType);
   const eventMult = event.mult ?? 1;
+  const eventText = Array.isArray(event.texts) && event.texts.length
+    ? event.texts[Math.floor(Math.random() * event.texts.length)]
+    : event.text || null;
 
   // 食物 buff：work_income / all_boost 類型加成
   let foodWorkBonus = 0;
@@ -183,6 +186,7 @@ async function doWork(client, { userId, guildId, member, username, workTypeKey }
     workType,
     event,
     eventMult,
+    eventText,
     amount: grant.granted,
     baseAmount,
     foodWorkBonus,

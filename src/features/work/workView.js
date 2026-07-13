@@ -72,7 +72,7 @@ function buildResultMessage(result, { notifyEnabled } = {}) {
     (result.foodWorkBonus > 0 ? ` （食物加成 +${Math.round(result.foodWorkBonus * 100)}%）` : "") +
     (result.guildWorkBonus > 0 ? ` （公會加成 +${Math.round(result.guildWorkBonus * 100)}%）` : "");
 
-  const eventLine = result.event?.text ? `\n${result.event.text}` : "";
+  const eventLine = result.eventText ? `\n${result.eventText}` : "";
   const multLine =
     result.eventMult != null && result.eventMult !== 1
       ? `\n-# 打工事件倍率 ×${result.eventMult}（基礎 ${result.baseAmount.toLocaleString()} 幣）`
