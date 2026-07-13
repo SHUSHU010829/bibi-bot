@@ -169,6 +169,7 @@ H+ 補戰鬥深度、J 給身份感，K / L 作為 **限時商店雙生 Phase**�
 > **前置需求**：Phase 1–4 完成 ✅、Opt-5（buffResolver）、eventBus 地基
 > **預估時間**：5–6 天
 > **定位**：身份感系統，與 S3 技能樹差異化（職業＝身份 / 技能樹＝點數）
+> **延伸企劃**：本 Phase 的延伸設計（新增犯罪者 / 捕快 / 料理師 / 賭徒、技能樹綁進職業、每條加成標真實掛勾點與可行性分級）見 [`PROFESSION_EXTENDED_PLAN.md`](./PROFESSION_EXTENDED_PLAN.md)。
 
 ### 與技能樹的差異
 
