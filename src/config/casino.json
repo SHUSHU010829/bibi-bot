@@ -316,7 +316,7 @@
           "fourthPrizeFixed": 100,
           "maxTicketsPerOrder": 100,
           "wheelingEnabled": true,
-          "wheelingMaxBaseNumbers": 10,
+          "wheelingMaxCombinations": 10000,
           "drawWeekdays": [7],
           "drawHour": 21,
           "bonusBall": { "enabled": true, "prize": 200 },

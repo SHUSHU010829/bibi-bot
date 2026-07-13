@@ -445,6 +445,14 @@ async function runWheel(client, interaction) {
       ticketPrice
     );
 
+    const maxCombinations = typeCfg.wheelingMaxCombinations || 10000;
+    if (combinations > maxCombinations) {
+      return interaction.editReply(
+        `❌ 包牌組合數過多!${baseNumbers.length} 個號碼會展開 **${combinations.toLocaleString()}** 組,` +
+          `單筆上限 **${maxCombinations.toLocaleString()}** 組。請減少 base 號碼再試。`
+      );
+    }
+
     let draw = await getCurrentOpenDraw(client, lotteryType);
     if (!draw) draw = await ensureNextDraw(client, lotteryType);
     if (!draw) {
