@@ -25,6 +25,7 @@ const isManager = (role) => role === "leader" || role === "vice_leader";
 // 取得擴充欄位的安全 fallback（舊公會沒有 buildings/forge_level 欄位時用）
 const buildingsOf = (club) => ({
   mine: club?.buildings?.mine || 0,
+  harbor: club?.buildings?.harbor || 0,
   training: club?.buildings?.training || 0,
   warehouse: club?.buildings?.warehouse || 0,
   farm_kitchen: club?.buildings?.farm_kitchen || 0,
