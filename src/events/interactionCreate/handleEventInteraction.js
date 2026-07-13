@@ -369,9 +369,12 @@ async function handleAmountsModal(client, interaction) {
   }
 
   try {
-    const settled = await settleEvent(client, doc, picks, prizes);
+    const winnerMembers = await fetchParticipantMembers(interaction.guild, picks);
+    const settled = await settleEvent(client, doc, picks, prizes, winnerMembers);
     clearPicks(eventId, doc.hostId);
     const total = prizes.reduce((a, b) => a + b, 0);
+    const prizeFeeTotal = settled.prizeFeeTotal || 0;
+    const paidNet = total - prizeFeeTotal;
     const unpaid = doc.prizePool - total;
     const fee = settled.refundFee || 0;
     const net = settled.refundNet ?? unpaid;
@@ -382,9 +385,11 @@ async function handleAmountsModal(client, interaction) {
           ? `，剩餘 ${unpaid.toLocaleString()}（系統抽成 ${fee.toLocaleString()}，退回給你 ${net.toLocaleString()}）。`
           : `，剩餘 ${net.toLocaleString()} 退回給你。`;
     }
+    const feeLine = prizeFeeTotal > 0 ? `\n-# 獎金防洗錢抽成共 ${prizeFeeTotal.toLocaleString()} credits（參賽達門檻可免收）` : "";
     await interaction.editReply(
-      `🎉 結算完成！已發出 **${total.toLocaleString()}** credits` +
+      `🎉 結算完成！得獎者實得 **${paidNet.toLocaleString()}** credits` +
         tail +
+        feeLine +
         `\n活動訊息：<#${settled.channelId}>`
     );
   } catch (err) {

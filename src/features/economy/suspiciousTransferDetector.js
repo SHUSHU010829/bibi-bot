@@ -12,6 +12,7 @@ const { raiseSuspicion } = require("./suspiciousAlert");
 // transfer_out 的 amount 為負（含手續費），meta.amount 才是實際轉出金額；統一以 meta.amount 為準。
 
 const TRANSFER_OUT = "transfer_out";
+const EVENT_PRIZE = "event_prize";
 
 const getThreshold = () =>
   coinSystem?.transfer?.suspiciousThreshold ?? 5000;
@@ -153,17 +154,25 @@ async function scanAllPairs(client, { guildId, hours, threshold } = {}) {
 const getRingMinEdge = () => coinSystem?.transfer?.ringMinEdge ?? getThreshold();
 const getRingMaxLen = () => coinSystem?.transfer?.ringMaxLen ?? 4;
 
+// 從一筆金流紀錄還原有向邊的 from/to：
+// - transfer_out：userId → meta.counterparty
+// - event_prize：meta.hostId（出資主辦人）→ userId（得獎者）
+function edgeEndpointsOf(d) {
+  if (d.source === EVENT_PRIZE) return { from: d?.meta?.hostId, to: d.userId };
+  return { from: d.userId, to: d?.meta?.counterparty };
+}
+
 // 建有向邊：from → Map(to → 期間內累積轉出金額)。自轉、0 額不計。
+// 含玩家轉帳與活動獎金發放，讓活動獎金無法當作偵測盲區的側通道。
 async function buildDirectedEdges(client, { guildId, hours } = {}) {
   if (!client?.coinTransactionsCollection) return new Map();
   const since = lookbackDate(hours ?? getLookbackHours());
-  const filter = { source: TRANSFER_OUT, createdAt: { $gte: since } };
+  const filter = { source: { $in: [TRANSFER_OUT, EVENT_PRIZE] }, createdAt: { $gte: since } };
   if (guildId) filter.guildId = guildId;
   const docs = await client.coinTransactionsCollection.find(filter).toArray();
   const edges = new Map();
   for (const d of docs) {
-    const from = d.userId;
-    const to = d?.meta?.counterparty;
+    const { from, to } = edgeEndpointsOf(d);
     if (!from || !to || from === to) continue;
     const amt = transferAmountOf(d);
     if (amt <= 0) continue;
@@ -172,6 +181,13 @@ async function buildDirectedEdges(client, { guildId, hours } = {}) {
     m.set(to, (m.get(to) || 0) + amt);
   }
   return edges;
+}
+
+// 從有向邊圖取 a、b 之間的雙向累積金額。
+function pairTotalFromEdges(edges, a, b) {
+  const aToB = edges.get(a)?.get(b) || 0;
+  const bToA = edges.get(b)?.get(a) || 0;
+  return { aToB, bToA, total: aToB + bToA };
 }
 
 // 從 start 找一條長度 3~maxLen、每段 ≥ minEdge、且回到 start 的環（DFS，找到即回傳）。
@@ -277,12 +293,71 @@ function fireImmediateCheck(client, { guildId, senderId, recipientId }) {
     });
 }
 
+// 活動結算後呼叫：把主辦人與各得獎者的金流（含活動獎金）走一次 pair/ring 偵測。
+// 非阻塞、錯誤吞掉只寫 console，與 fireImmediateCheck 同一套告警邏輯。
+function fireEventPayoutCheck(client, { guildId, hostId, winnerIds }) {
+  Promise.resolve()
+    .then(async () => {
+      if (!coinSystem?.transfer) return;
+      const edges = await buildDirectedEdges(client, { guildId });
+      const threshold = getThreshold();
+
+      const flagged = new Set();
+      for (const winnerId of winnerIds || []) {
+        if (!winnerId || winnerId === hostId || flagged.has(winnerId)) continue;
+        const { aToB, bToA, total } = pairTotalFromEdges(edges, hostId, winnerId);
+        if (aToB > 0 && bToA > 0 && total >= threshold) {
+          flagged.add(winnerId);
+          await raiseSuspicion(client, {
+            guildId,
+            kind: "pair",
+            users: [hostId, winnerId],
+            description:
+              `<@${hostId}> → <@${winnerId}>：${aToB.toLocaleString()} credits（含活動獎金）\n` +
+              `<@${winnerId}> → <@${hostId}>：${bToA.toLocaleString()} credits`,
+            fields: [
+              {
+                name: `${getLookbackHours()}h 雙向總額`,
+                value: `**${total.toLocaleString()}** credits（閾值 ${threshold.toLocaleString()}）`,
+              },
+            ],
+          });
+        }
+      }
+
+      const ring = detectRingFrom(edges, hostId, {
+        maxLen: getRingMaxLen(),
+        minEdge: getRingMinEdge(),
+      });
+      if (ring) {
+        const chain = `${ring.cycle.map((u) => `<@${u}>`).join(" → ")} → <@${ring.cycle[0]}>`;
+        await raiseSuspicion(client, {
+          guildId,
+          kind: "ring",
+          users: ring.cycle,
+          description: `資金繞一圈回到起點（含活動獎金）：\n${chain}`,
+          fields: [
+            {
+              name: "環內最小單邊",
+              value: `**${ring.minEdge.toLocaleString()}** credits（${ring.cycle.length} 人參與）`,
+            },
+          ],
+        });
+      }
+    })
+    .catch((e) => {
+      console.log(`[SUSP-XFER] 活動偵測失敗: ${e?.message || e}`.red);
+    });
+}
+
 module.exports = {
   detectPair,
   scanAllPairs,
   scanRings,
   buildDirectedEdges,
+  pairTotalFromEdges,
   detectRingFrom,
   fireImmediateCheck,
+  fireEventPayoutCheck,
   transferAmountOf,
 };

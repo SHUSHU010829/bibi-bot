@@ -74,7 +74,9 @@
   "hostedEvents": {
     "publishChannelId": "1506339475867832330",
     "maxRankCount": 5,
-    "refundFeeRate": 0.3
+    "refundFeeRate": 0.3,
+    "prizeFeeRate": 0.1,
+    "prizeFeeExemptParticipants": 5
   },
   "roles": [
     {

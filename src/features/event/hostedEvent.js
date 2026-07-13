@@ -14,7 +14,9 @@ const {
 } = require("discord.js");
 
 const grantCoins = require("../economy/grantCoins");
-const { computeRefundFee } = require("../economy/refundFee");
+const { computeRefundFee, computePrizeFee } = require("../economy/refundFee");
+const { checkServerTenure } = require("../economy/eligibility");
+const { fireEventPayoutCheck } = require("../economy/suspiciousTransferDetector");
 const { hostedEvents: hostedEventsConfig } = require("../../config");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 
@@ -99,7 +101,11 @@ function buildSettledContainer(eventDoc, guild) {
 
   const winnerLines = winners
     .sort((a, b) => a.rank - b.rank)
-    .map((w) => `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${nameOf(w.userId)} — ${w.prize.toLocaleString()} credits`)
+    .map((w) => {
+      const received = w.prizeNet !== undefined ? w.prizeNet : w.prize;
+      const feeNote = w.prizeFee > 0 ? `（已扣防洗錢 ${w.prizeFee.toLocaleString()}）` : "";
+      return `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${nameOf(w.userId)} — ${received.toLocaleString()} credits${feeNote}`;
+    })
     .join("\n");
 
   const refundFee = eventDoc.refundFee || 0;
@@ -527,7 +533,7 @@ async function cancelEvent(client, eventDoc, actor, channel) {
   return doc;
 }
 
-async function settleEvent(client, eventDoc, picks, prizes) {
+async function settleEvent(client, eventDoc, picks, prizes, winnerMembers) {
   const effectiveRanks = Math.min(eventDoc.rankCount, eventDoc.participants.length);
   if (picks.length === 0 || picks.length !== effectiveRanks) {
     throw new Error("名次選擇不完整。");
@@ -547,11 +553,26 @@ async function settleEvent(client, eventDoc, picks, prizes) {
     );
   }
 
-  const winners = picks.map((userId, idx) => ({
-    userId,
-    rank: idx + 1,
-    prize: prizes[idx],
-  }));
+  if (winnerMembers) {
+    for (const userId of picks) {
+      const member = winnerMembers.get(userId);
+      const tenure = checkServerTenure(member);
+      if (!tenure.ok) {
+        const name = member?.displayName || member?.user?.username || userId;
+        throw new Error(
+          `得獎者「${name}」加入伺服器未滿 ${tenure.minDays} 天，無法領獎（防洗錢）。請重新選擇得獎者。`
+        );
+      }
+    }
+  }
+
+  const participantCount = eventDoc.participants.length;
+  const winners = picks.map((userId, idx) => {
+    const gross = prizes[idx];
+    const { fee: prizeFee, net: prizeNet } = computePrizeFee(gross, participantCount);
+    return { userId, rank: idx + 1, prize: gross, prizeNet, prizeFee };
+  });
+  const prizeFeeTotal = winners.reduce((a, w) => a + w.prizeFee, 0);
 
   const unpaid = eventDoc.prizePool - total;
   const { fee, net, rate } = computeRefundFee(unpaid);
@@ -565,6 +586,7 @@ async function settleEvent(client, eventDoc, picks, prizes) {
         updatedAt: new Date(),
         winners,
         totalPaid: total,
+        prizeFeeTotal,
         refundFee: fee,
         refundNet: net,
         refundFeeRate: rate,
@@ -581,13 +603,19 @@ async function settleEvent(client, eventDoc, picks, prizes) {
     await grantCoins(client, {
       userId: w.userId,
       guildId: eventDoc.guildId,
-      amount: w.prize,
+      amount: w.prizeNet,
       source: "event_prize",
-      meta: { eventId: eventDoc.eventId, rank: w.rank, hostId: eventDoc.hostId },
+      meta: { eventId: eventDoc.eventId, rank: w.rank, hostId: eventDoc.hostId, amount: w.prizeNet, gross: w.prize, fee: w.prizeFee },
     }).catch((e) => {
       console.log(`[ERROR] event prize payout failed (${eventDoc.eventId} rank ${w.rank}): ${e}`.red);
     });
   }
+
+  fireEventPayoutCheck(client, {
+    guildId: eventDoc.guildId,
+    hostId: eventDoc.hostId,
+    winnerIds: picks,
+  });
 
   if (net > 0) {
     await grantCoins(client, {
@@ -612,10 +640,10 @@ async function settleEvent(client, eventDoc, picks, prizes) {
   if (msg) {
     const guild = doc.guildId ? client.guilds.cache.get(doc.guildId) : null;
     const medals = ["🥇", "🥈", "🥉", "🏅", "🏅"];
-    const lines = winners.map(
-      (w) =>
-        `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${plainifyUserMentions(guild, `<@${w.userId}>`)} — ${w.prize.toLocaleString()} credits`
-    );
+    const lines = winners.map((w) => {
+      const feeNote = w.prizeFee > 0 ? `（已扣防洗錢 ${w.prizeFee.toLocaleString()}）` : "";
+      return `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${plainifyUserMentions(guild, `<@${w.userId}>`)} — ${w.prizeNet.toLocaleString()} credits${feeNote}`;
+    });
     let tail = "";
     if (unpaid > 0) {
       tail = `\n（剩餘 ${unpaid.toLocaleString()} 未發出`;
