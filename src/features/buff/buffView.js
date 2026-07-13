@@ -20,22 +20,29 @@ const {
 const { dungeon, theft } = require("../../config");
 const theftProfile = require("../theft/theftProfile");
 const theftService = require("../theft/theftService");
+const { SECTIONS, buildSectionRow } = require("../playerStatus/statusNav");
 
 function pct(mult) {
   return `${Math.round((mult - 1) * 100)}%`;
 }
 
-async function buildStatusView(client, { userId, guildId, member, displayName }) {
-  const [s, roleGroups] = await Promise.all([
+function addBlock(container, content) {
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+}
+
+// 📊 總覽：體力 + 已套用的關鍵加成數字（玩家最常看的「我現在到底有多少」）
+async function renderOverview(container, client, { userId, guildId, member }) {
+  const [s, miningProfileForStamina, club] = await Promise.all([
     buffResolver.summary(client, userId, guildId, member),
-    buffResolver.roleBuffSummary(client, userId, guildId, member).catch(() => []),
+    getMiningProfile(client, userId, guildId).catch(() => null),
+    getMemberClub(client, userId, guildId).catch(() => null),
   ]);
 
   const cdMin = s.miningCdMs ? Math.round((s.miningCdMs / 60000) * 10) / 10 : null;
   const fishCdMin = s.fishingCdMs ? Math.round((s.fishingCdMs / 60000) * 10) / 10 : null;
 
-  const miningProfileForStamina = await getMiningProfile(client, userId, guildId).catch(() => null);
-  const club = await getMemberClub(client, userId, guildId).catch(() => null);
   const sMax = staminaMax(member, club);
   const sBonus = staminaBonus(member);
   const sGuild = staminaGuildBonus(club);
@@ -55,14 +62,7 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
   } else {
     staminaLines.push("-# 體力已滿，隨時可進地下城");
   }
-
-  const container = new ContainerBuilder()
-    .setAccentColor(0x1abc9c)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`# ✨ ${displayName} 的狀態總覽`),
-    )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(staminaLines.join("\n")));
+  addBlock(container, staminaLines.join("\n"));
 
   const overviewLines = [
     `**⚔️ 攻擊力**：${s.atk}`,
@@ -75,13 +75,19 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
     overviewLines.push(`**🌾 農場收成**：+${Math.round(s.farmYieldBonus * 100)}%`);
   overviewLines.push(`**📈 經驗加成**：${s.xpBoost > 1 ? `+${pct(s.xpBoost)}` : "無"}`);
 
-  container
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `### 📊 加成總覽（已套用所有來源）\n${overviewLines.join("\n")}`,
-      ),
-    );
+  addBlock(
+    container,
+    `### 📊 加成總覽（已套用所有來源）\n${overviewLines.join("\n")}`,
+  );
+  addBlock(container, "-# 想知道這些數字從哪來？用上方選單切到「🔗 加成來源」");
+}
+
+// 🔗 加成來源：金幣 / 身分組 / 公會 / 活動 / 世界事件（持續型來源）
+async function renderSources(container, client, { userId, guildId, member }) {
+  const [s, roleGroups] = await Promise.all([
+    buffResolver.summary(client, userId, guildId, member),
+    buffResolver.roleBuffSummary(client, userId, guildId, member).catch(() => []),
+  ]);
 
   const incomeLines = [];
   if (s.income.twitch?.multiplier > 1) {
@@ -95,27 +101,18 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
   if (s.income.coinBoost > 1) {
     incomeLines.push(`• 商店金幣 buff：×${s.income.coinBoost}`);
   }
-  container
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `### 🪙 金幣加成來源\n${
-          incomeLines.length ? incomeLines.join("\n") : "-# 目前沒有金幣加成"
-        }\n-# 多重來源會相乘，最終實際倍率以發放時為準`,
-      ),
-    );
+  addBlock(
+    container,
+    `### 🪙 金幣加成來源\n${
+      incomeLines.length ? incomeLines.join("\n") : "-# 目前沒有金幣加成"
+    }\n-# 多重來源會相乘，最終實際倍率以發放時為準`,
+  );
 
   if (roleGroups.length > 0) {
     const roleText = roleGroups
       .map((g) => `${g.header}\n${g.lines.map((l) => `　${l}`).join("\n")}`)
       .join("\n");
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `### 🎖️ 身分組來源\n${roleText}\n-# 失去身分組即失效`,
-        ),
-      );
+    addBlock(container, `### 🎖️ 身分組來源\n${roleText}\n-# 失去身分組即失效`);
   }
 
   if (s.events && s.events.length > 0) {
@@ -125,11 +122,7 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
       if (e.qty > 0) bits.push(`數量 +${e.qty}`);
       return `• ${e.name}${bits.length ? `：${bits.join(" ・ ")}` : ""}`;
     });
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`### 🎉 限時活動\n${eventLines.join("\n")}`),
-      );
+    addBlock(container, `### 🎉 限時活動\n${eventLines.join("\n")}`);
   }
 
   if (s.guildClub) {
@@ -196,13 +189,10 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
       );
     }
 
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `### 🏰 公會「${s.guildClub.name}」(Lv.${s.guildClub.level})\n${lines.join("\n")}`,
-        ),
-      );
+    addBlock(
+      container,
+      `### 🏰 公會「${s.guildClub.name}」(Lv.${s.guildClub.level})\n${lines.join("\n")}`,
+    );
   }
 
   if (s.worldEvents && s.worldEvents.length > 0) {
@@ -214,12 +204,19 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
       }).join("・");
       return `• ${e.label || e.event_id} 結束 ${left}\n  -# ${buffLines}`;
     });
-    container
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`### 🌍 世界事件（全服）\n${lines.join("\n")}`),
-      );
+    addBlock(container, `### 🌍 世界事件（全服）\n${lines.join("\n")}`);
   }
+
+  addBlock(
+    container,
+    "-# 加成來源：鎬子 / 幸運藥水 / Twitch 訂閱 / 伺服器加成 / 抖內 / 商店 buff / 限時活動 / 食物 / 公會",
+  );
+}
+
+// ⏳ 時效狀態：食物 buff / 食物倉庫 / 消耗型道具 / 防身盜賊（會到期或會用完的東西）
+async function renderTimed(container, client, { userId, guildId }) {
+  const miningProfileForStamina = await getMiningProfile(client, userId, guildId).catch(() => null);
+  let shown = false;
 
   try {
     if (miningProfileForStamina) {
@@ -229,13 +226,8 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
           const { emoji, name, desc, expire } = describeFoodBuff(b);
           return `• ${emoji} **${name}**：${desc}${expire}`;
         });
-        container
-          .addSeparatorComponents(new SeparatorBuilder())
-          .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              `### 🍽️ 食物 Buff（生效中）\n${foodLines.join("\n")}`,
-            ),
-          );
+        addBlock(container, `### 🍽️ 食物 Buff（生效中）\n${foodLines.join("\n")}`);
+        shown = true;
       }
     }
   } catch { /* noop */ }
@@ -257,9 +249,8 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
         } else {
           lines.push(`-# 點下方「魚袋」按鈕查看與食用`);
         }
-        container
-          .addSeparatorComponents(new SeparatorBuilder())
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+        addBlock(container, lines.join("\n"));
+        shown = true;
       }
     }
   } catch { /* noop */ }
@@ -273,9 +264,8 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
       if (netUses > 0) lines.push(`🕸️ **撈網生效中**：剩 **${netUses}** 次（+10% 釣魚成功率）`);
       if (trapUses > 0) lines.push(`🪤 **高級陷阱保護中**：剩 **${trapUses}** 次（自動抵擋農場 raid）`);
       lines.push("-# 道具庫存、碎片數量請看 `/背包`");
-      container
-        .addSeparatorComponents(new SeparatorBuilder())
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+      addBlock(container, lines.join("\n"));
+      shown = true;
     }
   }
 
@@ -306,20 +296,37 @@ async function buildStatusView(client, { userId, guildId, member, displayName })
 
       if (lines.length) {
         lines.push("-# 防身道具在 `/商店 → 防身道具` 購買");
-        container
-          .addSeparatorComponents(new SeparatorBuilder())
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+        addBlock(container, lines.join("\n"));
+        shown = true;
       }
     }
   }
 
-  container
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "-# 加成來源：鎬子 / 幸運藥水 / Twitch 訂閱 / 伺服器加成 / 抖內 / 商店 buff / 限時活動 / 食物 / 公會",
-      ),
+  if (!shown) {
+    addBlock(
+      container,
+      "### ⏳ 時效狀態\n-# 目前沒有生效中的食物 buff、消耗道具或防身狀態\n-# 煮魚 → 食物 buff；`/商店` 可買撈網、陷阱、防身道具",
     );
+  }
+}
+
+async function buildStatusView(client, { userId, guildId, member, displayName, section }) {
+  const sec = SECTIONS.some((x) => x.id === section) ? section : "overview";
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x1abc9c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# ✨ ${displayName} 的狀態總覽`),
+    );
+  container.addActionRowComponents(buildSectionRow(userId, sec));
+
+  if (sec === "overview") {
+    await renderOverview(container, client, { userId, guildId, member });
+  } else if (sec === "sources") {
+    await renderSources(container, client, { userId, guildId, member });
+  } else {
+    await renderTimed(container, client, { userId, guildId });
+  }
 
   return {
     components: [container],
