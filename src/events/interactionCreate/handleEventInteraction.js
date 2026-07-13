@@ -2,6 +2,9 @@ require("colors");
 const { MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 
 const {
+  createEvent,
+  takeCreateDraft,
+  buildNoticeContainer,
   toggleJoin,
   cancelEvent,
   settleEvent,
@@ -40,7 +43,9 @@ function clearPicks(eventId, hostId) {
 function isEventInteraction(customId) {
   return (
     typeof customId === "string" &&
-    (customId.startsWith("event_join_") ||
+    (customId.startsWith("eventcreate_confirm_") ||
+      customId.startsWith("eventcreate_cancel_") ||
+      customId.startsWith("event_join_") ||
       customId.startsWith("event_manage_") ||
       customId.startsWith("event_settle_") ||
       customId.startsWith("event_cancel_") ||
@@ -65,6 +70,80 @@ async function fetchParticipantMembers(guild, ids) {
     })
   );
   return map;
+}
+
+async function handleCreateConfirm(client, interaction) {
+  if (!(await deferUpdateSafe(interaction))) return;
+
+  const rest = interaction.customId.slice("eventcreate_confirm_".length);
+  const sep = rest.indexOf("_");
+  const hostId = rest.slice(0, sep);
+  const token = rest.slice(sep + 1);
+
+  if (interaction.user.id !== hostId) {
+    return interaction.editReply({
+      components: [buildNoticeContainer("❌ 這不是你的活動建立確認。", "cancel")],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  const entry = takeCreateDraft(token);
+  if (!entry || entry.hostId !== hostId) {
+    return interaction.editReply({
+      components: [
+        buildNoticeContainer("⌛ 確認已逾時或失效（5 分鐘），未扣款。請重新使用 /活動。", "warn"),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  try {
+    const { eventDoc, message } = await createEvent(client, {
+      guild: interaction.guild,
+      host: interaction.user,
+      member: interaction.member,
+      ...entry.draft,
+    });
+    await interaction.editReply({
+      components: [
+        buildNoticeContainer(
+          `✅ 活動已建立！已扣除並鎖定 **${entry.draft.prizePool.toLocaleString()}** credits。\n` +
+            `📢 活動訊息：${message.url}\n活動 ID：\`${eventDoc.eventId}\``,
+        ),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  } catch (err) {
+    console.log(`[ERROR] event create confirm: ${err}\n${err.stack || ""}`.red);
+    await interaction
+      .editReply({
+        components: [buildNoticeContainer(`❌ ${err.message || err}`, "cancel")],
+        flags: MessageFlags.IsComponentsV2,
+      })
+      .catch(() => {});
+  }
+}
+
+async function handleCreateCancel(client, interaction) {
+  if (!(await deferUpdateSafe(interaction))) return;
+
+  const rest = interaction.customId.slice("eventcreate_cancel_".length);
+  const sep = rest.indexOf("_");
+  const hostId = rest.slice(0, sep);
+  const token = rest.slice(sep + 1);
+
+  if (interaction.user.id !== hostId) {
+    return interaction.editReply({
+      components: [buildNoticeContainer("❌ 這不是你的操作。", "cancel")],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+
+  takeCreateDraft(token);
+  await interaction.editReply({
+    components: [buildNoticeContainer("✖️ 已取消，未扣款。", "cancel")],
+    flags: MessageFlags.IsComponentsV2,
+  });
 }
 
 async function handleJoinButton(client, interaction) {
@@ -369,9 +448,12 @@ async function handleAmountsModal(client, interaction) {
   }
 
   try {
-    const settled = await settleEvent(client, doc, picks, prizes);
+    const winnerMembers = await fetchParticipantMembers(interaction.guild, picks);
+    const settled = await settleEvent(client, doc, picks, prizes, winnerMembers);
     clearPicks(eventId, doc.hostId);
     const total = prizes.reduce((a, b) => a + b, 0);
+    const prizeFeeTotal = settled.prizeFeeTotal || 0;
+    const paidNet = total - prizeFeeTotal;
     const unpaid = doc.prizePool - total;
     const fee = settled.refundFee || 0;
     const net = settled.refundNet ?? unpaid;
@@ -382,9 +464,11 @@ async function handleAmountsModal(client, interaction) {
           ? `，剩餘 ${unpaid.toLocaleString()}（系統抽成 ${fee.toLocaleString()}，退回給你 ${net.toLocaleString()}）。`
           : `，剩餘 ${net.toLocaleString()} 退回給你。`;
     }
+    const feeLine = prizeFeeTotal > 0 ? `\n-# 獎金防洗錢抽成共 ${prizeFeeTotal.toLocaleString()} credits（參賽達門檻可免收）` : "";
     await interaction.editReply(
-      `🎉 結算完成！已發出 **${total.toLocaleString()}** credits` +
+      `🎉 結算完成！得獎者實得 **${paidNet.toLocaleString()}** credits` +
         tail +
+        feeLine +
         `\n活動訊息：<#${settled.channelId}>`
     );
   } catch (err) {
@@ -417,6 +501,8 @@ module.exports = async (client, interaction) => {
 
   try {
     if (interaction.isButton()) {
+      if (customId.startsWith("eventcreate_confirm_")) return handleCreateConfirm(client, interaction);
+      if (customId.startsWith("eventcreate_cancel_")) return handleCreateCancel(client, interaction);
       if (customId.startsWith("event_join_")) return handleJoinButton(client, interaction);
       if (customId.startsWith("event_manage_")) return handleManageButton(client, interaction);
       if (customId.startsWith("event_settle_")) return startSettleFlow(client, interaction);

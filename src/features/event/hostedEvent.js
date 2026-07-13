@@ -13,8 +13,17 @@ const {
   MessageFlags,
 } = require("discord.js");
 
+const crypto = require("crypto");
 const grantCoins = require("../economy/grantCoins");
-const { computeRefundFee } = require("../economy/refundFee");
+const {
+  computeRefundFee,
+  computePrizeFee,
+  getRefundFeeRate,
+  getPrizeFeeRate,
+  getPrizeFeeExemptParticipants,
+} = require("../economy/refundFee");
+const { checkServerTenure } = require("../economy/eligibility");
+const { fireEventPayoutCheck } = require("../economy/suspiciousTransferDetector");
 const { hostedEvents: hostedEventsConfig } = require("../../config");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 
@@ -99,7 +108,11 @@ function buildSettledContainer(eventDoc, guild) {
 
   const winnerLines = winners
     .sort((a, b) => a.rank - b.rank)
-    .map((w) => `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${nameOf(w.userId)} — ${w.prize.toLocaleString()} credits`)
+    .map((w) => {
+      const received = w.prizeNet !== undefined ? w.prizeNet : w.prize;
+      const feeNote = w.prizeFee > 0 ? `（已扣防洗錢 ${w.prizeFee.toLocaleString()}）` : "";
+      return `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${nameOf(w.userId)} — ${received.toLocaleString()} credits${feeNote}`;
+    })
     .join("\n");
 
   const refundFee = eventDoc.refundFee || 0;
@@ -379,6 +392,125 @@ async function createEvent(client, opts) {
   }
 }
 
+// 建立活動的待確認草稿（扣款前）。key=token → { draft, hostId, ts }。
+const pendingCreateDrafts = new Map();
+const CREATE_DRAFT_TTL_MS = 5 * 60 * 1000;
+
+function putCreateDraft(hostId, draft) {
+  const token = crypto.randomBytes(6).toString("hex");
+  pendingCreateDrafts.set(token, { draft, hostId, ts: Date.now() });
+  return token;
+}
+
+function takeCreateDraft(token) {
+  const entry = pendingCreateDrafts.get(token);
+  if (!entry) return null;
+  pendingCreateDrafts.delete(token);
+  if (Date.now() - entry.ts > CREATE_DRAFT_TTL_MS) return null;
+  return entry;
+}
+
+// 驗證參數與餘額（與 createEvent 的前置檢查一致），通過則暫存草稿並回傳 token/餘額。
+async function prepareEventDraft(client, opts) {
+  const { guild, hostId, name, description, prizePool, rankCount, minParticipants, maxParticipants } = opts;
+
+  if (!client.hostedEventsCollection) {
+    throw new Error("活動系統尚未啟動（資料庫未連線）");
+  }
+  if (rankCount < 1 || rankCount > MAX_RANK_COUNT) {
+    throw new Error(`名次數需在 1 ~ ${MAX_RANK_COUNT} 之間。`);
+  }
+  if (prizePool < rankCount) {
+    throw new Error("獎金池必須 ≥ 名次數（每名至少 1 credit）。");
+  }
+  if (minParticipants < 1) {
+    throw new Error("最少人數需 ≥ 1。");
+  }
+  if (maxParticipants && maxParticipants < minParticipants) {
+    throw new Error("最多人數不能小於最少人數。");
+  }
+
+  const before = await client.userCoinsCollection.findOne({ userId: hostId, guildId: guild.id });
+  const balance = before?.totalCoins || 0;
+  if (balance < prizePool) {
+    throw new Error(
+      `餘額不足！活動需鎖定 ${prizePool.toLocaleString()} credits，目前 ${balance.toLocaleString()}。`
+    );
+  }
+
+  const draft = {
+    name,
+    description: description || null,
+    prizePool,
+    rankCount,
+    minParticipants,
+    maxParticipants: maxParticipants || null,
+  };
+  const token = putCreateDraft(hostId, draft);
+  return { token, draft, balance };
+}
+
+function buildCreateConfirmContainer(draft, balance, hostId, token) {
+  const { name, description, prizePool, rankCount, minParticipants, maxParticipants } = draft;
+  const afterBalance = balance - prizePool;
+  const capacity = maxParticipants
+    ? `最少 ${minParticipants} 人・最多 ${maxParticipants} 人`
+    : `最少 ${minParticipants} 人・無上限`;
+  const prizePct = Math.round(getPrizeFeeRate() * 100);
+  const exemptN = getPrizeFeeExemptParticipants();
+  const refundPct = Math.round(getRefundFeeRate() * 100);
+
+  return new ContainerBuilder()
+    .setAccentColor(EMBED_COLOR_ACTIVE)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🎉 建立活動確認\n**${name}**${description ? `\n${description}` : ""}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**立即扣除並鎖定**：${prizePool.toLocaleString()} credits\n` +
+          `**名次**：${rankCount} 名\n` +
+          `**報名人數**：${capacity}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**目前餘額**：${balance.toLocaleString()} → 建立後 **${afterBalance.toLocaleString()}**`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 結算發獎時，參賽未滿 ${exemptN} 人每筆獎金抽 ${prizePct}%（達 ${exemptN} 人免收）；未發完的餘額退回你時抽 ${refundPct}%。防洗錢機制。`,
+      ),
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`eventcreate_confirm_${hostId}_${token}`)
+          .setLabel("確認建立")
+          .setEmoji("✅")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`eventcreate_cancel_${hostId}_${token}`)
+          .setLabel("取消")
+          .setEmoji("✖️")
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    );
+}
+
+// Components v2 訊息不能帶 content，確認/取消後的更新一律用單段 Container。
+function buildNoticeContainer(content, kind = "ok") {
+  const color =
+    kind === "cancel" ? EMBED_COLOR_CANCELLED : kind === "warn" ? 0x95a5a6 : EMBED_COLOR_ACTIVE;
+  return new ContainerBuilder()
+    .setAccentColor(color)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+}
+
 async function refreshEventMessage(client, eventDoc) {
   const channel = await client.channels.fetch(eventDoc.channelId).catch(() => null);
   if (!channel) return null;
@@ -527,7 +659,7 @@ async function cancelEvent(client, eventDoc, actor, channel) {
   return doc;
 }
 
-async function settleEvent(client, eventDoc, picks, prizes) {
+async function settleEvent(client, eventDoc, picks, prizes, winnerMembers) {
   const effectiveRanks = Math.min(eventDoc.rankCount, eventDoc.participants.length);
   if (picks.length === 0 || picks.length !== effectiveRanks) {
     throw new Error("名次選擇不完整。");
@@ -547,11 +679,26 @@ async function settleEvent(client, eventDoc, picks, prizes) {
     );
   }
 
-  const winners = picks.map((userId, idx) => ({
-    userId,
-    rank: idx + 1,
-    prize: prizes[idx],
-  }));
+  if (winnerMembers) {
+    for (const userId of picks) {
+      const member = winnerMembers.get(userId);
+      const tenure = checkServerTenure(member);
+      if (!tenure.ok) {
+        const name = member?.displayName || member?.user?.username || userId;
+        throw new Error(
+          `得獎者「${name}」加入伺服器未滿 ${tenure.minDays} 天，無法領獎（防洗錢）。請重新選擇得獎者。`
+        );
+      }
+    }
+  }
+
+  const participantCount = eventDoc.participants.length;
+  const winners = picks.map((userId, idx) => {
+    const gross = prizes[idx];
+    const { fee: prizeFee, net: prizeNet } = computePrizeFee(gross, participantCount);
+    return { userId, rank: idx + 1, prize: gross, prizeNet, prizeFee };
+  });
+  const prizeFeeTotal = winners.reduce((a, w) => a + w.prizeFee, 0);
 
   const unpaid = eventDoc.prizePool - total;
   const { fee, net, rate } = computeRefundFee(unpaid);
@@ -565,6 +712,7 @@ async function settleEvent(client, eventDoc, picks, prizes) {
         updatedAt: new Date(),
         winners,
         totalPaid: total,
+        prizeFeeTotal,
         refundFee: fee,
         refundNet: net,
         refundFeeRate: rate,
@@ -581,13 +729,19 @@ async function settleEvent(client, eventDoc, picks, prizes) {
     await grantCoins(client, {
       userId: w.userId,
       guildId: eventDoc.guildId,
-      amount: w.prize,
+      amount: w.prizeNet,
       source: "event_prize",
-      meta: { eventId: eventDoc.eventId, rank: w.rank, hostId: eventDoc.hostId },
+      meta: { eventId: eventDoc.eventId, rank: w.rank, hostId: eventDoc.hostId, amount: w.prizeNet, gross: w.prize, fee: w.prizeFee },
     }).catch((e) => {
       console.log(`[ERROR] event prize payout failed (${eventDoc.eventId} rank ${w.rank}): ${e}`.red);
     });
   }
+
+  fireEventPayoutCheck(client, {
+    guildId: eventDoc.guildId,
+    hostId: eventDoc.hostId,
+    winnerIds: picks,
+  });
 
   if (net > 0) {
     await grantCoins(client, {
@@ -612,10 +766,10 @@ async function settleEvent(client, eventDoc, picks, prizes) {
   if (msg) {
     const guild = doc.guildId ? client.guilds.cache.get(doc.guildId) : null;
     const medals = ["🥇", "🥈", "🥉", "🏅", "🏅"];
-    const lines = winners.map(
-      (w) =>
-        `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${plainifyUserMentions(guild, `<@${w.userId}>`)} — ${w.prize.toLocaleString()} credits`
-    );
+    const lines = winners.map((w) => {
+      const feeNote = w.prizeFee > 0 ? `（已扣防洗錢 ${w.prizeFee.toLocaleString()}）` : "";
+      return `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${plainifyUserMentions(guild, `<@${w.userId}>`)} — ${w.prizeNet.toLocaleString()} credits${feeNote}`;
+    });
     let tail = "";
     if (unpaid > 0) {
       tail = `\n（剩餘 ${unpaid.toLocaleString()} 未發出`;
@@ -641,6 +795,10 @@ module.exports = {
   EVENT_CHANNEL_ID,
   MAX_RANK_COUNT,
   createEvent,
+  prepareEventDraft,
+  takeCreateDraft,
+  buildCreateConfirmContainer,
+  buildNoticeContainer,
   toggleJoin,
   cancelEvent,
   settleEvent,

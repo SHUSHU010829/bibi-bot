@@ -6,7 +6,11 @@ const {
 } = require("discord.js");
 
 const { coinSystem } = require("../../config");
-const { createEvent, MAX_RANK_COUNT } = require("../../features/event/hostedEvent");
+const {
+  prepareEventDraft,
+  buildCreateConfirmContainer,
+  MAX_RANK_COUNT,
+} = require("../../features/event/hostedEvent");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -68,10 +72,9 @@ module.exports = {
       const minParticipants = interaction.options.getInteger("最少人數") ?? 1;
       const maxParticipants = interaction.options.getInteger("最多人數") ?? null;
 
-      const { eventDoc, message } = await createEvent(client, {
+      const { token, draft, balance } = await prepareEventDraft(client, {
         guild: interaction.guild,
-        host: interaction.user,
-        member: interaction.member,
+        hostId: interaction.user.id,
         name,
         description,
         prizePool,
@@ -80,11 +83,10 @@ module.exports = {
         maxParticipants,
       });
 
-      await interaction.editReply(
-        `✅ 活動已建立！已扣除並鎖定 **${prizePool.toLocaleString()}** credits。\n` +
-          `📢 活動訊息：${message.url}\n` +
-          `活動 ID：\`${eventDoc.eventId}\``
-      );
+      await interaction.editReply({
+        components: [buildCreateConfirmContainer(draft, balance, interaction.user.id, token)],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
     } catch (error) {
       const msg = error?.message || String(error);
       const isUserError =
