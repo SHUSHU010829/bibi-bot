@@ -2,7 +2,6 @@
 // 用單一文件 aggregation-pipeline update 原子地分配一包，避免併發重複搶 / 超發。
 
 const { MessageFlags } = require("discord.js");
-const { MONEY_EMOJI } = require("../../constants/coin");
 const grantCoins = require("../../features/economy/grantCoins");
 const { buildOpenPayload } = require("../../features/casino/redPacket/render");
 const { closeRedPacket } = require("../../features/casino/redPacket/service");
@@ -118,17 +117,10 @@ module.exports = async (client, interaction) => {
       await interaction.editReply(buildOpenPayload(next)).catch(() => {});
     }
 
-    if (next.kind === "prank") {
-      await ephemeral(
-        interaction,
-        "🤡 你被騙啦！這是**傻瓜紅包**，根本是空的什麼都沒有 ㄎㄎㄎ"
-      );
-    } else {
-      await ephemeral(
-        interaction,
-        `🧧 你搶到 **${amount.toLocaleString()}** ${MONEY_EMOJI}！`
-      );
-    }
+    await ephemeral(
+      interaction,
+      "🧧 領取成功！金額會在紅包搶完或時間到後公布。"
+    );
     trackSuccess("redpacket-button");
   } catch (error) {
     logger.error(

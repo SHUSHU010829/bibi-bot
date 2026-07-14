@@ -20,13 +20,13 @@ function displayCountOf(state) {
   return state.displayCount ?? state.totalCount;
 }
 
-function grabberLines(state, { highlightBest = false, prankReveal = false } = {}) {
+function grabberLines(state, { revealAmounts = false, highlightBest = false, prankReveal = false } = {}) {
   if (!state.grabbers?.length) {
     return prankReveal ? "_沒人上當，發包人尷尬了 😶_" : "_還沒有人搶～_";
   }
-  if (prankReveal) {
+  if (!revealAmounts) {
     return state.grabbers
-      .map((g) => `・<@${g.userId}> 🤡 上當了！`)
+      .map((g) => `・<@${g.userId}> 已領取`)
       .join("\n");
   }
   const sorted = [...state.grabbers].sort((a, b) => b.amount - a.amount);
@@ -34,7 +34,8 @@ function grabberLines(state, { highlightBest = false, prankReveal = false } = {}
   return state.grabbers
     .map((g) => {
       const crown = highlightBest && g.userId === bestId ? " 👑手氣王" : "";
-      return `・<@${g.userId}> 搶到 **${g.amount.toLocaleString()}** ${MONEY_EMOJI}${crown}`;
+      const prankMark = prankReveal ? " 🤡 上當了！" : "";
+      return `・<@${g.userId}> 搶到 **${g.amount.toLocaleString()}** ${MONEY_EMOJI}${crown}${prankMark}`;
     })
     .join("\n");
 }
@@ -78,7 +79,7 @@ function buildClosedPayload(state, { refunded = 0 } = {}) {
       header +
       `${titleLine}` +
       subtitle +
-      `${grabberLines(state, { prankReveal: true })}`;
+      `${grabberLines(state, { revealAmounts: true, prankReveal: true })}`;
     return { content, components: [] };
   }
 
@@ -99,7 +100,7 @@ function buildClosedPayload(state, { refunded = 0 } = {}) {
     `${titleLine}` +
     `<@${state.hostUserId}> 的紅包 **${showAmount.toLocaleString()}** ${MONEY_EMOJI} / ${showCount} 包，` +
     `搶出 **${grabbedAmount.toLocaleString()}** ${MONEY_EMOJI}${refundLine}\n\n` +
-    `${grabberLines(state, { highlightBest: true })}`;
+    `${grabberLines(state, { revealAmounts: true, highlightBest: true })}`;
 
   return { content, components: [] };
 }
