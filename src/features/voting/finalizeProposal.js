@@ -2,7 +2,7 @@ require("colors");
 const {
   ContainerBuilder,
   TextDisplayBuilder,
-  SeparatorBuilder,
+  EmbedBuilder,
   MessageFlags,
 } = require("discord.js");
 const config = require("../../config");
@@ -12,7 +12,6 @@ const {
 } = require("./calculateResult");
 
 const TICKET_AUTOCLOSE_MS = 5 * 60 * 1000;
-const RESULT_CHANNEL_ID = "1181144417277595669";
 
 // 統一的投票結算入口：給定 proposal 和原因，更新訊息、通知 ticket、寫 DB、排程關 ticket。
 // reason: "expired" | "manual_end" | "cancelled"
@@ -82,12 +81,16 @@ async function finalizeProposal(client, proposal, opts = {}) {
     }
   }
 
-  // 通過時通知結果頻道
-  if (reason !== "cancelled" && passed) {
+  // 結算後於投票頻道公告結果（成功 / 失敗都發，取消不發）
+  if (reason !== "cancelled" && votingChannel) {
     try {
-      await notifyResultChannel(guild, proposal, template, result, { reason, endedBy, client });
+      await announceResult(votingChannel, proposal, template, result, {
+        reason,
+        endedBy,
+        passed,
+      });
     } catch (error) {
-      console.log(`[ERROR] 通知結果頻道時出錯：\n${error}`.red);
+      console.log(`[ERROR] 於投票頻道公告結果時出錯：\n${error}`.red);
     }
   }
 
@@ -249,68 +252,61 @@ function scheduleTicketClose(ticketChannel) {
   t.unref?.();
 }
 
-async function notifyResultChannel(guild, proposal, template, result, opts) {
-  const { reason, endedBy } = opts;
-  const resultChannel = await guild.channels
-    .fetch(RESULT_CHANNEL_ID)
-    .catch(() => null);
-  if (!resultChannel) return;
-
+async function announceResult(votingChannel, proposal, template, result, opts) {
+  const { reason, endedBy, passed } = opts;
   const title = proposal.title || proposal.gameName || "提案";
-  const titlePrefix =
-    reason === "manual_end" ? "✅ 投票通過通知（提早結束）" : "✅ 投票通過通知";
+  const suffix = reason === "manual_end" ? "（管理員提早結束）" : "";
 
   const buttonLines = template.buttons.map(
-    (btn) => `${btn.emoji} ${btn.label}：${result.voteCounts[btn.id] || 0} 人`,
+    (btn) => `${btn.emoji} ${btn.label}：**${result.voteCounts[btn.id] || 0}** 人`,
   );
 
-  const container = new ContainerBuilder()
-    .setAccentColor(0x00ff00)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `# ${titlePrefix}\n` +
-          `**提案標題：** ${title}\n` +
-          `**投票類型：** ${template.name}` +
-          (endedBy ? `\n**操作者：** <@${endedBy}>` : ""),
-      ),
-    )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        buttonLines.join("\n") +
-          (result.totalScore > 0 ? `\n**📊 總分**：${result.totalScore} 分` : ""),
-      ),
-    );
+  const fields = [
+    { name: "📋 投票類型", value: template.name, inline: true },
+    {
+      name: "📊 結算",
+      value: passed ? `✅ 通過${suffix}` : `❌ 未通過${suffix}`,
+      inline: true,
+    },
+  ];
 
-  if (proposal.showVoters) {
+  if (endedBy) {
+    fields.push({ name: "🔧 操作者", value: `<@${endedBy}>`, inline: true });
+  }
+
+  fields.push({
+    name: "🗳️ 投票結果",
+    value:
+      buttonLines.join("\n") +
+      (result.totalScore > 0 ? `\n**總分**：${result.totalScore} 分` : ""),
+  });
+
+  fields.push({ name: "📝 說明", value: result.reason || "—" });
+
+  if (proposal.showVoters && passed) {
     const maxWeight = Math.max(...template.buttons.map((b) => b.weight || 0));
     const highInterestBtn = template.buttons.find(
       (btn) => (btn.weight || 0) === maxWeight,
     );
     if (highInterestBtn && proposal.votes?.[highInterestBtn.id]?.length > 0) {
-      const participantMentions = proposal.votes[highInterestBtn.id]
+      const mentions = proposal.votes[highInterestBtn.id]
         .map((id) => `<@${id}>`)
         .join("、");
-      container
-        .addSeparatorComponents(new SeparatorBuilder())
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `**${highInterestBtn.emoji} ${highInterestBtn.label}名單**\n${participantMentions}`,
-          ),
-        );
+      fields.push({
+        name: `${highInterestBtn.emoji} ${highInterestBtn.label}名單`,
+        value: mentions.slice(0, 1024),
+      });
     }
   }
 
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `-# 投票 ID：${proposal.voteId} ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
-    ),
-  );
+  const embed = new EmbedBuilder()
+    .setColor(passed ? 0x2ecc71 : 0xe74c3c)
+    .setTitle(`${passed ? "✅ 提案通過" : "❌ 提案未通過"}：${title}`)
+    .addFields(fields)
+    .setFooter({ text: `投票 ID：${proposal.voteId}` })
+    .setTimestamp();
 
-  await resultChannel.send({
-    components: [container],
-    flags: MessageFlags.IsComponentsV2,
-  });
+  await votingChannel.send({ embeds: [embed] });
 }
 
 module.exports = { finalizeProposal };
