@@ -279,7 +279,7 @@
       "prank": {
         "enabled": true,
         "fee": 100,
-        "grabWindowSeconds": 300
+        "grabWindowSeconds": 600
       }
     },
     "russianRoulette": {
