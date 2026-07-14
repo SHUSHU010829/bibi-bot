@@ -26,11 +26,14 @@ function isStackable(item) {
   return !!item && STACKABLE_TYPES.includes(item.type);
 }
 
-// 單次購買的數量上限：有 payload.maxStack 的商品吃持有上限，其餘給一個合理的天花板。
+// 單次購買的數量上限：有 payload.maxStack 的商品吃持有上限，無持有上限但有每日上限者吃每日上限，其餘給一個合理的天花板。
 function stackMax(item) {
   if (!isStackable(item)) return 1;
   if (item.payload?.maxStack > 0) {
     return item.payload.maxStack;
+  }
+  if (item.payload?.dailyLimit > 0) {
+    return item.payload.dailyLimit;
   }
   return 50;
 }
