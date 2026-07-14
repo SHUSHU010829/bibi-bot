@@ -105,24 +105,17 @@ async function handleVoteButton(client, interaction) {
     const userId = interaction.user.id;
     const customId = interaction.customId;
 
-    // 解析按鈕 ID：vote_{template}_{button}
-    const parts = customId.split("_");
-    if (parts.length < 3) {
-      return interaction.editReply({
-        content: "❌ 無效的按鈕 ID！",
-      });
-    }
-
-    const templateKey = parts[1];
-    const buttonId = parts.slice(2).join("_");
-
-    // 獲取模板配置
+    // templateKey 本身含底線（game_create 等），不能靠 split("_") 拆，
+    // 直接用提案記錄存的 templateKey，buttonId 切掉 vote_{templateKey}_ 前綴。
+    const templateKey = proposal.templateKey;
     const template = config.voting.templates[templateKey];
     if (!template) {
       return interaction.editReply({
         content: "❌ 找不到對應的投票模板！",
       });
     }
+
+    const buttonId = customId.slice(`vote_${templateKey}_`.length);
 
     // 找到對應的按鈕配置
     const buttonConfig = template.buttons.find(btn => btn.id === buttonId);
