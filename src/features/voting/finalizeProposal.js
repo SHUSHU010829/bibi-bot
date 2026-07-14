@@ -13,6 +13,20 @@ const {
 
 const TICKET_AUTOCLOSE_MS = 5 * 60 * 1000;
 
+// 遞迴走訪 Components v2 元件樹，把所有按鈕（type 2）設為 disabled
+function disableButtons(component) {
+  if (component.type === 2) {
+    return { ...component, disabled: true };
+  }
+  if (Array.isArray(component.components)) {
+    return {
+      ...component,
+      components: component.components.map(disableButtons),
+    };
+  }
+  return component;
+}
+
 // 統一的投票結算入口：給定 proposal 和原因，更新訊息、通知 ticket、寫 DB、排程關 ticket。
 // reason: "expired" | "manual_end" | "cancelled"
 async function finalizeProposal(client, proposal, opts = {}) {
@@ -40,19 +54,31 @@ async function finalizeProposal(client, proposal, opts = {}) {
       : calculateVoteResult(proposal, template);
 
   const passed = reason === "cancelled" ? false : result.passed;
-  const resultContainer = createResultContainer(proposal, template, result, { reason });
 
-  // 更新投票訊息
+  // 更新投票訊息：取消 → 換成取消通知；正常結束 → 保留原內容、僅停用按鈕（結果由 embed 公告）
   const votingChannel = await guild.channels
     .fetch(proposal.channelId)
     .catch(() => null);
   if (votingChannel) {
     try {
       const voteMessage = await votingChannel.messages.fetch(proposal.messageId);
-      await voteMessage.edit({
-        components: [resultContainer],
-        flags: MessageFlags.IsComponentsV2,
-      });
+      if (reason === "cancelled") {
+        const resultContainer = createResultContainer(proposal, template, result, {
+          reason,
+        });
+        await voteMessage.edit({
+          components: [resultContainer],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      } else {
+        const disabledComponents = voteMessage.components.map((c) =>
+          disableButtons(c.toJSON()),
+        );
+        await voteMessage.edit({
+          components: disabledComponents,
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
     } catch (error) {
       console.log(`[ERROR] 更新投票訊息時出錯：\n${error}`.red);
     }
