@@ -9,9 +9,6 @@ const {
 } = require("./miningProfile");
 const { COIN_EMOJI } = require("../../constants/coin");
 
-// CD 縮短券持有上限（與商店 shop.json maxStack 一致）
-const CD_TICKET_MAX = 60;
-
 function randInt(min, max) {
   const lo = Math.ceil(min ?? 0);
   const hi = Math.floor(max ?? lo);
@@ -268,19 +265,13 @@ async function trigger(client, ctx) {
       }
 
       case "gift_cd_ticket": {
-        const profile = await getOrCreate(client, userId, guildId);
-        const owned = profile.cd_ticket_count || 0;
-        const qty = Math.min(eff.qty || 1, Math.max(0, CD_TICKET_MAX - owned));
-        if (qty > 0) {
-          await coll(client).updateOne(
-            { userId, guildId },
-            { $inc: { cd_ticket_count: qty }, $set: { updatedAt: new Date() } }
-          );
-          lines.push(`🎫 CD 縮短券 ×${qty}`);
-          loot.push(`🎫 CD 縮短券 ×${qty}`);
-        } else {
-          lines.push("你的 CD 縮短券已達持有上限，這次沒拿到。");
-        }
+        const qty = eff.qty || 1;
+        await coll(client).updateOne(
+          { userId, guildId },
+          { $inc: { cd_ticket_count: qty }, $set: { updatedAt: new Date() } }
+        );
+        lines.push(`🎫 CD 縮短券 ×${qty}`);
+        loot.push(`🎫 CD 縮短券 ×${qty}`);
         break;
       }
 
