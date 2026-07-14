@@ -15,6 +15,7 @@ function getTemplateColor(templateKey) {
   const colors = {
     game_create: 0x00ff00,
     game_archive: 0xff9900,
+    game_server: 0x1abc9c,
     event: 0x9b59b6,
     rule_change: 0x3498db,
     general: 0x95a5a6,

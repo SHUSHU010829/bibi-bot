@@ -30,6 +30,21 @@
         "maxStillActive": 1
       }
     },
+    "game_server": {
+      "name": "遊戲伺服器開設",
+      "emoji": "🕹️",
+      "description": "統計實際會一起遊玩的人數，決定是否開設此遊戲伺服器。\n請根據您的實際意願點擊下方按鈕：",
+      "buttons": [
+        { "id": "high_interest", "label": "我會玩", "emoji": "🔥", "style": "Success", "weight": 3 },
+        { "id": "support", "label": "我看你玩", "emoji": "👍", "style": "Secondary", "weight": 1 },
+        { "id": "no_interest", "label": "沒興趣", "emoji": "😶", "style": "Danger", "weight": 0 }
+      ],
+      "passCondition": {
+        "type": "weighted",
+        "minTotalScore": 15,
+        "minHighInterest": 3
+      }
+    },
     "event": {
       "name": "活動提案",
       "emoji": "🎉",
