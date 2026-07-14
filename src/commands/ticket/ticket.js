@@ -114,6 +114,7 @@ module.exports = {
                 .addChoices(
                   { name: "🎮 遊戲頻道：新增", value: "game_create" },
                   { name: "📦 遊戲頻道：封存", value: "game_archive" },
+                  { name: "🕹️ 遊戲伺服器：開設", value: "game_server" },
                   { name: "🎉 活動提案", value: "event" },
                   { name: "📜 規則修改", value: "rule_change" },
                   { name: "💡 一般提案", value: "general" }
@@ -134,7 +135,7 @@ module.exports = {
             .addIntegerOption((option) =>
               option
                 .setName("duration")
-                .setDescription("投票持續時數（預設 24 小時）")
+                .setDescription("投票持續時數（預設 48 小時）")
                 .setRequired(false)
                 .setMinValue(1)
                 .setMaxValue(168)
