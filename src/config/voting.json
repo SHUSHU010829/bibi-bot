@@ -8,7 +8,7 @@
       "description": "為了確保新頻道能維持活躍，我們需要統計「實際玩家」數量。\n請根據您的實際情況點擊下方按鈕：",
       "buttons": [
         { "id": "high_interest", "label": "我會玩", "emoji": "🔥", "style": "Success", "weight": 3 },
-        { "id": "support", "label": "純支持", "emoji": "👍", "style": "Secondary", "weight": 1 },
+        { "id": "support", "label": "我看你玩", "emoji": "👍", "style": "Secondary", "weight": 1 },
         { "id": "no_interest", "label": "沒興趣", "emoji": "😶", "style": "Danger", "weight": 0 }
       ],
       "passCondition": {
