@@ -32,6 +32,7 @@ async function handleProposalStart(client, interaction) {
 
   const gameName = interaction.options.getString("game");
   const proposalType = interaction.options.getString("type");
+  const showVoters = interaction.options.getBoolean("show_voters") || false;
   const templateKey = PROPOSAL_TYPE_TO_TEMPLATE[proposalType];
   const template = config.voting.templates[templateKey];
 
@@ -124,6 +125,7 @@ async function handleProposalStart(client, interaction) {
     channelId: votingChannel.id,
     guildId: interaction.guild.id,
     votes,
+    showVoters,
     createdAt: new Date(),
     expiresAt,
     duration,

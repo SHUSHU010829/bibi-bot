@@ -29,6 +29,7 @@ async function handleVoteCreate(client, interaction) {
     const customDescription = interaction.options.getString("description");
     const duration = interaction.options.getInteger("duration") || config.voting.defaultDurationHours;
     const customChannel = interaction.options.getChannel("channel");
+    const showVoters = interaction.options.getBoolean("show_voters") || false;
 
     const template = config.voting.templates[templateKey];
     if (!template) {
@@ -137,6 +138,7 @@ async function handleVoteCreate(client, interaction) {
       channelId: votingChannel.id,
       guildId: interaction.guild.id,
       votes,
+      showVoters,
       createdAt: new Date(),
       expiresAt,
       duration,

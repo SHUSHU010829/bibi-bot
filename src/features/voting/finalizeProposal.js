@@ -280,12 +280,32 @@ async function notifyResultChannel(guild, proposal, template, result, opts) {
         buttonLines.join("\n") +
           (result.totalScore > 0 ? `\n**📊 總分**：${result.totalScore} 分` : ""),
       ),
-    )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# 投票 ID：${proposal.voteId} ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
-      ),
     );
+
+  if (proposal.showVoters) {
+    const maxWeight = Math.max(...template.buttons.map((b) => b.weight || 0));
+    const highInterestBtn = template.buttons.find(
+      (btn) => (btn.weight || 0) === maxWeight,
+    );
+    if (highInterestBtn && proposal.votes?.[highInterestBtn.id]?.length > 0) {
+      const participantMentions = proposal.votes[highInterestBtn.id]
+        .map((id) => `<@${id}>`)
+        .join("、");
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**${highInterestBtn.emoji} ${highInterestBtn.label}名單**\n${participantMentions}`,
+          ),
+        );
+    }
+  }
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# 投票 ID：${proposal.voteId} ・ <t:${Math.floor(Date.now() / 1000)}:R>`,
+    ),
+  );
 
   await resultChannel.send({
     components: [container],

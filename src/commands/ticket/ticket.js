@@ -68,6 +68,12 @@ module.exports = {
                   { name: "封存頻道", value: "archive" }
                 )
             )
+            .addBooleanOption((option) =>
+              option
+                .setName("show_voters")
+                .setDescription("公開名單：通過後在結果頻道列出「我會玩」的投票人員（預設關閉）")
+                .setRequired(false)
+            )
         )
         .addSubcommand((subcommand) =>
           subcommand
@@ -137,6 +143,12 @@ module.exports = {
               option
                 .setName("channel")
                 .setDescription("指定投票頻道（選填，預設為設定檔中的頻道）")
+                .setRequired(false)
+            )
+            .addBooleanOption((option) =>
+              option
+                .setName("show_voters")
+                .setDescription("公開名單：通過後在結果頻道列出「我會玩」的投票人員（預設關閉）")
                 .setRequired(false)
             )
         )
