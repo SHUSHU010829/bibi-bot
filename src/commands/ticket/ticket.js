@@ -22,25 +22,25 @@ module.exports = {
         .addStringOption((option) =>
           option
             .setName("title")
-            .setDescription("Suggestion panel title (leave empty for default)")
+            .setDescription("建議面板標題（留空使用預設）")
             .setRequired(false)
         )
         .addStringOption((option) =>
           option
             .setName("description")
-            .setDescription("Suggestion panel description (leave empty for default)")
+            .setDescription("建議面板說明（留空使用預設）")
             .setRequired(false)
         )
         .addStringOption((option) =>
           option
             .setName("category_id")
-            .setDescription("Suggestion category ID (leave empty for default)")
+            .setDescription("建議分類頻道 ID（留空使用預設）")
             .setRequired(false)
         )
         .addRoleOption((option) =>
           option
             .setName("support_role")
-            .setDescription("Support team role (leave empty for default)")
+            .setDescription("客服團隊身份組（留空使用預設）")
             .setRequired(false)
         )
     )
@@ -51,43 +51,49 @@ module.exports = {
         .addSubcommand((subcommand) =>
           subcommand
             .setName("start")
-            .setDescription("Start a new game-channel proposal vote")
+            .setDescription("發起遊戲頻道提案投票")
             .addStringOption((option) =>
               option
                 .setName("game")
-                .setDescription("Game name")
+                .setDescription("遊戲名稱")
                 .setRequired(true)
             )
             .addStringOption((option) =>
               option
                 .setName("type")
-                .setDescription("Proposal type")
+                .setDescription("提案類型")
                 .setRequired(true)
                 .addChoices(
-                  { name: "Create channel", value: "create" },
-                  { name: "Archive channel", value: "archive" }
+                  { name: "新增頻道", value: "create" },
+                  { name: "封存頻道", value: "archive" }
                 )
+            )
+            .addBooleanOption((option) =>
+              option
+                .setName("show_voters")
+                .setDescription("公開名單：通過後在結果頻道列出「我會玩」的投票人員（預設關閉）")
+                .setRequired(false)
             )
         )
         .addSubcommand((subcommand) =>
           subcommand
             .setName("end")
-            .setDescription("⏭️ End an ongoing vote early (admin only)")
+            .setDescription("⏭️ 提早結束進行中的投票（僅限管理員）")
             .addStringOption((option) =>
               option
                 .setName("message_url")
-                .setDescription("URL of the vote message")
+                .setDescription("投票訊息的連結網址")
                 .setRequired(true)
             )
         )
         .addSubcommand((subcommand) =>
           subcommand
             .setName("cancel")
-            .setDescription("🗑️ Cancel an ongoing vote (admin only)")
+            .setDescription("🗑️ 取消進行中的投票（僅限管理員）")
             .addStringOption((option) =>
               option
                 .setName("message_url")
-                .setDescription("URL of the vote message")
+                .setDescription("投票訊息的連結網址")
                 .setRequired(true)
             )
         )
@@ -99,36 +105,36 @@ module.exports = {
         .addSubcommand((subcommand) =>
           subcommand
             .setName("create")
-            .setDescription("Create a new vote")
+            .setDescription("發起一則新投票")
             .addStringOption((option) =>
               option
                 .setName("template")
-                .setDescription("Pick a vote template")
+                .setDescription("選擇投票模板")
                 .setRequired(true)
                 .addChoices(
-                  { name: "🎮 Game channel: create", value: "game_create" },
-                  { name: "📦 Game channel: archive", value: "game_archive" },
-                  { name: "🎉 Event proposal", value: "event" },
-                  { name: "📜 Rule change", value: "rule_change" },
-                  { name: "💡 General proposal", value: "general" }
+                  { name: "🎮 遊戲頻道：新增", value: "game_create" },
+                  { name: "📦 遊戲頻道：封存", value: "game_archive" },
+                  { name: "🎉 活動提案", value: "event" },
+                  { name: "📜 規則修改", value: "rule_change" },
+                  { name: "💡 一般提案", value: "general" }
                 )
             )
             .addStringOption((option) =>
               option
                 .setName("title")
-                .setDescription("Vote title (e.g. game name, event name, rule summary)")
+                .setDescription("投票標題（例如遊戲名稱、活動名稱、規則摘要）")
                 .setRequired(true)
             )
             .addStringOption((option) =>
               option
                 .setName("description")
-                .setDescription("Vote details (optional)")
+                .setDescription("投票說明（選填）")
                 .setRequired(false)
             )
             .addIntegerOption((option) =>
               option
                 .setName("duration")
-                .setDescription("Vote duration in hours (default 24)")
+                .setDescription("投票持續時數（預設 24 小時）")
                 .setRequired(false)
                 .setMinValue(1)
                 .setMaxValue(168)
@@ -136,7 +142,13 @@ module.exports = {
             .addChannelOption((option) =>
               option
                 .setName("channel")
-                .setDescription("Override the vote channel (optional, defaults to configured channel)")
+                .setDescription("指定投票頻道（選填，預設為設定檔中的頻道）")
+                .setRequired(false)
+            )
+            .addBooleanOption((option) =>
+              option
+                .setName("show_voters")
+                .setDescription("公開名單：通過後在結果頻道列出「我會玩」的投票人員（預設關閉）")
                 .setRequired(false)
             )
         )
