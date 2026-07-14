@@ -15,14 +15,6 @@ function rollDurabilitySave(savePct) {
   return Math.random() < savePct / 100;
 }
 
-// CD 縮短券持有上限（與商店 shop.json maxStack 一致）
-const CD_TICKET_MAX = 60;
-
-// CD 縮短券滿倉時的折算金幣價（取商店售價，fallback 150）
-function cdTicketCoinValue() {
-  const item = (shop?.items || []).find((i) => i.type === "mining_cd_ticket");
-  return item?.price || 150;
-}
 
 function randInt(min, max) {
   const lo = Math.ceil(min ?? 0);
@@ -385,7 +377,6 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
   let legendaryGained = 0;
   let potionGained = 0;
   let ticketGained = 0;
-  let ticketOverflowToCoins = false;
   let slimeGained = 0;
   let seedGained = null; // { seedKey, qty }
 
@@ -422,18 +413,8 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
       potionGained = loot.qty || 1;
       inc.luck_potion_uses = (inc.luck_potion_uses || 0) + potionGained;
     } else if (kind === "cd_ticket") {
-      const owned = profile.cd_ticket_count || 0;
-      const want = loot.qty || 1;
-      ticketGained = Math.min(want, Math.max(0, CD_TICKET_MAX - owned));
-      if (ticketGained > 0) {
-        inc.cd_ticket_count = (inc.cd_ticket_count || 0) + ticketGained;
-      }
-      // 滿倉的部分折算成金幣，避免撿到的券白白浪費
-      const overflow = want - ticketGained;
-      if (overflow > 0) {
-        coinsGained += overflow * cdTicketCoinValue();
-        ticketOverflowToCoins = true;
-      }
+      ticketGained = loot.qty || 1;
+      inc.cd_ticket_count = (inc.cd_ticket_count || 0) + ticketGained;
     } else if (kind === "slime") {
       slimeGained = loot.qty || 1;
       inc["backpack.monster_slime"] = (inc["backpack.monster_slime"] || 0) + slimeGained;
@@ -489,7 +470,6 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     legendaryGained,
     potionGained,
     ticketGained,
-    ticketOverflowToCoins,
     slimeGained,
     seedGained,
     balance,
@@ -869,7 +849,6 @@ async function enterDungeonHp(client, {
   let legendaryGained = 0;
   let potionGained = 0;
   let ticketGained = 0;
-  let ticketOverflowToCoins = false;
   let slimeGained = 0;
   let clearRewardCoins = 0;
   // C1：把這兩個變數提到 outer scope（原本 var 在分支裡 hoist，雖能跑但 ESLint 會 warn）
@@ -959,17 +938,8 @@ async function enterDungeonHp(client, {
       potionGained = loot.qty || 1;
       inc.luck_potion_uses = (inc.luck_potion_uses || 0) + potionGained;
     } else if (kind === "cd_ticket") {
-      const owned = profile.cd_ticket_count || 0;
-      const want = loot.qty || 1;
-      ticketGained = Math.min(want, Math.max(0, CD_TICKET_MAX - owned));
-      if (ticketGained > 0) {
-        inc.cd_ticket_count = (inc.cd_ticket_count || 0) + ticketGained;
-      }
-      const overflow = want - ticketGained;
-      if (overflow > 0) {
-        coinsGained += overflow * cdTicketCoinValue();
-        ticketOverflowToCoins = true;
-      }
+      ticketGained = loot.qty || 1;
+      inc.cd_ticket_count = (inc.cd_ticket_count || 0) + ticketGained;
     } else if (kind === "slime") {
       slimeGained = Math.max(1, Math.floor((loot.qty || 1) * mult));
       inc["backpack.monster_slime"] = (inc["backpack.monster_slime"] || 0) + slimeGained;
@@ -1141,7 +1111,6 @@ async function enterDungeonHp(client, {
     legendaryGained,
     potionGained,
     ticketGained,
-    ticketOverflowToCoins,
     slimeGained,
     seedGained,
     deathDrop,

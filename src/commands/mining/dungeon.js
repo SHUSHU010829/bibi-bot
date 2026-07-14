@@ -1130,10 +1130,7 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
     } else if (lootKind === "luck_potion") {
       rewardLine = `掉落 **🍀 幸運藥水 ×${result.potionGained}**！（挖礦時自動生效）`;
     } else if (lootKind === "cd_ticket") {
-      rewardLine =
-        result.ticketGained > 0
-          ? `掉落 **🎫 CD 縮短券 ×${result.ticketGained}**！`
-          : `🎫 CD 縮短券已達持有上限，折算成 **+${result.coinsGained.toLocaleString()}** ${COIN_EMOJI}`;
+      rewardLine = `掉落 **🎫 CD 縮短券 ×${result.ticketGained}**！`;
     } else if (lootKind === "slime") {
       rewardLine = `掉落 **💧 怪物黏液 ×${result.slimeGained}**！（農場高階肥料 -25% 成長時間）`;
     } else if (lootKind === "seed" && result.seedGained) {
