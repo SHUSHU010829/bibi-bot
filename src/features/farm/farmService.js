@@ -603,6 +603,32 @@ async function harvestAllCrops(client, { userId, guildId, username, member }) {
   return { ok: true, results, bagFull };
 }
 
+// 一鍵清除所有已枯萎地塊：以即時狀態判定，包含尚未被 cron 寫成 rotted、但 expires_at 已過的作物。
+async function clearRottedCrops(client, { userId, guildId }) {
+  if (!farming?.enabled) return { ok: false, reason: "disabled", cleared: [] };
+  if (!coll(client)) return { ok: false, reason: "disabled", cleared: [] };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const plotCount = getPlotCount(profile);
+  const plots = await getPlots(client, userId, guildId, plotCount);
+  const now = Date.now();
+  const rottedPlots = plots
+    .map((p) => resolveLiveStatus(p, now))
+    .filter((p) => p.crop && p.status === "rotted");
+
+  if (rottedPlots.length === 0) {
+    return { ok: false, reason: "no_rotted_plot", cleared: [] };
+  }
+
+  const indexes = rottedPlots.map((p) => p.plotIndex);
+  await coll(client).deleteMany({ userId, guildId, plotIndex: { $in: indexes } });
+
+  return {
+    ok: true,
+    cleared: rottedPlots.map((p) => ({ plotIndex: p.plotIndex, crop: p.crop })),
+  };
+}
+
 // 施肥：扣材料、套用效果（縮短時間 / 提升收成上限）。
 async function fertilize(client, { userId, guildId, plotIndex, fertilizerKey, count = 1 }) {
   if (!farming?.enabled) return { ok: false, reason: "disabled" };
@@ -1247,6 +1273,7 @@ module.exports = {
   plantAllCrops,
   harvestCrop,
   harvestAllCrops,
+  clearRottedCrops,
   fertilize,
   fertilizeAll,
   previewFertilizeAll,

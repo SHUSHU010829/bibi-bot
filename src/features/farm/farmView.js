@@ -105,6 +105,7 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapB
   const now = Date.now();
   const resolvedPlots = plots.map((p) => resolveLiveStatus(p, now));
   const readyCount = resolvedPlots.filter((p) => p.status === "ready").length;
+  const rottedCount = resolvedPlots.filter((p) => p.crop && p.status === "rotted").length;
   const accent =
     readyCount > 0 ? ACCENT.ready : (resolvedPlots.some((p) => p.status === "raided") ? ACCENT.raided : ACCENT.growing);
 
@@ -112,7 +113,7 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapB
     .setAccentColor(accent)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# 🌾 你的農場（${plotCount} / ${maxPlots} 格${readyCount > 0 ? ` ・ 🌟 ${readyCount} 塊可收成` : ""}）`,
+        `# 🌾 你的農場（${plotCount} / ${maxPlots} 格${readyCount > 0 ? ` ・ 🌟 ${readyCount} 塊可收成` : ""}${rottedCount > 0 ? ` ・ 🥀 ${rottedCount} 塊已枯萎` : ""}）`,
       ),
     );
 
@@ -141,7 +142,7 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapB
 
   const emptyCount = resolvedPlots.filter((p) => !p.crop || p.status === "rotted").length;
   const growingCount = resolvedPlots.filter((p) => p.crop && p.status === "growing").length;
-  if (readyCount >= 2 || emptyCount >= 2 || growingCount >= 2) {
+  if (readyCount >= 2 || rottedCount >= 1 || emptyCount >= 2 || growingCount >= 2) {
     const bulkRow = new ActionRowBuilder();
     if (readyCount >= 2) {
       bulkRow.addComponents(
@@ -150,6 +151,15 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapB
           .setLabel(`一鍵收成全部（${readyCount} 塊）`)
           .setEmoji("🌟")
           .setStyle(ButtonStyle.Success),
+      );
+    }
+    if (rottedCount >= 1) {
+      bulkRow.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`farm_clearrotted_${userId}`)
+          .setLabel(`一鍵清除枯萎（${rottedCount} 塊）`)
+          .setEmoji("🥀")
+          .setStyle(ButtonStyle.Danger),
       );
     }
     if (growingCount >= 2) {
