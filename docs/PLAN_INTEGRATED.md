@@ -707,6 +707,7 @@ GET  /api/v1/admin/donation/stats
 > **前置需求**：Phase 1–4 全部完成 ✅、Opt-5（buffResolver）
 > **預估時間**：4–6 天
 > **定位**：讓花幣有長期方向感，不同玩家有不同的發展路線
+> **整合企劃**：技能樹已在 [`PROFESSION_EXTENDED_PLAN.md`](./PROFESSION_EXTENDED_PLAN.md) 中併入職業系統（三通用線 → 每個職業一條專屬線）；本節保留原始三線設計供對照。
 
 ### 設計概念
 
