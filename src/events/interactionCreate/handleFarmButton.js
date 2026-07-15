@@ -57,6 +57,7 @@ const { deferReplySafe } = require("../../utils/safeAck");
 
 const BTN_PREFIXES = [
   "farm_plantall_", "farm_plant_", "farm_harvestall_", "farm_harvest_",
+  "farm_clearrotted_",
   "farm_fertallcancel_", "farm_fertallcfm_", "farm_fertall_",
   "farm_fertagain_", "farm_fertrest_", "farm_fert_",
   "farm_defend_", "farm_trap_",
@@ -1024,6 +1025,47 @@ module.exports = async (client, interaction) => {
         readyAt: nextReadyAtAll,
       }).catch(() => {});
       return;
+    }
+
+    // ── clearrotted：一鍵清除所有已枯萎地塊 ──
+    if (action === "clearrotted") {
+      if (!(await deferReplySafe(interaction))) return;
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId;
+      const result = await farmService.clearRottedCrops(client, { userId, guildId });
+
+      if (!result.ok) {
+        if (result.reason === "no_rotted_plot") {
+          return replyEphemeralContainer(
+            interaction,
+            errContainer("🌱 沒有已枯萎的地塊", "目前沒有任何需要清除的枯萎作物。", "用 `/農場 查看` 確認最新狀態"),
+          );
+        }
+        return replyEphemeralContainer(
+          interaction,
+          errContainer("🔧 清除失敗", `原因：\`${result.reason}\``, "請稍後再試"),
+        );
+      }
+
+      const cropCounts = new Map();
+      for (const item of result.cleared) {
+        cropCounts.set(item.crop, (cropCounts.get(item.crop) || 0) + 1);
+      }
+      const cropLines = [...cropCounts.entries()].map(([crop, count]) => {
+        const def = farming.crops?.[crop] || {};
+        return `${def.emoji || "🥀"} **${def.name || crop}** ×${count}`;
+      });
+      const c = buildSuccessContainer(
+        "🥀 已清除枯萎作物",
+        [`已清出 **${result.cleared.length}** 塊地：`, ...cropLines, "-# 現在可以回農場重新種植。"].join("\n"),
+        userId,
+        0x7f4a2f,
+      );
+
+      return interaction.editReply({
+        components: [c],
+        flags: MessageFlags.IsComponentsV2,
+      });
     }
 
     // ── harvestall：一鍵收成所有成熟地塊 ──
