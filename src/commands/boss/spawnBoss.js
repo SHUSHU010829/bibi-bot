@@ -1,6 +1,7 @@
 require("colors");
 const {
   SlashCommandBuilder,
+  PermissionFlagsBits,
   InteractionContextType,
   MessageFlags,
 } = require("discord.js");
@@ -16,6 +17,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("spawnboss")
     .setDescription("[DEV] 立刻召喚一隻 BOSS ⚔️")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild)
     .addStringOption((o) =>
       o.setName("名字").setDescription("BOSS 名稱（預設使用 saturdaySpawn 設定）").setRequired(false),

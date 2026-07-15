@@ -10,6 +10,7 @@
 require("colors");
 const {
   SlashCommandBuilder,
+  PermissionFlagsBits,
   InteractionContextType,
   MessageFlags,
 } = require("discord.js");
@@ -24,6 +25,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("donation-admin")
     .setDescription("[DEV ONLY] 抖內管理工具")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild)
     .addSubcommand((sub) =>
       sub.setName("list").setDescription("列出未處理的對應失敗紀錄"),
