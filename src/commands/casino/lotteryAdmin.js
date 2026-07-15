@@ -3,6 +3,7 @@
 require("colors");
 const {
   SlashCommandBuilder,
+  PermissionFlagsBits,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -30,6 +31,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("lotteryadmin")
     .setDescription("[DEV ONLY] 樂透管理工具")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild)
     .addSubcommand((s) =>
       s

@@ -1,6 +1,7 @@
 require("colors");
 const {
   SlashCommandBuilder,
+  PermissionFlagsBits,
   InteractionContextType,
   MessageFlags,
 } = require("discord.js");
@@ -15,6 +16,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("clearboss")
     .setDescription("[DEV] 強制中止當前 BOSS（不結算、不發獎）🧹")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild),
 
   run: async (client, interaction) => {

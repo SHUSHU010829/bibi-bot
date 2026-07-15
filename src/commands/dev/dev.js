@@ -11,6 +11,7 @@
 require("colors");
 const {
   SlashCommandBuilder,
+  PermissionFlagsBits,
   AttachmentBuilder,
   ContainerBuilder,
   TextDisplayBuilder,
@@ -47,6 +48,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("dev")
     .setDescription("[DEV ONLY] 開發者測試工具")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild)
     .addSubcommandGroup((g) =>
       g
