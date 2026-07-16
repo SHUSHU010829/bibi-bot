@@ -21,6 +21,7 @@ function today() {
   return DateTime.now().setZone(tz).toISODate();
 }
 
+// 被拒收 / 逾時 / 取消退回的轉帳（meta.refunded=true）不計入當日次數與額度。
 async function todayCount(client, userId, guildId) {
   if (!client.coinTransactionsCollection) return 0;
   return client.coinTransactionsCollection.countDocuments({
@@ -28,6 +29,7 @@ async function todayCount(client, userId, guildId) {
     guildId,
     source: "transfer_out",
     date: today(),
+    "meta.refunded": { $ne: true },
   });
 }
 
@@ -35,7 +37,7 @@ async function todayOut(client, userId, guildId) {
   if (!client.coinTransactionsCollection) return 0;
   const agg = await client.coinTransactionsCollection
     .aggregate([
-      { $match: { userId, guildId, source: "transfer_out", date: today() } },
+      { $match: { userId, guildId, source: "transfer_out", date: today(), "meta.refunded": { $ne: true } } },
       { $group: { _id: null, total: { $sum: "$meta.amount" } } },
     ])
     .toArray();
@@ -215,6 +217,7 @@ async function deliverTransfer(client, { targetUser, targetMember, guildId, send
 }
 
 // 退回託管的本金 + 手續費（拒收 / 逾時 / 撥款失敗時呼叫）。回傳 { ok, senderAfter }。
+// 同時把當初託管的 transfer_out / transfer_fee 紀錄標記 refunded，讓當日次數 / 額度不計入。
 async function refundTransfer(client, { senderId, guildId, senderName, member, amount, fee, transferId, reason }) {
   const refund = await grantCoins(client, {
     userId: senderId,
@@ -226,6 +229,15 @@ async function refundTransfer(client, { senderId, guildId, senderName, member, a
     meta: { transferId, amount, fee: fee || 0, reason: reason || "refund" },
   });
   if (!refund) return { ok: false };
+
+  if (transferId && client.coinTransactionsCollection) {
+    await client.coinTransactionsCollection
+      .updateMany(
+        { userId: senderId, guildId, "meta.transferId": transferId, source: { $in: ["transfer_out", "transfer_fee"] } },
+        { $set: { "meta.refunded": true } }
+      )
+      .catch(() => {});
+  }
   return { ok: true, senderAfter: refund.doc?.totalCoins };
 }
 

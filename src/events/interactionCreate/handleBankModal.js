@@ -4,14 +4,12 @@ const { MessageFlags } = require("discord.js");
 const { coinSystem } = require("../../config");
 const { ctxOf, renderTab, payload } = require("../../features/bank/bankHandlers");
 const { submitModal, toInt } = require("../../features/bank/bankModals");
-const { performTransfer } = require("../../features/economy/transferService");
+const pendingTransferService = require("../../features/economy/pendingTransferService");
+const { buildOfferContainer } = require("../../features/economy/pendingTransferView");
 const { fmt } = require("../../features/bank/bankView");
 const { deferUpdateSafe } = require("../../utils/safeAck");
 
 function transferNote(res) {
-  if (res.ok) {
-    return `✅ 已轉帳 <@${res.targetId}> **${fmt(res.amount)}**（手續費 ${fmt(res.fee)}），今日 ${res.countAfter}/${res.dailyCount} 次，餘額 ${fmt(res.senderAfter)}`;
-  }
   switch (res.reason) {
     case "tenure_sender":
       return "⚠️ " + (res.message || "你尚未符合轉帳資格");
@@ -31,6 +29,8 @@ function transferNote(res) {
       return `⚠️ 今日轉帳額度已達上限（已轉 ${fmt(res.usedToday)}/${fmt(res.dailyCap)}）`;
     case "tenure_recipient":
       return `⚠️ 對方入伺服器未滿 ${res.minDays} 天，無法收款（防洗幣）`;
+    case "too_many_pending":
+      return `⚠️ 待收轉帳太多（上限 ${res.max} 筆），等對方收下 / 拒收或取消後再送`;
     default:
       return "🔧 轉帳失敗，請稍後再試";
   }
@@ -70,22 +70,48 @@ module.exports = async (client, interaction) => {
         return interaction.editReply(payload(await renderTab(client, ctx, "overview", "⚠️ 請輸入有效金額")));
       }
       const targetMember = await interaction.guild.members.fetch(targetId).catch(() => null);
-      const res = await performTransfer(client, {
+      const res = await pendingTransferService.createCoinOffer(client, {
         senderMember: interaction.member,
         targetMember,
         amount,
         note,
       });
-      // 轉帳成功 → 私訊通知收款人（非阻塞；對方關 DM 就靜默略過）
-      if (res.ok && targetMember?.user) {
-        const senderName = interaction.member?.displayName || interaction.user.username;
-        const guildName = interaction.guild?.name || "伺服器";
-        const noteLine = res.note ? `\n📝 備註：${res.note}` : "";
-        targetMember.user
-          .send(`💸 你在「${guildName}」收到 **${senderName}** 轉帳 **${fmt(res.amount)}** credits！${noteLine}`)
-          .catch(() => {});
+      if (!res.ok) {
+        return interaction.editReply(payload(await renderTab(client, ctx, "overview", transferNote(res))));
       }
-      return interaction.editReply(payload(await renderTab(client, ctx, "overview", transferNote(res))));
+
+      // 先扣款託管成功 → 到頻道發一則「待收轉帳」訊息（收款人可收下 / 拒收）。
+      const { offer, held } = res;
+      let posted = null;
+      try {
+        posted = await interaction.channel?.send({
+          components: [buildOfferContainer(offer)],
+          flags: MessageFlags.IsComponentsV2,
+          allowedMentions: { users: [offer.recipient_id] },
+        });
+      } catch (_) {
+        posted = null;
+      }
+      if (!posted) {
+        // 發訊息失敗（頻道權限等）→ 取消並退回，避免款項卡在託管。
+        await pendingTransferService.cancelOffer(client, { offerId: offer.offer_id }).catch(() => {});
+        return interaction.editReply(
+          payload(await renderTab(client, ctx, "overview", "🔧 無法在此頻道送出待收轉帳，款項已退回，請改用 /轉帳。"))
+        );
+      }
+      await pendingTransferService.setOfferMessage(client, offer.offer_id, posted.channelId, posted.id);
+
+      const note2 = offer.note ? `，備註：${offer.note}` : "";
+      return interaction.editReply(
+        payload(
+          await renderTab(
+            client,
+            ctx,
+            "overview",
+            `📮 已送出待收轉帳給 <@${offer.recipient_id}> **${fmt(held.amount)}**（含手續費 ${fmt(held.fee)}，已預扣，餘額 ${fmt(held.senderAfter)}）${note2}。對方 24 小時內未收下會自動退回；被拒收 / 逾時都不計入當日額度。`
+          )
+        )
+      );
     }
 
     const result = await submitModal(client, ctx, key, interaction);
