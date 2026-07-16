@@ -74,9 +74,9 @@ async function detectPair(client, { guildId, userA, userB, hours, threshold } = 
     }
   }
 
-  if (aToB <= 0 || bToA <= 0) return null; // 必須雙向都有
+  // 對敲＝雙向各自都達到閾值才算（單向大額、另一向零星不算洗幣）
+  if (aToB < min || bToA < min) return null;
   const total = aToB + bToA;
-  if (total < min) return null;
 
   return {
     userA,
@@ -140,9 +140,9 @@ async function scanAllPairs(client, { guildId, hours, threshold } = {}) {
 
   const out = [];
   for (const p of pairs.values()) {
-    if (p.aToB <= 0 || p.bToA <= 0) continue;
+    // 對敲＝雙向各自都達到閾值才算
+    if (p.aToB < min || p.bToA < min) continue;
     const total = p.aToB + p.bToA;
-    if (total < min) continue;
     out.push({ ...p, total, threshold: min, hours: lookback });
   }
   // 由總額大到小
@@ -306,7 +306,7 @@ function fireEventPayoutCheck(client, { guildId, hostId, winnerIds }) {
       for (const winnerId of winnerIds || []) {
         if (!winnerId || winnerId === hostId || flagged.has(winnerId)) continue;
         const { aToB, bToA, total } = pairTotalFromEdges(edges, hostId, winnerId);
-        if (aToB > 0 && bToA > 0 && total >= threshold) {
+        if (aToB >= threshold && bToA >= threshold) {
           flagged.add(winnerId);
           await raiseSuspicion(client, {
             guildId,

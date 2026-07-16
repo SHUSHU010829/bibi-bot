@@ -88,8 +88,10 @@ module.exports = async (client, interaction) => {
       return interaction.editReply(payload(await renderTab(client, ctx, "overview", transferNote(res))));
     }
 
-    const { tab, note } = await submitModal(client, ctx, key, interaction);
-    const container = await renderTab(client, ctx, tab || "overview", note);
+    const result = await submitModal(client, ctx, key, interaction);
+    // 需要二次確認的動作（提前解約）直接回傳現成 Container。
+    if (result.container) return interaction.editReply(payload(result.container));
+    const container = await renderTab(client, ctx, result.tab || "overview", result.note);
     return interaction.editReply(payload(container));
   } catch (error) {
     console.log(`[ERROR] handleBankModal:\n${error}\n${error.stack}`.red);

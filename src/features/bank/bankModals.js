@@ -10,7 +10,7 @@ const { bank, coinSystem } = require("../../config");
 const goldService = require("./goldService");
 const loanService = require("./loanService");
 const depositService = require("./depositService");
-const { fmt } = require("./bankView");
+const { fmt, earlyWithdrawConfirm } = require("./bankView");
 
 const U = () => bank?.gold?.unitLabel || "克";
 
@@ -136,6 +136,16 @@ const ACTIONS = {
     fields: [{ id: "depositId", label: "存單 ID（未到期會扣違約金）", placeholder: "dep_xxxxxxxx" }],
     submit: async (client, ctx, v) => {
       const depositId = String(v.depositId || "").trim();
+      const pre = await depositService.previewClaim(client, { ...ctx, depositId });
+      if (!pre.ok) {
+        if (pre.reason === "notfound") return { tab: "deposit", note: "⚠️ 找不到此存單" };
+        if (pre.reason === "claimed") return { tab: "deposit", note: "⚠️ 此存單已領過" };
+        return { tab: "deposit", note: "🔧 領回失敗，請稍後再試" };
+      }
+      // 未到期＝提前解約，會扣違約金＋信用分 → 先跳確認，不直接執行。
+      if (!pre.matured) {
+        return { container: earlyWithdrawConfirm({ ownerId: ctx.userId, ...pre }) };
+      }
       const res = await depositService.claim(client, { ...ctx, depositId });
       if (!res.ok) {
         if (res.reason === "notfound") return { tab: "deposit", note: "⚠️ 找不到此存單" };
@@ -144,9 +154,7 @@ const ACTIONS = {
       }
       return {
         tab: "deposit",
-        note: res.matured
-          ? `✅ 已領回 \`${depositId}\`：本金 ${fmt(res.principal)}＋息 ${fmt(res.interest)} = **${fmt(res.payout)}**`
-          : `⚠️ 提早解約 \`${depositId}\`：扣違約金 ${fmt(res.penaltyAmount)}，實領 **${fmt(res.payout)}**`,
+        note: `✅ 已領回 \`${depositId}\`：本金 ${fmt(res.principal)}＋息 ${fmt(res.interest)} = **${fmt(res.payout)}**`,
       };
     },
   },

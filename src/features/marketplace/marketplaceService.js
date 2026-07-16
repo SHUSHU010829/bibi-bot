@@ -1450,6 +1450,7 @@ module.exports = {
   createAuctionListing,
   createBulkListing,
   getBulkPreview,
+  minSellPriceFor,
   buyNow,
   acceptBarter,
   fulfillWant,

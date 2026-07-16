@@ -102,6 +102,27 @@ module.exports = async (client, interaction) => {
         : `✅ 貸款 \`${loanId}\` 已全部還清！\n-# 持有未滿 ${loanService.cfg().creditMinHoldDays ?? 0} 天，本次未累積信用分`);
     }
 
+    // 取消提前解約
+    if (action === "depclaimcancel") {
+      return show("deposit", "↩️ 已取消，存單仍在鎖定中");
+    }
+
+    // 提前解約確認：玩家已看過扣違約金＋信用分的警示，這裡才真正執行。
+    if (action.startsWith("depclaimconfirm_")) {
+      const depositId = action.slice("depclaimconfirm_".length);
+      const res = await depositService.claim(client, { ...ctx, depositId });
+      if (!res.ok) {
+        if (res.reason === "claimed") return show("deposit", "⚠️ 此存單已領過");
+        if (res.reason === "notfound") return show("deposit", "⚠️ 找不到此存單");
+        return show("deposit", "🔧 領回失敗，請稍後再試");
+      }
+      if (res.matured) {
+        return show("deposit", `✅ 已領回 \`${depositId}\`：本金 ${fmt(res.principal)}＋息 ${fmt(res.interest)} = **${fmt(res.payout)}**`);
+      }
+      const creditNote = res.creditPenalty > 0 ? `，信用分 −${res.creditPenalty}` : "";
+      return show("deposit", `⚠️ 已提前解約 \`${depositId}\`：扣違約金 ${fmt(res.penaltyAmount)}，實領 **${fmt(res.payout)}**${creditNote}`);
+    }
+
     // 領回到期定存
     if (action.startsWith("depclaim_")) {
       const depositId = action.slice("depclaim_".length);
