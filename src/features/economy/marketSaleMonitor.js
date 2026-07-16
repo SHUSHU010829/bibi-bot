@@ -33,6 +33,34 @@ async function medianUnitPrice(client, guildId, itemType, itemKey) {
   return { median: median(prices), samples: prices.length };
 }
 
+// 上架前的行情/風險評估（唯讀，不記錄樣本）：用「近期成交中位」判斷單價偏離程度，
+// 並沿用反洗幣同一組閾值，預測「若以此價成交是否會被判定為變相轉帳」。
+async function assessListingPrice(client, { guildId, itemType, itemKey, unitPrice, qty }) {
+  const { median: med, samples } = await medianUnitPrice(client, guildId, itemType, itemKey);
+  const minSamples = cfg().minSamples ?? 5;
+  const usingMedian = samples >= minSamples && med > 0;
+  const overpayRatio = cfg().overpayRatio ?? 5;
+  const overpayAbs = cfg().overpayAbs ?? 30000;
+  let ratio = null;
+  let overpay = null;
+  let wouldFlag = false;
+  if (usingMedian && unitPrice > 0 && qty > 0) {
+    ratio = unitPrice / med;
+    overpay = Math.round(unitPrice * qty - med * qty);
+    wouldFlag = cfg().enabled !== false && ratio >= overpayRatio && overpay >= overpayAbs;
+  }
+  return {
+    median: med,
+    samples,
+    usingMedian,
+    ratio,
+    overpay,
+    wouldFlag,
+    overpayRatio,
+    medianDays: cfg().medianDays ?? 30,
+  };
+}
+
 // 成交後呼叫（非阻塞）：先比對參考價偵測溢價，再記錄本次樣本。
 function recordAndCheck(client, sale) {
   Promise.resolve()
@@ -92,4 +120,4 @@ function recordAndCheck(client, sale) {
     .catch((e) => console.log(`[MKT-LAUNDER] 偵測失敗: ${e?.message || e}`.red));
 }
 
-module.exports = { recordAndCheck, medianUnitPrice };
+module.exports = { recordAndCheck, medianUnitPrice, assessListingPrice };
