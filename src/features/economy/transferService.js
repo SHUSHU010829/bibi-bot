@@ -42,7 +42,9 @@ async function todayOut(client, userId, guildId) {
   return agg[0]?.total || 0;
 }
 
-async function performTransfer(client, { senderMember, targetMember, amount, note }) {
+// 轉帳前的唯讀驗證：不動任何資料，回傳 { ok:true, ...ctx } 或 { ok:false, reason }。
+// 供 /轉帳 建立待收邀請時先驗證，以及 performTransfer 實際執行前重跑一次。
+async function precheckTransfer(client, { senderMember, targetMember, amount, note }) {
   const cfg = coinSystem?.transfer;
   if (!coinSystem?.enabled) return { ok: false, reason: "disabled_system" };
   if (!cfg?.enabled) return { ok: false, reason: "disabled_feature" };
@@ -90,6 +92,49 @@ async function performTransfer(client, { senderMember, targetMember, amount, not
     return { ok: false, reason: "tenure_recipient", minDays: recipientTenure.minDays, eligibleEpoch: recipientTenure.eligibleEpoch };
   }
 
+  return {
+    ok: true,
+    senderId,
+    guildId,
+    senderName,
+    target,
+    note2,
+    fee,
+    feeRate,
+    totalDeduct,
+    balance,
+    countToday,
+    usedToday,
+    dailyCap,
+    dailyCount,
+    creditEnabled,
+  };
+}
+
+// 託管：扣寄件方本金 + 手續費（先託管，尚未撥給收款人）。
+// 用於 /轉帳 建立待收邀請時先扣款；收款人按「收下」才 deliverTransfer，
+// 拒收 / 逾時則 refundTransfer 退回本金 + 手續費。
+async function holdTransfer(client, { senderMember, targetMember, amount, note }) {
+  const pre = await precheckTransfer(client, { senderMember, targetMember, amount, note });
+  if (!pre.ok) return pre;
+
+  const {
+    senderId,
+    guildId,
+    senderName,
+    target,
+    note2,
+    fee,
+    feeRate,
+    totalDeduct,
+    balance,
+    countToday,
+    usedToday,
+    dailyCap,
+    dailyCount,
+    creditEnabled,
+  } = pre;
+
   const transferId = `xfer-${DateTime.now().toMillis()}-${senderId}-${target.id}`;
 
   const debit = await grantCoins(client, {
@@ -100,7 +145,7 @@ async function performTransfer(client, { senderMember, targetMember, amount, not
     amount: -amount,
     source: "transfer_out",
     member: senderMember,
-    meta: { transferId, counterparty: target.id, amount, fee, note: note2 || null },
+    meta: { transferId, counterparty: target.id, amount, fee, note: note2 || null, held: true },
   });
   if (!debit) return { ok: false, reason: "debit" };
 
@@ -114,7 +159,7 @@ async function performTransfer(client, { senderMember, targetMember, amount, not
       amount: -fee,
       source: "transfer_fee",
       member: senderMember,
-      meta: { transferId, counterparty: target.id, amount, feeRate },
+      meta: { transferId, counterparty: target.id, amount, feeRate, held: true },
     });
     if (!feeDebit) {
       await grantCoins(client, {
@@ -129,28 +174,6 @@ async function performTransfer(client, { senderMember, targetMember, amount, not
     }
   }
 
-  const credit = await grantCoins(client, {
-    userId: target.id,
-    guildId,
-    username: target.username,
-    avatarHash: target.avatar,
-    amount,
-    source: "transfer_in",
-    member: targetMember,
-    meta: { transferId, counterparty: senderId, amount, note: note2 || null },
-  });
-  if (!credit) {
-    await grantCoins(client, {
-      userId: senderId,
-      guildId,
-      username: senderName,
-      amount: totalDeduct,
-      source: "admin",
-      meta: { reason: `transfer rollback: ${transferId}`, operatorId: "system" },
-    }).catch(() => {});
-    return { ok: false, reason: "credit_fail" };
-  }
-
   fireSuspiciousTransferCheck(client, { guildId, senderId, recipientId: target.id });
   if (creditEnabled) {
     creditService.award(client, senderId, guildId, "transfer_complete", { member: senderMember }).catch(() => {});
@@ -158,6 +181,10 @@ async function performTransfer(client, { senderMember, targetMember, amount, not
 
   return {
     ok: true,
+    transferId,
+    senderId,
+    guildId,
+    senderName,
     targetId: target.id,
     amount,
     fee,
@@ -171,4 +198,85 @@ async function performTransfer(client, { senderMember, targetMember, amount, not
   };
 }
 
-module.exports = { performTransfer, computeFee };
+// 撥款給收款人（收下時呼叫）。回傳 { ok, recipientAfter }。
+async function deliverTransfer(client, { targetUser, targetMember, guildId, senderId, amount, note, transferId }) {
+  const credit = await grantCoins(client, {
+    userId: targetUser.id,
+    guildId,
+    username: targetUser.username,
+    avatarHash: targetUser.avatar,
+    amount,
+    source: "transfer_in",
+    member: targetMember,
+    meta: { transferId, counterparty: senderId, amount, note: note || null },
+  });
+  if (!credit) return { ok: false };
+  return { ok: true, recipientAfter: credit.doc?.totalCoins };
+}
+
+// 退回託管的本金 + 手續費（拒收 / 逾時 / 撥款失敗時呼叫）。回傳 { ok, senderAfter }。
+async function refundTransfer(client, { senderId, guildId, senderName, member, amount, fee, transferId, reason }) {
+  const refund = await grantCoins(client, {
+    userId: senderId,
+    guildId,
+    username: senderName,
+    member,
+    amount: amount + (fee || 0),
+    source: "transfer_refund",
+    meta: { transferId, amount, fee: fee || 0, reason: reason || "refund" },
+  });
+  if (!refund) return { ok: false };
+  return { ok: true, senderAfter: refund.doc?.totalCoins };
+}
+
+// 立即轉帳（託管 + 立刻撥款）。/銀行 快速轉帳仍走這條；撥款失敗自動退款。
+async function performTransfer(client, { senderMember, targetMember, amount, note }) {
+  const held = await holdTransfer(client, { senderMember, targetMember, amount, note });
+  if (!held.ok) return held;
+
+  const delivered = await deliverTransfer(client, {
+    targetUser: targetMember.user,
+    targetMember,
+    guildId: held.guildId,
+    senderId: held.senderId,
+    amount: held.amount,
+    note: held.note,
+    transferId: held.transferId,
+  });
+  if (!delivered.ok) {
+    await refundTransfer(client, {
+      senderId: held.senderId,
+      guildId: held.guildId,
+      senderName: held.senderName,
+      member: senderMember,
+      amount: held.amount,
+      fee: held.fee,
+      transferId: held.transferId,
+      reason: "deliver_failed",
+    }).catch(() => {});
+    return { ok: false, reason: "credit_fail" };
+  }
+
+  return {
+    ok: true,
+    targetId: held.targetId,
+    amount: held.amount,
+    fee: held.fee,
+    feeRate: held.feeRate,
+    note: held.note,
+    senderAfter: held.senderAfter,
+    usedTodayAfter: held.usedTodayAfter,
+    dailyCap: held.dailyCap,
+    countAfter: held.countAfter,
+    dailyCount: held.dailyCount,
+  };
+}
+
+module.exports = {
+  performTransfer,
+  precheckTransfer,
+  holdTransfer,
+  deliverTransfer,
+  refundTransfer,
+  computeFee,
+};

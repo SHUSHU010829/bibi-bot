@@ -7,7 +7,8 @@ const {
 const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { errorContainer } = require("../../features/bank/bankView");
-const { performTransfer } = require("../../features/economy/transferService");
+const pendingTransferService = require("../../features/economy/pendingTransferService");
+const { buildOfferContainer } = require("../../features/economy/pendingTransferView");
 
 function errPayload(opts) {
   return {
@@ -44,7 +45,7 @@ module.exports = {
       const note = interaction.options.getString("備註") || "";
 
       const targetMember = await interaction.guild.members.fetch(target.id).catch(() => null);
-      const res = await performTransfer(client, {
+      const res = await pendingTransferService.createCoinOffer(client, {
         senderMember: interaction.member,
         targetMember,
         amount,
@@ -53,14 +54,26 @@ module.exports = {
 
       if (!res.ok) return interaction.editReply(renderError(res));
 
-      const noteLine = res.note ? `\n📝 備註：${res.note}` : "";
-      return interaction.editReply(
-        `✅ 已轉帳 <@${res.targetId}> **${res.amount.toLocaleString()}** credits（手續費 ${res.fee.toLocaleString()}・${(res.feeRate * 100).toFixed(0)}%）\n` +
-          `・你的餘額：**${res.senderAfter.toLocaleString()}**\n` +
-          `・今日累計轉出：${res.usedTodayAfter.toLocaleString()} / ${res.dailyCap.toLocaleString()}\n` +
-          `・今日轉帳次數：${res.countAfter} / ${res.dailyCount}` +
-          noteLine,
-      );
+      const { offer, held } = res;
+      await interaction.editReply({
+        components: [buildOfferContainer(offer)],
+        flags: MessageFlags.IsComponentsV2,
+        allowedMentions: { users: [offer.recipient_id] },
+      });
+      const reply = await interaction.fetchReply().catch(() => null);
+      if (reply) {
+        await pendingTransferService.setOfferMessage(client, offer.offer_id, reply.channelId, reply.id);
+      }
+
+      await interaction
+        .followUp({
+          content:
+            `💸 已預扣 **${(held.amount + held.fee).toLocaleString()}** ${MONEY_EMOJI}（本金 ${held.amount.toLocaleString()} + 手續費 ${held.fee.toLocaleString()}），等待 <@${offer.recipient_id}> 收下。\n` +
+            `・你的餘額：**${held.senderAfter.toLocaleString()}**\n` +
+            `・對方 24 小時內未回覆、或按下拒收，會全額退回給你；你也可以按「寄件方取消」立即取回。`,
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
     } catch (error) {
       console.log(`[ERROR] /轉帳:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 轉帳失敗，請呼叫舒舒！").catch(() => {});
@@ -84,6 +97,12 @@ function renderError(res) {
       return "❌ 不能轉給 bot 啦。";
     case "self":
       return "❌ 不能轉給自己。";
+    case "too_many_pending":
+      return errPayload({
+        title: "📮 待收轉帳太多",
+        detail: `你目前有太多筆「等待對方收下」的轉帳（上限 **${res.max}** 筆）。`,
+        hint: "等對方收下 / 拒收，或到原訊息按「寄件方取消」取回後再送。",
+      });
     case "range": {
       const tierLine = res.limits ? `\n-# 你的信用評等：${res.limits.tier.emoji} ${res.limits.tier.name}（信用分 ${res.limits.score}）` : "";
       return errPayload({

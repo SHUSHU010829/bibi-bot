@@ -1,13 +1,9 @@
 require("colors");
 const { DateTime } = require("luxon");
 const {
-  ContainerBuilder,
-  TextDisplayBuilder,
-  SeparatorBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  MessageFlags,
 } = require("discord.js");
 const { mining, gift, commandChannels, normalChannelId } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
@@ -15,19 +11,8 @@ const { priceOf } = require("./overflowConfirm");
 const inventory = require("../barter/inventoryAdapter");
 const { getItemDef } = require("../barter/itemCatalog");
 const grantCoins = require("../economy/grantCoins");
-const { COIN_EMOJI } = require("../../constants/coin");
 
 const TZ = "Asia/Taipei";
-
-// 對方關閉私訊時靜默失敗，不影響贈送流程。
-async function dmRecipient(client, recipientId, payload) {
-  try {
-    const user = await client.users.fetch(recipientId);
-    await user.send(payload);
-  } catch (err) {
-    console.log(`[WARN] gift DM 失敗（${recipientId}）：${err?.message || err}`.yellow);
-  }
-}
 
 // 依物品類型回傳對應頻道的「前往頻道」按鈕；找不到頻道則回 null。
 function giftChannelButtonRow(guildId, type) {
@@ -49,14 +34,19 @@ function giveCfg() {
   return gift || {};
 }
 
-// 贈送物品（礦石 / 作物 / 魚）給其他玩家。
-// 無手續費、每日有次數上限、不能送自己。
-// allowOverflow=true：對方背包放不下時（僅礦石有容量上限），能放多少放多少，
-// 溢出折成系統收購價金幣存入對方錢包。
-async function giveItem(
-  client,
-  { giverId, giverName, guildId, recipientId, recipientName, type, key, qty, allowOverflow = false }
-) {
+function bagPath(type, key) {
+  if (type === "ore") return `backpack.${key}`;
+  if (type === "crop") return `veggie_bag.${key}`;
+  if (type === "fish") return `fish_bag.${key}`;
+  return null;
+}
+
+function todayISO() {
+  return DateTime.now().setZone(TZ).toISODate();
+}
+
+// 贈送前的唯讀驗證：不動任何資料。回傳 { ok, itemDef, have, usedToday, dailyMax } 或 { ok:false, reason }。
+async function precheckGift(client, { giverId, guildId, type, key, qty }) {
   const c = giveCfg();
   if (!mining?.enabled || !c.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
@@ -66,8 +56,7 @@ async function giveItem(
   if (!Number.isFinite(qty) || qty <= 0) return { ok: false, reason: "bad_qty" };
 
   const giver = await getOrCreate(client, giverId, guildId);
-
-  const today = DateTime.now().setZone(TZ).toISODate();
+  const today = todayISO();
   const usedToday = giver.gift_date === today ? giver.gift_count || 0 : 0;
   const dailyMax = c.dailyMaxGives ?? 3;
   if (usedToday >= dailyMax) {
@@ -82,42 +71,57 @@ async function giveItem(
   }
 
   const have = inventory.readQty(giver, type, key);
-  if (have < qty) {
-    return { ok: false, reason: "insufficient", have, itemDef };
-  }
+  if (have < qty) return { ok: false, reason: "insufficient", have, itemDef };
 
-  // 容量檢查：只有礦石有 slot 上限，作物 / 魚為 map 結構無上限。
+  return { ok: true, itemDef, have, usedToday, dailyMax };
+}
+
+// 託管：扣送禮方的物品 + 消耗當日贈送次數（尚未交付給收禮方）。
+// 收禮方按「收下」才 deliverGift；拒收 / 逾時則 refundGift 退回物品與次數。
+async function holdGift(client, { giverId, guildId, type, key, qty }) {
+  const pre = await precheckGift(client, { giverId, guildId, type, key, qty });
+  if (!pre.ok) return pre;
+
+  const today = todayISO();
+  await client.miningProfilesCollection.updateOne(
+    { userId: giverId, guildId },
+    {
+      $inc: { [bagPath(type, key)]: -qty },
+      $set: { gift_date: today, gift_count: pre.usedToday + 1, updatedAt: new Date() },
+    }
+  );
+
+  return {
+    ok: true,
+    itemDef: pre.itemDef,
+    usedToday: pre.usedToday + 1,
+    dailyMax: pre.dailyMax,
+  };
+}
+
+// 交付物品給收禮方（收下時呼叫）。礦石若對方背包放不下，溢出折系統收購價金幣。
+// 回傳 { ok, itemDef, deliveredQty, overflowQty, overflowCoins }。
+async function deliverGift(client, { recipientId, recipientName, guildId, type, key, qty }) {
+  const itemDef = getItemDef(type, key);
+  if (!itemDef) return { ok: false, reason: "no_item" };
+
   let deliveredQty = qty;
   let overflowQty = 0;
-  let cap = 0;
-  let used = 0;
   if (type === "ore") {
     const recipient = await getOrCreate(client, recipientId, guildId);
-    cap = backpackCapacity(recipient, mining);
-    used = backpackUsed(recipient);
+    const cap = backpackCapacity(recipient, mining);
+    const used = backpackUsed(recipient);
     const space = Math.max(0, cap - used);
     if (used + qty > cap) {
-      if (!allowOverflow) {
-        return { ok: false, reason: "recipient_full", cap, used, itemDef };
-      }
       deliveredQty = space;
       overflowQty = qty - space;
     }
   }
   const overflowCoins = overflowQty > 0 ? priceOf(key) * overflowQty : 0;
 
-  await client.miningProfilesCollection.updateOne(
-    { userId: giverId, guildId },
-    {
-      $inc: { [bagPath(type, key)]: -qty },
-      $set: { gift_date: today, gift_count: usedToday + 1, updatedAt: new Date() },
-    }
-  );
-
   if (deliveredQty > 0) {
     await inventory.add(client, recipientId, guildId, type, key, deliveredQty);
   }
-
   if (overflowCoins > 0) {
     await grantCoins(client, {
       userId: recipientId,
@@ -125,62 +129,33 @@ async function giveItem(
       username: recipientName,
       amount: overflowCoins,
       source: "gift_overflow",
-      meta: { giverId, type, key, overflowQty },
+      meta: { type, key, overflowQty },
     }).catch((e) => console.log(`[ERROR] gift overflow grantCoins: ${e}`.red));
   }
 
-  const guild =
-    client.guilds.cache.get(guildId) ||
-    (await client.guilds.fetch(guildId).catch(() => null));
-  const guildName = guild?.name || "伺服器";
-  const container = new ContainerBuilder()
-    .setAccentColor(0xfaa61a)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("### 🎁 收到一份禮物！")
-    )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `你在 **${guildName}** 收到 **${giverName || "某位玩家"}** 送的\n` +
-          `**${itemDef.emoji} ${itemDef.name} ×${deliveredQty || qty}**`
-      )
-    );
-  if (overflowQty > 0) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        deliveredQty > 0
-          ? `🎒 背包只放得下 **${deliveredQty}** 顆，剩下 **${overflowQty}** 顆折成 **+${overflowCoins.toLocaleString()}** ${COIN_EMOJI} 入帳。`
-          : `🎒 背包已滿，全部折成 **+${overflowCoins.toLocaleString()}** ${COIN_EMOJI} 入帳。`
-      )
+  return { ok: true, itemDef, deliveredQty, overflowQty, overflowCoins };
+}
+
+// 退回託管的物品給送禮方（拒收 / 逾時 / 交付失敗時呼叫），並退還當日贈送次數。
+async function refundGift(client, { giverId, guildId, type, key, qty }) {
+  await inventory.add(client, giverId, guildId, type, key, qty);
+
+  const giver = await client.miningProfilesCollection
+    .findOne({ userId: giverId, guildId })
+    .catch(() => null);
+  if (giver && giver.gift_date === todayISO() && (giver.gift_count || 0) > 0) {
+    await client.miningProfilesCollection.updateOne(
+      { userId: giverId, guildId },
+      { $inc: { gift_count: -1 }, $set: { updatedAt: new Date() } }
     );
   }
-  const row = giftChannelButtonRow(guildId, type);
-  if (row) container.addActionRowComponents(row);
-  dmRecipient(client, recipientId, {
-    components: [container],
-    flags: MessageFlags.IsComponentsV2,
-  });
-
-  return {
-    ok: true,
-    type,
-    key,
-    itemDef,
-    qty,
-    deliveredQty,
-    overflowQty,
-    overflowCoins,
-    recipientName,
-    usedToday: usedToday + 1,
-    dailyMax,
-  };
+  return { ok: true };
 }
 
-function bagPath(type, key) {
-  if (type === "ore") return `backpack.${key}`;
-  if (type === "crop") return `veggie_bag.${key}`;
-  if (type === "fish") return `fish_bag.${key}`;
-  return null;
-}
-
-module.exports = { giveItem };
+module.exports = {
+  precheckGift,
+  holdGift,
+  deliverGift,
+  refundGift,
+  giftChannelButtonRow,
+};

@@ -159,7 +159,9 @@
       "cooldownSeconds": 0,
       "suspiciousThreshold": 60000,
       "ringMinEdge": 50000,
-      "ringMaxLen": 4
+      "ringMaxLen": 4,
+      "offerExpiresHours": 24,
+      "maxPendingPerUser": 10
     },
     "dailyEconomyReport": {
       "enabled": false,

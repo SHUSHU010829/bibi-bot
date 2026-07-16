@@ -1,6 +1,8 @@
 {
   "gift": {
     "enabled": true,
-    "dailyMaxGives": 10
+    "dailyMaxGives": 10,
+    "offerExpiresHours": 24,
+    "maxPendingPerUser": 10
   }
 }
