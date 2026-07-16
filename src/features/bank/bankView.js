@@ -2,6 +2,9 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } = require("discord.js");
 
 const COLOR = {
@@ -86,4 +89,42 @@ function creditCard(limits, displayName) {
   return c;
 }
 
-module.exports = { COLOR, fmt, errorContainer, progressBar, creditCard };
+// 提前解約二次確認（UX #2）：會扣違約金＋信用分的動作，先讓玩家確認。
+function earlyWithdrawConfirm({ ownerId, depositId, principal, penaltyAmount, payout, creditPenalty }) {
+  const c = new ContainerBuilder()
+    .setAccentColor(COLOR.red)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("# ⚠️ 確認提前解約？"))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `存單 \`${depositId}\` **尚未到期**，現在解約將扣：\n` +
+          `💸 違約金 **${fmt(penaltyAmount)}**（本金 ${fmt(principal)} → 實領 **${fmt(payout)}**）` +
+          (creditPenalty > 0 ? `\n📊 信用分 **−${creditPenalty}**` : ""),
+      ),
+    );
+
+  c.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      creditPenalty > 0
+        ? "-# 信用分影響轉帳額度、貸款額度與定存開戶數，扣分後需要時間才能累積回來。等到期領回可拿回本金＋利息。"
+        : "-# 等到期領回可拿回本金＋利息，不會被扣違約金。",
+    ),
+  );
+
+  c.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`bank_${ownerId}_depclaimconfirm_${depositId}`)
+        .setLabel("確認提前解約")
+        .setEmoji("⚠️")
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId(`bank_${ownerId}_depclaimcancel`)
+        .setLabel("取消")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+  return c;
+}
+
+module.exports = { COLOR, fmt, errorContainer, progressBar, creditCard, earlyWithdrawConfirm };

@@ -24,6 +24,49 @@ function termChoices() {
   }));
 }
 
+function earlyPenaltyAmount(principal) {
+  const penaltyRate = cfg().earlyWithdrawPenaltyRate ?? 0.1;
+  return Math.floor(principal * penaltyRate);
+}
+
+// 提前解約會扣的信用分（config 名目值，正數；credit 未啟用回 0）。
+function earlyCreditPenalty() {
+  if (!bank?.credit?.enabled) return 0;
+  return Math.abs((creditService.cfg().scoring || {}).early_withdraw || 0);
+}
+
+// 不寫入、只算「若現在領回會發生什麼」，給二次確認用。
+async function previewClaim(client, { userId, guildId, depositId }) {
+  const doc = await client.coinDepositsCollection.findOne({ depositId, userId, guildId });
+  if (!doc) return { ok: false, reason: "notfound" };
+  if (doc.status !== "active") return { ok: false, reason: "claimed" };
+
+  const matured = new Date(doc.maturesAt).getTime() <= Date.now();
+  if (matured) {
+    return {
+      ok: true,
+      matured: true,
+      depositId,
+      principal: doc.principal,
+      interest: doc.interest,
+      payout: doc.principal + doc.interest,
+      penaltyAmount: 0,
+      creditPenalty: 0,
+    };
+  }
+  const penaltyAmount = earlyPenaltyAmount(doc.principal);
+  return {
+    ok: true,
+    matured: false,
+    depositId,
+    principal: doc.principal,
+    interest: doc.interest,
+    payout: Math.max(0, doc.principal - penaltyAmount),
+    penaltyAmount,
+    creditPenalty: earlyCreditPenalty(),
+  };
+}
+
 async function maxActive(client, userId, guildId, member) {
   const slotBonus = twitchPerks.resolvePerks(member)?.depositSlotBonus || 0;
   const creditBonus = bank?.credit?.enabled
@@ -113,8 +156,7 @@ async function claim(client, { userId, guildId, username, member, avatarHash, de
   if (matured) {
     payout = doc.principal + doc.interest;
   } else {
-    const penaltyRate = cfg().earlyWithdrawPenaltyRate ?? 0.1;
-    penaltyAmount = Math.floor(doc.principal * penaltyRate);
+    penaltyAmount = earlyPenaltyAmount(doc.principal);
     payout = Math.max(0, doc.principal - penaltyAmount);
   }
 
@@ -167,7 +209,16 @@ async function claim(client, { userId, guildId, username, member, avatarHash, de
     else creditService.penalize(client, userId, guildId, "early_withdraw", 1).catch(() => {});
   }
 
-  return { ok: true, matured, payout, penaltyAmount, principal: doc.principal, interest: doc.interest, depositId };
+  return {
+    ok: true,
+    matured,
+    payout,
+    penaltyAmount,
+    principal: doc.principal,
+    interest: doc.interest,
+    depositId,
+    creditPenalty: matured ? 0 : earlyCreditPenalty(),
+  };
 }
 
-module.exports = { cfg, termRate, termChoices, maxActive, open, list, claim };
+module.exports = { cfg, termRate, termChoices, maxActive, open, list, previewClaim, claim };

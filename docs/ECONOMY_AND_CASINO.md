@@ -298,7 +298,7 @@ amount          = floor(baseAmount × totalMultiplier)
 | `feeRateHigh` | 5% |
 | `highFeeThreshold` | 1,000（> 1,000 套 5%，否則 2%） |
 | `cooldownSeconds` | 1,800（30 分鐘） |
-| `suspiciousThreshold` | 5,000（雙向總額觸發告警） |
+| `suspiciousThreshold` | 5,000（雙向各方向各自達標才告警） |
 
 **手續費公式**
 
@@ -324,7 +324,7 @@ totalDeduct = amount + fee   // 從發送者扣
 **雙向轉帳告警**（防互相洗）
 
 - `suspiciousTransferDetector.js`，掃過去 24 小時 A↔B 雙向 `transfer_out`
-- 雙向總額 ≥ 5,000 → 寫入 `coinSystem.adminGrant.auditLogChannelId` 或 `dailyEconomyReport.channelId`
+- A→B 與 B→A **各自** ≥ 5,000（雙向都達標）→ 寫入 `coinSystem.adminGrant.auditLogChannelId` 或 `dailyEconomyReport.channelId`
 
 ---
 
@@ -1470,7 +1470,7 @@ floor 至兩位小數，最低 1.01
 | 開台聊天 XP / 金幣單場上限 | `twitchSync.perSessionXpCap` / `coinPayout.perSessionCap`（各 1,000，sessionId 冪等） |
 | 轉帳冷卻 30 分鐘 | `transfer.cooldownSeconds` |
 | 轉帳每日上限 20,000 | `transfer.dailyCapPerSender` |
-| 雙向轉帳偵測（24h ≥ 5,000） | `suspiciousTransferDetector` |
+| 雙向轉帳偵測（24h 兩向各自 ≥ 5,000） | `suspiciousTransferDetector` |
 | 管理員每日 500,000 上限 | `adminGrant.dailyCapPerAdmin` |
 | 財富稅每週累進課稅（2%~70%） | `wealthTax.brackets`（免稅額 50k） |
 | 股市手續費 / 持股上限 | `feeRate` 1%（買賣皆收）、`maxSharesPerUser` 500、僅開盤可下單 |
