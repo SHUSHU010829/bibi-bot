@@ -129,6 +129,9 @@ module.exports = async (client) => {
     // 玩家轉帳每日額度（記每日轉出總額）
     const coinTransfersCollection = database.collection("CoinTransfers");
 
+    // 待收轉帳 / 贈送（收帳者可拒收，24 小時未答覆自動退回，收下才真正扣款/扣物）
+    const pendingTransfersCollection = database.collection("PendingTransfers");
+
     // 定期存款
     const coinDepositsCollection = database.collection("CoinDeposits");
 
@@ -324,6 +327,7 @@ module.exports = async (client) => {
     client.lotteryWheelsCollection = lotteryWheelsCollection;
     client.jackpotPoolCollection = jackpotPoolCollection;
     client.coinTransfersCollection = coinTransfersCollection;
+    client.pendingTransfersCollection = pendingTransfersCollection;
     client.coinDepositsCollection = coinDepositsCollection;
     client.creditProfilesCollection = creditProfilesCollection;
     client.goldHoldingsCollection = goldHoldingsCollection;
@@ -768,6 +772,27 @@ module.exports = async (client) => {
       await coinTransactionsCollection.createIndex(
         { createdAt: 1 },
         { expireAfterSeconds: 30 * 24 * 60 * 60, name: "coin_ttl_30d" }
+      );
+
+      // 待收轉帳 / 贈送索引
+      await pendingTransfersCollection.createIndex(
+        { offer_id: 1 },
+        { unique: true, name: "uniq_pending_transfer_id" }
+      );
+      // 到期掃描：撈 pending 且已過期
+      await pendingTransfersCollection.createIndex(
+        { status: 1, expires_at: 1 },
+        { name: "pending_transfer_status_expiry" }
+      );
+      // 每人待處理數量上限查詢（寄件方）
+      await pendingTransfersCollection.createIndex(
+        { guild_id: 1, sender_id: 1, status: 1 },
+        { name: "pending_transfer_sender_status" }
+      );
+      // 收到 / 拒收後歷史保留 30 天再清（pending 一律 <24h，不會被提早清掉）
+      await pendingTransfersCollection.createIndex(
+        { created_at: 1 },
+        { expireAfterSeconds: 30 * 24 * 60 * 60, name: "pending_transfer_ttl_30d" }
       );
 
       // 21 點對局索引：每位玩家同 guild 同時只能有一局 playing，靠 status 過濾不上 unique
