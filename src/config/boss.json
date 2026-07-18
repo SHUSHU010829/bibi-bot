@@ -3,8 +3,8 @@
     "enabled": true,
     "announceChannelId": "1511617684532367440",
     "chronicleChannelId": "1511610220856475701",
-    "hpPerPlayer": 3000,
-    "minHp": 25000,
+    "hpPerPlayer": 4500,
+    "minHp": 37500,
     "durationMinutes": 30,
     "attackLimitPerPlayer": 5,
     "scaling": {
@@ -19,7 +19,7 @@
       "enabled": true,
       "hitsPerStack": 15,
       "counterRatePerStack": 0.03,
-      "maxCounterRate": 0.5
+      "maxCounterRate": 0.6
     },
     "rareMaterial": "legendary_fragment",
     "saturdaySpawn": {
@@ -61,9 +61,9 @@
       "你不知道為什麼，但牠看起來就是欠扁。"
     ],
     "phases": {
-      "normal":  { "hpThreshold": 1.0, "damageMult": 1.0, "counterRate": 0.10, "label": "正常" },
-      "broken":  { "hpThreshold": 0.5, "damageMult": 1.5, "counterRate": 0.10, "label": "破防" },
-      "enraged": { "hpThreshold": 0.2, "damageMult": 1.8, "counterRate": 0.20, "label": "狂暴" }
+      "normal":  { "hpThreshold": 1.0, "damageMult": 1.0, "counterRate": 0.15, "label": "正常" },
+      "broken":  { "hpThreshold": 0.5, "damageMult": 1.5, "counterRate": 0.15, "label": "破防" },
+      "enraged": { "hpThreshold": 0.2, "damageMult": 1.8, "counterRate": 0.30, "label": "狂暴" }
     },
     "phaseAnnouncements": {
       "broken":  "💥 **{name}** 護甲破損！全員傷害提升 ×1.5！",
@@ -80,12 +80,12 @@
     "comboAnnouncement": "⚡ Combo 滿格！全場傷害 ×1.3 持續 120 秒！（由 <@{user}> 接力觸發）",
     "rewards": {
       "poolRatio": 0.5,
-      "killBonus": 150,
-      "firstStrikeBonus": 150,
+      "killBonus": 225,
+      "firstStrikeBonus": 225,
       "killerBonusRatio": 0.05,
       "killerRareReward": 1,
-      "topRareRewardTiers": [3, 2, 1, 1, 1],
-      "topRankDiamondTiers": [5, 3, 1]
+      "topRareRewardTiers": [4, 3, 2, 1, 1],
+      "topRankDiamondTiers": [7, 4, 2]
     },
     "damage": {
       "baseRandMin": 10,
