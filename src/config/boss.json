@@ -92,6 +92,49 @@
       "baseRandMax": 50,
       "luckBonusMult": 20
     },
+    "crit": {
+      "enabled": true,
+      "baseRate": 0.1,
+      "luckRateMult": 0.01,
+      "maxRate": 0.5,
+      "damageMult": 2
+    },
+    "aggro": {
+      "enabled": true,
+      "counterBonus": 0.15,
+      "minParticipants": 2
+    },
+    "treasure": {
+      "enabled": true,
+      "spawnChancePerMinute": 0.3,
+      "durationSec": 60,
+      "minRemainingMinutes": 3,
+      "mimicChance": 0.35,
+      "chestCoinMin": 300,
+      "chestCoinMax": 900,
+      "chestRareChance": 0.12,
+      "mimicConsolationCoins": 60,
+      "spawnMessages": [
+        "🎁 戰場上突然滾出一個閃著金光的寶箱！手速最快的人才能開！",
+        "🎁 魔王掉了個寶箱出來，牠好像還沒發現……先搶先贏！",
+        "🎁 不知道哪來的寶箱從天而降，砸中了地上的雞排攤。快去開！"
+      ],
+      "chestMessages": [
+        "🎉 是真寶箱！{user} 開出了 {coins} 金幣，笑得合不攏嘴！",
+        "🎉 {user} 手氣爆棚，箱子裡塞滿了 {coins} 金幣！",
+        "🎉 {user} 一把掀開寶箱，{coins} 金幣嘩啦啦倒了出來！"
+      ],
+      "chestRareMessages": [
+        "🌟 {user} 開出了傳說碎片 ×{rare}！運氣好到讓魔王都傻眼！",
+        "🌟 寶箱底部藏著傳說碎片 ×{rare}，{user} 賺翻了！"
+      ],
+      "mimicMessages": [
+        "😱 是擬態怪！箱子長出牙齒咬了 {user} 一口……只摸到 {coins} 金幣壓驚。",
+        "😱 {user} 一開箱就被裡面的怪吐了一臉口水，撿到 {coins} 金幣安慰獎。",
+        "😱 擬態怪對 {user} 大喊「哈哈上當了」，順手塞了 {coins} 金幣打發人。"
+      ],
+      "expiredMessage": "💨 沒人敢開……寶箱自己長腳溜走了。"
+    },
     "guildSync": {
       "enabled": true,
       "damageContributionRatio": 0.1,

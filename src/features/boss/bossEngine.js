@@ -53,6 +53,27 @@ function rageCfg() {
   return cfg().rage || {};
 }
 
+function critCfg() {
+  return cfg().crit || {};
+}
+
+function aggroCfg() {
+  return cfg().aggro || {};
+}
+
+// 目前累積傷害最高的玩家（嘲諷/仇恨用）。damage_by_user 存於 boss doc，攻擊當下即時判定。
+function topDamageUser(map) {
+  let best = null;
+  let bestVal = -1;
+  for (const [uid, v] of Object.entries(map || {})) {
+    if (v > bestVal) {
+      bestVal = v;
+      best = uid;
+    }
+  }
+  return best;
+}
+
 // 魔王怒氣：被攻擊次數越多，反擊率越高（戰鬥中「越打越兇」）。
 // 存來源（hits_taken），反擊率在攻擊當下即時換算，不寫死。
 function rageState(bossDoc) {
@@ -64,13 +85,13 @@ function rageState(bossDoc) {
   return { stacks, counterBonus };
 }
 
-// 反擊率 = 階段基礎 + 怒氣加成（上限 maxCounterRate）。單一來源，engine 與 view 共用。
-function effectiveCounterRate(bossDoc) {
+// 反擊率 = 階段基礎 + 怒氣加成 + 額外加成（嘲諷），上限 maxCounterRate。engine 與 view 共用。
+function effectiveCounterRate(bossDoc, extraBonus = 0) {
   const phaseName = bossDoc.phase || phaseOf(bossDoc.current_hp, bossDoc.max_hp);
   const phase = phaseDef(phaseName);
   return Math.min(
     rageCfg().maxCounterRate ?? 0.5,
-    (phase.counterRate ?? 0.1) + rageState(bossDoc).counterBonus,
+    (phase.counterRate ?? 0.1) + rageState(bossDoc).counterBonus + (extraBonus || 0),
   );
 }
 
@@ -162,6 +183,7 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs }) {
     online_count: onlineCount ?? null,
     scaling,
     hits_taken: 0,
+    damage_by_user: {},
     combo: {
       count: 0,
       last_user: null,
@@ -238,7 +260,20 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   const comboCfgVal = comboCfg();
   const phaseName = bossDoc.phase || phaseOf(bossDoc.current_hp, bossDoc.max_hp);
   const phase = phaseDef(phaseName);
-  const counterRate = effectiveCounterRate(bossDoc);
+
+  // 嘲諷/仇恨：當前傷害王被魔王盯上，對他的反擊率額外提高。
+  const aggro = aggroCfg();
+  const dmgByUser = bossDoc.damage_by_user || {};
+  const leaderId = topDamageUser(dmgByUser);
+  const participants = Object.keys(dmgByUser).length;
+  const isTargeted = !!(
+    aggro.enabled
+    && leaderId
+    && leaderId === userId
+    && participants >= (aggro.minParticipants ?? 2)
+  );
+  const aggroBonus = isTargeted ? (aggro.counterBonus ?? 0) : 0;
+  const counterRate = effectiveCounterRate(bossDoc, aggroBonus);
   const isCounter = Math.random() < counterRate;
 
   let sameUserStreak = 1;
@@ -277,6 +312,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
 
   // 傷害計算
   let damage = 0;
+  let isCrit = false;
   if (!isCounter) {
     const atk = sum?.atk ?? (await buffResolver.getEffectiveAtk(client, userId, guildId));
     const luck = sum?.luckBonus ?? 0;
@@ -292,7 +328,17 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     const comboMult = comboActive ? (comboCfgVal.bonusMult ?? 1.3) : 1;
     const guildMult = 1 + guildBossAtkPct;
     const buildingMult = 1 + guildBossDmgPct / 100;
-    damage = Math.max(1, Math.floor(base * (phase.damageMult ?? 1) * streakMult * comboMult * guildMult * buildingMult));
+    // 會心一擊：幸運越高機率越高，命中則傷害倍增。
+    const crit = critCfg();
+    if (crit.enabled) {
+      const critRate = Math.min(
+        crit.maxRate ?? 0.5,
+        (crit.baseRate ?? 0.1) + luck * (crit.luckRateMult ?? 0),
+      );
+      isCrit = Math.random() < critRate;
+    }
+    const critMult = isCrit ? (crit.damageMult ?? 2) : 1;
+    damage = Math.max(1, Math.floor(base * (phase.damageMult ?? 1) * streakMult * comboMult * guildMult * buildingMult * critMult));
   }
 
   // 體力扣除
@@ -313,10 +359,12 @@ async function applyAttack(client, { userId, guildId, username, member }) {
 
   // BOSS 血量扣除 + 階段更新
   // 原子扣血：只在 boss 仍存活時生效，避免兩人同時讀到舊血量、各自算出「最後一擊」。
+  const incFields = { current_hp: -damage, hits_taken: 1 };
+  if (damage > 0) incFields[`damage_by_user.${userId}`] = damage;
   const afterRes = await client.bossEventsCollection.findOneAndUpdate(
     { boss_id: bossDoc.boss_id, status: "active" },
     {
-      $inc: { current_hp: -damage, hits_taken: 1 },
+      $inc: incFields,
       $set: {
         "combo.count": comboCount,
         "combo.last_user": comboLastUser,
@@ -398,6 +446,9 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     ok: true,
     damage,
     isCounter,
+    isCrit,
+    targeted: isTargeted,
+    critMult: critCfg().damageMult ?? 2,
     phaseBefore: bossDoc.phase,
     phaseAfter: newPhase,
     phaseChanged,
