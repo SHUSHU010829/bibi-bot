@@ -91,17 +91,13 @@ async function openBatchCountModal(client, interaction, { ownerId, location }) {
     }
   }
 
-  // 冷卻中：每竿都吃一張券（含第一竿，清掉當前冷卻）；已可釣：第一竿免費。
-  const onCooldown = (profile.fish_cooldown_at || 0) > Date.now();
+  // 需要至少一張券才有「連續」意義；實際能釣幾竿依冷卻換算的券數由 fishBatch 逐竿夾住。
   const tickets = profile.cd_ticket_count || 0;
   if (tickets < 1) {
     return replyEphemeralView(interaction, fishCmd.buildBatchNoTicketView());
   }
 
-  const maxCount = Math.min(
-    fishing?.batch?.maxCount || 1,
-    onCooldown ? tickets : tickets + 1,
-  );
+  const maxCount = fishing?.batch?.maxCount || 1;
   return interaction.showModal(
     fishCmd.buildBatchCountModal({ ownerId: interaction.user.id, location: loc, maxCount }),
   );

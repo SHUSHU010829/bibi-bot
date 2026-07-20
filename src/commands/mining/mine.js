@@ -607,7 +607,7 @@ function buildBatchCountModal({ ownerId, maxCount }) {
     .setMinLength(1)
     .setMaxLength(3)
     .setValue(String(maxCount))
-    .setPlaceholder(`輸入 1～${maxCount}（冷卻中每次、可挖時第二次起消耗 1 張券）`);
+    .setPlaceholder(`輸入 1～${maxCount}（每次依冷卻扣券，一張少 30 分，券不夠會自動停）`);
   modal.addComponents(new ActionRowBuilder().addComponents(input));
   return modal;
 }
@@ -674,7 +674,7 @@ function buildBatchNoTicketView() {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "連續挖礦第一次免費、之後每次要消耗 1 張 **CD 縮短券**，你目前一張都沒有。",
+        "連續挖礦會照冷卻時間扣 **CD 縮短券**（一張少 30 分，冷卻 2 小時要 4 張），你目前的券不足以連續挖礦。",
       ),
     )
     .addTextDisplayComponents(
@@ -760,11 +760,26 @@ async function runMineBatch(client, interaction, { count }) {
       );
     }
 
+    const reductionMs = mining?.cdTicketReductionMs || 1800000;
+    const perMine = result.lastCdMs
+      ? Math.max(1, Math.ceil(result.lastCdMs / reductionMs))
+      : 0;
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**消耗 CD 縮短券**\n×${result.ticketsSpent}`,
+        `**消耗 CD 縮短券**\n×${result.ticketsSpent}` +
+          (perMine
+            ? `\n-# 🎫 每次挖礦約需 ${perMine} 張券（冷卻約 ${Math.round(result.lastCdMs / 60000)} 分，一張少 30 分）`
+            : ""),
       ),
     );
+
+    if (result.stoppedNoTicket) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 🎫 券不夠了，連續挖礦在第 ${result.performed} 次後停止。到 \`/商店\` 補券再來。`,
+        ),
+      );
+    }
 
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(backpackSpaceLine(result)),

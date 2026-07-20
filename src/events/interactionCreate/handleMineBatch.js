@@ -109,18 +109,13 @@ async function openBatchCountModal(client, interaction, { ownerId }) {
     }
   }
 
-  // 冷卻中：每次挖礦都吃一張券（含第一次，清掉當前冷卻）；已可挖：第一次免費。
-  // 需要至少一張券才有「連續」意義。
-  const onCooldown = (profile.mine_cooldown_at || 0) > Date.now();
+  // 需要至少一張券才有「連續」意義；實際能挖幾次依冷卻換算的券數由 mineBatch 逐次夾住。
   const tickets = profile.cd_ticket_count || 0;
   if (tickets < 1) {
     return replyEphemeralView(interaction, mineCmd.buildBatchNoTicketView());
   }
 
-  const maxCount = Math.min(
-    mining?.batch?.maxCount || 1,
-    onCooldown ? tickets : tickets + 1,
-  );
+  const maxCount = mining?.batch?.maxCount || 1;
   return interaction.showModal(
     mineCmd.buildBatchCountModal({ ownerId: interaction.user.id, maxCount }),
   );
