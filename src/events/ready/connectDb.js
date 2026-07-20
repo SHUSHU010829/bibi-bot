@@ -1610,13 +1610,16 @@ module.exports = async (client) => {
         { run_id: 1 },
         { unique: true, name: "uniq_dungeon_run_id" }
       ).catch((e) => console.log(`[WARN] DungeonRuns run_id: ${e.message}`.yellow));
-      // mini-BOSS 戰鬥用 is_milestone 標記，TTL 跳過（紀念意義 1 年由 cron 自行清）
+      // mini-BOSS 戰鬥用 is_milestone 標記，TTL 跳過（紀念意義 1 年由 cron 自行清）。
+      // partialFilterExpression 不支援 $ne（Mongo 會展開成 $not → 直接拒收），
+      // 而 is_milestone 每筆一定有且為 boolean（見 dungeonService `!!isMiniBoss`），
+      // 所以用等值 { is_milestone: false } 就等同「非里程碑才走 TTL」。
       await dungeonRunsCollection.createIndex(
         { ended_at: 1 },
         {
           expireAfterSeconds: 30 * 24 * 60 * 60,
           name: "dungeon_runs_ttl_30d",
-          partialFilterExpression: { is_milestone: { $ne: true } },
+          partialFilterExpression: { is_milestone: false },
         }
       ).catch((e) => console.log(`[WARN] DungeonRuns TTL: ${e.message}`.yellow));
 
