@@ -244,6 +244,151 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
   return result;
 }
 
+// 連續挖礦（批次）：一次挖 count 次，省去逐次點按。
+// 資源模型：第一次免費（照常需已過冷卻），之後每次消耗 1 張 CD 縮短券。
+// 實作採「重用單次 mine()」：每次迭代前清掉上一次設下的冷卻並扣一張券，
+// 讓 mine() 通過自身冷卻檢查。所有加成、突發事件、耐久、掉落都沿用單次邏輯，不另寫死。
+// 工具（鎬子）中途壞掉 → 立即停止、不再扣券（未用到的券自然保留）。
+// 石頭統一在最後匯總成一筆 pending_appraisal，讓玩家一次決定要賭幾顆。
+async function mineBatch(client, { userId, guildId, member, username, count }) {
+  if (!mining?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+  const bcfg = mining?.batch || {};
+  if (!bcfg.enabled) return { ok: false, reason: "disabled" };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const now = Date.now();
+
+  const unlockLevel = bcfg.unlockLevel || 0;
+  if (unlockLevel > 0) {
+    const userLevel = await client.userLevelsCollection
+      ?.findOne({ userId, guildId })
+      .catch(() => null);
+    const lvl = userLevel?.level ?? 0;
+    if (lvl < unlockLevel) {
+      return { ok: false, reason: "level_locked", required: unlockLevel, current: lvl };
+    }
+  }
+
+  if ((profile.mine_cooldown_at || 0) > now) {
+    return { ok: false, reason: "cooldown", readyAt: profile.mine_cooldown_at };
+  }
+
+  const maxCount = Math.max(1, bcfg.maxCount || 1);
+  const tickets = profile.cd_ticket_count || 0;
+  const requested = Math.max(1, Math.floor(count || 1));
+  // 第一次免費 + 每張券換一次 → 最多 tickets + 1 次
+  const effective = Math.min(requested, maxCount, tickets + 1);
+  if (effective < 1) return { ok: false, reason: "invalid_count" };
+
+  const agg = {
+    ok: true,
+    requested,
+    maxCount,
+    effective,
+    performed: 0,
+    ticketsSpent: 0,
+    ores: {},
+    overflowOres: {},
+    overflowCoins: 0,
+    stonesMined: 0,
+    diamondQty: 0,
+    diamondActions: 0,
+    rareActions: 0,
+    oreActionCounts: {},
+    encounterDiamond: 0,
+    encounters: [],
+    durabilityBroke: false,
+    pickaxeBrokeFrom: null,
+    stoppedEarly: false,
+    newCooldownAt: now,
+    mineCountTotal: profile.mine_count_total || 0,
+  };
+  const RARE = new Set(["iron", "gold", "diamond"]);
+
+  for (let i = 0; i < effective; i++) {
+    if (i > 0) {
+      // 扣一張券並清冷卻，讓下一次 mine() 通過冷卻檢查
+      const res = await client.miningProfilesCollection.updateOne(
+        { userId, guildId, cd_ticket_count: { $gte: 1 } },
+        { $inc: { cd_ticket_count: -1 }, $set: { mine_cooldown_at: 0, updatedAt: new Date() } },
+      );
+      if (res.modifiedCount === 0) break; // 券用完了（理論上被上面夾住不會發生）
+      agg.ticketsSpent++;
+    }
+
+    const r = await mine(client, { userId, guildId, member, username, allowOverflow: true });
+    if (!r.ok) {
+      // 這次沒挖成：把剛扣的券退回（i>0 才有扣）
+      if (i > 0) {
+        await client.miningProfilesCollection
+          .updateOne({ userId, guildId }, { $inc: { cd_ticket_count: 1 } })
+          .catch(() => {});
+        agg.ticketsSpent--;
+      }
+      break;
+    }
+
+    agg.performed++;
+    agg.newCooldownAt = r.newCooldownAt;
+    agg.mineCountTotal = r.mineCountTotal;
+    agg.backpackCap = r.backpackCap;
+    agg.backpackUsed = r.backpackUsed;
+    agg.backpackFree = r.backpackFree;
+    agg.pickaxe = r.pickaxeBefore;
+    agg.durabilityAfter = r.durabilityAfter;
+
+    if (r.qty > 0) {
+      agg.ores[r.ore] = (agg.ores[r.ore] || 0) + r.qty;
+      if (r.ore === "stone") agg.stonesMined += r.qty;
+      if (r.ore === "diamond") agg.diamondQty += r.qty;
+    }
+    if (r.overflowQty > 0) {
+      agg.overflowOres[r.ore] = (agg.overflowOres[r.ore] || 0) + r.overflowQty;
+      agg.overflowCoins += r.overflowCoins || 0;
+    }
+    agg.oreActionCounts[r.ore] = (agg.oreActionCounts[r.ore] || 0) + 1;
+    if (RARE.has(r.ore)) agg.rareActions++;
+    if (r.ore === "diamond") agg.diamondActions++;
+    if (r.encounterDiamond > 0) agg.encounterDiamond += r.encounterDiamond;
+    if (r.encounter) agg.encounters.push(r.encounter);
+
+    if (r.durabilityBroke) {
+      agg.durabilityBroke = true;
+      agg.pickaxeBrokeFrom = r.pickaxeBefore;
+      agg.stoppedEarly = true;
+      break;
+    }
+  }
+
+  // 石頭匯總成單一 pending_appraisal（覆寫單次 mine() 留下的最後一筆），
+  // 讓玩家在結算後一次決定要賭幾顆。上限吃 stoneAppraisal.maxBatch。
+  if (agg.stonesMined > 0) {
+    const sa = mining?.stoneAppraisal || {};
+    const apprCap = sa.maxBatch || 0;
+    const eligible = apprCap > 0 ? Math.min(agg.stonesMined, apprCap) : agg.stonesMined;
+    if (sa.enabled && eligible > 0) {
+      const ts = now;
+      await client.miningProfilesCollection.updateOne(
+        { userId, guildId },
+        { $set: { pending_appraisal: { qty: eligible, ts, synthetic: false }, updatedAt: new Date() } },
+      );
+      agg.appraisal = { qty: eligible, ts, feePerStone: sa.feePerStone || 0 };
+    }
+  } else {
+    // 這批沒挖到石頭：清掉單次 mine() 可能留下的過期 pending，避免殘留按鈕
+    await client.miningProfilesCollection
+      .updateOne({ userId, guildId }, { $set: { pending_appraisal: null, updatedAt: new Date() } })
+      .catch(() => {});
+  }
+
+  if (agg.performed === 0) {
+    return { ok: false, reason: "nothing" };
+  }
+  return agg;
+}
+
 // 冷卻中主動使用一張 CD 縮短券：直接縮短目前的挖礦冷卻。
 // 縮短量為 mining.cdTicketReductionMs（預設 30 分），不足則直接歸零（立即可挖）。
 // 用條件式 updateOne 保證原子性，避免並發點按重複扣券。
@@ -834,6 +979,7 @@ async function repairRodWithMaterials(client, { userId, guildId }) {
 
 module.exports = {
   mine,
+  mineBatch,
   useCdTicket,
   getPickaxeRepairCost,
   getWeaponRepairCost,

@@ -391,6 +391,146 @@ async function fish(client, { userId, guildId, location = "stream", member, user
   };
 }
 
+// 連續釣魚（批次）：一次釣 count 竿，省去逐次點按。與挖礦 mineBatch 同構。
+// 第一竿免費（需已過冷卻），之後每竿消耗 1 張 CD 縮短券；釣竿中途壞掉 → 立即停止。
+// 重用單次 fish()，所有成功率、耐久、掉落、非魚物、稀有副產物都沿用單次邏輯。
+async function fishBatch(client, { userId, guildId, member, username, location = "stream", count }) {
+  if (!fishing?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+  const bcfg = fishing?.batch || {};
+  if (!bcfg.enabled) return { ok: false, reason: "disabled" };
+
+  const locDef = fishing.locations?.[location];
+  if (!locDef) return { ok: false, reason: "invalid_location" };
+
+  const profile = await getFishingProfile(client, userId, guildId);
+  const now = Date.now();
+
+  const unlockLevel = bcfg.unlockLevel || 0;
+  if (unlockLevel > 0) {
+    const userLevel = await client.userLevelsCollection
+      ?.findOne({ userId, guildId })
+      .catch(() => null);
+    const lvl = userLevel?.level ?? 0;
+    if (lvl < unlockLevel) {
+      return { ok: false, reason: "level_locked", required: unlockLevel, current: lvl };
+    }
+  }
+
+  // 釣場自身的地下城通關解鎖（熔岩湖需通關 10 次）：先擋，避免半途卡在鎖住的釣場。
+  // 等級門檻（海邊 15 / 熔岩湖 40）已被 batch 解鎖等級（100）涵蓋，無需再查。
+  if ((locDef.requireDungeonClears || 0) > (profile.dungeon_count || 0)) {
+    return {
+      ok: false,
+      reason: "location_locked",
+      locDesc: locationUnlockDesc(location),
+      locName: locDef.name || location,
+    };
+  }
+
+  if ((profile.fish_cooldown_at || 0) > now) {
+    return { ok: false, reason: "cooldown", readyAt: profile.fish_cooldown_at };
+  }
+
+  const maxCount = Math.max(1, bcfg.maxCount || 1);
+  const tickets = profile.cd_ticket_count || 0;
+  const requested = Math.max(1, Math.floor(count || 1));
+  const effective = Math.min(requested, maxCount, tickets + 1);
+  if (effective < 1) return { ok: false, reason: "invalid_count" };
+
+  const agg = {
+    ok: true,
+    location,
+    locDef,
+    requested,
+    maxCount,
+    effective,
+    performed: 0,
+    ticketsSpent: 0,
+    caught: 0,
+    failed: 0,
+    fishByType: {},
+    legendaryCount: 0,
+    coinsAwarded: 0,
+    lootItems: [],
+    materials: {},
+    rareDrops: {},
+    netFragments: 0,
+    rodBroke: false,
+    rodBrokeFrom: null,
+    stoppedEarly: false,
+    newCooldownAt: now,
+    fishCountTotal: profile.fish_count_total || 0,
+  };
+
+  for (let i = 0; i < effective; i++) {
+    if (i > 0) {
+      const res = await client.miningProfilesCollection.updateOne(
+        { userId, guildId, cd_ticket_count: { $gte: 1 } },
+        { $inc: { cd_ticket_count: -1 }, $set: { fish_cooldown_at: 0, updatedAt: new Date() } },
+      );
+      if (res.modifiedCount === 0) break;
+      agg.ticketsSpent++;
+    }
+
+    const r = await fish(client, { userId, guildId, location, member, username });
+    if (!r.ok) {
+      if (i > 0) {
+        await client.miningProfilesCollection
+          .updateOne({ userId, guildId }, { $inc: { cd_ticket_count: 1 } })
+          .catch(() => {});
+        agg.ticketsSpent--;
+      }
+      break;
+    }
+
+    agg.performed++;
+    agg.newCooldownAt = r.newCooldownAt;
+    agg.fishCountTotal = r.fishCountTotal;
+    if (r.droppedNetFragment) agg.netFragments++;
+
+    if (!r.caught) {
+      agg.failed++;
+    } else if (r.nonFish) {
+      agg.coinsAwarded += r.coinsAwarded || 0;
+      if (r.catchItem) agg.lootItems.push(r.catchItem.name);
+      if (r.materialReward) {
+        const key = r.materialReward.field;
+        if (!agg.materials[key]) {
+          agg.materials[key] = { qty: 0, name: r.materialReward.name, emoji: r.materialReward.emoji };
+        }
+        agg.materials[key].qty += r.materialReward.qty || 1;
+      }
+    } else {
+      agg.caught++;
+      const fkey = r.fish;
+      if (!agg.fishByType[fkey]) {
+        agg.fishByType[fkey] = { qty: 0, name: r.fishDef?.name || fkey, emoji: r.fishDef?.emoji, rarity: r.fishDef?.rarity };
+      }
+      agg.fishByType[fkey].qty += r.qty || 1;
+      if (r.fishDef?.rarity === "傳說") agg.legendaryCount += 1;
+      for (const drop of r.rareDrops || []) {
+        const key = drop.field;
+        if (!agg.rareDrops[key]) {
+          agg.rareDrops[key] = { qty: 0, name: drop.name || drop.item, emoji: drop.emoji };
+        }
+        agg.rareDrops[key].qty += 1;
+      }
+    }
+
+    if (r.rodBroke) {
+      agg.rodBroke = true;
+      agg.rodBrokeFrom = r.rodKey;
+      agg.stoppedEarly = true;
+      break;
+    }
+  }
+
+  if (agg.performed === 0) return { ok: false, reason: "nothing" };
+  return agg;
+}
+
 // 冷卻中主動使用一張 CD 縮短券：直接縮短目前的釣魚冷卻。
 // 與挖礦共用 cd_ticket_count 庫存與 cd_ticket_used_* 每日計數，
 // 縮短量取 fishing.cdTicketReductionMs（預設 30 分），不足則歸零。
@@ -482,4 +622,4 @@ async function isLocationUnlocked(client, { userId, guildId, location, profile }
   return true;
 }
 
-module.exports = { fish, getFishingProfile, locationUnlockDesc, useCdTicket, isLocationUnlocked };
+module.exports = { fish, fishBatch, getFishingProfile, locationUnlockDesc, useCdTicket, isLocationUnlocked };

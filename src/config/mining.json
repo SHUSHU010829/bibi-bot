@@ -24,6 +24,11 @@
     "durabilityWarn": { "low": 5, "critical": 1 },
     "cdTicketReductionMs": 1800000,
     "cdTicketDailyUseLimit": 0,
+    "batch": {
+      "enabled": true,
+      "unlockLevel": 100,
+      "maxCount": 30
+    },
     "announceChannelId": "1511655301953228800",
     "diamondAnnounceChannelId": "1509074828206936126",
     "weeklyRank": {

@@ -8,6 +8,9 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -90,8 +93,22 @@ function parseMineBagId(customId) {
   return ownerId ? { ownerId } : null;
 }
 
-function mineAgainRow(ownerId) {
-  return new ActionRowBuilder().addComponents(
+// 連續挖礦（批次）按鈕。customId = mine_batch_<ownerId>
+// 需 Lv.<unlockLevel> 解鎖並持有 CD 縮短券，實際門檻在 handler 點按時驗證。
+const MINE_BATCH_PREFIX = "mine_batch_";
+
+function parseMineBatchId(customId) {
+  if (!customId || !customId.startsWith(MINE_BATCH_PREFIX)) return null;
+  const ownerId = customId.slice(MINE_BATCH_PREFIX.length);
+  return ownerId ? { ownerId } : null;
+}
+
+function batchUnlockLevel() {
+  return mining?.batch?.unlockLevel || 0;
+}
+
+function mineAgainRow(ownerId, { includeBatch = false } = {}) {
+  const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${MINE_AGAIN_PREFIX}${ownerId}`)
       .setLabel("再挖一次")
@@ -103,6 +120,16 @@ function mineAgainRow(ownerId) {
       .setEmoji("🎒")
       .setStyle(ButtonStyle.Secondary),
   );
+  if (includeBatch && mining?.batch?.enabled) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${MINE_BATCH_PREFIX}${ownerId}`)
+        .setLabel(`連續挖礦（Lv${batchUnlockLevel()}）`)
+        .setEmoji("🔁")
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  return row;
 }
 
 function pickaxeDurabilityLine(pickaxe, durability, maxDurability) {
@@ -482,7 +509,9 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
       );
     }
 
-    container.addActionRowComponents(mineAgainRow(interaction.user.id));
+    container.addActionRowComponents(
+      mineAgainRow(interaction.user.id, { includeBatch: true }),
+    );
 
     await interaction.editReply({
       components: [container],
@@ -529,6 +558,371 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
   } catch (error) {
     console.log(`[ERROR] /挖礦:\n${error}\n${error.stack}`.red);
     await interaction.editReply("🔧 挖礦失敗，請呼叫舒舒！").catch(() => {});
+  }
+}
+
+// ── 連續挖礦（批次）──
+const MINE_BATCH_MODAL_PREFIX = "mine_batch_qty_";
+const MINE_BATCH_APPRAISE_PREFIX = "mine_bappr_";
+const MINE_BATCH_APPRAISE_MODAL_PREFIX = "mine_bappr_qty_";
+
+function parseMineBatchModalId(customId) {
+  if (!customId || !customId.startsWith(MINE_BATCH_MODAL_PREFIX)) return null;
+  const ownerId = customId.slice(MINE_BATCH_MODAL_PREFIX.length);
+  return ownerId ? { ownerId } : null;
+}
+
+function parseBatchAppraiseId(customId) {
+  if (!customId || !customId.startsWith(MINE_BATCH_APPRAISE_PREFIX)) return null;
+  if (customId.startsWith(MINE_BATCH_APPRAISE_MODAL_PREFIX)) return null;
+  const rest = customId.slice(MINE_BATCH_APPRAISE_PREFIX.length);
+  const us = rest.lastIndexOf("_");
+  if (us <= 0) return null;
+  const ownerId = rest.slice(0, us);
+  const ts = Number(rest.slice(us + 1));
+  if (!ownerId || !Number.isFinite(ts)) return null;
+  return { ownerId, ts };
+}
+
+function parseBatchAppraiseModalId(customId) {
+  if (!customId || !customId.startsWith(MINE_BATCH_APPRAISE_MODAL_PREFIX)) return null;
+  const rest = customId.slice(MINE_BATCH_APPRAISE_MODAL_PREFIX.length);
+  const us = rest.lastIndexOf("_");
+  if (us <= 0) return null;
+  const ownerId = rest.slice(0, us);
+  const ts = Number(rest.slice(us + 1));
+  if (!ownerId || !Number.isFinite(ts)) return null;
+  return { ownerId, ts };
+}
+
+function buildBatchCountModal({ ownerId, maxCount }) {
+  const modal = new ModalBuilder()
+    .setCustomId(`${MINE_BATCH_MODAL_PREFIX}${ownerId}`)
+    .setTitle("連續挖礦");
+  const input = new TextInputBuilder()
+    .setCustomId("count")
+    .setLabel(`要連續挖幾次？（最多 ${maxCount}）`.slice(0, 45))
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMinLength(1)
+    .setMaxLength(3)
+    .setValue(String(maxCount))
+    .setPlaceholder(`輸入 1～${maxCount}，第一次免費、之後每次消耗 1 張券`);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
+function buildBatchAppraiseModal({ ownerId, ts, maxQty }) {
+  const modal = new ModalBuilder()
+    .setCustomId(`${MINE_BATCH_APPRAISE_MODAL_PREFIX}${ownerId}_${ts}`)
+    .setTitle("賭石");
+  const input = new TextInputBuilder()
+    .setCustomId("qty")
+    .setLabel(`要賭幾顆石頭？（最多 ${maxQty}）`.slice(0, 45))
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMinLength(1)
+    .setMaxLength(3)
+    .setValue(String(maxQty))
+    .setPlaceholder(`輸入 1～${maxQty}，或 all 全賭`);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
+function buildBatchAppraiseRow(ownerId, ts, maxQty, feePerStone) {
+  const maxFee = (feePerStone || 0) * (maxQty || 0);
+  let label = `🔍 賭石（最多 ${maxQty} 顆・至多 ${maxFee.toLocaleString()} 金幣）`;
+  if (label.length > MAX_LABEL_LEN) label = label.slice(0, MAX_LABEL_LEN);
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${MINE_BATCH_APPRAISE_PREFIX}${ownerId}_${ts}`)
+      .setLabel(label)
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${MINE_BAG_PREFIX}${ownerId}`)
+      .setLabel("查看背包")
+      .setEmoji("🎒")
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+function buildBatchLockedView(required, current) {
+  return new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("# 🔒 連續挖礦 尚未解鎖"),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**解鎖條件**\n等級 ${required}\n**目前等級**\nLv.${current}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 多打工、發言、聊天升等到 Lv." + required + " 就能一次挖很多次！",
+      ),
+    );
+}
+
+function buildBatchNoTicketView() {
+  return new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("# 🎫 沒有 CD 縮短券"),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "連續挖礦第一次免費、之後每次要消耗 1 張 **CD 縮短券**，你目前一張都沒有。",
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 到 `/商店` 買 CD 縮短券，再回來一次挖很多次！",
+      ),
+    );
+}
+
+// 執行連續挖礦並呈現匯總結果。假設 interaction 已 deferReply（公開）。
+async function runMineBatch(client, interaction, { count }) {
+  try {
+    const result = await mineService.mineBatch(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      member: interaction.member,
+      username: interaction.user.username,
+      count,
+    });
+
+    if (!result.ok) {
+      if (result.reason === "level_locked") {
+        return interaction.editReply({
+          components: [buildBatchLockedView(result.required, result.current)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      if (result.reason === "cooldown") {
+        const readyEpoch = Math.floor(result.readyAt / 1000);
+        const c = new ContainerBuilder()
+          .setAccentColor(0xf1c40f)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `# ⏳ 鎬子還在休息\n冷卻結束後才能連續挖礦：<t:${readyEpoch}:R>`,
+            ),
+          );
+        return interaction.editReply({
+          components: [c],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      if (result.reason === "disabled") {
+        return interaction.editReply("🔧 挖礦系統尚未啟動！");
+      }
+      return interaction.editReply("🔧 連續挖礦失敗，請稍後再試。");
+    }
+
+    const readyEpoch = Math.floor(result.newCooldownAt / 1000);
+    const oreEntries = Object.entries(result.ores);
+    let totalValue = 0;
+    for (const [ore, q] of oreEntries) {
+      const def = eventEngine.resolveOreDef(ore) || mining.ores[ore] || {};
+      totalValue += (def.price || 0) * q;
+    }
+    const oreSummary = oreEntries.length
+      ? oreEntries.map(([ore, q]) => `${oreLabel(ore)} ×${q}`).join("、")
+      : "這批沒有礦石入袋";
+
+    const title = result.stoppedEarly
+      ? `⛏️ 連續挖礦中止（挖了 ${result.performed} 次）`
+      : `⛏️ 連續挖礦 ×${result.performed} 完成`;
+
+    const container = new ContainerBuilder()
+      .setAccentColor(result.diamondQty > 0 ? 0xff6ec7 : 0xf1c40f)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# ${title}\n共挖了 **${result.performed}** 次` +
+            (result.performed < result.requested
+              ? `（原想挖 ${result.requested} 次，受券數/上限限制）`
+              : ""),
+        ),
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**這批挖到**\n${oreSummary}` +
+            (totalValue > 0
+              ? `\n預估賣價：**${totalValue.toLocaleString()}** ${COIN_EMOJI}`
+              : ""),
+        ),
+      );
+
+    if (result.overflowCoins > 0) {
+      const foldedSummary = Object.entries(result.overflowOres)
+        .map(([ore, q]) => `${oreLabel(ore)} ×${q}`)
+        .join("、");
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🎒 背包放不下：${foldedSummary} → 折成 **+${result.overflowCoins.toLocaleString()}** ${COIN_EMOJI}`,
+        ),
+      );
+    }
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**消耗 CD 縮短券**\n×${result.ticketsSpent}（第一次免費）`,
+      ),
+    );
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(backpackSpaceLine(result)),
+    );
+
+    if (result.encounters.length > 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# ⚡ 期間觸發了 ${result.encounters.length} 次突發事件`,
+        ),
+      );
+    }
+
+    if (result.durabilityBroke) {
+      const brokeDef = mining?.pickaxes?.[result.pickaxeBrokeFrom] || {};
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 💔 第 ${result.performed} 次挖礦時，你的 ${brokeDef.name || result.pickaxeBrokeFrom} 耐久耗盡、已退回木鎬，連續挖礦提前結束。`,
+        ),
+      );
+    } else if (typeof result.durabilityAfter === "number") {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**鎬子耐久**\n${pickaxeLabel(result.pickaxe)} 剩 ${result.durabilityAfter} 次`,
+        ),
+      );
+    }
+
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**下次可挖礦**\n<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）\n**累積挖礦**\n${result.mineCountTotal.toLocaleString()} 次`,
+        ),
+      );
+
+    if (result.appraisal) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**🔍 賭石**\n這批挖到 **🪨 石頭 ×${result.appraisal.qty}**，可付費請鑑定師逐顆開，有機率變更值錢的礦——也可能碎掉。下方輸入要賭幾顆。`,
+          ),
+        )
+        .addActionRowComponents(
+          buildBatchAppraiseRow(
+            interaction.user.id,
+            result.appraisal.ts,
+            result.appraisal.qty,
+            result.appraisal.feePerStone,
+          ),
+        );
+    } else {
+      container.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${MINE_BAG_PREFIX}${interaction.user.id}`)
+            .setLabel("查看背包")
+            .setEmoji("🎒")
+            .setStyle(ButtonStyle.Secondary),
+        ),
+      );
+    }
+
+    await interaction.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+
+    if (result.diamondQty > 0) {
+      await diamondAnnouncer
+        .announceDiamond(client, {
+          user: interaction.user,
+          guildId: interaction.guildId,
+          source: "mine",
+          qty: result.diamondQty,
+          fallbackChannel: interaction.channel,
+        })
+        .catch(() => {});
+    }
+    if (result.encounterDiamond > 0) {
+      await diamondAnnouncer
+        .announceDiamond(client, {
+          user: interaction.user,
+          guildId: interaction.guildId,
+          source: "encounter",
+          qty: result.encounterDiamond,
+          fallbackChannel: interaction.channel,
+        })
+        .catch(() => {});
+    }
+
+    const notifyState = await reminder.getState(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      type: "mining",
+    });
+    if (notifyState?.enabled) {
+      await reminder
+        .refreshIfEnabled(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          type: "mining",
+          readyAt: result.newCooldownAt,
+        })
+        .catch(() => {});
+    }
+
+    gameTitleService
+      .check(
+        client,
+        {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+        },
+        ["mining"],
+      )
+      .catch(() => {});
+
+    const hooks = [
+      { questId: "daily_mine_3", delta: result.performed },
+      { questId: "weekly_mine_20", delta: result.performed },
+    ];
+    if (result.rareActions > 0) {
+      hooks.push({ questId: "daily_rare_ore", delta: result.rareActions });
+    }
+    if (result.diamondActions > 0) {
+      hooks.push({ questId: "weekly_diamond", delta: result.diamondActions });
+    }
+    for (const [ore, c] of Object.entries(result.oreActionCounts)) {
+      for (const h of eventEngine.getEventQuestHooksByType("mine_count", { ore })) {
+        hooks.push({ ...h, delta: (h.delta ?? 1) * c });
+      }
+    }
+    await applyQuestHooks(
+      client,
+      {
+        interaction,
+        user: interaction.user,
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+        username: interaction.user.username,
+      },
+      hooks,
+    );
+  } catch (error) {
+    console.log(`[ERROR] 連續挖礦:\n${error}\n${error.stack}`.red);
+    await interaction.editReply("🔧 連續挖礦失敗，請呼叫舒舒！").catch(() => {});
   }
 }
 
@@ -627,4 +1021,18 @@ module.exports = {
   MINE_BAG_PREFIX,
   parseMineBagId,
   buildCooldownView,
+  MINE_BATCH_PREFIX,
+  parseMineBatchId,
+  MINE_BATCH_MODAL_PREFIX,
+  parseMineBatchModalId,
+  MINE_BATCH_APPRAISE_PREFIX,
+  parseBatchAppraiseId,
+  MINE_BATCH_APPRAISE_MODAL_PREFIX,
+  parseBatchAppraiseModalId,
+  buildBatchCountModal,
+  buildBatchAppraiseModal,
+  buildBatchLockedView,
+  buildBatchNoTicketView,
+  batchUnlockLevel,
+  runMineBatch,
 };
