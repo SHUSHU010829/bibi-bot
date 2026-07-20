@@ -107,7 +107,7 @@
     "treasure": {
       "enabled": true,
       "spawnChancePerMinute": 0.3,
-      "durationSec": 60,
+      "durationSec": 120,
       "minRemainingMinutes": 3,
       "mimicChance": 0.35,
       "chestCoinMin": 300,

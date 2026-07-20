@@ -10,8 +10,9 @@ const bossEngine = require("../../features/boss/bossEngine");
 const bossView = require("../../features/boss/bossView");
 const bossAnnouncer = require("../../features/boss/bossAnnouncer");
 const bossRewards = require("../../features/boss/bossRewards");
+const bossBoard = require("../../features/boss/bossBoard");
 
-async function runAttack(client, interaction) {
+async function runAttack(client, interaction, forcedCount) {
   if (!boss?.enabled) {
     return interaction.editReply({
       components: [
@@ -24,7 +25,7 @@ async function runAttack(client, interaction) {
     });
   }
 
-  const count = Math.max(1, Math.min(5, interaction.options?.getInteger?.("次數") ?? 1));
+  const count = forcedCount ?? Math.max(1, Math.min(5, interaction.options?.getInteger?.("次數") ?? 1));
   const params = {
     userId: interaction.user.id,
     guildId: interaction.guildId,
@@ -51,6 +52,9 @@ async function runAttack(client, interaction) {
       components: [container],
       flags: MessageFlags.IsComponentsV2,
     });
+    if (!result.killed) {
+      bossBoard.scheduleRefresh(client, interaction.guildId, result.phaseChanged);
+    }
     if (result.phaseChanged && !result.killed) {
       bossAnnouncer.announcePhase(client, result.boss, result.phaseAfter).catch(() => {});
     }
@@ -86,6 +90,9 @@ async function runAttack(client, interaction) {
     flags: MessageFlags.IsComponentsV2,
   });
 
+  if (!combo.killed) {
+    bossBoard.scheduleRefresh(client, interaction.guildId, combo.phaseChanged);
+  }
   if (combo.phaseChanged && !combo.killed) {
     bossAnnouncer
       .announcePhase(client, combo.lastResult.boss, combo.lastResult.phaseAfter)

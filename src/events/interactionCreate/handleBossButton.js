@@ -38,6 +38,24 @@ async function ephemeralError(interaction, body) {
 
 module.exports = async (client, interaction) => {
   if (!interaction.isButton()) return;
+
+  // 置頂看板的共用攻擊鈕（無 owner 鎖，任何人都能點）
+  if (interaction.customId === "boss_board_attack" || interaction.customId === "boss_board_combo") {
+    const count = interaction.customId === "boss_board_combo" ? 5 : 1;
+    try {
+      if (!(await deferReplySafe(interaction, {}))) return;
+      return await attackCmd.runAttack(client, interaction, count);
+    } catch (e) {
+      console.log(`[BOSS] 看板攻擊鈕失敗：${e.stack || e.message}`.red);
+      const payload = {
+        components: [bossView.buildErrorContainer({ title: "❌ 操作失敗", body: "出了點狀況，請稍後再試。" })],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      };
+      if (interaction.deferred || interaction.replied) return interaction.followUp(payload);
+      return interaction.reply(payload);
+    }
+  }
+
   const parsed = parseOwner(interaction.customId);
   if (!parsed) return;
   if (interaction.user.id !== parsed.ownerId) {

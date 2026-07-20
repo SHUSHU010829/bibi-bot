@@ -420,4 +420,6 @@ module.exports = {
   buildErrorContainer,
   buildSettlementContainer,
   phaseLabel,
+  phaseColor,
+  hpBar,
 };

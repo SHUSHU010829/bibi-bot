@@ -13,6 +13,7 @@ const {
 } = require("discord.js");
 const { boss } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
+const bossBoard = require("./bossBoard");
 
 const PREFIX = "boss_chest_";
 const EXPIRED_MARK = "__expired__";
@@ -61,7 +62,7 @@ async function tick(client, guild) {
 
   const t = bossDoc.active_treasure;
   if (t && !t.claimed_by) {
-    if (now >= t.expires_at) await expireTreasure(client, bossDoc.boss_id, t);
+    if (now >= t.expires_at) await expireTreasure(client, bossDoc.boss_id, bossDoc.guild_id, t);
     return; // 場上已有進行中的寶箱，不再生成
   }
 
@@ -118,10 +119,11 @@ async function spawnTreasure(client, bossDoc) {
       { $set: { "active_treasure.message_id": msg.id } },
     ).catch(() => {});
     console.log(`[BOSS] treasure spawned ${treasureId} mimic=${isMimic}`.cyan);
+    bossBoard.scheduleRefresh(client, bossDoc.guild_id, true);
   }
 }
 
-async function expireTreasure(client, bossId, t) {
+async function expireTreasure(client, bossId, guildId, t) {
   // 原子標記已處理，避免掃描重複編輯。
   const res = await client.bossEventsCollection.findOneAndUpdate(
     { boss_id: bossId, "active_treasure.id": t.id, "active_treasure.claimed_by": null },
@@ -129,6 +131,7 @@ async function expireTreasure(client, bossId, t) {
     { returnDocument: "after" },
   );
   if (!(res?.value || res)) return;
+  bossBoard.scheduleRefresh(client, guildId, true);
   const ch = await resolveChannel(client, boss?.announceChannelId);
   if (!ch || !t.message_id) return;
   const msg = await ch.messages.fetch(t.message_id).catch(() => null);
@@ -200,6 +203,8 @@ async function claim(client, interaction) {
       .replace(/\{user\}/g, userMention)
       .replace(/\{coins\}/g, coins.toLocaleString());
   }
+
+  bossBoard.scheduleRefresh(client, guildId, true);
 
   await interaction.update({
     content: resultText,

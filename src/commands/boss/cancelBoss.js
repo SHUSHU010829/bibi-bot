@@ -9,6 +9,7 @@ const {
 const { boss } = require("../../config");
 const bossEngine = require("../../features/boss/bossEngine");
 const bossView = require("../../features/boss/bossView");
+const bossBoard = require("../../features/boss/bossBoard");
 
 module.exports = {
   devOnly: true,
@@ -49,6 +50,8 @@ module.exports = {
       console.log(
         `[BOSS] manual abort by ${interaction.user.id}: ${active.boss_id} hp=${active.current_hp}/${active.max_hp}`.cyan,
       );
+
+      await bossBoard.finalize(client, interaction.guildId);
 
       const announceId = boss?.announceChannelId;
       if (announceId) {
