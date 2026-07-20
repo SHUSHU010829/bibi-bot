@@ -37,7 +37,7 @@ module.exports = {
     ),
 
   run: async (client, interaction) => {
-    await interaction.deferReply();
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       const target = interaction.options.getUser("對象");
       const itemValue = interaction.options.getString("物品");
@@ -77,31 +77,39 @@ module.exports = {
       if (!result.ok) return interaction.editReply(renderError(result, qty));
 
       const { offer, itemDef, usedToday, dailyMax } = result;
-      await interaction.editReply({
-        components: [buildOfferContainer(offer, { itemDef })],
-        flags: MessageFlags.IsComponentsV2,
-        allowedMentions: { users: [offer.recipient_id] },
-      });
-      const reply = await interaction.fetchReply().catch(() => null);
-      if (reply) {
-        await pendingTransferService.setOfferMessage(client, offer.offer_id, reply.channelId, reply.id);
-      }
+      const notify = await pendingTransferService.notifyRecipient(client, offer, { itemDef });
+      const deliveredLine = await deliverOrFallback(client, interaction, offer, itemDef, notify);
 
-      await interaction
-        .followUp({
-          content:
-            `🎁 已預扣 **${itemDef.emoji} ${itemDef.name} ×${qty}**，等待 <@${offer.recipient_id}> 收下。\n` +
-            `・今日贈送次數：${usedToday}/${dailyMax}\n` +
-            `・對方 24 小時內未回覆、或按下拒收，物品與次數都會退還；你也可以按「寄件方取消」立即取回。`,
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      return interaction.editReply({
+        content:
+          `🎁 已預扣 **${itemDef.emoji} ${itemDef.name} ×${qty}**，等待 <@${offer.recipient_id}> 收下。\n` +
+          `${deliveredLine}\n` +
+          `・今日贈送次數：${usedToday}/${dailyMax}\n` +
+          `・對方 24 小時內未回覆、或按下拒收，物品與次數都會退還。用 \`/待收\` 查看狀態或取消。`,
+        allowedMentions: { users: [] },
+      });
     } catch (error) {
       console.log(`[ERROR] /贈送:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 贈送失敗，請呼叫舒舒！").catch(() => {});
     }
   },
 };
+
+// DM 成功 → 提示已私訊；DM 失敗 → 退回頻道公開發訊息（含寄件方取消鈕）並提示。
+async function deliverOrFallback(client, interaction, offer, itemDef, notify) {
+  if (notify.via === "dm") return `・已私訊通知 <@${offer.recipient_id}>。`;
+  try {
+    const msg = await interaction.channel.send({
+      components: [buildOfferContainer(offer, { itemDef, includeCancel: true })],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { users: [offer.recipient_id] },
+    });
+    await pendingTransferService.setOfferMessage(client, offer.offer_id, msg.channelId, msg.id, false);
+    return `・對方關閉私訊，已改在此頻道通知 <@${offer.recipient_id}>。`;
+  } catch (_) {
+    return `・⚠️ 無法私訊也無法在頻道通知對方，請用 \`/待收\` 取消取回。`;
+  }
+}
 
 function buildErrorContainer(title, body, hint) {
   const lines = [`# ${title}`, body];

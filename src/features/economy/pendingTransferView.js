@@ -7,6 +7,7 @@ const {
   ButtonStyle,
 } = require("discord.js");
 const { MONEY_EMOJI, COIN_EMOJI } = require("../../constants/coin");
+const { getItemDef } = require("../barter/itemCatalog");
 
 const ACCEPT_PREFIX = "ptx_accept_";
 const REJECT_PREFIX = "ptx_reject_";
@@ -38,8 +39,9 @@ function offerLines(offer, itemDef) {
   );
 }
 
-// 待收邀請訊息（含收下 / 拒收 / 取消按鈕）。
-function buildOfferContainer(offer, { itemDef } = {}) {
+// 待收邀請訊息。DM 給收款人時 includeCancel=false（寄件方不在場，改用 /待收 取消）；
+// 頻道退回情境 includeCancel=true 讓寄件方能就地取消。
+function buildOfferContainer(offer, { itemDef, includeCancel = false, guildName } = {}) {
   const isCoin = offer.kind === "coin";
   const container = new ContainerBuilder()
     .setAccentColor(isCoin ? COIN_COLOR : ITEM_COLOR)
@@ -47,7 +49,9 @@ function buildOfferContainer(offer, { itemDef } = {}) {
       new TextDisplayBuilder().setContent(`<@${offer.recipient_id}>`)
     )
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(isCoin ? "# 💸 轉帳邀請" : "# 🎁 贈送邀請")
+      new TextDisplayBuilder().setContent(
+        (isCoin ? "# 💸 轉帳邀請" : "# 🎁 贈送邀請") + (guildName ? `\n-# 來自：${guildName}` : "")
+      )
     )
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
@@ -57,25 +61,29 @@ function buildOfferContainer(offer, { itemDef } = {}) {
       new TextDisplayBuilder().setContent(
         `⏳ 請在 <t:${expiresEpoch(offer)}:R> 前決定，逾時自動退回對方。`
       )
-    )
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`${ACCEPT_PREFIX}${offer.recipient_id}_${offer.offer_id}`)
-          .setLabel("收下")
-          .setEmoji("✅")
-          .setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-          .setCustomId(`${REJECT_PREFIX}${offer.recipient_id}_${offer.offer_id}`)
-          .setLabel("拒收")
-          .setEmoji("✋")
-          .setStyle(ButtonStyle.Danger),
-        new ButtonBuilder()
-          .setCustomId(`${CANCEL_PREFIX}${offer.sender_id}_${offer.offer_id}`)
-          .setLabel("寄件方取消")
-          .setStyle(ButtonStyle.Secondary)
-      )
     );
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${ACCEPT_PREFIX}${offer.recipient_id}_${offer.offer_id}`)
+      .setLabel("收下")
+      .setEmoji("✅")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`${REJECT_PREFIX}${offer.recipient_id}_${offer.offer_id}`)
+      .setLabel("拒收")
+      .setEmoji("✋")
+      .setStyle(ButtonStyle.Danger)
+  );
+  if (includeCancel) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${CANCEL_PREFIX}${offer.sender_id}_${offer.offer_id}`)
+        .setLabel("寄件方取消")
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
+  container.addActionRowComponents(row);
   return container;
 }
 
@@ -142,6 +150,76 @@ function buildRefundContainer(offer, kindOfEnd) {
   });
 }
 
+// offer 內容一句話摘要（給提醒 / 清單用）
+function summaryOf(offer) {
+  if (offer.kind === "coin") {
+    return `${offer.amount.toLocaleString()} ${MONEY_EMOJI}（含手續費 ${offer.fee.toLocaleString()}）`;
+  }
+  const def = getItemDef(offer.item.type, offer.item.key) || {};
+  return `${def.emoji || ""} ${def.name || offer.item.key} ×${offer.item.qty}`;
+}
+
+const STATUS_LIST_LIMIT = 4;
+
+// /待收 清單：我要收的（收下/拒收）＋ 我送出的（狀態/取消）。
+function buildStatusContainer({ incoming = [], outgoing = [] }) {
+  const container = new ContainerBuilder()
+    .setAccentColor(COIN_COLOR)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("# 📮 待收清單"));
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## 📥 我要收的"));
+  if (incoming.length === 0) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent("-# 目前沒有要收的。"));
+  } else {
+    for (const offer of incoming.slice(0, STATUS_LIST_LIMIT)) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `${offer.kind === "coin" ? "💸" : "🎁"} 來自 <@${offer.sender_id}>：**${summaryOf(offer)}**\n-# <t:${expiresEpoch(offer)}:R> 到期`
+        )
+      );
+      container.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${ACCEPT_PREFIX}${offer.recipient_id}_${offer.offer_id}`)
+            .setLabel("收下").setEmoji("✅").setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId(`${REJECT_PREFIX}${offer.recipient_id}_${offer.offer_id}`)
+            .setLabel("拒收").setEmoji("✋").setStyle(ButtonStyle.Danger)
+        )
+      );
+    }
+    if (incoming.length > STATUS_LIST_LIMIT) {
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# 還有 ${incoming.length - STATUS_LIST_LIMIT} 筆未顯示。`));
+    }
+  }
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent("## 📤 我送出的（等待對方收下）"));
+  if (outgoing.length === 0) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent("-# 目前沒有送出待收的。"));
+  } else {
+    for (const offer of outgoing.slice(0, STATUS_LIST_LIMIT)) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `${offer.kind === "coin" ? "💸" : "🎁"} 給 <@${offer.recipient_id}>：**${summaryOf(offer)}** — ⏳ 等待中\n-# <t:${expiresEpoch(offer)}:R> 到期`
+        )
+      );
+      container.addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${CANCEL_PREFIX}${offer.sender_id}_${offer.offer_id}`)
+            .setLabel("取消並取回").setEmoji("↩️").setStyle(ButtonStyle.Secondary)
+        )
+      );
+    }
+    if (outgoing.length > STATUS_LIST_LIMIT) {
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# 還有 ${outgoing.length - STATUS_LIST_LIMIT} 筆未顯示。`));
+    }
+  }
+  return container;
+}
+
 module.exports = {
   ACCEPT_PREFIX,
   REJECT_PREFIX,
@@ -149,8 +227,10 @@ module.exports = {
   COIN_COLOR,
   ITEM_COLOR,
   FAIL_COLOR,
+  summaryOf,
   buildOfferContainer,
   buildSettledContainer,
   buildAcceptedContainer,
   buildRefundContainer,
+  buildStatusContainer,
 };

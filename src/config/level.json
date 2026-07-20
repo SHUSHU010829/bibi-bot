@@ -161,7 +161,8 @@
       "ringMinEdge": 50000,
       "ringMaxLen": 4,
       "offerExpiresHours": 24,
-      "maxPendingPerUser": 10
+      "maxPendingPerUser": 10,
+      "reminderIntervalHours": 6
     },
     "dailyEconomyReport": {
       "enabled": false,

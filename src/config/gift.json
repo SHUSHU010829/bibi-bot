@@ -3,6 +3,7 @@
     "enabled": true,
     "dailyMaxGives": 10,
     "offerExpiresHours": 24,
-    "maxPendingPerUser": 10
+    "maxPendingPerUser": 10,
+    "reminderIntervalHours": 6
   }
 }

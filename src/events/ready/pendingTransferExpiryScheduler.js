@@ -39,13 +39,14 @@ async function sweepOnce(client) {
     const label = offer.kind === "coin" ? "轉帳" : "贈送";
     dm(client, offer.sender_id, `⌛ <@${offer.recipient_id}> 未在 24 小時內回覆你的${label}，已全額退回你的帳戶。`);
   }
-  return { expired: expired.length };
+  const reminded = await pendingTransferService.sweepReminders(client);
+  return { expired: expired.length, reminded };
 }
 
 module.exports = async (client) => {
   registerCron(client, {
     name: "pendingTransfer.expiry",
-    label: "待收轉帳／贈送逾時退回",
+    label: "待收轉帳／贈送逾時退回＋提醒",
     schedule: "*/5 * * * *",
     runner: () => sweepOnce(client),
   });
