@@ -29,8 +29,6 @@ module.exports = {
       opt
         .setName("amount")
         .setDescription("Amount of coins to grant (negative to deduct)")
-        .setMinValue(-1000000)
-        .setMaxValue(1000000)
         .setRequired(true),
     )
     .addStringOption((opt) =>
