@@ -1101,7 +1101,7 @@ module.exports = async (client, interaction) => {
       }
 
       const results = harvestAll.results;
-      const c = buildHarvestAllContainer({ results, bagFull: harvestAll.bagFull, userId });
+      const c = buildHarvestAllContainer({ results, bagFull: harvestAll.bagFull, userId, xpGained: harvestAll.xpGained });
 
       const hooks = [];
       for (const r of results) {
@@ -1168,6 +1168,7 @@ module.exports = async (client, interaction) => {
             ? `（含世界事件 +${result.worldYieldCountBonus} 個）`
             : ""),
         `💰 收益 **+${result.coins} 幣** ${yieldText}`,
+        result.xpGained > 0 ? `⭐ 經驗值 **+${result.xpGained}**` : null,
         bonusText || null,
         bagStatusLine({
           label: "菜籃",

@@ -3,6 +3,7 @@ const { farming } = require("../../config");
 const { getOrCreate, veggieBagCapacity, veggieBagUsed } = require("../mining/miningProfile");
 const { isBagLimitEnforced } = require("../mining/bagStatus");
 const grantCoins = require("../economy/grantCoins");
+const grantActivityXp = require("../leveling/grantActivityXp");
 const {
   getFoodFarmYieldBonus,
   consumeFarmYieldUse,
@@ -412,6 +413,11 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
   // 清除地塊
   await coll(client).deleteOne({ userId, guildId, plotIndex });
 
+  const xpGained = await grantActivityXp(client, "farm", {
+    userId, guildId, username, member,
+    meta: { crop: plot.crop },
+  });
+
   // 消耗一次 farm_yield buff（若有的話）
   if (foodBonus > 0) {
     consumeFarmYieldUse(client, userId, guildId, profileForBuff).catch(() => {});
@@ -463,6 +469,7 @@ async function harvestCrop(client, { userId, guildId, username, member, plotInde
     fertilizers: plot.fertilizers || [],
     veggieBagCap: veggieCap,
     veggieBagUsed: veggieUsedNow + harvestCount,
+    xpGained,
   };
 }
 
@@ -586,6 +593,16 @@ async function harvestAllCrops(client, { userId, guildId, username, member }) {
     });
   }
 
+  // 一鍵收成：每塊各自 roll 基礎經驗、加總後一次授予，避免逐塊打 UserLevels 熱點文件
+  // （比照連續挖礦 / 釣魚的 deferXp 匯總）。
+  let xpBase = 0;
+  for (let i = 0; i < results.length; i += 1) xpBase += grantActivityXp.roll("farm");
+  const xpGained = await grantActivityXp(client, "farm", {
+    userId, guildId, username, member,
+    amount: xpBase,
+    meta: { count: results.length },
+  });
+
   if (foodBonus > 0) {
     consumeFarmYieldUses(client, userId, guildId, profile, results.length).catch(() => {});
   }
@@ -600,7 +617,7 @@ async function harvestAllCrops(client, { userId, guildId, username, member }) {
     }
   }
 
-  return { ok: true, results, bagFull };
+  return { ok: true, results, bagFull, xpGained };
 }
 
 // 一鍵清除所有已枯萎地塊：以即時狀態判定，包含尚未被 cron 寫成 rotted、但 expires_at 已過的作物。

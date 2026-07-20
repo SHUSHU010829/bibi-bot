@@ -232,7 +232,7 @@ function buildSuccessContainer(title, body, userId, accent = 0x2ecc71) {
 
 // 一鍵收成結果 Container（純呈現）：把多塊地的收成聚合成作物明細＋總收益。
 // /農場 收成（免填地塊）與農場面板的「一鍵收成」按鈕共用同一份，避免兩邊各印一次而漏更新。
-function buildHarvestAllContainer({ results, bagFull, userId }) {
+function buildHarvestAllContainer({ results, bagFull, userId, xpGained = 0 }) {
   const cropAgg = new Map();
   let totalCoins = 0;
   let totalWorldBonus = 0;
@@ -262,6 +262,7 @@ function buildHarvestAllContainer({ results, bagFull, userId }) {
     `🌾 收成 **${results.length}** 塊地`,
     ...cropLines,
     `💰 總收益：**+${totalCoins.toLocaleString()} 幣**`,
+    xpGained > 0 ? `⭐ 經驗值：**+${xpGained}**` : null,
     ...bonusLines,
     bagFull
       ? `-# 🥬 菜籃中途滿了（${bagFull.used}/${bagFull.cap}），剩下的地塊還沒收，賣菜後再收一次`

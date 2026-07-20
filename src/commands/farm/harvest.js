@@ -72,6 +72,7 @@ async function harvestAll(client, interaction) {
     results: result.results,
     bagFull: result.bagFull,
     userId,
+    xpGained: result.xpGained,
   });
   await interaction.editReply({
     components: [container],
@@ -230,6 +231,7 @@ module.exports = {
             : ""),
         `💰 賣得金幣：**+${result.coins} 幣** ${yieldText}`,
       ];
+      if (result.xpGained > 0) lines.push(`⭐ 經驗值：**+${result.xpGained}**`);
       if (result.fertilizers.length > 0) {
         const fertNames = result.fertilizers
           .map((k) => farming.fertilizers?.[k]?.emoji || "")

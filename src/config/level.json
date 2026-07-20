@@ -36,7 +36,8 @@
       "work": { "minXp": 20, "maxXp": 35 },
       "mine": { "minXp": 6, "maxXp": 12 },
       "fish": { "minXp": 6, "maxXp": 12 },
-      "dungeon": { "minXp": 35, "maxXp": 60 }
+      "dungeon": { "minXp": 35, "maxXp": 60 },
+      "farm": { "minXp": 8, "maxXp": 15 }
     },
     "levelUpAnnouncement": {
       "enabled": true,
