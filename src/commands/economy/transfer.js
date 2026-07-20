@@ -37,7 +37,7 @@ module.exports = {
     .toJSON(),
 
   run: async (client, interaction) => {
-    await interaction.deferReply();
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
       const target = interaction.options.getUser("對象");
@@ -55,31 +55,39 @@ module.exports = {
       if (!res.ok) return interaction.editReply(renderError(res));
 
       const { offer, held } = res;
-      await interaction.editReply({
-        components: [buildOfferContainer(offer)],
-        flags: MessageFlags.IsComponentsV2,
-        allowedMentions: { users: [offer.recipient_id] },
-      });
-      const reply = await interaction.fetchReply().catch(() => null);
-      if (reply) {
-        await pendingTransferService.setOfferMessage(client, offer.offer_id, reply.channelId, reply.id);
-      }
+      const notify = await pendingTransferService.notifyRecipient(client, offer);
+      const deliveredLine = await deliverOrFallback(client, interaction, offer, notify);
 
-      await interaction
-        .followUp({
-          content:
-            `💸 已預扣 **${(held.amount + held.fee).toLocaleString()}** ${MONEY_EMOJI}（本金 ${held.amount.toLocaleString()} + 手續費 ${held.fee.toLocaleString()}），等待 <@${offer.recipient_id}> 收下。\n` +
-            `・你的餘額：**${held.senderAfter.toLocaleString()}**\n` +
-            `・對方 24 小時內未回覆、或按下拒收，會全額退回給你；你也可以按「寄件方取消」立即取回。`,
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      return interaction.editReply({
+        content:
+          `💸 已預扣 **${(held.amount + held.fee).toLocaleString()}** ${MONEY_EMOJI}（本金 ${held.amount.toLocaleString()} + 手續費 ${held.fee.toLocaleString()}），等待 <@${offer.recipient_id}> 收下。\n` +
+          `${deliveredLine}\n` +
+          `・你的餘額：**${held.senderAfter.toLocaleString()}**\n` +
+          `・對方 24 小時內未回覆、或按下拒收，會全額退回（不計入當日額度）。用 \`/待收\` 查看狀態或取消。`,
+        allowedMentions: { users: [] },
+      });
     } catch (error) {
       console.log(`[ERROR] /轉帳:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 轉帳失敗，請呼叫舒舒！").catch(() => {});
     }
   },
 };
+
+// DM 成功 → 提示已私訊；DM 失敗 → 退回頻道公開發訊息（含寄件方取消鈕）並提示。
+async function deliverOrFallback(client, interaction, offer, notify) {
+  if (notify.via === "dm") return `・已私訊通知 <@${offer.recipient_id}>。`;
+  try {
+    const msg = await interaction.channel.send({
+      components: [buildOfferContainer(offer, { includeCancel: true })],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { users: [offer.recipient_id] },
+    });
+    await pendingTransferService.setOfferMessage(client, offer.offer_id, msg.channelId, msg.id, false);
+    return `・對方關閉私訊，已改在此頻道通知 <@${offer.recipient_id}>。`;
+  } catch (_) {
+    return `・⚠️ 無法私訊也無法在頻道通知對方，請用 \`/待收\` 取消取回。`;
+  }
+}
 
 function renderError(res) {
   switch (res.reason) {

@@ -1,7 +1,10 @@
 require("colors");
+const { MessageFlags } = require("discord.js");
 const { coinSystem, gift } = require("../../config");
 const transferService = require("./transferService");
 const giftService = require("../mining/giftService");
+const { getItemDef } = require("../barter/itemCatalog");
+const { buildOfferContainer, summaryOf } = require("./pendingTransferView");
 
 // 待收轉帳 / 贈送：寄件方送出時先「託管」（扣款 / 扣物），收件方在 24 小時內
 // 可選擇「收下」或「拒收」，逾時未答覆由 scheduler 自動退回。
@@ -35,14 +38,53 @@ async function getOffer(client, offerId) {
 }
 
 // 送出後把訊息位置寫回，讓 scheduler / handler 能編輯原訊息移除按鈕。
-async function setOfferMessage(client, offerId, channelId, messageId) {
+async function setOfferMessage(client, offerId, channelId, messageId, isDm = false) {
   if (!client.pendingTransfersCollection) return;
   await client.pendingTransfersCollection
     .updateOne(
       { offer_id: offerId },
-      { $set: { channel_id: channelId, message_id: messageId } }
+      { $set: { channel_id: channelId, message_id: messageId, dm: !!isDm } }
     )
     .catch(() => {});
+}
+
+async function guildNameOf(client, guildId) {
+  const g = client.guilds?.cache?.get(guildId) || (await client.guilds?.fetch(guildId).catch(() => null));
+  return g?.name || null;
+}
+
+// DM 收款人待收邀請（含收下 / 拒收按鈕）。成功回 { via:"dm" } 並記錄 DM 訊息位置；
+// 對方關閉私訊 / 抓不到使用者則回 { via:"dm_failed" }，交由呼叫端 fallback 到頻道。
+async function notifyRecipient(client, offer, { itemDef } = {}) {
+  try {
+    const user = await client.users.fetch(offer.recipient_id);
+    const guildName = await guildNameOf(client, offer.guild_id);
+    const msg = await user.send({
+      components: [buildOfferContainer(offer, { itemDef, includeCancel: false, guildName })],
+      flags: MessageFlags.IsComponentsV2,
+    });
+    await setOfferMessage(client, offer.offer_id, msg.channelId, msg.id, true);
+    return { via: "dm" };
+  } catch (_) {
+    return { via: "dm_failed" };
+  }
+}
+
+// /待收 清單：我要收的（incoming）＋ 我送出的（outgoing），只列仍有效的 pending。
+async function listForUser(client, guildId, userId) {
+  if (!client.pendingTransfersCollection) return { incoming: [], outgoing: [] };
+  const now = new Date();
+  const [incoming, outgoing] = await Promise.all([
+    client.pendingTransfersCollection
+      .find({ guild_id: guildId, recipient_id: userId, status: "pending", expires_at: { $gt: now } })
+      .sort({ created_at: 1 })
+      .toArray(),
+    client.pendingTransfersCollection
+      .find({ guild_id: guildId, sender_id: userId, status: "pending", expires_at: { $gt: now } })
+      .sort({ created_at: 1 })
+      .toArray(),
+  ]);
+  return { incoming, outgoing };
 }
 
 // ── 建立邀請 ──────────────────────────────────────────────────────────────
@@ -79,6 +121,8 @@ async function createCoinOffer(client, { senderMember, targetMember, amount, not
     status: "pending",
     channel_id: null,
     message_id: null,
+    dm: false,
+    last_reminded_at: null,
     created_at: new Date(now),
     expires_at: new Date(now + expiresMs),
     settled_at: null,
@@ -115,6 +159,8 @@ async function createItemOffer(client, { giverMember, recipientUser, recipientMe
     status: "pending",
     channel_id: null,
     message_id: null,
+    dm: false,
+    last_reminded_at: null,
     created_at: new Date(now),
     expires_at: new Date(now + expiresMs),
     settled_at: null,
@@ -261,13 +307,55 @@ async function sweepExpired(client) {
   return done;
 }
 
+function reminderIntervalMs(kind) {
+  const hours = kind === "coin" ? coinCfg().reminderIntervalHours : giftCfg().reminderIntervalHours;
+  return (hours ?? 6) * 3600 * 1000;
+}
+
+// scheduler：對仍未回覆、距上次提醒已超過間隔的 pending offer 再 DM 提醒一次收款人。
+// 回傳實際發出的提醒數。
+async function sweepReminders(client) {
+  if (!client.pendingTransfersCollection) return 0;
+  const now = Date.now();
+  const pending = await client.pendingTransfersCollection
+    .find({ status: "pending", expires_at: { $gt: new Date(now) } })
+    .toArray();
+
+  let sent = 0;
+  for (const offer of pending) {
+    const baseline = new Date(offer.last_reminded_at || offer.created_at).getTime();
+    if (now - baseline < reminderIntervalMs(offer.kind)) continue;
+
+    try {
+      const user = await client.users.fetch(offer.recipient_id);
+      const label = offer.kind === "coin" ? "轉帳" : "贈送";
+      const expiresEpoch = Math.floor(new Date(offer.expires_at).getTime() / 1000);
+      await user.send({
+        content:
+          `⏳ 提醒：你有一筆待收${label}來自 <@${offer.sender_id}> — **${summaryOf(offer)}**，還沒回覆。\n` +
+          `<t:${expiresEpoch}:R> 到期後會自動退回對方。到私訊或用 \`/待收\` 收下 / 拒收。`,
+      });
+      sent += 1;
+    } catch (_) {
+      // 對方關私訊就跳過，不影響到期退回
+    }
+    await client.pendingTransfersCollection
+      .updateOne({ offer_id: offer.offer_id, status: "pending" }, { $set: { last_reminded_at: new Date(now) } })
+      .catch(() => {});
+  }
+  return sent;
+}
+
 module.exports = {
   createCoinOffer,
   createItemOffer,
   setOfferMessage,
+  notifyRecipient,
+  listForUser,
   getOffer,
   acceptOffer,
   rejectOffer,
   cancelOffer,
   sweepExpired,
+  sweepReminders,
 };

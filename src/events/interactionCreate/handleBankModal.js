@@ -80,26 +80,33 @@ module.exports = async (client, interaction) => {
         return interaction.editReply(payload(await renderTab(client, ctx, "overview", transferNote(res))));
       }
 
-      // 先扣款託管成功 → 到頻道發一則「待收轉帳」訊息（收款人可收下 / 拒收）。
+      // 先扣款託管成功 → 優先 DM 收款人；對方關私訊才退回頻道發訊息。
       const { offer, held } = res;
-      let posted = null;
-      try {
-        posted = await interaction.channel?.send({
-          components: [buildOfferContainer(offer)],
-          flags: MessageFlags.IsComponentsV2,
-          allowedMentions: { users: [offer.recipient_id] },
-        });
-      } catch (_) {
-        posted = null;
+      const notify = await pendingTransferService.notifyRecipient(client, offer);
+      let deliveredLine;
+      if (notify.via === "dm") {
+        deliveredLine = "已私訊通知對方";
+      } else {
+        let posted = null;
+        try {
+          posted = await interaction.channel?.send({
+            components: [buildOfferContainer(offer, { includeCancel: true })],
+            flags: MessageFlags.IsComponentsV2,
+            allowedMentions: { users: [offer.recipient_id] },
+          });
+        } catch (_) {
+          posted = null;
+        }
+        if (!posted) {
+          // DM 與頻道都失敗 → 取消並退回，避免款項卡在託管。
+          await pendingTransferService.cancelOffer(client, { offerId: offer.offer_id }).catch(() => {});
+          return interaction.editReply(
+            payload(await renderTab(client, ctx, "overview", "🔧 無法通知對方（私訊關閉且頻道發送失敗），款項已退回。"))
+          );
+        }
+        await pendingTransferService.setOfferMessage(client, offer.offer_id, posted.channelId, posted.id, false);
+        deliveredLine = "對方關閉私訊，已改在此頻道通知";
       }
-      if (!posted) {
-        // 發訊息失敗（頻道權限等）→ 取消並退回，避免款項卡在託管。
-        await pendingTransferService.cancelOffer(client, { offerId: offer.offer_id }).catch(() => {});
-        return interaction.editReply(
-          payload(await renderTab(client, ctx, "overview", "🔧 無法在此頻道送出待收轉帳，款項已退回，請改用 /轉帳。"))
-        );
-      }
-      await pendingTransferService.setOfferMessage(client, offer.offer_id, posted.channelId, posted.id);
 
       const note2 = offer.note ? `，備註：${offer.note}` : "";
       return interaction.editReply(
@@ -108,7 +115,7 @@ module.exports = async (client, interaction) => {
             client,
             ctx,
             "overview",
-            `📮 已送出待收轉帳給 <@${offer.recipient_id}> **${fmt(held.amount)}**（含手續費 ${fmt(held.fee)}，已預扣，餘額 ${fmt(held.senderAfter)}）${note2}。對方 24 小時內未收下會自動退回；被拒收 / 逾時都不計入當日額度。`
+            `📮 已送出待收轉帳給 <@${offer.recipient_id}> **${fmt(held.amount)}**（含手續費 ${fmt(held.fee)}，已預扣，餘額 ${fmt(held.senderAfter)}）${note2}。${deliveredLine}；對方 24 小時內未收下會自動退回，被拒收 / 逾時不計入當日額度。用 /待收 查看狀態。`
           )
         )
       );
