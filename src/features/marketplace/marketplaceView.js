@@ -71,6 +71,7 @@ const CONFIRM_CANCEL  = "market_confirm_cancel_";
 const ABORT_ID        = "market_abort";
 const PAGE_PREV       = "market_page_prev_";
 const PAGE_NEXT       = "market_page_next_";
+const REFRESH_ID      = "market_refresh_";
 const VIEW_BROWSE_ID  = "market_view_browse";
 const VIEW_MYSTALL_ID = "market_view_mystall";
 const VIEW_MYBIDS_ID  = "market_view_mybids";
@@ -373,30 +374,35 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId
     }
   });
 
-  // 翻頁按鈕（放進 Container 底部，customId 包含 filter 狀態）
-  if (totalPages > 1) {
-    container.addSeparatorComponents(
-      new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large)
+  // 底部控制列：翻頁 + 重整（customId 包含當前 filter/頁碼狀態）
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large)
+  );
+  const pageRow = new ActionRowBuilder();
+  if (totalPages > 1 && page > 0) {
+    pageRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(encodePageId(PAGE_PREV, page - 1, { listingType, itemType }))
+        .setLabel("◀ 上一頁")
+        .setStyle(ButtonStyle.Secondary)
     );
-    const pageRow = new ActionRowBuilder();
-    if (page > 0) {
-      pageRow.addComponents(
-        new ButtonBuilder()
-          .setCustomId(encodePageId(PAGE_PREV, page - 1, { listingType, itemType }))
-          .setLabel("◀ 上一頁")
-          .setStyle(ButtonStyle.Secondary)
-      );
-    }
-    if (page + 1 < totalPages) {
-      pageRow.addComponents(
-        new ButtonBuilder()
-          .setCustomId(encodePageId(PAGE_NEXT, page + 1, { listingType, itemType }))
-          .setLabel("下一頁 ▶")
-          .setStyle(ButtonStyle.Secondary)
-      );
-    }
-    if (pageRow.components.length > 0) container.addActionRowComponents(pageRow);
   }
+  pageRow.addComponents(
+    new ButtonBuilder()
+      .setCustomId(encodePageId(REFRESH_ID, page, { listingType, itemType }))
+      .setLabel("重整")
+      .setEmoji("🔄")
+      .setStyle(ButtonStyle.Secondary)
+  );
+  if (totalPages > 1 && page + 1 < totalPages) {
+    pageRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(encodePageId(PAGE_NEXT, page + 1, { listingType, itemType }))
+        .setLabel("下一頁 ▶")
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
+  container.addActionRowComponents(pageRow);
 
   return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
 }
@@ -816,6 +822,7 @@ module.exports = {
   ABORT_ID,
   PAGE_PREV,
   PAGE_NEXT,
+  REFRESH_ID,
   VIEW_BROWSE_ID,
   VIEW_MYSTALL_ID,
   VIEW_MYBIDS_ID,

@@ -50,6 +50,7 @@ const {
   ABORT_ID,
   PAGE_PREV,
   PAGE_NEXT,
+  REFRESH_ID,
   VIEW_BROWSE_ID,
   VIEW_MYSTALL_ID,
   VIEW_MYBIDS_ID,
@@ -136,8 +137,8 @@ module.exports = async (client, interaction) => {
     }
 
     // ─── 翻頁（逛攤）────────────────────────────────────────────────────────
-    if (interaction.isButton() && (cid.startsWith(PAGE_PREV) || cid.startsWith(PAGE_NEXT))) {
-      // 限流：翻頁
+    if (interaction.isButton() && (cid.startsWith(PAGE_PREV) || cid.startsWith(PAGE_NEXT) || cid.startsWith(REFRESH_ID))) {
+      // 限流：翻頁 / 重整
       const rl = consume(interaction.user.id, "market:browse", { windowMs: 1000, max: 2 });
       if (!rl.allowed) {
         return interaction.reply({
@@ -146,9 +147,8 @@ module.exports = async (client, interaction) => {
         }).catch(() => {});
       }
       // 解析 customId 格式：<prefix><page>:<listingType>:<itemType>
-      const rest = cid.startsWith(PAGE_PREV)
-        ? cid.slice(PAGE_PREV.length)
-        : cid.slice(PAGE_NEXT.length);
+      const prefix = cid.startsWith(PAGE_PREV) ? PAGE_PREV : cid.startsWith(PAGE_NEXT) ? PAGE_NEXT : REFRESH_ID;
+      const rest = cid.slice(prefix.length);
       const [pageStr, ltFilter, itFilter] = rest.split(":");
       const page = parseInt(pageStr, 10) || 0;
       const typeArg = ltFilter && ltFilter !== "all" ? ltFilter : null;
