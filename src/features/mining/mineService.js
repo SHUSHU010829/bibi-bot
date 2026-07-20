@@ -438,7 +438,8 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
   // 讓玩家在結算後一次決定要賭幾顆。上限吃 stoneAppraisal.maxBatch。
   if (agg.stonesMined > 0) {
     const sa = mining?.stoneAppraisal || {};
-    const apprCap = sa.maxBatch || 0;
+    // 連續挖礦可賭「這批挖到的所有石頭」，用獨立上限（不受碎石合成的 maxBatch 50 夾住）
+    const apprCap = sa.batchMaxStones || sa.maxBatch || 0;
     const eligible = apprCap > 0 ? Math.min(agg.stonesMined, apprCap) : agg.stonesMined;
     if (sa.enabled && eligible > 0) {
       const ts = now;
@@ -986,6 +987,38 @@ async function repairWeaponWithMaterials(client, { userId, guildId }) {
   };
 }
 
+// 釣竿材料修復的「成本預覽」（唯讀，不扣材料）：供連續釣魚的修理按鈕介面顯示要花多少材料。
+// 回傳 { ok, cost, items:[{mat,need,have,isFish}], affordable } 或 { ok:false, reason }。
+async function getRodRepairPreview(client, { userId, guildId }) {
+  if (!mining?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+  const { fishing } = require("../../config");
+  const profile = await getOrCreate(client, userId, guildId);
+  if (!profile.fishing_rod || profile.fishing_rod === "bamboo") {
+    return { ok: false, reason: "no_rod" };
+  }
+  const baseCost = getRodRepairCost(profile);
+  if (!baseCost) return { ok: false, reason: "no_recipe" };
+  const guildBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const cost = applyRepairDiscount(baseCost, guildBuffs.equipment_repair_discount_pct || 0);
+
+  const bp = profile.backpack || {};
+  const fb = profile.fish_bag || {};
+  const fishDefs = fishing?.fish || {};
+  const isFish = (mat) => !!fishDefs[mat];
+  const items = [];
+  let affordable = true;
+  for (const [mat, need] of Object.entries(cost)) {
+    const have = isFish(mat) ? fb[mat] || 0 : bp[mat] || 0;
+    if (have < need) affordable = false;
+    items.push({ mat, need, have, isFish: isFish(mat) });
+  }
+  return { ok: true, cost, items, affordable };
+}
+
 // 釣竿材料修復：補滿耐久至 rod_max_durability，無懲罰。
 // 配方含魚類材料時從 fish_bag 扣（如黃金竿吃 shark），礦石類從 backpack 扣。
 async function repairRodWithMaterials(client, { userId, guildId }) {
@@ -1076,4 +1109,5 @@ module.exports = {
   repairPickaxeWithMaterials,
   repairWeaponWithMaterials,
   repairRodWithMaterials,
+  getRodRepairPreview,
 };
