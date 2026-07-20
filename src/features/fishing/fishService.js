@@ -64,7 +64,9 @@ function locationUnlockDesc(locKey) {
 }
 
 // 執行一次釣魚。回傳結果物件。
-async function fish(client, { userId, guildId, location = "stream", member, username }) {
+// batchCtx（連續釣魚專用，單次釣魚不傳）：{ gc } 整批共用公會 buff、
+// { logSink } 收集 fishLog 由批次一次寫入、{ deferXp } 只 roll 經驗、由批次匯總後一次授予。
+async function fish(client, { userId, guildId, location = "stream", member, username, batchCtx = null }) {
   if (!fishing?.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
@@ -95,11 +97,17 @@ async function fish(client, { userId, guildId, location = "stream", member, user
     };
   }
 
-  // 等級解鎖：查 UserLevels
-  const userLevel = await client.userLevelsCollection
-    ?.findOne({ userId, guildId })
-    .catch(() => null);
-  const playerLevel = userLevel?.level ?? 0;
+  // 等級解鎖：查 UserLevels。連續釣魚整批期間等級固定（經驗延後到批次結束才授予），
+  // 由批次一次讀好傳入，省去每竿重查。
+  let playerLevel;
+  if (typeof batchCtx?.playerLevel === "number") {
+    playerLevel = batchCtx.playerLevel;
+  } else {
+    const userLevel = await client.userLevelsCollection
+      ?.findOne({ userId, guildId })
+      .catch(() => null);
+    playerLevel = userLevel?.level ?? 0;
+  }
 
   if (playerLevel < (locDef.unlockLevel || 0)) {
     return {
@@ -133,14 +141,21 @@ async function fish(client, { userId, guildId, location = "stream", member, user
     return { ok: false, reason: "fish_bag_full", used: fishUsed, cap: fishCap };
   }
 
-  // 通過所有前置檢查 → 這一竿必定會下（不論成敗），發放釣魚經驗
-  const xpGained = await grantActivityXp(client, "fish", {
-    userId,
-    guildId,
-    username,
-    member,
-    meta: { location },
-  });
+  // 通過所有前置檢查 → 這一竿必定會下（不論成敗），發放釣魚經驗。
+  // 連續釣魚：只 roll 出基礎經驗，批次匯總後一次授予；單次釣魚：照常即時授予。
+  let xpGained = 0;
+  let xpBase = 0;
+  if (batchCtx?.deferXp) {
+    xpBase = grantActivityXp.roll("fish");
+  } else {
+    xpGained = await grantActivityXp(client, "fish", {
+      userId,
+      guildId,
+      username,
+      member,
+      meta: { location },
+    });
+  }
 
   // 釣竿 + 海鮮拼盤（fish_fortune）：決定成功率與稀有度偏移
   const rods = fishing.rods || {};
@@ -199,6 +214,7 @@ async function fish(client, { userId, guildId, location = "stream", member, user
       droppedNetFragment,
       netActive,
       xpGained,
+      xpBase,
       foodBuffLines: formatFoodBuffLines(profile, "fish"),
     };
   }
@@ -206,7 +222,7 @@ async function fish(client, { userId, guildId, location = "stream", member, user
   // ── 成功上鉤 ──：先算「魚 / 非魚」共用的冷卻、耐久、漁網消耗
   // 冷卻減免（釣竿 + Twitch 訂閱 + 公會建築/等級/宴會 + 世界事件）統一走 buffResolver，與挖礦同構。
   const buffResolver = require("../buff/buffResolver");
-  const fishingCd = await buffResolver.getFishingResolve(client, userId, guildId, member, { profile });
+  const fishingCd = await buffResolver.getFishingResolve(client, userId, guildId, member, { profile, gc: batchCtx?.gc });
   const newCooldownAt = now + fishingCd.actualCdMs;
 
   const inc = { fish_count_total: 1 };
@@ -257,6 +273,7 @@ async function fish(client, { userId, guildId, location = "stream", member, user
     netActive,
     netUsesAfter: netActive ? (profile.fishing_net_uses || 0) - 1 : (profile.fishing_net_uses || 0),
     xpGained,
+    xpBase,
     foodBuffLines: formatFoodBuffLines(profile, "fish"),
   };
 
@@ -354,10 +371,17 @@ async function fish(client, { userId, guildId, location = "stream", member, user
 
   consumeFortune();
 
-  // 釣魚紀錄（optional，供任務 / 排行榜使用）
-  client.fishLogsCollection
-    ?.insertOne({ user_id: userId, guild_id: guildId, fish: fishKey, location, ts: new Date() })
-    .catch((e) => console.log(`[ERROR] insert fish log: ${e}`.red));
+  // 釣魚紀錄（optional，供任務 / 排行榜使用）。連續釣魚交由批次一次 insertMany。
+  if (client.fishLogsCollection) {
+    const logDoc = { user_id: userId, guild_id: guildId, fish: fishKey, location, ts: new Date() };
+    if (batchCtx?.logSink) {
+      batchCtx.logSink.push(logDoc);
+    } else {
+      client.fishLogsCollection
+        .insertOne(logDoc)
+        .catch((e) => console.log(`[ERROR] insert fish log: ${e}`.red));
+    }
+  }
 
   // 世界事件觸發 roll：fire-and-forget
   require("../world_event/worldEventService")
@@ -419,12 +443,14 @@ async function fishBatch(client, { userId, guildId, member, username, location =
   const profile = await getFishingProfile(client, userId, guildId);
   const now = Date.now();
 
+  let batchPlayerLevel = null;
   const unlockLevel = bcfg.unlockLevel || 0;
   if (unlockLevel > 0) {
     const userLevel = await client.userLevelsCollection
       ?.findOne({ userId, guildId })
       .catch(() => null);
     const lvl = userLevel?.level ?? 0;
+    batchPlayerLevel = lvl;
     if (lvl < unlockLevel) {
       return { ok: false, reason: "level_locked", required: unlockLevel, current: lvl };
     }
@@ -476,6 +502,15 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     xpGained: 0,
   };
 
+  // 整批共用：公會 buff 預先算一次逐輪傳入；fishLog 收集後一次 insertMany；
+  // 經驗只 roll 不授予，最後匯總一次授予（比照 mineBatch）。
+  const gc = await require("../buff/buffResolver")
+    .getGuildClubBuffs(client, userId, guildId)
+    .catch(() => null);
+  const logSink = [];
+  let xpBaseSum = 0;
+  const batchCtx = { gc, logSink, deferXp: true, playerLevel: batchPlayerLevel };
+
   for (let i = 0; i < requested; i++) {
     const cur = await client.miningProfilesCollection.findOne(
       { userId, guildId },
@@ -516,7 +551,7 @@ async function fishBatch(client, { userId, guildId, member, username, location =
       agg.ticketsSpent += need;
     }
 
-    const r = await fish(client, { userId, guildId, location, member, username });
+    const r = await fish(client, { userId, guildId, location, member, username, batchCtx });
     if (!r.ok) {
       if (spentThisIter > 0) {
         await client.miningProfilesCollection
@@ -528,7 +563,7 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     }
 
     agg.performed++;
-    agg.xpGained += r.xpGained || 0;
+    xpBaseSum += r.xpBase || 0;
     agg.newCooldownAt = r.newCooldownAt;
     agg.fishCountTotal = r.fishCountTotal;
     if (r.droppedNetFragment) agg.netFragments++;
@@ -589,6 +624,25 @@ async function fishBatch(client, { userId, guildId, member, username, location =
       agg.stoppedEarly = true;
       break;
     }
+  }
+
+  // 本批 fishLog 一次寫入（fire-and-forget，不阻塞結算）
+  if (client.fishLogsCollection && logSink.length > 0) {
+    client.fishLogsCollection
+      .insertMany(logSink, { ordered: false })
+      .catch((e) => console.log(`[ERROR] insert fish logs (batch): ${e}`.red));
+  }
+
+  // 整批經驗一次授予：等同逐竿授予的總量，但只打一次 UserLevels。
+  if (xpBaseSum > 0) {
+    agg.xpGained = await grantActivityXp(client, "fish", {
+      userId,
+      guildId,
+      username,
+      member,
+      amount: xpBaseSum,
+      meta: { batch: true, count: agg.performed },
+    });
   }
 
   if (agg.performed === 0) {
