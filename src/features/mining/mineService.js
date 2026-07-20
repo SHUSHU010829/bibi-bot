@@ -271,24 +271,22 @@ async function mineBatch(client, { userId, guildId, member, username, count }) {
     }
   }
 
-  if ((profile.mine_cooldown_at || 0) > now) {
-    return { ok: false, reason: "cooldown", readyAt: profile.mine_cooldown_at };
-  }
-
+  // CD 縮短券照常規：一張少 cdTicketReductionMs（預設 30 分）。連續挖礦時，每次挖礦前
+  // 若還在冷卻中，就依「剩餘冷卻 ÷ 每張券縮短量」無條件進位算出要花幾張券把冷卻清掉再挖。
+  // 例：冷卻 1 小時 → 2 張券；2 小時 → 4 張券。已可挖（無冷卻）則免券直接挖。
+  const reductionMs = mining?.cdTicketReductionMs || 1800000;
   const maxCount = Math.max(1, bcfg.maxCount || 1);
-  const tickets = profile.cd_ticket_count || 0;
-  const requested = Math.max(1, Math.floor(count || 1));
-  // 第一次免費 + 每張券換一次 → 最多 tickets + 1 次
-  const effective = Math.min(requested, maxCount, tickets + 1);
-  if (effective < 1) return { ok: false, reason: "invalid_count" };
+  const requested = Math.min(Math.max(1, Math.floor(count || 1)), maxCount);
+  const initiallyOnCooldown = (profile.mine_cooldown_at || 0) > now;
 
   const agg = {
     ok: true,
     requested,
     maxCount,
-    effective,
     performed: 0,
     ticketsSpent: 0,
+    stoppedNoTicket: false,
+    lastCdMs: 0,
     ores: {},
     overflowOres: {},
     overflowCoins: 0,
@@ -307,30 +305,46 @@ async function mineBatch(client, { userId, guildId, member, username, count }) {
   };
   const RARE = new Set(["iron", "gold", "diamond"]);
 
-  for (let i = 0; i < effective; i++) {
-    if (i > 0) {
-      // 扣一張券並清冷卻，讓下一次 mine() 通過冷卻檢查
+  for (let i = 0; i < requested; i++) {
+    // 讀當前冷卻與券數，依剩餘冷卻換算要花幾張券
+    const cur = await client.miningProfilesCollection.findOne(
+      { userId, guildId },
+      { projection: { mine_cooldown_at: 1, cd_ticket_count: 1 } },
+    );
+    const remaining = (cur?.mine_cooldown_at || 0) - Date.now();
+    let spentThisIter = 0;
+    if (remaining > 0) {
+      const need = Math.ceil(remaining / reductionMs);
+      if ((cur?.cd_ticket_count || 0) < need) {
+        agg.stoppedNoTicket = true;
+        break;
+      }
       const res = await client.miningProfilesCollection.updateOne(
-        { userId, guildId, cd_ticket_count: { $gte: 1 } },
-        { $inc: { cd_ticket_count: -1 }, $set: { mine_cooldown_at: 0, updatedAt: new Date() } },
+        { userId, guildId, cd_ticket_count: { $gte: need } },
+        { $inc: { cd_ticket_count: -need }, $set: { mine_cooldown_at: 0, updatedAt: new Date() } },
       );
-      if (res.modifiedCount === 0) break; // 券用完了（理論上被上面夾住不會發生）
-      agg.ticketsSpent++;
+      if (res.modifiedCount === 0) {
+        agg.stoppedNoTicket = true;
+        break;
+      }
+      spentThisIter = need;
+      agg.ticketsSpent += need;
     }
 
     const r = await mine(client, { userId, guildId, member, username, allowOverflow: true });
     if (!r.ok) {
-      // 這次沒挖成：把剛扣的券退回（i>0 才有扣）
-      if (i > 0) {
+      // 這次沒挖成：把剛扣的券退回
+      if (spentThisIter > 0) {
         await client.miningProfilesCollection
-          .updateOne({ userId, guildId }, { $inc: { cd_ticket_count: 1 } })
+          .updateOne({ userId, guildId }, { $inc: { cd_ticket_count: spentThisIter } })
           .catch(() => {});
-        agg.ticketsSpent--;
+        agg.ticketsSpent -= spentThisIter;
       }
       break;
     }
 
     agg.performed++;
+    if (r.buff?.actualCdMs) agg.lastCdMs = r.buff.actualCdMs;
     agg.newCooldownAt = r.newCooldownAt;
     agg.mineCountTotal = r.mineCountTotal;
     agg.backpackCap = r.backpackCap;
@@ -384,7 +398,11 @@ async function mineBatch(client, { userId, guildId, member, username, count }) {
   }
 
   if (agg.performed === 0) {
-    return { ok: false, reason: "nothing" };
+    return {
+      ok: false,
+      reason: initiallyOnCooldown ? "cooldown_no_ticket" : "nothing",
+      readyAt: profile.mine_cooldown_at,
+    };
   }
   return agg;
 }

@@ -121,7 +121,7 @@ function buildBatchCountModal({ ownerId, location, maxCount }) {
     .setMinLength(1)
     .setMaxLength(3)
     .setValue(String(maxCount))
-    .setPlaceholder(`輸入 1～${maxCount}，第一竿免費、之後每竿消耗 1 張券`);
+    .setPlaceholder(`輸入 1～${maxCount}（每竿依冷卻扣券，一張少 30 分，券不夠會自動停）`);
   modal.addComponents(new ActionRowBuilder().addComponents(input));
   return modal;
 }
@@ -154,7 +154,7 @@ function buildBatchNoTicketView() {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "連續釣魚第一竿免費、之後每竿要消耗 1 張 **CD 縮短券**，你目前一張都沒有。",
+        "連續釣魚會照冷卻時間扣 **CD 縮短券**（一張少 30 分，冷卻越長扣越多），你目前的券不足以連續釣魚。",
       ),
     )
     .addTextDisplayComponents(
@@ -880,16 +880,11 @@ async function runFishBatch(client, interaction, { location = "stream", count })
           );
         return interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
       }
-      if (result.reason === "cooldown") {
-        const readyEpoch = Math.floor(result.readyAt / 1000);
-        const c = new ContainerBuilder()
-          .setAccentColor(0x3498db)
-          .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              `# 🎣 釣竿還在等魚上鉤\n冷卻結束後才能連續釣魚：<t:${readyEpoch}:R>`,
-            ),
-          );
-        return interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
+      if (result.reason === "cooldown_no_ticket") {
+        return interaction.editReply({
+          components: [buildBatchNoTicketView()],
+          flags: MessageFlags.IsComponentsV2,
+        });
       }
       if (result.reason === "disabled") {
         return interaction.editReply("🔧 釣魚系統尚未啟動！");
@@ -972,9 +967,17 @@ async function runFishBatch(client, interaction, { location = "stream", count })
 
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**消耗 CD 縮短券**\n×${result.ticketsSpent}（第一竿免費）`,
+        `**消耗 CD 縮短券**\n×${result.ticketsSpent}`,
       ),
     );
+
+    if (result.stoppedNoTicket) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 🎫 券不夠了，連續釣魚在第 ${result.performed} 竿後停止。到 \`/商店\` 補券再來。`,
+        ),
+      );
+    }
 
     if (result.rodBroke) {
       const brokeDef = fishing?.rods?.[result.rodBrokeFrom] || {};

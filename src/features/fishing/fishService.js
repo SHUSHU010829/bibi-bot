@@ -429,15 +429,12 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     };
   }
 
-  if ((profile.fish_cooldown_at || 0) > now) {
-    return { ok: false, reason: "cooldown", readyAt: profile.fish_cooldown_at };
-  }
-
+  // CD 縮短券照常規：一張少 cdTicketReductionMs（預設 30 分）。連續釣魚時，每竿前若還在冷卻中，
+  // 就依「剩餘冷卻 ÷ 每張券縮短量」無條件進位算出要花幾張券把冷卻清掉再下竿（冷卻 1 小時 → 2 張）。
+  const reductionMs = fishing?.cdTicketReductionMs || 1800000;
   const maxCount = Math.max(1, bcfg.maxCount || 1);
-  const tickets = profile.cd_ticket_count || 0;
-  const requested = Math.max(1, Math.floor(count || 1));
-  const effective = Math.min(requested, maxCount, tickets + 1);
-  if (effective < 1) return { ok: false, reason: "invalid_count" };
+  const requested = Math.min(Math.max(1, Math.floor(count || 1)), maxCount);
+  const initiallyOnCooldown = (profile.fish_cooldown_at || 0) > now;
 
   const agg = {
     ok: true,
@@ -445,9 +442,9 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     locDef,
     requested,
     maxCount,
-    effective,
     performed: 0,
     ticketsSpent: 0,
+    stoppedNoTicket: false,
     caught: 0,
     failed: 0,
     fishByType: {},
@@ -464,23 +461,38 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     fishCountTotal: profile.fish_count_total || 0,
   };
 
-  for (let i = 0; i < effective; i++) {
-    if (i > 0) {
+  for (let i = 0; i < requested; i++) {
+    const cur = await client.miningProfilesCollection.findOne(
+      { userId, guildId },
+      { projection: { fish_cooldown_at: 1, cd_ticket_count: 1 } },
+    );
+    const remaining = (cur?.fish_cooldown_at || 0) - Date.now();
+    let spentThisIter = 0;
+    if (remaining > 0) {
+      const need = Math.ceil(remaining / reductionMs);
+      if ((cur?.cd_ticket_count || 0) < need) {
+        agg.stoppedNoTicket = true;
+        break;
+      }
       const res = await client.miningProfilesCollection.updateOne(
-        { userId, guildId, cd_ticket_count: { $gte: 1 } },
-        { $inc: { cd_ticket_count: -1 }, $set: { fish_cooldown_at: 0, updatedAt: new Date() } },
+        { userId, guildId, cd_ticket_count: { $gte: need } },
+        { $inc: { cd_ticket_count: -need }, $set: { fish_cooldown_at: 0, updatedAt: new Date() } },
       );
-      if (res.modifiedCount === 0) break;
-      agg.ticketsSpent++;
+      if (res.modifiedCount === 0) {
+        agg.stoppedNoTicket = true;
+        break;
+      }
+      spentThisIter = need;
+      agg.ticketsSpent += need;
     }
 
     const r = await fish(client, { userId, guildId, location, member, username });
     if (!r.ok) {
-      if (i > 0) {
+      if (spentThisIter > 0) {
         await client.miningProfilesCollection
-          .updateOne({ userId, guildId }, { $inc: { cd_ticket_count: 1 } })
+          .updateOne({ userId, guildId }, { $inc: { cd_ticket_count: spentThisIter } })
           .catch(() => {});
-        agg.ticketsSpent--;
+        agg.ticketsSpent -= spentThisIter;
       }
       break;
     }
@@ -527,7 +539,13 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     }
   }
 
-  if (agg.performed === 0) return { ok: false, reason: "nothing" };
+  if (agg.performed === 0) {
+    return {
+      ok: false,
+      reason: initiallyOnCooldown ? "cooldown_no_ticket" : "nothing",
+      readyAt: profile.fish_cooldown_at,
+    };
+  }
   return agg;
 }
 

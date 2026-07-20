@@ -91,16 +91,13 @@ async function openBatchCountModal(client, interaction, { ownerId, location }) {
     }
   }
 
-  if ((profile.fish_cooldown_at || 0) > Date.now()) {
-    return replyEphemeral(interaction, "⏳ 釣竿還在冷卻中，等冷卻結束再連續釣魚～");
-  }
-
+  // 需要至少一張券才有「連續」意義；實際能釣幾竿依冷卻換算的券數由 fishBatch 逐竿夾住。
   const tickets = profile.cd_ticket_count || 0;
   if (tickets < 1) {
     return replyEphemeralView(interaction, fishCmd.buildBatchNoTicketView());
   }
 
-  const maxCount = Math.min(fishing?.batch?.maxCount || 1, tickets + 1);
+  const maxCount = fishing?.batch?.maxCount || 1;
   return interaction.showModal(
     fishCmd.buildBatchCountModal({ ownerId: interaction.user.id, location: loc, maxCount }),
   );

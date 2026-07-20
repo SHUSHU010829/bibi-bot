@@ -109,18 +109,13 @@ async function openBatchCountModal(client, interaction, { ownerId }) {
     }
   }
 
-  // 冷卻中不能開批次
-  if ((profile.mine_cooldown_at || 0) > Date.now()) {
-    return replyEphemeral(interaction, "⏳ 鎬子還在冷卻中，等冷卻結束再連續挖礦～");
-  }
-
-  // 需要至少一張券才有「連續」意義
+  // 需要至少一張券才有「連續」意義；實際能挖幾次依冷卻換算的券數由 mineBatch 逐次夾住。
   const tickets = profile.cd_ticket_count || 0;
   if (tickets < 1) {
     return replyEphemeralView(interaction, mineCmd.buildBatchNoTicketView());
   }
 
-  const maxCount = Math.min(mining?.batch?.maxCount || 1, tickets + 1);
+  const maxCount = mining?.batch?.maxCount || 1;
   return interaction.showModal(
     mineCmd.buildBatchCountModal({ ownerId: interaction.user.id, maxCount }),
   );
