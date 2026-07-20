@@ -24,7 +24,11 @@ const {
   SWAP_SELL_PREFIX,
   VIEW_MYSTALL_ID,
   VIEW_BROWSE_ID,
+  buildLiveListingCard,
 } = require("./marketplaceView");
+
+// 有成交進度、公開卡需即時更新的單型
+const LIVE_KINDS = new Set(["bulk", "bulk_sell", "swap"]);
 
 // 「物品換金錢」的上架二次確認：先預覽行情中位數與洗幣風險 → 確認才真正建立掛單。
 // pending 存在記憶體（確認在數分鐘內完成，重啟就重下指令即可），可直接保留 member 物件。
@@ -589,6 +593,10 @@ function buildAckText(pending, result) {
     const total = (l.unit_price || 0) * (l.qty || 0);
     return head + `\n-# 全部售出可得 **${total.toLocaleString()}** ${COIN_EMOJI}（每筆成交前扣 ${feeRate}% 手續費）。`;
   }
+  if (pending.kind === "swap") {
+    const give = l.give || {};
+    return head + `\n-# 已從你${itemAccess.bagName(give.type)}託管 ${itemAccess.itemLabel(give.type, give.key, give.qty)}；換滿或到期未換出的會退回。`;
+  }
   return head;
 }
 
@@ -596,10 +604,15 @@ function buildAckText(pending, result) {
 async function finalize(client, pending) {
   const result = await callCreate(client, pending);
   if (!result.ok) return { ok: false, errorText: fmtErr(pending, result) };
+  const live = LIVE_KINDS.has(pending.kind);
   return {
     ok: true,
-    publicCard: buildSuccessCard(pending, result),
+    // 有進度的單型（收購/賣單/物物交換）用可即時更新的公開卡；其餘沿用開單成功卡
+    publicCard: live ? buildLiveListingCard(result.listing) : buildSuccessCard(pending, result),
     ackText: buildAckText(pending, result),
+    live,
+    listingId: result.listing?.listing_id,
+    guildId: result.listing?.guild_id,
   };
 }
 

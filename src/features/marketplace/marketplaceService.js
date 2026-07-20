@@ -1,5 +1,6 @@
 require("colors");
 const crypto = require("crypto");
+const { MessageFlags } = require("discord.js");
 const { mining, marketplace, fishing, farming } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("../mining/miningProfile");
 const grantCoins = require("../economy/grantCoins");
@@ -38,6 +39,37 @@ async function dmUser(client, userId, content) {
   } catch (err) {
     console.log(`[WARN] marketplace DM 失敗（${userId}）：${err?.message || err}`.yellow);
   }
+}
+
+// 記錄公開掛單卡的訊息位置，供後續即時更新（成交進度、收滿、下架、到期）
+async function setListingCardRef(client, { guildId, listingId, channelId, messageId }) {
+  if (!client.marketListingsCollection || !channelId || !messageId) return;
+  await client.marketListingsCollection.updateOne(
+    { guild_id: guildId, listing_id: listingId },
+    { $set: { card_channel_id: channelId, card_message_id: messageId } }
+  ).catch((e) => console.log(`[WARN] setListingCardRef: ${e?.message || e}`.yellow));
+}
+
+// 就地更新公開掛單卡（傳入最新 listing doc）。訊息被刪/無權限就靜默略過。
+async function refreshListingCard(client, listing) {
+  if (!listing?.card_message_id || !listing?.card_channel_id) return;
+  try {
+    const channel = await client.channels.fetch(listing.card_channel_id).catch(() => null);
+    if (!channel?.messages) return;
+    const msg = await channel.messages.fetch(listing.card_message_id).catch(() => null);
+    if (!msg) return;
+    const { buildLiveListingCard } = require("./marketplaceView");
+    await msg.edit({ components: [buildLiveListingCard(listing)], flags: MessageFlags.IsComponentsV2 });
+  } catch (e) {
+    console.log(`[WARN] refreshListingCard #${listing.listing_id}: ${e?.message || e}`.yellow);
+  }
+}
+
+// 重抓最新 doc 並更新公開卡（fire-and-forget 用）
+async function refreshCardById(client, guildId, listingId) {
+  if (!client.marketListingsCollection) return;
+  const doc = await client.marketListingsCollection.findOne({ guild_id: guildId, listing_id: listingId }).catch(() => null);
+  if (doc) await refreshListingCard(client, doc);
 }
 
 // 依賣家 Twitch tier 決定手續費率
@@ -670,6 +702,8 @@ async function fulfillBulk(client, { listingId, sellerId, guildId, sellerName, m
     );
   }
 
+  refreshCardById(client, guildId, listingId).catch(() => {});
+
   return {
     ok: true, listing, item, sold, unitPrice: unit, proceeds,
     mailed: delivery.mailed || 0, newFilled, remaining: remainingAfter, completed,
@@ -898,6 +932,8 @@ async function fulfillBulkSell(client, { listingId, buyerId, guildId, buyerName,
       { $set: { status: "sold", settled_at: new Date() } }
     );
   }
+
+  refreshCardById(client, guildId, listingId).catch(() => {});
 
   return {
     ok: true, listing, item, bought, unitPrice: unit, cost, fee, proceeds,
@@ -1134,6 +1170,8 @@ async function fulfillSwap(client, { listingId, sellerId, guildId, sellerName, m
       { $set: { status: "sold", settled_at: new Date() } }
     );
   }
+
+  refreshCardById(client, guildId, listingId).catch(() => {});
 
   return {
     ok: true, listing, give, want, sold, giveOut, fee,
@@ -1657,6 +1695,7 @@ async function cancelListing(client, { listingId, guildId, userId }) {
     { guild_id: guildId, listing_id: listingId },
     { $set: { status: "cancelled", settled_at: new Date() } }
   );
+  refreshCardById(client, guildId, listingId).catch(() => {});
   return { ok: true, listing: lockedDoc };
 }
 
@@ -1680,6 +1719,7 @@ async function settleListing(client, listing) {
     { listing_id: listing.listing_id, guild_id: listing.guild_id },
     { $set: { status: "expired", settled_at: new Date() } }
   );
+  refreshCardById(client, listing.guild_id, listing.listing_id).catch(() => {});
   return { outcome: "expired", listing };
 }
 
@@ -1993,6 +2033,9 @@ module.exports = {
   cancelListing,
   settleListing,
   renewListing,
+  setListingCardRef,
+  refreshListingCard,
+  refreshCardById,
   listActive,
   listByOwner,
   listByBidder,

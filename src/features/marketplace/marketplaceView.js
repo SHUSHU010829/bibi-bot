@@ -407,6 +407,36 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId
   return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
 }
 
+// ─── 公開掛單卡（可隨成交進度即時更新）─────────────────────────────────────────
+// 給頻道其他玩家看目前兜售/收購進度：成交、收滿、下架、到期時就地更新這張卡。
+function buildLiveListingCard(l) {
+  const active = l.status === "active";
+  let statusTag = "";
+  if (l.status === "sold") {
+    statusTag = l.listing_type === "bulk" ? "✅ 已收滿" : l.listing_type === "swap" ? "✅ 已換滿" : "✅ 已售完";
+  } else if (l.status === "expired") {
+    statusTag = "⌛ 已到期";
+  } else if (l.status === "cancelled") {
+    statusTag = "🗑️ 已下架";
+  } else if (l.status === "settling") {
+    statusTag = "⏳ 結算中";
+  }
+
+  const container = new ContainerBuilder().setAccentColor(active ? 0x2980b9 : 0x95a5a6);
+  const body = listingText(l) + (statusTag ? `\n**${statusTag}**` : "");
+  const btn = active ? listingAccessoryButton(l, false) : null;
+  if (btn) {
+    container.addSectionComponents(
+      new SectionBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(body))
+        .setButtonAccessory(btn)
+    );
+  } else {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+  }
+  return container;
+}
+
 // ─── 我的攤位 ─────────────────────────────────────────────────────────────────
 function buildMyStallView(listings) {
   const container = new ContainerBuilder()
@@ -791,6 +821,7 @@ module.exports = {
   buildBulkSellQtyModal,
   buildSwapFulfillView,
   buildSwapQtyModal,
+  buildLiveListingCard,
   oreLabel,
   itemLabel,
   listingText,
