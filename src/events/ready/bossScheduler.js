@@ -11,6 +11,7 @@ const { boss, serverId } = require("../../config");
 const bossEngine = require("../../features/boss/bossEngine");
 const bossRewards = require("../../features/boss/bossRewards");
 const bossAnnouncer = require("../../features/boss/bossAnnouncer");
+const bossTreasure = require("../../features/boss/bossTreasure");
 
 async function spawnSaturday(client) {
   const guildId = serverId;
@@ -55,6 +56,11 @@ async function expirySweep(client) {
       await bossAnnouncer.announceSettlement(client, settlement);
     }
   }
+
+  // 3. 亂入寶箱：對進行中的 BOSS 收過期寶箱 / 機率生成新寶箱
+  await bossTreasure.tick(client, guild).catch((e) =>
+    console.log(`[BOSS] treasure tick failed: ${e.message}`.red),
+  );
 }
 
 module.exports = (client) => {
