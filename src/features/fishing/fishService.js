@@ -456,6 +456,8 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     netFragments: 0,
     rodBroke: false,
     rodBrokeFrom: null,
+    stoppedLowDurability: false,
+    lowDurabilityRod: null,
     stoppedEarly: false,
     newCooldownAt: now,
     fishCountTotal: profile.fish_count_total || 0,
@@ -464,8 +466,23 @@ async function fishBatch(client, { userId, guildId, member, username, location =
   for (let i = 0; i < requested; i++) {
     const cur = await client.miningProfilesCollection.findOne(
       { userId, guildId },
-      { projection: { fish_cooldown_at: 1, cd_ticket_count: 1 } },
+      { projection: { fish_cooldown_at: 1, cd_ticket_count: 1, fishing_rod: 1, rod_durability: 1 } },
     );
+
+    // 保護性中止：若釣竿再成功釣一次就會斷（耐久 ≤ 1），在斷掉前先停、不下這一竿，
+    // 讓釣竿留在耐久 1、不退回竹釣竿。
+    if (
+      cur?.fishing_rod &&
+      cur.fishing_rod !== "bamboo" &&
+      typeof cur.rod_durability === "number" &&
+      cur.rod_durability <= 1
+    ) {
+      agg.stoppedLowDurability = true;
+      agg.lowDurabilityRod = cur.fishing_rod;
+      agg.stoppedEarly = true;
+      break;
+    }
+
     const remaining = (cur?.fish_cooldown_at || 0) - Date.now();
     let spentThisIter = 0;
     if (remaining > 0) {
@@ -561,6 +578,9 @@ async function fishBatch(client, { userId, guildId, member, username, location =
   }
 
   if (agg.performed === 0) {
+    if (agg.stoppedLowDurability) {
+      return { ok: false, reason: "low_durability", rod: agg.lowDurabilityRod };
+    }
     return {
       ok: false,
       reason: initiallyOnCooldown ? "cooldown_no_ticket" : "nothing",

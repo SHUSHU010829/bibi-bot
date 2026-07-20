@@ -100,7 +100,9 @@ const MINE_BATCH_PREFIX = "mine_batch_";
 function parseMineBatchId(customId) {
   if (!customId || !customId.startsWith(MINE_BATCH_PREFIX)) return null;
   const ownerId = customId.slice(MINE_BATCH_PREFIX.length);
-  return ownerId ? { ownerId } : null;
+  // 排除 mine_batch_qty_ / mine_batch_fix_ 這類子型別（純數字 snowflake 不含底線）
+  if (!ownerId || ownerId.includes("_")) return null;
+  return { ownerId };
 }
 
 function batchUnlockLevel() {
@@ -646,6 +648,30 @@ function buildBatchAppraiseRow(ownerId, ts, maxQty, feePerStone) {
   );
 }
 
+// 低耐久停止時，若玩家有維修工具，附一顆「直接修理」按鈕。
+const MINE_BATCH_REPAIR_PREFIX = "mine_batch_fix_";
+
+function parseMineBatchRepairId(customId) {
+  if (!customId || !customId.startsWith(MINE_BATCH_REPAIR_PREFIX)) return null;
+  const rest = customId.slice(MINE_BATCH_REPAIR_PREFIX.length);
+  const us = rest.lastIndexOf("_");
+  if (us <= 0) return null;
+  const ownerId = rest.slice(0, us);
+  const tier = rest.slice(us + 1);
+  if (!ownerId || !tier) return null;
+  return { ownerId, tier };
+}
+
+function buildBatchRepairRow(ownerId, repairTool) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${MINE_BATCH_REPAIR_PREFIX}${ownerId}_${repairTool.tier}`)
+      .setLabel(`使用${repairTool.name}修理（剩 ${repairTool.count}）`.slice(0, 80))
+      .setEmoji(repairTool.emoji || "🔧")
+      .setStyle(ButtonStyle.Success),
+  );
+}
+
 function buildBatchLockedView(required, current) {
   return new ContainerBuilder()
     .setAccentColor(0xe74c3c)
@@ -759,6 +785,33 @@ async function runMineBatch(client, interaction, { count }) {
           flags: MessageFlags.IsComponentsV2,
         });
       }
+      if (result.reason === "low_durability") {
+        const pk = mining?.pickaxes?.[result.pickaxe] || {};
+        const c = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("# 🛡️ 鎬子快壞了，先修一下"),
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `你的 **${pk.name || result.pickaxe}** 只剩 1 次耐久，連續挖礦不會硬挖到它斷掉退回木鎬。`,
+            ),
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              result.repairTool
+                ? "-# 有維修工具！點下方按鈕直接修，或去 `/合成` 材料修理。"
+                : "-# 先去 `/合成` 修理，或用 `/挖礦` 手動挖最後一下再合成新的。",
+            ),
+          );
+        if (result.repairTool) {
+          c.addActionRowComponents(
+            buildBatchRepairRow(interaction.user.id, result.repairTool),
+          );
+        }
+        return interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
+      }
       if (result.reason === "disabled") {
         return interaction.editReply("🔧 挖礦系統尚未啟動！");
       }
@@ -844,7 +897,14 @@ async function runMineBatch(client, interaction, { count }) {
       );
     }
 
-    if (result.durabilityBroke) {
+    if (result.stoppedLowDurability) {
+      const pk = mining?.pickaxes?.[result.lowDurabilityPickaxe] || {};
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 🛡️ **${pk.name || result.lowDurabilityPickaxe}** 只剩 1 次耐久，為避免斷裂退回木鎬，連續挖礦已在斷掉前停止。去 \`/合成\` 修理，或用 \`/挖礦\` 手動挖最後一下。`,
+        ),
+      );
+    } else if (result.durabilityBroke) {
       const brokeDef = mining?.pickaxes?.[result.pickaxeBrokeFrom] || {};
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
@@ -866,6 +926,12 @@ async function runMineBatch(client, interaction, { count }) {
           `**下次可挖礦**\n<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）\n**累積挖礦**\n${result.mineCountTotal.toLocaleString()} 次`,
         ),
       );
+
+    if (result.stoppedLowDurability && result.repairTool) {
+      container.addActionRowComponents(
+        buildBatchRepairRow(interaction.user.id, result.repairTool),
+      );
+    }
 
     if (result.appraisal) {
       container
@@ -1093,4 +1159,6 @@ module.exports = {
   buildBatchNoTicketView,
   batchUnlockLevel,
   runMineBatch,
+  MINE_BATCH_REPAIR_PREFIX,
+  parseMineBatchRepairId,
 };

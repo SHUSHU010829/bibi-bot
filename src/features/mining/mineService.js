@@ -244,6 +244,27 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
   return result;
 }
 
+// 從玩家持有的維修工具中挑一把「最划算」的：優先 max 不降（甚至 +）、其次補得多。
+// 回傳 { tier, name, emoji, count } 或 null（沒有維修工具）。
+function bestRepairTool(repairToolsOwned) {
+  const tools = craft?.repairTools || {};
+  const owned = Object.entries(tools)
+    .map(([tier, def]) => ({
+      tier,
+      name: def.name,
+      emoji: def.emoji,
+      count: (repairToolsOwned || {})[tier] || 0,
+    }))
+    .filter((o) => o.count > 0);
+  if (!owned.length) return null;
+  owned.sort(
+    (a, b) =>
+      (tools[b.tier].maxDelta || 0) - (tools[a.tier].maxDelta || 0) ||
+      (tools[b.tier].duraPct || 0) - (tools[a.tier].duraPct || 0),
+  );
+  return owned[0];
+}
+
 // 連續挖礦（批次）：一次挖 count 次，省去逐次點按。
 // 資源模型：第一次免費（照常需已過冷卻），之後每次消耗 1 張 CD 縮短券。
 // 實作採「重用單次 mine()」：每次迭代前清掉上一次設下的冷卻並扣一張券，
@@ -299,6 +320,9 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
     encounters: [],
     durabilityBroke: false,
     pickaxeBrokeFrom: null,
+    stoppedLowDurability: false,
+    lowDurabilityPickaxe: null,
+    repairTool: null,
     stoppedEarly: false,
     newCooldownAt: now,
     mineCountTotal: profile.mine_count_total || 0,
@@ -306,11 +330,35 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
   const RARE = new Set(["iron", "gold", "diamond"]);
 
   for (let i = 0; i < requested; i++) {
-    // 讀當前冷卻與券數，依剩餘冷卻換算要花幾張券
+    // 讀當前冷卻、券數、鎬子耐久與維修工具庫存
     const cur = await client.miningProfilesCollection.findOne(
       { userId, guildId },
-      { projection: { mine_cooldown_at: 1, cd_ticket_count: 1 } },
+      {
+        projection: {
+          mine_cooldown_at: 1,
+          cd_ticket_count: 1,
+          pickaxe: 1,
+          pickaxe_durability: 1,
+          repair_tools: 1,
+        },
+      },
     );
+
+    // 保護性中止：若這把鎬子再挖一次就會斷（耐久 ≤ 1），在斷掉前先停、不做這一次，
+    // 讓鎬子留在耐久 1、不退回木鎬。玩家自己決定要修還是手動挖最後一下。
+    if (
+      cur?.pickaxe &&
+      cur.pickaxe !== "wood" &&
+      typeof cur.pickaxe_durability === "number" &&
+      cur.pickaxe_durability <= 1
+    ) {
+      agg.stoppedLowDurability = true;
+      agg.lowDurabilityPickaxe = cur.pickaxe;
+      agg.repairTool = bestRepairTool(cur.repair_tools);
+      agg.stoppedEarly = true;
+      break;
+    }
+
     const remaining = (cur?.mine_cooldown_at || 0) - Date.now();
     let spentThisIter = 0;
     if (remaining > 0) {
@@ -408,6 +456,14 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
   }
 
   if (agg.performed === 0) {
+    if (agg.stoppedLowDurability) {
+      return {
+        ok: false,
+        reason: "low_durability",
+        pickaxe: agg.lowDurabilityPickaxe,
+        repairTool: agg.repairTool,
+      };
+    }
     return {
       ok: false,
       reason: initiallyOnCooldown ? "cooldown_no_ticket" : "nothing",

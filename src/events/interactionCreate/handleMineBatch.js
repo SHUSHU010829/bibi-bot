@@ -4,7 +4,15 @@
 //   3. 按鈕 mine_bappr_<owner>_<ts>  → 跳「賭幾顆」彈窗（批次賭石）
 //   4. 彈窗 mine_bappr_qty_<owner>_<ts> → 解析顆數 → 依指定顆數賭石並呈現
 
-const { MessageFlags } = require("discord.js");
+const {
+  MessageFlags,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require("discord.js");
 
 const { mining } = require("../../config");
 const { consume } = require("../../utils/rateLimiter");
@@ -57,6 +65,10 @@ module.exports = async (client, interaction) => {
       // 分支 3：批次賭石入口
       const bappr = mineCmd.parseBatchAppraiseId?.(interaction.customId);
       if (bappr) return openBatchAppraiseModal(client, interaction, bappr);
+
+      // 分支 5：低耐久停止時，直接用維修工具修理鎬子
+      const fix = mineCmd.parseMineBatchRepairId?.(interaction.customId);
+      if (fix) return doBatchRepair(client, interaction, fix);
       return;
     }
 
@@ -84,6 +96,59 @@ module.exports = async (client, interaction) => {
     await replyEphemeral(interaction, "🔧 連續挖礦失敗，請呼叫舒舒！");
   }
 };
+
+async function doBatchRepair(client, interaction, { ownerId, tier }) {
+  if (interaction.user.id !== ownerId) {
+    return replyEphemeral(interaction, "🚫 這不是你的鎬子。");
+  }
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+
+  const result = await mineService.useRepairTool(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    tier,
+  });
+
+  if (!result.ok) {
+    const messages = {
+      no_tool: "🔧 你已經沒有這階維修工具了。",
+      no_pickaxe: "🔧 木鎬不需要修理，先合成一把鐵鎬以上。",
+      max_too_low: "🔧 這把鎬子最大耐久太低，改用更高階工具或到 `/合成` 材料修理。",
+      retry: "⚠️ 操作衝突，請再試一次。",
+    };
+    return replyEphemeral(interaction, messages[result.reason] || "🔧 修理失敗，請稍後再試。");
+  }
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# 🛠️ 已使用 ${result.def.name} 修理鎬子`),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `鎬子耐久：**${result.durabilityAfter} / ${result.maxAfter}**\n` +
+          `${result.def.emoji || "🔧"} ${result.def.name} 剩餘 **${result.toolsLeft}** 個`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# 修好了！點下方繼續連續挖礦。"),
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${mineCmd.MINE_BATCH_PREFIX}${interaction.user.id}`)
+          .setLabel("連續挖礦")
+          .setEmoji("🔁")
+          .setStyle(ButtonStyle.Primary),
+      ),
+    );
+
+  await interaction
+    .editReply({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
+  trackSuccess("mine-batch-repair");
+}
 
 async function openBatchCountModal(client, interaction, { ownerId }) {
   if (interaction.user.id !== ownerId) {
