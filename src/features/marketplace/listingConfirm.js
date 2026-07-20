@@ -489,8 +489,7 @@ function buildSuccessCard(pending, result) {
           `# 🛒 大量收購開單成功\n` +
             (l.title ? `📌 ${l.title}\n` : "") +
             `**#${l.listing_id}** ・ 收購 ${itemAccess.itemLabel(pending.itemType, pending.itemKey)} ×**${l.qty.toLocaleString()}**\n` +
-            `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個　總額 **${l.pay_coin.toLocaleString()}** ${COIN_EMOJI}\n` +
-            `已鎖定 **${result.totalEscrow.toLocaleString()}** ${COIN_EMOJI}（含 ${result.fee.toLocaleString()} 手續費）\n` +
+            `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個\n` +
             `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
             `-# 其他玩家可直接點下方「賣給他」分批賣給你；收滿或到期後，未用完的金額會自動退回。`,
         ),
@@ -506,7 +505,6 @@ function buildSuccessCard(pending, result) {
 
   if (pending.kind === "bulk_sell") {
     const feeRate = Math.round(((marketplace.bulkSell || {}).feeRate ?? 0.05) * 100);
-    const total = (l.unit_price || 0) * (l.qty || 0);
     return new ContainerBuilder()
       .setAccentColor(0x2980b9)
       .addTextDisplayComponents(
@@ -514,7 +512,7 @@ function buildSuccessCard(pending, result) {
           `# 📦 大量賣出開單成功\n` +
             (l.title ? `📌 ${l.title}\n` : "") +
             `**#${l.listing_id}** ・ 出售 ${itemAccess.itemLabel(pending.itemType, pending.itemKey)} ×**${l.qty.toLocaleString()}**\n` +
-            `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個　滿額可得 **${total.toLocaleString()}** ${COIN_EMOJI}\n` +
+            `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個\n` +
             `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
             `-# 其他玩家可分批向你購買；每筆成交扣 ${feeRate}% 手續費，售滿或到期後未賣出的會自動退回你的袋子。`,
         ),
@@ -577,6 +575,23 @@ function buildSuccessCard(pending, result) {
     );
 }
 
+// 賣家／買家自己看的私密確認：把金額類資訊（鎖定金額、滿額可得）放這裡，不進公開卡。
+function buildAckText(pending, result) {
+  const l = result.listing;
+  const head = `✅ 已上架 **#${l?.listing_id}**（掛單卡已公開在頻道）`;
+  if (pending.kind === "bulk") {
+    return head +
+      `\n-# 已從你帳戶鎖定 **${result.totalEscrow.toLocaleString()}** ${COIN_EMOJI}` +
+      `（本金 ${l.pay_coin.toLocaleString()} + 手續費 ${result.fee.toLocaleString()}）；收滿或到期未用完會退回。`;
+  }
+  if (pending.kind === "bulk_sell") {
+    const feeRate = Math.round(((marketplace.bulkSell || {}).feeRate ?? 0.05) * 100);
+    const total = (l.unit_price || 0) * (l.qty || 0);
+    return head + `\n-# 全部售出可得 **${total.toLocaleString()}** ${COIN_EMOJI}（每筆成交前扣 ${feeRate}% 手續費）。`;
+  }
+  return head;
+}
+
 // 執行建立：回傳 { ok, errorText? , publicCard? , ackText? }
 async function finalize(client, pending) {
   const result = await callCreate(client, pending);
@@ -584,7 +599,7 @@ async function finalize(client, pending) {
   return {
     ok: true,
     publicCard: buildSuccessCard(pending, result),
-    ackText: `✅ 已上架 **#${result.listing?.listing_id}**（掛單卡已公開在頻道）`,
+    ackText: buildAckText(pending, result),
   };
 }
 
