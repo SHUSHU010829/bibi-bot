@@ -104,7 +104,7 @@ function batchUnlockLevel() {
 function fishBatchButton(ownerId, location) {
   return new ButtonBuilder()
     .setCustomId(`${FISH_BATCH_PREFIX}${ownerId}_${location || "stream"}`)
-    .setLabel(`連續釣魚（Lv${batchUnlockLevel()}）`)
+    .setLabel("連續釣魚")
     .setEmoji("🔁")
     .setStyle(ButtonStyle.Secondary);
 }
@@ -300,6 +300,7 @@ function buildCooldownView({
           .setCustomId(`fish_bag_${ownerId}`)
           .setLabel("查看背包")
           .setStyle(ButtonStyle.Secondary),
+        fishBatchButton(ownerId, location),
       ),
     );
 

@@ -124,7 +124,7 @@ function mineAgainRow(ownerId, { includeBatch = false } = {}) {
     row.addComponents(
       new ButtonBuilder()
         .setCustomId(`${MINE_BATCH_PREFIX}${ownerId}`)
-        .setLabel(`連續挖礦（Lv${batchUnlockLevel()}）`)
+        .setLabel("連續挖礦")
         .setEmoji("🔁")
         .setStyle(ButtonStyle.Secondary),
     );
@@ -231,10 +231,10 @@ function buildCooldownView({
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# ⛏️ 冷卻結束後（<t:${readyEpoch}:R>）點下方「再挖一次」即可繼續。`,
+        `-# ⛏️ 冷卻結束後（<t:${readyEpoch}:R>）點「再挖一次」，或用券直接「連續挖礦」。`,
       ),
     )
-    .addActionRowComponents(mineAgainRow(ownerId));
+    .addActionRowComponents(mineAgainRow(ownerId, { includeBatch: true }));
 
   return container;
 }
