@@ -3,14 +3,12 @@
     "roulette": {
       "enabled": true,
       "minBetPerSlot": 30,
-      "maxTotalBudget": 2000,
       "bettingTimeoutSeconds": 90,
       "gameTtlSeconds": 300
     },
     "multiplierWheel": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 5000,
       "segments": [
         { "mult": 2 }, { "mult": 2 }, { "mult": 0 }, { "mult": 5 },
         { "mult": 2 }, { "mult": 2 }, { "mult": 0 }, { "mult": 10 },
@@ -21,13 +19,11 @@
       ]
     },
     "sicbo": {
-      "minBet": 10,
-      "maxBet": 1000
+      "minBet": 10
     },
     "slot": {
       "enabled": true,
       "minBet": 5,
-      "maxBet": 500,
       "dailyLossProtection": 2000,
       "jackpotPool": {
         "enabled": true,
@@ -40,13 +36,11 @@
     "blackjack": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 1000,
       "gameTtlSeconds": 300
     },
     "hilo": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 1000,
       "gameTtlSeconds": 300,
       "houseEdge": 0.05,
       "maxRounds": 10
@@ -54,7 +48,6 @@
     "tower": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 5000,
       "gameTtlSeconds": 300,
       "houseEdge": 0.05,
       "maxFloors": 9
@@ -62,7 +55,6 @@
     "mines": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 5000,
       "gameTtlSeconds": 300,
       "houseEdge": 0.02,
       "cols": 5,
@@ -72,7 +64,6 @@
     "scratch": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 2000,
       "gameTtlSeconds": 300,
       "luckyCount": 3,
       "numberMax": 99,
@@ -95,7 +86,6 @@
           "name": "銅板場",
           "emoji": "🥉",
           "minBet": 10,
-          "maxBet": 2000,
           "decoyPrizes": [1, 1.5, 2, 3, 5],
           "prizes": [
             { "matches": [], "weight": 92 },
@@ -115,7 +105,6 @@
           "name": "黃金場",
           "emoji": "🥇",
           "minBet": 100,
-          "maxBet": 5000,
           "decoyPrizes": [1, 2, 3, 5, 8],
           "prizes": [
             { "matches": [], "weight": 193 },
@@ -135,7 +124,6 @@
           "name": "鑽石場",
           "emoji": "💎",
           "minBet": 1000,
-          "maxBet": 20000,
           "decoyPrizes": [1, 3, 5, 10, 20],
           "prizes": [
             { "matches": [], "weight": 247 },
@@ -155,7 +143,6 @@
     "plinko": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 5000,
       "defaultRisk": "medium",
       "defaultRows": 8,
       "multipliers": {
@@ -179,14 +166,12 @@
     "keno": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 50000,
       "gameTtlSeconds": 300,
       "paytable": [0, 0, 2, 4, 20, 400]
     },
     "crash": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 5000,
       "houseEdge": 0.02,
       "cooldownSeconds": 300,
       "notifyChannelId": "1504806019610574878",
@@ -199,14 +184,12 @@
       "enabled": true,
       "ante": 50,
       "minBet": 50,
-      "maxBet": 1000,
       "gameTtlSeconds": 300,
       "houseEdge": 0.05
     },
     "horseRacing": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 1000,
       "bettingWindowSeconds": 600,
       "raceTtlSeconds": 1800,
       "announceChannelId": "1501770364982657084"
@@ -214,7 +197,6 @@
     "poker": {
       "enabled": true,
       "minBlind": 10,
-      "maxBlind": 500,
       "minPlayers": 2,
       "maxPlayers": 8,
       "buyInMultiplier": 50,
@@ -226,23 +208,19 @@
     "casinoHoldem": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 5000,
       "gameTtlSeconds": 300
     },
     "baccarat": {
       "enabled": true,
-      "minBet": 10,
-      "maxBet": 50000
+      "minBet": 10
     },
     "fishPrawnCrab": {
       "enabled": true,
-      "minBet": 10,
-      "maxBet": 1000
+      "minBet": 10
     },
     "luckyWheel": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 5000,
       "segments": [
         { "mult": 0.5, "weight": 231, "label": "×0.5" },
         { "mult": 2, "weight": 52, "label": "×2" },
@@ -266,7 +244,6 @@
     "bingo": {
       "enabled": true,
       "minBet": 10,
-      "maxBet": 2000,
       "ballsDrawn": 30,
       "linePaytable": [0, 5, 16, 85, 500, 3000, 10000, 20000, 30000, 40000, 50000, 75000, 100000]
     },
@@ -286,7 +263,6 @@
       "enabled": true,
       "announceChannelId": "1506339475867832330",
       "minAnte": 50,
-      "maxAnte": 10000,
       "maxPlayers": 6,
       "joinWindowSeconds": 120,
       "rakePct": 0.05

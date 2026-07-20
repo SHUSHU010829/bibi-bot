@@ -10,6 +10,7 @@ const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { coinSystem, casino } = require('../../config');
 const grantCoins = require('../../features/economy/grantCoins');
+const parseBetAmount = require('../../utils/parseBetAmount');
 const { BET_TYPES } = require('../../features/casino/roulette/numbers');
 const { spinWheel, settle } = require('../../features/casino/roulette/engine');
 const { saveLastBet, buildReplayRow } = require('../../features/casino/replay');
@@ -54,11 +55,10 @@ module.exports = {
         .setRequired(true)
         .addChoices(...BET_CHOICES)
     )
-    .addIntegerOption(opt =>
+    .addStringOption(opt =>
       opt.setName('金額')
-        .setDescription('押注 的下注金額')
+        .setDescription('押注 的下注金額（可打 all、1.5k、50%）')
         .setRequired(true)
-        .setMinValue(getCfg().minBetPerSlot ?? 30)
     )
     .addStringOption(opt =>
       opt.setName('押注2')
@@ -66,11 +66,10 @@ module.exports = {
         .setRequired(false)
         .addChoices(...BET_CHOICES)
     )
-    .addIntegerOption(opt =>
+    .addStringOption(opt =>
       opt.setName('金額2')
-        .setDescription('押注2 的下注金額')
+        .setDescription('押注2 的下注金額（可打 all、1.5k、50%）')
         .setRequired(false)
-        .setMinValue(getCfg().minBetPerSlot ?? 30)
     )
     .addStringOption(opt =>
       opt.setName('押注3')
@@ -78,11 +77,10 @@ module.exports = {
         .setRequired(false)
         .addChoices(...BET_CHOICES)
     )
-    .addIntegerOption(opt =>
+    .addStringOption(opt =>
       opt.setName('金額3')
-        .setDescription('押注3 的下注金額')
+        .setDescription('押注3 的下注金額（可打 all、1.5k、50%）')
         .setRequired(false)
-        .setMinValue(getCfg().minBetPerSlot ?? 30)
     )
     .toJSON(),
 
@@ -100,19 +98,28 @@ module.exports = {
 
       const minPerSlot = cfg.minBetPerSlot ?? 30;
 
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId;
+      const username = interaction.member?.displayName || interaction.user.username;
+      const member = interaction.member;
+
+      const before = await client.userCoinsCollection.findOne({ userId, guildId });
+      const balance = before?.totalCoins || 0;
+
       // 收集押注：每個目標各自指定金額，同一目標合併金額
       const betMap = new Map();
       for (const [tName, aName] of [['押注', '金額'], ['押注2', '金額2'], ['押注3', '金額3']]) {
         const type = interaction.options.getString(tName);
         if (!type || !BET_TYPES[type]) continue;
-        const amount = interaction.options.getInteger(aName);
-        if (!Number.isInteger(amount) || amount < minPerSlot) {
+        const raw = interaction.options.getString(aName);
+        const parsed = parseBetAmount(raw, balance);
+        if (!parsed.ok || parsed.amount < minPerSlot) {
           const def = BET_TYPES[type];
           return interaction.editReply(
             `「${def?.label ?? type}」需要指定金額，且每注至少 ${minPerSlot.toLocaleString()} credits。`
           );
         }
-        betMap.set(type, (betMap.get(type) || 0) + amount);
+        betMap.set(type, (betMap.get(type) || 0) + parsed.amount);
       }
       if (betMap.size === 0) {
         return interaction.editReply('請至少選一個押注目標並填金額。');
@@ -125,13 +132,6 @@ module.exports = {
       }));
       const wagered = bets.reduce((s, b) => s + b.amount, 0);
 
-      const userId = interaction.user.id;
-      const guildId = interaction.guildId;
-      const username = interaction.member?.displayName || interaction.user.username;
-      const member = interaction.member;
-
-      const before = await client.userCoinsCollection.findOne({ userId, guildId });
-      const balance = before?.totalCoins || 0;
       if (balance < wagered) {
         return interaction.editReply(
           `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}** credits，需要 **${wagered.toLocaleString()}**。`

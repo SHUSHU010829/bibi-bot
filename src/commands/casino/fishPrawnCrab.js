@@ -8,6 +8,7 @@ const {
 const { MONEY_EMOJI } = require("../../constants/coin");
 const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const parseBetAmount = require("../../utils/parseBetAmount");
 const {
   SYMBOLS,
   SYMBOL_BY_KEY,
@@ -36,12 +37,11 @@ function buildBetOptionGroup(builder, idx) {
         .setRequired(false)
         .addChoices(...BET_CHOICES)
     )
-    .addIntegerOption((opt) =>
+    .addStringOption((opt) =>
       opt
         .setName(`金額${suffix}`)
-        .setDescription(idx === 1 ? "第 1 注的下注 credits" : `第 ${idx} 注的金額`)
+        .setDescription(idx === 1 ? "第 1 注金額（可打 all、1.5k、50%）" : `第 ${idx} 注金額（可打 all）`)
         .setRequired(false)
-        .setMinValue(casino?.fishPrawnCrab?.minBet ?? 10)
     );
   return builder;
 }
@@ -70,7 +70,6 @@ module.exports = {
 
       const cfg = casino?.fishPrawnCrab || {};
       const minBet = cfg.minBet ?? 10;
-      const maxBet = cfg.maxBet ?? 1000;
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
       const username = interaction.member?.displayName || interaction.user.username;
@@ -83,20 +82,19 @@ module.exports = {
       for (let i = 1; i <= MAX_BETS; i += 1) {
         const suffix = i === 1 ? "" : String(i);
         const symbol = interaction.options.getString(`押法${suffix}`);
-        const amountInput = interaction.options.getInteger(`金額${suffix}`);
+        const amountRaw = interaction.options.getString(`金額${suffix}`);
         if (!symbol) continue;
-        const amount = amountInput;
-        if (amount === null || amount === undefined) {
+        if (amountRaw === null || amountRaw === undefined) {
           return interaction.editReply(`第 ${i} 注少了金額！`);
         }
+        const parsed = parseBetAmount(amountRaw, balance);
+        if (!parsed.ok) {
+          return interaction.editReply(`第 ${i} 注金額格式錯誤：${parsed.reason}`);
+        }
+        const amount = parsed.amount;
         if (amount < minBet) {
           return interaction.editReply(
             `第 ${i} 注金額至少需 ${minBet.toLocaleString()} credits。`
-          );
-        }
-        if (amount > maxBet) {
-          return interaction.editReply(
-            `第 ${i} 注金額最多 ${maxBet.toLocaleString()} credits。`
           );
         }
         if (!SYMBOL_BY_KEY[symbol]) {
