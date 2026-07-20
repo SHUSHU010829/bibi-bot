@@ -14,7 +14,11 @@ const bus = require("../eventBus");
 
 // 執行一次挖礦。回傳結果物件交由指令層呈現（含彩虹石公告與耐久 DM 所需資料）。
 // allowOverflow=true：背包滿時不擋；roll 出的礦能放多少放多少，溢出折成系統收購價金幣。
-async function mine(client, { userId, guildId, member, username, allowOverflow = false }) {
+// batchCtx（連續挖礦專用，單次挖礦不傳）：
+//   { gc }        — 整批共用、預先算好的公會 buff，避免每輪重查公會
+//   { logSink }   — 收集本輪 mineLog，由批次結束後一次 insertMany
+//   { deferXp }   — 不逐輪授予經驗，只 roll 出基礎值放進 result.xpBase，由批次匯總後一次授予
+async function mine(client, { userId, guildId, member, username, allowOverflow = false, batchCtx = null }) {
   if (!mining?.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
 
@@ -56,7 +60,8 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     client,
     userId,
     guildId,
-    member
+    member,
+    { profile, gc: batchCtx?.gc }
   );
   const ore = dropTable.roll(buff.luckBonus);
   let qty = dropTable.randQty(ore, buff.qtyBonus);
@@ -135,9 +140,15 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
   }
 
   if (client.mineLogsCollection) {
-    await client.mineLogsCollection
-      .insertOne({ user_id: userId, guild_id: guildId, ore, qty: qty + overflowQty, ts: new Date() })
-      .catch((e) => console.log(`[ERROR] insert mine log: ${e}`.red));
+    const logDoc = { user_id: userId, guild_id: guildId, ore, qty: qty + overflowQty, ts: new Date() };
+    // 連續挖礦：交由批次結束後一次 insertMany；單次挖礦：fire-and-forget，不阻塞回覆。
+    if (batchCtx?.logSink) {
+      batchCtx.logSink.push(logDoc);
+    } else {
+      client.mineLogsCollection
+        .insertOne(logDoc)
+        .catch((e) => console.log(`[ERROR] insert mine log: ${e}`.red));
+    }
   }
 
   // 食物 buff：若 mine_luck uses 型 buff 生效，異步消耗一次使用次數
@@ -147,19 +158,27 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
 
   const backpackUsedAfter = used + (ORE_KEYS.includes(ore) ? qty : 0);
 
-  const xpGained = await grantActivityXp(client, "mine", {
-    userId,
-    guildId,
-    username,
-    member,
-    meta: { ore },
-  });
+  // 連續挖礦：只 roll 出基礎經驗，批次匯總後一次授予；單次挖礦：照常即時授予。
+  let xpGained = 0;
+  let xpBase = 0;
+  if (batchCtx?.deferXp) {
+    xpBase = grantActivityXp.roll("mine");
+  } else {
+    xpGained = await grantActivityXp(client, "mine", {
+      userId,
+      guildId,
+      username,
+      member,
+      meta: { ore },
+    });
+  }
 
   const result = {
     ok: true,
     ore,
     qty,
     xpGained,
+    xpBase,
     overflowQty,
     overflowCoins,
     buff,
@@ -226,7 +245,8 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
   // 賭石只能賭「這次挖到還留著的石頭」。突發事件可能扣掉本次剛挖到的石頭（lose_ore），
   // 用挖礦前後背包石頭數差回推還剩幾顆屬於這次挖到的，同步修正 pending 與按鈕顯示，
   // 避免按鈕標 2 顆但實際只能賭 1 顆、或舊存量被誤算進賭石範圍。
-  if (appraisalEligible) {
+  // 連續挖礦：pending 由批次結束時依整批石頭數重算並覆寫，這裡的逐輪修正是白工，直接跳過。
+  if (appraisalEligible && !batchCtx) {
     const after = await client.miningProfilesCollection.findOne(
       { userId, guildId },
       { projection: { "backpack.stone": 1 } }
@@ -340,6 +360,15 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
   };
   const RARE = new Set(["iron", "gold", "diamond"]);
 
+  // 整批共用：公會 buff（整批期間玩家公會狀態穩定）預先算一次，逐輪傳入避免重查；
+  // mineLog 收集後一次 insertMany；經驗只 roll 不授予，最後匯總一次授予。
+  const gc = await unifiedBuffResolver
+    .getGuildClubBuffs(client, userId, guildId)
+    .catch(() => null);
+  const logSink = [];
+  let xpBaseSum = 0;
+  const batchCtx = { gc, logSink, deferXp: true };
+
   for (let i = 0; i < requested; i++) {
     // 讀當前冷卻、券數、鎬子耐久與維修工具庫存
     const cur = await client.miningProfilesCollection.findOne(
@@ -390,7 +419,7 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
       agg.ticketsSpent += need;
     }
 
-    const r = await mine(client, { userId, guildId, member, username, allowOverflow: true });
+    const r = await mine(client, { userId, guildId, member, username, allowOverflow: true, batchCtx });
     if (!r.ok) {
       // 這次沒挖成：把剛扣的券退回
       if (spentThisIter > 0) {
@@ -403,7 +432,7 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
     }
 
     agg.performed++;
-    agg.xpGained += r.xpGained || 0;
+    xpBaseSum += r.xpBase || 0;
     if (r.buff?.actualCdMs) agg.lastCdMs = r.buff.actualCdMs;
     agg.newCooldownAt = r.newCooldownAt;
     agg.mineCountTotal = r.mineCountTotal;
@@ -444,6 +473,25 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
       agg.stoppedEarly = true;
       break;
     }
+  }
+
+  // 本批 mineLog 一次寫入（fire-and-forget，不阻塞結算）
+  if (client.mineLogsCollection && logSink.length > 0) {
+    client.mineLogsCollection
+      .insertMany(logSink, { ordered: false })
+      .catch((e) => console.log(`[ERROR] insert mine logs (batch): ${e}`.red));
+  }
+
+  // 整批經驗一次授予：等同逐次授予的總量，但只打一次 UserLevels，升級 / 金幣獎勵照常結算。
+  if (xpBaseSum > 0) {
+    agg.xpGained = await grantActivityXp(client, "mine", {
+      userId,
+      guildId,
+      username,
+      member,
+      amount: xpBaseSum,
+      meta: { batch: true, count: agg.performed },
+    });
   }
 
   // 石頭匯總成單一 pending_appraisal（覆寫單次 mine() 留下的最後一筆），

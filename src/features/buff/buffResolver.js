@@ -87,10 +87,12 @@ async function getEffectiveAtk(client, userId, guildId) {
 // ── LUCK / 挖礦數量 / CD ──────────────────────────────
 // 沿用 mining/buffResolver.resolve（鎬子 + 藥水 + Twitch + 抖內，已套 luckCap）。
 // 公會 luck / qty 加成在這層加總，與 donation / event / food 同列為「luckCap 外」追加。
-async function getMiningResolve(client, userId, guildId, member) {
-  const profile = await getOrCreate(client, userId, guildId);
+// opts.profile / opts.gc 省略時自行讀取；連續挖礦已握有玩家文件與（整批穩定的）公會 buff
+// 時傳入，避免每次迭代重複 getOrCreate（整份文件讀寫）與公會查詢。
+async function getMiningResolve(client, userId, guildId, member, opts = {}) {
+  const profile = opts.profile || (await getOrCreate(client, userId, guildId));
   const base = miningResolve.resolve(profile, member);
-  const gc = await getGuildClubBuffs(client, userId, guildId);
+  const gc = opts.gc || (await getGuildClubBuffs(client, userId, guildId));
   const guildLuck = gc.buffsByType.mining_luck_pct || 0;
   const guildQty = gc.buffsByType.mining_qty_bonus || 0;
   if (guildLuck > 0) base.luckBonus += guildLuck;
