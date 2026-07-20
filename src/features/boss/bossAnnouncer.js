@@ -2,6 +2,7 @@ require("colors");
 const { EmbedBuilder, MessageFlags } = require("discord.js");
 const { boss } = require("../../config");
 const { buildSettlementContainer } = require("./bossView");
+const bossBoard = require("./bossBoard");
 
 function pickFrom(arr) {
   if (!Array.isArray(arr) || arr.length === 0) return null;
@@ -40,6 +41,9 @@ async function announceSpawn(client, bossDoc) {
     .setFooter({ text: "輸入 /魔王 攻擊 一起討伐！" });
 
   await ch.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch(() => {});
+
+  // 召喚後立即建立置頂即時看板
+  bossBoard.scheduleRefresh(client, bossDoc.guild_id, true);
 }
 
 async function announcePhase(client, bossDoc, newPhase) {
@@ -74,6 +78,11 @@ async function announceSettlement(client, settlement) {
   if (boss?.chronicleChannelId && boss.chronicleChannelId !== boss.announceChannelId) {
     const chronicleCh = await resolveChannel(client, boss.chronicleChannelId);
     if (chronicleCh) await chronicleCh.send(payload).catch(() => {});
+  }
+
+  // 戰鬥結束：移除置頂看板（結算公告已取代它）
+  if (settlement?.bossDoc?.guild_id) {
+    await bossBoard.finalize(client, settlement.bossDoc.guild_id);
   }
 }
 

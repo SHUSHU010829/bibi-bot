@@ -110,10 +110,15 @@ function buildAttackResultContainer({ userId, displayName, result }) {
         ? `\n⚡ Combo 進行中（×${(boss?.combo?.bonusMult ?? 1.3)}）`
         : "";
     const firstStrikeLine = result.firstStrike ? `\n🥇 **首刀命中！結算時可獲得首刀獎勵**` : "";
+    const critLine = result.isCrit ? `\n💥 **會心一擊！傷害 ×${boss?.crit?.damageMult ?? 2}**` : "";
+    const targetedLine = result.targeted
+      ? `\n-# 🎯 你是目前的傷害王，魔王火力鎖定你（反擊率 +${Math.round((boss?.aggro?.counterBonus ?? 0) * 100)}%）`
+      : "";
+    const hitTitle = result.isCrit ? "💥 會心一擊！" : "⚔️ 攻擊命中！";
     container
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ⚔️ 攻擊命中！\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 點傷害！${firstStrikeLine}${phaseChangeLine}${comboLine}`,
+          `# ${hitTitle}\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 點傷害！${critLine}${firstStrikeLine}${phaseChangeLine}${comboLine}${targetedLine}`,
         ),
       )
       .addSeparatorComponents(new SeparatorBuilder())
@@ -179,7 +184,8 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   const hitLines = hits.map((h, i) => {
     if (h.isCounter) return `**第 ${i + 1} 刀** 被反擊（-2 體力）`;
     const extras = [];
-    if (h.phaseChanged) extras.push(`💥 進入 ${phaseLabel(h.phaseAfter)}`);
+    if (h.isCrit) extras.push(`💥 會心`);
+    if (h.phaseChanged) extras.push(`進入 ${phaseLabel(h.phaseAfter)}`);
     if (h.comboTriggered) extras.push(`⚡ 觸發 Combo`);
     return `**第 ${i + 1} 刀** ${h.damage.toLocaleString()} 傷害${extras.length ? "（" + extras.join("、") + "）" : ""}`;
   });
@@ -202,6 +208,13 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
       );
     const rl = rageLine(last.rageStacks, last.counterRate);
     if (rl) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(rl));
+    if (last.targeted) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 🎯 你是目前的傷害王，魔王火力鎖定你（反擊率 +${Math.round((boss?.aggro?.counterBonus ?? 0) * 100)}%）`,
+        ),
+      );
+    }
   }
 
   const stopHint = {
@@ -263,9 +276,11 @@ function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive
   if (ranking?.length) {
     const top = ranking.slice(0, 5);
     const myIdx = ranking.findIndex((r) => r.userId === userId);
+    const aggroOn = boss?.aggro?.enabled && ranking.length >= (boss?.aggro?.minParticipants ?? 2);
     const lines = top.map((r, i) => {
       const me = r.userId === userId ? "👉 " : "";
-      return `${me}**#${i + 1}** ${nameOf(guild, r.userId)} — ${r.damage.toLocaleString()} 傷害`;
+      const target = aggroOn && i === 0 ? " 🎯（魔王目標）" : "";
+      return `${me}**#${i + 1}** ${nameOf(guild, r.userId)} — ${r.damage.toLocaleString()} 傷害${target}`;
     });
     if (myIdx >= 5) {
       const me = ranking[myIdx];
@@ -405,4 +420,6 @@ module.exports = {
   buildErrorContainer,
   buildSettlementContainer,
   phaseLabel,
+  phaseColor,
+  hpBar,
 };
