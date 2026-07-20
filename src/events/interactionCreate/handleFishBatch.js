@@ -2,7 +2,15 @@
 //   1. 按鈕 fish_batch_<owner>_<location>     → 驗證解鎖/券/冷卻後跳「釣幾竿」彈窗
 //   2. 彈窗 fish_batch_qty_<owner>_<location> → 解析竿數 → runFishBatch 匯總結果
 
-const { MessageFlags } = require("discord.js");
+const {
+  MessageFlags,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require("discord.js");
 
 const { fishing } = require("../../config");
 const { consume } = require("../../utils/rateLimiter");
@@ -11,6 +19,8 @@ const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const fishCmd = require("../../commands/fishing/fish");
 const { getOrCreate } = require("../../features/mining/miningProfile");
+const { repairRodWithMaterials } = require("../../features/mining/mineService");
+const { materialLabel } = require("../../features/mining/craftMaterials");
 
 async function replyEphemeral(interaction, content) {
   try {
@@ -45,6 +55,8 @@ module.exports = async (client, interaction) => {
     if (interaction.isButton()) {
       const batch = fishCmd.parseFishBatchId?.(interaction.customId);
       if (batch) return openBatchCountModal(client, interaction, batch);
+      const fix = fishCmd.parseFishBatchRepairId?.(interaction.customId);
+      if (fix) return doRodRepair(client, interaction, fix);
       return;
     }
     if (interaction.isModalSubmit()) {
@@ -66,6 +78,73 @@ module.exports = async (client, interaction) => {
     await replyEphemeral(interaction, "🔧 連續釣魚失敗，請呼叫舒舒！");
   }
 };
+
+async function doRodRepair(client, interaction, { ownerId, location }) {
+  if (interaction.user.id !== ownerId) {
+    return replyEphemeral(interaction, "🚫 這不是你的釣竿。");
+  }
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+
+  const result = await repairRodWithMaterials(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
+
+  if (!result.ok) {
+    if (result.reason === "insufficient") {
+      const lines = (result.missing || []).map(
+        (m) => `${materialLabel(m.mat, m.need)}（你有 ${m.have}，還缺 ${m.need - m.have}）`,
+      );
+      const errC = new ContainerBuilder()
+        .setAccentColor(0xe74c3c)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent("# ❌ 材料不足，無法修理釣竿"))
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("-# 去挖礦/釣魚補材料，或手動釣最後一竿再合成新的。"),
+        );
+      return interaction
+        .editReply({ components: [errC], flags: MessageFlags.IsComponentsV2 })
+        .catch(() => {});
+    }
+    const messages = {
+      no_rod: "🎣 竹釣竿不需要修理，先合成一支碳纖釣竿以上。",
+      no_recipe: "🔧 這支釣竿沒有可用的修理配方。",
+      already_full: "🎣 你的釣竿耐久已經是滿的。",
+    };
+    return replyEphemeral(interaction, messages[result.reason] || "🔧 修理失敗，請稍後再試。");
+  }
+
+  const loc = fishing?.locations?.[location] ? location : "stream";
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("# 🛠️ 釣竿已用材料修好"),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `釣竿耐久：**${result.durabilityAfter} / ${result.maxDurability}**`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# 修好了！點下方繼續連續釣魚。"),
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${fishCmd.FISH_BATCH_PREFIX}${interaction.user.id}_${loc}`)
+          .setLabel("連續釣魚")
+          .setEmoji("🔁")
+          .setStyle(ButtonStyle.Primary),
+      ),
+    );
+
+  await interaction
+    .editReply({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
+  trackSuccess("fish-batch-repair");
+}
 
 async function openBatchCountModal(client, interaction, { ownerId, location }) {
   if (interaction.user.id !== ownerId) {

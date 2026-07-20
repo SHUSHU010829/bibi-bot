@@ -77,6 +77,7 @@ const FISH_BATCH_MODAL_PREFIX = "fish_batch_qty_";
 function parseFishBatchId(customId) {
   if (!customId || !customId.startsWith(FISH_BATCH_PREFIX)) return null;
   if (customId.startsWith(FISH_BATCH_MODAL_PREFIX)) return null;
+  if (customId.startsWith(FISH_BATCH_REPAIR_PREFIX)) return null;
   const rest = customId.slice(FISH_BATCH_PREFIX.length);
   const us = rest.indexOf("_");
   if (us <= 0) return null;
@@ -99,6 +100,30 @@ function parseFishBatchModalId(customId) {
 
 function batchUnlockLevel() {
   return fishing?.batch?.unlockLevel || 0;
+}
+
+// 低耐久停止時的「用材料修理釣竿」按鈕（釣竿沒有維修工具，只能材料修）。
+const FISH_BATCH_REPAIR_PREFIX = "fish_batch_fix_";
+
+function parseFishBatchRepairId(customId) {
+  if (!customId || !customId.startsWith(FISH_BATCH_REPAIR_PREFIX)) return null;
+  const rest = customId.slice(FISH_BATCH_REPAIR_PREFIX.length);
+  const us = rest.indexOf("_");
+  if (us <= 0) return null;
+  const ownerId = rest.slice(0, us);
+  const location = rest.slice(us + 1);
+  if (!ownerId || !location) return null;
+  return { ownerId, location };
+}
+
+function fishBatchRepairRow(ownerId, location) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${FISH_BATCH_REPAIR_PREFIX}${ownerId}_${location || "stream"}`)
+      .setLabel("用材料修理釣竿")
+      .setEmoji("🔧")
+      .setStyle(ButtonStyle.Success),
+  );
 }
 
 function fishBatchButton(ownerId, location) {
@@ -944,9 +969,10 @@ async function runFishBatch(client, interaction, { location = "stream", count })
           )
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              "-# 先去 `/合成`（材料修理）修一下，或手動釣最後一竿再合成新的。",
+              "-# 點下方用背包材料直接修，或手動釣最後一竿再合成新的。",
             ),
-          );
+          )
+          .addActionRowComponents(fishBatchRepairRow(interaction.user.id, location));
         return interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
       }
       if (result.reason === "disabled") {
@@ -1064,16 +1090,21 @@ async function runFishBatch(client, interaction, { location = "stream", count })
         new TextDisplayBuilder().setContent(
           `**下次可釣魚**\n<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）\n**累積釣魚**\n${result.fishCountTotal.toLocaleString()} 次`,
         ),
-      )
-      .addActionRowComponents(
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`fish_bag_${interaction.user.id}`)
-            .setLabel("查看背包")
-            .setEmoji("🎒")
-            .setStyle(ButtonStyle.Secondary),
-        ),
       );
+
+    if (result.stoppedLowDurability) {
+      container.addActionRowComponents(fishBatchRepairRow(interaction.user.id, location));
+    }
+
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`fish_bag_${interaction.user.id}`)
+          .setLabel("查看背包")
+          .setEmoji("🎒")
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    );
 
     await interaction.editReply({
       components: [container],
@@ -1139,4 +1170,6 @@ module.exports = {
   buildBatchNoTicketView,
   batchUnlockLevel,
   runFishBatch,
+  FISH_BATCH_REPAIR_PREFIX,
+  parseFishBatchRepairId,
 };
