@@ -120,11 +120,18 @@ function recordAndCheck(client, sale) {
     .catch((e) => console.log(`[MKT-LAUNDER] 偵測失敗: ${e?.message || e}`.red));
 }
 
-// 物物交換：以系統基礎價（basePrice）估兩邊總價值，偵測「嚴重不對等」的變相贈與／轉帳。
-// 兩件物品之間的相對價值用 basePrice 衡量是公允的（不像金幣單價需要玩家市場中位）。
-function assessSwapValue({ giveType, giveKey, giveQty, wantType, wantKey, wantQty }) {
-  const giveUnit = itemAccess.basePrice(giveType, giveKey);
-  const wantUnit = itemAccess.basePrice(wantType, wantKey);
+// 物物交換：估兩邊總價值，偵測「嚴重不對等」的變相贈與／轉帳。
+// 參考價優先用「近期成交中位數」——但兩邊都要有足夠樣本才採用（避免一邊中位、一邊
+// 基礎價混用而誤判）；只要有一邊樣本不足，兩邊一起退回系統基礎價（相對衡量仍公允）。
+async function assessSwapValue(client, { guildId, giveType, giveKey, giveQty, wantType, wantKey, wantQty }) {
+  const minSamples = cfg().minSamples ?? 5;
+  const gMed = await medianUnitPrice(client, guildId, giveType, giveKey);
+  const wMed = await medianUnitPrice(client, guildId, wantType, wantKey);
+  const bothMedian =
+    gMed.samples >= minSamples && gMed.median > 0 &&
+    wMed.samples >= minSamples && wMed.median > 0;
+  const giveUnit = bothMedian ? gMed.median : itemAccess.basePrice(giveType, giveKey);
+  const wantUnit = bothMedian ? wMed.median : itemAccess.basePrice(wantType, wantKey);
   const giveValue = giveUnit * (giveQty || 0);
   const wantValue = wantUnit * (wantQty || 0);
   const overpayRatio = cfg().overpayRatio ?? 5;
@@ -138,7 +145,11 @@ function assessSwapValue({ giveType, giveKey, giveQty, wantType, wantKey, wantQt
     else { ratio = wantValue / giveValue; diff = wantValue - giveValue; direction = "fulfiller_gives"; }
     wouldFlag = cfg().enabled !== false && ratio >= overpayRatio && diff >= overpayAbs;
   }
-  return { giveValue, wantValue, ratio, diff, wouldFlag, direction, overpayRatio };
+  return {
+    giveValue, wantValue, ratio, diff, wouldFlag, direction, overpayRatio,
+    usingMedian: bothMedian, medianDays: cfg().medianDays ?? 30,
+    giveSamples: gMed.samples, wantSamples: wMed.samples,
+  };
 }
 
 // 物物交換成交後呼叫（非阻塞）：價值嚴重不對等時向管理員回報疑似變相轉帳。
@@ -148,7 +159,7 @@ function checkSwapTransfer(client, { guildId, creatorId, fulfillerId, giveType, 
     .then(async () => {
       if (cfg().enabled === false) return;
       if (!guildId || !creatorId || !fulfillerId || creatorId === fulfillerId) return;
-      const a = assessSwapValue({ giveType, giveKey, giveQty, wantType, wantKey, wantQty });
+      const a = await assessSwapValue(client, { guildId, giveType, giveKey, giveQty, wantType, wantKey, wantQty });
       if (!a.wouldFlag) return;
       // 付出價值遠高於換得的一方＝把價值轉出者；另一方＝受益者
       const [payer, payee] = a.direction === "creator_gives" ? [creatorId, fulfillerId] : [fulfillerId, creatorId];

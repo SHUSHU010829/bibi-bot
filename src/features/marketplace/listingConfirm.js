@@ -89,16 +89,19 @@ function priceSummaryLine(p) {
   return line;
 }
 
-// 物物交換上架預覽：以基礎價估兩邊價值，價值嚴重不對等時警示（洗幣風險）。
-function buildSwapPreview(pending) {
+// 物物交換上架預覽：估兩邊價值（優先近期成交中位，樣本不足退回基礎價），
+// 價值嚴重不對等時警示（洗幣風險）。
+async function buildSwapPreview(client, pending) {
   const p = pending.params;
-  const a = marketSaleMonitor.assessSwapValue({
+  const a = await marketSaleMonitor.assessSwapValue(client, {
+    guildId: pending.guildId,
     giveType: p.giveType, giveKey: p.giveKey, giveQty: p.giveQty,
     wantType: p.wantType, wantKey: p.wantKey, wantQty: p.wantQty,
   });
   const flagWarn = a.wouldFlag;
   const giveLabel = itemAccess.itemLabel(p.giveType, p.giveKey, p.giveQty);
   const wantLabel = itemAccess.itemLabel(p.wantType, p.wantKey, p.wantQty);
+  const basisLabel = a.usingMedian ? `近 ${a.medianDays} 天成交中位` : "系統基礎價";
 
   const container = new ContainerBuilder()
     .setAccentColor(flagWarn ? 0xe74c3c : 0xf1c40f)
@@ -113,9 +116,10 @@ function buildSwapPreview(pending) {
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `📊 **價值對照（系統基礎價）**\n` +
+      `📊 **價值對照（${basisLabel}）**\n` +
         `付出估值 **${Math.round(a.giveValue).toLocaleString()}**　換得估值 **${Math.round(a.wantValue).toLocaleString()}**` +
-        (a.ratio ? `\n兩邊價值相差約 **${a.ratio.toFixed(1)} 倍**` : ""),
+        (a.ratio ? `\n兩邊價值相差約 **${a.ratio.toFixed(1)} 倍**` : "") +
+        (a.usingMedian ? "" : `\n-# 成交樣本不足，改用系統基礎價對照`),
     ),
   );
 
@@ -160,7 +164,7 @@ function buildSwapPreview(pending) {
 
 // 預覽 Container（含中位數提示與洗幣警示）。回傳 { container, wouldFlag }。
 async function buildPreview(client, pending) {
-  if (pending.kind === "swap") return buildSwapPreview(pending);
+  if (pending.kind === "swap") return buildSwapPreview(client, pending);
 
   const assess = await marketSaleMonitor.assessListingPrice(client, {
     guildId: pending.guildId,
