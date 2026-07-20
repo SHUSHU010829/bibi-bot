@@ -25,7 +25,8 @@ async function getStackInfo(client, { userId, guildId, item }) {
   const dailyLimit = item.payload?.dailyLimit > 0 ? item.payload.dailyLimit : null;
 
   const meta = OWNED_FIELD[item.type];
-  const unit = meta?.unit || "個";
+  const isBuffPotion = item.type === "xp_boost" || item.type === "coin_boost";
+  const unit = meta?.unit || (isBuffPotion ? "瓶" : "個");
   const perQty = (meta && item.payload?.[meta.payloadKey]) || 1;
 
   let owned = null;

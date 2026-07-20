@@ -1,6 +1,7 @@
 const { shop } = require("../../config");
 
-// 可一次購買多筆（數量會累加）的商品型別。其餘（身份組／卡面／稱號／加成藥水）一次只買 1 筆。
+// 可一次購買多筆（數量會累加）的商品型別。其餘（身份組／卡面／稱號）一次只買 1 筆。
+// 加成藥水（xp_boost / coin_boost）：可一次買多瓶，時效內重買會累積天數（見 activeBuff.addBuff）。
 const STACKABLE_TYPES = [
   "mining_luck_potion",
   "mining_cd_ticket",
@@ -16,6 +17,8 @@ const STACKABLE_TYPES = [
   "theft_watchdog",
   "theft_cloak",
   "theft_safebox",
+  "xp_boost",
+  "coin_boost",
 ];
 
 function getCatalog() {
