@@ -65,8 +65,8 @@ function drop(token) {
 const KIND_TITLE = {
   sell: "🧾 確認上架賣單",
   auction: "🧾 確認上架競標",
-  bulk: "🧾 確認開大量收購",
-  bulk_sell: "🧾 確認開大量賣出",
+  bulk: "🧾 確認開收購單",
+  bulk_sell: "🧾 確認開賣單",
   want: "🧾 確認上架徵求",
 };
 
@@ -174,7 +174,7 @@ async function buildPreview(client, pending) {
     qty: pending.qty,
   });
 
-  // 洗幣警示只在「成交時真的會跑反洗幣偵測」的單型才成立（賣單/競標/大量收購）；
+  // 洗幣警示只在「成交時真的會跑反洗幣偵測」的單型才成立（賣單/競標/收購）；
   // 徵求付金幣的成交目前不經 recordAndCheck，不宣稱會扣分，只保留行情提示。
   const flagWarn = assess.wouldFlag && pending.kind !== "want";
 
@@ -398,7 +398,7 @@ function fmtErr(pending, result) {
     case "too_many":
       return `📦 你同時最多只能掛 **${result.max}** 件掛單。`;
     case "bulk_limit":
-      return `📋 你同時只能開 **${result.maxBulk}** 張大量收購單，先下架舊的再開新的。`;
+      return `📋 你同時只能開 **${result.maxBulk}** 張收購單，先下架舊的再開新的。`;
     case "insufficient":
       return `🎒 你的數量不足，無法託管 ${pending.qty} 個（目前 ${result.have ?? 0}）。`;
     case "insufficient_coins":
@@ -486,7 +486,7 @@ function buildSuccessCard(pending, result) {
       .setAccentColor(0x16a085)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🛒 大量收購開單成功\n` +
+          `# 🛒 收購開單成功\n` +
             (l.title ? `📌 ${l.title}\n` : "") +
             `**#${l.listing_id}** ・ 收購 ${itemAccess.itemLabel(pending.itemType, pending.itemKey)} ×**${l.qty.toLocaleString()}**\n` +
             `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個\n` +
@@ -509,7 +509,7 @@ function buildSuccessCard(pending, result) {
       .setAccentColor(0x2980b9)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 📦 大量賣出開單成功\n` +
+          `# 📦 賣單開單成功\n` +
             (l.title ? `📌 ${l.title}\n` : "") +
             `**#${l.listing_id}** ・ 出售 ${itemAccess.itemLabel(pending.itemType, pending.itemKey)} ×**${l.qty.toLocaleString()}**\n` +
             `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個\n` +

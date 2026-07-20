@@ -28,7 +28,7 @@ module.exports = {
   channelBuckets: ["marketplace"],
   data: new SlashCommandBuilder()
     .setName("市集")
-    .setDescription("訂單簿市集：掛買單、掛賣單、物物交換、競標 🏪")
+    .setDescription("訂單簿市集：收購、賣單、物物交換、競標 🏪")
     .setContexts(InteractionContextType.Guild)
     // 逛攤
     .addSubcommand((s) =>
@@ -38,13 +38,13 @@ module.exports = {
     .addSubcommand((s) =>
       s.setName("我的攤位").setDescription("查看自己的掛單，可點按鈕下架")
     )
-    // 大量收購（掛買單）
+    // 收購（掛買單）
     .addSubcommand((s) =>
       s
-        .setName("大量收購")
-        .setDescription("一次收購大量素材，多位玩家可分批賣給你 🛒")
+        .setName("收購")
+        .setDescription("一次收購一批素材，多位玩家可分批賣給你 🛒")
         .addStringOption((o) =>
-          o.setName("物品").setDescription("你要大量收購的物品").setRequired(true).addChoices(...ITEM_CHOICES)
+          o.setName("物品").setDescription("你要收購的物品").setRequired(true).addChoices(...ITEM_CHOICES)
         )
         .addIntegerOption((o) =>
           o.setName("數量").setDescription("總共要收購多少個").setRequired(true).setMinValue(1)
@@ -63,11 +63,11 @@ module.exports = {
           o.setName("時長").setDescription("掛單天數（越久上架費越高，預設 1 天）").setRequired(false).addChoices(...DURATION_CHOICES)
         )
     )
-    // 大量賣出（掛賣單）
+    // 賣單（掛賣單）
     .addSubcommand((s) =>
       s
-        .setName("掛賣單")
-        .setDescription("一次掛售大量物品，多位玩家可分批向你買 📦")
+        .setName("賣單")
+        .setDescription("一次掛售一批物品，多位玩家可分批向你買 📦")
         .addStringOption((o) =>
           o.setName("物品").setDescription("你要掛售的物品").setRequired(true).addChoices(...ITEM_CHOICES)
         )
@@ -142,7 +142,7 @@ module.exports = {
     const sub = interaction.options.getSubcommand();
     // 涉及金幣單價的上架先走 ephemeral 預覽確認（含行情中位數＋洗幣警示）；查詢類也 ephemeral。
     // 物物交換不涉及金幣單價，維持公開直接上架。
-    const previewSubs = new Set(["競標", "大量收購", "掛賣單", "物物交換"]);
+    const previewSubs = new Set(["競標", "收購", "賣單", "物物交換"]);
     const isPreview = previewSubs.has(sub);
     const ephemeral = isPreview || ["逛攤", "我的攤位"].includes(sub);
     await interaction.deferReply(ephemeral ? { flags: MessageFlags.Ephemeral } : undefined);
@@ -154,8 +154,8 @@ module.exports = {
 
       if (sub === "逛攤") return await handleBrowse(client, interaction);
       if (sub === "我的攤位") return await handleMyStall(client, interaction);
-      if (sub === "大量收購") return await handleBulk(client, interaction);
-      if (sub === "掛賣單") return await handleBulkSell(client, interaction);
+      if (sub === "收購") return await handleBulk(client, interaction);
+      if (sub === "賣單") return await handleBulkSell(client, interaction);
       if (sub === "物物交換") return await handleSwap(client, interaction);
       if (sub === "競標") return await handleAuction(client, interaction);
     } catch (error) {
@@ -205,7 +205,7 @@ async function presentPreview(client, interaction, pendingData) {
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
 }
 
-// ─── 大量收購（掛買單）───────────────────────────────────────────────────────
+// ─── 收購（掛買單）───────────────────────────────────────────────────────
 async function handleBulk(client, interaction) {
   const itemArg = interaction.options.getString("物品");
   const qty = interaction.options.getInteger("數量");
@@ -240,7 +240,7 @@ async function handleBulk(client, interaction) {
   });
 }
 
-// ─── 大量賣出（掛賣單）───────────────────────────────────────────────────────
+// ─── 賣單（掛賣單）───────────────────────────────────────────────────────
 async function handleBulkSell(client, interaction) {
   const itemArg = interaction.options.getString("物品");
   const qty = interaction.options.getInteger("數量");

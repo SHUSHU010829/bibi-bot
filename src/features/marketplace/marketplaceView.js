@@ -45,12 +45,12 @@ const BUY_PREFIX      = "market_buy_";
 const ACCEPT_PREFIX   = "market_accept_";
 const FULFILL_PREFIX  = "market_fulfill_";
 const BID_PREFIX      = "market_bid_";
-// 大量收購：賣給他 → 預覽面板 → 一鍵賣出 / 自訂數量
+// 收購：賣給他 → 預覽面板 → 一鍵賣出 / 自訂數量
 const BULK_SELL_PREFIX    = "market_bulksell_";
 const BULK_CONFIRM_PREFIX = "market_bulkconfirm_";
 const BULK_CUSTOM_PREFIX  = "market_bulkcustom_";
 const BULK_MODAL_PREFIX   = "market_bulkmodal_";
-// 大量賣出（掛賣單）：購買 → 預覽面板 → 一鍵買入 / 自訂數量
+// 賣單（賣單）：購買 → 預覽面板 → 一鍵買入 / 自訂數量
 const BULKSELL_BUY_PREFIX     = "market_bsbuy_";
 const BULKSELL_CONFIRM_PREFIX = "market_bsconfirm_";
 const BULKSELL_CUSTOM_PREFIX  = "market_bscustom_";
@@ -103,8 +103,8 @@ function typeLabel(type) {
     want: "徵求",
     auction: "競標",
     guild_sell: "公會寄售",
-    bulk: "大量收購",
-    bulk_sell: "大量賣出",
+    bulk: "收購",
+    bulk_sell: "賣單",
     swap: "物物交換",
   };
   return map[type] || type;
@@ -322,8 +322,8 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId
         .setPlaceholder("📋 交易類型篩選")
         .addOptions([
           { label: "全部類型",    value: "all",        default: listingType === "all" },
-          { label: "🛒 大量收購", value: "bulk",       default: listingType === "bulk" },
-          { label: "📦 大量賣出", value: "bulk_sell",  default: listingType === "bulk_sell" },
+          { label: "🛒 收購", value: "bulk",       default: listingType === "bulk" },
+          { label: "📦 賣單", value: "bulk_sell",  default: listingType === "bulk_sell" },
           { label: "🔄 物物交換", value: "swap",       default: listingType === "swap" },
           { label: "🏷️ 競標",    value: "auction",    default: listingType === "auction" },
           { label: "🏰 公會寄售", value: "guild_sell", default: listingType === "guild_sell" },
@@ -578,7 +578,7 @@ function buildBidModal(listingId, listing) {
   return modal;
 }
 
-// ─── 大量收購：賣出預覽面板（ephemeral）──────────────────────────────────────
+// ─── 收購：賣出預覽面板（ephemeral）──────────────────────────────────────
 // preview: { listing, item, have, remaining, sellable }
 function buildBulkFulfillView(preview) {
   const { listing: l, item, have, remaining, sellable } = preview;
@@ -590,7 +590,7 @@ function buildBulkFulfillView(preview) {
   const container = new ContainerBuilder().setAccentColor(0x16a085);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## 🛒 賣給大量收購單 **#${l.listing_id}**\n` +
+      `## 🛒 賣給收購單 **#${l.listing_id}**\n` +
         `收購 ${itemName}　每個 **${unit.toLocaleString()}** ${COIN_EMOJI}\n` +
         `${progressBar(filled, l.qty)} **${filled.toLocaleString()} / ${l.qty.toLocaleString()}**（尚缺 ${remaining.toLocaleString()}）`
     )
@@ -646,7 +646,7 @@ function buildBulkQtyModal(listingId, sellable) {
   return modal;
 }
 
-// ─── 大量賣出：買入預覽面板（ephemeral）──────────────────────────────────────
+// ─── 賣單：買入預覽面板（ephemeral）──────────────────────────────────────
 // preview: { listing, item, unit, remaining, balance, affordable, capRoom, buyable }
 function buildBulkSellBuyView(preview) {
   const { listing: l, item, unit, remaining, balance, buyable } = preview;
@@ -657,7 +657,7 @@ function buildBulkSellBuyView(preview) {
   const container = new ContainerBuilder().setAccentColor(0x2980b9);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## 📦 向大量賣出單 **#${l.listing_id}** 購買\n` +
+      `## 📦 向賣單單 **#${l.listing_id}** 購買\n` +
         `出售 ${itemName}　每個 **${unit.toLocaleString()}** ${COIN_EMOJI}\n` +
         `${progressBar(filled, l.qty)} **${filled.toLocaleString()} / ${l.qty.toLocaleString()}**（尚餘 ${remaining.toLocaleString()}）`
     )

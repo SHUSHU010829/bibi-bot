@@ -702,7 +702,7 @@ module.exports = async (client, interaction) => {
       });
     }
 
-    // ─── 大量收購 自訂數量 modal submit ───────────────────────────────────────
+    // ─── 收購 自訂數量 modal submit ───────────────────────────────────────
     if (interaction.isModalSubmit() && cid.startsWith(BULK_MODAL_PREFIX)) {
       const rl = consume(interaction.user.id, "market:buy", { windowMs: 2500, max: 1 });
       if (!rl.allowed) {
@@ -733,7 +733,7 @@ module.exports = async (client, interaction) => {
       });
     }
 
-    // ─── 大量賣出 自訂數量 modal submit ───────────────────────────────────────
+    // ─── 賣單 自訂數量 modal submit ───────────────────────────────────────
     if (interaction.isModalSubmit() && cid.startsWith(BULKSELL_MODAL_PREFIX)) {
       const rl = consume(interaction.user.id, "market:buy", { windowMs: 2500, max: 1 });
       if (!rl.allowed) {
@@ -965,7 +965,7 @@ function formatBulkResult(result) {
       own_listing: "❌ 不能賣給自己的收購單。",
       insufficient: `📦 你沒有可賣的庫存（持有 ${result.have || 0}）。`,
       race: "⚡ 剛好有人同時賣入，請重試。",
-      disabled: "🔧 大量收購暫時無法使用。",
+      disabled: "🔧 收購暫時無法使用。",
     };
     return msgs[result.reason] || "🔧 賣出失敗，請稍後再試。";
   }
@@ -993,7 +993,7 @@ function notifyBulkBuyer(client, result) {
   const l = result.listing;
   const itemName = itemAccess.itemLabel(result.item.item_type, result.item.item_key, result.sold);
   let msg =
-    `🛒 你的大量收購單 **#${l.listing_id}** 有人賣入 ${itemName}！\n` +
+    `🛒 你的收購單 **#${l.listing_id}** 有人賣入 ${itemName}！\n` +
     (result.completed
       ? `🎉 已收滿 **${l.qty.toLocaleString()} / ${l.qty.toLocaleString()}**，收購結束。`
       : `目前進度 **${result.newFilled.toLocaleString()} / ${l.qty.toLocaleString()}**（尚缺 ${result.remaining.toLocaleString()}）`);
@@ -1011,7 +1011,7 @@ function formatBulkSellResult(result) {
       own_listing: "❌ 不能購買自己的賣單。",
       insufficient_coins: `💰 你的餘額不足以買入（餘額 ${(result.balance || 0).toLocaleString()} ${COIN_EMOJI}）。`,
       race: "⚡ 剛好有人同時買入，請重試。",
-      disabled: "🔧 大量賣出暫時無法使用。",
+      disabled: "🔧 賣單暫時無法使用。",
     };
     return msgs[result.reason] || "🔧 買入失敗，請稍後再試。";
   }
@@ -1039,7 +1039,7 @@ function notifyBulkSellSeller(client, result) {
   const l = result.listing;
   const itemName = itemAccess.itemLabel(result.item.item_type, result.item.item_key, result.bought);
   let msg =
-    `📦 你的大量賣出單 **#${l.listing_id}** 有人買走 ${itemName}！\n` +
+    `📦 你的賣單單 **#${l.listing_id}** 有人買走 ${itemName}！\n` +
     `實收 **${result.proceeds.toLocaleString()}** ${COIN_EMOJI}（已扣 ${result.fee.toLocaleString()} 手續費）\n` +
     (result.completed
       ? `🎉 已全數售出 **${l.qty.toLocaleString()} / ${l.qty.toLocaleString()}**，賣單結束。`

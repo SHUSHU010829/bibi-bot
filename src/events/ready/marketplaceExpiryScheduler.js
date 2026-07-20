@@ -13,7 +13,7 @@ const marketplaceService = require("../../features/marketplace/marketplaceServic
 const { RENEW_PREFIX } = require("../../features/marketplace/marketplaceView");
 
 // 每 5 分鐘掃過期市集掛單：
-// - 首次到期且可續租（大量收購 / 大量賣出 / 物物交換 / 無人出價的競標）→ 先 DM 賣家問是否續租，
+// - 首次到期且可續租（收購 / 賣單 / 物物交換 / 無人出價的競標）→ 先 DM 賣家問是否續租，
 //   延後 renewGraceMs 再結算；賣家可點續租按鈕付費延長。
 // - 二次到期（已問過續租）或不可續租 → 依 settleListing 結算：
 //   auction 有得標者撥款交貨，其餘退回託管。
@@ -26,7 +26,7 @@ function isRenewable(listing) {
   return false;
 }
 
-const TYPE_NAME = { bulk: "大量收購", bulk_sell: "大量賣出", swap: "物物交換", auction: "競標" };
+const TYPE_NAME = { bulk: "收購", bulk_sell: "賣單", swap: "物物交換", auction: "競標" };
 
 function buildRenewDm(listing) {
   const ld = marketplace?.listingDuration || {};

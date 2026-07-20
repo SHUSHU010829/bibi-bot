@@ -84,13 +84,13 @@ function minSellPriceFor(itemType, key, qty) {
   return Math.max(1, Math.ceil(itemAccess.basePrice(itemType, key) * qty * factor));
 }
 
-// 大量收購：每件最低收購單價（預設 ≥ 系統售價）
+// 收購：每件最低收購單價（預設 ≥ 系統售價）
 function minBulkUnitPrice(itemType, key) {
   const factor = (cfg().bulk || {}).minUnitPriceFactor ?? 1;
   return Math.max(1, Math.ceil(itemAccess.basePrice(itemType, key) * factor));
 }
 
-// 掛賣單：每件最低售出單價（預設 ≥ 系統售價）
+// 賣單：每件最低售出單價（預設 ≥ 系統售價）
 function minBulkSellUnitPrice(itemType, key) {
   const factor = (cfg().bulkSell || {}).minUnitPriceFactor ?? 1;
   return Math.max(1, Math.ceil(itemAccess.basePrice(itemType, key) * factor));
@@ -471,7 +471,7 @@ async function createAuctionListing(client, { sellerId, guildId, sellerName, ite
   return { ok: true, listing: doc, itemDef };
 }
 
-// ─── 掛牌：大量收購（買家鎖定金幣，多位賣家分批賣入）──────────────────────────
+// ─── 掛牌：收購（買家鎖定金幣，多位賣家分批賣入）──────────────────────────
 // itemType: "ore" | "fish" | "veggie"；unitPrice 為「每件收購單價」（整數）
 async function createBulkListing(client, { buyerId, guildId, buyerName, itemType, itemKey, qty, unitPrice, member, title, durationDays }) {
   const c = cfg();
@@ -490,7 +490,7 @@ async function createBulkListing(client, { buyerId, guildId, buyerName, itemType
     return { ok: false, reason: "low_unit_price", minUnit, itemDef };
   }
 
-  // 每人最多 N 筆進行中的大量收購（依 listing_type 分桶）
+  // 每人最多 N 筆進行中的收購（依 listing_type 分桶）
   const limit = await checkActiveLimit(client, buyerId, guildId, "bulk");
   if (!limit.allowed) return { ok: false, reason: "too_many", max: limit.max };
 
@@ -557,7 +557,7 @@ async function createBulkListing(client, { buyerId, guildId, buyerName, itemType
   return { ok: true, listing: doc, itemDef, fee, totalEscrow, listingFee: tier.fee };
 }
 
-// 大量收購賣出前預覽：回傳剩餘需求、賣方持有量、可賣數量
+// 收購賣出前預覽：回傳剩餘需求、賣方持有量、可賣數量
 async function getBulkPreview(client, { listingId, sellerId, guildId }) {
   if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
   const listing = await client.marketListingsCollection.findOne({
@@ -573,7 +573,7 @@ async function getBulkPreview(client, { listingId, sellerId, guildId }) {
   return { ok: true, listing, item, have, remaining, sellable };
 }
 
-// ─── 成交：大量收購（賣方分批賣入，可指定數量；未指定則賣「可賣上限」）──────────
+// ─── 成交：收購（賣方分批賣入，可指定數量；未指定則賣「可賣上限」）──────────
 async function fulfillBulk(client, { listingId, sellerId, guildId, sellerName, member, qty: requestedQty }) {
   if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
 
@@ -677,7 +677,7 @@ async function fulfillBulk(client, { listingId, sellerId, guildId, sellerName, m
   };
 }
 
-// 掛賣單／換物訂單的 escrow 剩餘量欄位路徑（供 CAS $inc 遞減）
+// 賣單／換物訂單的 escrow 剩餘量欄位路徑（供 CAS $inc 遞減）
 function escrowQtyField(itemType) {
   const t = itemAccess.normalizeType(itemType);
   if (t === "ore") return "escrow_ore.qty";
@@ -686,7 +686,7 @@ function escrowQtyField(itemType) {
   return null;
 }
 
-// ─── 掛牌：大量賣出（賣家託管物品，多位買家分批買入）──────────────────────────
+// ─── 掛牌：賣單（賣家託管物品，多位買家分批買入）──────────────────────────
 // itemType: "ore" | "fish" | "veggie"；unitPrice 為「每件售出單價」（整數）
 async function createBulkSellListing(client, { sellerId, guildId, sellerName, itemType, itemKey, qty, unitPrice, member, title, durationDays }) {
   const c = cfg();
@@ -772,7 +772,7 @@ async function createBulkSellListing(client, { sellerId, guildId, sellerName, it
   return { ok: true, listing: doc, itemDef, listingFee: tier.fee };
 }
 
-// 大量賣出買入前預覽：回傳剩餘量、買家餘額、容量與可買數量
+// 賣單買入前預覽：回傳剩餘量、買家餘額、容量與可買數量
 async function getBulkSellPreview(client, { listingId, buyerId, guildId }) {
   if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
   const listing = await client.marketListingsCollection.findOne({
@@ -799,7 +799,7 @@ async function getBulkSellPreview(client, { listingId, buyerId, guildId }) {
   return { ok: true, listing, item, unit, remaining, balance, affordable, capRoom, buyable };
 }
 
-// ─── 成交：大量賣出（買方分批買入，可指定數量；未指定則買「可買上限」）──────────
+// ─── 成交：賣單（買方分批買入，可指定數量；未指定則買「可買上限」）──────────
 async function fulfillBulkSell(client, { listingId, buyerId, guildId, buyerName, member, qty: requestedQty }) {
   if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
 
@@ -1650,7 +1650,7 @@ async function cancelListing(client, { listingId, guildId, userId }) {
   const lockedDoc = locked?.value || locked;
   if (!lockedDoc) return { ok: false, reason: "race" };
 
-  // 用剛鎖定的最新 doc 退款（大量收購的 escrow_coin 會隨成交遞減）
+  // 用剛鎖定的最新 doc 退款（收購的 escrow_coin 會隨成交遞減）
   await _refundEscrow(client, lockedDoc);
 
   await client.marketListingsCollection.updateOne(
@@ -1674,7 +1674,7 @@ async function settleListing(client, listing) {
     return finalizeAuction(client, listing);
   }
 
-  // 其他 type 或 auction 無人出價 → 退託管（用最新 doc，大量收購退剩餘 escrow）
+  // 其他 type 或 auction 無人出價 → 退託管（用最新 doc，收購退剩餘 escrow）
   await _refundEscrow(client, lockedDoc);
   await client.marketListingsCollection.updateOne(
     { listing_id: listing.listing_id, guild_id: listing.guild_id },
