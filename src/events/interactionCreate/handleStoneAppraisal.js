@@ -94,6 +94,11 @@ async function announceDiamond(client, interaction, qty) {
 }
 
 module.exports = async (client, interaction) => {
+  return handleAppraisalInteraction(client, interaction);
+};
+module.exports.buildAppraisalResultContainer = buildAppraisalResultContainer;
+
+async function handleAppraisalInteraction(client, interaction) {
   try {
     if (!interaction.isButton()) return;
 
@@ -158,6 +163,78 @@ module.exports = async (client, interaction) => {
   }
 };
 
+// 賭石結果 Container（單次 / 批次賭石共用），保持顯示一致。
+function buildAppraisalResultContainer(result, { appraiserName } = {}) {
+  // 逐顆結果（數量大時只列前幾顆，其餘以總表呈現，避免訊息過長）
+  const MAX_ROLL_LINES = 30;
+  const shownRolls = result.rolls.slice(0, MAX_ROLL_LINES);
+  const lines = shownRolls.map((r, i) =>
+    r ? `${i + 1}. ✨ 開出 ${oreLabel(r.ore)} ×${r.qty}` : `${i + 1}. 💥 碎掉了…`
+  );
+  if (result.rolls.length > MAX_ROLL_LINES) {
+    lines.push(`-# …另外 ${result.rolls.length - MAX_ROLL_LINES} 顆，結果併入下方「開出」總表`);
+  }
+
+  const gainEntries = Object.entries(result.winnings);
+  const gainSummary = gainEntries.length
+    ? gainEntries.map(([ore, q]) => `${oreLabel(ore)} ×${q}`).join("、")
+    : "什麼都沒開出來…";
+
+  const allBust = gainEntries.length === 0;
+  const accent = result.gainedDiamond ? 0xff6ec7 : allBust ? 0x95a5a6 : 0xf1c40f;
+  const qualityTag = result.synthetic
+    ? result.quality === "high"
+      ? "（優質賭石・碎石合成觸發）"
+      : "（劣質賭石・碎石合成觸發）"
+    : "";
+  const title = result.gainedDiamond
+    ? `💎 賭石開出鑽石！${qualityTag}`
+    : allBust
+      ? `💥 賭石結果${qualityTag}`
+      : `🔍 賭石結果${qualityTag}`;
+
+  const investedLine = result.synthetic
+    ? `合成觸發、無實體石頭，鑑定費 **${result.fee.toLocaleString()}** ${COIN_EMOJI}`
+    : `投入 **🪨 石頭 ×${result.count}**，鑑定費 **${result.fee.toLocaleString()}** ${COIN_EMOJI}`;
+
+  const container = new ContainerBuilder()
+    .setAccentColor(accent)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# ${title}\n${investedLine}`),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**開出**\n${gainSummary}`),
+    );
+
+  if (result.overflowCoins > 0) {
+    const foldedSummary = Object.entries(result.foldedWinnings || {})
+      .map(([ore, q]) => `${oreLabel(ore)} ×${q}`)
+      .join("、");
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🎒 背包放不下：${foldedSummary} → 折成 **+${result.overflowCoins.toLocaleString()}** ${COIN_EMOJI}`,
+      ),
+    );
+  }
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `**目前餘額**\n${(result.balanceAfter || 0).toLocaleString()} ${COIN_EMOJI}`,
+    ),
+  );
+
+  if (appraiserName) {
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# 🔍 ${appraiserName} 的賭石結果`),
+    );
+  }
+  return container;
+}
+
 async function runAppraisal(client, interaction, { ts, allowOverflow }) {
   try {
     const result = await appraisalService.appraise(client, {
@@ -204,80 +281,8 @@ async function runAppraisal(client, interaction, { ts, allowOverflow }) {
       return;
     }
 
-    // 逐顆結果（數量大時只列前幾顆，其餘以總表呈現，避免訊息過長）
-    const MAX_ROLL_LINES = 30;
-    const shownRolls = result.rolls.slice(0, MAX_ROLL_LINES);
-    const lines = shownRolls.map((r, i) =>
-      r ? `${i + 1}. ✨ 開出 ${oreLabel(r.ore)} ×${r.qty}` : `${i + 1}. 💥 碎掉了…`
-    );
-    if (result.rolls.length > MAX_ROLL_LINES) {
-      lines.push(`-# …另外 ${result.rolls.length - MAX_ROLL_LINES} 顆，結果併入下方「開出」總表`);
-    }
-
-    const gainEntries = Object.entries(result.winnings);
-    const gainSummary = gainEntries.length
-      ? gainEntries
-          .map(([ore, q]) => `${oreLabel(ore)} ×${q}`)
-          .join("、")
-      : "什麼都沒開出來…";
-
-    const allBust = gainEntries.length === 0;
-    const accent = result.gainedDiamond
-      ? 0xff6ec7
-      : allBust
-        ? 0x95a5a6
-        : 0xf1c40f;
-    const qualityTag = result.synthetic
-      ? result.quality === "high"
-        ? "（優質賭石・碎石合成觸發）"
-        : "（劣質賭石・碎石合成觸發）"
-      : "";
-    const title = result.gainedDiamond
-      ? `💎 賭石開出鑽石！${qualityTag}`
-      : allBust
-        ? `💥 賭石結果${qualityTag}`
-        : `🔍 賭石結果${qualityTag}`;
-
-    const investedLine = result.synthetic
-      ? `合成觸發、無實體石頭，鑑定費 **${result.fee.toLocaleString()}** ${COIN_EMOJI}`
-      : `投入 **🪨 石頭 ×${result.count}**，鑑定費 **${result.fee.toLocaleString()}** ${COIN_EMOJI}`;
-
-    const container = new ContainerBuilder()
-      .setAccentColor(accent)
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`# ${title}\n${investedLine}`),
-      )
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(lines.join("\n")),
-      )
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`**開出**\n${gainSummary}`),
-      );
-
-    if (result.overflowCoins > 0) {
-      const foldedSummary = Object.entries(result.foldedWinnings || {})
-        .map(([ore, q]) => `${oreLabel(ore)} ×${q}`)
-        .join("、");
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `🎒 背包放不下：${foldedSummary} → 折成 **+${result.overflowCoins.toLocaleString()}** ${COIN_EMOJI}`,
-        ),
-      );
-    }
-
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**目前餘額**\n${(result.balanceAfter || 0).toLocaleString()} ${COIN_EMOJI}`,
-      ),
-    );
-
     const appraiserName = interaction.member?.displayName || interaction.user.username;
-    container.addSeparatorComponents(new SeparatorBuilder());
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`-# 🔍 ${appraiserName} 的賭石結果`),
-    );
+    const container = buildAppraisalResultContainer(result, { appraiserName });
 
     // 賭石結果改為公開訊息（行動類）。
     // 注意：ephemeral defer 之後的 followUp 會被 Discord 強制沿用 ephemeral，

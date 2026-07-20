@@ -9,6 +9,9 @@ const {
   ButtonBuilder,
   ButtonStyle,
   StringSelectMenuBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -65,6 +68,100 @@ function fishAgainButton(ownerId, location) {
     .setLabel("再釣一次")
     .setEmoji("🎣")
     .setStyle(ButtonStyle.Primary);
+}
+
+// 連續釣魚（批次）。customId = fish_batch_<ownerId>_<location>
+const FISH_BATCH_PREFIX = "fish_batch_";
+const FISH_BATCH_MODAL_PREFIX = "fish_batch_qty_";
+
+function parseFishBatchId(customId) {
+  if (!customId || !customId.startsWith(FISH_BATCH_PREFIX)) return null;
+  if (customId.startsWith(FISH_BATCH_MODAL_PREFIX)) return null;
+  const rest = customId.slice(FISH_BATCH_PREFIX.length);
+  const us = rest.indexOf("_");
+  if (us <= 0) return null;
+  const ownerId = rest.slice(0, us);
+  const location = rest.slice(us + 1);
+  if (!ownerId || !location) return null;
+  return { ownerId, location };
+}
+
+function parseFishBatchModalId(customId) {
+  if (!customId || !customId.startsWith(FISH_BATCH_MODAL_PREFIX)) return null;
+  const rest = customId.slice(FISH_BATCH_MODAL_PREFIX.length);
+  const us = rest.indexOf("_");
+  if (us <= 0) return null;
+  const ownerId = rest.slice(0, us);
+  const location = rest.slice(us + 1);
+  if (!ownerId || !location) return null;
+  return { ownerId, location };
+}
+
+function batchUnlockLevel() {
+  return fishing?.batch?.unlockLevel || 0;
+}
+
+function fishBatchButton(ownerId, location) {
+  return new ButtonBuilder()
+    .setCustomId(`${FISH_BATCH_PREFIX}${ownerId}_${location || "stream"}`)
+    .setLabel(`連續釣魚（Lv${batchUnlockLevel()}）`)
+    .setEmoji("🔁")
+    .setStyle(ButtonStyle.Secondary);
+}
+
+function buildBatchCountModal({ ownerId, location, maxCount }) {
+  const modal = new ModalBuilder()
+    .setCustomId(`${FISH_BATCH_MODAL_PREFIX}${ownerId}_${location || "stream"}`)
+    .setTitle("連續釣魚");
+  const input = new TextInputBuilder()
+    .setCustomId("count")
+    .setLabel(`要連續釣幾竿？（最多 ${maxCount}）`.slice(0, 45))
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMinLength(1)
+    .setMaxLength(3)
+    .setValue(String(maxCount))
+    .setPlaceholder(`輸入 1～${maxCount}，第一竿免費、之後每竿消耗 1 張券`);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
+function buildBatchLockedView(required, current) {
+  return new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("# 🔒 連續釣魚 尚未解鎖"),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**解鎖條件**\n等級 ${required}\n**目前等級**\nLv.${current}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 升等到 Lv.${required} 就能一次釣很多竿！`,
+      ),
+    );
+}
+
+function buildBatchNoTicketView() {
+  return new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("# 🎫 沒有 CD 縮短券"),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "連續釣魚第一竿免費、之後每竿要消耗 1 張 **CD 縮短券**，你目前一張都沒有。",
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 到 `/商店` 買 CD 縮短券，再回來一次釣很多竿！",
+      ),
+    );
 }
 
 function locationChoices() {
@@ -415,6 +512,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       failContainer.addActionRowComponents(
         new ActionRowBuilder().addComponents(
           fishAgainButton(interaction.user.id, location),
+          fishBatchButton(interaction.user.id, location),
         ),
       );
 
@@ -505,7 +603,8 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           new ButtonBuilder()
             .setCustomId(`fish_bag_${interaction.user.id}`)
             .setLabel("查看背包")
-            .setStyle(ButtonStyle.Secondary)
+            .setStyle(ButtonStyle.Secondary),
+          fishBatchButton(interaction.user.id, location),
         )
       );
       lootContainer.addTextDisplayComponents(
@@ -687,7 +786,8 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
         new ButtonBuilder()
           .setCustomId(`fish_bag_${userId}`)
           .setLabel("查看背包")
-          .setStyle(ButtonStyle.Secondary)
+          .setStyle(ButtonStyle.Secondary),
+        fishBatchButton(userId, location),
       )
     );
 
@@ -747,6 +847,180 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
   }
 }
 
+// 執行連續釣魚並呈現匯總結果。假設 interaction 已 deferReply（公開）。
+async function runFishBatch(client, interaction, { location = "stream", count }) {
+  try {
+    const result = await fishService.fishBatch(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      location,
+      member: interaction.member,
+      username: interaction.user.username,
+      count,
+    });
+
+    if (!result.ok) {
+      if (result.reason === "level_locked") {
+        return interaction.editReply({
+          components: [buildBatchLockedView(result.required, result.current)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      if (result.reason === "location_locked") {
+        const c = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`# 🔒 ${result.locName} 尚未解鎖`),
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**解鎖條件**\n${result.locDesc}\n-# 先解鎖這個釣場再連續釣魚～`,
+            ),
+          );
+        return interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
+      }
+      if (result.reason === "cooldown") {
+        const readyEpoch = Math.floor(result.readyAt / 1000);
+        const c = new ContainerBuilder()
+          .setAccentColor(0x3498db)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `# 🎣 釣竿還在等魚上鉤\n冷卻結束後才能連續釣魚：<t:${readyEpoch}:R>`,
+            ),
+          );
+        return interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
+      }
+      if (result.reason === "disabled") {
+        return interaction.editReply("🔧 釣魚系統尚未啟動！");
+      }
+      return interaction.editReply("🔧 連續釣魚失敗，請稍後再試。");
+    }
+
+    const readyEpoch = Math.floor(result.newCooldownAt / 1000);
+    const locDef = result.locDef || {};
+
+    const fishEntries = Object.values(result.fishByType);
+    const fishSummary = fishEntries.length
+      ? fishEntries.map((f) => `${f.emoji || "🐟"} ${f.name} ×${f.qty}`).join("、")
+      : "這批沒釣到魚";
+
+    const title = result.stoppedEarly
+      ? `🎣 連續釣魚中止（釣了 ${result.performed} 竿）`
+      : `🎣 連續釣魚 ×${result.performed} 完成`;
+
+    const container = new ContainerBuilder()
+      .setAccentColor(result.legendaryCount > 0 ? 0xff6b6b : 0x3498db)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# ${title}\n${locDef.emoji || "🏞️"} 地點：**${locDef.name || location}**・共下 **${result.performed}** 竿` +
+            (result.performed < result.requested
+              ? `（原想釣 ${result.requested} 竿，受券數/上限限制）`
+              : ""),
+        ),
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**這批釣到**\n${fishSummary}\n-# 上鉤 ${result.caught} 竿・跑掉 ${result.failed} 竿`,
+        ),
+      );
+
+    if (result.coinsAwarded > 0 || result.lootItems.length > 0) {
+      const lootNames = result.lootItems.length
+        ? `${result.lootItems.join("、")}`
+        : "雜物";
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🎁 **釣到雜物 / 寶物**：${lootNames}` +
+            (result.coinsAwarded > 0
+              ? ` → 變賣 **+${result.coinsAwarded.toLocaleString()}** 幣`
+              : ""),
+        ),
+      );
+    }
+
+    const materialEntries = Object.values(result.materials);
+    if (materialEntries.length > 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🎣 **撈到材料**：${materialEntries
+            .map((m) => `${m.emoji || "🎁"} ${m.name} ×${m.qty}`)
+            .join("、")}`,
+        ),
+      );
+    }
+
+    const rareEntries = Object.values(result.rareDrops);
+    if (rareEntries.length > 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `✨ **意外發現**：${rareEntries
+            .map((d) => `${d.emoji || "🎁"} ${d.name} ×${d.qty}`)
+            .join("、")}`,
+        ),
+      );
+    }
+
+    if (result.netFragments > 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🕸️ **撿到 損壞的漁網碎片 ×${result.netFragments}**（集 5 個可合成「撈網」）`,
+        ),
+      );
+    }
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**消耗 CD 縮短券**\n×${result.ticketsSpent}（第一竿免費）`,
+      ),
+    );
+
+    if (result.rodBroke) {
+      const brokeDef = fishing?.rods?.[result.rodBrokeFrom] || {};
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 💔 第 ${result.performed} 竿時，你的 ${brokeDef.name || result.rodBrokeFrom} 斷了、已換回竹釣竿，連續釣魚提前結束。`,
+        ),
+      );
+    }
+
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**下次可釣魚**\n<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）\n**累積釣魚**\n${result.fishCountTotal.toLocaleString()} 次`,
+        ),
+      )
+      .addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`fish_bag_${interaction.user.id}`)
+            .setLabel("查看背包")
+            .setEmoji("🎒")
+            .setStyle(ButtonStyle.Secondary),
+        ),
+      );
+
+    await interaction.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+    });
+
+    reminder
+      .refreshIfEnabled(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        type: "fish",
+        readyAt: result.newCooldownAt,
+      })
+      .catch(() => {});
+  } catch (error) {
+    console.log(`[ERROR] 連續釣魚:\n${error}\n${error.stack}`.red);
+    await interaction.editReply("🔧 連續釣魚失敗，請呼叫舒舒！").catch(() => {});
+  }
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("釣魚")
@@ -783,4 +1057,13 @@ module.exports = {
   parseFishAgainId,
   buildCooldownView,
   executeFish,
+  FISH_BATCH_PREFIX,
+  parseFishBatchId,
+  FISH_BATCH_MODAL_PREFIX,
+  parseFishBatchModalId,
+  buildBatchCountModal,
+  buildBatchLockedView,
+  buildBatchNoTicketView,
+  batchUnlockLevel,
+  runFishBatch,
 };

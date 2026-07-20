@@ -46,7 +46,7 @@ function rollOutcomes(count, quality = "normal") {
 // 賭石：把「剛挖到那一次」的石頭付費逐顆開出，有機率變成別種礦。
 // ts 為按鈕帶上的挖礦時間戳，必須與 DB 中 pending_appraisal.ts 相符（單次性 + 只認最新一次挖礦）。
 // allowOverflow=true：開出的礦背包放不下時，依系統收購價依序折最低價礦為金幣（保留高價礦）。
-async function appraise(client, { userId, guildId, member, username, ts, allowOverflow = false }) {
+async function appraise(client, { userId, guildId, member, username, ts, allowOverflow = false, requestedCount = null }) {
   const c = cfg();
   if (!mining?.enabled || !c.enabled) return { ok: false, reason: "disabled" };
   if (!client.miningProfilesCollection || !client.userCoinsCollection) {
@@ -72,7 +72,11 @@ async function appraise(client, { userId, guildId, member, username, ts, allowOv
   const synthetic = pending.synthetic === true;
   const haveStone = profile.backpack?.stone || 0;
   // 挖到後若被事件扣掉，照實際剩下的石頭數量賭（有幾顆賭幾顆）；synthetic（碎石合成觸發）不依賴背包石頭。
-  const count = synthetic ? pendingQty : Math.min(pendingQty, haveStone);
+  let count = synthetic ? pendingQty : Math.min(pendingQty, haveStone);
+  // 批次賭石：玩家指定要賭幾顆（夾在可賭上限內）
+  if (requestedCount != null) {
+    count = Math.min(count, Math.max(0, Math.floor(requestedCount)));
+  }
   if (count <= 0) return { ok: false, reason: "no_stone" };
   const quality = pending.quality === "high" ? "high" : "normal";
 
