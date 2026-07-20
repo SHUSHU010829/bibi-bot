@@ -438,7 +438,8 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
   // 讓玩家在結算後一次決定要賭幾顆。上限吃 stoneAppraisal.maxBatch。
   if (agg.stonesMined > 0) {
     const sa = mining?.stoneAppraisal || {};
-    const apprCap = sa.maxBatch || 0;
+    // 連續挖礦可賭「這批挖到的所有石頭」，用獨立上限（不受碎石合成的 maxBatch 50 夾住）
+    const apprCap = sa.batchMaxStones || sa.maxBatch || 0;
     const eligible = apprCap > 0 ? Math.min(agg.stonesMined, apprCap) : agg.stonesMined;
     if (sa.enabled && eligible > 0) {
       const ts = now;
