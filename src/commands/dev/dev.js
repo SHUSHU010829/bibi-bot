@@ -410,6 +410,7 @@ async function runLevelReset(client, interaction) {
           xpFromMining: 0,
           xpFromFishing: 0,
           xpFromDungeon: 0,
+          xpFromFarm: 0,
           totalMessages: 0,
           totalVoiceMinutes: 0,
           totalReactionsReceived: 0,
