@@ -847,9 +847,50 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
   }
 }
 
+// 連續釣魚「進行中」畫面：每跑幾竿刷新一次，讓玩家即時看到過程（節流由呼叫端控制）。
+function buildFishProgressView(p, steps) {
+  const recent = steps.slice(-6).map((s) => {
+    if (s.kind === "fail") return `${s.n}. 💨 跑掉了`;
+    if (s.kind === "loot") return `${s.n}. ${s.emoji || "🎁"} ${s.name || "雜物"}`;
+    return `${s.n}. ${s.emoji || "🐟"} ${s.name}${s.qty > 1 ? ` ×${s.qty}` : ""}`;
+  });
+  return new ContainerBuilder()
+    .setAccentColor(0x3498db)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🎣 連續釣魚中…（${p.performed}/${p.requested}）`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**最近**\n${recent.join("\n")}`),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `上鉤 ${p.caught}・跑掉 ${p.failed}\n🎫 已用券 ×${p.ticketsSpent}\n-# 🎣 釣魚中，請稍候…`,
+      ),
+    );
+}
+
 // 執行連續釣魚並呈現匯總結果。假設 interaction 已 deferReply（公開）。
 async function runFishBatch(client, interaction, { location = "stream", count }) {
   try {
+    const progressSteps = [];
+    let lastEditAt = 0;
+    const PROGRESS_THROTTLE_MS = 900;
+    const onProgress = async (p) => {
+      progressSteps.push(p.step);
+      const nowMs = Date.now();
+      if (nowMs - lastEditAt < PROGRESS_THROTTLE_MS) return;
+      lastEditAt = nowMs;
+      await interaction
+        .editReply({
+          components: [buildFishProgressView(p, progressSteps)],
+          flags: MessageFlags.IsComponentsV2,
+        })
+        .catch(() => {});
+    };
+
     const result = await fishService.fishBatch(client, {
       userId: interaction.user.id,
       guildId: interaction.guildId,
@@ -857,6 +898,7 @@ async function runFishBatch(client, interaction, { location = "stream", count })
       member: interaction.member,
       username: interaction.user.username,
       count,
+      onProgress,
     });
 
     if (!result.ok) {

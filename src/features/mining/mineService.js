@@ -250,7 +250,7 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
 // 讓 mine() 通過自身冷卻檢查。所有加成、突發事件、耐久、掉落都沿用單次邏輯，不另寫死。
 // 工具（鎬子）中途壞掉 → 立即停止、不再扣券（未用到的券自然保留）。
 // 石頭統一在最後匯總成一筆 pending_appraisal，讓玩家一次決定要賭幾顆。
-async function mineBatch(client, { userId, guildId, member, username, count }) {
+async function mineBatch(client, { userId, guildId, member, username, count, onProgress }) {
   if (!mining?.enabled || !client.miningProfilesCollection) {
     return { ok: false, reason: "disabled" };
   }
@@ -367,6 +367,16 @@ async function mineBatch(client, { userId, guildId, member, username, count }) {
     if (r.ore === "diamond") agg.diamondActions++;
     if (r.encounterDiamond > 0) agg.encounterDiamond += r.encounterDiamond;
     if (r.encounter) agg.encounters.push(r.encounter);
+
+    if (onProgress) {
+      await onProgress({
+        performed: agg.performed,
+        requested,
+        ticketsSpent: agg.ticketsSpent,
+        ores: agg.ores,
+        step: { n: agg.performed, ore: r.ore, qty: r.qty, overflow: r.overflowQty || 0 },
+      }).catch(() => {});
+    }
 
     if (r.durabilityBroke) {
       agg.durabilityBroke = true;
