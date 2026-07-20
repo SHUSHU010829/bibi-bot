@@ -12,7 +12,7 @@
     "batch": {
       "enabled": true,
       "unlockLevel": 100,
-      "maxCount": 30
+      "maxCount": 100
     },
     "failMessages": [
       "魚吃完餌就溜走了…",
