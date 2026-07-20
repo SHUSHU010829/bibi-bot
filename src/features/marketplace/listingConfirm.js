@@ -20,6 +20,8 @@ const {
   BUY_PREFIX,
   FULFILL_PREFIX,
   BULK_SELL_PREFIX,
+  BULKSELL_BUY_PREFIX,
+  SWAP_SELL_PREFIX,
   VIEW_MYSTALL_ID,
   VIEW_BROWSE_ID,
 } = require("./marketplaceView");
@@ -64,6 +66,7 @@ const KIND_TITLE = {
   sell: "🧾 確認上架賣單",
   auction: "🧾 確認上架競標",
   bulk: "🧾 確認開大量收購",
+  bulk_sell: "🧾 確認開大量賣出",
   want: "🧾 確認上架徵求",
 };
 
@@ -86,8 +89,83 @@ function priceSummaryLine(p) {
   return line;
 }
 
+// 物物交換上架預覽：估兩邊價值（優先近期成交中位，樣本不足退回基礎價），
+// 價值嚴重不對等時警示（洗幣風險）。
+async function buildSwapPreview(client, pending) {
+  const p = pending.params;
+  const a = await marketSaleMonitor.assessSwapValue(client, {
+    guildId: pending.guildId,
+    giveType: p.giveType, giveKey: p.giveKey, giveQty: p.giveQty,
+    wantType: p.wantType, wantKey: p.wantKey, wantQty: p.wantQty,
+  });
+  const flagWarn = a.wouldFlag;
+  const giveLabel = itemAccess.itemLabel(p.giveType, p.giveKey, p.giveQty);
+  const wantLabel = itemAccess.itemLabel(p.wantType, p.wantKey, p.wantQty);
+  const basisLabel = a.usingMedian ? `近 ${a.medianDays} 天成交中位` : "系統基礎價";
+
+  const container = new ContainerBuilder()
+    .setAccentColor(flagWarn ? 0xe74c3c : 0xf1c40f)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🧾 確認上架物物交換\n` +
+          (pending.title ? `📌 ${pending.title}\n` : "") +
+          `付出 ${giveLabel}\n換得 ${wantLabel}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `📊 **價值對照（${basisLabel}）**\n` +
+        `付出估值 **${Math.round(a.giveValue).toLocaleString()}**　換得估值 **${Math.round(a.wantValue).toLocaleString()}**` +
+        (a.ratio ? `\n兩邊價值相差約 **${a.ratio.toFixed(1)} 倍**` : "") +
+        (a.usingMedian ? "" : `\n-# 成交樣本不足，改用系統基礎價對照`),
+    ),
+  );
+
+  if (flagWarn) {
+    const flagPenalty = Math.abs((bank?.credit?.scoring || {}).suspicious_flag || 0);
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🚨 **價值不對等警示**\n` +
+            `兩邊估值相差約 **${a.ratio.toFixed(1)} 倍**（差 ${Math.round(a.diff).toLocaleString()}），成交後可能被判定為變相轉帳（洗幣），**雙方信用分恐各被扣 ${flagPenalty} 分**。`,
+        ),
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# 若確為正常交換可續行；若數量填錯，請按「取消」重下指令。",
+        ),
+      );
+  } else {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# 確認無誤就按「確認上架」；數量要改請按「取消」重下指令。"),
+    );
+  }
+
+  const { ownerId, _token } = pending;
+  container.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${CONFIRM_PREFIX}${ownerId}_${_token}`)
+        .setLabel("確認上架")
+        .setEmoji("✅")
+        .setStyle(flagWarn ? ButtonStyle.Danger : ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`${CANCEL_PREFIX}${ownerId}_${_token}`)
+        .setLabel("取消")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+
+  return { container, wouldFlag: flagWarn };
+}
+
 // 預覽 Container（含中位數提示與洗幣警示）。回傳 { container, wouldFlag }。
 async function buildPreview(client, pending) {
+  if (pending.kind === "swap") return buildSwapPreview(client, pending);
+
   const assess = await marketSaleMonitor.assessListingPrice(client, {
     guildId: pending.guildId,
     itemType: pending.itemType,
@@ -183,7 +261,7 @@ function simpleContainer(color, text) {
 
 // ── 改價格 / 數量 Modal ───────────────────────────────────────────────────────
 function priceFieldSpec(kind) {
-  if (kind === "bulk") return { id: "price", label: "單價（每個金幣）" };
+  if (kind === "bulk" || kind === "bulk_sell") return { id: "price", label: "單價（每個金幣）" };
   if (kind === "auction") return { id: "price", label: "起標價（總價）" };
   if (kind === "want") return { id: "price", label: "金幣總額" };
   return { id: "price", label: "總價（一口價）" };
@@ -202,7 +280,7 @@ function buildEditModal(pending) {
         .setLabel(pf.label)
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
-        .setValue(String(kind === "bulk" ? pending.unitPrice : pending.totalPrice)),
+        .setValue(String(kind === "bulk" || kind === "bulk_sell" ? pending.unitPrice : pending.totalPrice)),
     ),
     new ActionRowBuilder().addComponents(
       new TextInputBuilder()
@@ -244,7 +322,7 @@ function applyEdit(pending, fields) {
   const p = pending.params;
   pending.qty = qty;
 
-  if (pending.kind === "bulk") {
+  if (pending.kind === "bulk" || pending.kind === "bulk_sell") {
     pending.unitPrice = price;
     pending.totalPrice = price * qty;
     p.qty = qty;
@@ -291,6 +369,8 @@ async function callCreate(client, pending) {
   }
   if (pending.kind === "auction") return marketplaceService.createAuctionListing(client, p);
   if (pending.kind === "bulk") return marketplaceService.createBulkListing(client, p);
+  if (pending.kind === "bulk_sell") return marketplaceService.createBulkSellListing(client, p);
+  if (pending.kind === "swap") return marketplaceService.createSwapListing(client, p);
   if (pending.kind === "want") return marketplaceService.createWantListing(client, p);
   return { ok: false, reason: "disabled" };
 }
@@ -323,10 +403,21 @@ function fmtErr(pending, result) {
       return `🎒 你的數量不足，無法託管 ${pending.qty} 個（目前 ${result.have ?? 0}）。`;
     case "insufficient_coins":
       return `💰 餘額不足！需要 **${(result.need ?? 0).toLocaleString()}** ${COIN_EMOJI}（含手續費），你目前 **${(result.balance ?? 0).toLocaleString()}** ${COIN_EMOJI}。`;
+    case "insufficient_fee":
+      return `💰 上架費不足！需要 **${(result.need ?? 0).toLocaleString()}** ${COIN_EMOJI}，你目前 **${(result.balance ?? 0).toLocaleString()}** ${COIN_EMOJI}。請改選較短的時長或補足金幣。`;
     case "grant_failed":
       return "🔧 金幣託管失敗，請稍後再試。";
     case "same_item":
       return "❌ 想要與付的物品不能相同！";
+    case "no_give_item":
+      return "❌ 找不到「付出物品」。";
+    case "no_want_item":
+      return "❌ 找不到「想要物品」。";
+    case "bad_give_qty":
+    case "bad_want_qty":
+      return "❌ 數量無效，請填正整數。";
+    case "untradeable":
+      return "❌ 這些物品不可用於交易。";
     default:
       return "🔧 上架失敗，請稍後再試。";
   }
@@ -409,6 +500,54 @@ function buildSuccessCard(pending, result) {
           new ButtonBuilder().setCustomId(`${BULK_SELL_PREFIX}${l.listing_id}`).setLabel("賣給他").setEmoji("🛒").setStyle(ButtonStyle.Primary),
           new ButtonBuilder().setCustomId(VIEW_MYSTALL_ID).setLabel("查看我的攤位").setEmoji("📦").setStyle(ButtonStyle.Secondary),
           new ButtonBuilder().setCustomId(VIEW_BROWSE_ID).setLabel("查看市集").setEmoji("🏪").setStyle(ButtonStyle.Secondary),
+        ),
+      );
+  }
+
+  if (pending.kind === "bulk_sell") {
+    const feeRate = Math.round(((marketplace.bulkSell || {}).feeRate ?? 0.05) * 100);
+    const total = (l.unit_price || 0) * (l.qty || 0);
+    return new ContainerBuilder()
+      .setAccentColor(0x2980b9)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 📦 大量賣出開單成功\n` +
+            (l.title ? `📌 ${l.title}\n` : "") +
+            `**#${l.listing_id}** ・ 出售 ${itemAccess.itemLabel(pending.itemType, pending.itemKey)} ×**${l.qty.toLocaleString()}**\n` +
+            `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個　滿額可得 **${total.toLocaleString()}** ${COIN_EMOJI}\n` +
+            `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
+            `-# 其他玩家可分批向你購買；每筆成交扣 ${feeRate}% 手續費，售滿或到期後未賣出的會自動退回你的袋子。`,
+        ),
+      )
+      .addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`${BULKSELL_BUY_PREFIX}${l.listing_id}`).setLabel("購買").setEmoji("📦").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(VIEW_MYSTALL_ID).setLabel("查看我的攤位").setEmoji("📦").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(VIEW_BROWSE_ID).setLabel("查看市集").setEmoji("🏪").setStyle(ButtonStyle.Secondary),
+        ),
+      );
+  }
+
+  if (pending.kind === "swap") {
+    const give = l.give || {};
+    const want = l.want || {};
+    const giveLabel = itemAccess.itemLabel(give.type, give.key, give.qty);
+    const wantLabel = itemAccess.itemLabel(want.type, want.key, want.qty);
+    return new ContainerBuilder()
+      .setAccentColor(0x9b59b6)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🔄 物物交換掛牌成功\n` +
+            (l.title ? `📌 ${l.title}\n` : "") +
+            `**#${l.listing_id}**\n` +
+            `付出 ${giveLabel}（已從你${itemAccess.bagName(give.type)}託管），想換 ${wantLabel}\n` +
+            `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
+            `-# 有貨的玩家可直接點下方「賣給他」分批交換；換滿或到期後未換出的會自動退回。`,
+        ),
+      )
+      .addActionRowComponents(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`${SWAP_SELL_PREFIX}${l.listing_id}`).setLabel("賣給他").setEmoji("🔄").setStyle(ButtonStyle.Primary),
         ),
       );
   }

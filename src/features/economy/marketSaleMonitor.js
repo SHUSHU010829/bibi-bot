@@ -120,4 +120,64 @@ function recordAndCheck(client, sale) {
     .catch((e) => console.log(`[MKT-LAUNDER] 偵測失敗: ${e?.message || e}`.red));
 }
 
-module.exports = { recordAndCheck, medianUnitPrice, assessListingPrice };
+// 物物交換：估兩邊總價值，偵測「嚴重不對等」的變相贈與／轉帳。
+// 參考價優先用「近期成交中位數」——但兩邊都要有足夠樣本才採用（避免一邊中位、一邊
+// 基礎價混用而誤判）；只要有一邊樣本不足，兩邊一起退回系統基礎價（相對衡量仍公允）。
+async function assessSwapValue(client, { guildId, giveType, giveKey, giveQty, wantType, wantKey, wantQty }) {
+  const minSamples = cfg().minSamples ?? 5;
+  const gMed = await medianUnitPrice(client, guildId, giveType, giveKey);
+  const wMed = await medianUnitPrice(client, guildId, wantType, wantKey);
+  const bothMedian =
+    gMed.samples >= minSamples && gMed.median > 0 &&
+    wMed.samples >= minSamples && wMed.median > 0;
+  const giveUnit = bothMedian ? gMed.median : itemAccess.basePrice(giveType, giveKey);
+  const wantUnit = bothMedian ? wMed.median : itemAccess.basePrice(wantType, wantKey);
+  const giveValue = giveUnit * (giveQty || 0);
+  const wantValue = wantUnit * (wantQty || 0);
+  const overpayRatio = cfg().overpayRatio ?? 5;
+  const overpayAbs = cfg().overpayAbs ?? 30000;
+  let ratio = null;
+  let diff = null;
+  let wouldFlag = false;
+  let direction = null; // creator_gives：發起方付出價值遠高於換得；fulfiller_gives：接單方付出遠高於換得
+  if (giveValue > 0 && wantValue > 0) {
+    if (giveValue >= wantValue) { ratio = giveValue / wantValue; diff = giveValue - wantValue; direction = "creator_gives"; }
+    else { ratio = wantValue / giveValue; diff = wantValue - giveValue; direction = "fulfiller_gives"; }
+    wouldFlag = cfg().enabled !== false && ratio >= overpayRatio && diff >= overpayAbs;
+  }
+  return {
+    giveValue, wantValue, ratio, diff, wouldFlag, direction, overpayRatio,
+    usingMedian: bothMedian, medianDays: cfg().medianDays ?? 30,
+    giveSamples: gMed.samples, wantSamples: wMed.samples,
+  };
+}
+
+// 物物交換成交後呼叫（非阻塞）：價值嚴重不對等時向管理員回報疑似變相轉帳。
+// give/want 傳「本次成交的實際數量」（分批成交時只判本批）。
+function checkSwapTransfer(client, { guildId, creatorId, fulfillerId, giveType, giveKey, giveQty, wantType, wantKey, wantQty }) {
+  Promise.resolve()
+    .then(async () => {
+      if (cfg().enabled === false) return;
+      if (!guildId || !creatorId || !fulfillerId || creatorId === fulfillerId) return;
+      const a = await assessSwapValue(client, { guildId, giveType, giveKey, giveQty, wantType, wantKey, wantQty });
+      if (!a.wouldFlag) return;
+      // 付出價值遠高於換得的一方＝把價值轉出者；另一方＝受益者
+      const [payer, payee] = a.direction === "creator_gives" ? [creatorId, fulfillerId] : [fulfillerId, creatorId];
+      const giveLabel = itemAccess.itemLabel(giveType, giveKey, giveQty);
+      const wantLabel = itemAccess.itemLabel(wantType, wantKey, wantQty);
+      await raiseSuspicion(client, {
+        guildId,
+        kind: "market",
+        users: [creatorId, fulfillerId],
+        description: `物物交換價值嚴重不對等（約 ${a.ratio.toFixed(1)} 倍），<@${payer}> 疑似變相把價值轉給 <@${payee}>。`,
+        fields: [
+          { name: "發起方付出", value: `${giveLabel}（估值 ${Math.round(a.giveValue).toLocaleString()}）` },
+          { name: "換得", value: `${wantLabel}（估值 ${Math.round(a.wantValue).toLocaleString()}）` },
+          { name: "價值差", value: `**${Math.round(a.diff).toLocaleString()}** credits` },
+        ],
+      });
+    })
+    .catch((e) => console.log(`[MKT-LAUNDER] swap 偵測失敗: ${e?.message || e}`.red));
+}
+
+module.exports = { recordAndCheck, medianUnitPrice, assessListingPrice, assessSwapValue, checkSwapTransfer };

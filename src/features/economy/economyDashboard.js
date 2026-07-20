@@ -42,7 +42,7 @@ const PURE_MINT_SOURCES = new Set([
 ]);
 const PURE_SINK_SOURCES = new Set([
   "shop_buy", "wealth_tax", "stock_fee", "stock_tax", "stock_daytrade_tax", "stock_div_tax", "stock_insider_fee", "stone_appraisal",
-  "farm_plant", "farm_expand", "barter_fee",
+  "farm_plant", "farm_expand", "barter_fee", "swap_fee", "listing_fee", "renew_fee",
   "guild_create", "guild_donate",
   "guild_warehouse_fee", "guild_consign_buy",
   "invite_clawback",
@@ -844,8 +844,8 @@ const MARKET_GROUPS = {
   stock: ["stock_buy", "stock_sell", "stock_fee", "stock_tax", "stock_daytrade_tax", "stock_div_tax", "stock_insider_fee", "stock_dividend", "stock_raffle_prize", "stock_rebate"],
   stockShort: ["stock_short_margin", "stock_short_settle"],
   auction: ["auction_bid", "auction_payout", "auction_refund"],
-  market: ["market_buy", "market_escrow", "market_bid", "market_payout", "market_refund"],
-  barter: ["barter_fee"],
+  market: ["market_buy", "market_escrow", "market_bid", "market_payout", "market_refund", "bulk_escrow", "bulk_payout", "bulk_refund", "bulk_sell_buy", "bulk_sell_payout", "listing_fee", "renew_fee"],
+  barter: ["barter_fee", "swap_fee"],
   transfer: ["transfer_in", "transfer_out"],
   transferFee: ["transfer_fee"],
   deposit: ["deposit_lock", "deposit_release"],
