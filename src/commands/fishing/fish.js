@@ -929,6 +929,26 @@ async function runFishBatch(client, interaction, { location = "stream", count })
           flags: MessageFlags.IsComponentsV2,
         });
       }
+      if (result.reason === "low_durability") {
+        const rd = fishing?.rods?.[result.rod] || {};
+        const c = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("# 🛡️ 釣竿快斷了，先修一下"),
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `你的 **${rd.name || result.rod}** 只剩 1 次耐久，連續釣魚不會硬釣到它斷掉退回竹釣竿。`,
+            ),
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              "-# 先去 `/合成`（材料修理）修一下，或手動釣最後一竿再合成新的。",
+            ),
+          );
+        return interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
+      }
       if (result.reason === "disabled") {
         return interaction.editReply("🔧 釣魚系統尚未啟動！");
       }
@@ -1022,7 +1042,14 @@ async function runFishBatch(client, interaction, { location = "stream", count })
       );
     }
 
-    if (result.rodBroke) {
+    if (result.stoppedLowDurability) {
+      const rd = fishing?.rods?.[result.lowDurabilityRod] || {};
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 🛡️ **${rd.name || result.lowDurabilityRod}** 只剩 1 次耐久，為避免斷裂退回竹釣竿，連續釣魚已在斷掉前停止。去 \`/合成\` 材料修理，或手動釣最後一竿。`,
+        ),
+      );
+    } else if (result.rodBroke) {
       const brokeDef = fishing?.rods?.[result.rodBrokeFrom] || {};
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(

@@ -759,6 +759,26 @@ async function runMineBatch(client, interaction, { count }) {
           flags: MessageFlags.IsComponentsV2,
         });
       }
+      if (result.reason === "low_durability") {
+        const pk = mining?.pickaxes?.[result.pickaxe] || {};
+        const c = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent("# 🛡️ 鎬子快壞了，先修一下"),
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `你的 **${pk.name || result.pickaxe}** 只剩 1 次耐久，連續挖礦不會硬挖到它斷掉退回木鎬。`,
+            ),
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              "-# 先去 `/合成` 修理，或用 `/挖礦` 手動挖最後一下再合成新的。",
+            ),
+          );
+        return interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
+      }
       if (result.reason === "disabled") {
         return interaction.editReply("🔧 挖礦系統尚未啟動！");
       }
@@ -844,7 +864,14 @@ async function runMineBatch(client, interaction, { count }) {
       );
     }
 
-    if (result.durabilityBroke) {
+    if (result.stoppedLowDurability) {
+      const pk = mining?.pickaxes?.[result.lowDurabilityPickaxe] || {};
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# 🛡️ **${pk.name || result.lowDurabilityPickaxe}** 只剩 1 次耐久，為避免斷裂退回木鎬，連續挖礦已在斷掉前停止。去 \`/合成\` 修理，或用 \`/挖礦\` 手動挖最後一下。`,
+        ),
+      );
+    } else if (result.durabilityBroke) {
       const brokeDef = mining?.pickaxes?.[result.pickaxeBrokeFrom] || {};
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
