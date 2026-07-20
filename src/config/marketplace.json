@@ -15,10 +15,34 @@
     "bulk": {
       "enabled": true,
       "durationMs": 259200000,
-      "maxActivePerBuyer": 1,
+      "maxActivePerBuyer": 10,
       "minUnitPriceFactor": 1,
       "feeRate": 0.05,
       "maxQty": 100000
+    },
+    "bulkSell": {
+      "enabled": true,
+      "durationMs": 259200000,
+      "maxActivePerSeller": 10,
+      "minUnitPriceFactor": 1,
+      "feeRate": 0.05,
+      "maxQty": 100000
+    },
+    "swap": {
+      "enabled": true,
+      "durationMs": 604800000,
+      "maxActivePerSeller": 8,
+      "feeRate": 0.01,
+      "maxQty": 100000
+    },
+    "listingDuration": {
+      "tiers": [
+        { "days": 1, "fee": 0 },
+        { "days": 3, "fee": 200 },
+        { "days": 7, "fee": 500 }
+      ],
+      "renewGraceMs": 21600000,
+      "renewFeePerDay": 100
     }
   }
 }

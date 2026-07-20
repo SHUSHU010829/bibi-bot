@@ -42,6 +42,15 @@ function veggieChoices() {
 
 const ITEM_CHOICES = itemAccess.allChoices();
 
+function durationChoices() {
+  const tiers = marketplace?.listingDuration?.tiers || [{ days: 1, fee: 0 }];
+  return tiers.map((t) => ({
+    name: t.fee > 0 ? `${t.days} 天（上架費 ${t.fee} 幣）` : `${t.days} 天（免費）`,
+    value: t.days,
+  }));
+}
+const DURATION_CHOICES = durationChoices();
+
 module.exports = {
   channelBuckets: ["marketplace"],
   data: new SlashCommandBuilder()
@@ -117,7 +126,7 @@ module.exports = {
           o.setName("標題").setDescription("選填：自訂標題顯示在掛單前").setMaxLength(30)
         )
     )
-    // 大量收購
+    // 大量收購（掛買單）
     .addSubcommand((s) =>
       s
         .setName("大量收購")
@@ -137,6 +146,34 @@ module.exports = {
         )
         .addStringOption((o) =>
           o.setName("標題").setDescription("選填：自訂標題顯示在收購單前").setMaxLength(30)
+        )
+        .addIntegerOption((o) =>
+          o.setName("時長").setDescription("掛單天數（越久上架費越高，預設 1 天）").setRequired(false).addChoices(...DURATION_CHOICES)
+        )
+    )
+    // 大量賣出（掛賣單）
+    .addSubcommand((s) =>
+      s
+        .setName("掛賣單")
+        .setDescription("一次掛售大量物品，多位玩家可分批向你買 📦")
+        .addStringOption((o) =>
+          o.setName("物品").setDescription("你要掛售的物品").setRequired(true).addChoices(...ITEM_CHOICES)
+        )
+        .addIntegerOption((o) =>
+          o.setName("數量").setDescription("總共要賣多少個").setRequired(true).setMinValue(1)
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName("單價")
+            .setDescription("每個賣多少金幣（不得低於系統售價）")
+            .setRequired(true)
+            .setMinValue(1)
+        )
+        .addStringOption((o) =>
+          o.setName("標題").setDescription("選填：自訂標題顯示在賣單前").setMaxLength(30)
+        )
+        .addIntegerOption((o) =>
+          o.setName("時長").setDescription("掛單天數（越久上架費越高，預設 1 天）").setRequired(false).addChoices(...DURATION_CHOICES)
         )
     )
     // 賣魚
@@ -206,7 +243,7 @@ module.exports = {
     // 物品換金錢的上架先走 ephemeral 預覽確認（含行情中位數＋洗幣警示）；查詢類也 ephemeral。
     // 徵求付物品不涉及金錢，維持公開直接上架。
     const wantPayKind = sub === "徵求" ? interaction.options.getString("付款方式") : null;
-    const previewSubs = new Set(["賣礦", "賣魚", "賣菜", "競標", "大量收購"]);
+    const previewSubs = new Set(["賣礦", "賣魚", "賣菜", "競標", "大量收購", "掛賣單"]);
     const isPreview = previewSubs.has(sub) || (sub === "徵求" && wantPayKind === "coin");
     const ephemeral = isPreview || ["逛攤", "我的攤位"].includes(sub);
     await interaction.deferReply(ephemeral ? { flags: MessageFlags.Ephemeral } : undefined);
@@ -221,6 +258,7 @@ module.exports = {
       if (sub === "賣礦") return await handleSell(client, interaction);
       if (sub === "徵求") return await handleWant(client, interaction);
       if (sub === "大量收購") return await handleBulk(client, interaction);
+      if (sub === "掛賣單") return await handleBulkSell(client, interaction);
       if (sub === "競標") return await handleAuction(client, interaction);
       if (sub === "賣魚") return await handleFishSell(client, interaction);
       if (sub === "賣菜") return await handleVeggieSell(client, interaction);
@@ -422,6 +460,7 @@ async function handleBulk(client, interaction) {
   const itemArg = interaction.options.getString("物品");
   const qty = interaction.options.getInteger("數量");
   const unitPrice = interaction.options.getInteger("單價");
+  const durationDays = interaction.options.getInteger("時長") || 1;
 
   const choice = itemAccess.parseChoice(itemArg);
   if (!choice) return interaction.editReply("❌ 找不到這種物品。");
@@ -446,6 +485,42 @@ async function handleBulk(client, interaction) {
       unitPrice,
       member: interaction.member,
       title,
+      durationDays,
+    },
+  });
+}
+
+// ─── 大量賣出（掛賣單）───────────────────────────────────────────────────────
+async function handleBulkSell(client, interaction) {
+  const itemArg = interaction.options.getString("物品");
+  const qty = interaction.options.getInteger("數量");
+  const unitPrice = interaction.options.getInteger("單價");
+  const durationDays = interaction.options.getInteger("時長") || 1;
+
+  const choice = itemAccess.parseChoice(itemArg);
+  if (!choice) return interaction.editReply("❌ 找不到這種物品。");
+  const title = interaction.options.getString("標題");
+
+  await presentPreview(client, interaction, {
+    kind: "bulk_sell",
+    title,
+    itemType: choice.type,
+    itemKey: choice.key,
+    qty,
+    totalPrice: unitPrice * qty,
+    unitPrice,
+    priceLabel: "單價",
+    params: {
+      sellerId: interaction.user.id,
+      guildId: interaction.guildId,
+      sellerName: interaction.member?.displayName || interaction.user.username,
+      itemType: choice.type,
+      itemKey: choice.key,
+      qty,
+      unitPrice,
+      member: interaction.member,
+      title,
+      durationDays,
     },
   });
 }
