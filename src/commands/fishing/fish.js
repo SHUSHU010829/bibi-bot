@@ -18,6 +18,8 @@ const {
 
 const { fishing, commandChannels, normalChannelId } = require("../../config");
 const fishService = require("../../features/fishing/fishService");
+const mineService = require("../../features/mining/mineService");
+const { materialLabel } = require("../../features/mining/craftMaterials");
 const { bagStatusLine } = require("../../features/mining/bagStatus");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
@@ -124,6 +126,23 @@ function fishBatchRepairRow(ownerId, location) {
       .setEmoji("🔧")
       .setStyle(ButtonStyle.Success),
   );
+}
+
+// 在低耐久畫面加上「材料修理」的成本清單（含持有量）＋修理按鈕。
+// preview 來自 mineService.getRodRepairPreview（唯讀成本）。
+function addRodRepairSection(container, ownerId, location, preview) {
+  if (preview?.ok) {
+    const costLine = preview.items
+      .map((m) => `${materialLabel(m.mat, m.need)}（有 ${m.have}）`)
+      .join("、");
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**🔧 材料修理釣竿**\n需要：${costLine}` +
+          (preview.affordable ? "" : "\n-# ⚠️ 材料不足，補齊後再修。"),
+      ),
+    );
+  }
+  container.addActionRowComponents(fishBatchRepairRow(ownerId, location));
 }
 
 function fishBatchButton(ownerId, location) {
@@ -956,6 +975,12 @@ async function runFishBatch(client, interaction, { location = "stream", count })
       }
       if (result.reason === "low_durability") {
         const rd = fishing?.rods?.[result.rod] || {};
+        const preview = await mineService
+          .getRodRepairPreview(client, {
+            userId: interaction.user.id,
+            guildId: interaction.guildId,
+          })
+          .catch(() => null);
         const c = new ContainerBuilder()
           .setAccentColor(0xe74c3c)
           .addTextDisplayComponents(
@@ -969,10 +994,10 @@ async function runFishBatch(client, interaction, { location = "stream", count })
           )
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              "-# 點下方用背包材料直接修，或手動釣最後一竿再合成新的。",
+              "-# 用背包材料直接修，或手動釣最後一竿再合成新的。",
             ),
-          )
-          .addActionRowComponents(fishBatchRepairRow(interaction.user.id, location));
+          );
+        addRodRepairSection(c, interaction.user.id, location, preview);
         return interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
       }
       if (result.reason === "disabled") {
@@ -1093,7 +1118,13 @@ async function runFishBatch(client, interaction, { location = "stream", count })
       );
 
     if (result.stoppedLowDurability) {
-      container.addActionRowComponents(fishBatchRepairRow(interaction.user.id, location));
+      const preview = await mineService
+        .getRodRepairPreview(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+        })
+        .catch(() => null);
+      addRodRepairSection(container, interaction.user.id, location, preview);
     }
 
     container.addActionRowComponents(
