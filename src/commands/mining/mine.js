@@ -684,15 +684,66 @@ function buildBatchNoTicketView() {
     );
 }
 
+// 連續挖礦「進行中」畫面：每跑幾次刷新一次，讓玩家即時看到過程（節流由呼叫端控制）。
+function buildMineProgressView(p, steps) {
+  const recent = steps.slice(-6).map((s) => {
+    const got =
+      s.qty > 0
+        ? `${oreLabel(s.ore)} ×${s.qty}${s.overflow ? `（+${s.overflow} 折幣）` : ""}`
+        : `${oreLabel(s.ore)} ×${s.overflow}（背包滿・折幣）`;
+    return `${s.n}. ${got}`;
+  });
+  const tally =
+    Object.entries(p.ores || {})
+      .map(([o, q]) => `${oreLabel(o)} ×${q}`)
+      .join("、") || "—";
+  return new ContainerBuilder()
+    .setAccentColor(0xf1c40f)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ⛏️ 連續挖礦中…（${p.performed}/${p.requested}）`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**最近挖到**\n${recent.join("\n")}`),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**目前累計**\n${tally}`),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🎫 已用券 ×${p.ticketsSpent}\n-# ⛏️ 挖礦中，請稍候…`,
+      ),
+    );
+}
+
 // 執行連續挖礦並呈現匯總結果。假設 interaction 已 deferReply（公開）。
 async function runMineBatch(client, interaction, { count }) {
   try {
+    const progressSteps = [];
+    let lastEditAt = 0;
+    const PROGRESS_THROTTLE_MS = 900;
+    const onProgress = async (p) => {
+      progressSteps.push(p.step);
+      const nowMs = Date.now();
+      if (nowMs - lastEditAt < PROGRESS_THROTTLE_MS) return;
+      lastEditAt = nowMs;
+      await interaction
+        .editReply({
+          components: [buildMineProgressView(p, progressSteps)],
+          flags: MessageFlags.IsComponentsV2,
+        })
+        .catch(() => {});
+    };
+
     const result = await mineService.mineBatch(client, {
       userId: interaction.user.id,
       guildId: interaction.guildId,
       member: interaction.member,
       username: interaction.user.username,
       count,
+      onProgress,
     });
 
     if (!result.ok) {

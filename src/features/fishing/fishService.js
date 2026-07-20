@@ -394,7 +394,7 @@ async function fish(client, { userId, guildId, location = "stream", member, user
 // 連續釣魚（批次）：一次釣 count 竿，省去逐次點按。與挖礦 mineBatch 同構。
 // 第一竿免費（需已過冷卻），之後每竿消耗 1 張 CD 縮短券；釣竿中途壞掉 → 立即停止。
 // 重用單次 fish()，所有成功率、耐久、掉落、非魚物、稀有副產物都沿用單次邏輯。
-async function fishBatch(client, { userId, guildId, member, username, location = "stream", count }) {
+async function fishBatch(client, { userId, guildId, member, username, location = "stream", count, onProgress }) {
   if (!fishing?.enabled || !client.miningProfilesCollection) {
     return { ok: false, reason: "disabled" };
   }
@@ -502,8 +502,10 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     agg.fishCountTotal = r.fishCountTotal;
     if (r.droppedNetFragment) agg.netFragments++;
 
+    let step;
     if (!r.caught) {
       agg.failed++;
+      step = { n: agg.performed, kind: "fail" };
     } else if (r.nonFish) {
       agg.coinsAwarded += r.coinsAwarded || 0;
       if (r.catchItem) agg.lootItems.push(r.catchItem.name);
@@ -514,6 +516,7 @@ async function fishBatch(client, { userId, guildId, member, username, location =
         }
         agg.materials[key].qty += r.materialReward.qty || 1;
       }
+      step = { n: agg.performed, kind: "loot", name: r.catchItem?.name, emoji: r.catchItem?.emoji };
     } else {
       agg.caught++;
       const fkey = r.fish;
@@ -529,6 +532,24 @@ async function fishBatch(client, { userId, guildId, member, username, location =
         }
         agg.rareDrops[key].qty += 1;
       }
+      step = {
+        n: agg.performed,
+        kind: "fish",
+        name: r.fishDef?.name || r.fish,
+        emoji: r.fishDef?.emoji,
+        qty: r.qty || 1,
+      };
+    }
+
+    if (onProgress) {
+      await onProgress({
+        performed: agg.performed,
+        requested,
+        ticketsSpent: agg.ticketsSpent,
+        caught: agg.caught,
+        failed: agg.failed,
+        step,
+      }).catch(() => {});
     }
 
     if (r.rodBroke) {
