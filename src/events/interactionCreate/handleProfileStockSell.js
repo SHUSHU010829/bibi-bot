@@ -99,17 +99,18 @@ module.exports = async (client, interaction) => {
     if (!submitted) return;
 
     if (!isMarketOpen()) {
-      return submitted.reply({
-        content: "🌙 目前非開盤時間(09:00–21:00 Asia/Taipei),沒辦法賣出。",
-        flags: MessageFlags.Ephemeral,
-      });
+      return submitted
+        .reply({
+          content: "🌙 目前非開盤時間(09:00–21:00 Asia/Taipei),沒辦法賣出。",
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
     }
     const tenure = checkServerTenure(interaction.member);
     if (!tenure.ok)
-      return submitted.reply({
-        content: tenure.message,
-        flags: MessageFlags.Ephemeral,
-      });
+      return submitted
+        .reply({ content: tenure.message, flags: MessageFlags.Ephemeral })
+        .catch(() => {});
 
     const rawShares = submitted.fields.getTextInputValue("shares").trim();
     let shares;
@@ -118,14 +119,24 @@ module.exports = async (client, interaction) => {
     } else {
       shares = parseInt(rawShares, 10);
       if (!Number.isInteger(shares) || shares <= 0) {
-        return submitted.reply({
-          content: "❌ 股數需為正整數或 `all`。",
-          flags: MessageFlags.Ephemeral,
-        });
+        return submitted
+          .reply({
+            content: "❌ 股數需為正整數或 `all`。",
+            flags: MessageFlags.Ephemeral,
+          })
+          .catch(() => {});
       }
     }
 
-    await submitted.deferReply();
+    // 主執行緒繁忙時,從玩家送出 Modal 到這裡若超過 Discord 3 秒 ack 視窗,
+    // deferReply 會噴 Unknown interaction(10062):token 已失效、無法回應,
+    // 靜默放棄即可,不必當成錯誤記 log。
+    try {
+      await submitted.deferReply();
+    } catch (err) {
+      if (err?.code === 10062) return;
+      throw err;
+    }
 
     const result = await sellMarket(client, {
       userId: interaction.user.id,
