@@ -1,6 +1,7 @@
 {
   "marketplace": {
     "enabled": true,
+    "listingChannelId": "1510657349944344737",
     "durationMs": 86400000,
     "maxActivePerSeller": 8,
     "sellFeeRate": 0.05,

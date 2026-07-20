@@ -1,5 +1,6 @@
 require("colors");
 const { MessageFlags } = require("discord.js");
+const { marketplace } = require("../../config");
 const listingConfirm = require("../../features/marketplace/listingConfirm");
 const marketplaceService = require("../../features/marketplace/marketplaceService");
 
@@ -84,12 +85,18 @@ module.exports = async (client, interaction) => {
         });
       }
       listingConfirm.drop(parsed.token);
+      // 公開掛單卡統一發到市集頻道，交易動態集中一處；頻道抓不到才退回當前頻道。
+      const listingChannelId = marketplace?.listingChannelId;
+      let target = interaction.channel;
+      if (listingChannelId && listingChannelId !== interaction.channelId) {
+        const routed = await client.channels.fetch(listingChannelId).catch(() => null);
+        if (routed?.send) target = routed;
+      }
+      const ackTail = target?.id ? `\n-# 掛單卡已發布於 <#${target.id}>` : "";
       await interaction.editReply({
-        components: [listingConfirm.simpleContainer(0x2ecc71, `# ${fin.ackText}`)],
+        components: [listingConfirm.simpleContainer(0x2ecc71, `# ${fin.ackText}${ackTail}`)],
         flags: V2,
       });
-      // 公開掛單卡（含成交按鈕）發到頻道，確保所有人看得到、可成交。
-      const target = interaction.channel;
       const publicMsg = { components: [fin.publicCard], flags: V2 };
       const sent = await (target?.send ? target.send(publicMsg) : interaction.followUp(publicMsg)).catch((e) => {
         console.log(`[ERROR] listing public card: ${e.message}`.red);
