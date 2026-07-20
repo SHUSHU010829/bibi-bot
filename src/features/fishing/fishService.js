@@ -10,6 +10,7 @@ const {
   formatFoodBuffLines,
 } = require("./cookService");
 const grantCoins = require("../economy/grantCoins");
+const grantActivityXp = require("../leveling/grantActivityXp");
 const bus = require("../eventBus");
 
 // 依 rareBonus 調整後的掉落權重：weight * (1 + rareBonus * rareFactor)。
@@ -132,6 +133,15 @@ async function fish(client, { userId, guildId, location = "stream", member, user
     return { ok: false, reason: "fish_bag_full", used: fishUsed, cap: fishCap };
   }
 
+  // 通過所有前置檢查 → 這一竿必定會下（不論成敗），發放釣魚經驗
+  const xpGained = await grantActivityXp(client, "fish", {
+    userId,
+    guildId,
+    username,
+    member,
+    meta: { location },
+  });
+
   // 釣竿 + 海鮮拼盤（fish_fortune）：決定成功率與稀有度偏移
   const rods = fishing.rods || {};
   const rodKey = profile.fishing_rod || "bamboo";
@@ -188,6 +198,7 @@ async function fish(client, { userId, guildId, location = "stream", member, user
       fishCountTotal: profile.fish_count_total || 0,
       droppedNetFragment,
       netActive,
+      xpGained,
       foodBuffLines: formatFoodBuffLines(profile, "fish"),
     };
   }
@@ -245,6 +256,7 @@ async function fish(client, { userId, guildId, location = "stream", member, user
     droppedNetFragment,
     netActive,
     netUsesAfter: netActive ? (profile.fishing_net_uses || 0) - 1 : (profile.fishing_net_uses || 0),
+    xpGained,
     foodBuffLines: formatFoodBuffLines(profile, "fish"),
   };
 
@@ -461,6 +473,7 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     stoppedEarly: false,
     newCooldownAt: now,
     fishCountTotal: profile.fish_count_total || 0,
+    xpGained: 0,
   };
 
   for (let i = 0; i < requested; i++) {
@@ -515,6 +528,7 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     }
 
     agg.performed++;
+    agg.xpGained += r.xpGained || 0;
     agg.newCooldownAt = r.newCooldownAt;
     agg.fishCountTotal = r.fishCountTotal;
     if (r.droppedNetFragment) agg.netFragments++;

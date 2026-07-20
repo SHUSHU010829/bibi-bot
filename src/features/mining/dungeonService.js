@@ -3,6 +3,7 @@ const { mining, dungeon, shop, guildClub } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed } = require("./miningProfile");
 const { weightedRandom } = require("./weightedRandom");
 const grantCoins = require("../economy/grantCoins");
+const grantActivityXp = require("../leveling/grantActivityXp");
 const twitchPerks = require("./twitchPerks");
 const encounterService = require("./encounterService");
 const { getFoodAtkBonus, formatFoodBuffLines } = require("../fishing/cookService");
@@ -577,6 +578,14 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     result.encounter = { name: enc.name, emoji: enc.emoji, body: enc.body, loot: enc.loot || [], outcome: enc.outcome || null };
     if (enc.diamondGained > 0) result.encounterDiamond = enc.diamondGained;
   }
+
+  result.xpGained = await grantActivityXp(client, "dungeon", {
+    userId,
+    guildId,
+    username,
+    member,
+    meta: { won },
+  });
 
   return result;
 }
@@ -1202,6 +1211,14 @@ async function enterDungeonHp(client, {
       if (picked) result.choiceEvent = picked;
     }
   }
+
+  result.xpGained = await grantActivityXp(client, "dungeon", {
+    userId,
+    guildId,
+    username,
+    member,
+    meta: { won, floor, theme: themeId, isMiniBoss },
+  });
 
   return result;
 }

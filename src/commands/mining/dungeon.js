@@ -570,6 +570,7 @@ function buildBattleResultPanel(ownerId, result) {
     stateLines.push(`⚔️ ${weaponLabel(result.weaponBefore)} 耐久耗盡，已退回赤手空拳！`);
   }
   if (result.damageDealt) stateLines.push(`-# 造成 ${result.damageDealt} 傷害・受 ${result.damageTaken} 傷害・暴擊 ${result.critCount} 次・格擋 ${result.blockCount} 次`);
+  if (result.xpGained > 0) stateLines.push(`⭐ 經驗值：**+${result.xpGained}**`);
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(stateLines.join("\n")));
 
   // 戰報敘事：亮點（逆轉 / 連暴 / 速殺…）＋ 隨機氣氛台詞，讓每場戰鬥讀起來更有戲。
@@ -1161,7 +1162,8 @@ async function executeDungeon(client, interaction, { allowOverflow = false } = {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**累積探索**\n${result.dungeonCount.toLocaleString()} 次`,
+          `**累積探索**\n${result.dungeonCount.toLocaleString()} 次` +
+            (result.xpGained > 0 ? `\n⭐ 經驗值 **+${result.xpGained}**` : ""),
         ),
       );
 

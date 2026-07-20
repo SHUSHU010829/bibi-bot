@@ -523,7 +523,8 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           new TextDisplayBuilder().setContent(
             `${result.locDef?.emoji || "🎣"} 釣魚地點：**${result.locDef?.name || location}**\n` +
               `🪝 使用釣竿：**${rodLabelText}**\n` +
-              `🎯 本次成功率：**${successPct}%**`
+              `🎯 本次成功率：**${successPct}%**` +
+              (result.xpGained > 0 ? `\n⭐ 經驗值：**+${result.xpGained}**（練竿也有經驗）` : "")
           )
         )
         .addSeparatorComponents(new SeparatorBuilder())
@@ -600,7 +601,8 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           new TextDisplayBuilder().setContent(
             `${result.locDef?.emoji || "🎣"} 釣魚地點：**${result.locDef?.name || location}**\n` +
               `🪝 使用釣竿：**${rodLabelText}**\n` +
-              `🎯 本次成功率：**${successPct}%**`
+              `🎯 本次成功率：**${successPct}%**` +
+              (result.xpGained > 0 ? `\n⭐ 經驗值：**+${result.xpGained}**` : "")
           )
         );
       if (result.materialReward) {
@@ -714,7 +716,8 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
             `🪝 使用釣竿：**${rodLabelText}**${rodDuraText}\n` +
             `🎯 本次成功率：**${successPct}%**\n` +
             `✨ 稀有度：**${fishDef.rarity || "普通"}**\n` +
-            `💰 收購價：**${fishDef.price || 0} 幣**${qty > 1 ? `（共 ${(fishDef.price || 0) * qty} 幣）` : ""}`
+            `💰 收購價：**${fishDef.price || 0} 幣**${qty > 1 ? `（共 ${(fishDef.price || 0) * qty} 幣）` : ""}` +
+            (result.xpGained > 0 ? `\n⭐ 經驗值：**+${result.xpGained}**` : "")
         )
       )
       .addSeparatorComponents(new SeparatorBuilder())
@@ -1113,7 +1116,8 @@ async function runFishBatch(client, interaction, { location = "stream", count })
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**下次可釣魚**\n<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）\n**累積釣魚**\n${result.fishCountTotal.toLocaleString()} 次`,
+          `**下次可釣魚**\n<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）\n**累積釣魚**\n${result.fishCountTotal.toLocaleString()} 次` +
+            (result.xpGained > 0 ? `\n⭐ 經驗值 **+${result.xpGained}**` : ""),
         ),
       );
 

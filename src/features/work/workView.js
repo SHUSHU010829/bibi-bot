@@ -78,6 +78,8 @@ function buildResultMessage(result, { notifyEnabled } = {}) {
       ? `\n-# 打工事件倍率 ×${result.eventMult}（基礎 ${result.baseAmount.toLocaleString()} 幣）`
       : "";
 
+  const xpLine = result.xpGained > 0 ? `\n⭐ 經驗值 **+${result.xpGained}**` : "";
+
   const levelLine = result.level != null
     ? `Lv.${result.level} **${result.levelName}**`
     : "—";
@@ -92,7 +94,7 @@ function buildResultMessage(result, { notifyEnabled } = {}) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# ${tier.title}\n你${result.job}。${eventLine}\n` +
-          `結算：**+${result.amount.toLocaleString()}** ${COIN_EMOJI}${bonusNotes}${multLine}`
+          `結算：**+${result.amount.toLocaleString()}** ${COIN_EMOJI}${bonusNotes}${multLine}${xpLine}`
       )
     )
     .addSeparatorComponents(new SeparatorBuilder())

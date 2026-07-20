@@ -372,7 +372,8 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**累積挖礦**\n${result.mineCountTotal.toLocaleString()} 次`,
+          `**累積挖礦**\n${result.mineCountTotal.toLocaleString()} 次` +
+            (result.xpGained > 0 ? `\n⭐ 經驗值 **+${result.xpGained}**` : ""),
         ),
       );
 
@@ -923,7 +924,8 @@ async function runMineBatch(client, interaction, { count }) {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**下次可挖礦**\n<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）\n**累積挖礦**\n${result.mineCountTotal.toLocaleString()} 次`,
+          `**下次可挖礦**\n<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）\n**累積挖礦**\n${result.mineCountTotal.toLocaleString()} 次` +
+            (result.xpGained > 0 ? `\n⭐ 經驗值 **+${result.xpGained}**` : ""),
         ),
       );
 
