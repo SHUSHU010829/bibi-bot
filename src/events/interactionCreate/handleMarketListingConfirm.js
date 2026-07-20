@@ -1,6 +1,7 @@
 require("colors");
 const { MessageFlags } = require("discord.js");
 const listingConfirm = require("../../features/marketplace/listingConfirm");
+const marketplaceService = require("../../features/marketplace/marketplaceService");
 
 const {
   CONFIRM_PREFIX,
@@ -90,9 +91,19 @@ module.exports = async (client, interaction) => {
       // 公開掛單卡（含成交按鈕）發到頻道，確保所有人看得到、可成交。
       const target = interaction.channel;
       const publicMsg = { components: [fin.publicCard], flags: V2 };
-      await (target?.send ? target.send(publicMsg) : interaction.followUp(publicMsg)).catch((e) =>
-        console.log(`[ERROR] listing public card: ${e.message}`.red),
-      );
+      const sent = await (target?.send ? target.send(publicMsg) : interaction.followUp(publicMsg)).catch((e) => {
+        console.log(`[ERROR] listing public card: ${e.message}`.red);
+        return null;
+      });
+      // 有進度的單型記下訊息位置，之後成交/收滿/下架時就地更新這張公開卡
+      if (fin.live && sent?.id) {
+        await marketplaceService.setListingCardRef(client, {
+          guildId: fin.guildId,
+          listingId: fin.listingId,
+          channelId: sent.channelId || target?.id,
+          messageId: sent.id,
+        }).catch(() => {});
+      }
       return;
     }
 

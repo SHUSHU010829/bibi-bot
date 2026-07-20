@@ -24,7 +24,11 @@ const {
   SWAP_SELL_PREFIX,
   VIEW_MYSTALL_ID,
   VIEW_BROWSE_ID,
+  buildLiveListingCard,
 } = require("./marketplaceView");
+
+// 有成交進度、公開卡需即時更新的單型
+const LIVE_KINDS = new Set(["bulk", "bulk_sell", "swap"]);
 
 // 「物品換金錢」的上架二次確認：先預覽行情中位數與洗幣風險 → 確認才真正建立掛單。
 // pending 存在記憶體（確認在數分鐘內完成，重啟就重下指令即可），可直接保留 member 物件。
@@ -65,8 +69,8 @@ function drop(token) {
 const KIND_TITLE = {
   sell: "🧾 確認上架賣單",
   auction: "🧾 確認上架競標",
-  bulk: "🧾 確認開大量收購",
-  bulk_sell: "🧾 確認開大量賣出",
+  bulk: "🧾 確認開收購單",
+  bulk_sell: "🧾 確認開賣單",
   want: "🧾 確認上架徵求",
 };
 
@@ -174,7 +178,7 @@ async function buildPreview(client, pending) {
     qty: pending.qty,
   });
 
-  // 洗幣警示只在「成交時真的會跑反洗幣偵測」的單型才成立（賣單/競標/大量收購）；
+  // 洗幣警示只在「成交時真的會跑反洗幣偵測」的單型才成立（賣單/競標/收購）；
   // 徵求付金幣的成交目前不經 recordAndCheck，不宣稱會扣分，只保留行情提示。
   const flagWarn = assess.wouldFlag && pending.kind !== "want";
 
@@ -398,7 +402,7 @@ function fmtErr(pending, result) {
     case "too_many":
       return `📦 你同時最多只能掛 **${result.max}** 件掛單。`;
     case "bulk_limit":
-      return `📋 你同時只能開 **${result.maxBulk}** 張大量收購單，先下架舊的再開新的。`;
+      return `📋 你同時只能開 **${result.maxBulk}** 張收購單，先下架舊的再開新的。`;
     case "insufficient":
       return `🎒 你的數量不足，無法託管 ${pending.qty} 個（目前 ${result.have ?? 0}）。`;
     case "insufficient_coins":
@@ -486,11 +490,10 @@ function buildSuccessCard(pending, result) {
       .setAccentColor(0x16a085)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🛒 大量收購開單成功\n` +
+          `# 🛒 收購開單成功\n` +
             (l.title ? `📌 ${l.title}\n` : "") +
             `**#${l.listing_id}** ・ 收購 ${itemAccess.itemLabel(pending.itemType, pending.itemKey)} ×**${l.qty.toLocaleString()}**\n` +
-            `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個　總額 **${l.pay_coin.toLocaleString()}** ${COIN_EMOJI}\n` +
-            `已鎖定 **${result.totalEscrow.toLocaleString()}** ${COIN_EMOJI}（含 ${result.fee.toLocaleString()} 手續費）\n` +
+            `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個\n` +
             `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
             `-# 其他玩家可直接點下方「賣給他」分批賣給你；收滿或到期後，未用完的金額會自動退回。`,
         ),
@@ -506,15 +509,14 @@ function buildSuccessCard(pending, result) {
 
   if (pending.kind === "bulk_sell") {
     const feeRate = Math.round(((marketplace.bulkSell || {}).feeRate ?? 0.05) * 100);
-    const total = (l.unit_price || 0) * (l.qty || 0);
     return new ContainerBuilder()
       .setAccentColor(0x2980b9)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 📦 大量賣出開單成功\n` +
+          `# 📦 賣單開單成功\n` +
             (l.title ? `📌 ${l.title}\n` : "") +
             `**#${l.listing_id}** ・ 出售 ${itemAccess.itemLabel(pending.itemType, pending.itemKey)} ×**${l.qty.toLocaleString()}**\n` +
-            `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個　滿額可得 **${total.toLocaleString()}** ${COIN_EMOJI}\n` +
+            `單價 **${l.unit_price.toLocaleString()}** ${COIN_EMOJI}／個\n` +
             `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
             `-# 其他玩家可分批向你購買；每筆成交扣 ${feeRate}% 手續費，售滿或到期後未賣出的會自動退回你的袋子。`,
         ),
@@ -577,14 +579,40 @@ function buildSuccessCard(pending, result) {
     );
 }
 
+// 賣家／買家自己看的私密確認：把金額類資訊（鎖定金額、滿額可得）放這裡，不進公開卡。
+function buildAckText(pending, result) {
+  const l = result.listing;
+  const head = `✅ 已上架 **#${l?.listing_id}**（掛單卡已公開在頻道）`;
+  if (pending.kind === "bulk") {
+    return head +
+      `\n-# 已從你帳戶鎖定 **${result.totalEscrow.toLocaleString()}** ${COIN_EMOJI}` +
+      `（本金 ${l.pay_coin.toLocaleString()} + 手續費 ${result.fee.toLocaleString()}）；收滿或到期未用完會退回。`;
+  }
+  if (pending.kind === "bulk_sell") {
+    const feeRate = Math.round(((marketplace.bulkSell || {}).feeRate ?? 0.05) * 100);
+    const total = (l.unit_price || 0) * (l.qty || 0);
+    return head + `\n-# 全部售出可得 **${total.toLocaleString()}** ${COIN_EMOJI}（每筆成交前扣 ${feeRate}% 手續費）。`;
+  }
+  if (pending.kind === "swap") {
+    const give = l.give || {};
+    return head + `\n-# 已從你${itemAccess.bagName(give.type)}託管 ${itemAccess.itemLabel(give.type, give.key, give.qty)}；換滿或到期未換出的會退回。`;
+  }
+  return head;
+}
+
 // 執行建立：回傳 { ok, errorText? , publicCard? , ackText? }
 async function finalize(client, pending) {
   const result = await callCreate(client, pending);
   if (!result.ok) return { ok: false, errorText: fmtErr(pending, result) };
+  const live = LIVE_KINDS.has(pending.kind);
   return {
     ok: true,
-    publicCard: buildSuccessCard(pending, result),
-    ackText: `✅ 已上架 **#${result.listing?.listing_id}**（掛單卡已公開在頻道）`,
+    // 有進度的單型（收購/賣單/物物交換）用可即時更新的公開卡；其餘沿用開單成功卡
+    publicCard: live ? buildLiveListingCard(result.listing) : buildSuccessCard(pending, result),
+    ackText: buildAckText(pending, result),
+    live,
+    listingId: result.listing?.listing_id,
+    guildId: result.listing?.guild_id,
   };
 }
 

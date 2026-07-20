@@ -45,12 +45,12 @@ const BUY_PREFIX      = "market_buy_";
 const ACCEPT_PREFIX   = "market_accept_";
 const FULFILL_PREFIX  = "market_fulfill_";
 const BID_PREFIX      = "market_bid_";
-// 大量收購：賣給他 → 預覽面板 → 一鍵賣出 / 自訂數量
+// 收購：賣給他 → 預覽面板 → 一鍵賣出 / 自訂數量
 const BULK_SELL_PREFIX    = "market_bulksell_";
 const BULK_CONFIRM_PREFIX = "market_bulkconfirm_";
 const BULK_CUSTOM_PREFIX  = "market_bulkcustom_";
 const BULK_MODAL_PREFIX   = "market_bulkmodal_";
-// 大量賣出（掛賣單）：購買 → 預覽面板 → 一鍵買入 / 自訂數量
+// 賣單（賣單）：購買 → 預覽面板 → 一鍵買入 / 自訂數量
 const BULKSELL_BUY_PREFIX     = "market_bsbuy_";
 const BULKSELL_CONFIRM_PREFIX = "market_bsconfirm_";
 const BULKSELL_CUSTOM_PREFIX  = "market_bscustom_";
@@ -71,6 +71,7 @@ const CONFIRM_CANCEL  = "market_confirm_cancel_";
 const ABORT_ID        = "market_abort";
 const PAGE_PREV       = "market_page_prev_";
 const PAGE_NEXT       = "market_page_next_";
+const REFRESH_ID      = "market_refresh_";
 const VIEW_BROWSE_ID  = "market_view_browse";
 const VIEW_MYSTALL_ID = "market_view_mystall";
 const VIEW_MYBIDS_ID  = "market_view_mybids";
@@ -102,8 +103,8 @@ function typeLabel(type) {
     want: "徵求",
     auction: "競標",
     guild_sell: "公會寄售",
-    bulk: "大量收購",
-    bulk_sell: "大量賣出",
+    bulk: "收購",
+    bulk_sell: "賣單",
     swap: "物物交換",
   };
   return map[type] || type;
@@ -321,8 +322,8 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId
         .setPlaceholder("📋 交易類型篩選")
         .addOptions([
           { label: "全部類型",    value: "all",        default: listingType === "all" },
-          { label: "🛒 大量收購", value: "bulk",       default: listingType === "bulk" },
-          { label: "📦 大量賣出", value: "bulk_sell",  default: listingType === "bulk_sell" },
+          { label: "🛒 收購", value: "bulk",       default: listingType === "bulk" },
+          { label: "📦 賣單", value: "bulk_sell",  default: listingType === "bulk_sell" },
           { label: "🔄 物物交換", value: "swap",       default: listingType === "swap" },
           { label: "🏷️ 競標",    value: "auction",    default: listingType === "auction" },
           { label: "🏰 公會寄售", value: "guild_sell", default: listingType === "guild_sell" },
@@ -373,32 +374,67 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId
     }
   });
 
-  // 翻頁按鈕（放進 Container 底部，customId 包含 filter 狀態）
-  if (totalPages > 1) {
-    container.addSeparatorComponents(
-      new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large)
+  // 底部控制列：翻頁 + 重整（customId 包含當前 filter/頁碼狀態）
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large)
+  );
+  const pageRow = new ActionRowBuilder();
+  if (totalPages > 1 && page > 0) {
+    pageRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(encodePageId(PAGE_PREV, page - 1, { listingType, itemType }))
+        .setLabel("◀ 上一頁")
+        .setStyle(ButtonStyle.Secondary)
     );
-    const pageRow = new ActionRowBuilder();
-    if (page > 0) {
-      pageRow.addComponents(
-        new ButtonBuilder()
-          .setCustomId(encodePageId(PAGE_PREV, page - 1, { listingType, itemType }))
-          .setLabel("◀ 上一頁")
-          .setStyle(ButtonStyle.Secondary)
-      );
-    }
-    if (page + 1 < totalPages) {
-      pageRow.addComponents(
-        new ButtonBuilder()
-          .setCustomId(encodePageId(PAGE_NEXT, page + 1, { listingType, itemType }))
-          .setLabel("下一頁 ▶")
-          .setStyle(ButtonStyle.Secondary)
-      );
-    }
-    if (pageRow.components.length > 0) container.addActionRowComponents(pageRow);
   }
+  pageRow.addComponents(
+    new ButtonBuilder()
+      .setCustomId(encodePageId(REFRESH_ID, page, { listingType, itemType }))
+      .setLabel("重整")
+      .setEmoji("🔄")
+      .setStyle(ButtonStyle.Secondary)
+  );
+  if (totalPages > 1 && page + 1 < totalPages) {
+    pageRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(encodePageId(PAGE_NEXT, page + 1, { listingType, itemType }))
+        .setLabel("下一頁 ▶")
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
+  container.addActionRowComponents(pageRow);
 
   return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
+}
+
+// ─── 公開掛單卡（可隨成交進度即時更新）─────────────────────────────────────────
+// 給頻道其他玩家看目前兜售/收購進度：成交、收滿、下架、到期時就地更新這張卡。
+function buildLiveListingCard(l) {
+  const active = l.status === "active";
+  let statusTag = "";
+  if (l.status === "sold") {
+    statusTag = l.listing_type === "bulk" ? "✅ 已收滿" : l.listing_type === "swap" ? "✅ 已換滿" : "✅ 已售完";
+  } else if (l.status === "expired") {
+    statusTag = "⌛ 已到期";
+  } else if (l.status === "cancelled") {
+    statusTag = "🗑️ 已下架";
+  } else if (l.status === "settling") {
+    statusTag = "⏳ 結算中";
+  }
+
+  const container = new ContainerBuilder().setAccentColor(active ? 0x2980b9 : 0x95a5a6);
+  const body = listingText(l) + (statusTag ? `\n**${statusTag}**` : "");
+  const btn = active ? listingAccessoryButton(l, false) : null;
+  if (btn) {
+    container.addSectionComponents(
+      new SectionBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(body))
+        .setButtonAccessory(btn)
+    );
+  } else {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+  }
+  return container;
 }
 
 // ─── 我的攤位 ─────────────────────────────────────────────────────────────────
@@ -572,7 +608,7 @@ function buildBidModal(listingId, listing) {
   return modal;
 }
 
-// ─── 大量收購：賣出預覽面板（ephemeral）──────────────────────────────────────
+// ─── 收購：賣出預覽面板（ephemeral）──────────────────────────────────────
 // preview: { listing, item, have, remaining, sellable }
 function buildBulkFulfillView(preview) {
   const { listing: l, item, have, remaining, sellable } = preview;
@@ -584,7 +620,7 @@ function buildBulkFulfillView(preview) {
   const container = new ContainerBuilder().setAccentColor(0x16a085);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## 🛒 賣給大量收購單 **#${l.listing_id}**\n` +
+      `## 🛒 賣給收購單 **#${l.listing_id}**\n` +
         `收購 ${itemName}　每個 **${unit.toLocaleString()}** ${COIN_EMOJI}\n` +
         `${progressBar(filled, l.qty)} **${filled.toLocaleString()} / ${l.qty.toLocaleString()}**（尚缺 ${remaining.toLocaleString()}）`
     )
@@ -640,7 +676,7 @@ function buildBulkQtyModal(listingId, sellable) {
   return modal;
 }
 
-// ─── 大量賣出：買入預覽面板（ephemeral）──────────────────────────────────────
+// ─── 賣單：買入預覽面板（ephemeral）──────────────────────────────────────
 // preview: { listing, item, unit, remaining, balance, affordable, capRoom, buyable }
 function buildBulkSellBuyView(preview) {
   const { listing: l, item, unit, remaining, balance, buyable } = preview;
@@ -651,7 +687,7 @@ function buildBulkSellBuyView(preview) {
   const container = new ContainerBuilder().setAccentColor(0x2980b9);
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `## 📦 向大量賣出單 **#${l.listing_id}** 購買\n` +
+      `## 📦 向賣單單 **#${l.listing_id}** 購買\n` +
         `出售 ${itemName}　每個 **${unit.toLocaleString()}** ${COIN_EMOJI}\n` +
         `${progressBar(filled, l.qty)} **${filled.toLocaleString()} / ${l.qty.toLocaleString()}**（尚餘 ${remaining.toLocaleString()}）`
     )
@@ -785,6 +821,7 @@ module.exports = {
   buildBulkSellQtyModal,
   buildSwapFulfillView,
   buildSwapQtyModal,
+  buildLiveListingCard,
   oreLabel,
   itemLabel,
   listingText,
@@ -816,6 +853,7 @@ module.exports = {
   ABORT_ID,
   PAGE_PREV,
   PAGE_NEXT,
+  REFRESH_ID,
   VIEW_BROWSE_ID,
   VIEW_MYSTALL_ID,
   VIEW_MYBIDS_ID,
