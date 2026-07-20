@@ -1116,6 +1116,15 @@ async function fulfillSwap(client, { listingId, sellerId, guildId, sellerName, m
     }
   }
 
+  // 反洗幣：本批價值嚴重不對等時回報疑似變相轉帳（以實際成交數量判定）
+  marketSaleMonitor.checkSwapTransfer(client, {
+    guildId,
+    creatorId: listing.seller_id,
+    fulfillerId: sellerId,
+    giveType: give.type, giveKey: give.key, giveQty: giveOut,
+    wantType: want.type, wantKey: want.key, wantQty: sold,
+  });
+
   const newFilled = (afterDoc.filled_qty != null) ? afterDoc.filled_qty : (listing.filled_qty || 0) + sold;
   const remainingAfter = Math.max(0, want.qty - newFilled);
   const completed = remainingAfter <= 0;

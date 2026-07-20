@@ -1,24 +1,17 @@
 require("colors");
 const {
   SlashCommandBuilder,
-  ContainerBuilder,
-  TextDisplayBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
-const { mining, marketplace, farming } = require("../../config");
+const { mining, marketplace } = require("../../config");
 const marketplaceService = require("../../features/marketplace/marketplaceService");
 const listingConfirm = require("../../features/marketplace/listingConfirm");
 const itemAccess = require("../../features/marketplace/itemAccess");
 const {
   buildBrowseView,
   buildMyStallView,
-  SWAP_SELL_PREFIX,
 } = require("../../features/marketplace/marketplaceView");
-const { COIN_EMOJI } = require("../../constants/coin");
 
 const ITEM_CHOICES = itemAccess.allChoices();
 
@@ -149,7 +142,7 @@ module.exports = {
     const sub = interaction.options.getSubcommand();
     // 涉及金幣單價的上架先走 ephemeral 預覽確認（含行情中位數＋洗幣警示）；查詢類也 ephemeral。
     // 物物交換不涉及金幣單價，維持公開直接上架。
-    const previewSubs = new Set(["競標", "大量收購", "掛賣單"]);
+    const previewSubs = new Set(["競標", "大量收購", "掛賣單", "物物交換"]);
     const isPreview = previewSubs.has(sub);
     const ephemeral = isPreview || ["逛攤", "我的攤位"].includes(sub);
     await interaction.deferReply(ephemeral ? { flags: MessageFlags.Ephemeral } : undefined);
@@ -296,72 +289,24 @@ async function handleSwap(client, interaction) {
   if (!giveChoice) return interaction.editReply("❌ 找不到「付出物品」。");
   if (!wantChoice) return interaction.editReply("❌ 找不到「想要物品」。");
 
-  const result = await marketplaceService.createSwapListing(client, {
-    sellerId: interaction.user.id,
-    guildId: interaction.guildId,
-    sellerName: interaction.member?.displayName || interaction.user.username,
-    giveType: giveChoice.type,
-    giveKey: giveChoice.key,
-    giveQty,
-    wantType: wantChoice.type,
-    wantKey: wantChoice.key,
-    wantQty,
+  await presentPreview(client, interaction, {
+    kind: "swap",
     title,
-    durationDays,
-    member: interaction.member,
+    params: {
+      sellerId: interaction.user.id,
+      guildId: interaction.guildId,
+      sellerName: interaction.member?.displayName || interaction.user.username,
+      giveType: giveChoice.type,
+      giveKey: giveChoice.key,
+      giveQty,
+      wantType: wantChoice.type,
+      wantKey: wantChoice.key,
+      wantQty,
+      title,
+      durationDays,
+      member: interaction.member,
+    },
   });
-
-  if (!result.ok) {
-    return interaction.editReply({ components: [swapErrCard(result, { giveQty, wantQty })], flags: MessageFlags.IsComponentsV2 });
-  }
-
-  const l = result.listing;
-  const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
-  const giveLabel = itemAccess.itemLabel(giveChoice.type, giveChoice.key, giveQty);
-  const wantLabel = itemAccess.itemLabel(wantChoice.type, wantChoice.key, wantQty);
-  const container = new ContainerBuilder()
-    .setAccentColor(0x9b59b6)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `# 🔄 物物交換掛牌成功\n` +
-          (l.title ? `📌 ${l.title}\n` : "") +
-          `**#${l.listing_id}**\n` +
-          `付出 ${giveLabel}（已從你${itemAccess.bagName(giveChoice.type)}託管），想換 ${wantLabel}\n` +
-          `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
-          `-# 有貨的玩家可直接點下方「賣給他」分批交換；換滿或到期後未換出的會自動退回。`
-      )
-    )
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`${SWAP_SELL_PREFIX}${l.listing_id}`)
-          .setLabel("賣給他")
-          .setEmoji("🔄")
-          .setStyle(ButtonStyle.Primary)
-      )
-    );
-  await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
-}
-
-function swapErrCard(result, { giveQty, wantQty }) {
-  const map = {
-    disabled: "🔧 物物交換暫時無法使用。",
-    no_give_item: "❌ 找不到「付出物品」。",
-    no_want_item: "❌ 找不到「想要物品」。",
-    same_item: "❌ 付出與想要的物品不能相同！",
-    bad_give_qty: "❌ 付出數量無效。",
-    bad_want_qty: "❌ 想要數量無效。",
-    qty_too_large: `❌ 單筆數量上限為 **${(result.maxQty || 0).toLocaleString()}** 個。`,
-    untradeable: "❌ 這些物品不可用於交易。",
-    too_many: `📦 你同時最多只能掛 **${result.max}** 件物物交換單。`,
-    insufficient: `🎒 你只有 **${result.have ?? 0}** 個 ${result.giveDef?.name || "付出物品"}，無法託管 ${giveQty} 個。`,
-    insufficient_fee: `💰 上架費不足！需要 **${(result.need || 0).toLocaleString()}** ${COIN_EMOJI}。`,
-  };
-  return new ContainerBuilder()
-    .setAccentColor(0xe74c3c)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`# ❌ 掛牌失敗\n${map[result.reason] || "🔧 掛牌失敗，請稍後再試。"}`)
-    );
 }
 
 // ─── 競標 ───────────────────────────────────────────────────────────────────
