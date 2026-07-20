@@ -301,7 +301,8 @@ function renderPurchaseResult(item, result) {
     lines.push(`・有效期限：<t:${ts}:f>（<t:${ts}:R>）`);
   }
   if (item.type === "xp_boost" || item.type === "coin_boost") {
-    lines.push("・效果：已自動套用，可用 `/背包` 查看剩餘時間");
+    lines.push("・效果：已自動套用（可一次買多瓶；時效內重買會累積時間）");
+    lines.push("・多個藥水同時生效時，倍率取最高；目前倍率可用 `/加成` 查看");
   }
   if (item.type?.startsWith("mining_stamina_potion")) {
     lines.push("・已加入背包，到 `/背包` 點「使用」即可恢復體力");

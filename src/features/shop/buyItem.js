@@ -211,15 +211,19 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
 
   // 寫入背包（buff 類型不需要 inventory，直接生效）
   let inventoryDoc = null;
+  let buffExpiresAt = null;
   if (item.type === "xp_boost" || item.type === "coin_boost") {
-    await addBuff(client, {
+    // 一次買多瓶 → 時長 ×qty；時效內重買會累積天數（見 activeBuff.addBuff）
+    const buff = await addBuff(client, {
       userId,
       guildId,
       type: item.type,
       multiplier: item.payload?.multiplier || 1,
       durationMinutes: item.payload?.durationMinutes || 60,
+      qty,
       source: itemId,
     });
+    buffExpiresAt = buff?.expiresAt || null;
   } else if (item.type === "casino_token") {
     // 賭場道具：累計到背包數量
     const tokenName = item.payload?.token;
@@ -343,7 +347,8 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     quantity: qty,
     totalPrice,
     balanceAfter: grant.doc?.totalCoins || 0,
-    expiresAt,
+    // 加成藥水回累積後的到期時間，讓購買訊息顯示「加成生效至 …」
+    expiresAt: buffExpiresAt || expiresAt,
     inventoryDoc,
   };
 }

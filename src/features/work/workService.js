@@ -2,6 +2,7 @@ require("colors");
 const { DateTime } = require("luxon");
 const { work } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
+const grantActivityXp = require("../leveling/grantActivityXp");
 const twitchPerks = require("../mining/twitchPerks");
 const { getFoodWorkBonus, consumeWorkIncomeUse, formatFoodBuffLines } = require("../fishing/cookService");
 const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
@@ -153,6 +154,14 @@ async function doWork(client, { userId, guildId, member, username, workTypeKey }
   });
   if (!grant) return { ok: false, reason: "grant_failed" };
 
+  const xpGained = await grantActivityXp(client, "work", {
+    userId,
+    guildId,
+    username,
+    member,
+    meta: { workType: workType.key },
+  });
+
   // 次數型「魚排便當」buff：本次打工套用後消耗一次（非阻塞；只扣 work_income 型）
   if (miningProfile) {
     consumeWorkIncomeUse(client, userId, guildId, miningProfile).catch(() => {});
@@ -192,6 +201,7 @@ async function doWork(client, { userId, guildId, member, username, workTypeKey }
     foodWorkBonus,
     foodBuffLines: miningProfile ? formatFoodBuffLines(miningProfile, "work") : [],
     guildWorkBonus,
+    xpGained,
     balance: grant.doc?.totalCoins ?? 0,
     newCooldownAt,
     claimsToday: claimsToday + 1,

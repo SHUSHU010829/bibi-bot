@@ -7,6 +7,7 @@ const unifiedBuffResolver = require("../buff/buffResolver");
 const encounterService = require("./encounterService");
 const { consumeMineLuckUse, formatFoodBuffLines } = require("../fishing/cookService");
 const grantCoins = require("../economy/grantCoins");
+const grantActivityXp = require("../leveling/grantActivityXp");
 const { priceOf } = require("./overflowConfirm");
 const buildingService = require("../guild_club/buildingService");
 const bus = require("../eventBus");
@@ -146,10 +147,19 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
 
   const backpackUsedAfter = used + (ORE_KEYS.includes(ore) ? qty : 0);
 
+  const xpGained = await grantActivityXp(client, "mine", {
+    userId,
+    guildId,
+    username,
+    member,
+    meta: { ore },
+  });
+
   const result = {
     ok: true,
     ore,
     qty,
+    xpGained,
     overflowQty,
     overflowCoins,
     buff,
@@ -326,6 +336,7 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
     stoppedEarly: false,
     newCooldownAt: now,
     mineCountTotal: profile.mine_count_total || 0,
+    xpGained: 0,
   };
   const RARE = new Set(["iron", "gold", "diamond"]);
 
@@ -392,6 +403,7 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
     }
 
     agg.performed++;
+    agg.xpGained += r.xpGained || 0;
     if (r.buff?.actualCdMs) agg.lastCdMs = r.buff.actualCdMs;
     agg.newCooldownAt = r.newCooldownAt;
     agg.mineCountTotal = r.mineCountTotal;
