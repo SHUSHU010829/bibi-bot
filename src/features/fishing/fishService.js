@@ -429,15 +429,21 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     };
   }
 
-  if ((profile.fish_cooldown_at || 0) > now) {
-    return { ok: false, reason: "cooldown", readyAt: profile.fish_cooldown_at };
-  }
+  // 冷卻中：每竿都要一張券（含第一竿，用來清掉當前冷卻）；已可釣：第一竿免費、之後每竿一張券。
+  const onCooldown = (profile.fish_cooldown_at || 0) > now;
 
   const maxCount = Math.max(1, bcfg.maxCount || 1);
   const tickets = profile.cd_ticket_count || 0;
   const requested = Math.max(1, Math.floor(count || 1));
-  const effective = Math.min(requested, maxCount, tickets + 1);
-  if (effective < 1) return { ok: false, reason: "invalid_count" };
+  const ticketBudgetCount = onCooldown ? tickets : tickets + 1;
+  const effective = Math.min(requested, maxCount, ticketBudgetCount);
+  if (effective < 1) {
+    return {
+      ok: false,
+      reason: onCooldown ? "cooldown_no_ticket" : "invalid_count",
+      readyAt: profile.fish_cooldown_at,
+    };
+  }
 
   const agg = {
     ok: true,
@@ -465,7 +471,8 @@ async function fishBatch(client, { userId, guildId, member, username, location =
   };
 
   for (let i = 0; i < effective; i++) {
-    if (i > 0) {
+    const needTicket = i > 0 || onCooldown;
+    if (needTicket) {
       const res = await client.miningProfilesCollection.updateOne(
         { userId, guildId, cd_ticket_count: { $gte: 1 } },
         { $inc: { cd_ticket_count: -1 }, $set: { fish_cooldown_at: 0, updatedAt: new Date() } },
@@ -476,7 +483,7 @@ async function fishBatch(client, { userId, guildId, member, username, location =
 
     const r = await fish(client, { userId, guildId, location, member, username });
     if (!r.ok) {
-      if (i > 0) {
+      if (needTicket) {
         await client.miningProfilesCollection
           .updateOne({ userId, guildId }, { $inc: { cd_ticket_count: 1 } })
           .catch(() => {});

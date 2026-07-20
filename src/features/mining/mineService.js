@@ -271,16 +271,22 @@ async function mineBatch(client, { userId, guildId, member, username, count }) {
     }
   }
 
-  if ((profile.mine_cooldown_at || 0) > now) {
-    return { ok: false, reason: "cooldown", readyAt: profile.mine_cooldown_at };
-  }
+  // 冷卻中：每次挖礦都要一張券（含第一次，用來清掉當前冷卻）；
+  // 已可挖：第一次免費、之後每次一張券。
+  const onCooldown = (profile.mine_cooldown_at || 0) > now;
 
   const maxCount = Math.max(1, bcfg.maxCount || 1);
   const tickets = profile.cd_ticket_count || 0;
   const requested = Math.max(1, Math.floor(count || 1));
-  // 第一次免費 + 每張券換一次 → 最多 tickets + 1 次
-  const effective = Math.min(requested, maxCount, tickets + 1);
-  if (effective < 1) return { ok: false, reason: "invalid_count" };
+  const ticketBudgetCount = onCooldown ? tickets : tickets + 1;
+  const effective = Math.min(requested, maxCount, ticketBudgetCount);
+  if (effective < 1) {
+    return {
+      ok: false,
+      reason: onCooldown ? "cooldown_no_ticket" : "invalid_count",
+      readyAt: profile.mine_cooldown_at,
+    };
+  }
 
   const agg = {
     ok: true,
@@ -308,8 +314,9 @@ async function mineBatch(client, { userId, guildId, member, username, count }) {
   const RARE = new Set(["iron", "gold", "diamond"]);
 
   for (let i = 0; i < effective; i++) {
-    if (i > 0) {
-      // 扣一張券並清冷卻，讓下一次 mine() 通過冷卻檢查
+    // i>0：清掉上一次挖礦設下的冷卻；i===0 且原本就在冷卻中：清掉當前冷卻。兩者都花一張券。
+    const needTicket = i > 0 || onCooldown;
+    if (needTicket) {
       const res = await client.miningProfilesCollection.updateOne(
         { userId, guildId, cd_ticket_count: { $gte: 1 } },
         { $inc: { cd_ticket_count: -1 }, $set: { mine_cooldown_at: 0, updatedAt: new Date() } },
@@ -320,8 +327,8 @@ async function mineBatch(client, { userId, guildId, member, username, count }) {
 
     const r = await mine(client, { userId, guildId, member, username, allowOverflow: true });
     if (!r.ok) {
-      // 這次沒挖成：把剛扣的券退回（i>0 才有扣）
-      if (i > 0) {
+      // 這次沒挖成：把剛扣的券退回
+      if (needTicket) {
         await client.miningProfilesCollection
           .updateOne({ userId, guildId }, { $inc: { cd_ticket_count: 1 } })
           .catch(() => {});

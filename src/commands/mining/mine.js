@@ -607,7 +607,7 @@ function buildBatchCountModal({ ownerId, maxCount }) {
     .setMinLength(1)
     .setMaxLength(3)
     .setValue(String(maxCount))
-    .setPlaceholder(`輸入 1～${maxCount}，第一次免費、之後每次消耗 1 張券`);
+    .setPlaceholder(`輸入 1～${maxCount}（冷卻中每次、可挖時第二次起消耗 1 張券）`);
   modal.addComponents(new ActionRowBuilder().addComponents(input));
   return modal;
 }
@@ -702,17 +702,9 @@ async function runMineBatch(client, interaction, { count }) {
           flags: MessageFlags.IsComponentsV2,
         });
       }
-      if (result.reason === "cooldown") {
-        const readyEpoch = Math.floor(result.readyAt / 1000);
-        const c = new ContainerBuilder()
-          .setAccentColor(0xf1c40f)
-          .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              `# ⏳ 鎬子還在休息\n冷卻結束後才能連續挖礦：<t:${readyEpoch}:R>`,
-            ),
-          );
+      if (result.reason === "cooldown_no_ticket") {
         return interaction.editReply({
-          components: [c],
+          components: [buildBatchNoTicketView()],
           flags: MessageFlags.IsComponentsV2,
         });
       }
@@ -770,7 +762,7 @@ async function runMineBatch(client, interaction, { count }) {
 
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**消耗 CD 縮短券**\n×${result.ticketsSpent}（第一次免費）`,
+        `**消耗 CD 縮短券**\n×${result.ticketsSpent}`,
       ),
     );
 
