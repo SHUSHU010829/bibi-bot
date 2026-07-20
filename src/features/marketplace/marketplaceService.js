@@ -906,6 +906,235 @@ async function fulfillBulkSell(client, { listingId, buyerId, guildId, buyerName,
   };
 }
 
+// 物物交換分批撥付：賣家累計交出 want 到 before+take 時，應累計領到的 give 差額（整數、無殘留）
+function payGive(giveQty, wantQty, before, take) {
+  if (wantQty <= 0) return 0;
+  return Math.floor((giveQty * (before + take)) / wantQty) - Math.floor((giveQty * before) / wantQty);
+}
+
+// ─── 掛牌：物物交換（發起者託管付出物 give，多位玩家分批交 want 領 give）──────────
+async function createSwapListing(client, { sellerId, guildId, sellerName, giveType, giveKey, giveQty, wantType, wantKey, wantQty, title, durationDays, member }) {
+  const c = cfg();
+  const sc = c.swap || {};
+  if (!c.enabled || sc.enabled === false) return { ok: false, reason: "disabled" };
+  if (!client.marketListingsCollection || !client.userCoinsCollection) return { ok: false, reason: "disabled" };
+
+  const gT = itemAccess.normalizeType(giveType);
+  const wT = itemAccess.normalizeType(wantType);
+  const giveDef = itemAccess.getItemDef(gT, giveKey);
+  const wantDef = itemAccess.getItemDef(wT, wantKey);
+  if (!giveDef) return { ok: false, reason: "no_give_item" };
+  if (!wantDef) return { ok: false, reason: "no_want_item" };
+  if (gT === wT && giveKey === wantKey) return { ok: false, reason: "same_item" };
+  if (!Number.isFinite(giveQty) || giveQty <= 0) return { ok: false, reason: "bad_give_qty" };
+  if (!Number.isFinite(wantQty) || wantQty <= 0) return { ok: false, reason: "bad_want_qty" };
+  const maxQty = sc.maxQty ?? 100000;
+  if (giveQty > maxQty || wantQty > maxQty) return { ok: false, reason: "qty_too_large", maxQty };
+  if (itemAccess.basePrice(gT, giveKey) < 1 || itemAccess.basePrice(wT, wantKey) < 1) {
+    return { ok: false, reason: "untradeable" };
+  }
+
+  const limit = await checkActiveLimit(client, sellerId, guildId, "swap");
+  if (!limit.allowed) return { ok: false, reason: "too_many", max: limit.max };
+
+  const seller = await getOrCreate(client, sellerId, guildId);
+  const have = itemAccess.getInventoryQty(seller, gT, giveKey);
+  if (have < giveQty) return { ok: false, reason: "insufficient", have, giveDef };
+
+  const tier = resolveDurationTier(durationDays);
+  if (tier.fee > 0) {
+    const balanceDoc = await client.userCoinsCollection.findOne({ userId: sellerId, guildId }).catch(() => null);
+    if ((balanceDoc?.totalCoins || 0) < tier.fee) {
+      return { ok: false, reason: "insufficient_fee", balance: balanceDoc?.totalCoins || 0, need: tier.fee };
+    }
+  }
+
+  // 託管：扣發起者的 give（帶 $gte 守衛）
+  const field = itemAccess.bagField(gT, giveKey);
+  const debited = await client.miningProfilesCollection.findOneAndUpdate(
+    { userId: sellerId, guildId, [field]: { $gte: giveQty } },
+    { $inc: { [field]: -giveQty }, $set: { updatedAt: new Date() } },
+    { returnDocument: "after" }
+  );
+  if (!(debited?.value || debited)) return { ok: false, reason: "insufficient", have, giveDef };
+
+  const listingId = await genListingId(client, guildId);
+  if (tier.fee > 0) {
+    await grantCoins(client, {
+      userId: sellerId, guildId, username: sellerName, member,
+      amount: -tier.fee, source: "listing_fee", meta: { listingId, type: "swap", days: tier.days },
+    }).catch((e) => console.log(`[ERROR] swap listing_fee: ${e}`.red));
+  }
+
+  const now = new Date();
+  const doc = {
+    listing_id: listingId,
+    listing_type: "swap",
+    item_type: null,
+    seller_id: sellerId,
+    seller_name: sellerName,
+    guild_id: guildId,
+    title: sanitizeTitle(title),
+    give: { type: gT, key: giveKey, qty: giveQty },
+    want: { type: wT, key: wantKey, qty: wantQty },
+    qty: wantQty,
+    filled_qty: 0,
+    escrow_pay_item: { item_type: gT, item_key: giveKey, qty: giveQty },
+    duration_days: tier.days,
+    status: "active",
+    created_at: now,
+    expires_at: new Date(now.getTime() + tier.ms),
+    updated_at: now,
+    settled_at: null,
+  };
+  await client.marketListingsCollection.insertOne(doc);
+  return { ok: true, listing: doc, giveDef, wantDef, listingFee: tier.fee };
+}
+
+// 物物交換成交前預覽：回傳剩餘需求、賣方持有 want、可交量與可領 give
+async function getSwapPreview(client, { listingId, sellerId, guildId }) {
+  if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
+  const listing = await client.marketListingsCollection.findOne({
+    guild_id: guildId, listing_id: listingId, listing_type: "swap", status: "active",
+  });
+  if (!listing) return { ok: false, reason: "not_found" };
+  if (listing.seller_id === sellerId) return { ok: false, reason: "own_listing", listing };
+
+  const give = listing.give;
+  const want = listing.want;
+  const filledWant = listing.filled_qty || 0;
+  const remainingWant = Math.max(0, want.qty - filledWant);
+  const fulfiller = await getOrCreate(client, sellerId, guildId);
+  const haveWant = itemAccess.getInventoryQty(fulfiller, want.type, want.key);
+  const sellable = Math.min(haveWant, remainingWant);
+  const giveForSellable = payGive(give.qty, want.qty, filledWant, sellable);
+  return { ok: true, listing, give, want, haveWant, remainingWant, sellable, giveForSellable, filledWant };
+}
+
+// ─── 成交：物物交換（賣方分批交 want、按比例領 give）──────────────────────────
+async function fulfillSwap(client, { listingId, sellerId, guildId, sellerName, member, qty: requestedQty }) {
+  if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
+
+  const listing = await client.marketListingsCollection.findOne({
+    guild_id: guildId, listing_id: listingId, listing_type: "swap", status: "active",
+  });
+  if (!listing) return { ok: false, reason: "not_found" };
+  if (listing.seller_id === sellerId) return { ok: false, reason: "own_listing" };
+
+  const give = listing.give;
+  const want = listing.want;
+  const fulfiller = await getOrCreate(client, sellerId, guildId);
+  const haveWant = itemAccess.getInventoryQty(fulfiller, want.type, want.key);
+  if (haveWant <= 0) {
+    return { ok: false, reason: "insufficient", have: haveWant, itemDef: itemAccess.getItemDef(want.type, want.key) };
+  }
+
+  // 手續費（賣方付金幣）：以「本次意圖交量」的最壞值預檢餘額，避免中途扣費失敗
+  const feeRate = (cfg().swap || {}).feeRate ?? 0;
+  if (feeRate > 0) {
+    const before0 = listing.filled_qty || 0;
+    const remaining0 = Math.max(0, want.qty - before0);
+    const intendTake = Math.min(requestedQty && requestedQty > 0 ? requestedQty : haveWant, haveWant, remaining0);
+    const intendGive = payGive(give.qty, want.qty, before0, intendTake);
+    const value = Math.max(itemAccess.basePrice(give.type, give.key) * intendGive, itemAccess.basePrice(want.type, want.key) * intendTake);
+    const estFee = Math.floor(value * feeRate);
+    if (estFee > 0) {
+      const balanceDoc = await client.userCoinsCollection.findOne({ userId: sellerId, guildId }).catch(() => null);
+      if ((balanceDoc?.totalCoins || 0) < estFee) {
+        return { ok: false, reason: "insufficient_fee", balance: balanceDoc?.totalCoins || 0, need: estFee };
+      }
+    }
+  }
+
+  // 原子預留：以 filled_qty 為條件避免超收；同步遞減 escrow_pay_item.qty（給出物剩餘）
+  let sold = 0;
+  let giveOut = 0;
+  let afterDoc = null;
+  for (let attempt = 0; attempt < 4 && sold === 0; attempt++) {
+    const fresh = attempt === 0 ? listing : await client.marketListingsCollection.findOne({
+      guild_id: guildId, listing_id: listingId, listing_type: "swap", status: "active",
+    });
+    if (!fresh) return { ok: false, reason: "filled" };
+    const before = fresh.filled_qty || 0;
+    const remaining = Math.max(0, fresh.want.qty - before);
+    if (remaining <= 0) return { ok: false, reason: "filled" };
+    const wantTake = requestedQty && requestedQty > 0 ? Math.min(requestedQty, haveWant) : haveWant;
+    const take = Math.min(wantTake, remaining);
+    if (take <= 0) return { ok: false, reason: "insufficient", have: haveWant };
+    const pay = payGive(give.qty, fresh.want.qty, before, take);
+
+    const reserved = await client.marketListingsCollection.findOneAndUpdate(
+      {
+        guild_id: guildId, listing_id: listingId, listing_type: "swap", status: "active",
+        filled_qty: before,
+      },
+      { $inc: { filled_qty: take, "escrow_pay_item.qty": -pay }, $set: { updated_at: new Date() } },
+      { returnDocument: "after" }
+    );
+    const doc = reserved?.value || reserved;
+    if (doc) { sold = take; giveOut = pay; afterDoc = doc; }
+  }
+  if (sold === 0) return { ok: false, reason: "race" };
+
+  // 扣賣方的 want（帶守衛，失敗回滾預留）
+  const wantField = itemAccess.bagField(want.type, want.key);
+  const debited = await client.miningProfilesCollection.findOneAndUpdate(
+    { userId: sellerId, guildId, [wantField]: { $gte: sold } },
+    { $inc: { [wantField]: -sold }, $set: { updatedAt: new Date() } },
+    { returnDocument: "after" }
+  );
+  if (!(debited?.value || debited)) {
+    await client.marketListingsCollection.updateOne(
+      { guild_id: guildId, listing_id: listingId },
+      { $inc: { filled_qty: -sold, "escrow_pay_item.qty": giveOut }, $set: { updated_at: new Date() } }
+    );
+    return { ok: false, reason: "insufficient", have: haveWant };
+  }
+
+  // 交 want 給發起者；交 give 給賣方（ore 滿→各自信箱）
+  const wantDelivery = await deliverItem(client, {
+    userId: listing.seller_id, guildId,
+    itemType: want.type, itemKey: want.key, qty: sold,
+    sourceTag: "swap", listingId, listingType: "swap", reason: "swap_fill",
+  });
+  const giveDelivery = giveOut > 0 ? await deliverItem(client, {
+    userId: sellerId, guildId,
+    itemType: give.type, itemKey: give.key, qty: giveOut,
+    sourceTag: "swap", listingId, listingType: "swap", reason: "swap_pay",
+  }) : { mailed: 0 };
+
+  // 手續費（賣方付金幣，config 預設 0）
+  let fee = 0;
+  if (feeRate > 0) {
+    const value = Math.max(itemAccess.basePrice(give.type, give.key) * giveOut, itemAccess.basePrice(want.type, want.key) * sold);
+    fee = Math.floor(value * feeRate);
+    if (fee > 0) {
+      await grantCoins(client, {
+        userId: sellerId, guildId, username: sellerName, member,
+        amount: -fee, source: "swap_fee", meta: { listingId, sold, giveOut },
+      }).catch((e) => console.log(`[ERROR] swap fee: ${e}`.red));
+    }
+  }
+
+  const newFilled = (afterDoc.filled_qty != null) ? afterDoc.filled_qty : (listing.filled_qty || 0) + sold;
+  const remainingAfter = Math.max(0, want.qty - newFilled);
+  const completed = remainingAfter <= 0;
+  if (completed) {
+    await client.marketListingsCollection.updateOne(
+      { guild_id: guildId, listing_id: listingId, status: "active" },
+      { $set: { status: "sold", settled_at: new Date() } }
+    );
+  }
+
+  return {
+    ok: true, listing, give, want, sold, giveOut, fee,
+    wantMailed: wantDelivery.mailed || 0, giveMailed: giveDelivery.mailed || 0,
+    newFilled, remaining: remainingAfter, completed,
+    giveDef: itemAccess.getItemDef(give.type, give.key),
+    wantDef: itemAccess.getItemDef(want.type, want.key),
+  };
+}
+
 // ─── 成交：一口價賣礦（買家付金幣）─────────────────────────────────────────────
 async function buyNow(client, { listingId, buyerId, guildId, buyerName, member }) {
   if (!client.marketListingsCollection) return { ok: false, reason: "disabled" };
@@ -1737,8 +1966,10 @@ module.exports = {
   createAuctionListing,
   createBulkListing,
   createBulkSellListing,
+  createSwapListing,
   getBulkPreview,
   getBulkSellPreview,
+  getSwapPreview,
   minSellPriceFor,
   minBulkSellUnitPrice,
   resolveDurationTier,
@@ -1747,6 +1978,7 @@ module.exports = {
   fulfillWant,
   fulfillBulk,
   fulfillBulkSell,
+  fulfillSwap,
   placeBid,
   minBulkUnitPrice,
   cancelListing,

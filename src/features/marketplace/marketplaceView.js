@@ -344,18 +344,6 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId
   );
 
   if (listings.length === 0) {
-    container.addSeparatorComponents(
-      new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
-    );
-    container.addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(VIEW_BARTER_ID)
-          .setLabel("逛交易所")
-          .setEmoji("🔁")
-          .setStyle(ButtonStyle.Secondary)
-      )
-    );
     return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
   }
 
@@ -409,20 +397,6 @@ function buildBrowseView(listings, total, page, pageSize, filters = {}, viewerId
     }
     if (pageRow.components.length > 0) container.addActionRowComponents(pageRow);
   }
-
-  // 跨指令導覽：去看 /交易所 列表
-  container.addSeparatorComponents(
-    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
-  );
-  container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(VIEW_BARTER_ID)
-        .setLabel("逛交易所")
-        .setEmoji("🔁")
-        .setStyle(ButtonStyle.Secondary)
-    )
-  );
 
   return { container, rows: [], flags: MessageFlags.IsComponentsV2 };
 }
@@ -733,6 +707,72 @@ function buildBulkSellQtyModal(listingId, buyable) {
   return modal;
 }
 
+// ─── 物物交換：交出預覽面板（ephemeral）──────────────────────────────────────
+// preview: { listing, give, want, haveWant, remainingWant, sellable, giveForSellable, filledWant }
+function buildSwapFulfillView(preview) {
+  const { listing: l, give, want, haveWant, remainingWant, sellable, giveForSellable, filledWant } = preview;
+  const wantName = itemAccess.itemLabel(want.type, want.key);
+  const giveName = itemAccess.itemLabel(give.type, give.key);
+
+  const container = new ContainerBuilder().setAccentColor(0x9b59b6);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `## 🔄 賣給物物交換單 **#${l.listing_id}**\n` +
+        `對方收 ${wantName}，付 ${giveName}（總量 ${give.qty.toLocaleString()} 換 ${want.qty.toLocaleString()}）\n` +
+        `${progressBar(filledWant, want.qty)} **${filledWant.toLocaleString()} / ${want.qty.toLocaleString()}**（尚缺 ${remainingWant.toLocaleString()}）`
+    )
+  );
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+  );
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `你持有 ${wantName} ×**${haveWant.toLocaleString()}**\n` +
+        `一鍵交出 **${sellable.toLocaleString()}** 個 → 領 ${giveName} ×**${giveForSellable.toLocaleString()}**\n` +
+        `-# 依比例撥付，交越多領越多；礦石放不下會自動進信箱。`
+    )
+  );
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${SWAP_CONFIRM_PREFIX}${l.listing_id}`)
+      .setLabel(`交出 ${sellable.toLocaleString()}（領 ${giveForSellable.toLocaleString()}）`)
+      .setEmoji("✅")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`${SWAP_CUSTOM_PREFIX}${l.listing_id}`)
+      .setLabel("自訂數量")
+      .setEmoji("✏️")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(ABORT_ID)
+      .setLabel("取消")
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  return {
+    container,
+    row,
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+  };
+}
+
+function buildSwapQtyModal(listingId, sellable) {
+  const modal = new ModalBuilder()
+    .setCustomId(`${SWAP_MODAL_PREFIX}${listingId}`)
+    .setTitle(`賣給 #${listingId}`);
+  const input = new TextInputBuilder()
+    .setCustomId("bulk_qty")
+    .setLabel("要交出的數量")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMinLength(1)
+    .setMaxLength(9)
+    .setPlaceholder(`最多可交 ${sellable}`);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
 module.exports = {
   buildBrowseView,
   buildMyStallView,
@@ -743,6 +783,8 @@ module.exports = {
   buildBulkQtyModal,
   buildBulkSellBuyView,
   buildBulkSellQtyModal,
+  buildSwapFulfillView,
+  buildSwapQtyModal,
   oreLabel,
   itemLabel,
   listingText,

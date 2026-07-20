@@ -22,6 +22,8 @@ const {
   buildBulkQtyModal,
   buildBulkSellBuyView,
   buildBulkSellQtyModal,
+  buildSwapFulfillView,
+  buildSwapQtyModal,
   oreLabel,
   itemLabel,
   BUY_PREFIX,
@@ -36,6 +38,10 @@ const {
   BULKSELL_CONFIRM_PREFIX,
   BULKSELL_CUSTOM_PREFIX,
   BULKSELL_MODAL_PREFIX,
+  SWAP_SELL_PREFIX,
+  SWAP_CONFIRM_PREFIX,
+  SWAP_CUSTOM_PREFIX,
+  SWAP_MODAL_PREFIX,
   CANCEL_PREFIX,
   CONFIRM_BUY,
   CONFIRM_ACCEPT,
@@ -47,7 +53,6 @@ const {
   VIEW_BROWSE_ID,
   VIEW_MYSTALL_ID,
   VIEW_MYBIDS_ID,
-  VIEW_BARTER_ID,
   BID_MODAL_PREFIX,
   FILTER_TYPE_ID,
   FILTER_ITEM_ID,
@@ -375,6 +380,78 @@ module.exports = async (client, interaction) => {
       });
     }
 
+    // ─── 點「賣給他」（swap）→ 交出預覽面板（ephemeral）───────────────────────
+    if (interaction.isButton() && cid.startsWith(SWAP_SELL_PREFIX)) {
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+      const listingId = cid.slice(SWAP_SELL_PREFIX.length);
+      const preview = await marketplaceService.getSwapPreview(client, {
+        listingId,
+        sellerId: interaction.user.id,
+        guildId: interaction.guildId,
+      });
+      if (!preview.ok) {
+        const msgs = {
+          not_found: "❌ 此物物交換單已不存在或已換滿。",
+          own_listing: "❌ 不能跟自己的交換單成交。",
+        };
+        return interaction.editReply({ content: msgs[preview.reason] || "🔧 讀取交換單失敗，請稍後再試。" });
+      }
+      if (preview.remainingWant <= 0) {
+        return interaction.editReply({ content: "✅ 這張交換單已經換滿了。" });
+      }
+      if (preview.sellable <= 0) {
+        const name = itemAccess.itemLabel(preview.want.type, preview.want.key);
+        return interaction.editReply({
+          components: [statusPanel(`📦 你目前沒有可交出的 ${name}（持有 ${preview.haveWant}）。\n-# 去取得一些再回來換吧！`)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      const { container, row } = buildSwapFulfillView(preview);
+      return interaction.editReply({ components: [container, row], flags: MessageFlags.IsComponentsV2 });
+    }
+
+    // ─── 點「自訂數量」（swap）→ 彈出 modal ────────────────────────────────────
+    if (interaction.isButton() && cid.startsWith(SWAP_CUSTOM_PREFIX)) {
+      const listingId = cid.slice(SWAP_CUSTOM_PREFIX.length);
+      const preview = await marketplaceService.getSwapPreview(client, {
+        listingId,
+        sellerId: interaction.user.id,
+        guildId: interaction.guildId,
+      });
+      if (!preview.ok || preview.sellable <= 0) {
+        return interaction.reply({ content: "❌ 此交換單已不可換（已換滿或你沒有庫存）。", flags: MessageFlags.Ephemeral });
+      }
+      return interaction.showModal(buildSwapQtyModal(listingId, preview.sellable));
+    }
+
+    // ─── 確認交出（swap：一鍵交出可交上限）────────────────────────────────────
+    if (interaction.isButton() && cid.startsWith(SWAP_CONFIRM_PREFIX)) {
+      const rl = consume(interaction.user.id, "market:buy", { windowMs: 2500, max: 1 });
+      if (!rl.allowed) {
+        return interaction.reply({
+          content: `⏳ 別急，${Math.ceil(rl.retryAfterMs / 1000)} 秒後再試。`,
+          flags: MessageFlags.Ephemeral,
+        }).catch(() => {});
+      }
+      await interaction.update({
+        components: [statusPanel("⏳ 處理中…")],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      const listingId = cid.slice(SWAP_CONFIRM_PREFIX.length);
+      const result = await marketplaceService.fulfillSwap(client, {
+        listingId,
+        sellerId: interaction.user.id,
+        guildId: interaction.guildId,
+        sellerName: interaction.member?.displayName || interaction.user.username,
+        member: interaction.member,
+      });
+      if (result.ok) notifySwapCreator(client, result);
+      return interaction.editReply({
+        components: [statusPanel(formatSwapResult(result))],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+
     // ─── 點「出價」（auction bid）→ 彈出 modal ──────────────────────────────
     if (interaction.isButton() && cid.startsWith(BID_PREFIX)) {
       const listingId = cid.slice(BID_PREFIX.length);
@@ -687,6 +764,37 @@ module.exports = async (client, interaction) => {
       });
     }
 
+    // ─── 物物交換 自訂數量 modal submit ───────────────────────────────────────
+    if (interaction.isModalSubmit() && cid.startsWith(SWAP_MODAL_PREFIX)) {
+      const rl = consume(interaction.user.id, "market:buy", { windowMs: 2500, max: 1 });
+      if (!rl.allowed) {
+        return interaction.reply({
+          content: `⏳ 別急，${Math.ceil(rl.retryAfterMs / 1000)} 秒後再試。`,
+          flags: MessageFlags.Ephemeral,
+        }).catch(() => {});
+      }
+      const listingId = cid.slice(SWAP_MODAL_PREFIX.length);
+      const raw = interaction.fields.getTextInputValue("bulk_qty");
+      const qty = parseInt(String(raw).replace(/[,，\s]/g, ""), 10);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        return interaction.reply({ content: "❌ 請輸入有效的數量（正整數）。", flags: MessageFlags.Ephemeral });
+      }
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+      const result = await marketplaceService.fulfillSwap(client, {
+        listingId,
+        sellerId: interaction.user.id,
+        guildId: interaction.guildId,
+        sellerName: interaction.member?.displayName || interaction.user.username,
+        member: interaction.member,
+        qty,
+      });
+      if (result.ok) notifySwapCreator(client, result);
+      return interaction.editReply({
+        components: [statusPanel(formatSwapResult(result))],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
+
     // ─── 快捷後續：回到 /市集 逛攤 ────────────────────────────────────────────
     if (interaction.isButton() && cid === VIEW_BROWSE_ID) {
       if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
@@ -740,29 +848,6 @@ module.exports = async (client, interaction) => {
       });
     }
 
-    // ─── 快捷後續：去看 /交易所 列表（ephemeral） ─────────────────────────────
-    if (interaction.isButton() && cid === VIEW_BARTER_ID) {
-      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
-      const barterService = require("../../features/barter/barterService");
-      const { buildBoardContainer } = require("../../features/barter/barterView");
-      const c = barterService.cfg();
-      const pageSize = c.pageSize ?? 5;
-      const { listings, total } = await barterService.listActive(client, interaction.guildId, {
-        limit: pageSize,
-        skip: 0,
-      });
-      const container = buildBoardContainer({
-        listings,
-        viewerId: interaction.user.id,
-        total,
-        page: 1,
-        pageSize,
-      });
-      return interaction.editReply({
-        components: [container],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-      });
-    }
   } catch (error) {
     console.log(`[ERROR] handleMarketInteraction:\n${error}\n${error.stack}`.red);
     try {
@@ -959,6 +1044,51 @@ function notifyBulkSellSeller(client, result) {
     (result.completed
       ? `🎉 已全數售出 **${l.qty.toLocaleString()} / ${l.qty.toLocaleString()}**，賣單結束。`
       : `目前進度 **${result.newFilled.toLocaleString()} / ${l.qty.toLocaleString()}**（尚餘 ${result.remaining.toLocaleString()}）`);
+  marketplaceService.dmUser(client, l.seller_id, msg);
+}
+
+function formatSwapResult(result) {
+  if (!result.ok) {
+    const msgs = {
+      not_found: "❌ 此物物交換單已不存在或已換滿。",
+      filled: "✅ 這張交換單剛好已換滿了，你的庫存原封不動。",
+      own_listing: "❌ 不能跟自己的交換單成交。",
+      insufficient: `📦 你沒有可交出的庫存（持有 ${result.have || 0}）。`,
+      insufficient_fee: `💰 手續費不足！需要 **${(result.need || 0).toLocaleString()}** ${COIN_EMOJI}，你目前 **${(result.balance || 0).toLocaleString()}** ${COIN_EMOJI}。`,
+      race: "⚡ 剛好有人同時成交，請重試。",
+      disabled: "🔧 物物交換暫時無法使用。",
+    };
+    return msgs[result.reason] || "🔧 交換失敗，請稍後再試。";
+  }
+  const wantName = itemAccess.itemLabel(result.want.type, result.want.key, result.sold);
+  const giveName = itemAccess.itemLabel(result.give.type, result.give.key, result.giveOut);
+  const feeLine = result.fee > 0 ? `（手續費 ${result.fee.toLocaleString()} ${COIN_EMOJI}）` : "";
+  const mailedBits = [];
+  if (result.giveMailed > 0) mailedBits.push(`你有 ${result.giveMailed} 個放不下已進信箱`);
+  const mailedLine = mailedBits.length ? `\n-# ${mailedBits.join("、")}，請用 \`/信箱\` 領取。` : "";
+  const progressLine = result.completed
+    ? `\n🎉 此交換單已換滿並結束！`
+    : `\n目前進度 **${result.newFilled.toLocaleString()} / ${(result.newFilled + result.remaining).toLocaleString()}**（尚缺 ${result.remaining.toLocaleString()}）`;
+  return (
+    `✅ **交換成功！** 🔄\n` +
+    `**#${result.listing.listing_id}** 你交出 ${wantName}，領到 ${giveName} ${feeLine}` +
+    progressLine +
+    mailedLine
+  );
+}
+
+// 通知交換單發起者：有人交出 want / 已換滿 / 溢出進信箱
+function notifySwapCreator(client, result) {
+  const l = result.listing;
+  const wantName = itemAccess.itemLabel(result.want.type, result.want.key, result.sold);
+  let msg =
+    `🔄 你的物物交換單 **#${l.listing_id}** 有人交出 ${wantName}！\n` +
+    (result.completed
+      ? `🎉 已換滿 **${result.want.qty.toLocaleString()} / ${result.want.qty.toLocaleString()}**，交換結束。`
+      : `目前進度 **${result.newFilled.toLocaleString()} / ${result.want.qty.toLocaleString()}**（尚缺 ${result.remaining.toLocaleString()}）`);
+  if (result.wantMailed > 0) {
+    msg += `\n📬 背包放不下，其中 ${result.wantMailed} 個已暫存到你的信箱，請用 \`/信箱\` 領取。`;
+  }
   marketplaceService.dmUser(client, l.seller_id, msg);
 }
 

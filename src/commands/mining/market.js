@@ -9,36 +9,16 @@ const {
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
-const { mining, marketplace, fishing, farming } = require("../../config");
+const { mining, marketplace, farming } = require("../../config");
 const marketplaceService = require("../../features/marketplace/marketplaceService");
 const listingConfirm = require("../../features/marketplace/listingConfirm");
 const itemAccess = require("../../features/marketplace/itemAccess");
 const {
   buildBrowseView,
   buildMyStallView,
-  FULFILL_PREFIX,
+  SWAP_SELL_PREFIX,
 } = require("../../features/marketplace/marketplaceView");
 const { COIN_EMOJI } = require("../../constants/coin");
-
-function oreChoices() {
-  return Object.entries(mining?.ores || {})
-    .filter(([, def]) => def.price)
-    .map(([key, def]) => ({ name: def.name || key, value: key }));
-}
-
-function fishChoices() {
-  return Object.entries(fishing?.fish || {}).map(([key, def]) => ({
-    name: `${def.emoji} ${def.name}（${def.price} 幣/條）`,
-    value: key,
-  }));
-}
-
-function veggieChoices() {
-  return Object.entries(farming?.crops || {}).map(([key, def]) => ({
-    name: `${def.emoji} ${def.name}（${itemAccess.basePrice("veggie", key)} 幣/個）`,
-    value: key,
-  }));
-}
 
 const ITEM_CHOICES = itemAccess.allChoices();
 
@@ -55,7 +35,7 @@ module.exports = {
   channelBuckets: ["marketplace"],
   data: new SlashCommandBuilder()
     .setName("市集")
-    .setDescription("礦石市集：賣礦、徵求、大量收購、競標 🏪")
+    .setDescription("訂單簿市集：掛買單、掛賣單、物物交換、競標 🏪")
     .setContexts(InteractionContextType.Guild)
     // 逛攤
     .addSubcommand((s) =>
@@ -64,67 +44,6 @@ module.exports = {
     // 我的攤位
     .addSubcommand((s) =>
       s.setName("我的攤位").setDescription("查看自己的掛單，可點按鈕下架")
-    )
-    // 賣礦
-    .addSubcommand((s) =>
-      s
-        .setName("賣礦")
-        .setDescription("以一口價掛牌賣礦石，收金幣")
-        .addStringOption((o) =>
-          o.setName("礦石").setDescription("要賣的礦石").setRequired(true).addChoices(...oreChoices())
-        )
-        .addIntegerOption((o) =>
-          o.setName("數量").setDescription("數量").setRequired(true).setMinValue(1)
-        )
-        .addIntegerOption((o) =>
-          o.setName("總價").setDescription("你要賣多少金幣（一口價總額）").setRequired(true).setMinValue(1)
-        )
-        .addStringOption((o) =>
-          o.setName("標題").setDescription("選填：自訂標題顯示在掛單前（例：佛心給鑽、保留給某人）").setMaxLength(30)
-        )
-    )
-    // 徵求
-    .addSubcommand((s) =>
-      s
-        .setName("徵求")
-        .setDescription("貼出收購單：我要某物，付金幣或物品")
-        .addStringOption((o) =>
-          o.setName("想要物品").setDescription("你想收購的物品").setRequired(true).addChoices(...ITEM_CHOICES)
-        )
-        .addIntegerOption((o) =>
-          o.setName("想要數量").setDescription("你想收購的數量").setRequired(true).setMinValue(1)
-        )
-        .addStringOption((o) =>
-          o
-            .setName("付款方式")
-            .setDescription("用金幣還是物品來付款")
-            .setRequired(true)
-            .addChoices({ name: "金幣", value: "coin" }, { name: "物品", value: "item" })
-        )
-        .addIntegerOption((o) =>
-          o
-            .setName("金幣總額")
-            .setDescription("付金幣時：你願意付多少金幣（選填，付金幣時填）")
-            .setRequired(false)
-            .setMinValue(1)
-        )
-        .addStringOption((o) =>
-          o
-            .setName("付的物品")
-            .setDescription("付物品時：你用什麼物品來付（選填，付物品時填）")
-            .setRequired(false)
-            .addChoices(...ITEM_CHOICES)
-        )
-        .addIntegerOption((o) =>
-          o
-            .setName("付的數量")
-            .setDescription("付物品時：你付多少個（選填，付物品時填）")
-            .setRequired(false)
-            .setMinValue(1)
-        )
-        .addStringOption((o) =>
-          o.setName("標題").setDescription("選填：自訂標題顯示在掛單前").setMaxLength(30)
-        )
     )
     // 大量收購（掛買單）
     .addSubcommand((s) =>
@@ -176,40 +95,28 @@ module.exports = {
           o.setName("時長").setDescription("掛單天數（越久上架費越高，預設 1 天）").setRequired(false).addChoices(...DURATION_CHOICES)
         )
     )
-    // 賣魚
+    // 物物交換
     .addSubcommand((s) =>
       s
-        .setName("賣魚")
-        .setDescription("以一口價在市集掛牌賣魚，收金幣")
+        .setName("物物交換")
+        .setDescription("以物易物：付出 X 收 Y，多位玩家可分批跟你換 🔄")
         .addStringOption((o) =>
-          o.setName("魚").setDescription("要賣的魚種").setRequired(true).addChoices(...fishChoices())
+          o.setName("付出物品").setDescription("你要付出（託管）的物品").setRequired(true).addChoices(...ITEM_CHOICES)
         )
         .addIntegerOption((o) =>
-          o.setName("數量").setDescription("數量").setRequired(true).setMinValue(1)
-        )
-        .addIntegerOption((o) =>
-          o.setName("總價").setDescription("你要賣多少金幣（一口價總額）").setRequired(true).setMinValue(1)
+          o.setName("付出數量").setDescription("總共付出多少個").setRequired(true).setMinValue(1)
         )
         .addStringOption((o) =>
-          o.setName("標題").setDescription("選填：自訂標題顯示在掛單前").setMaxLength(30)
-        )
-    )
-    // 賣菜
-    .addSubcommand((s) =>
-      s
-        .setName("賣菜")
-        .setDescription("以一口價在市集掛牌賣農產品，收金幣")
-        .addStringOption((o) =>
-          o.setName("農產品").setDescription("要賣的農產品").setRequired(true).addChoices(...veggieChoices())
+          o.setName("想要物品").setDescription("你想換到的物品").setRequired(true).addChoices(...ITEM_CHOICES)
         )
         .addIntegerOption((o) =>
-          o.setName("數量").setDescription("數量").setRequired(true).setMinValue(1)
-        )
-        .addIntegerOption((o) =>
-          o.setName("總價").setDescription("你要賣多少金幣（一口價總額）").setRequired(true).setMinValue(1)
+          o.setName("想要數量").setDescription("總共想換多少個").setRequired(true).setMinValue(1)
         )
         .addStringOption((o) =>
-          o.setName("標題").setDescription("選填：自訂標題顯示在掛單前").setMaxLength(30)
+          o.setName("標題").setDescription("選填：自訂標題顯示在交換單前").setMaxLength(30)
+        )
+        .addIntegerOption((o) =>
+          o.setName("時長").setDescription("掛單天數（越久上架費越高，預設 1 天）").setRequired(false).addChoices(...DURATION_CHOICES)
         )
     )
     // 競標
@@ -240,11 +147,10 @@ module.exports = {
 
   run: async (client, interaction) => {
     const sub = interaction.options.getSubcommand();
-    // 物品換金錢的上架先走 ephemeral 預覽確認（含行情中位數＋洗幣警示）；查詢類也 ephemeral。
-    // 徵求付物品不涉及金錢，維持公開直接上架。
-    const wantPayKind = sub === "徵求" ? interaction.options.getString("付款方式") : null;
-    const previewSubs = new Set(["賣礦", "賣魚", "賣菜", "競標", "大量收購", "掛賣單"]);
-    const isPreview = previewSubs.has(sub) || (sub === "徵求" && wantPayKind === "coin");
+    // 涉及金幣單價的上架先走 ephemeral 預覽確認（含行情中位數＋洗幣警示）；查詢類也 ephemeral。
+    // 物物交換不涉及金幣單價，維持公開直接上架。
+    const previewSubs = new Set(["競標", "大量收購", "掛賣單"]);
+    const isPreview = previewSubs.has(sub);
     const ephemeral = isPreview || ["逛攤", "我的攤位"].includes(sub);
     await interaction.deferReply(ephemeral ? { flags: MessageFlags.Ephemeral } : undefined);
 
@@ -255,13 +161,10 @@ module.exports = {
 
       if (sub === "逛攤") return await handleBrowse(client, interaction);
       if (sub === "我的攤位") return await handleMyStall(client, interaction);
-      if (sub === "賣礦") return await handleSell(client, interaction);
-      if (sub === "徵求") return await handleWant(client, interaction);
       if (sub === "大量收購") return await handleBulk(client, interaction);
       if (sub === "掛賣單") return await handleBulkSell(client, interaction);
+      if (sub === "物物交換") return await handleSwap(client, interaction);
       if (sub === "競標") return await handleAuction(client, interaction);
-      if (sub === "賣魚") return await handleFishSell(client, interaction);
-      if (sub === "賣菜") return await handleVeggieSell(client, interaction);
     } catch (error) {
       console.log(`[ERROR] /市集:\n${error}\n${error.stack}`.red);
       await interaction.editReply("🔧 市集操作失敗，請呼叫舒舒！").catch(() => {});
@@ -298,7 +201,7 @@ async function handleMyStall(client, interaction) {
   });
 }
 
-// 物品換金錢的上架：先 stash pending，秀 ephemeral 預覽（含中位數行情＋洗幣警示）。
+// 涉及金幣單價的上架：先 stash pending，秀 ephemeral 預覽（含中位數行情＋洗幣警示）。
 async function presentPreview(client, interaction, pendingData) {
   const pending = listingConfirm.stash({
     ownerId: interaction.user.id,
@@ -309,153 +212,7 @@ async function presentPreview(client, interaction, pendingData) {
   await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
 }
 
-// ─── 賣礦 ───────────────────────────────────────────────────────────────────
-async function handleSell(client, interaction) {
-  const ore = interaction.options.getString("礦石");
-  const qty = interaction.options.getInteger("數量");
-  const price = interaction.options.getInteger("總價");
-  const title = interaction.options.getString("標題");
-
-  if (!mining?.ores?.[ore]) return interaction.editReply("❌ 找不到這種礦石。");
-
-  await presentPreview(client, interaction, {
-    kind: "sell",
-    title,
-    itemType: "ore",
-    itemKey: ore,
-    qty,
-    totalPrice: price,
-    unitPrice: price / qty,
-    priceLabel: "總價",
-    params: {
-      subtype: "ore",
-      sellerId: interaction.user.id,
-      guildId: interaction.guildId,
-      sellerName: interaction.member?.displayName || interaction.user.username,
-      ore,
-      qty,
-      price,
-      title,
-    },
-  });
-}
-
-// ─── 徵求 ───────────────────────────────────────────────────────────────────
-async function handleWant(client, interaction) {
-  const wantArg = interaction.options.getString("想要物品");
-  const wantQty = interaction.options.getInteger("想要數量");
-  const payKind = interaction.options.getString("付款方式");
-  const coinAmount = interaction.options.getInteger("金幣總額");
-  const payArg = interaction.options.getString("付的物品");
-  const payQty = interaction.options.getInteger("付的數量");
-
-  if (payKind === "coin" && !coinAmount) {
-    return interaction.editReply("❌ 付款方式為金幣時，請填寫「金幣總額」。");
-  }
-  if (payKind === "item" && (!payArg || !payQty)) {
-    return interaction.editReply("❌ 付款方式為物品時，請填寫「付的物品」和「付的數量」。");
-  }
-
-  const wantChoice = itemAccess.parseChoice(wantArg);
-  const payChoice = payKind === "item" ? itemAccess.parseChoice(payArg) : null;
-  if (!wantChoice) return interaction.editReply("❌ 找不到「想要物品」。");
-  if (payKind === "item" && !payChoice) return interaction.editReply("❌ 找不到「付的物品」。");
-
-  const title = interaction.options.getString("標題");
-
-  // 付金幣＝物品換金錢 → 先走預覽確認（含行情中位數＋洗幣警示）
-  if (payKind === "coin") {
-    return presentPreview(client, interaction, {
-      kind: "want",
-      title,
-      itemType: wantChoice.type,
-      itemKey: wantChoice.key,
-      qty: wantQty,
-      totalPrice: coinAmount,
-      unitPrice: coinAmount / wantQty,
-      priceLabel: "金幣總額",
-      params: {
-        sellerId: interaction.user.id,
-        guildId: interaction.guildId,
-        sellerName: interaction.member?.displayName || interaction.user.username,
-        wantItemType: wantChoice.type,
-        wantItemKey: wantChoice.key,
-        wantQty,
-        payKind: "coin",
-        coinAmount,
-        member: interaction.member,
-        title,
-      },
-    });
-  }
-
-  const result = await marketplaceService.createWantListing(client, {
-    sellerId: interaction.user.id,
-    guildId: interaction.guildId,
-    sellerName: interaction.member?.displayName || interaction.user.username,
-    wantItemType: wantChoice.type,
-    wantItemKey: wantChoice.key,
-    wantQty,
-    payKind,
-    coinAmount,
-    payItemType: payChoice?.type,
-    payItemKey: payChoice?.key,
-    payQty,
-    member: interaction.member,
-    title: interaction.options.getString("標題"),
-  });
-
-  if (!result.ok) {
-    if (result.reason === "no_want_item" || result.reason === "no_pay_item")
-      return interaction.editReply("❌ 找不到這種物品。");
-    if (result.reason === "same_item")
-      return interaction.editReply("❌ 想要與付的物品不能相同！");
-    if (result.reason === "too_many")
-      return interaction.editReply(`📦 你同時最多只能掛 **${result.max}** 件掛單。`);
-    if (result.reason === "insufficient_coins")
-      return interaction.editReply(
-        `💰 餘額不足！你目前 **${result.balance.toLocaleString()}** ${COIN_EMOJI}。`
-      );
-    if (result.reason === "insufficient")
-      return interaction.editReply(
-        `🎒 你只有 **${result.have}** 個 ${result.payDef?.name || "物品"}，無法託管 ${payQty} 個。`
-      );
-    if (result.reason === "grant_failed")
-      return interaction.editReply("🔧 金幣託管失敗，請稍後再試。");
-    return interaction.editReply("🔧 掛牌失敗，請稍後再試。");
-  }
-
-  const l = result.listing;
-  const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
-  const wantLabel = itemAccess.itemLabel(wantChoice.type, wantChoice.key, wantQty);
-  const payStr = payKind === "coin"
-    ? `**${coinAmount.toLocaleString()}** ${COIN_EMOJI}（已從你帳戶託管）`
-    : `${itemAccess.itemLabel(payChoice.type, payChoice.key, payQty)}（已從你${itemAccess.bagName(payChoice.type)}託管）`;
-  const container = new ContainerBuilder()
-    .setAccentColor(0x8e44ad)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `# 📋 徵求掛牌成功\n` +
-          (l.title ? `📌 ${l.title}\n` : "") +
-          `**#${l.listing_id}**\n` +
-          `徵求 ${wantLabel}，付出 ${payStr}\n` +
-          `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
-          `-# 有貨的玩家可直接點下方「賣給他」成交；無人賣出則取消時退回付款。`
-      )
-    )
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`${FULFILL_PREFIX}${l.listing_id}`)
-          .setLabel("賣給他")
-          .setEmoji("📋")
-          .setStyle(ButtonStyle.Primary)
-      )
-    );
-  await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
-}
-
-// ─── 大量收購 ────────────────────────────────────────────────────────────────
+// ─── 大量收購（掛買單）───────────────────────────────────────────────────────
 async function handleBulk(client, interaction) {
   const itemArg = interaction.options.getString("物品");
   const qty = interaction.options.getInteger("數量");
@@ -525,6 +282,88 @@ async function handleBulkSell(client, interaction) {
   });
 }
 
+// ─── 物物交換 ────────────────────────────────────────────────────────────────
+async function handleSwap(client, interaction) {
+  const giveArg = interaction.options.getString("付出物品");
+  const giveQty = interaction.options.getInteger("付出數量");
+  const wantArg = interaction.options.getString("想要物品");
+  const wantQty = interaction.options.getInteger("想要數量");
+  const durationDays = interaction.options.getInteger("時長") || 1;
+  const title = interaction.options.getString("標題");
+
+  const giveChoice = itemAccess.parseChoice(giveArg);
+  const wantChoice = itemAccess.parseChoice(wantArg);
+  if (!giveChoice) return interaction.editReply("❌ 找不到「付出物品」。");
+  if (!wantChoice) return interaction.editReply("❌ 找不到「想要物品」。");
+
+  const result = await marketplaceService.createSwapListing(client, {
+    sellerId: interaction.user.id,
+    guildId: interaction.guildId,
+    sellerName: interaction.member?.displayName || interaction.user.username,
+    giveType: giveChoice.type,
+    giveKey: giveChoice.key,
+    giveQty,
+    wantType: wantChoice.type,
+    wantKey: wantChoice.key,
+    wantQty,
+    title,
+    durationDays,
+    member: interaction.member,
+  });
+
+  if (!result.ok) {
+    return interaction.editReply({ components: [swapErrCard(result, { giveQty, wantQty })], flags: MessageFlags.IsComponentsV2 });
+  }
+
+  const l = result.listing;
+  const expiresEpoch = Math.floor(new Date(l.expires_at).getTime() / 1000);
+  const giveLabel = itemAccess.itemLabel(giveChoice.type, giveChoice.key, giveQty);
+  const wantLabel = itemAccess.itemLabel(wantChoice.type, wantChoice.key, wantQty);
+  const container = new ContainerBuilder()
+    .setAccentColor(0x9b59b6)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🔄 物物交換掛牌成功\n` +
+          (l.title ? `📌 ${l.title}\n` : "") +
+          `**#${l.listing_id}**\n` +
+          `付出 ${giveLabel}（已從你${itemAccess.bagName(giveChoice.type)}託管），想換 ${wantLabel}\n` +
+          `截止時間：<t:${expiresEpoch}:R>（<t:${expiresEpoch}:f>）\n` +
+          `-# 有貨的玩家可直接點下方「賣給他」分批交換；換滿或到期後未換出的會自動退回。`
+      )
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${SWAP_SELL_PREFIX}${l.listing_id}`)
+          .setLabel("賣給他")
+          .setEmoji("🔄")
+          .setStyle(ButtonStyle.Primary)
+      )
+    );
+  await interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+}
+
+function swapErrCard(result, { giveQty, wantQty }) {
+  const map = {
+    disabled: "🔧 物物交換暫時無法使用。",
+    no_give_item: "❌ 找不到「付出物品」。",
+    no_want_item: "❌ 找不到「想要物品」。",
+    same_item: "❌ 付出與想要的物品不能相同！",
+    bad_give_qty: "❌ 付出數量無效。",
+    bad_want_qty: "❌ 想要數量無效。",
+    qty_too_large: `❌ 單筆數量上限為 **${(result.maxQty || 0).toLocaleString()}** 個。`,
+    untradeable: "❌ 這些物品不可用於交易。",
+    too_many: `📦 你同時最多只能掛 **${result.max}** 件物物交換單。`,
+    insufficient: `🎒 你只有 **${result.have ?? 0}** 個 ${result.giveDef?.name || "付出物品"}，無法託管 ${giveQty} 個。`,
+    insufficient_fee: `💰 上架費不足！需要 **${(result.need || 0).toLocaleString()}** ${COIN_EMOJI}。`,
+  };
+  return new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# ❌ 掛牌失敗\n${map[result.reason] || "🔧 掛牌失敗，請稍後再試。"}`)
+    );
+}
+
 // ─── 競標 ───────────────────────────────────────────────────────────────────
 async function handleAuction(client, interaction) {
   const itemArg = interaction.options.getString("物品");
@@ -555,68 +394,6 @@ async function handleAuction(client, interaction) {
       qty,
       startPrice,
       buyoutPrice: buyoutPrice || null,
-      title,
-    },
-  });
-}
-
-// ─── 賣魚 ────────────────────────────────────────────────────────────────────
-async function handleFishSell(client, interaction) {
-  const fishKey = interaction.options.getString("魚");
-  const qty = interaction.options.getInteger("數量");
-  const price = interaction.options.getInteger("總價");
-  const title = interaction.options.getString("標題");
-
-  if (!fishing?.fish?.[fishKey]) return interaction.editReply("❌ 找不到這種魚。");
-
-  await presentPreview(client, interaction, {
-    kind: "sell",
-    title,
-    itemType: "fish",
-    itemKey: fishKey,
-    qty,
-    totalPrice: price,
-    unitPrice: price / qty,
-    priceLabel: "總價",
-    params: {
-      subtype: "fish",
-      sellerId: interaction.user.id,
-      guildId: interaction.guildId,
-      sellerName: interaction.member?.displayName || interaction.user.username,
-      fishKey,
-      qty,
-      price,
-      title,
-    },
-  });
-}
-
-// ─── 賣菜 ────────────────────────────────────────────────────────────────────
-async function handleVeggieSell(client, interaction) {
-  const veggieKey = interaction.options.getString("農產品");
-  const qty = interaction.options.getInteger("數量");
-  const price = interaction.options.getInteger("總價");
-  const title = interaction.options.getString("標題");
-
-  if (!farming?.crops?.[veggieKey]) return interaction.editReply("❌ 找不到這種農產品。");
-
-  await presentPreview(client, interaction, {
-    kind: "sell",
-    title,
-    itemType: "veggie",
-    itemKey: veggieKey,
-    qty,
-    totalPrice: price,
-    unitPrice: price / qty,
-    priceLabel: "總價",
-    params: {
-      subtype: "veggie",
-      sellerId: interaction.user.id,
-      guildId: interaction.guildId,
-      sellerName: interaction.member?.displayName || interaction.user.username,
-      veggieKey,
-      qty,
-      price,
       title,
     },
   });
