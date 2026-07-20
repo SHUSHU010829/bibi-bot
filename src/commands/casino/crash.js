@@ -149,7 +149,6 @@ module.exports = {
       }
 
       const minBet = cfg.minBet ?? 10;
-      const maxBet = cfg.maxBet ?? 0;
 
       const before = await client.userCoinsCollection.findOne({
         userId,
@@ -167,11 +166,6 @@ module.exports = {
       if (bet < minBet) {
         return interaction.editReply(
           `下注金額至少需 **${minBet.toLocaleString()}** credits。`,
-        );
-      }
-      if (maxBet > 0 && bet > maxBet) {
-        return interaction.editReply(
-          `下注金額上限 **${maxBet.toLocaleString()}** credits。`,
         );
       }
       if (balance < bet) {

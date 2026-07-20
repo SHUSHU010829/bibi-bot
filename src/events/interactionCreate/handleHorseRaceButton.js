@@ -15,6 +15,7 @@ const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const parseBetAmount = require("../../utils/parseBetAmount");
 const { HORSES, getHorse } = require("../../features/casino/horseRacing/engine");
 const {
   renderBettingPhase,
@@ -141,17 +142,16 @@ async function openBetModal(interaction, horseIdStr, gameId) {
 
   const cfg = getCfg();
   const minBet = cfg.minBet ?? 10;
-  const maxBet = cfg.maxBet ?? 1000;
 
   const modal = new ModalBuilder()
     .setCustomId(`hr_modal_${horseId}_${gameId}`)
     .setTitle(`押 ${horse.emoji} ${horse.name} (×${horse.payout.toFixed(1)})`);
   const input = new TextInputBuilder()
     .setCustomId("amount")
-    .setLabel(`下注金額（${minBet.toLocaleString()} ~ ${maxBet.toLocaleString()}）`)
+    .setLabel(`下注金額（最低 ${minBet.toLocaleString()}，梭哈打 all）`)
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder(`例如 ${Math.min(100, maxBet)}`)
+    .setPlaceholder(`例如 100 或 all`)
     .setMinLength(1)
     .setMaxLength(10);
   modal.addComponents(new ActionRowBuilder().addComponents(input));
@@ -167,23 +167,24 @@ async function submitBet(client, interaction, horseIdStr, gameId) {
   }
 
   const raw = interaction.fields.getTextInputValue("amount").trim();
-  const amount = Number.parseInt(raw.replace(/[^\d]/g, ""), 10);
 
   const cfg = getCfg();
   const minBet = cfg.minBet ?? 10;
-  const maxBet = cfg.maxBet ?? 1000;
-  if (!Number.isFinite(amount) || amount < minBet) {
+
+  // 需先讀餘額才能換算 all / 百分比
+  const preDoc = await client.userCoinsCollection.findOne({
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
+  const preBalance = preDoc?.totalCoins || 0;
+  const parsed = parseBetAmount(raw, preBalance);
+  if (!parsed.ok || parsed.amount < minBet) {
     return interaction.reply({
-      content: `❌ 至少下注 ${minBet.toLocaleString()} credits`,
+      content: `❌ 至少下注 ${minBet.toLocaleString()} credits（可打 all 梭哈）`,
       flags: MessageFlags.Ephemeral,
     });
   }
-  if (amount > maxBet) {
-    return interaction.reply({
-      content: `❌ 單筆最高 ${maxBet.toLocaleString()} credits`,
-      flags: MessageFlags.Ephemeral,
-    });
-  }
+  const amount = parsed.amount;
 
   if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) {
     return;

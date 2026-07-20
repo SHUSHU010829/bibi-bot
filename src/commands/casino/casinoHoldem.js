@@ -8,6 +8,7 @@ const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const parseBetAmount = require("../../utils/parseBetAmount");
 const { startGame } = require("../../features/casino/casinoHoldem/engine");
 const { renderMessage } = require("../../features/casino/casinoHoldem/renderer");
 const { saveLastBet } = require("../../features/casino/replay");
@@ -21,18 +22,11 @@ module.exports = {
     .setName("德州撲克")
     .setDescription("🃏 跟莊家單挑德州撲克（下底注 → 看牌 → 跟注或蓋牌）")
     .setContexts(InteractionContextType.Guild)
-    .addIntegerOption((opt) =>
+    .addStringOption((opt) =>
       opt
         .setName("底注")
-        .setDescription("下注 credits（跟注時需再押 2 倍；勾選梭哈時可省略）")
-        .setRequired(false)
-        .setMinValue(getConfig().minBet ?? 10)
-    )
-    .addBooleanOption((opt) =>
-      opt
-        .setName("梭哈")
-        .setDescription("用目前餘額能負擔的最大底注（保留跟注所需的 2 倍）")
-        .setRequired(false)
+        .setDescription("底注金額（跟注需再押 2 倍；梭哈打 all 會保留跟注的 2 倍）")
+        .setRequired(true)
     )
     .toJSON(),
 
@@ -59,21 +53,9 @@ module.exports = {
       }
 
       const minBet = cfg.minBet ?? 10;
-      const maxBet = cfg.maxBet ?? 5000;
       const ttlSec = cfg.gameTtlSeconds ?? 300;
 
-      const anteInput = interaction.options.getInteger("底注");
-      const allIn = interaction.options.getBoolean("梭哈") === true;
-      if (!allIn && (!Number.isInteger(anteInput) || anteInput < minBet)) {
-        return interaction.editReply(
-          `底注至少需 ${minBet.toLocaleString()} credits（或勾選梭哈）。`
-        );
-      }
-      if (!allIn && anteInput > maxBet) {
-        return interaction.editReply(
-          `底注上限為 ${maxBet.toLocaleString()} credits。`
-        );
-      }
+      const rawAnte = interaction.options.getString("底注");
 
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
@@ -99,18 +81,24 @@ module.exports = {
       });
       const balance = before?.totalCoins || 0;
 
-      // 梭哈：留住跟注的 2 倍，底注上限為 floor(balance/3)，並夾在 [minBet, maxBet]。
-      let ante;
-      if (allIn) {
-        const affordable = Math.floor(balance / 3);
-        ante = Math.min(affordable, maxBet);
+      const parsed = parseBetAmount(rawAnte, balance);
+      if (!parsed.ok) {
+        return interaction.editReply(`底注格式錯誤：${parsed.reason}`);
+      }
+      let ante = parsed.amount;
+      // 梭哈（all）：留住跟注的 2 倍，底注取 floor(balance/3)。
+      if (parsed.mode === "all") {
+        ante = Math.floor(balance / 3);
         if (ante < minBet) {
           return interaction.editReply(
             `${MONEY_EMOJI} 餘額不足以梭哈！跟注需保留 3 倍底注，目前 **${balance.toLocaleString()}** credits，至少需 ${(minBet * 3).toLocaleString()}。`
           );
         }
-      } else {
-        ante = anteInput;
+      }
+      if (ante < minBet) {
+        return interaction.editReply(
+          `底注至少需 **${minBet.toLocaleString()}** credits。`
+        );
       }
 
       if (balance < ante) {
@@ -161,7 +149,7 @@ module.exports = {
         userId,
         guildId,
         game: "casinoHoldem",
-        payload: { options: { 底注: ante, 梭哈: false } },
+        payload: { options: { 底注: ante } },
       });
 
       const payload = await renderMessage(doc, {

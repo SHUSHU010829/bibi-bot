@@ -8,6 +8,7 @@ const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const parseBetAmount = require("../../utils/parseBetAmount");
 const { startGame, DIFFICULTIES, DEFAULT_DIFFICULTY } = require("../../features/casino/tower/engine");
 const { renderMessage } = require("../../features/casino/tower/renderer");
 const { saveLastBet } = require("../../features/casino/replay");
@@ -21,12 +22,11 @@ module.exports = {
     .setName("爬塔")
     .setDescription("一層一層往上爬，避開陷阱、倍率越疊越高，隨時可收手 🗼")
     .setContexts(InteractionContextType.Guild)
-    .addIntegerOption((opt) =>
+    .addStringOption((opt) =>
       opt
         .setName("下注")
-        .setDescription("下注 credits（勾選梭哈時可省略）")
-        .setRequired(false)
-        .setMinValue(getTowerConfig().minBet ?? 10)
+        .setDescription("下注金額（梭哈打 all，也支援 1.5k、50%）")
+        .setRequired(true)
     )
     .addStringOption((opt) =>
       opt
@@ -39,12 +39,6 @@ module.exports = {
             value: d.key,
           }))
         )
-    )
-    .addBooleanOption((opt) =>
-      opt
-        .setName("梭哈")
-        .setDescription("一次押上目前全部餘額")
-        .setRequired(false)
     )
     .toJSON(),
 
@@ -71,21 +65,13 @@ module.exports = {
       }
 
       const minBet = cfg.minBet ?? 10;
-      const maxBet = cfg.maxBet ?? 0;
       const ttlSec = cfg.gameTtlSeconds ?? 300;
       const houseEdge = cfg.houseEdge ?? 0.05;
       const maxFloors = cfg.maxFloors ?? 9;
 
-      const betInput = interaction.options.getInteger("下注");
-      const allIn = interaction.options.getBoolean("梭哈") === true;
+      const rawBet = interaction.options.getString("下注");
       const difficulty =
         interaction.options.getString("難度") || DEFAULT_DIFFICULTY;
-
-      if (!allIn && (!Number.isInteger(betInput) || betInput < minBet)) {
-        return interaction.editReply(
-          `下注金額至少需 ${minBet.toLocaleString()} credits（或勾選梭哈）。`
-        );
-      }
 
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
@@ -110,16 +96,14 @@ module.exports = {
         guildId,
       });
       const balance = before?.totalCoins || 0;
-      const bet = allIn ? balance : betInput;
-
-      if (allIn && balance < minBet) {
-        return interaction.editReply(
-          `${MONEY_EMOJI} 餘額不足以梭哈！目前 **${balance.toLocaleString()}** credits，至少需 ${minBet.toLocaleString()}。`
-        );
+      const parsed = parseBetAmount(rawBet, balance);
+      if (!parsed.ok) {
+        return interaction.editReply(`下注格式錯誤：${parsed.reason}`);
       }
-      if (maxBet > 0 && bet > maxBet) {
+      const bet = parsed.amount;
+      if (bet < minBet) {
         return interaction.editReply(
-          `下注金額上限 **${maxBet.toLocaleString()}** credits。`
+          `下注金額至少需 **${minBet.toLocaleString()}** credits。`
         );
       }
       if (balance < bet) {
@@ -178,7 +162,7 @@ module.exports = {
         userId,
         guildId,
         game: "tower",
-        payload: { options: { 下注: bet, 難度: difficulty, 梭哈: false } },
+        payload: { options: { 下注: bet, 難度: difficulty } },
       });
 
       const payload = await renderMessage(doc, {

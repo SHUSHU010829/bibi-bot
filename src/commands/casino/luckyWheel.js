@@ -10,6 +10,7 @@ const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const parseBetAmount = require("../../utils/parseBetAmount");
 const { spin, DEFAULT_SEGMENTS } = require("../../features/casino/luckyWheel/engine");
 const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
 const { buildCasinoContainer } = require("../../features/casino/casinoEmbed");
@@ -24,18 +25,11 @@ module.exports = {
     .setName("幸運轉盤")
     .setDescription("轉一把加權倍率轉盤，停在哪格就照那格倍率派彩 🎡")
     .setContexts(InteractionContextType.Guild)
-    .addIntegerOption((opt) =>
+    .addStringOption((opt) =>
       opt
         .setName("金額")
-        .setDescription("下注 credits（勾選梭哈時可省略）")
-        .setRequired(false)
-        .setMinValue(getConfig().minBet ?? 10)
-    )
-    .addBooleanOption((opt) =>
-      opt
-        .setName("梭哈")
-        .setDescription("一次押上目前全部餘額")
-        .setRequired(false)
+        .setDescription("下注金額（梭哈打 all，也支援 1.5k、50%）")
+        .setRequired(true)
     )
     .toJSON(),
 
@@ -58,18 +52,11 @@ module.exports = {
       }
 
       const minBet = cfg.minBet ?? 10;
-      const maxBet = cfg.maxBet ?? 5000;
       const segments = Array.isArray(cfg.segments) && cfg.segments.length
         ? cfg.segments
         : DEFAULT_SEGMENTS;
 
-      const betInput = interaction.options.getInteger("金額");
-      const allIn = interaction.options.getBoolean("梭哈") === true;
-      if (!allIn && (!Number.isInteger(betInput) || betInput < minBet)) {
-        return interaction.editReply(
-          `下注金額至少需 ${minBet.toLocaleString()} credits（或勾選梭哈）。`
-        );
-      }
+      const rawBet = interaction.options.getString("金額");
 
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
@@ -82,20 +69,15 @@ module.exports = {
         guildId,
       });
       const balance = before?.totalCoins || 0;
-      let bet = allIn ? balance : betInput;
-
-      if (allIn && balance < minBet) {
-        return interaction.editReply(
-          `${MONEY_EMOJI} 餘額不足以梭哈！目前 **${balance.toLocaleString()}** credits，至少需 ${minBet.toLocaleString()}。`
-        );
+      const parsed = parseBetAmount(rawBet, balance);
+      if (!parsed.ok) {
+        return interaction.editReply(`下注格式錯誤：${parsed.reason}`);
       }
-      if (!allIn && maxBet > 0 && bet > maxBet) {
+      const bet = parsed.amount;
+      if (bet < minBet) {
         return interaction.editReply(
-          `下注上限 **${maxBet.toLocaleString()}** credits。`
+          `下注金額至少需 **${minBet.toLocaleString()}** credits。`
         );
-      }
-      if (allIn && maxBet > 0 && bet > maxBet) {
-        bet = maxBet;
       }
       if (balance < bet) {
         return interaction.editReply(
@@ -175,7 +157,7 @@ module.exports = {
         userId,
         guildId,
         game: "luckyWheel",
-        payload: { options: { 金額: bet, 梭哈: false } },
+        payload: { options: { 金額: bet } },
       }).catch(() => null);
 
       const gifPromise = generateLuckyWheelGif({

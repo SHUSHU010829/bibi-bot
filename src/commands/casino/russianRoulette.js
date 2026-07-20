@@ -11,6 +11,7 @@ const {
 const { coinSystem, casino } = require("../../config");
 const { MONEY_EMOJI } = require("../../constants/coin");
 const grantCoins = require("../../features/economy/grantCoins");
+const parseBetAmount = require("../../utils/parseBetAmount");
 const { buildWaitingPayload } = require("../../features/casino/russianRoulette/render");
 const { startGame, cancelAndRefund } = require("../../features/casino/russianRoulette/service");
 const { MODES } = require("../../features/casino/russianRoulette/engine");
@@ -24,12 +25,11 @@ module.exports = {
     .setName("左輪")
     .setDescription("🔫 開一桌俄羅斯輪盤！押注進池，中彈者輸光，倖存者平分")
     .setContexts(InteractionContextType.Guild)
-    .addIntegerOption((opt) =>
+    .addStringOption((opt) =>
       opt
         .setName("賭注")
-        .setDescription("每人押注金額")
+        .setDescription("每人押注金額（梭哈打 all，也支援 1.5k、50%）")
         .setRequired(true)
-        .setMinValue(getCfg().minAnte ?? 50)
     )
     .addStringOption((opt) =>
       opt
@@ -67,7 +67,6 @@ module.exports = {
       }
 
       const minAnte = cfg.minAnte ?? 50;
-      const maxAnte = cfg.maxAnte ?? 5000;
       const maxPlayers = cfg.maxPlayers ?? 6;
       const windowSec = cfg.joinWindowSeconds ?? 120;
 
@@ -82,14 +81,8 @@ module.exports = {
         return interaction.editReply("🔧 左輪公佈頻道無法存取，請聯絡舒舒！");
       }
 
-      const ante = interaction.options.getInteger("賭注");
+      const rawAnte = interaction.options.getString("賭注");
       const mode = interaction.options.getString("模式") || "standard";
-      if (ante < minAnte) {
-        return interaction.editReply(`賭注至少 ${minAnte.toLocaleString()} ${MONEY_EMOJI}。`);
-      }
-      if (ante > maxAnte) {
-        return interaction.editReply(`賭注上限 ${maxAnte.toLocaleString()} ${MONEY_EMOJI}。`);
-      }
 
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
@@ -107,6 +100,14 @@ module.exports = {
 
       const before = await client.userCoinsCollection.findOne({ userId, guildId });
       const balance = before?.totalCoins || 0;
+      const parsed = parseBetAmount(rawAnte, balance);
+      if (!parsed.ok) {
+        return interaction.editReply(`賭注格式錯誤：${parsed.reason}`);
+      }
+      const ante = parsed.amount;
+      if (ante < minAnte) {
+        return interaction.editReply(`賭注至少 ${minAnte.toLocaleString()} ${MONEY_EMOJI}。`);
+      }
       if (balance < ante) {
         return interaction.editReply(
           `${MONEY_EMOJI} 餘額不足！目前 **${balance.toLocaleString()}**，開桌要押 **${ante.toLocaleString()}**。`

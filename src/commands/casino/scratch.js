@@ -8,6 +8,7 @@ const { MONEY_EMOJI } = require("../../constants/coin");
 
 const { coinSystem, casino } = require("../../config");
 const grantCoins = require("../../features/economy/grantCoins");
+const parseBetAmount = require("../../utils/parseBetAmount");
 const { startGame } = require("../../features/casino/scratch/engine");
 const { renderMessage } = require("../../features/casino/scratch/renderer");
 const { saveLastBet } = require("../../features/casino/replay");
@@ -25,7 +26,6 @@ function getThemes(cfg = getScratchConfig()) {
       name: null,
       emoji: null,
       minBet: cfg.minBet,
-      maxBet: cfg.maxBet,
       luckyCount: cfg.luckyCount,
       numberMax: cfg.numberMax,
       prizes: cfg.prizes,
@@ -43,13 +43,17 @@ function resolveTheme(cfg, key) {
 function buildScratchBuilder() {
   const cfg = getScratchConfig();
   const themes = getThemes(cfg);
-  const minBetFloor = Math.min(
-    ...themes.map((t) => t.minBet ?? cfg.minBet ?? 10)
-  );
   const builder = new SlashCommandBuilder()
     .setName("刮刮樂")
     .setDescription("買一張刮刮卡，湊滿三個相同符號就中獎 🎫")
     .setContexts(InteractionContextType.Guild);
+
+  builder.addStringOption((opt) =>
+    opt
+      .setName("下注")
+      .setDescription("買卡金額（梭哈打 all，也支援 1.5k、50%）")
+      .setRequired(true)
+  );
 
   // 有多種款式才開放「款式」選項
   if (themes.length > 1) {
@@ -68,20 +72,6 @@ function buildScratchBuilder() {
     });
   }
 
-  builder
-    .addIntegerOption((opt) =>
-      opt
-        .setName("下注")
-        .setDescription("買卡金額（勾選梭哈時可省略）")
-        .setRequired(false)
-        .setMinValue(minBetFloor)
-    )
-    .addBooleanOption((opt) =>
-      opt
-        .setName("梭哈")
-        .setDescription("一次押上目前全部餘額")
-        .setRequired(false)
-    );
   return builder;
 }
 
@@ -112,7 +102,6 @@ module.exports = {
 
       const theme = resolveTheme(cfg, interaction.options.getString("款式"));
       const minBet = theme.minBet ?? cfg.minBet ?? 10;
-      const maxBet = theme.maxBet ?? cfg.maxBet ?? 0;
       const ttlSec = cfg.gameTtlSeconds ?? 300;
       const prizes = theme.prizes ?? cfg.prizes;
       const decoys = theme.decoyPrizes ?? cfg.decoyPrizes;
@@ -123,13 +112,7 @@ module.exports = {
         return interaction.editReply("🔧 刮刮樂獎項尚未設定，請聯絡舒舒！");
       }
 
-      const betInput = interaction.options.getInteger("下注");
-      const allIn = interaction.options.getBoolean("梭哈") === true;
-      if (!allIn && (!Number.isInteger(betInput) || betInput < minBet)) {
-        return interaction.editReply(
-          `買卡金額至少需 ${minBet.toLocaleString()} credits（或勾選梭哈）。`
-        );
-      }
+      const rawBet = interaction.options.getString("下注");
 
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
@@ -153,16 +136,14 @@ module.exports = {
         guildId,
       });
       const balance = before?.totalCoins || 0;
-      const bet = allIn ? balance : betInput;
-
-      if (allIn && balance < minBet) {
-        return interaction.editReply(
-          `${MONEY_EMOJI} 餘額不足以梭哈！目前 **${balance.toLocaleString()}** credits，至少需 ${minBet.toLocaleString()}。`
-        );
+      const parsed = parseBetAmount(rawBet, balance);
+      if (!parsed.ok) {
+        return interaction.editReply(`買卡格式錯誤：${parsed.reason}`);
       }
-      if (maxBet > 0 && bet > maxBet) {
+      const bet = parsed.amount;
+      if (bet < minBet) {
         return interaction.editReply(
-          `買卡金額上限 **${maxBet.toLocaleString()}** credits。`
+          `買卡金額至少需 **${minBet.toLocaleString()}** credits。`
         );
       }
       if (balance < bet) {
@@ -225,7 +206,7 @@ module.exports = {
         userId,
         guildId,
         game: "scratch",
-        payload: { options: { 下注: bet, 梭哈: false, 款式: theme.key } },
+        payload: { options: { 下注: bet, 款式: theme.key } },
       });
 
       const payload = await renderMessage(doc, {
