@@ -158,7 +158,26 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
   }
 
   // 1) 更新 ephemeral 為結算面板
-  const resultContainer = dungeonCmd.buildBattleResultPanel(interaction.user.id, result);
+  //    一般樓層戰後：若 mini-BOSS 已蓄力滿（當道），結算面板強制改為「迎戰 BOSS」，
+  //    不再提供再戰 / 換樓層等刷樓層選項（規格：BOSS 當道即強制迎戰）。
+  let bossPending = false;
+  let bossName = "BOSS";
+  if (!isMiniBoss) {
+    const st = await dungeonService.getDungeonStatus(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      member: interaction.member,
+    });
+    const mb = floorService.miniBossUnlockState(st.profile, st.level, themeId);
+    if (mb.unlocked) {
+      bossPending = true;
+      bossName = mb.miniBoss?.name || "BOSS";
+    }
+  }
+  const resultContainer = dungeonCmd.buildBattleResultPanel(interaction.user.id, result, {
+    bossPending,
+    bossName,
+  });
   await interaction.editReply({
     components: [resultContainer],
     flags: MessageFlags.IsComponentsV2,
@@ -507,24 +526,29 @@ module.exports = async (client, interaction) => {
         return replyEphemeral(interaction, "🔧 樓層參數錯誤。");
       }
       if (!(await deferUpdateSafe(interaction))) return;
+      const status = await dungeonService.getDungeonStatus(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+      });
+      // BOSS 蓄力滿（當道）→ 強制迎戰：一般樓層探索（含結算面板的再戰 / 舊的強制進場鈕）
+      // 全部導回面板，面板會封鎖樓層並要求先處理 BOSS，避免用再戰鈕繞過 BOSS。
+      if (floorService.miniBossUnlockState(status.profile, status.level, themeId).unlocked) {
+        await showEntryPanelOnSameMessage(client, interaction, { themeId });
+        trackSuccess("raid-enter-boss-forced");
+        return;
+      }
       // 戰前低 HP 確認（強制進場 prefix 跳過）
-      if (m.prefix !== dungeonCmd.RAID_FORCE_PREFIX) {
-        const status = await dungeonService.getDungeonStatus(client, {
-          userId: interaction.user.id,
-          guildId: interaction.guildId,
-          member: interaction.member,
+      if (m.prefix !== dungeonCmd.RAID_FORCE_PREFIX && status.hpLow) {
+        const container = dungeonCmd.buildLowHpConfirmPanel(
+          interaction.user.id, status, themeId, floor,
+        );
+        await interaction.editReply({
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
         });
-        if (status.hpLow) {
-          const container = dungeonCmd.buildLowHpConfirmPanel(
-            interaction.user.id, status, themeId, floor,
-          );
-          await interaction.editReply({
-            components: [container],
-            flags: MessageFlags.IsComponentsV2,
-          });
-          trackSuccess("raid-enter-confirm");
-          return;
-        }
+        trackSuccess("raid-enter-confirm");
+        return;
       }
       await runBattleAndRender(client, interaction, { themeId, floor });
       trackSuccess("raid-enter");

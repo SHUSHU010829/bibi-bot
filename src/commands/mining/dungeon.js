@@ -406,8 +406,7 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
   if (!requested.unlocked) themeId = "mine";
   const floorStates = floorService.listFloors(status.profile, status.level, themeId);
 
-  // mini-BOSS 遭遇：解鎖（蓄力滿）時 BOSS「現身」，在面板提供迎戰入口，
-  // 但不封鎖一般樓層——玩家可繼續刷樓層，只有主動點「迎戰」才進入 BOSS 環節。
+  // mini-BOSS 遭遇：解鎖（蓄力滿）時 BOSS「當道」，強制先處理才能打一般樓層。
   const mbState = floorService.miniBossUnlockState(status.profile, status.level, themeId);
   const bossPending = mbState.unlocked;
 
@@ -455,25 +454,24 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
     }
   }
   if (bossPending) {
-    lines.push(`-# ⚔️ **${mbState.miniBoss.name} 已現身！** 準備好就迎戰，或繼續刷樓層都行。`);
+    lines.push(`-# ⚔️ **${mbState.miniBoss.name} 擋在前方！** 一般樓層暫時封鎖，先迎戰或去準備。`);
   }
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
-  container.addActionRowComponents(buildFloorActionRow(interaction.user.id, floorStates, themeId));
+  container.addActionRowComponents(buildFloorActionRow(interaction.user.id, floorStates, themeId, bossPending));
   container.addActionRowComponents(themeRow);
   container.addActionRowComponents(buildActionsRow(interaction.user.id, status, themeId));
 
-  // Phase H+ mini-BOSS 遭遇：蓄力滿即「現身」，提供迎戰入口，但不封鎖一般樓層——
-  // 玩家可繼續刷樓層，只有主動點「迎戰」才進入 BOSS 環節。
+  // Phase H+ mini-BOSS 遭遇：蓄力滿即「當道」，強制迎戰（但可先去準備補血/換裝）。
   if (bossPending) {
     const mb = mbState.miniBoss;
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `## ⚔️ mini-BOSS 現身：${mb.emoji || ""} ${mb.name}！\n` +
+          `## ⚔️ 遭遇 mini-BOSS：${mb.emoji || ""} ${mb.name}！\n` +
           `👹 HP ${mb.hp.toLocaleString()} ・ ATK ${mb.atk}\n` +
           `-# 體力 -${mb.staminaCost || 3} ・ 武器耐久 -${mb.weaponDurabilityCost || 4} ・ 必掉傳說碎片 ×1 ・ 屠龍累積 +1\n` +
-          `-# ⚡ 單次遭遇：打過一場（不論勝敗）就要重新刷 5F 才會再遇到。不想打可先繼續刷樓層，準備好再挑戰。`,
+          `-# ⚡ 單次遭遇：打過一場（不論勝敗）就要重新刷 5F 才會再遇到。`,
         ),
       )
       .addActionRowComponents(
@@ -535,7 +533,7 @@ function deathDropLabel(drop) {
   return drop.key;
 }
 
-function buildBattleResultPanel(ownerId, result) {
+function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName = "BOSS" } = {}) {
   const container = new ContainerBuilder();
   const isWin = result.won;
   container.setAccentColor(isWin ? 0x2ecc71 : 0xe74c3c);
@@ -662,6 +660,8 @@ function buildBattleResultPanel(ownerId, result) {
   // 補血預設用最小可用瓶（與戰中自動藥水規則一致，避免浪費）
   const healTier = potionsAfter.small > 0 ? "small" : potionsAfter.medium > 0 ? "medium" : potionsAfter.large > 0 ? "large" : null;
   // mini-BOSS 打完一場就消耗遭遇（勝敗皆然），無法立刻再戰 → 主鈕改為回主面板。
+  // 一般樓層戰後若 mini-BOSS 已蓄力滿（當道），強制把主鈕換成「迎戰 BOSS」，
+  // 不提供再戰 / 換樓層等刷樓層選項，避免玩家用結算面板繞過 BOSS。
   const row = new ActionRowBuilder();
   if (result.isMiniBoss) {
     row.addComponents(
@@ -669,6 +669,13 @@ function buildBattleResultPanel(ownerId, result) {
         .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${result.theme}`)
         .setLabel("⬅️ 回主面板")
         .setStyle(ButtonStyle.Primary),
+    );
+  } else if (bossPending) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${RAID_BOSS_PREFIX}${ownerId}_${result.theme}`)
+        .setLabel(`⚔️ 迎戰 ${bossName}`)
+        .setStyle(ButtonStyle.Danger),
     );
   } else {
     row.addComponents(
@@ -689,7 +696,7 @@ function buildBattleResultPanel(ownerId, result) {
       .setStyle(hasPotion && result.hpAfter < result.hpMax ? ButtonStyle.Success : ButtonStyle.Secondary)
       .setDisabled(!hasPotion || result.hpAfter >= result.hpMax),
   );
-  if (!result.isMiniBoss) {
+  if (!result.isMiniBoss && !bossPending) {
     row.addComponents(
       new ButtonBuilder()
         .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${result.theme}`)
@@ -698,6 +705,13 @@ function buildBattleResultPanel(ownerId, result) {
     );
   }
   container.addActionRowComponents(row);
+  if (bossPending) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ⚔️ ${bossName} 已擋在前方，必須先迎戰才能繼續探索。`,
+      ),
+    );
+  }
 
   if (result.weaponBroke) {
     container.addTextDisplayComponents(
