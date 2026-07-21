@@ -483,6 +483,10 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
             .setLabel(`⚔️ 迎戰 ${mb.name}`)
             .setStyle(ButtonStyle.Danger),
           new ButtonBuilder()
+            .setCustomId(`${RAID_ENTER_PREFIX}${interaction.user.id}_${themeId}_5`)
+            .setLabel("🔁 繼續刷 5F")
+            .setStyle(ButtonStyle.Primary),
+          new ButtonBuilder()
             .setCustomId(`${RAID_PREP_PREFIX}${interaction.user.id}_${themeId}`)
             .setLabel("🛡️ 先去準備")
             .setStyle(ButtonStyle.Secondary),
