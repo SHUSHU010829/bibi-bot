@@ -811,6 +811,7 @@ async function runMineBatch(client, interaction, { count }) {
             buildBatchRepairRow(interaction.user.id, result.repairTool),
           );
         }
+        dmPickaxeLowDurability(interaction, result.pickaxe, 1, "critical").catch(() => {});
         return interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
       }
       if (result.reason === "disabled") {
@@ -905,6 +906,9 @@ async function runMineBatch(client, interaction, { count }) {
           `-# 🛡️ **${pk.name || result.lowDurabilityPickaxe}** 只剩 1 次耐久，為避免斷裂退回木鎬，連續挖礦已在斷掉前停止。去 \`/合成\` 修理，或用 \`/挖礦\` 手動挖最後一下。`,
         ),
       );
+      dmPickaxeLowDurability(interaction, result.lowDurabilityPickaxe, 1, "critical").catch(
+        () => {},
+      );
     } else if (result.durabilityBroke) {
       const brokeDef = mining?.pickaxes?.[result.pickaxeBrokeFrom] || {};
       container.addTextDisplayComponents(
@@ -912,6 +916,7 @@ async function runMineBatch(client, interaction, { count }) {
           `-# 💔 第 ${result.performed} 次挖礦時，你的 ${brokeDef.name || result.pickaxeBrokeFrom} 耐久耗盡、已退回木鎬，連續挖礦提前結束。`,
         ),
       );
+      dmPickaxeBroke(interaction, result.pickaxeBrokeFrom).catch(() => {});
     } else if (typeof result.durabilityAfter === "number") {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
