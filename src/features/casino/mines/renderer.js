@@ -113,11 +113,13 @@ async function renderMessage(state, { username, balance, userId, avatarURL } = {
     lines.push(`再翻一格安全 → ×${nextMultiplier(state).toFixed(2)}`);
   }
 
+  // 結算後保留盤面（全禁用），讓玩家看到雷點與踩爆格，再附「再來一局」。
+  const boardRows = buildBoardRows(state);
   const components = isPlaying
-    ? [...buildBoardRows(state), buildCashRow(state)]
+    ? [...boardRows, buildCashRow(state)]
     : state.userId
-      ? [buildReplayRow("mines", state.userId, { name: username })]
-      : [];
+      ? [...boardRows, buildReplayRow("mines", state.userId, { name: username })]
+      : boardRows;
 
   const embed = buildCasinoEmbed({
     game: "💣 踩地雷",
