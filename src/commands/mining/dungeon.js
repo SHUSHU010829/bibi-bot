@@ -406,7 +406,8 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
   if (!requested.unlocked) themeId = "mine";
   const floorStates = floorService.listFloors(status.profile, status.level, themeId);
 
-  // mini-BOSS 遭遇：解鎖（蓄力滿）時 BOSS「當道」，強制先處理才能打一般樓層。
+  // mini-BOSS 遭遇：解鎖（蓄力滿）時 BOSS「現身」，在面板提供迎戰入口，
+  // 但不封鎖一般樓層——玩家可繼續刷樓層，只有主動點「迎戰」才進入 BOSS 環節。
   const mbState = floorService.miniBossUnlockState(status.profile, status.level, themeId);
   const bossPending = mbState.unlocked;
 
@@ -454,24 +455,25 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
     }
   }
   if (bossPending) {
-    lines.push(`-# ⚔️ **${mbState.miniBoss.name} 擋在前方！** 一般樓層暫時封鎖，先迎戰或去準備。`);
+    lines.push(`-# ⚔️ **${mbState.miniBoss.name} 已現身！** 準備好就迎戰，或繼續刷樓層都行。`);
   }
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
-  container.addActionRowComponents(buildFloorActionRow(interaction.user.id, floorStates, themeId, bossPending));
+  container.addActionRowComponents(buildFloorActionRow(interaction.user.id, floorStates, themeId));
   container.addActionRowComponents(themeRow);
   container.addActionRowComponents(buildActionsRow(interaction.user.id, status, themeId));
 
-  // Phase H+ mini-BOSS 遭遇：蓄力滿即「當道」，強制迎戰（但可先去準備補血/換裝）。
+  // Phase H+ mini-BOSS 遭遇：蓄力滿即「現身」，提供迎戰入口，但不封鎖一般樓層——
+  // 玩家可繼續刷樓層，只有主動點「迎戰」才進入 BOSS 環節。
   if (bossPending) {
     const mb = mbState.miniBoss;
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `## ⚔️ 遭遇 mini-BOSS：${mb.emoji || ""} ${mb.name}！\n` +
+          `## ⚔️ mini-BOSS 現身：${mb.emoji || ""} ${mb.name}！\n` +
           `👹 HP ${mb.hp.toLocaleString()} ・ ATK ${mb.atk}\n` +
           `-# 體力 -${mb.staminaCost || 3} ・ 武器耐久 -${mb.weaponDurabilityCost || 4} ・ 必掉傳說碎片 ×1 ・ 屠龍累積 +1\n` +
-          `-# ⚡ 單次遭遇：打過一場（不論勝敗）就要重新刷 5F 才會再遇到。`,
+          `-# ⚡ 單次遭遇：打過一場（不論勝敗）就要重新刷 5F 才會再遇到。不想打可先繼續刷樓層，準備好再挑戰。`,
         ),
       )
       .addActionRowComponents(
