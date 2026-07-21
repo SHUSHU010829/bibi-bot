@@ -145,6 +145,21 @@ module.exports = {
       const guildId = interaction.guildId;
       const username = interaction.member?.displayName || interaction.user.username;
 
+      const pending = await client.redPacketGamesCollection.findOne({
+        guildId,
+        hostUserId: userId,
+        status: { $in: ["open", "closing"] },
+      });
+      if (pending) {
+        const grabbed = pending.grabbers?.length || 0;
+        const total = pending.displayCount ?? pending.totalCount;
+        const expiresEpoch = Math.floor(new Date(pending.expiresAt).getTime() / 1000);
+        return interaction.editReply(
+          `🧧 你上一包紅包還沒被搶完（已搶 **${grabbed}** / ${total} 包）！\n` +
+          `等它被搶光或 <t:${expiresEpoch}:R> 到期退回後，才能再發新的一包。`
+        );
+      }
+
       const actualPay = kind === "prank" ? prankFee : displayTotal;
 
       const before = await client.userCoinsCollection.findOne({ userId, guildId });
