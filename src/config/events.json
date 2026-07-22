@@ -215,6 +215,15 @@
             "limitPerUser": 5
           },
           {
+            "id": "midautumn_koi_coins",
+            "name": "金幣 2,000（錦鯉變現）",
+            "emoji": "🎏",
+            "desc": "抓到傳說錦鯉？直接變現一筆，比賣店划算",
+            "cost": { "fish": "koi", "qty": 1 },
+            "reward": { "type": "coins", "qty": 2000 },
+            "limitPerUser": 0
+          },
+          {
             "id": "midautumn_title",
             "name": "稱號「月光釣者」",
             "emoji": "🏅",
