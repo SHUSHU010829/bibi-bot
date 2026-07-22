@@ -6,6 +6,7 @@ const {
 } = require("discord.js");
 const logger = require("../../utils/logger");
 const { trackError } = require("../../utils/errorTracker");
+const { donation } = require("../../config");
 
 // SKU 的 item → MiningProfiles 欄位對照。獨立小額商品發放走這裡，不碰依金額換算的方案回饋。
 const SKU_ITEM_FIELD = {
@@ -49,8 +50,35 @@ module.exports = async function grantSkuPerks(client, { record, skuDef }) {
     );
   }
 
+  if (donation?.announceChannelId) {
+    try {
+      await announceSku(client, record, skuDef);
+      updates.announced = true;
+    } catch (err) {
+      logger.warn(
+        { source: "donation-grant", phase: "sku-announce", tradeNo: record.tradeNo, err: err.message },
+        "sku announce failed",
+      );
+    }
+  }
+
   return updates;
 };
+
+async function announceSku(client, record, skuDef) {
+  const channelId = donation.announceChannelId;
+  const channel =
+    client.channels.cache.get(channelId) ||
+    (await client.channels.fetch(channelId).catch(() => null));
+  if (!channel || !channel.isTextBased?.()) {
+    throw new Error(`announce channel ${channelId} not text-based`);
+  }
+  const content = `🎉 <@${record.userId}> 抖內 **NT$${record.amountNtd}** 購買 **🎟️ ${skuDef.name}**，讓逼逼機器人吃上一頓飯啦！十分感謝你！`;
+  await channel.send({
+    content,
+    allowedMentions: { users: [record.userId] },
+  });
+}
 
 async function sendSkuDm(client, record, skuDef) {
   const user =
