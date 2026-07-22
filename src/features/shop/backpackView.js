@@ -116,6 +116,14 @@ function parseUseTreasureMapId(customId) {
   return customId.slice(USE_TREASURE_MAP_PREFIX.length);
 }
 
+// 連續挖礦通行證「啟用」按鈕：mining_activate_pass_<ownerId>
+const ACTIVATE_MINING_PASS_PREFIX = "mining_activate_pass_";
+
+function parseActivateMiningPassId(customId) {
+  if (!customId || !customId.startsWith(ACTIVATE_MINING_PASS_PREFIX)) return null;
+  return customId.slice(ACTIVATE_MINING_PASS_PREFIX.length);
+}
+
 // customId 格式：mining_use_stamina_potion_<tier>_<ownerId>（<tier> ∈ small/medium/large）
 // 舊格式 mining_use_stamina_potion_<ownerId>（無 tier）仍相容 → tier=null（用持有中最大的）。
 function parseUseStaminaPotionId(customId) {
@@ -637,6 +645,27 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           `🎫 **CD 縮短券** ×${ticketCount}\n-# 立即 -${reductionMin} 分・在 \`/挖礦\` 或 \`/釣魚\` 冷卻訊息上按使用`
         )
       );
+      {
+        const passCount = profile.mining_pass_count || 0;
+        const passActive = (profile.batch_pass_expires_at || 0) > now;
+        if (passCount > 0 || passActive) {
+          const passText = passActive
+            ? `🎟️ **連續挖礦通行證** ×${passCount}\n-# ✅ 生效中：<t:${Math.floor(profile.batch_pass_expires_at / 1000)}:R> 到期・可無視等級連續挖礦`
+            : `🎟️ **連續挖礦通行證** ×${passCount}\n-# 啟用後 1 小時內無視等級連續挖礦（仍照冷卻扣 CD 縮短券）`;
+          container.addSectionComponents(
+            new SectionBuilder()
+              .addTextDisplayComponents(new TextDisplayBuilder().setContent(passText))
+              .setButtonAccessory(
+                new ButtonBuilder()
+                  .setCustomId(`${ACTIVATE_MINING_PASS_PREFIX}${userId}`)
+                  .setLabel(passActive ? "生效中" : "啟用")
+                  .setEmoji("🎟️")
+                  .setStyle(ButtonStyle.Primary)
+                  .setDisabled(passActive || passCount < 1),
+              ),
+          );
+        }
+      }
       // 體力藥水已移到「⚔️ 地下城」分類顯示，這裡不再重複
       {
         const pickaxeMax = profile.pickaxe_max_durability;
@@ -1208,6 +1237,8 @@ module.exports = {
   USE_STAMINA_POTION_PREFIX,
   USE_TREASURE_MAP_PREFIX,
   parseUseTreasureMapId,
+  ACTIVATE_MINING_PASS_PREFIX,
+  parseActivateMiningPassId,
   parseUseStaminaPotionId,
   UNIFIED_EQUIP_ID,
 };

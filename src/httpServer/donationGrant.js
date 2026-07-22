@@ -2,6 +2,7 @@ const logger = require("../utils/logger");
 const { trackError, trackSuccess } = require("../utils/errorTracker");
 const { tierForAmount } = require("../features/donation/code");
 const grantDonationPerks = require("../features/donation/grantDonationPerks");
+const grantSkuPerks = require("../features/donation/grantSkuPerks");
 const { computePerksSummary } = require("../features/donation/perksSummary");
 const { donation } = require("../config");
 
@@ -122,6 +123,122 @@ module.exports = function createDonationGrantHandler(client) {
       );
       // ok:true matched:false：webhook 不需重送（會永遠對不到），等人工處理
       return res.status(200).json({ ok: true, matched: false });
+    }
+
+    // 3a. 獨立小額商品（SKU）：session 帶了 sku → 走商品發放，不套依金額換算的方案回饋。
+    const skuDef = session.sku ? donation?.skus?.[session.sku] : null;
+    if (skuDef) {
+      const grantedAt = new Date();
+      const meetsFloor = amountNtd >= (skuDef.minAmount || 0);
+      const skuPerks = meetsFloor
+        ? { sku: session.sku, name: skuDef.name, item: skuDef.item, qty: skuDef.qty }
+        : null;
+
+      try {
+        await records.insertOne({
+          tradeNo,
+          sessionId: session.sessionId,
+          userId: session.userId,
+          guildId: session.guildId,
+          amountNtd: Math.floor(amountNtd),
+          tierId: null,
+          skuId: session.sku,
+          platform,
+          patronName,
+          patronNote,
+          perks: skuPerks,
+          grantedAt,
+          coinsGranted: false,
+          roleGranted: false,
+          itemsGranted: false,
+          buffGranted: false,
+          themeGranted: false,
+          titleGranted: false,
+          announced: false,
+          dmSent: false,
+        });
+      } catch (err) {
+        if (err && err.code === 11000) {
+          const racedRecord = await records.findOne({ tradeNo }).catch(() => null);
+          return res.status(200).json({
+            ok: true,
+            matched: true,
+            alreadyGranted: true,
+            perks: racedRecord?.perks || null,
+          });
+        }
+        logger.error(
+          { source: "donation-grant", tradeNo, err: err.message },
+          "sku record insert failed",
+        );
+        trackError("donation-grant", err, { phase: "sku-record-insert", tradeNo });
+        return res.status(500).json({ error: "record insert failed" });
+      }
+
+      await sessions
+        .updateOne(
+          { sessionId: session.sessionId },
+          { $set: { status: "completed", completedAt: grantedAt, tradeNo } },
+        )
+        .catch((err) =>
+          logger.error(
+            { source: "donation-grant", sessionId: session.sessionId, err: err.message },
+            "session update failed",
+          ),
+        );
+
+      let skuUpdates = {};
+      if (meetsFloor) {
+        const record = {
+          tradeNo,
+          sessionId: session.sessionId,
+          userId: session.userId,
+          guildId: session.guildId,
+          amountNtd: Math.floor(amountNtd),
+          platform,
+          patronName,
+          patronNote,
+        };
+        try {
+          skuUpdates = await grantSkuPerks(client, { record, skuDef });
+        } catch (err) {
+          logger.error(
+            { source: "donation-grant", tradeNo, err: err.message, stack: err.stack },
+            "grantSkuPerks threw (outer)",
+          );
+          trackError("donation-grant", err, { phase: "grant-sku-outer", tradeNo });
+        }
+      } else {
+        logger.warn(
+          { source: "donation-grant", tradeNo, amountNtd, sku: session.sku, floor: skuDef.minAmount },
+          "sku paid amount below floor → no grant",
+        );
+      }
+
+      if (Object.keys(skuUpdates).length > 0) {
+        await records
+          .updateOne({ tradeNo }, { $set: { ...skuUpdates, updatedAt: new Date() } })
+          .catch((err) =>
+            logger.warn(
+              { source: "donation-grant", tradeNo, err: err.message },
+              "sku record flag update failed (non-fatal)",
+            ),
+          );
+      }
+
+      logger.info(
+        { source: "donation-grant", tradeNo, sku: session.sku, amountNtd, meetsFloor, grants: skuUpdates },
+        "sku granted",
+      );
+      trackSuccess("donation-grant");
+
+      return res.status(200).json({
+        ok: true,
+        matched: true,
+        alreadyGranted: false,
+        perks: skuPerks,
+        grants: skuUpdates,
+      });
     }
 
     // 3. 找到 session：依「實際付款金額」判方案（donor 在付款頁可能改金額）
