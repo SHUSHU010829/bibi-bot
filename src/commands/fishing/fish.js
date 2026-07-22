@@ -191,7 +191,16 @@ function buildBatchLockedView(required, current, passCount = 0) {
         `-# 升等到 Lv.${required} 就能一次釣很多竿！`,
       ),
     )
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(passHint));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(passHint))
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel("前往購買連續通行證")
+          .setEmoji("🎟️")
+          .setStyle(ButtonStyle.Link)
+          .setURL("https://bibi.shushu.tw/donate"),
+      ),
+    );
 }
 
 function buildBatchNoTicketView() {
