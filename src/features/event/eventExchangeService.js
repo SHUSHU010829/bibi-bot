@@ -68,6 +68,14 @@ async function grantReward(client, { userId, guildId, username, member, exchange
     );
     return `🎟️ 連續通行證 ×${rw.qty}`;
   }
+  if (rw.type === "ore") {
+    await client.miningProfilesCollection.updateOne(
+      { userId, guildId },
+      { $inc: { [`backpack.${rw.oreKey}`]: rw.qty }, $set: { updatedAt: new Date() } },
+    );
+    const def = eventEngine.resolveOreDef(rw.oreKey) || {};
+    return `${def.emoji || "⛏️"} ${def.name || rw.oreKey} ×${rw.qty}`;
+  }
   if (rw.type === "title") {
     await gameTitleService
       .grant(client, {

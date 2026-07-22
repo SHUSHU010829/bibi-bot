@@ -110,7 +110,7 @@
             "name": "連續通行證 ×1",
             "emoji": "🎟️",
             "desc": "解鎖一小時連續挖礦 / 連續釣魚",
-            "cost": { "fish": "pufferfish_king", "qty": 2 },
+            "cost": { "fish": "pufferfish_king", "qty": 4 },
             "reward": { "type": "batchPass", "qty": 1 },
             "limitPerUser": 3
           },
@@ -121,6 +121,15 @@
             "desc": "把限定魚直接換成現金",
             "cost": { "fish": "rainbow_trout", "qty": 5 },
             "reward": { "type": "coins", "qty": 2000 },
+            "limitPerUser": 0
+          },
+          {
+            "id": "summer_diamond",
+            "name": "鑽石 ×1",
+            "emoji": "💎",
+            "desc": "用限定魚換一顆傳說鑽石",
+            "cost": { "fish": "rainbow_trout", "qty": 6 },
+            "reward": { "type": "ore", "oreKey": "diamond", "qty": 1 },
             "limitPerUser": 0
           },
           {
@@ -201,7 +210,7 @@
             "name": "連續通行證 ×1",
             "emoji": "🎟️",
             "desc": "解鎖一小時連續挖礦 / 連續釣魚",
-            "cost": { "fish": "moonfish", "qty": 5 },
+            "cost": { "fish": "moonfish", "qty": 8 },
             "reward": { "type": "batchPass", "qty": 1 },
             "limitPerUser": 3
           },
@@ -212,6 +221,15 @@
             "desc": "傳說錦鯉直接變現",
             "cost": { "fish": "koi", "qty": 1 },
             "reward": { "type": "coins", "qty": 3000 },
+            "limitPerUser": 0
+          },
+          {
+            "id": "midautumn_diamond",
+            "name": "鑽石 ×2",
+            "emoji": "💎",
+            "desc": "獻上傳說錦鯉，換兩顆鑽石",
+            "cost": { "fish": "koi", "qty": 1 },
+            "reward": { "type": "ore", "oreKey": "diamond", "qty": 2 },
             "limitPerUser": 0
           },
           {

@@ -9,6 +9,7 @@ const {
   MessageFlags,
 } = require("discord.js");
 const eventExchangeService = require("./eventExchangeService");
+const eventEngine = require("./eventEngine");
 
 const EXCHANGE_BTN_PREFIX = "evt_exch_";
 const MAX_ITEMS = 10; // 元件上限保護：每項 3 元件，10 項 + 標題約 33 < 40
@@ -23,6 +24,10 @@ function rewardLabel(reward) {
       return `🎟️ 連續通行證 ×${reward.qty}`;
     case "title":
       return `🏅 稱號「${eventExchangeService.titleName(reward.titleId)}」`;
+    case "ore": {
+      const def = eventEngine.resolveOreDef(reward.oreKey) || {};
+      return `${def.emoji || "⛏️"} ${def.name || reward.oreKey} ×${reward.qty}`;
+    }
     default:
       return "獎勵";
   }
