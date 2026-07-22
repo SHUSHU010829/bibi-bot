@@ -694,7 +694,16 @@ function buildBatchLockedView(required, current, passCount = 0) {
         "-# 多打工、發言、聊天升等到 Lv." + required + " 就能一次挖很多次！",
       ),
     )
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(passHint));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(passHint))
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel("前往購買連續通行證")
+          .setEmoji("🎟️")
+          .setStyle(ButtonStyle.Link)
+          .setURL("https://bibi.shushu.tw/donate"),
+      ),
+    );
 }
 
 function buildBatchNoTicketView() {
