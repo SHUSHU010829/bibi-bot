@@ -11,14 +11,17 @@ const {
 } = require("./cookService");
 const grantCoins = require("../economy/grantCoins");
 const grantActivityXp = require("../leveling/grantActivityXp");
+const eventEngine = require("../event/eventEngine");
 const bus = require("../eventBus");
 
 // 依 rareBonus 調整後的掉落權重：weight * (1 + rareBonus * rareFactor)。
 // 比照挖礦的 dropTable.adjustedWeights，讓更好的釣竿 / 海鮮拼盤偏向稀有魚。
-function adjustedFishWeights(locWeights, rareBonus = 0) {
+// defLookup：由呼叫端提供 key → def 的解析（含限時活動限定魚），預設查基礎魚。
+function adjustedFishWeights(locWeights, rareBonus = 0, defLookup) {
+  const lookup = defLookup || ((key) => fishing?.fish?.[key]);
   const weights = {};
   for (const [key, base] of Object.entries(locWeights || {})) {
-    const factor = fishing?.fish?.[key]?.rareFactor || 0;
+    const factor = lookup(key)?.rareFactor || 0;
     weights[key] = base * (1 + rareBonus * factor);
   }
   return weights;
@@ -170,9 +173,11 @@ async function fish(client, { userId, guildId, location = "stream", member, user
   // 世界事件「漁港補給」buff：整數百分比 → 小數
   const worldEventBuffs = require("../world_event/worldEventBuffs");
   const worldFishSuccess = (worldEventBuffs.getCachedBuffs().fishing_success_rate_pct || 0) / 100;
+  // 限時活動「魚汛」上鉤加成（如夏日魚汛祭 +12%）
+  const eventFishSuccess = eventEngine.getFishingSuccessBonus();
   const successRate = Math.min(
     cap,
-    base + (rodDef.successBonus || 0) + (foodFish.success || 0) + netBonus + worldFishSuccess
+    base + (rodDef.successBonus || 0) + (foodFish.success || 0) + netBonus + worldFishSuccess + eventFishSuccess
   );
 
   // 釣魚計次都會消耗一次 fish_fortune（不論成功失敗），手感 buff 是「次數制」
@@ -339,13 +344,19 @@ async function fish(client, { userId, guildId, location = "stream", member, user
     };
   }
 
-  // ── 釣到魚 ──：依稀有度偏移後的權重抽魚
-  const rareBonus = (rodDef.rareBonus || 0) + (foodFish.rare || 0);
-  const weights = adjustedFishWeights(fishing.dropTable?.[location] || {}, rareBonus);
+  // ── 釣到魚 ──：依稀有度偏移後的權重抽魚。
+  // 限時活動：限定魚混進該釣點魚群（getEffectiveFishWeights），活動「魚汛」再給稀有偏移加成。
+  const rareBonus =
+    (rodDef.rareBonus || 0) + (foodFish.rare || 0) + eventEngine.getFishingRareBonus();
+  const weights = adjustedFishWeights(
+    eventEngine.getEffectiveFishWeights(location),
+    rareBonus,
+    (key) => eventEngine.resolveFishDef(key),
+  );
   const fishKey = weightedRandom(weights);
   if (!fishKey) return { ok: false, reason: "no_drop" };
 
-  const fishDef = fishing.fish?.[fishKey] || {};
+  const fishDef = eventEngine.resolveFishDef(fishKey) || fishing.fish?.[fishKey] || {};
   let qty = 1 + (rodDef.qtyBonus || 0);
   // 豐收：依釣竿 bonusChance 機率多釣一條（比照鎬子的數量加成手感）
   let bumperCatch = false;

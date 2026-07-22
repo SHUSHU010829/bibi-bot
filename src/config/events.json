@@ -51,6 +51,76 @@
           "miningLuckBonus": 0.1
         },
         "announcementText": "🎆 新年快樂！今天一整天挖礦幸運 +10%，把握良辰！"
+      },
+      {
+        "id": "summer_fish_run_2026",
+        "name": "🎏 夏日魚汛祭",
+        "enabled": true,
+        "description": "溪流與海邊魚群暴衝！釣魚上鉤率 +12%、稀有偏移 +0.1，限定魚 🌈 彩虹鱒、🐡 河豚王 混入魚群。",
+        "startAt": "2026-07-01T00:00:00",
+        "endAt": "2026-08-31T23:59:59",
+        "effects": {
+          "fishingSuccessBonus": 0.12,
+          "fishingRareBonus": 0.1,
+          "extraFishes": [
+            {
+              "id": "rainbow_trout",
+              "name": "彩虹鱒",
+              "emoji": "🌈",
+              "rarity": "限定",
+              "price": 320,
+              "rareFactor": 6,
+              "weight": 10,
+              "locations": "all"
+            },
+            {
+              "id": "pufferfish_king",
+              "name": "河豚王",
+              "emoji": "🐡",
+              "rarity": "限定",
+              "price": 520,
+              "rareFactor": 8,
+              "weight": 4,
+              "locations": ["stream", "sea"]
+            }
+          ]
+        },
+        "announcementText": "🎏 **夏日魚汛祭** 開跑！魚群暴衝，上鉤率 +12%，限定 🌈 彩虹鱒、🐡 河豚王 已混入魚群，快用 `/釣魚` 撈一波！"
+      },
+      {
+        "id": "midautumn_moonfish_2026",
+        "name": "🌕 中秋月光夜釣",
+        "enabled": true,
+        "description": "月黑風高好釣魚！稀有偏移大幅 +0.2、上鉤率 +5%，月光下浮現限定 🌝 月光魚，更有機會釣起傳說 🎏 錦鯉。",
+        "startAt": "2026-09-25T00:00:00",
+        "endAt": "2026-09-28T00:00:00",
+        "effects": {
+          "fishingSuccessBonus": 0.05,
+          "fishingRareBonus": 0.2,
+          "extraFishes": [
+            {
+              "id": "moonfish",
+              "name": "月光魚",
+              "emoji": "🌝",
+              "rarity": "限定",
+              "price": 450,
+              "rareFactor": 7,
+              "weight": 8,
+              "locations": "all"
+            },
+            {
+              "id": "koi",
+              "name": "錦鯉",
+              "emoji": "🎏",
+              "rarity": "傳說",
+              "price": 900,
+              "rareFactor": 10,
+              "weight": 2,
+              "locations": "all"
+            }
+          ]
+        },
+        "announcementText": "🌕 **中秋月光夜釣** 今夜登場！稀有偏移 +0.2，月光下 🌝 月光魚 浮現，手氣夠好還能釣起傳說 🎏 錦鯉，`/釣魚` 賞月去！"
       }
     ]
   }

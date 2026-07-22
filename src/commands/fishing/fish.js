@@ -691,11 +691,14 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
     const { fishDef, locDef, newCooldownAt } = result;
     const readyEpoch = Math.floor(newCooldownAt / 1000);
 
-    const rarityColor = {
-      普通: 0x7fb2d8,
-      稀有: 0x5865f2,
-      傳說: 0xff6b6b,
-    }[fishDef.rarity || "普通"] ?? 0x7fb2d8;
+    const isEventFish = !!fishDef.event;
+    const rarityColor = isEventFish
+      ? 0xf1c40f
+      : {
+          普通: 0x7fb2d8,
+          稀有: 0x5865f2,
+          傳說: 0xff6b6b,
+        }[fishDef.rarity || "普通"] ?? 0x7fb2d8;
 
     const qty = result.qty || 1;
     const warn = fishing.durabilityWarn || {};
@@ -720,7 +723,9 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       .setAccentColor(rarityColor)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ${fishDef.emoji || "🐟"} 釣到了！**${fishDef.name || result.fish}**${qty > 1 ? ` ×${qty}` : ""}`
+          isEventFish
+            ? `# 🎉 限定！${fishDef.emoji || "🐟"} 釣到了 **${fishDef.name || result.fish}**${qty > 1 ? ` ×${qty}` : ""}！`
+            : `# ${fishDef.emoji || "🐟"} 釣到了！**${fishDef.name || result.fish}**${qty > 1 ? ` ×${qty}` : ""}`
         )
       )
       .addSeparatorComponents(new SeparatorBuilder())

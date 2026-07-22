@@ -117,7 +117,7 @@ async function previewSell(client, { userId, guildId, itemType, itemKey, qtyArg 
     if (!fishing?.enabled) {
       return { ok: false, error: errorContainer("🔧 釣魚系統尚未啟動", null, "請稍後再試或聯絡管理員") };
     }
-    const def = fishing.fish?.[itemKey];
+    const def = eventEngine.resolveFishDef(itemKey) || fishing.fish?.[itemKey];
     if (!def) {
       return { ok: false, error: errorContainer("❌ 找不到這種魚", `key=${itemKey}`, "請從選單重新選擇") };
     }
