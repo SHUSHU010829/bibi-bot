@@ -141,7 +141,7 @@
         "enabled": true,
         "description": "月黑風高好釣魚！稀有偏移大幅 +0.2、上鉤率 +5%，月光下浮現限定 🌝 月光魚，更有機會釣起傳說 🎏 錦鯉。",
         "startAt": "2026-09-25T00:00:00",
-        "endAt": "2026-10-02T00:00:00",
+        "endAt": "2026-10-09T00:00:00",
         "effects": {
           "fishingSuccessBonus": 0.05,
           "fishingRareBonus": 0.2,
@@ -207,11 +207,11 @@
           },
           {
             "id": "midautumn_diamond",
-            "name": "鑽石 ×2",
+            "name": "鑽石 ×1",
             "emoji": "💎",
-            "desc": "獻上傳說錦鯉，換兩顆鑽石",
-            "cost": { "fish": "koi", "qty": 1 },
-            "reward": { "type": "ore", "oreKey": "diamond", "qty": 2 },
+            "desc": "用月光魚換一顆傳說鑽石",
+            "cost": { "fish": "moonfish", "qty": 2 },
+            "reward": { "type": "ore", "oreKey": "diamond", "qty": 1 },
             "limitPerUser": 5
           },
           {
