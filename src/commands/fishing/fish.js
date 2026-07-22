@@ -170,7 +170,11 @@ function buildBatchCountModal({ ownerId, location, maxCount }) {
   return modal;
 }
 
-function buildBatchLockedView(required, current) {
+function buildBatchLockedView(required, current, passCount = 0) {
+  const passHint =
+    passCount > 0
+      ? `-# 你有 **連續通行證** ×${passCount}，到 \`/背包\` 按「啟用」即可立刻連續釣魚 1 小時（無視等級）！`
+      : "-# 想提前解鎖？可購買 **連續通行證**，啟用後 1 小時內無視等級連續挖礦與連續釣魚。";
   return new ContainerBuilder()
     .setAccentColor(0xe74c3c)
     .addTextDisplayComponents(
@@ -186,7 +190,8 @@ function buildBatchLockedView(required, current) {
       new TextDisplayBuilder().setContent(
         `-# 升等到 Lv.${required} 就能一次釣很多竿！`,
       ),
-    );
+    )
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(passHint));
 }
 
 function buildBatchNoTicketView() {
@@ -952,7 +957,7 @@ async function runFishBatch(client, interaction, { location = "stream", count })
     if (!result.ok) {
       if (result.reason === "level_locked") {
         return interaction.editReply({
-          components: [buildBatchLockedView(result.required, result.current)],
+          components: [buildBatchLockedView(result.required, result.current, result.passCount || 0)],
           flags: MessageFlags.IsComponentsV2,
         });
       }

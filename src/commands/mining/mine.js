@@ -676,8 +676,8 @@ function buildBatchRepairRow(ownerId, repairTool) {
 function buildBatchLockedView(required, current, passCount = 0) {
   const passHint =
     passCount > 0
-      ? `-# 你有 **連續挖礦通行證** ×${passCount}，到 \`/背包\` 按「啟用」即可立刻連續挖礦 1 小時（無視等級）！`
-      : "-# 想提前解鎖？可購買 **連續挖礦通行證**，啟用後 1 小時內無視等級連續挖礦。";
+      ? `-# 你有 **連續通行證** ×${passCount}，到 \`/背包\` 按「啟用」即可立刻連續挖礦 1 小時（無視等級）！`
+      : "-# 想提前解鎖？可購買 **連續通行證**，啟用後 1 小時內無視等級連續挖礦與連續釣魚。";
   return new ContainerBuilder()
     .setAccentColor(0xe74c3c)
     .addTextDisplayComponents(

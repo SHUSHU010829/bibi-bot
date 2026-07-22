@@ -1,7 +1,7 @@
 require("colors");
 const { DateTime } = require("luxon");
 const { fishing, craft } = require("../../config");
-const { getOrCreate, fishBagCapacity, fishBagUsed } = require("../mining/miningProfile");
+const { getOrCreate, fishBagCapacity, fishBagUsed, isBatchPassActive } = require("../mining/miningProfile");
 const { isBagLimitEnforced } = require("../mining/bagStatus");
 const { weightedRandom } = require("../mining/weightedRandom");
 const {
@@ -445,14 +445,20 @@ async function fishBatch(client, { userId, guildId, member, username, location =
 
   let batchPlayerLevel = null;
   const unlockLevel = bcfg.unlockLevel || 0;
-  if (unlockLevel > 0) {
+  if (unlockLevel > 0 && !isBatchPassActive(profile)) {
     const userLevel = await client.userLevelsCollection
       ?.findOne({ userId, guildId })
       .catch(() => null);
     const lvl = userLevel?.level ?? 0;
     batchPlayerLevel = lvl;
     if (lvl < unlockLevel) {
-      return { ok: false, reason: "level_locked", required: unlockLevel, current: lvl };
+      return {
+        ok: false,
+        reason: "level_locked",
+        required: unlockLevel,
+        current: lvl,
+        passCount: profile.batch_pass_count || 0,
+      };
     }
   }
 

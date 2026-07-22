@@ -74,7 +74,7 @@ async function renderOverview(container, client, { userId, guildId, member }) {
   const passExpiresAt = miningProfileForStamina?.batch_pass_expires_at || 0;
   if (passExpiresAt > Date.now()) {
     overviewLines.push(
-      `**🎟️ 連續挖礦通行證**：生效中（<t:${Math.floor(passExpiresAt / 1000)}:R> 到期）`,
+      `**🎟️ 連續通行證**：生效中（<t:${Math.floor(passExpiresAt / 1000)}:R> 到期）`,
     );
   }
   if (s.farmYieldBonus > 0)
