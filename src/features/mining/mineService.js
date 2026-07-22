@@ -1,7 +1,7 @@
 require("colors");
 const { DateTime } = require("luxon");
 const { mining, craft } = require("../../config");
-const { getOrCreate, backpackCapacity, backpackUsed, ORE_KEYS } = require("./miningProfile");
+const { getOrCreate, backpackCapacity, backpackUsed, ORE_KEYS, isBatchPassActive } = require("./miningProfile");
 const dropTable = require("./dropTable");
 const unifiedBuffResolver = require("../buff/buffResolver");
 const encounterService = require("./encounterService");
@@ -12,20 +12,16 @@ const { priceOf } = require("./overflowConfirm");
 const buildingService = require("../guild_club/buildingService");
 const bus = require("../eventBus");
 
-// 連續挖礦通行證：付費啟用後 1 小時內無視 Lv.100 解鎖門檻（存 expires_at，用時即時判定）。
-function isBatchPassActive(profile) {
-  return (profile?.batch_pass_expires_at || 0) > Date.now();
-}
-
-// 啟用一張連續挖礦通行證：扣一張、寫入 expires_at。已在生效中則不重複啟用（避免浪費）。
-async function activateMiningPass(client, { userId, guildId }) {
+// 啟用一張連續通行證：扣一張、寫入 expires_at（同時解鎖連續挖礦與連續釣魚）。
+// 已在生效中則不重複啟用（避免浪費）。isBatchPassActive 定義於 miningProfile（挖礦／釣魚共用）。
+async function activateBatchPass(client, { userId, guildId }) {
   if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
   const profile = await getOrCreate(client, userId, guildId);
   const now = Date.now();
   if ((profile.batch_pass_expires_at || 0) > now) {
     return { ok: false, reason: "already_active", expiresAt: profile.batch_pass_expires_at };
   }
-  if ((profile.mining_pass_count || 0) < 1) {
+  if ((profile.batch_pass_count || 0) < 1) {
     return { ok: false, reason: "no_pass" };
   }
   const durationMs = mining?.batch?.passDurationMs || 3600000;
@@ -34,16 +30,16 @@ async function activateMiningPass(client, { userId, guildId }) {
     {
       userId,
       guildId,
-      mining_pass_count: { $gte: 1 },
+      batch_pass_count: { $gte: 1 },
       $or: [{ batch_pass_expires_at: { $lte: now } }, { batch_pass_expires_at: { $exists: false } }],
     },
-    { $inc: { mining_pass_count: -1 }, $set: { batch_pass_expires_at: expiresAt, updatedAt: new Date() } },
+    { $inc: { batch_pass_count: -1 }, $set: { batch_pass_expires_at: expiresAt, updatedAt: new Date() } },
   );
   if (res.modifiedCount === 0) return { ok: false, reason: "retry" };
   const after = await client.miningProfilesCollection
-    .findOne({ userId, guildId }, { projection: { mining_pass_count: 1 } })
+    .findOne({ userId, guildId }, { projection: { batch_pass_count: 1 } })
     .catch(() => null);
-  return { ok: true, expiresAt, passesLeft: after?.mining_pass_count || 0 };
+  return { ok: true, expiresAt, passesLeft: after?.batch_pass_count || 0 };
 }
 
 // 執行一次挖礦。回傳結果物件交由指令層呈現（含彩虹石公告與耐久 DM 所需資料）。
@@ -357,7 +353,7 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
         reason: "level_locked",
         required: unlockLevel,
         current: lvl,
-        passCount: profile.mining_pass_count || 0,
+        passCount: profile.batch_pass_count || 0,
       };
     }
   }
@@ -1198,7 +1194,7 @@ module.exports = {
   mine,
   mineBatch,
   isBatchPassActive,
-  activateMiningPass,
+  activateBatchPass,
   useCdTicket,
   getPickaxeRepairCost,
   getWeaponRepairCost,

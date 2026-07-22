@@ -9,11 +9,11 @@ const { trackError } = require("../../utils/errorTracker");
 
 // SKU 的 item → MiningProfiles 欄位對照。獨立小額商品發放走這裡，不碰依金額換算的方案回饋。
 const SKU_ITEM_FIELD = {
-  mining_pass: "mining_pass_count",
+  batch_pass: "batch_pass_count",
 };
 
 /**
- * 發放獨立商品（SKU）。目前僅有「連續挖礦通行證」。
+ * 發放獨立商品（SKU）。目前僅有「連續通行證」。
  * 呼叫端已保證：tradeNo 冪等、實付金額 ≥ skuDef.minAmount、session 已翻 completed。
  * 回傳 record updates（哪些欄位翻 true）。
  */
@@ -68,8 +68,8 @@ async function sendSkuDm(client, record, skuDef) {
     `## 🎟️ ${skuDef.name}`,
     `- 已放入你的背包 ×${skuDef.qty}`,
     "",
-    "到 `/背包` 挖礦道具區按「啟用」，啟用後 1 小時內無視等級即可連續挖礦。",
-    "-# 連續挖礦仍照冷卻扣 CD 縮短券，記得先備好券！",
+    "到 `/背包` 挖礦道具區按「啟用」，啟用後 1 小時內無視等級即可連續挖礦與連續釣魚。",
+    "-# 連續操作仍照冷卻扣 CD 縮短券，記得先備好券！",
   ];
 
   const container = new ContainerBuilder()

@@ -18,7 +18,7 @@ const { deferReplySafe } = require("../../utils/safeAck");
 const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const fishCmd = require("../../commands/fishing/fish");
-const { getOrCreate } = require("../../features/mining/miningProfile");
+const { getOrCreate, isBatchPassActive } = require("../../features/mining/miningProfile");
 const { repairRodWithMaterials } = require("../../features/mining/mineService");
 const { materialLabel } = require("../../features/mining/craftMaterials");
 
@@ -160,13 +160,16 @@ async function openBatchCountModal(client, interaction, { ownerId, location }) {
   const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
 
   const unlockLevel = fishCmd.batchUnlockLevel();
-  if (unlockLevel > 0) {
+  if (unlockLevel > 0 && !isBatchPassActive(profile)) {
     const userLevel = await client.userLevelsCollection
       ?.findOne({ userId: interaction.user.id, guildId: interaction.guildId })
       .catch(() => null);
     const lvl = userLevel?.level ?? 0;
     if (lvl < unlockLevel) {
-      return replyEphemeralView(interaction, fishCmd.buildBatchLockedView(unlockLevel, lvl));
+      return replyEphemeralView(
+        interaction,
+        fishCmd.buildBatchLockedView(unlockLevel, lvl, profile.batch_pass_count || 0),
+      );
     }
   }
 

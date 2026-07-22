@@ -53,7 +53,7 @@ module.exports = function createDonationSessionHandler(client) {
     if (platform !== "ecpay" && platform !== "opay") {
       return res.status(400).json({ error: "invalid platform" });
     }
-    // sku（獨立小額商品，如連續挖礦通行證）非必填；有帶就必須是已定義的商品。
+    // sku（獨立小額商品，如連續通行證）非必填；有帶就必須是已定義的商品。
     if (sku && !donation?.skus?.[sku]) {
       return res.status(400).json({ error: "invalid sku" });
     }

@@ -21,7 +21,7 @@ function defaultProfile(userId, guildId) {
     cd_ticket_count: 0,
     cd_ticket_used_date: null,
     cd_ticket_used_count: 0,
-    mining_pass_count: 0,
+    batch_pass_count: 0,
     batch_pass_expires_at: 0,
     backpack_bonus_slots: 0,
     mine_count_total: 0,
@@ -137,7 +137,7 @@ function normalize(doc) {
   doc.cd_ticket_count ??= 0;
   if (doc.cd_ticket_used_date === undefined) doc.cd_ticket_used_date = null;
   doc.cd_ticket_used_count ??= 0;
-  doc.mining_pass_count ??= 0;
+  doc.batch_pass_count ??= 0;
   doc.batch_pass_expires_at ??= 0;
   doc.backpack_bonus_slots ??= 0;
   doc.mine_count_total ??= 0;
@@ -264,9 +264,16 @@ function veggieBagUsed(profile) {
   return VEGGIE_KEYS.reduce((sum, k) => sum + (bag[k] || 0), 0);
 }
 
+// 連續通行證：付費啟用後於 expires_at 前無視挖礦／釣魚的批次解鎖等級門檻。
+// 挖礦與釣魚共用同一份 MiningProfiles 文件與同一個到期時間，用時即時判定。
+function isBatchPassActive(profile) {
+  return (profile?.batch_pass_expires_at || 0) > Date.now();
+}
+
 module.exports = {
   defaultProfile,
   normalize,
+  isBatchPassActive,
   getOrCreate,
   backpackCapacity,
   backpackUsed,

@@ -1,5 +1,5 @@
-// 從 /背包 挖礦道具區點「啟用」連續挖礦通行證
-// customId: mining_activate_pass_<ownerId>
+// 從 /背包 挖礦道具區點「啟用」連續通行證（同時解鎖連續挖礦與連續釣魚）
+// customId: batch_activate_pass_<ownerId>
 
 require("colors");
 const {
@@ -10,8 +10,8 @@ const {
 } = require("discord.js");
 
 const {
-  ACTIVATE_MINING_PASS_PREFIX,
-  parseActivateMiningPassId,
+  ACTIVATE_BATCH_PASS_PREFIX,
+  parseActivateBatchPassId,
   buildBackpackView,
 } = require("../../features/shop/backpackView");
 const mineService = require("../../features/mining/mineService");
@@ -20,9 +20,9 @@ const { deferUpdateSafe } = require("../../utils/safeAck");
 
 module.exports = async (client, interaction) => {
   if (!interaction.isButton()) return;
-  if (!interaction.customId?.startsWith(ACTIVATE_MINING_PASS_PREFIX)) return;
+  if (!interaction.customId?.startsWith(ACTIVATE_BATCH_PASS_PREFIX)) return;
 
-  const ownerId = parseActivateMiningPassId(interaction.customId);
+  const ownerId = parseActivateBatchPassId(interaction.customId);
   if (interaction.user.id !== ownerId) {
     return interaction.reply({
       content: "❌ 這不是你的背包！",
@@ -33,7 +33,7 @@ module.exports = async (client, interaction) => {
   if (!(await deferUpdateSafe(interaction))) return;
 
   try {
-    const result = await mineService.activateMiningPass(client, {
+    const result = await mineService.activateBatchPass(client, {
       userId: interaction.user.id,
       guildId: interaction.guildId,
     });
@@ -47,23 +47,23 @@ module.exports = async (client, interaction) => {
           .addSeparatorComponents(new SeparatorBuilder())
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              `目前的連續挖礦通行證 <t:${Math.floor(result.expiresAt / 1000)}:R> 才到期，先用完再啟用下一張。`,
+              `目前的連續通行證 <t:${Math.floor(result.expiresAt / 1000)}:R> 才到期，先用完再啟用下一張。`,
             ),
           )
           .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent("-# 直接去 `/挖礦` 按「連續挖礦」吧！"),
+            new TextDisplayBuilder().setContent("-# 直接去 `/挖礦` 或 `/釣魚` 按「連續」吧！"),
           );
       } else if (result.reason === "no_pass") {
         c.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("# 🎟️ 沒有連續挖礦通行證"),
+          new TextDisplayBuilder().setContent("# 🎟️ 沒有連續通行證"),
         )
           .addSeparatorComponents(new SeparatorBuilder())
           .addTextDisplayComponents(
-            new TextDisplayBuilder().setContent("你目前沒有可啟用的連續挖礦通行證。"),
+            new TextDisplayBuilder().setContent("你目前沒有可啟用的連續通行證。"),
           )
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              "-# 可到贊助頁購買，啟用後 1 小時內無視等級連續挖礦。",
+              "-# 可到贊助頁購買，啟用後 1 小時內無視等級連續挖礦與連續釣魚。",
             ),
           );
       } else {
@@ -85,17 +85,17 @@ module.exports = async (client, interaction) => {
     const c = new ContainerBuilder()
       .setAccentColor(0x2ecc71)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("# 🎟️ 連續挖礦通行證 已啟用"),
+        new TextDisplayBuilder().setContent("# 🎟️ 連續通行證 已啟用"),
       )
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `生效到 <t:${Math.floor(result.expiresAt / 1000)}:R>，這段期間無視等級即可連續挖礦。`,
+          `生效到 <t:${Math.floor(result.expiresAt / 1000)}:R>，這段期間無視等級即可連續挖礦與連續釣魚。`,
         ),
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `-# 剩餘通行證 ×${result.passesLeft}・連續挖礦仍照冷卻扣 CD 縮短券，記得備券！`,
+          `-# 剩餘通行證 ×${result.passesLeft}・連續操作仍照冷卻扣 CD 縮短券，記得備券！`,
         ),
       );
 
@@ -117,7 +117,7 @@ module.exports = async (client, interaction) => {
     appendNav(view, interaction.user.id, "backpack");
     await interaction.editReply(view).catch(() => {});
   } catch (err) {
-    console.log(`[ERROR] mining_activate_pass handler:\n${err}\n${err.stack}`.red);
+    console.log(`[ERROR] batch_activate_pass handler:\n${err}\n${err.stack}`.red);
     await interaction
       .followUp({
         content: "🔧 啟用失敗，請呼叫舒舒！",
