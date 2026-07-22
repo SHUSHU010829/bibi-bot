@@ -103,7 +103,7 @@
             "desc": "縮短一次釣魚 / 挖礦冷卻",
             "cost": { "fish": "rainbow_trout", "qty": 3 },
             "reward": { "type": "cdTicket", "qty": 2 },
-            "limitPerUser": 0
+            "limitPerUser": 10
           },
           {
             "id": "summer_batch_pass",
@@ -203,7 +203,7 @@
             "desc": "縮短一次釣魚 / 挖礦冷卻",
             "cost": { "fish": "moonfish", "qty": 3 },
             "reward": { "type": "cdTicket", "qty": 3 },
-            "limitPerUser": 0
+            "limitPerUser": 10
           },
           {
             "id": "midautumn_batch_pass",
