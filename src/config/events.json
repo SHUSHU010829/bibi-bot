@@ -89,38 +89,29 @@
           {
             "id": "event_summer_fish",
             "name": "夏日魚汛獵手",
-            "description": "活動期間釣到 15 條限定魚",
+            "description": "活動期間釣到 8 條限定魚",
             "reward": 800,
-            "target": 15,
+            "target": 8,
             "condition": { "type": "event_fish_count" }
           }
         ],
         "exchange": [
           {
-            "id": "summer_cd_ticket",
-            "name": "CD 縮短券 ×2",
-            "emoji": "🎫",
-            "desc": "縮短一次釣魚 / 挖礦冷卻",
-            "cost": { "fish": "rainbow_trout", "qty": 3 },
-            "reward": { "type": "cdTicket", "qty": 2 },
-            "limitPerUser": 50
-          },
-          {
             "id": "summer_batch_pass",
             "name": "連續通行證 ×1",
             "emoji": "🎟️",
             "desc": "解鎖一小時連續挖礦 / 連續釣魚",
-            "cost": { "fish": "pufferfish_king", "qty": 4 },
+            "cost": { "fish": "pufferfish_king", "qty": 3 },
             "reward": { "type": "batchPass", "qty": 1 },
             "limitPerUser": 3
           },
           {
             "id": "summer_coins",
-            "name": "金幣 2,000",
+            "name": "金幣 1,200",
             "emoji": "🪙",
-            "desc": "把限定魚直接換成現金",
-            "cost": { "fish": "rainbow_trout", "qty": 5 },
-            "reward": { "type": "coins", "qty": 2000 },
+            "desc": "把限定魚換成現金（換到最後的保底出口）",
+            "cost": { "fish": "rainbow_trout", "qty": 3 },
+            "reward": { "type": "coins", "qty": 1200 },
             "limitPerUser": 0
           },
           {
@@ -128,7 +119,7 @@
             "name": "鑽石 ×1",
             "emoji": "💎",
             "desc": "用限定魚換一顆傳說鑽石",
-            "cost": { "fish": "rainbow_trout", "qty": 6 },
+            "cost": { "fish": "rainbow_trout", "qty": 3 },
             "reward": { "type": "ore", "oreKey": "diamond", "qty": 1 },
             "limitPerUser": 5
           },
@@ -137,7 +128,7 @@
             "name": "稱號「夏日魚王」",
             "emoji": "🏅",
             "desc": "活動限定榮譽稱號，僅此一次",
-            "cost": { "fish": "pufferfish_king", "qty": 3 },
+            "cost": { "fish": "pufferfish_king", "qty": 2 },
             "reward": { "type": "title", "titleId": "summer_fish_king" },
             "limitPerUser": 1
           }
@@ -150,7 +141,7 @@
         "enabled": true,
         "description": "月黑風高好釣魚！稀有偏移大幅 +0.2、上鉤率 +5%，月光下浮現限定 🌝 月光魚，更有機會釣起傳說 🎏 錦鯉。",
         "startAt": "2026-09-25T00:00:00",
-        "endAt": "2026-09-28T00:00:00",
+        "endAt": "2026-10-02T00:00:00",
         "effects": {
           "fishingSuccessBonus": 0.05,
           "fishingRareBonus": 0.2,
@@ -189,38 +180,29 @@
           {
             "id": "event_midautumn_moon",
             "name": "賞月夜釣",
-            "description": "活動期間釣到 20 條限定魚",
+            "description": "活動期間釣到 3 條限定魚",
             "reward": 1000,
-            "target": 20,
+            "target": 3,
             "condition": { "type": "event_fish_count" }
           }
         ],
         "exchange": [
           {
-            "id": "midautumn_cd_ticket",
-            "name": "CD 縮短券 ×3",
-            "emoji": "🎫",
-            "desc": "縮短一次釣魚 / 挖礦冷卻",
-            "cost": { "fish": "moonfish", "qty": 3 },
-            "reward": { "type": "cdTicket", "qty": 3 },
-            "limitPerUser": 50
-          },
-          {
             "id": "midautumn_batch_pass",
             "name": "連續通行證 ×1",
             "emoji": "🎟️",
             "desc": "解鎖一小時連續挖礦 / 連續釣魚",
-            "cost": { "fish": "moonfish", "qty": 8 },
+            "cost": { "fish": "moonfish", "qty": 4 },
             "reward": { "type": "batchPass", "qty": 1 },
             "limitPerUser": 3
           },
           {
             "id": "midautumn_coins",
-            "name": "金幣 3,000",
+            "name": "金幣 1,500",
             "emoji": "🪙",
-            "desc": "傳說錦鯉直接變現",
-            "cost": { "fish": "koi", "qty": 1 },
-            "reward": { "type": "coins", "qty": 3000 },
+            "desc": "把月光魚換成現金（換到最後的保底出口）",
+            "cost": { "fish": "moonfish", "qty": 3 },
+            "reward": { "type": "coins", "qty": 1500 },
             "limitPerUser": 0
           },
           {
