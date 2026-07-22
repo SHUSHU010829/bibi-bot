@@ -85,7 +85,55 @@
             }
           ]
         },
-        "announcementText": "🎏 **夏日魚汛祭** 開跑！魚群暴衝，上鉤率 +12%，限定 🌈 彩虹鱒、🐡 河豚王 已混入魚群，快用 `/釣魚` 撈一波！"
+        "quests": [
+          {
+            "id": "event_summer_fish",
+            "name": "夏日魚汛獵手",
+            "description": "活動期間釣到 15 條限定魚",
+            "reward": 800,
+            "target": 15,
+            "condition": { "type": "event_fish_count" }
+          }
+        ],
+        "exchange": [
+          {
+            "id": "summer_cd_ticket",
+            "name": "CD 縮短券 ×2",
+            "emoji": "🎫",
+            "desc": "縮短一次釣魚 / 挖礦冷卻",
+            "cost": { "fish": "rainbow_trout", "qty": 3 },
+            "reward": { "type": "cdTicket", "qty": 2 },
+            "limitPerUser": 10
+          },
+          {
+            "id": "summer_batch_pass",
+            "name": "連續通行證 ×1",
+            "emoji": "🎟️",
+            "desc": "解鎖一小時連續挖礦 / 連續釣魚",
+            "cost": { "fish": "pufferfish_king", "qty": 2 },
+            "reward": { "type": "batchPass", "qty": 1 },
+            "limitPerUser": 3
+          },
+          {
+            "id": "summer_coins",
+            "name": "金幣 2,000",
+            "emoji": "🪙",
+            "desc": "把限定魚直接換成現金",
+            "cost": { "fish": "rainbow_trout", "qty": 5 },
+            "reward": { "type": "coins", "qty": 2000 },
+            "limitPerUser": 0
+          },
+          {
+            "id": "summer_title",
+            "name": "稱號「夏日魚王」",
+            "emoji": "🏅",
+            "desc": "活動限定榮譽稱號，僅此一次",
+            "cost": { "fish": "pufferfish_king", "qty": 3 },
+            "reward": { "type": "title", "titleId": "summer_fish_king" },
+            "limitPerUser": 1
+          }
+        ],
+        "announcementText": "🎏 **夏日魚汛祭** 開跑！魚群暴衝，上鉤率 +12%，限定 🌈 彩虹鱒、🐡 河豚王 已混入魚群，快用 `/釣魚` 撈一波，再拿去 `/兌換所` 換獎勵！"
       },
       {
         "id": "midautumn_moonfish_2026",
@@ -120,7 +168,63 @@
             }
           ]
         },
-        "announcementText": "🌕 **中秋月光夜釣** 今夜登場！稀有偏移 +0.2，月光下 🌝 月光魚 浮現，手氣夠好還能釣起傳說 🎏 錦鯉，`/釣魚` 賞月去！"
+        "quests": [
+          {
+            "id": "event_midautumn_koi",
+            "name": "月下鯉躍",
+            "description": "活動期間釣起 1 條傳說錦鯉",
+            "reward": 1500,
+            "target": 1,
+            "condition": { "type": "fish_count", "fish": "koi" }
+          },
+          {
+            "id": "event_midautumn_moon",
+            "name": "賞月夜釣",
+            "description": "活動期間釣到 20 條限定魚",
+            "reward": 1000,
+            "target": 20,
+            "condition": { "type": "event_fish_count" }
+          }
+        ],
+        "exchange": [
+          {
+            "id": "midautumn_cd_ticket",
+            "name": "CD 縮短券 ×3",
+            "emoji": "🎫",
+            "desc": "縮短一次釣魚 / 挖礦冷卻",
+            "cost": { "fish": "moonfish", "qty": 3 },
+            "reward": { "type": "cdTicket", "qty": 3 },
+            "limitPerUser": 10
+          },
+          {
+            "id": "midautumn_batch_pass",
+            "name": "連續通行證 ×1",
+            "emoji": "🎟️",
+            "desc": "解鎖一小時連續挖礦 / 連續釣魚",
+            "cost": { "fish": "moonfish", "qty": 5 },
+            "reward": { "type": "batchPass", "qty": 1 },
+            "limitPerUser": 3
+          },
+          {
+            "id": "midautumn_coins",
+            "name": "金幣 3,000",
+            "emoji": "🪙",
+            "desc": "傳說錦鯉直接變現",
+            "cost": { "fish": "koi", "qty": 1 },
+            "reward": { "type": "coins", "qty": 3000 },
+            "limitPerUser": 0
+          },
+          {
+            "id": "midautumn_title",
+            "name": "稱號「月光釣者」",
+            "emoji": "🏅",
+            "desc": "獻上一條傳說錦鯉換取的限定榮譽",
+            "cost": { "fish": "koi", "qty": 1 },
+            "reward": { "type": "title", "titleId": "moonlight_angler" },
+            "limitPerUser": 1
+          }
+        ],
+        "announcementText": "🌕 **中秋月光夜釣** 今夜登場！稀有偏移 +0.2，月光下 🌝 月光魚 浮現，手氣夠好還能釣起傳說 🎏 錦鯉，`/釣魚` 賞月去，限定魚可到 `/兌換所` 換獎勵！"
       }
     ]
   }

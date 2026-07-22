@@ -260,6 +260,23 @@ function getEventQuestById(id, nowMs = Date.now()) {
   return getEventQuests(nowMs).find((q) => q.id === id) || null;
 }
 
+// ── 限定魚兌換所 ───────────────────────────────────────
+// 生效中活動的兌換項目（成本＝限定魚、獎勵＝金幣/CD券/通行證/稱號）。
+// 每筆帶上所屬活動資訊，id 需全域唯一（兌換 handler 以 id 定位）。
+function getEventExchanges(nowMs = Date.now()) {
+  const out = [];
+  for (const e of getActiveEvents(nowMs)) {
+    for (const x of e.exchange || []) {
+      if (x && x.id) out.push({ ...x, eventId: e.id, eventName: e.name });
+    }
+  }
+  return out;
+}
+
+function getEventExchangeById(id, nowMs = Date.now()) {
+  return getEventExchanges(nowMs).find((x) => x.id === id) || null;
+}
+
 // 取得某觸發類型（如 'mine_count'）對應的進度 hook，供指令層併入 applyQuestHooks。
 // ctx 可帶 { ore }，活動任務可用 condition.ore 過濾特定礦石。
 function getEventQuestHooksByType(type, ctx = {}, nowMs = Date.now()) {
@@ -268,6 +285,7 @@ function getEventQuestHooksByType(type, ctx = {}, nowMs = Date.now()) {
     const cond = q.condition || {};
     if (cond.type !== type) continue;
     if (cond.ore && ctx.ore && cond.ore !== ctx.ore) continue;
+    if (cond.fish && ctx.fish && cond.fish !== ctx.fish) continue;
     hooks.push({ questId: q.id });
   }
   return hooks;
@@ -328,6 +346,8 @@ module.exports = {
   getEventQuests,
   getEventQuestById,
   getEventQuestHooksByType,
+  getEventExchanges,
+  getEventExchangeById,
   forceStart,
   forceEnd,
   clearForce,
