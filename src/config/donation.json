@@ -88,6 +88,11 @@
         "permanentRole": true,
         "canNominateTitle": true
       }
-    ]
+    ],
+    "skus": {
+      "mining_pass_x1": { "item": "mining_pass", "qty": 1, "minAmount": 50, "name": "連續挖礦通行證 ×1" },
+      "mining_pass_x3": { "item": "mining_pass", "qty": 3, "minAmount": 100, "name": "連續挖礦通行證 ×3" },
+      "mining_pass_x5": { "item": "mining_pass", "qty": 5, "minAmount": 150, "name": "連續挖礦通行證 ×5" }
+    }
   }
 }

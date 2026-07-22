@@ -43,6 +43,7 @@ module.exports = function createDonationSessionHandler(client) {
     const guildId = typeof body.guildId === "string" ? body.guildId.trim() : "";
     const amountNtd = Number(body.amountNtd);
     const platform = String(body.platform || "");
+    const sku = typeof body.sku === "string" ? body.sku.trim() : "";
 
     if (!userId) return res.status(400).json({ error: "missing userId" });
     if (!guildId) return res.status(400).json({ error: "missing guildId" });
@@ -51,6 +52,10 @@ module.exports = function createDonationSessionHandler(client) {
     }
     if (platform !== "ecpay" && platform !== "opay") {
       return res.status(400).json({ error: "invalid platform" });
+    }
+    // sku（獨立小額商品，如連續挖礦通行證）非必填；有帶就必須是已定義的商品。
+    if (sku && !donation?.skus?.[sku]) {
+      return res.status(400).json({ error: "invalid sku" });
     }
 
     const sessions = client.donationSessionsCollection;
@@ -76,6 +81,7 @@ module.exports = function createDonationSessionHandler(client) {
           guildId,
           amountNtd: Math.floor(amountNtd),
           platform,
+          sku: sku || null,
           status: "pending",
           createdAt: now,
           expiresAt,

@@ -162,15 +162,18 @@ async function openBatchCountModal(client, interaction, { ownerId }) {
 
   const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
 
-  // 解鎖等級
+  // 解鎖等級（持有生效中的連續挖礦通行證則無視等級門檻）
   const unlockLevel = mineCmd.batchUnlockLevel();
-  if (unlockLevel > 0) {
+  if (unlockLevel > 0 && !mineService.isBatchPassActive(profile)) {
     const userLevel = await client.userLevelsCollection
       ?.findOne({ userId: interaction.user.id, guildId: interaction.guildId })
       .catch(() => null);
     const lvl = userLevel?.level ?? 0;
     if (lvl < unlockLevel) {
-      return replyEphemeralView(interaction, mineCmd.buildBatchLockedView(unlockLevel, lvl));
+      return replyEphemeralView(
+        interaction,
+        mineCmd.buildBatchLockedView(unlockLevel, lvl, profile.mining_pass_count || 0),
+      );
     }
   }
 

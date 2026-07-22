@@ -27,7 +27,8 @@
     "batch": {
       "enabled": true,
       "unlockLevel": 100,
-      "maxCount": 100
+      "maxCount": 100,
+      "passDurationMs": 3600000
     },
     "announceChannelId": "1511655301953228800",
     "diamondAnnounceChannelId": "1509074828206936126",

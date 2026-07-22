@@ -71,6 +71,12 @@ async function renderOverview(container, client, { userId, guildId, member }) {
   ];
   if (cdMin != null) overviewLines.push(`**⏱️ 挖礦冷卻**：${cdMin} 分鐘`);
   if (fishCdMin != null) overviewLines.push(`**🎣 釣魚冷卻**：${fishCdMin} 分鐘`);
+  const passExpiresAt = miningProfileForStamina?.batch_pass_expires_at || 0;
+  if (passExpiresAt > Date.now()) {
+    overviewLines.push(
+      `**🎟️ 連續挖礦通行證**：生效中（<t:${Math.floor(passExpiresAt / 1000)}:R> 到期）`,
+    );
+  }
   if (s.farmYieldBonus > 0)
     overviewLines.push(`**🌾 農場收成**：+${Math.round(s.farmYieldBonus * 100)}%`);
   overviewLines.push(`**📈 經驗加成**：${s.xpBoost > 1 ? `+${pct(s.xpBoost)}` : "無"}`);
