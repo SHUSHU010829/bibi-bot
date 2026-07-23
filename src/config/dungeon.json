@@ -5,7 +5,7 @@
     "swordBreaker": {
       "enabled": true,
       "announceChannelId": "1511655301953228800",
-      "cronSchedule": "5 0 1,16 * *",
+      "cronSchedule": "5 0 * * 1",
       "timezone": "Asia/Taipei",
       "breakLogTtlDays": 120
     },

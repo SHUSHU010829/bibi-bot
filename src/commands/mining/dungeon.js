@@ -727,7 +727,7 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
   if (result.legendarySwordBroke) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "💥 **傳說之劍應聲斷裂！** 你的斷劍紀錄 +1，已公開播報。\n-# 斷劍榜每月 1／16 號結算，斷最多的人封為 ☠️ 斷劍王、遭亡靈制詛咒纏身（`/排行榜` → 斷劍王）。到 /合成 再打一把。",
+        "💥 **傳說之劍應聲斷裂！** 你的斷劍紀錄 +1，已公開播報。\n-# 斷劍榜每週一結算，本週斷最多的人封為 ☠️ 斷劍王、遭亡靈制詛咒纏身（`/排行榜` → 斷劍王）。到 /合成 再打一把。",
       ),
     );
   } else if (result.weaponBroke) {

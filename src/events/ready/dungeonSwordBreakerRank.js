@@ -1,5 +1,6 @@
-// 斷劍王雙週結算：每月 1 號 / 16 號 00:05 統計「上一期」把傳說之劍砍斷最多次的人，
-// 封為斷劍王並授予「亡靈制」加成（效期到下一個結算切點）；同 guild 舊持有者自動卸任。
+// 斷劍王每週結算：每週一 00:05 統計「上週」把傳說之劍砍斷最多次的人，
+// 封為斷劍王並烙上「亡靈制」詛咒（效期到下次結算＝下週一）；同 guild 舊持有者自動卸任。
+// 上週若沒人斷劍（guildsWithBreaks 為空 / 榜為空）就整個跳過，不產生斷劍王、不施加詛咒。
 //
 // 亡靈制一律 compute-on-read（只存 expires_at），過期即自動失效，不靠排程清欄位。
 // 純結算類 cron，失敗只 log，不影響玩家流程。
@@ -141,7 +142,7 @@ module.exports = async (client) => {
   const cfg = dungeon.swordBreaker;
   registerCron(client, {
     name: "dungeon.swordBreakerRank",
-    label: "斷劍王雙週結算",
+    label: "斷劍王每週結算",
     schedule: cfg.cronSchedule || "5 0 1,16 * *",
     timezone: cfg.timezone || "Asia/Taipei",
     runner: () => runSwordBreakerRank(client),

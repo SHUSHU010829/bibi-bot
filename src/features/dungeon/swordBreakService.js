@@ -1,9 +1,9 @@
-// 傳說之劍斷裂：紀錄、公告、雙週排行榜、亡靈制 buff 的單一入口。
+// 傳說之劍斷裂：紀錄、公告、每週排行榜、亡靈制詛咒的單一入口。
 //
 // 設計：
-// - 每斷一次傳說之劍寫一筆 SwordBreaks（雙週榜資料源，TTL 由 connectDb 設）；
+// - 每斷一次傳說之劍寫一筆 SwordBreaks（週榜資料源，TTL 由 connectDb 設）；
 //   同時 $inc profile.legendary_sword_breaks 作為永久累積（全時榜 / 公告顯示）。
-// - 雙週榜以「每月 1 號 / 16 號」為切點結算（見 cronSchedule），冠軍獲得「亡靈制」。
+// - 週榜以「每週一」為切點結算（見 cronSchedule），當週斷最多者被烙上「亡靈制」詛咒。
 // - 亡靈制一律 compute-on-read：只存 profile.active_undead_buff.expires_at，
 //   加成值在 dungeonService 讀取時即時換算，狀態一過期就自動失效（不靠排程清欄位）。
 
@@ -66,16 +66,11 @@ function rollUndeadCurse(profile) {
   };
 }
 
-// ── 雙週視窗（每月 1 號 / 16 號為切點）───────────────────
-// 上半月 = [1 號 00:00, 16 號 00:00)；下半月 = [16 號 00:00, 次月 1 號 00:00)。
+// ── 每週視窗（luxon 的 week 以週一為首，與挖礦週榜同界）──
 function windowOf(dt) {
-  const monthStart = dt.startOf("month");
-  const sixteenth = monthStart.plus({ days: 15 });
-  if (dt < sixteenth) {
-    return { start: monthStart.toJSDate(), end: sixteenth.toJSDate(), startDt: monthStart, endDt: sixteenth };
-  }
-  const nextMonth = monthStart.plus({ months: 1 });
-  return { start: sixteenth.toJSDate(), end: nextMonth.toJSDate(), startDt: sixteenth, endDt: nextMonth };
+  const start = dt.startOf("week");
+  const end = start.plus({ weeks: 1 });
+  return { start: start.toJSDate(), end: end.toJSDate(), startDt: start, endDt: end };
 }
 
 function labelOf(win) {
@@ -84,13 +79,13 @@ function labelOf(win) {
   return `${s}–${e}`;
 }
 
-// 現在所屬的雙週視窗（給排行榜看即時榜）。
+// 現在所屬的週視窗（給排行榜看即時榜）。
 function currentWindow(now = DateTime.now().setZone(tz())) {
   const w = windowOf(now);
   return { ...w, label: labelOf(w) };
 }
 
-// 剛結束、待結算的雙週視窗（cron 在 1 號 / 16 號 00:05 跑時取此）。
+// 剛結束、待結算的週視窗（cron 在週一 00:05 跑時取此）。
 function previousWindow(now = DateTime.now().setZone(tz())) {
   const w = windowOf(now.minus({ days: 1 }));
   return { ...w, label: labelOf(w) };
@@ -130,7 +125,7 @@ async function breakCountInWindow(client, guildId, userId, win) {
 }
 
 // ── 斷劍即時公告 ─────────────────────────────────────────
-async function announceBreak(client, { userId, guildId, biweekly, lifetime }) {
+async function announceBreak(client, { userId, guildId, weekly, lifetime }) {
   const channelId = cfg().announceChannelId;
   if (!channelId) return;
   const channel = await client.channels.fetch(channelId).catch(() => null);
@@ -150,12 +145,12 @@ async function announceBreak(client, { userId, guildId, biweekly, lifetime }) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `${who} 在地下城硬生生把 ${swordLabel()} 砍斷了！\n` +
-          `本期已斷 **${biweekly}** 次 ・ 生涯累計 **${lifetime}** 次`,
+          `本週已斷 **${weekly}** 次 ・ 生涯累計 **${lifetime}** 次`,
       ),
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 斷劍榜每月 1 號 / 16 號結算，斷最多的人將被封為 ☠️ 斷劍王，遭「亡靈制」詛咒纏身（debuff）。用 `/排行榜` → 斷劍王 查看戰況。",
+        "-# 斷劍榜每週一結算，本週斷最多的人將被封為 ☠️ 斷劍王，遭「亡靈制」詛咒纏身（debuff）。用 `/排行榜` → 斷劍王 查看戰況。",
       ),
     );
 
@@ -173,15 +168,15 @@ async function handleLegendaryBreak(client, { userId, guildId }) {
   if (!cfg().enabled) return;
   try {
     const { lifetime } = await recordBreak(client, { userId, guildId });
-    const biweekly = await breakCountInWindow(client, guildId, userId, currentWindow());
-    await announceBreak(client, { userId, guildId, biweekly, lifetime });
+    const weekly = await breakCountInWindow(client, guildId, userId, currentWindow());
+    await announceBreak(client, { userId, guildId, weekly, lifetime });
   } catch (e) {
     console.log(`[WARN] handleLegendaryBreak: ${e.message}`.yellow);
   }
 }
 
 // ── 排行榜資料 ───────────────────────────────────────────
-// 雙週榜：SwordBreaks 於指定視窗內 group by user。
+// 週榜：SwordBreaks 於指定視窗內 group by user。
 async function rankByWindow(client, guildId, win, limit = 10) {
   if (!client.swordBreaksCollection) return [];
   return client.swordBreaksCollection
@@ -217,7 +212,7 @@ async function guildsWithBreaks(client, win) {
 }
 
 // ── 亡靈制授予 / 卸任 ────────────────────────────────────
-// 授予冠軍亡靈制，效期到下個結算切點（下次雙週視窗結束）。
+// 授予冠軍亡靈制詛咒，效期到下個結算切點（下次週視窗結束＝下週一）。
 async function grantUndead(client, { userId, guildId, expiresAt, cycleLabel }) {
   if (!client.miningProfilesCollection) return;
   await client.miningProfilesCollection
