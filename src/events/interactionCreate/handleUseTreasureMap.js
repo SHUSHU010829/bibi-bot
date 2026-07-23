@@ -91,7 +91,7 @@ module.exports = async (client, interaction) => {
         interaction.member?.displayName ||
         interaction.user.displayName ||
         interaction.user.username,
-      category: "mine",
+      category: "explore",
     });
     appendNav(view, interaction.user.id, "backpack");
     await interaction.editReply(view).catch(() => {});

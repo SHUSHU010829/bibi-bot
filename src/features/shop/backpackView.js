@@ -299,6 +299,8 @@ const BACKPACK_CATEGORIES = [
   { value: "all",     label: "🎒 全部" },
   { value: "ore",     label: "⛏️ 礦石" },
   { value: "mine",    label: "🪓 挖礦道具" },
+  { value: "explore", label: "🗺️ 探險道具" },
+  { value: "pass",    label: "🎟️ 通行證" },
   { value: "fish",    label: "🎣 釣魚" },
   { value: "farm",    label: "🌾 農場" },
   { value: "food",    label: "🍱 食物" },
@@ -432,6 +434,26 @@ async function buildDashboard(client, container, { userId, guildId, member, tota
         `⚔️ **地下城**：HP ${status.hp}/${status.hpMax}・體力 ${status.stamina}/${status.staminaMax}`
       );
     }
+  }
+
+  if (mining?.enabled && profile) {
+    const treasureMaps = profile.treasure_maps || 0;
+    const mapFrags = profile.treasure_map_fragments || 0;
+    sum.push(
+      treasureMaps > 0 || mapFrags > 0
+        ? `🗺️ **探險道具**：藏寶圖 ×${treasureMaps}・碎片 ${mapFrags}/6`
+        : `🗺️ **探險道具**：無`
+    );
+
+    const passActive = (profile.batch_pass_expires_at || 0) > Date.now();
+    const passCount = profile.batch_pass_count || 0;
+    sum.push(
+      passActive
+        ? `🎟️ **通行證**：生效中・持有 ×${passCount}`
+        : passCount > 0
+          ? `🎟️ **通行證**：×${passCount}`
+          : `🎟️ **通行證**：無`
+    );
   }
 
   if (shop?.enabled && client.userInventoryCollection) {
@@ -575,13 +597,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     const luckUses = profile.luck_potion_uses || 0;
     const ticketCount = profile.cd_ticket_count || 0;
     const inferiorCount = profile.whetstone_inferior_count || 0;
-    const fragments = profile.legendary_fragments || 0;
-    const stoneShards = profile.backpack?.stone_shard || 0;
-    const netFrags = profile.broken_net_fragments || 0;
     const netUses = profile.fishing_net_uses || 0;
-    const trapFrags = profile.broken_trap_fragments || 0;
-    const mapFrags = profile.treasure_map_fragments || 0;
-    const treasureMaps = profile.treasure_maps || 0;
     const repairTools = profile.repair_tools || {};
     const reductionMin = Math.round((mining?.cdTicketReductionMs || 0) / 60000);
 
@@ -659,27 +675,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           `🎫 **CD 縮短券** ×${ticketCount}\n-# 立即 -${reductionMin} 分・在 \`/挖礦\` 或 \`/釣魚\` 冷卻訊息上按使用`
         )
       );
-      {
-        const passCount = profile.batch_pass_count || 0;
-        const passActive = (profile.batch_pass_expires_at || 0) > now;
-        if (passCount > 0 || passActive) {
-          const passText = passActive
-            ? `🎟️ **連續通行證** ×${passCount}\n-# ✅ 生效中：<t:${Math.floor(profile.batch_pass_expires_at / 1000)}:R> 到期・可無視等級連續挖礦與釣魚`
-            : `🎟️ **連續通行證** ×${passCount}\n-# 啟用後 1 小時內無視等級連續挖礦與釣魚（仍照冷卻扣 CD 縮短券）`;
-          container.addSectionComponents(
-            new SectionBuilder()
-              .addTextDisplayComponents(new TextDisplayBuilder().setContent(passText))
-              .setButtonAccessory(
-                new ButtonBuilder()
-                  .setCustomId(`${ACTIVATE_BATCH_PASS_PREFIX}${userId}`)
-                  .setLabel(passActive ? "生效中" : "啟用")
-                  .setEmoji("🎟️")
-                  .setStyle(ButtonStyle.Primary)
-                  .setDisabled(passActive || passCount < 1),
-              ),
-          );
-        }
-      }
+      // 連續通行證已獨立成「🎟️ 通行證」分類；探險道具（藏寶圖等）獨立成「🗺️ 探險道具」分類，避免本頁元件爆量
       // 體力藥水已移到「⚔️ 地下城」分類顯示，這裡不再重複
       {
         const pickaxeMax = profile.pickaxe_max_durability;
@@ -771,59 +767,6 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         );
       }
 
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `✨ **傳說素材碎片** ×${fragments}\n-# 合成傳說裝備材料`
-        )
-      );
-
-      // 探險道具 / 合成材料：藏寶圖、碎片類
-      const explorerLines = [];
-      const explorerZero = [];
-      if (mapFrags > 0) explorerLines.push(`📜 **藏寶圖碎片** ×${mapFrags} / 6\n-# 集滿到工坊合成藏寶圖`);
-      else explorerZero.push("📜 藏寶圖碎片");
-      if (stoneShards > 0) explorerLines.push(`<:crack_stone:1516055109199597708> **碎石** ×${stoneShards}\n-# 5 個合成劣質賭石、10 個合成優質賭石`);
-      else explorerZero.push("<:crack_stone:1516055109199597708> 碎石");
-      if (netFrags > 0) explorerLines.push(`🪡 **損壞的漁網碎片** ×${netFrags}\n-# 5 個合成 1 張撈網（+10% 釣魚成功率 / 3 次）`);
-      else explorerZero.push("🪡 漁網碎片");
-      if (trapFrags > 0) explorerLines.push(`🪛 **損壞的陷阱碎片** ×${trapFrags}\n-# 5 個合成 1 張高級陷阱（被動抵擋 4 次 raid）`);
-      else explorerZero.push("🪛 陷阱碎片");
-
-      if (explorerLines.length > 0 || treasureMaps > 0 || explorerZero.length > 0) {
-        container.addSeparatorComponents(new SeparatorBuilder());
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`### 🗺️ 探險道具 / 合成材料`),
-        );
-        if (treasureMaps > 0) {
-          container.addSectionComponents(
-            new SectionBuilder()
-              .addTextDisplayComponents(
-                new TextDisplayBuilder().setContent(
-                  `🗺️ **藏寶圖** ×${treasureMaps}\n-# 撕開觸發隨機事件：藏寶箱 / 體力藥水 / 寶箱怪 / 惡作劇紙條`,
-                ),
-              )
-              .setButtonAccessory(
-                new ButtonBuilder()
-                  .setCustomId(`${USE_TREASURE_MAP_PREFIX}${userId}`)
-                  .setLabel("使用 1 張")
-                  .setEmoji("🗺️")
-                  .setStyle(ButtonStyle.Primary),
-              ),
-          );
-        }
-        for (const line of explorerLines) {
-          container.addTextDisplayComponents(new TextDisplayBuilder().setContent(line));
-        }
-        const bottomZeroBits = [];
-        if (treasureMaps === 0) bottomZeroBits.push("🗺️ 藏寶圖");
-        bottomZeroBits.push(...explorerZero);
-        if (bottomZeroBits.length > 0) {
-          container.addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(`-# 尚無：${bottomZeroBits.join("・")}`),
-          );
-        }
-      }
-
       // 撈網 buff（仍與挖礦/釣魚相關保留在此）；高級陷阱保護已移到農場區塊
       if (netUses > 0) {
         container.addSeparatorComponents(new SeparatorBuilder());
@@ -833,6 +776,102 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
           ),
         );
       }
+    }
+  }
+
+  // ── 探險道具 / 合成材料區（藏寶圖、各式碎片、傳說素材）──
+  if (category === "explore" && miningProfile) {
+    const profile = miningProfile;
+    const treasureMaps = profile.treasure_maps || 0;
+    const mapFrags = profile.treasure_map_fragments || 0;
+    const stoneShards = profile.backpack?.stone_shard || 0;
+    const netFrags = profile.broken_net_fragments || 0;
+    const trapFrags = profile.broken_trap_fragments || 0;
+    const fragments = profile.legendary_fragments || 0;
+
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`### 🗺️ 探險道具 / 合成材料`),
+    );
+
+    if (treasureMaps > 0) {
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `🗺️ **藏寶圖** ×${treasureMaps}\n-# 撕開觸發隨機事件：藏寶箱 / 體力藥水 / 寶箱怪 / 惡作劇紙條`,
+            ),
+          )
+          .setButtonAccessory(
+            new ButtonBuilder()
+              .setCustomId(`${USE_TREASURE_MAP_PREFIX}${userId}`)
+              .setLabel("使用 1 張")
+              .setEmoji("🗺️")
+              .setStyle(ButtonStyle.Primary),
+          ),
+      );
+    }
+
+    const explorerLines = [];
+    const explorerZero = [];
+    if (mapFrags > 0) explorerLines.push(`📜 **藏寶圖碎片** ×${mapFrags} / 6\n-# 集滿到工坊合成藏寶圖`);
+    else explorerZero.push("📜 藏寶圖碎片");
+    if (stoneShards > 0) explorerLines.push(`<:crack_stone:1516055109199597708> **碎石** ×${stoneShards}\n-# 5 個合成劣質賭石、10 個合成優質賭石`);
+    else explorerZero.push("<:crack_stone:1516055109199597708> 碎石");
+    if (netFrags > 0) explorerLines.push(`🪡 **損壞的漁網碎片** ×${netFrags}\n-# 5 個合成 1 張撈網（+10% 釣魚成功率 / 3 次）`);
+    else explorerZero.push("🪡 漁網碎片");
+    if (trapFrags > 0) explorerLines.push(`🪛 **損壞的陷阱碎片** ×${trapFrags}\n-# 5 個合成 1 張高級陷阱（被動抵擋 4 次 raid）`);
+    else explorerZero.push("🪛 陷阱碎片");
+    if (fragments > 0) explorerLines.push(`✨ **傳說素材碎片** ×${fragments}\n-# 合成傳說裝備材料`);
+    else explorerZero.push("✨ 傳說素材碎片");
+
+    for (const line of explorerLines) {
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(line));
+    }
+    const bottomZeroBits = [];
+    if (treasureMaps === 0) bottomZeroBits.push("🗺️ 藏寶圖");
+    bottomZeroBits.push(...explorerZero);
+    if (bottomZeroBits.length > 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`-# 尚無：${bottomZeroBits.join("・")}`),
+      );
+    }
+  }
+
+  // ── 通行證區（連續通行證）──
+  if (category === "pass" && miningProfile) {
+    const profile = miningProfile;
+    const now = Date.now();
+    const passCount = profile.batch_pass_count || 0;
+    const passActive = (profile.batch_pass_expires_at || 0) > now;
+
+    container.addSeparatorComponents(new SeparatorBuilder());
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`### 🎟️ 通行證`),
+    );
+
+    if (passCount > 0 || passActive) {
+      const passText = passActive
+        ? `🎟️ **連續通行證** ×${passCount}\n-# ✅ 生效中：<t:${Math.floor(profile.batch_pass_expires_at / 1000)}:R> 到期・可無視等級連續挖礦與釣魚`
+        : `🎟️ **連續通行證** ×${passCount}\n-# 啟用後 1 小時內無視等級連續挖礦與釣魚（仍照冷卻扣 CD 縮短券）`;
+      container.addSectionComponents(
+        new SectionBuilder()
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(passText))
+          .setButtonAccessory(
+            new ButtonBuilder()
+              .setCustomId(`${ACTIVATE_BATCH_PASS_PREFIX}${userId}`)
+              .setLabel(passActive ? "生效中" : "啟用")
+              .setEmoji("🎟️")
+              .setStyle(ButtonStyle.Primary)
+              .setDisabled(passActive || passCount < 1),
+          ),
+      );
+    } else {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# 目前沒有連續通行證。啟用後 1 小時內無視等級連續挖礦與釣魚，適合連續操作衝進度（仍照冷卻扣 CD 縮短券）。",
+        ),
+      );
     }
   }
 
