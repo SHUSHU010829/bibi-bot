@@ -29,6 +29,12 @@ function effectsSummary(event) {
   for (const { def } of eventEngine.eventExtraOres(event)) {
     bits.push(`限定礦石 ${def.emoji || ""}${def.name}（權重 ${def.weight}、賣價 ${def.price}）`);
   }
+  if (fx.fishingSuccessBonus) bits.push(`釣魚上鉤 +${Math.round(fx.fishingSuccessBonus * 100)}%`);
+  if (fx.fishingRareBonus) bits.push(`釣魚稀有偏移 +${fx.fishingRareBonus}`);
+  for (const { def } of eventEngine.eventExtraFish(event)) {
+    const where = def.locations === "all" ? "全釣點" : def.locations.join("・");
+    bits.push(`限定魚 ${def.emoji || ""}${def.name}（${where}、權重 ${def.weight}、賣價 ${def.price}）`);
+  }
   if ((event.quests || []).length) {
     bits.push(`限定任務 ×${event.quests.length}`);
   }

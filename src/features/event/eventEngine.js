@@ -136,6 +136,94 @@ function resolveOreDef(key, nowMs = Date.now()) {
   return null;
 }
 
+// ── 魚類注入（釣魚限時活動）────────────────────────────
+// 與礦石同構，差別在釣魚掉落表是「分釣點」的：限定魚可指定出沒的釣點與掉落權重，
+// 只在生效活動且該釣點才混進魚群。魚定義（名稱/賣價/rareFactor）則跨釣點共用。
+function normalizeFish(f) {
+  const locations =
+    f.locations == null || f.locations === "all"
+      ? "all"
+      : Array.isArray(f.locations)
+        ? f.locations
+        : [f.locations];
+  return {
+    name: f.name || f.id,
+    emoji: f.emoji || "🐟",
+    rarity: f.rarity || "限定",
+    price: Number(f.price) || 0,
+    rareFactor: Number(f.rareFactor) || 0,
+    weight: Number(f.weight) || 0,
+    locations,
+    event: true,
+  };
+}
+
+// 單一活動的限定魚清單 [{ key, def }]（支援 effects.extraFish 物件或 extraFishes 陣列）
+function eventExtraFish(event) {
+  const effects = event?.effects || {};
+  const raw = [];
+  if (effects.extraFish) raw.push(effects.extraFish);
+  if (Array.isArray(effects.extraFishes)) raw.push(...effects.extraFishes);
+  return raw
+    .filter((f) => f && f.id)
+    .map((f) => ({ key: f.id, def: normalizeFish(f) }));
+}
+
+function fishAppearsAt(def, location) {
+  return (
+    def.locations === "all" ||
+    (Array.isArray(def.locations) && def.locations.includes(location))
+  );
+}
+
+// 掉落用的有效魚權重表：某釣點的基礎魚權重 + 生效中活動、且在該釣點出沒的限定魚權重。
+function getEffectiveFishWeights(location, nowMs = Date.now()) {
+  const base = { ...((config.fishing?.dropTable || {})[location] || {}) };
+  for (const e of getActiveEvents(nowMs)) {
+    for (const { key, def } of eventExtraFish(e)) {
+      if (fishAppearsAt(def, location)) base[key] = def.weight;
+    }
+  }
+  return base;
+}
+
+// 有效魚定義表（顯示 / 計價用）：基礎魚 + 生效中活動限定魚。
+function getEffectiveFishDefs(nowMs = Date.now()) {
+  const base = { ...(config.fishing?.fish || {}) };
+  for (const e of getActiveEvents(nowMs)) {
+    for (const { key, def } of eventExtraFish(e)) base[key] = def;
+  }
+  return base;
+}
+
+// 解析任一魚 def（顯示 / 計價）：基礎 → 生效活動 → 任一活動（含已結束，
+// 讓玩家魚袋裡的限定魚之後仍查得到名稱與賣價）。比照 resolveOreDef。
+function resolveFishDef(key, nowMs = Date.now()) {
+  const base = config.fishing?.fish || {};
+  if (base[key]) return base[key];
+  for (const e of getActiveEvents(nowMs)) {
+    for (const { key: k, def } of eventExtraFish(e)) if (k === key) return def;
+  }
+  for (const e of allEvents()) {
+    for (const { key: k, def } of eventExtraFish(e)) if (k === key) return def;
+  }
+  return null;
+}
+
+function getFishingSuccessBonus(nowMs = Date.now()) {
+  return getActiveEvents(nowMs).reduce(
+    (s, e) => s + (Number(e.effects?.fishingSuccessBonus) || 0),
+    0,
+  );
+}
+
+function getFishingRareBonus(nowMs = Date.now()) {
+  return getActiveEvents(nowMs).reduce(
+    (s, e) => s + (Number(e.effects?.fishingRareBonus) || 0),
+    0,
+  );
+}
+
 // ── buff 注入 ──────────────────────────────────────────
 function getMiningLuckBonus(nowMs = Date.now()) {
   return getActiveEvents(nowMs).reduce(
@@ -172,6 +260,23 @@ function getEventQuestById(id, nowMs = Date.now()) {
   return getEventQuests(nowMs).find((q) => q.id === id) || null;
 }
 
+// ── 限定魚兌換所 ───────────────────────────────────────
+// 生效中活動的兌換項目（成本＝限定魚、獎勵＝金幣/CD券/通行證/稱號）。
+// 每筆帶上所屬活動資訊，id 需全域唯一（兌換 handler 以 id 定位）。
+function getEventExchanges(nowMs = Date.now()) {
+  const out = [];
+  for (const e of getActiveEvents(nowMs)) {
+    for (const x of e.exchange || []) {
+      if (x && x.id) out.push({ ...x, eventId: e.id, eventName: e.name });
+    }
+  }
+  return out;
+}
+
+function getEventExchangeById(id, nowMs = Date.now()) {
+  return getEventExchanges(nowMs).find((x) => x.id === id) || null;
+}
+
 // 取得某觸發類型（如 'mine_count'）對應的進度 hook，供指令層併入 applyQuestHooks。
 // ctx 可帶 { ore }，活動任務可用 condition.ore 過濾特定礦石。
 function getEventQuestHooksByType(type, ctx = {}, nowMs = Date.now()) {
@@ -180,6 +285,7 @@ function getEventQuestHooksByType(type, ctx = {}, nowMs = Date.now()) {
     const cond = q.condition || {};
     if (cond.type !== type) continue;
     if (cond.ore && ctx.ore && cond.ore !== ctx.ore) continue;
+    if (cond.fish && ctx.fish && cond.fish !== ctx.fish) continue;
     hooks.push({ questId: q.id });
   }
   return hooks;
@@ -229,11 +335,19 @@ module.exports = {
   eventExtraOres,
   getEffectiveOreDefs,
   resolveOreDef,
+  eventExtraFish,
+  getEffectiveFishWeights,
+  getEffectiveFishDefs,
+  resolveFishDef,
+  getFishingSuccessBonus,
+  getFishingRareBonus,
   getMiningLuckBonus,
   getMiningQtyBonus,
   getEventQuests,
   getEventQuestById,
   getEventQuestHooksByType,
+  getEventExchanges,
+  getEventExchangeById,
   forceStart,
   forceEnd,
   clearForce,

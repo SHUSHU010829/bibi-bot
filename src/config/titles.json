@@ -8,7 +8,8 @@
       "lottery": "樂透",
       "auction": "拍賣",
       "boss": "BOSS 戰",
-      "theft": "盜賊"
+      "theft": "盜賊",
+      "event": "限時活動"
     },
     "order": [
       "coal_collector",
@@ -31,7 +32,9 @@
       "combo_starter",
       "punching_bag",
       "habitual_thief",
-      "bounty_hunter"
+      "bounty_hunter",
+      "summer_fish_king",
+      "moonlight_angler"
     ],
     "defs": {
       "coal_collector": { "name": "煤炭採集者", "emoji": "🪵", "category": "mining", "desc": "累積挖礦 50 次且持有 ≥ 500 幣", "req": { "mineCount": 50, "coins": 500 } },
@@ -57,7 +60,9 @@
       "frozen_hero":       { "name": "冰封英雄",   "emoji": "❄️", "category": "dungeon", "desc": "冰窟 1F–5F 全部通關過 ≥ 1 次", "req": { "iceFloorsClearedAll": true } },
       "ruins_scholar":     { "name": "廢墟學者",   "emoji": "🏛️", "category": "dungeon", "desc": "廢墟 1F–5F 全部通關過 ≥ 1 次", "req": { "ruinsFloorsClearedAll": true } },
       "habitual_thief":    { "name": "慣竊",       "emoji": "🥷", "category": "theft", "desc": "偷竊得手累積 25 次", "req": { "stealSuccess": 25 } },
-      "bounty_hunter":     { "name": "賞金獵人",   "emoji": "🕵️", "category": "theft", "desc": "追捕通緝犯成功累積 15 次", "req": { "huntSuccess": 15 } }
+      "bounty_hunter":     { "name": "賞金獵人",   "emoji": "🕵️", "category": "theft", "desc": "追捕通緝犯成功累積 15 次", "req": { "huntSuccess": 15 } },
+      "summer_fish_king":  { "name": "夏日魚王",   "emoji": "🎏", "category": "event", "desc": "夏日魚汛祭限定：用河豚王兌換的榮譽稱號" },
+      "moonlight_angler":  { "name": "月光釣者",   "emoji": "🌕", "category": "event", "desc": "中秋月光夜釣限定：獻上傳說錦鯉換取的榮譽稱號" }
     }
   }
 }

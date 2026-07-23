@@ -23,6 +23,10 @@ function resolveChannelId(event) {
   return event.announceChannelId || eventEngine.cfg().announceChannelId || "";
 }
 
+function resolveRoleId(event) {
+  return event.announceRoleId || eventEngine.cfg().announceRoleId || "";
+}
+
 // 嘗試標記某活動某階段已公告；回傳 true 表示「這次才標到（可以發）」。
 async function claimAnnouncement(client, eventId, phase, occurrence) {
   const col = client.eventAnnouncementsCollection;
@@ -56,8 +60,15 @@ async function sendAnnouncement(client, event, phase) {
     ? event.announcementText || event.description || "活動開始囉！"
     : `感謝參與 **${event.name}**，本次活動已結束，限定加成與掉落已停止。`;
 
-  const container = new ContainerBuilder()
-    .setAccentColor(COLORS[phase] || 0x9b59b6)
+  // 開始公告 tag 身分組。Components v2 不能用 content 夾提及，改把 <@&id> 放進
+  // TextDisplay，並在 allowedMentions 明確允許該身分組才會真的觸發通知。
+  const roleId = isStart ? resolveRoleId(event) : "";
+
+  const container = new ContainerBuilder().setAccentColor(COLORS[phase] || 0x9b59b6);
+  if (roleId) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`<@&${roleId}>`));
+  }
+  container
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(title))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(body))
@@ -67,8 +78,11 @@ async function sendAnnouncement(client, event, phase) {
       ),
     );
 
+  const payload = { components: [container], flags: MessageFlags.IsComponentsV2 };
+  if (roleId) payload.allowedMentions = { roles: [roleId] };
+
   await channel
-    .send({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .send(payload)
     .catch((e) => console.log(`[EVENT] 公告發送失敗 ${event.id}/${phase}: ${e.message}`.yellow));
   return true;
 }

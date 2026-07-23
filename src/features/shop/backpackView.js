@@ -28,6 +28,20 @@ const { getPickaxeRepairCost, applyRepairDiscount } = require("../mining/mineSer
 const buildingService = require("../guild_club/buildingService");
 const dungeonService = require("../mining/dungeonService");
 const orePriceEngine = require("../market/orePriceEngine");
+const eventEngine = require("../event/eventEngine");
+
+// 魚袋顯示用的魚定義表：基礎魚 + 魚袋內持有、但不在基礎圖鑑的限定活動魚
+// （resolveFishDef 含已結束活動，讓限定魚活動後仍顯示得出名稱、賣得掉）。
+function bagFishDefs(bag) {
+  const defs = { ...(fishing?.fish || {}) };
+  for (const key of Object.keys(bag || {})) {
+    if (!defs[key] && (bag[key] || 0) > 0) {
+      const d = eventEngine.resolveFishDef(key);
+      if (d) defs[key] = d;
+    }
+  }
+  return defs;
+}
 const { getSellableItem, SELL_MODAL_OPEN_PREFIX } = require("./sellableItems");
 const foodBag = require("../fishing/foodBag");
 const foodBagView = require("../fishing/foodBagView");
@@ -363,7 +377,7 @@ async function buildDashboard(client, container, { userId, guildId, member, tota
     const bag = profile.fish_bag || {};
     let value = 0;
     let kinds = 0;
-    for (const [key, def] of Object.entries(fishing.fish || {})) {
+    for (const [key, def] of Object.entries(bagFishDefs(bag))) {
       const qty = bag[key] || 0;
       if (qty <= 0) continue;
       kinds++;
@@ -846,7 +860,8 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
 
     const fishMarket = await orePriceEngine.getDailyFishPrices(client).catch(() => ({ prices: {} }));
     const fishPriceMap = fishMarket?.prices || {};
-    const hasFish = Object.entries(fishing.fish || {}).some(([k]) => (fishBagData[k] || 0) > 0);
+    const fishBagDefs = bagFishDefs(fishBagData);
+    const hasFish = Object.entries(fishBagDefs).some(([k]) => (fishBagData[k] || 0) > 0);
 
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -855,7 +870,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     );
 
     if (hasFish) {
-      for (const [key, def] of Object.entries(fishing.fish || {})) {
+      for (const [key, def] of Object.entries(fishBagDefs)) {
         const qty = fishBagData[key] || 0;
         if (qty <= 0) continue;
         const base = def.price || 0;

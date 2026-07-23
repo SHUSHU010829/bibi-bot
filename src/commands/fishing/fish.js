@@ -22,6 +22,7 @@ const mineService = require("../../features/mining/mineService");
 const { materialLabel } = require("../../features/mining/craftMaterials");
 const { bagStatusLine } = require("../../features/mining/bagStatus");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
+const eventEngine = require("../../features/event/eventEngine");
 const reminder = require("../../features/reminders/cooldownReminderService");
 
 // 冷卻中的 /釣魚 訊息上「🎫 使用 CD 縮短券」按鈕。
@@ -691,11 +692,14 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
     const { fishDef, locDef, newCooldownAt } = result;
     const readyEpoch = Math.floor(newCooldownAt / 1000);
 
-    const rarityColor = {
-      普通: 0x7fb2d8,
-      稀有: 0x5865f2,
-      傳說: 0xff6b6b,
-    }[fishDef.rarity || "普通"] ?? 0x7fb2d8;
+    const isEventFish = !!fishDef.event;
+    const rarityColor = isEventFish
+      ? 0xf1c40f
+      : {
+          普通: 0x7fb2d8,
+          稀有: 0x5865f2,
+          傳說: 0xff6b6b,
+        }[fishDef.rarity || "普通"] ?? 0x7fb2d8;
 
     const qty = result.qty || 1;
     const warn = fishing.durabilityWarn || {};
@@ -720,7 +724,9 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       .setAccentColor(rarityColor)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ${fishDef.emoji || "🐟"} 釣到了！**${fishDef.name || result.fish}**${qty > 1 ? ` ×${qty}` : ""}`
+          isEventFish
+            ? `# 🎉 限定！${fishDef.emoji || "🐟"} 釣到了 **${fishDef.name || result.fish}**${qty > 1 ? ` ×${qty}` : ""}！`
+            : `# ${fishDef.emoji || "🐟"} 釣到了！**${fishDef.name || result.fish}**${qty > 1 ? ` ×${qty}` : ""}`
         )
       )
       .addSeparatorComponents(new SeparatorBuilder())
@@ -878,22 +884,28 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       flags: MessageFlags.IsComponentsV2,
     });
 
-    // 任務 hook：釣魚計數
-    applyQuestHooks(client, {
+    // 活動任務 hook：釣魚計數（可鎖定特定魚種）＋限定魚計數。以釣到的數量推進。
+    const questCtx = {
+      interaction,
+      user: interaction.user,
       userId: interaction.user.id,
       guildId: interaction.guildId,
-      type: "fish_count",
-      value: 1,
-    }).catch(() => {});
-
-    // 釣到傳說魚 hook
-    if (fishDef.rarity === "傳說") {
-      applyQuestHooks(client, {
-        userId: interaction.user.id,
-        guildId: interaction.guildId,
-        type: "legendary_fish_count",
-        value: 1,
-      }).catch(() => {});
+      member: interaction.member,
+      username: interaction.user.username,
+    };
+    const caughtQty = result.qty || 1;
+    const fishHooks = eventEngine
+      .getEventQuestHooksByType("fish_count", { fish: result.fish })
+      .map((h) => ({ ...h, delta: (h.delta ?? 1) * caughtQty }));
+    if (fishDef.event) {
+      fishHooks.push(
+        ...eventEngine
+          .getEventQuestHooksByType("event_fish_count", {})
+          .map((h) => ({ ...h, delta: (h.delta ?? 1) * caughtQty })),
+      );
+    }
+    if (fishHooks.length) {
+      applyQuestHooks(client, questCtx, fishHooks).catch(() => {});
     }
 
     // 冷卻提醒：只有已啟用通知的玩家才更新
@@ -1159,6 +1171,35 @@ async function runFishBatch(client, interaction, { location = "stream", count })
       components: [container],
       flags: MessageFlags.IsComponentsV2,
     });
+
+    // 活動任務 hook：以整批各魚種釣到的數量推進（比照連續挖礦 mine.js）。
+    const batchHooks = [];
+    for (const [fishKey, info] of Object.entries(result.fishByType || {})) {
+      const c = info.qty || 0;
+      if (c <= 0) continue;
+      for (const h of eventEngine.getEventQuestHooksByType("fish_count", { fish: fishKey })) {
+        batchHooks.push({ ...h, delta: (h.delta ?? 1) * c });
+      }
+      if (eventEngine.resolveFishDef(fishKey)?.event) {
+        for (const h of eventEngine.getEventQuestHooksByType("event_fish_count", {})) {
+          batchHooks.push({ ...h, delta: (h.delta ?? 1) * c });
+        }
+      }
+    }
+    if (batchHooks.length) {
+      applyQuestHooks(
+        client,
+        {
+          interaction,
+          user: interaction.user,
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          member: interaction.member,
+          username: interaction.user.username,
+        },
+        batchHooks,
+      ).catch(() => {});
+    }
 
     reminder
       .refreshIfEnabled(client, {
