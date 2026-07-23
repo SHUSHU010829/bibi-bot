@@ -228,6 +228,9 @@ module.exports = async (client) => {
     // 地下城戰鬥紀錄（Phase H+ 多回合 HP 戰鬥日誌）：30 天 TTL
     const dungeonRunsCollection = database.collection("DungeonRuns");
 
+    // 傳說之劍斷裂紀錄（雙週斷劍榜資料源）：TTL 由 swordBreaker.breakLogTtlDays 設
+    const swordBreaksCollection = database.collection("SwordBreaks");
+
     // 市集掛單（擺攤/換礦/徵求/競標）
     const marketListingsCollection = database.collection("MarketListings");
 
@@ -380,6 +383,7 @@ module.exports = async (client) => {
     client.wantedListCollection = wantedListCollection;
     client.theftLogsCollection = theftLogsCollection;
     client.dungeonRunsCollection = dungeonRunsCollection;
+    client.swordBreaksCollection = swordBreaksCollection;
     client.marketListingsCollection = marketListingsCollection;
     client.barterListingsCollection = barterListingsCollection;
     client.marketplaceMailboxCollection = marketplaceMailboxCollection;
@@ -1622,6 +1626,22 @@ module.exports = async (client) => {
           partialFilterExpression: { is_milestone: false },
         }
       ).catch((e) => console.log(`[WARN] DungeonRuns TTL: ${e.message}`.yellow));
+
+      // 傳說之劍斷裂紀錄：雙週榜聚合 (guild, broken_at)；TTL 依 config（預設 120 天）
+      const swordBreakTtlDays =
+        require("../../config").dungeon?.swordBreaker?.breakLogTtlDays || 120;
+      await swordBreaksCollection.createIndex(
+        { guild_id: 1, broken_at: -1 },
+        { name: "sword_breaks_guild_time" }
+      ).catch((e) => console.log(`[WARN] SwordBreaks guild_time: ${e.message}`.yellow));
+      await swordBreaksCollection.createIndex(
+        { guild_id: 1, user_id: 1, broken_at: -1 },
+        { name: "sword_breaks_guild_user_time" }
+      ).catch((e) => console.log(`[WARN] SwordBreaks guild_user_time: ${e.message}`.yellow));
+      await swordBreaksCollection.createIndex(
+        { broken_at: 1 },
+        { expireAfterSeconds: swordBreakTtlDays * 24 * 60 * 60, name: "sword_breaks_ttl" }
+      ).catch((e) => console.log(`[WARN] SwordBreaks TTL: ${e.message}`.yellow));
 
       // 市集索引：(guild, listing_id) 唯一；cron 用 (status, expires_at)；type 篩選
       await marketListingsCollection.createIndex(

@@ -18,6 +18,7 @@ const {
   getMemberClub,
 } = require("../mining/dungeonService");
 const { dungeon, theft } = require("../../config");
+const swordBreakService = require("../dungeon/swordBreakService");
 const theftProfile = require("../theft/theftProfile");
 const theftService = require("../theft/theftService");
 const { SECTIONS, buildSectionRow } = require("../playerStatus/statusNav");
@@ -260,6 +261,21 @@ async function renderTimed(container, client, { userId, guildId }) {
       }
     }
   } catch { /* noop */ }
+
+  // 亡靈制（斷劍王加成）：生效中才顯示，效期一過自動失效（compute-on-read）
+  if (miningProfileForStamina && swordBreakService.isUndeadActive(miningProfileForStamina)) {
+    const u = dungeon?.undead || {};
+    const exp = miningProfileForStamina.active_undead_buff?.expires_at;
+    const lines = [
+      `☠️ **亡靈制（斷劍王）生效中**${exp ? `：<t:${Math.floor(exp / 1000)}:R> 到期` : ""}`,
+      `• ⚔️ 地下城傷害 +${u.atkPct || 0}%`,
+      `• 🛡️ 武器耐久節省 +${u.durabilitySavePct || 0}%`,
+      `• 👻 亡靈軍團事件（地下城勝利時有機率額外掉傳說碎片）`,
+      "-# 把 🔥 傳說之劍 砍斷最多次即可在雙週結算奪下亡靈王座",
+    ];
+    addBlock(container, lines.join("\n"));
+    shown = true;
+  }
 
   // 撈網 / 高級陷阱 buff 剩餘次數（消耗品庫存與碎片數放在 /背包，避免重複）
   if (miningProfileForStamina) {

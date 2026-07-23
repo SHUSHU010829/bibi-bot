@@ -307,8 +307,12 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
   const newUpdatedAt = wasFull ? now : st.updatedAt;
 
   const monster = rollMonster();
-  // 訓練場 + 世界事件 dungeon_damage_pct 把 atk 拉高（兩者皆是「百分比加成」）
-  const dmgPct = clubBuildingPct(club, "dungeon_damage_pct") + worldEventPct("dungeon_damage_pct");
+  // 訓練場 + 世界事件 dungeon_damage_pct 把 atk 拉高（兩者皆是「百分比加成」）；
+  // 亡靈制（斷劍王）額外疊加 dungeon ATK%（compute-on-read，過期即失效）。
+  const dmgPct =
+    clubBuildingPct(club, "dungeon_damage_pct") +
+    worldEventPct("dungeon_damage_pct") +
+    swordBreakService.undeadAtkPct(profile);
   const baseAtk = playerAtk(profile);
   const atk = Math.floor(baseAtk * (100 + dmgPct) / 100);
   // 赤手空拳也能打，但勝率極低（套較低的天花板、且不吃 winRateMin 保底）；
@@ -347,7 +351,8 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
   if (hasWeaponDurability) {
     const before = profile.weapon_durability;
     const saved = rollDurabilitySave(
-      clubBuildingPct(club, "combat_durability_save_pct")
+      clubBuildingPct(club, "combat_durability_save_pct") +
+        swordBreakService.undeadDurabilitySavePct(profile)
     );
     if (saved) {
       weaponDurabilityAfter = before;
@@ -486,8 +491,16 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     weaponBroke,
     weaponDurabilityAfter,
     weaponDurabilityWarnCrossed,
+    legendarySwordBroke: weaponBroke && weaponBefore === swordBreakService.LEGENDARY_SWORD,
     foodBuffLines: formatFoodBuffLines(profile, "dungeon"),
   };
+
+  // 傳說之劍斷裂：記錄斷劍榜 + 公開播報（fire-and-forget，自帶錯誤吞掉）
+  if (result.legendarySwordBroke) {
+    swordBreakService
+      .handleLegendaryBreak(client, { userId, guildId })
+      .catch(() => {});
+  }
 
   // 世界事件觸發 roll（僅勝利時觸發）：fire-and-forget
   if (won) {
@@ -656,6 +669,7 @@ async function rollbackDungeon(client, { userId, guildId, username, member }, re
 const battleEngine = require("../dungeon/battleEngine");
 const floorService = require("../dungeon/floorService");
 const hpService = require("../dungeon/hpService");
+const swordBreakService = require("../dungeon/swordBreakService");
 const { getFoodDefBonus, getFoodHpMaxBonus } = require("../fishing/cookService");
 const { ObjectId } = require("mongodb");
 
@@ -774,7 +788,11 @@ async function enterDungeonHp(client, {
   // 4) 組玩家戰鬥屬性（食物 + 世界事件 + 公會 buff 全部疊上）
   const hpMaxV = await effectiveHpMax(client, { userId, guildId, profile, club, level });
   const hpSt = hpService.resolveHp(profile, hpMaxV);
-  const dmgPct = clubBuildingPct(club, "dungeon_damage_pct") + worldEventPct("dungeon_damage_pct");
+  // 亡靈制（斷劍王）疊加 dungeon ATK%（compute-on-read，過期即失效）。
+  const dmgPct =
+    clubBuildingPct(club, "dungeon_damage_pct") +
+    worldEventPct("dungeon_damage_pct") +
+    swordBreakService.undeadAtkPct(profile);
   const baseAtk = playerAtk(profile);
   const atk = Math.floor(baseAtk * (100 + dmgPct) / 100);
 
@@ -864,6 +882,7 @@ async function enterDungeonHp(client, {
   let floorEvents = [];
   let deathDrop = null;
   let seedGained = null;
+  let undeadEvent = null;
 
   const inc = { dungeon_count: 1 };
   const set = {
@@ -893,7 +912,8 @@ async function enterDungeonHp(client, {
   if (hasWeaponDurability) {
     const before = profile.weapon_durability;
     const saved = rollDurabilitySave(
-      clubBuildingPct(club, "combat_durability_save_pct")
+      clubBuildingPct(club, "combat_durability_save_pct") +
+        swordBreakService.undeadDurabilitySavePct(profile)
     );
     if (saved) {
       weaponDurabilityAfter = before;
@@ -987,6 +1007,16 @@ async function enterDungeonHp(client, {
       }
       Object.assign(set, upd.set);
       floorEvents = upd.events;
+    }
+
+    // 亡靈制事件「亡靈軍團」：斷劍王勝利時有機率讓亡靈為其收集傳說碎片 + 金幣。
+    undeadEvent = swordBreakService.rollUndeadEvent(profile);
+    if (undeadEvent) {
+      if (undeadEvent.legendaryFragments > 0) {
+        legendaryGained += undeadEvent.legendaryFragments;
+        inc.legendary_fragments = (inc.legendary_fragments || 0) + undeadEvent.legendaryFragments;
+      }
+      if (undeadEvent.coins > 0) coinsGained += undeadEvent.coins;
     }
   } else {
     // 失敗：25% 機率隨機掉 1 個非工具類道具（魚/礦/作物等，不掉裝備）
@@ -1111,6 +1141,8 @@ async function enterDungeonHp(client, {
     weaponDurabilityAfter,
     weaponDurabilityWarnCrossed,
     weaponDurabilityCost: wdurCost,
+    legendarySwordBroke: weaponBroke && weaponBefore === swordBreakService.LEGENDARY_SWORD,
+    undeadEvent,
     loot,
     coinsGained: coinsGrantedTotal,
     coinsBase: coinsGained,
@@ -1128,6 +1160,13 @@ async function enterDungeonHp(client, {
     dungeonCount: (profile.dungeon_count || 0) + 1,
     foodBuffLines: formatFoodBuffLines(profile, "dungeon"),
   };
+
+  // 傳說之劍斷裂：記錄斷劍榜 + 公開播報（fire-and-forget，自帶錯誤吞掉）
+  if (result.legendarySwordBroke) {
+    swordBreakService
+      .handleLegendaryBreak(client, { userId, guildId })
+      .catch(() => {});
+  }
 
   // 事件 / 世界事件
   if (won) {

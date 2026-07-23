@@ -618,6 +618,17 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
         );
       }
     }
+    if (result.undeadEvent) {
+      const ue = result.undeadEvent;
+      const parts = [];
+      if (ue.legendaryFragments > 0) parts.push(`✨ 傳說素材碎片 ×${ue.legendaryFragments}`);
+      if (ue.coins > 0) parts.push(`+${ue.coins.toLocaleString()} ${COIN_EMOJI}`);
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `👻 **亡靈軍團降臨！** 斷劍化成的亡靈為你收集了戰利品${parts.length ? `：${parts.join("、")}` : ""}`,
+        ),
+      );
+    }
   } else if (result.deathDrop) {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
@@ -713,7 +724,13 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
     );
   }
 
-  if (result.weaponBroke) {
+  if (result.legendarySwordBroke) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "💥 **傳說之劍應聲斷裂！** 你的斷劍紀錄 +1，已公開播報。\n-# 斷劍榜每月 1／16 號結算，斷最多的人封為 ☠️ 斷劍王（`/排行榜` → 斷劍王）。到 /合成 再打一把。",
+      ),
+    );
+  } else if (result.weaponBroke) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent("-# 你的武器斷了！到 /合成 打一把新的，或到 /裝備 用劣質磨石修復。"),
     );
@@ -792,7 +809,11 @@ function encounterBroadcastLine(result) {
 // 公開精簡播報（dungeon.json.channelId 頻道）。一行訊息，不洗版。
 function publicBroadcastContent(displayName, result) {
   const f = `${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""}`.trim();
-  const encLine = encounterBroadcastLine(result);
+  let encLine = encounterBroadcastLine(result);
+  const specials = [];
+  if (result.legendarySwordBroke) specials.push("💥 傳說之劍斷裂！");
+  if (result.undeadEvent) specials.push("👻 亡靈軍團降臨");
+  if (specials.length) encLine += `\n　　${specials.join(" ・ ")}`;
   if (result.isMiniBoss) {
     if (result.won) {
       const total = result.dragonSlayerTotal ?? null;

@@ -12,10 +12,12 @@ const fetchMiningDiamond = require("./fetchers/miningDiamond");
 const fetchTitles = require("./fetchers/titles");
 const fetchWeeklySummary = require("./fetchers/weeklySummary");
 const { fetchCasinoWinners, fetchCasinoLosers } = require("./fetchers/casino");
+const fetchSwordBreaker = require("./fetchers/swordBreaker");
 
 const PERIODS = {
   today: "今天",
   week: "本週",
+  biweekly: "本期（兩週）",
   month: "本月",
   all: "全部時間",
 };
@@ -110,6 +112,16 @@ const CATEGORIES = [
     periods: ["week"],
     defaultPeriod: "week",
     fetch: fetchWeeklySummary,
+  },
+  {
+    key: "sword_breaker",
+    label: "斷劍王",
+    emoji: "☠️",
+    accent: 0x992d22,
+    description: "把 🔥 傳說之劍 砍斷最多次（每月 1／16 號結算，冠軍得亡靈制）",
+    periods: ["biweekly", "all"],
+    defaultPeriod: "biweekly",
+    fetch: fetchSwordBreaker,
   },
   {
     key: "casino_winners",

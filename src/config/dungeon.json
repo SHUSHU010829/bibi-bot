@@ -2,6 +2,22 @@
   "dungeon": {
     "enabled": true,
     "channelId": "1511617684532367440",
+    "swordBreaker": {
+      "enabled": true,
+      "announceChannelId": "1511655301953228800",
+      "cronSchedule": "5 0 1,16 * *",
+      "timezone": "Asia/Taipei",
+      "breakLogTtlDays": 120
+    },
+    "undead": {
+      "atkPct": 15,
+      "durabilitySavePct": 20,
+      "event": {
+        "chancePct": 12,
+        "legendaryFragments": 1,
+        "coins": 300
+      }
+    },
     "staminaMax": 12,
     "staminaRegenMs": 3600000,
     "baseAtk": 20,
