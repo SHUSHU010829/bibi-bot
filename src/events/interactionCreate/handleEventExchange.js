@@ -31,6 +31,22 @@ function fishLabel(fishDef, fallbackKey) {
   return `${fishDef?.emoji || "🐟"} ${fishDef?.name || fallbackKey}`;
 }
 
+// 兌換到限定稱號時，在頻道發個公開小通知（換完不補、值得炫耀一下）。
+function limitedTitleNotice(userId, eventName, titleId) {
+  return new ContainerBuilder()
+    .setAccentColor(0xf1c40f)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🎉 限定稱號到手！\n<@${userId}> 在 **${eventName}** 兌換到限定稱號 **${eventExchangeService.titleName(titleId)}**！`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 活動限定・換完不補，用 `/稱號 設定` 掛上錢包卡炫耀一下 🏅",
+      ),
+    );
+}
+
 module.exports = async (client, interaction) => {
   if (!interaction.isButton?.()) return;
   const parsed = parseExchangeButtonId(interaction.customId || "");
@@ -109,7 +125,24 @@ module.exports = async (client, interaction) => {
       items,
       banner,
     });
-    return interaction.update(view);
+    await interaction.update(view);
+
+    // 限定稱號初次到手 → 頻道公開小通知（兌換面板本身是 ephemeral，其他人看不到）
+    if (result.titleAward?.newlyAdded) {
+      await interaction
+        .followUp({
+          components: [
+            limitedTitleNotice(
+              interaction.user.id,
+              result.exchange.eventName,
+              result.titleAward.titleId,
+            ),
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        })
+        .catch(() => {});
+    }
+    return;
   } catch (error) {
     console.log(`[ERROR] 兌換所按鈕:\n${error}\n${error.stack}`.red);
     return interaction
