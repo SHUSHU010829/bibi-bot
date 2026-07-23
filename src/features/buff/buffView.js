@@ -262,16 +262,17 @@ async function renderTimed(container, client, { userId, guildId }) {
     }
   } catch { /* noop */ }
 
-  // 亡靈制（斷劍王加成）：生效中才顯示，效期一過自動失效（compute-on-read）
+  // 亡靈制（斷劍王詛咒 / debuff）：纏身中才顯示，效期一過自動解除（compute-on-read）
   if (miningProfileForStamina && swordBreakService.isUndeadActive(miningProfileForStamina)) {
     const u = dungeon?.undead || {};
+    const c = u.curse || {};
     const exp = miningProfileForStamina.active_undead_buff?.expires_at;
     const lines = [
-      `☠️ **亡靈制（斷劍王）生效中**${exp ? `：<t:${Math.floor(exp / 1000)}:R> 到期` : ""}`,
-      `• ⚔️ 地下城傷害 +${u.atkPct || 0}%`,
-      `• 🛡️ 武器耐久節省 +${u.durabilitySavePct || 0}%`,
-      `• 👻 亡靈軍團事件（地下城勝利時有機率額外掉傳說碎片）`,
-      "-# 把 🔥 傳說之劍 砍斷最多次即可在雙週結算奪下亡靈王座",
+      `☠️ **亡靈制（斷劍王詛咒）纏身中**${exp ? `：<t:${Math.floor(exp / 1000)}:R> 解除` : ""}`,
+      `• ⚔️ 地下城傷害 −${u.atkPenaltyPct || 0}%`,
+      `• 🗡️ 武器每場多扣耐久 −${u.extraDurabilityCost || 0}（兵刃更快崩壞）`,
+      `• 👻 亡靈軍團作祟（地下城勝利時有機率被奪走金幣、吸走 ${c.hpLossPct || 0}% HP）`,
+      "-# 把 🔥 傳說之劍 砍斷最多次的人，會在雙週結算被烙上此詛咒——少砍斷幾把吧",
     ];
     addBlock(container, lines.join("\n"));
     shown = true;

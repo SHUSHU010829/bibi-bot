@@ -118,7 +118,7 @@ const CATEGORIES = [
     label: "斷劍王",
     emoji: "☠️",
     accent: 0x992d22,
-    description: "把 🔥 傳說之劍 砍斷最多次（每月 1／16 號結算，冠軍得亡靈制）",
+    description: "把 🔥 傳說之劍 砍斷最多次（每月 1／16 號結算，第一名遭亡靈制詛咒）",
     periods: ["biweekly", "all"],
     defaultPeriod: "biweekly",
     fetch: fetchSwordBreaker,

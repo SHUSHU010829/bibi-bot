@@ -308,13 +308,13 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
 
   const monster = rollMonster();
   // 訓練場 + 世界事件 dungeon_damage_pct 把 atk 拉高（兩者皆是「百分比加成」）；
-  // 亡靈制（斷劍王）額外疊加 dungeon ATK%（compute-on-read，過期即失效）。
+  // 亡靈制（斷劍王詛咒）反過來扣 dungeon ATK%（compute-on-read，過期即失效）。
   const dmgPct =
     clubBuildingPct(club, "dungeon_damage_pct") +
-    worldEventPct("dungeon_damage_pct") +
-    swordBreakService.undeadAtkPct(profile);
+    worldEventPct("dungeon_damage_pct") -
+    swordBreakService.undeadAtkPenaltyPct(profile);
   const baseAtk = playerAtk(profile);
-  const atk = Math.floor(baseAtk * (100 + dmgPct) / 100);
+  const atk = Math.max(1, Math.floor(baseAtk * (100 + dmgPct) / 100));
   // 赤手空拳也能打，但勝率極低（套較低的天花板、且不吃 winRateMin 保底）；
   // 有武器才適用一般的 winRateMin ~ winRateMax 區間。
   const usingFist = !hasWeapon(profile);
@@ -350,21 +350,22 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     profile.weapon !== "fist" && typeof profile.weapon_durability === "number";
   if (hasWeaponDurability) {
     const before = profile.weapon_durability;
+    // 亡靈制詛咒：每場多扣武器耐久，讓兵刃更快崩壞。
+    const durCost = 1 + swordBreakService.undeadExtraDurabilityCost(profile);
     const saved = rollDurabilitySave(
-      clubBuildingPct(club, "combat_durability_save_pct") +
-        swordBreakService.undeadDurabilitySavePct(profile)
+      clubBuildingPct(club, "combat_durability_save_pct")
     );
     if (saved) {
       weaponDurabilityAfter = before;
     } else {
-      weaponDurabilityAfter = before - 1;
+      weaponDurabilityAfter = before - durCost;
       if (weaponDurabilityAfter <= 0) {
         weaponBroke = true;
         weaponDurabilityAfter = null;
         set.weapon = "fist";
         set.weapon_durability = null;
       } else {
-        inc.weapon_durability = -1;
+        inc.weapon_durability = -durCost;
         const warn = dungeon?.durabilityWarn || {};
         if (typeof warn.critical === "number" && before > warn.critical && weaponDurabilityAfter <= warn.critical) {
           weaponDurabilityWarnCrossed = "critical";
@@ -788,13 +789,13 @@ async function enterDungeonHp(client, {
   // 4) 組玩家戰鬥屬性（食物 + 世界事件 + 公會 buff 全部疊上）
   const hpMaxV = await effectiveHpMax(client, { userId, guildId, profile, club, level });
   const hpSt = hpService.resolveHp(profile, hpMaxV);
-  // 亡靈制（斷劍王）疊加 dungeon ATK%（compute-on-read，過期即失效）。
+  // 亡靈制（斷劍王詛咒）反過來扣 dungeon ATK%（compute-on-read，過期即失效）。
   const dmgPct =
     clubBuildingPct(club, "dungeon_damage_pct") +
-    worldEventPct("dungeon_damage_pct") +
-    swordBreakService.undeadAtkPct(profile);
+    worldEventPct("dungeon_damage_pct") -
+    swordBreakService.undeadAtkPenaltyPct(profile);
   const baseAtk = playerAtk(profile);
-  const atk = Math.floor(baseAtk * (100 + dmgPct) / 100);
+  const atk = Math.max(1, Math.floor(baseAtk * (100 + dmgPct) / 100));
 
   const weapons = dungeon?.weapons || {};
   const wdef = weapons[profile.weapon] || weapons.fist || {};
@@ -882,7 +883,7 @@ async function enterDungeonHp(client, {
   let floorEvents = [];
   let deathDrop = null;
   let seedGained = null;
-  let undeadEvent = null;
+  let undeadCurse = null;
 
   const inc = { dungeon_count: 1 };
   const set = {
@@ -911,21 +912,22 @@ async function enterDungeonHp(client, {
 
   if (hasWeaponDurability) {
     const before = profile.weapon_durability;
+    // 亡靈制詛咒：在樓層本身的耐久消耗上再多扣，讓兵刃更快崩壞。
+    const effWdurCost = wdurCost + swordBreakService.undeadExtraDurabilityCost(profile);
     const saved = rollDurabilitySave(
-      clubBuildingPct(club, "combat_durability_save_pct") +
-        swordBreakService.undeadDurabilitySavePct(profile)
+      clubBuildingPct(club, "combat_durability_save_pct")
     );
     if (saved) {
       weaponDurabilityAfter = before;
     } else {
-      weaponDurabilityAfter = before - wdurCost;
+      weaponDurabilityAfter = before - effWdurCost;
       if (weaponDurabilityAfter <= 0) {
         weaponBroke = true;
         weaponDurabilityAfter = null;
         set.weapon = "fist";
         set.weapon_durability = null;
       } else {
-        inc.weapon_durability = -wdurCost;
+        inc.weapon_durability = -effWdurCost;
         const warn = dungeon?.durabilityWarn || {};
         if (typeof warn.critical === "number" && before > warn.critical && weaponDurabilityAfter <= warn.critical) {
           weaponDurabilityWarnCrossed = "critical";
@@ -1009,14 +1011,18 @@ async function enterDungeonHp(client, {
       floorEvents = upd.events;
     }
 
-    // 亡靈制事件「亡靈軍團」：斷劍王勝利時有機率讓亡靈為其收集傳說碎片 + 金幣。
-    undeadEvent = swordBreakService.rollUndeadEvent(profile);
-    if (undeadEvent) {
-      if (undeadEvent.legendaryFragments > 0) {
-        legendaryGained += undeadEvent.legendaryFragments;
-        inc.legendary_fragments = (inc.legendary_fragments || 0) + undeadEvent.legendaryFragments;
+    // 亡靈制詛咒「亡靈軍團作祟」：斷劍王勝利時有機率被斷劍怨靈奪走部分戰利品與生命。
+    undeadCurse = swordBreakService.rollUndeadCurse(profile);
+    if (undeadCurse) {
+      if (undeadCurse.coinLoss > 0) coinsGained = Math.max(0, coinsGained - undeadCurse.coinLoss);
+      if (undeadCurse.hpLossPct > 0) {
+        const drain = Math.floor((hpMaxV * undeadCurse.hpLossPct) / 100);
+        if (drain > 0) {
+          set.hp_current = Math.max(1, (set.hp_current || 0) - drain);
+          set.hp_updated_at = set.hp_current >= hpMaxV ? 0 : Date.now();
+          undeadCurse.hpDrained = drain;
+        }
       }
-      if (undeadEvent.coins > 0) coinsGained += undeadEvent.coins;
     }
   } else {
     // 失敗：25% 機率隨機掉 1 個非工具類道具（魚/礦/作物等，不掉裝備）
@@ -1142,7 +1148,7 @@ async function enterDungeonHp(client, {
     weaponDurabilityWarnCrossed,
     weaponDurabilityCost: wdurCost,
     legendarySwordBroke: weaponBroke && weaponBefore === swordBreakService.LEGENDARY_SWORD,
-    undeadEvent,
+    undeadCurse,
     loot,
     coinsGained: coinsGrantedTotal,
     coinsBase: coinsGained,

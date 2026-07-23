@@ -37,32 +37,32 @@ function swordLabel() {
   return `${w.emoji || "🔥"} ${w.name || "傳說之劍"}`;
 }
 
-// ── 亡靈制 buff（compute-on-read）────────────────────────
+// ── 亡靈制 debuff（斷劍王的詛咒，compute-on-read）─────────
 function isUndeadActive(profile) {
   const exp = profile?.active_undead_buff?.expires_at;
   return typeof exp === "number" && exp > Date.now();
 }
 
-// 亡靈制生效時的地下城 ATK 加成（百分比整數）。
-function undeadAtkPct(profile) {
-  return isUndeadActive(profile) ? undeadCfg().atkPct || 0 : 0;
+// 亡靈制纏身時的地下城 ATK 懲罰（回傳正整數的懲罰幅度，呼叫端相減）。
+function undeadAtkPenaltyPct(profile) {
+  return isUndeadActive(profile) ? undeadCfg().atkPenaltyPct || 0 : 0;
 }
 
-// 亡靈制生效時，額外的武器耐久節省機率（百分比整數）——亡靈守護持劍者的兵刃。
-function undeadDurabilitySavePct(profile) {
-  return isUndeadActive(profile) ? undeadCfg().durabilitySavePct || 0 : 0;
+// 亡靈制纏身時，每場戰鬥額外多扣的武器耐久（怨靈讓兵刃更快崩壞）。
+function undeadExtraDurabilityCost(profile) {
+  return isUndeadActive(profile) ? undeadCfg().extraDurabilityCost || 0 : 0;
 }
 
-// 勝利時擲一次「亡靈軍團」事件：命中則回傳額外獎勵，否則 null。
-function rollUndeadEvent(profile) {
+// 每場擲一次「亡靈軍團作祟」詛咒：命中則回傳損失，否則 null。
+function rollUndeadCurse(profile) {
   if (!isUndeadActive(profile)) return null;
-  const ev = undeadCfg().event || {};
-  const chance = ev.chancePct || 0;
+  const c = undeadCfg().curse || {};
+  const chance = c.chancePct || 0;
   if (chance <= 0) return null;
   if (Math.random() * 100 >= chance) return null;
   return {
-    legendaryFragments: ev.legendaryFragments || 0,
-    coins: ev.coins || 0,
+    hpLossPct: c.hpLossPct || 0,
+    coinLoss: c.coinLoss || 0,
   };
 }
 
@@ -155,7 +155,7 @@ async function announceBreak(client, { userId, guildId, biweekly, lifetime }) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 斷劍榜每月 1 號 / 16 號結算，斷最多的人將被封為 ☠️ 斷劍王，領受「亡靈制」加成。用 `/排行榜` → 斷劍王 查看戰況。",
+        "-# 斷劍榜每月 1 號 / 16 號結算，斷最多的人將被封為 ☠️ 斷劍王，遭「亡靈制」詛咒纏身（debuff）。用 `/排行榜` → 斷劍王 查看戰況。",
       ),
     );
 
@@ -250,9 +250,9 @@ module.exports = {
   MEDALS,
   swordLabel,
   isUndeadActive,
-  undeadAtkPct,
-  undeadDurabilitySavePct,
-  rollUndeadEvent,
+  undeadAtkPenaltyPct,
+  undeadExtraDurabilityCost,
+  rollUndeadCurse,
   currentWindow,
   previousWindow,
   recordBreak,

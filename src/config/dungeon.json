@@ -10,12 +10,12 @@
       "breakLogTtlDays": 120
     },
     "undead": {
-      "atkPct": 15,
-      "durabilitySavePct": 20,
-      "event": {
-        "chancePct": 12,
-        "legendaryFragments": 1,
-        "coins": 300
+      "atkPenaltyPct": 15,
+      "extraDurabilityCost": 1,
+      "curse": {
+        "chancePct": 15,
+        "hpLossPct": 12,
+        "coinLoss": 200
       }
     },
     "staminaMax": 12,

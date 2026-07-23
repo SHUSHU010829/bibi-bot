@@ -35,10 +35,11 @@ async function announceChampion(client, guildId, winnerId, ranking, window, expi
     .join("\n");
 
   const u = dungeon?.undead || {};
+  const c = u.curse || {};
   const perks = [
-    `⚔️ 地下城傷害 +${u.atkPct || 0}%`,
-    `🛡️ 武器耐久節省 +${u.durabilitySavePct || 0}%`,
-    `☠️ 亡靈軍團事件（勝利時有機率額外掉傳說碎片）`,
+    `⚔️ 地下城傷害 −${u.atkPenaltyPct || 0}%`,
+    `🗡️ 武器每場多扣耐久 −${u.extraDurabilityCost || 0}（兵刃更快崩壞）`,
+    `👻 亡靈軍團作祟（勝利時有機率被奪走金幣、吸走 ${c.hpLossPct || 0}% HP）`,
   ];
 
   const container = new ContainerBuilder()
@@ -51,19 +52,19 @@ async function announceChampion(client, guildId, winnerId, ranking, window, expi
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `恭喜 ${nameOf(winnerId)} 本期把 ${swordBreakService.swordLabel()} 砍斷 **${ranking[0].breaks}** 次，登基為 **☠️ 斷劍王**！\n` +
-          `斷劍化為亡靈臣服於你——即刻起獲得「**亡靈制**」加成，效期至 <t:${Math.floor(expiresAt / 1000)}:R>。`,
+        `${nameOf(winnerId)} 本期把 ${swordBreakService.swordLabel()} 砍斷了 **${ranking[0].breaks}** 次，慘遭封為 **☠️ 斷劍王**！\n` +
+          `無數斷劍的怨靈反噬其身——即刻起被烙上「**亡靈制**」詛咒，效期至 <t:${Math.floor(expiresAt / 1000)}:R>。`,
       ),
     )
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`### 亡靈制加成\n${perks.join("\n")}`),
+      new TextDisplayBuilder().setContent(`### 亡靈制詛咒（debuff）\n${perks.join("\n")}`),
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`### 本期斷劍榜\n${top || "—"}`),
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 下一期重新統計，用 `/地下城` 揮舞 🔥 傳說之劍搶下亡靈王座！",
+        "-# 下一期重新統計——愛惜你的 🔥 傳說之劍，別讓自己再戴上這頂亡靈王冠！",
       ),
     );
 
@@ -97,9 +98,9 @@ async function processGuild(client, guildId, window, expiresAt) {
     if (winner) {
       await winner
         .send(
-          `☠️ 恭喜你成為 **${window.label} 斷劍王**！本期斷劍 ${ranking[0].breaks} 次稱霸。\n` +
-            `你已獲得「亡靈制」加成（地下城傷害 +${dungeon?.undead?.atkPct || 0}%、武器耐久節省 +${dungeon?.undead?.durabilitySavePct || 0}%、亡靈軍團事件），效期至 <t:${Math.floor(expiresAt / 1000)}:R>。\n` +
-            `-# 加成可在 /加成 → 時效狀態 查看。`,
+          `☠️ 你被封為 **${window.label} 斷劍王**！本期把傳說之劍砍斷 ${ranking[0].breaks} 次（最多）。\n` +
+            `斷劍怨靈纏上了你——「亡靈制」詛咒生效：地下城傷害 −${dungeon?.undead?.atkPenaltyPct || 0}%、武器每場多扣耐久、亡靈軍團作祟（奪金幣 / 吸 HP），效期至 <t:${Math.floor(expiresAt / 1000)}:R>。\n` +
+            `-# 詛咒狀態可在 /加成 → 時效狀態 查看。少砍斷幾把劍就能擺脫它。`,
         )
         .catch(() => {});
     }

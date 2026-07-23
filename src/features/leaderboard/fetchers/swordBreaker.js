@@ -36,7 +36,7 @@ async function fetchSwordBreaker(client, { guildId, viewerId, period }) {
 
   const footer = lifetime
     ? "生涯累計把 🔥 傳說之劍 砍斷的次數（不重置）"
-    : `本期 ${win.label} 結算 <t:${Math.floor(win.end.getTime() / 1000)}:R>，斷最多的人封為 ☠️ 斷劍王，領受「亡靈制」加成`;
+    : `本期 ${win.label} 結算 <t:${Math.floor(win.end.getTime() / 1000)}:R>，斷最多的人封為 ☠️ 斷劍王，遭「亡靈制」詛咒纏身`;
 
   return {
     rows,

@@ -618,14 +618,14 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
         );
       }
     }
-    if (result.undeadEvent) {
-      const ue = result.undeadEvent;
+    if (result.undeadCurse) {
+      const uc = result.undeadCurse;
       const parts = [];
-      if (ue.legendaryFragments > 0) parts.push(`✨ 傳說素材碎片 ×${ue.legendaryFragments}`);
-      if (ue.coins > 0) parts.push(`+${ue.coins.toLocaleString()} ${COIN_EMOJI}`);
+      if (uc.coinLoss > 0) parts.push(`奪走 ${uc.coinLoss.toLocaleString()} ${COIN_EMOJI}`);
+      if (uc.hpDrained > 0) parts.push(`吸走 ${uc.hpDrained} HP`);
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `👻 **亡靈軍團降臨！** 斷劍化成的亡靈為你收集了戰利品${parts.length ? `：${parts.join("、")}` : ""}`,
+          `👻 **亡靈軍團作祟！** 斷劍怨靈纏上了你${parts.length ? `，${parts.join("、")}` : ""}\n-# 亡靈制詛咒生效中——把傳說之劍砍斷太多次的報應。`,
         ),
       );
     }
@@ -727,7 +727,7 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
   if (result.legendarySwordBroke) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "💥 **傳說之劍應聲斷裂！** 你的斷劍紀錄 +1，已公開播報。\n-# 斷劍榜每月 1／16 號結算，斷最多的人封為 ☠️ 斷劍王（`/排行榜` → 斷劍王）。到 /合成 再打一把。",
+        "💥 **傳說之劍應聲斷裂！** 你的斷劍紀錄 +1，已公開播報。\n-# 斷劍榜每月 1／16 號結算，斷最多的人封為 ☠️ 斷劍王、遭亡靈制詛咒纏身（`/排行榜` → 斷劍王）。到 /合成 再打一把。",
       ),
     );
   } else if (result.weaponBroke) {
@@ -812,7 +812,7 @@ function publicBroadcastContent(displayName, result) {
   let encLine = encounterBroadcastLine(result);
   const specials = [];
   if (result.legendarySwordBroke) specials.push("💥 傳說之劍斷裂！");
-  if (result.undeadEvent) specials.push("👻 亡靈軍團降臨");
+  if (result.undeadCurse) specials.push("👻 亡靈軍團作祟");
   if (specials.length) encLine += `\n　　${specials.join(" ・ ")}`;
   if (result.isMiniBoss) {
     if (result.won) {
