@@ -1,4 +1,4 @@
-// 從 /背包 挖礦道具區點「啟用」連續通行證（同時解鎖連續挖礦與連續釣魚）
+// 從 /背包「通行證」分類點「啟用」連續通行證（同時解鎖連續挖礦與連續釣魚）
 // customId: batch_activate_pass_<ownerId>
 
 require("colors");
