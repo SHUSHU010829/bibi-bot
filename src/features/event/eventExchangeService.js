@@ -39,7 +39,9 @@ async function listExchanges(client, { userId, guildId }) {
   return { active: true, items: exchanges.map((x) => decorate(x, bag, counts)) };
 }
 
-// 發放獎勵，回傳可讀的獎勵文字。魚已於外層原子扣除。
+// 發放獎勵，回傳 { text, titleAward? }。text 為可讀獎勵文字（供成功橫幅）；
+// titleAward 僅在獎勵為稱號時附上 { titleId, newlyAdded }，供上層決定是否公告限定稱號。
+// 魚已於外層原子扣除。
 async function grantReward(client, { userId, guildId, username, member, exchange }) {
   const rw = exchange.reward || {};
   if (rw.type === "coins") {
@@ -52,21 +54,21 @@ async function grantReward(client, { userId, guildId, username, member, exchange
       source: "event_prize",
       meta: { exchange: exchange.id, event: exchange.eventId },
     }).catch(() => null);
-    return `🪙 ${(g?.granted ?? rw.qty).toLocaleString()} 幣`;
+    return { text: `🪙 ${(g?.granted ?? rw.qty).toLocaleString()} 幣` };
   }
   if (rw.type === "cdTicket") {
     await client.miningProfilesCollection.updateOne(
       { userId, guildId },
       { $inc: { cd_ticket_count: rw.qty }, $set: { updatedAt: new Date() } },
     );
-    return `🎫 CD 縮短券 ×${rw.qty}`;
+    return { text: `🎫 CD 縮短券 ×${rw.qty}` };
   }
   if (rw.type === "batchPass") {
     await client.miningProfilesCollection.updateOne(
       { userId, guildId },
       { $inc: { batch_pass_count: rw.qty }, $set: { updatedAt: new Date() } },
     );
-    return `🎟️ 連續通行證 ×${rw.qty}`;
+    return { text: `🎟️ 連續通行證 ×${rw.qty}` };
   }
   if (rw.type === "ore") {
     await client.miningProfilesCollection.updateOne(
@@ -74,10 +76,10 @@ async function grantReward(client, { userId, guildId, username, member, exchange
       { $inc: { [`backpack.${rw.oreKey}`]: rw.qty }, $set: { updatedAt: new Date() } },
     );
     const def = eventEngine.resolveOreDef(rw.oreKey) || {};
-    return `${def.emoji || "⛏️"} ${def.name || rw.oreKey} ×${rw.qty}`;
+    return { text: `${def.emoji || "⛏️"} ${def.name || rw.oreKey} ×${rw.qty}` };
   }
   if (rw.type === "title") {
-    await gameTitleService
+    const res = await gameTitleService
       .grant(client, {
         userId,
         guildId,
@@ -87,9 +89,12 @@ async function grantReward(client, { userId, guildId, username, member, exchange
         source: "event",
       })
       .catch((e) => console.log(`[ERROR] event exchange grant title: ${e}`.red));
-    return `🏅 稱號「${titleName(rw.titleId)}」`;
+    return {
+      text: `🏅 稱號「${titleName(rw.titleId)}」`,
+      titleAward: { titleId: rw.titleId, newlyAdded: !!res?.newlyAdded },
+    };
   }
-  return "獎勵";
+  return { text: "獎勵" };
 }
 
 async function redeem(client, { userId, guildId, username, member, exchangeId }) {
@@ -131,13 +136,14 @@ async function redeem(client, { userId, guildId, username, member, exchangeId })
     return { ok: false, reason: "retry", exchange: x, fishDef };
   }
 
-  const rewardText = await grantReward(client, { userId, guildId, username, member, exchange: x });
+  const reward = await grantReward(client, { userId, guildId, username, member, exchange: x });
   return {
     ok: true,
     exchange: x,
     fishDef,
     costQty: x.cost.qty,
-    rewardText,
+    rewardText: reward.text,
+    titleAward: reward.titleAward || null,
     usedAfter: used + 1,
     ownedAfter: owned - x.cost.qty,
   };
