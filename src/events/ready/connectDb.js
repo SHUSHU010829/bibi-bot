@@ -284,6 +284,9 @@ module.exports = async (client) => {
     // 周表 RSS 已貼文記錄（避免同一篇貼文重複貼到同一個 thread）
     const rssWeeklyPostsCollection = database.collection("RssWeeklyPosts");
 
+    // 日期倒數提醒（管理員設定，里程碑天數自動播報）
+    const countdownsCollection = database.collection("Countdowns");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -403,6 +406,43 @@ module.exports = async (client) => {
     client.gameRoomsCollection = gameRoomsCollection;
     client.countersCollection = countersCollection;
     client.rssWeeklyPostsCollection = rssWeeklyPostsCollection;
+    client.countdownsCollection = countdownsCollection;
+
+    // 日期倒數提醒索引：cron 每天掃「未結束、依到期時間排序」
+    await countdownsCollection
+      .createIndex(
+        { finished: 1, targetAt: 1 },
+        { name: "countdown_active_target" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] Countdowns 索引建立失敗：${e.message}`.yellow),
+      );
+    await countdownsCollection
+      .createIndex({ guildId: 1, createdAt: -1 }, { name: "countdown_guild_recent" })
+      .catch((e) =>
+        console.log(`[WARN] Countdowns guild 索引建立失敗：${e.message}`.yellow),
+      );
+    // 到期後保留 keepAfterDays 天再由 TTL 自動清掉。只有已結束（有 finishedAt）
+    // 的 doc 會被掃到，進行中的（無此欄位）不受影響。改設定值後用 collMod 更新秒數。
+    {
+      const keepDays = require("../../config").countdown?.keepAfterDays ?? 3;
+      const keepSec = Math.max(1, Math.round(keepDays * 86400));
+      await countdownsCollection
+        .createIndex(
+          { finishedAt: 1 },
+          { expireAfterSeconds: keepSec, name: "countdown_finished_ttl" },
+        )
+        .catch(async (e) => {
+          await database
+            .command({
+              collMod: "Countdowns",
+              index: { name: "countdown_finished_ttl", expireAfterSeconds: keepSec },
+            })
+            .catch(() =>
+              console.log(`[WARN] Countdowns TTL 索引建立失敗：${e.message}`.yellow),
+            );
+        });
+    }
 
     // 抖內系統索引
     // - code unique：用於 webhook 對應 session
