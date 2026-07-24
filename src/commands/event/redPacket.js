@@ -112,7 +112,6 @@ module.exports = {
       const rawTitle = interaction.options.getString("標題");
       const title = rawTitle
         ? rawTitle
-            .replace(/@(everyone|here)/g, "@​$1")
             .replace(/\s+/g, " ")
             .trim()
             .slice(0, 50)
