@@ -1,0 +1,15 @@
+{
+  "countdown": {
+    "enabled": true,
+    "timezone": "Asia/Taipei",
+    "checkCron": "0 9 * * *",
+    "milestoneDays": [30, 14, 7, 3, 1],
+    "maxPerGuild": 25,
+    "colors": {
+      "create": 3447003,
+      "milestone": 15844367,
+      "urgent": 15158332,
+      "arrival": 5763719
+    }
+  }
+}

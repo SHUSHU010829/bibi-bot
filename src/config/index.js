@@ -44,6 +44,7 @@ const gameRoom = require("./gameRoom.json");
 const rssWeeklySchedule = require("./rssWeeklySchedule.json");
 const theft = require("./theft.json");
 const bank = require("./bank.json");
+const countdown = require("./countdown.json");
 
 module.exports = {
   ...server,
@@ -90,4 +91,5 @@ module.exports = {
   ...rssWeeklySchedule,
   ...theft,
   ...bank,
+  ...countdown,
 };

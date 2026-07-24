@@ -284,6 +284,9 @@ module.exports = async (client) => {
     // 周表 RSS 已貼文記錄（避免同一篇貼文重複貼到同一個 thread）
     const rssWeeklyPostsCollection = database.collection("RssWeeklyPosts");
 
+    // 日期倒數提醒（管理員設定，里程碑天數自動播報）
+    const countdownsCollection = database.collection("Countdowns");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -403,6 +406,22 @@ module.exports = async (client) => {
     client.gameRoomsCollection = gameRoomsCollection;
     client.countersCollection = countersCollection;
     client.rssWeeklyPostsCollection = rssWeeklyPostsCollection;
+    client.countdownsCollection = countdownsCollection;
+
+    // 日期倒數提醒索引：cron 每天掃「未結束、依到期時間排序」
+    await countdownsCollection
+      .createIndex(
+        { finished: 1, targetAt: 1 },
+        { name: "countdown_active_target" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] Countdowns 索引建立失敗：${e.message}`.yellow),
+      );
+    await countdownsCollection
+      .createIndex({ guildId: 1, createdAt: -1 }, { name: "countdown_guild_recent" })
+      .catch((e) =>
+        console.log(`[WARN] Countdowns guild 索引建立失敗：${e.message}`.yellow),
+      );
 
     // 抖內系統索引
     // - code unique：用於 webhook 對應 session
