@@ -5,6 +5,7 @@
     "checkCron": "0 9 * * *",
     "milestoneDays": [30, 14, 7, 3, 1],
     "maxPerGuild": 25,
+    "keepAfterDays": 3,
     "colors": {
       "create": 3447003,
       "milestone": 15844367,

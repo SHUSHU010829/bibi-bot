@@ -422,6 +422,27 @@ module.exports = async (client) => {
       .catch((e) =>
         console.log(`[WARN] Countdowns guild 索引建立失敗：${e.message}`.yellow),
       );
+    // 到期後保留 keepAfterDays 天再由 TTL 自動清掉。只有已結束（有 finishedAt）
+    // 的 doc 會被掃到，進行中的（無此欄位）不受影響。改設定值後用 collMod 更新秒數。
+    {
+      const keepDays = require("../../config").countdown?.keepAfterDays ?? 3;
+      const keepSec = Math.max(1, Math.round(keepDays * 86400));
+      await countdownsCollection
+        .createIndex(
+          { finishedAt: 1 },
+          { expireAfterSeconds: keepSec, name: "countdown_finished_ttl" },
+        )
+        .catch(async (e) => {
+          await database
+            .command({
+              collMod: "Countdowns",
+              index: { name: "countdown_finished_ttl", expireAfterSeconds: keepSec },
+            })
+            .catch(() =>
+              console.log(`[WARN] Countdowns TTL 索引建立失敗：${e.message}`.yellow),
+            );
+        });
+    }
 
     // 抖內系統索引
     // - code unique：用於 webhook 對應 session
