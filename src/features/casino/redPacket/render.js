@@ -20,13 +20,21 @@ function displayCountOf(state) {
   return state.displayCount ?? state.totalCount;
 }
 
+// 用純文字名字，不用 <@id> 提及，避免在頻道 @ 到人（既不 ping 也不顯示藍色膠囊）。
+function hostName(state) {
+  return state.hostUsername || "神秘發包人";
+}
+function grabberName(g) {
+  return g.username || "神秘玩家";
+}
+
 function grabberLines(state, { revealAmounts = false, highlightBest = false, prankReveal = false } = {}) {
   if (!state.grabbers?.length) {
     return prankReveal ? "_沒人上當，發包人尷尬了 😶_" : "_還沒有人搶～_";
   }
   if (!revealAmounts) {
     return state.grabbers
-      .map((g) => `・<@${g.userId}> 已領取`)
+      .map((g) => `・**${grabberName(g)}** 已領取`)
       .join("\n");
   }
   const sorted = [...state.grabbers].sort((a, b) => b.amount - a.amount);
@@ -35,7 +43,7 @@ function grabberLines(state, { revealAmounts = false, highlightBest = false, pra
     .map((g) => {
       const crown = highlightBest && g.userId === bestId ? " 👑手氣王" : "";
       const prankMark = prankReveal ? " 🤡 上當了！" : "";
-      return `・<@${g.userId}> 搶到 **${g.amount.toLocaleString()}** ${MONEY_EMOJI}${crown}${prankMark}`;
+      return `・**${grabberName(g)}** 搶到 **${g.amount.toLocaleString()}** ${MONEY_EMOJI}${crown}${prankMark}`;
     })
     .join("\n");
 }
@@ -47,7 +55,7 @@ function buildOpenPayload(state) {
   const showAmount = displayAmountOf(state);
   const showCount = displayCountOf(state);
   const content =
-    `# 🧧 <@${state.hostUserId}> 發了一包紅包！\n` +
+    `# 🧧 ${hostName(state)} 發了一包紅包！\n` +
     `${titleLine}` +
     `**${MODE_LABEL[state.mode] || state.mode}**　共 **${showAmount.toLocaleString()}** ${MONEY_EMOJI} / **${showCount}** 包\n` +
     `已搶 **${grabbedCount}** / ${showCount} 包\n\n` +
@@ -73,7 +81,7 @@ function buildClosedPayload(state, { refunded = 0 } = {}) {
       ? `# 🤡 哈哈，這是傻瓜紅包！\n`
       : `# 🤡 傻瓜紅包揭曉～沒人上當\n`;
     const subtitle =
-      `<@${state.hostUserId}> 發的根本是**空的**！` +
+      `**${hostName(state)}** 發的根本是**空的**！` +
       `${fooledCount > 0 ? `共 **${fooledCount}** 人成功被騙 🎉` : ""}\n\n`;
     const content =
       header +
@@ -92,13 +100,13 @@ function buildClosedPayload(state, { refunded = 0 } = {}) {
       : "🧧 紅包時間到～";
   const refundLine =
     refunded > 0
-      ? `\n剩下 **${refunded.toLocaleString()}** ${MONEY_EMOJI} 已退回給 <@${state.hostUserId}>`
+      ? `\n剩下 **${refunded.toLocaleString()}** ${MONEY_EMOJI} 已退回給 **${hostName(state)}**`
       : "";
 
   const content =
     `# ${closedReason}\n` +
     `${titleLine}` +
-    `<@${state.hostUserId}> 的紅包 **${showAmount.toLocaleString()}** ${MONEY_EMOJI} / ${showCount} 包，` +
+    `**${hostName(state)}** 的紅包 **${showAmount.toLocaleString()}** ${MONEY_EMOJI} / ${showCount} 包，` +
     `搶出 **${grabbedAmount.toLocaleString()}** ${MONEY_EMOJI}${refundLine}\n\n` +
     `${grabberLines(state, { revealAmounts: true, highlightBest: true })}`;
 
