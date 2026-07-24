@@ -61,7 +61,7 @@ function buildOpenPayload(state) {
       .setEmoji("🧧")
       .setStyle(ButtonStyle.Danger)
   );
-  return { content, components: [row] };
+  return { content, components: [row], allowedMentions: { parse: [] } };
 }
 
 function buildClosedPayload(state, { refunded = 0 } = {}) {
@@ -80,7 +80,7 @@ function buildClosedPayload(state, { refunded = 0 } = {}) {
       `${titleLine}` +
       subtitle +
       `${grabberLines(state, { revealAmounts: true, prankReveal: true })}`;
-    return { content, components: [] };
+    return { content, components: [], allowedMentions: { parse: [] } };
   }
 
   const showAmount = displayAmountOf(state);
@@ -102,7 +102,7 @@ function buildClosedPayload(state, { refunded = 0 } = {}) {
     `搶出 **${grabbedAmount.toLocaleString()}** ${MONEY_EMOJI}${refundLine}\n\n` +
     `${grabberLines(state, { revealAmounts: true, highlightBest: true })}`;
 
-  return { content, components: [] };
+  return { content, components: [], allowedMentions: { parse: [] } };
 }
 
 module.exports = { buildOpenPayload, buildClosedPayload, MODE_LABEL };
