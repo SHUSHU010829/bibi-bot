@@ -102,6 +102,21 @@ async function getState(client, { userId, guildId, type }) {
   return c.findOne({ userId, guildId, type }).catch(() => null);
 }
 
+// 透過 guild 反查 member，才能把 Twitch 訂閱的體力上限加乘算進 staminaMax。
+// cache 沒有就 fetch；任何失敗都回 null（當作沒有加乘，不報錯）。
+async function fetchGuildMember(client, guildId, userId) {
+  try {
+    const guild = client.guilds?.cache?.get(guildId);
+    if (!guild) return null;
+    return (
+      guild.members.cache.get(userId) ||
+      (await guild.members.fetch(userId).catch(() => null))
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
 // 讀取目前冷卻結束時間（epoch ms）。沒有資料或已結束回 0。
 async function currentCooldownAt(client, { userId, guildId, type }) {
   if (type === "work") {
@@ -112,19 +127,8 @@ async function currentCooldownAt(client, { userId, guildId, type }) {
   }
   if (type === "dungeon") {
     // 地下城體力滿的預估時間：拿目前 stamina + 回復速率推算到上限為止。
-    // 透過 guild 反查 member 才能算進 Twitch 訂閱的體力上限加乘。
     const dungeonService = require("../mining/dungeonService");
-    let member = null;
-    try {
-      const guild = client.guilds?.cache?.get(guildId);
-      if (guild) {
-        member =
-          guild.members.cache.get(userId) ||
-          (await guild.members.fetch(userId).catch(() => null));
-      }
-    } catch (_) {
-      member = null;
-    }
+    const member = await fetchGuildMember(client, guildId, userId);
     return dungeonService.staminaFullAt(client, { userId, guildId, member });
   }
   if (type === "crash") {
@@ -235,6 +239,34 @@ async function refreshIfEnabled(client, { userId, guildId, type, readyAt }) {
     .catch(() => {});
 }
 
+// 地下城體力上限是動態的（世界事件如「聖光降臨」、公會等級、Twitch 訂閱都會加乘），
+// 存下的 readyAt 只是動作當下的快照。若快照存下後上限被拉高，實際還沒補滿——送 DM 前
+// 即時重算一次，還沒滿就把 readyAt 順延到真正的補滿時間並把 notified 退回 false，
+// 讓 cron 之後正確時間再觸發，不要在尚未補滿時就通知。回傳 true 代表「還沒滿、已順延」。
+async function rescheduleDungeonIfNotFull(client, r) {
+  const c = coll(client);
+  if (!c) return false;
+  const dungeonService = require("../mining/dungeonService");
+  const member = await fetchGuildMember(client, r.guildId, r.userId);
+  const fullAt = await dungeonService
+    .staminaFullAt(client, {
+      userId: r.userId,
+      guildId: r.guildId,
+      member,
+    })
+    .catch(() => 0);
+  if (fullAt > Date.now()) {
+    await c
+      .updateOne(
+        { _id: r._id },
+        { $set: { readyAt: fullAt, notified: false, updatedAt: new Date() } },
+      )
+      .catch(() => {});
+    return true;
+  }
+  return false;
+}
+
 // scanAndNotify 在發完 DM 後呼叫，把 reminder 推進到「下一塊未來才會成熟」的 ready_at。
 // 沒有下一塊則保持 notified=true（讓 reminder 靜下來，直到玩家下次動作觸發 refresh）。
 // 目前只有 farm 是「同一個訂閱可能要連續觸發多次 DM」的型別，其它型別不需要推進。
@@ -284,6 +316,14 @@ async function scanAndNotify(client) {
       )
       .catch(() => ({ modifiedCount: 0 }));
     if (!claim.modifiedCount) continue;
+
+    // 地下城：claim 後、送 DM 前，用當前狀態重新核對是否真的補滿。若上限被拉高導致
+    // 還沒滿，rescheduleDungeonIfNotFull 會順延 readyAt 並把 notified 退回 false，
+    // 這次就跳過不通知（避免在尚未補滿時提早 DM）。
+    if (r.type === "dungeon") {
+      const notFull = await rescheduleDungeonIfNotFull(client, r);
+      if (notFull) continue;
+    }
 
     // 不管 DM 是否真的送出（主開關關、user fetch 失敗、DM 被擋…），claim 過後一定要
     // 推進 farm reminder 到下一塊，否則後面成熟的地塊也會被一起卡住。
