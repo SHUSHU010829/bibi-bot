@@ -60,7 +60,7 @@ async function runSummonProgress(client, interaction) {
       flags: MessageFlags.IsComponentsV2,
     });
   }
-  const p = await bossSummon.progress(client, interaction.guildId);
+  const p = await bossSummon.progress(client, interaction.guildId, interaction.user.id);
   return interaction.editReply({
     components: [bossView.buildSummonProgressContainer(p)],
     flags: MessageFlags.IsComponentsV2,

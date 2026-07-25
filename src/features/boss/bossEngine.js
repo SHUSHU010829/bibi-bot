@@ -185,7 +185,6 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSo
     scaling,
     hits_taken: 0,
     damage_by_user: {},
-    bonus_attacks: {},
     combo: {
       count: 0,
       last_user: null,
@@ -242,13 +241,20 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   // 訓練場 boss_damage_pct（整數百分比）— 與既有 bossAtkPct 並存疊加
   const guildBossDmgPct = sum?.guildClub?.bossDamagePct || 0;
 
-  // 地下城累積的個人額外攻擊次數（本場專屬，隨 boss doc 一起消滅）
-  const bonusAttacks = (bossDoc.bonus_attacks || {})[userId] || 0;
-  const attackLimit = (cfg().attackLimitPerPlayer ?? 5) + guildAttackLimitBonus + bonusAttacks;
+  // 個人「攻擊庫存」：平時打地下城累積（存 profile，可事先備戰、跨場使用），
+  // 每一場魔王（含週六固定場）最多動用 maxBonusAttacksPerPlayer 次；超過基礎額度才扣庫存。
+  // 上限以「本場開打時的庫存」為準（= 現有庫存 + 本場已花掉的），避免邊扣邊縮上限而卡住剩餘庫存。
+  const baseLimit = (cfg().attackLimitPerPlayer ?? 5) + guildAttackLimitBonus;
+  const chargeCap = cfg().summon?.maxBonusAttacksPerPlayer ?? 5;
   const used = (bossDoc.attack_counts || {})[userId] || 0;
+  const extraUsed = Math.max(0, used - baseLimit);
+  const charges = Math.max(0, profile.boss_attack_charges || 0);
+  const allowedExtra = Math.min(chargeCap, charges + extraUsed);
+  const attackLimit = baseLimit + allowedExtra;
   if (used >= attackLimit) {
     return { ok: false, reason: "attack_limit", used, limit: attackLimit };
   }
+  const consumesCharge = used >= baseLimit;
   const st = resolveStamina(profile, max);
   if (st.stamina <= 0) {
     return {
@@ -360,6 +366,12 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     },
     { upsert: true },
   ).catch(() => {});
+  if (consumesCharge) {
+    await client.miningProfilesCollection.updateOne(
+      { userId, guildId, boss_attack_charges: { $gt: 0 } },
+      { $inc: { boss_attack_charges: -1 } },
+    ).catch(() => {});
+  }
 
   // BOSS 血量扣除 + 階段更新
   // 原子扣血：只在 boss 仍存活時生效，避免兩人同時讀到舊血量、各自算出「最後一擊」。
@@ -468,7 +480,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     staminaMax: max,
     attackCount: used + 1,
     attackLimit,
-    bonusAttacks,
+    bonusAttacks: allowedExtra,
     rageStacks: rageState({ hits_taken: afterDoc.hits_taken }).stacks,
     counterRate,
     firstStrike,

@@ -82,7 +82,7 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🔋 體力：${result.stamina}/${result.staminaMax}（被反擊額外 -1）\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含地下城 +${result.bonusAttacks}）` : ""}`,
+          `🔋 體力：${result.stamina}/${result.staminaMax}（被反擊額外 -1）\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}`,
         ),
       );
     const rl = rageLine(result.rageStacks, result.counterRate);
@@ -129,7 +129,7 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🔋 體力：${result.stamina}/${result.staminaMax}\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含地下城 +${result.bonusAttacks}）` : ""}`,
+          `🔋 體力：${result.stamina}/${result.staminaMax}\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}`,
         ),
       );
     if (result.sameUserStreak > 1) {
@@ -203,7 +203,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🔋 體力：${last.stamina}/${last.staminaMax}${counters > 0 ? `（${counters} 次被反擊）` : ""}\n⚔️ 本場攻擊次數：${last.attackCount}/${last.attackLimit}${last.bonusAttacks > 0 ? `（含地下城 +${last.bonusAttacks}）` : ""}`,
+          `🔋 體力：${last.stamina}/${last.staminaMax}${counters > 0 ? `（${counters} 次被反擊）` : ""}\n⚔️ 本場攻擊次數：${last.attackCount}/${last.attackLimit}${last.bonusAttacks > 0 ? `（含庫存 +${last.bonusAttacks}）` : ""}`,
         ),
       );
     const rl = rageLine(last.rageStacks, last.counterRate);
@@ -440,12 +440,18 @@ function buildSummonProgressContainer(p) {
       new TextDisplayBuilder().setContent(
         `📅 本週已召喚：**${p.summonedThisWeek} / ${p.maxPerWeek}** 場　👥 本輪貢獻者：${p.contributorCount} 人`,
       ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `⚔️ **你的攻擊庫存：${p.myCharges} / ${p.chargeCap}**\n-# 打地下城累積，任何一場魔王（含週六固定場）都能多打這麼多刀。`,
+      ),
     );
 
   if (p.activeBoss) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# ⚔️ **${p.activeBoss.emoji} ${p.activeBoss.name}** 正在場上！現在打地下城可為自己累積本場專屬的額外攻擊次數。`,
+        `-# ⚔️ **${p.activeBoss.emoji} ${p.activeBoss.name}** 正在場上！用 /魔王 攻擊 出手，庫存會自動用在超過基礎次數的攻擊上。`,
       ),
     );
   } else if (full && p.summonedThisWeek >= p.maxPerWeek) {

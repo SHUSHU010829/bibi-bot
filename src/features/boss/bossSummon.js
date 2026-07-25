@@ -7,8 +7,9 @@ const bossAnnouncer = require("./bossAnnouncer");
 // - 玩家打地下城（通關 / 擊敗 mini-BOSS）累積公會共用的討伐能量。
 // - 能量集滿 threshold 且當下沒有魔王在場 → 立刻召喚一隻額外魔王，能量歸零。
 // - 每週召喚場次有上限（maxPerWeek），避免無限刷。
-// - 同時：地下城通關會給「本場專屬」的個人額外攻擊次數（掛在進行中的 boss doc）。
-// 存來源不存結果：能量與召喚次數存在 BossSummonState，個人加成存在 boss doc。
+// - 同時：地下城通關會給個人「攻擊庫存」（存 profile，可事先備戰、跨場使用），
+//   任何一場魔王（含週六固定場）都能拿出來多打幾刀，每場最多 maxBonusAttacksPerPlayer 次。
+// 存來源不存結果：能量與召喚次數存在 BossSummonState，攻擊庫存存在 profile。
 
 function cfg() {
   return boss?.summon || {};
@@ -39,19 +40,20 @@ async function capEnergy(client, guildId, threshold) {
   ).catch(() => {});
 }
 
-// 進行中魔王：本場專屬個人額外攻擊次數 +n（上限 maxBonusAttacksPerPlayer）
-async function grantBonusAttack(client, { userId, guildId, bossId }) {
+// 個人「攻擊庫存」：打地下城累積（存 profile），可事先備戰、任何一場魔王都能用。
+// 上限 maxBonusAttacksPerPlayer；每場魔王最多動用這麼多次額外攻擊。
+async function grantAttackCharge(client, { userId, guildId }) {
   const inc = cfg().bonusAttackPerDungeonClear ?? 1;
   const cap = cfg().maxBonusAttacksPerPlayer ?? 5;
-  if (inc <= 0 || cap <= 0) return;
-  const doc = await client.bossEventsCollection.findOne({ boss_id: bossId, status: "active" });
-  if (!doc) return;
-  const current = (doc.bonus_attacks || {})[userId] || 0;
-  if (current >= cap) return;
-  const next = Math.min(cap, current + inc);
-  await client.bossEventsCollection.updateOne(
-    { boss_id: bossId, status: "active" },
-    { $set: { [`bonus_attacks.${userId}`]: next, updatedAt: new Date() } },
+  if (inc <= 0 || cap <= 0 || !client.miningProfilesCollection) return;
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: { boss_attack_charges: inc }, $set: { updatedAt: new Date() } },
+    { upsert: true },
+  ).catch(() => {});
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId, boss_attack_charges: { $gt: cap } },
+    { $set: { boss_attack_charges: cap } },
   ).catch(() => {});
 }
 
@@ -124,10 +126,7 @@ async function onDungeonCleared(client, { userId, guildId, won }) {
   if (!cfg().enabled || !won) return;
   if (guildId && serverId && guildId !== serverId) return;
   await addEnergy(client, { userId, guildId, amount: cfg().energyPerDungeonClear ?? 3 });
-  const active = await bossEngine.getActiveBoss(client, guildId);
-  if (active) {
-    await grantBonusAttack(client, { userId, guildId, bossId: active.boss_id });
-  }
+  await grantAttackCharge(client, { userId, guildId });
 }
 
 async function onMiniBossDefeated(client, { userId, guildId }) {
@@ -136,12 +135,20 @@ async function onMiniBossDefeated(client, { userId, guildId }) {
   await addEnergy(client, { userId, guildId, amount: cfg().energyPerMiniBoss ?? 12 });
 }
 
-async function progress(client, guildId) {
+async function progress(client, guildId, userId) {
   const threshold = cfg().energyThreshold ?? 120;
+  const chargeCap = cfg().maxBonusAttacksPerPlayer ?? 5;
   const state = await getState(client, guildId);
   const wk = weekKey();
   const summonedThisWeek = state?.week_key === wk ? (state.summoned_count || 0) : 0;
   const active = await bossEngine.getActiveBoss(client, guildId);
+  let myCharges = 0;
+  if (userId && client.miningProfilesCollection) {
+    const profile = await client.miningProfilesCollection
+      .findOne({ userId, guildId })
+      .catch(() => null);
+    myCharges = Math.min(chargeCap, Math.max(0, profile?.boss_attack_charges || 0));
+  }
   return {
     enabled: !!cfg().enabled,
     energy: Math.min(threshold, state?.energy || 0),
@@ -150,6 +157,8 @@ async function progress(client, guildId) {
     maxPerWeek: cfg().maxPerWeek ?? 3,
     contributorCount: Object.keys(state?.contributors || {}).length,
     activeBoss: active,
+    myCharges,
+    chargeCap,
   };
 }
 
@@ -157,7 +166,7 @@ module.exports = {
   cfg,
   weekKey,
   addEnergy,
-  grantBonusAttack,
+  grantAttackCharge,
   trySummon,
   onDungeonCleared,
   onMiniBossDefeated,
