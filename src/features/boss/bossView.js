@@ -82,7 +82,7 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🔋 體力：${result.stamina}/${result.staminaMax}（被反擊額外 -1）\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}`,
+          `🔋 體力：${result.stamina}/${result.staminaMax}（被反擊額外 -1）\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含地下城 +${result.bonusAttacks}）` : ""}`,
         ),
       );
     const rl = rageLine(result.rageStacks, result.counterRate);
@@ -129,7 +129,7 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🔋 體力：${result.stamina}/${result.staminaMax}\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}`,
+          `🔋 體力：${result.stamina}/${result.staminaMax}\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含地下城 +${result.bonusAttacks}）` : ""}`,
         ),
       );
     if (result.sameUserStreak > 1) {
@@ -203,7 +203,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🔋 體力：${last.stamina}/${last.staminaMax}${counters > 0 ? `（${counters} 次被反擊）` : ""}\n⚔️ 本場攻擊次數：${last.attackCount}/${last.attackLimit}`,
+          `🔋 體力：${last.stamina}/${last.staminaMax}${counters > 0 ? `（${counters} 次被反擊）` : ""}\n⚔️ 本場攻擊次數：${last.attackCount}/${last.attackLimit}${last.bonusAttacks > 0 ? `（含地下城 +${last.bonusAttacks}）` : ""}`,
         ),
       );
     const rl = rageLine(last.rageStacks, last.counterRate);
@@ -320,14 +320,13 @@ function buildSettlementContainer(settlement) {
   const headline = killed
     ? `# 🏆 ${bossDoc.emoji} ${bossDoc.name} 已被擊敗！`
     : `# ⏳ ${bossDoc.emoji} ${bossDoc.name} 逃離了戰場`;
+  const statusLine = killed
+    ? `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：${totalPool.toLocaleString()} ${COIN_EMOJI}`
+    : `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：—（未擊敗，無獎勵）`;
   container
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(headline))
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：${totalPool.toLocaleString()} ${COIN_EMOJI}`,
-      ),
-    );
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(statusLine));
 
   if (killed && killerUserId) {
     container.addTextDisplayComponents(
@@ -365,6 +364,9 @@ function buildSettlementContainer(settlement) {
   const top = payouts.slice(0, 5);
   if (top.length) {
     const lines = top.map((p, i) => {
+      if (!killed) {
+        return `**#${i + 1}** ${nameOf(guild, p.userId)} — ${p.damage.toLocaleString()} 傷害`;
+      }
       const extras = [];
       if (p.rareReward) extras.push("✨ ×1");
       if (p.diamondReward) extras.push(`💎 ×${p.diamondReward}`);
@@ -375,7 +377,9 @@ function buildSettlementContainer(settlement) {
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`**Top 5 戰報**\n${lines.join("\n")}`),
+        new TextDisplayBuilder().setContent(
+          `**Top 5 戰報**${killed ? "" : "（本場無獎勵）"}\n${lines.join("\n")}`,
+        ),
       );
   }
 
@@ -407,7 +411,58 @@ function buildSettlementContainer(settlement) {
 
   if (!killed) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# 時間到，BOSS 逃跑了。下次再戰！"),
+      new TextDisplayBuilder().setContent(
+        "-# 💨 沒能在時限內擊敗牠，BOSS 帶著寶藏逃走了——本場沒有任何獎勵。下次要在時間內解決牠！",
+      ),
+    );
+  }
+  return container;
+}
+
+function energyBar(current, max, len = 16) {
+  const ratio = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
+  const filled = Math.round(ratio * len);
+  return "🟪".repeat(filled) + "⬜".repeat(len - filled);
+}
+
+function buildSummonProgressContainer(p) {
+  const full = p.energy >= p.threshold;
+  const container = new ContainerBuilder().setAccentColor(full ? COLOR_VICTORY : 0x9b59b6);
+  container
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("# 🔮 魔王討伐能量"))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${energyBar(p.energy, p.threshold)}\n**${p.energy.toLocaleString()} / ${p.threshold.toLocaleString()}**`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `📅 本週已召喚：**${p.summonedThisWeek} / ${p.maxPerWeek}** 場　👥 本輪貢獻者：${p.contributorCount} 人`,
+      ),
+    );
+
+  if (p.activeBoss) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ⚔️ **${p.activeBoss.emoji} ${p.activeBoss.name}** 正在場上！現在打地下城可為自己累積本場專屬的額外攻擊次數。`,
+      ),
+    );
+  } else if (full && p.summonedThisWeek >= p.maxPerWeek) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 🈵 能量已滿，但本週召喚次數已用完——下週能量會再度喚醒魔王。",
+      ),
+    );
+  } else if (full) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# ✅ 能量已滿，下一次地下城通關就會召喚魔王！"),
+    );
+  } else {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 多去 /地下城 探索、擊敗 mini-BOSS 累積能量，集滿就會自動召喚一隻額外魔王。",
+      ),
     );
   }
   return container;
@@ -419,6 +474,7 @@ module.exports = {
   buildInfoContainer,
   buildErrorContainer,
   buildSettlementContainer,
+  buildSummonProgressContainer,
   phaseLabel,
   phaseColor,
   hpBar,

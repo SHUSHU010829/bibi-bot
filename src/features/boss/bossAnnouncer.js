@@ -15,7 +15,7 @@ async function resolveChannel(client, id) {
   return ch?.isTextBased?.() ? ch : null;
 }
 
-async function announceSpawn(client, bossDoc) {
+async function announceSpawn(client, bossDoc, opts = {}) {
   const ch = await resolveChannel(client, boss?.announceChannelId);
   if (!ch) return;
   const endsAt = Math.floor(bossDoc.ends_at / 1000);
@@ -23,11 +23,14 @@ async function announceSpawn(client, bossDoc) {
     ? `\n-# 依當前 ${bossDoc.online_count} 名線上玩家決定`
     : "";
   const limit = boss?.attackLimitPerPlayer ?? 5;
-  const intro = pickFrom(boss?.spawnIntros) || "傳說中的存在現身了！";
+  const intro = opts.summon
+    ? (boss?.summon?.summonIntro || "討伐能量集滿，魔王被喚醒了！")
+    : (pickFrom(boss?.spawnIntros) || "傳說中的存在現身了！");
+  const titlePrefix = opts.summon ? "🔮 " : "";
 
   const embed = new EmbedBuilder()
     .setColor(0xe74c3c)
-    .setTitle(`${bossDoc.emoji} ${bossDoc.name} 出現！`)
+    .setTitle(`${titlePrefix}${bossDoc.emoji} ${bossDoc.name} 出現！`)
     .setDescription(intro)
     .addFields(
       {
@@ -38,7 +41,11 @@ async function announceSpawn(client, bossDoc) {
       { name: "⏳ 戰鬥結束", value: `<t:${endsAt}:R>`, inline: true },
       { name: "⚔️ 攻擊上限", value: `每人 ${limit} 次`, inline: true },
     )
-    .setFooter({ text: "輸入 /魔王 攻擊 一起討伐！" });
+    .setFooter({
+      text: opts.summon
+        ? `由社群 ${opts.contributorCount || 0} 位冒險者的地下城探索喚醒 · /魔王 攻擊 一起討伐！`
+        : "輸入 /魔王 攻擊 一起討伐！",
+    });
 
   await ch.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch(() => {});
 

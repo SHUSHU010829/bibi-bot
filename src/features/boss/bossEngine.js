@@ -138,7 +138,7 @@ async function getActiveBoss(client, guildId) {
   return client.bossEventsCollection.findOne({ guild_id: guildId, status: "active" });
 }
 
-async function spawnBoss(client, { guildId, name, emoji, hp, durationMs }) {
+async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSource }) {
   const now = Date.now();
   const existing = await getActiveBoss(client, guildId);
   if (existing) return { ok: false, reason: "already_active", boss: existing };
@@ -181,9 +181,11 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs }) {
     killer_user_id: null,
     first_striker: null,
     online_count: onlineCount ?? null,
+    spawn_source: spawnSource || "scheduled",
     scaling,
     hits_taken: 0,
     damage_by_user: {},
+    bonus_attacks: {},
     combo: {
       count: 0,
       last_user: null,
@@ -240,7 +242,9 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   // 訓練場 boss_damage_pct（整數百分比）— 與既有 bossAtkPct 並存疊加
   const guildBossDmgPct = sum?.guildClub?.bossDamagePct || 0;
 
-  const attackLimit = (cfg().attackLimitPerPlayer ?? 5) + guildAttackLimitBonus;
+  // 地下城累積的個人額外攻擊次數（本場專屬，隨 boss doc 一起消滅）
+  const bonusAttacks = (bossDoc.bonus_attacks || {})[userId] || 0;
+  const attackLimit = (cfg().attackLimitPerPlayer ?? 5) + guildAttackLimitBonus + bonusAttacks;
   const used = (bossDoc.attack_counts || {})[userId] || 0;
   if (used >= attackLimit) {
     return { ok: false, reason: "attack_limit", used, limit: attackLimit };
@@ -464,6 +468,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     staminaMax: max,
     attackCount: used + 1,
     attackLimit,
+    bonusAttacks,
     rageStacks: rageState({ hits_taken: afterDoc.hits_taken }).stacks,
     counterRate,
     firstStrike,
@@ -506,17 +511,19 @@ async function settleBoss(client, bossDoc) {
   const totalDamage = ranking.reduce((s, r) => s + r.damage, 0);
 
   const killed = bossDoc.status === "defeated";
+  // BOSS 逃離（時間到卻沒被擊殺）＝討伐失敗，全員無獎勵；戰報仍保留供回顧。
+  const rewarded = killed;
   const rwd = rewardsCfg();
-  const totalPool = Math.floor(bossDoc.max_hp * (rwd.poolRatio ?? 0.5));
+  const totalPool = rewarded ? Math.floor(bossDoc.max_hp * (rwd.poolRatio ?? 0.5)) : 0;
   const tiers = Array.isArray(rwd.topRareRewardTiers)
     ? rwd.topRareRewardTiers
     : new Array(rwd.topRareRewards ?? 3).fill(1);
   const diamondTiers = Array.isArray(rwd.topRankDiamondTiers) ? rwd.topRankDiamondTiers : [];
 
   const payouts = ranking.map((r, idx) => {
-    const share = totalDamage > 0 ? Math.floor(r.damage / totalDamage * totalPool) : 0;
-    const rareReward = tiers[idx] || 0;
-    const diamondReward = diamondTiers[idx] || 0;
+    const share = rewarded && totalDamage > 0 ? Math.floor(r.damage / totalDamage * totalPool) : 0;
+    const rareReward = rewarded ? (tiers[idx] || 0) : 0;
+    const diamondReward = rewarded ? (diamondTiers[idx] || 0) : 0;
     const killBonus = killed ? (rwd.killBonus ?? 100) : 0;
     return {
       ...r,
@@ -556,7 +563,7 @@ async function settleBoss(client, bossDoc) {
 
   // 首刀獎勵：頒給第一個對 boss 造成傷害的人。
   let firstStrikeBonus = 0;
-  const firstStrikerUserId = bossDoc.first_striker || null;
+  const firstStrikerUserId = rewarded ? (bossDoc.first_striker || null) : null;
   if (firstStrikerUserId) {
     firstStrikeBonus = rwd.firstStrikeBonus ?? 0;
     if (firstStrikeBonus > 0) {
@@ -604,13 +611,14 @@ async function settleBoss(client, bossDoc) {
   return {
     bossDoc,
     killed,
+    rewarded,
     killerUserId: bossDoc.killer_user_id,
     payouts,
     totalDamage,
     totalPool,
-    mvpUserId: payouts[0]?.userId || null,
-    comboMvpUserId: bossDoc.combo?.combo_mvp || null,
-    punchingBagUserId: punchingBag,
+    mvpUserId: rewarded ? (payouts[0]?.userId || null) : null,
+    comboMvpUserId: rewarded ? (bossDoc.combo?.combo_mvp || null) : null,
+    punchingBagUserId: rewarded ? punchingBag : null,
     killerBonus,
     killerRare,
     firstStrikerUserId,
