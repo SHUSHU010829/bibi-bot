@@ -1,0 +1,17 @@
+{
+  "dbMaintenance": {
+    "statsRetentionDays": 180,
+    "twitchFlushRetentionDays": 30,
+    "rssWeeklyPostRetentionDays": 60,
+    "stockEventRetentionDays": 30,
+    "quizRetentionDays": 30,
+    "hostedEventRetentionDays": 30,
+    "votingRetentionDays": 30,
+    "gameRoomRetentionDays": 30,
+    "worldEventEndedRetentionDays": 14,
+    "guildQuestClaimRetentionDays": 60,
+    "economySnapshotRetentionDays": 365,
+    "bossEventRetentionDays": 30,
+    "wantedTerminalRetentionDays": 60
+  }
+}
