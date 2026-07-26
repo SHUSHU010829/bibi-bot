@@ -2,6 +2,7 @@ require("colors");
 
 const { join } = require("path");
 const getAllFiles = require("../utils/getAllFiles");
+const maintenanceMode = require("../utils/maintenanceMode");
 
 module.exports = (client) => {
   const eventFolders = getAllFiles(join(__dirname, "..", "events"), true);
@@ -21,6 +22,17 @@ module.exports = (client) => {
     // 警告）。ready 只要跑一次，所以改用 once。
     const register = eventName === "ready" ? "once" : "on";
     client[register](eventName, async (...args) => {
+      // 維修模式：在派發任何 interactionCreate handler 前先攔截會寫入資料的互動，
+      // 回維修公告並跳過本 folder 的所有 handler（按鈕 handler 各自獨立、迴圈不短路，
+      // 只有在這個總派發點擋才防得住下游 DB 寫入）。
+      if (eventName === "interactionCreate") {
+        const interaction = args[0];
+        if (maintenanceMode.isBlockedInteraction(interaction)) {
+          await maintenanceMode.sendNotice(interaction);
+          return;
+        }
+      }
+
       for (const eventFile of eventFiles) {
         const eventFunction = require(eventFile);
         if (typeof eventFunction === "function") {

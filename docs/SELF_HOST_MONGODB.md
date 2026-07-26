@@ -49,6 +49,15 @@ compose 沒有 publish 27017，DB 只在 docker 內網，不會暴露到公網�
 
 ## 二、從 Atlas 搬資料
 
+> **搬遷前一定要先凍結寫入，否則 dump 之後才發生的操作會遺失。** 兩層保護：
+> 1. **維修模式**：`.env` 設 `MAINTENANCE_MODE=true` 後重啟 bot（`docker compose up -d bot`）。
+>    查閱類指令仍可用，其餘指令 + 所有按鈕 / 選單一律回維修公告、不寫 DB（開發者豁免）。
+>    白名單與公告文案在 `src/config/maintenance.json`。
+> 2. **真正 dump/restore 當下**：`docker compose stop bot` 讓 bot 完全離線，這是零寫入的唯一保證。
+>
+> 建議順序：開維修模式公告 → 選離峰 → `stop bot` → dump/restore → 切 `MONGO_URI` →
+> `MAINTENANCE_MODE=false` → `up -d bot` 驗證。
+
 用 `mongo:7` 容器內建的 `mongodump` / `mongorestore`，宿主機不用另外裝工具。
 
 ### 方式 A：一鍵腳本（建議）
