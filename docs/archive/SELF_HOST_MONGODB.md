@@ -1,5 +1,9 @@
 # 在 Vultr 自架 MongoDB + 從 Atlas 搬遷資料
 
+> **📦 已歸檔（2026-07）**：Atlas → 自架 mongo 搬遷已完成，本文件保留作紀錄與備份參考。
+> 一次性搬遷腳本 `scripts/migrateAtlasToLocal.sh` 已於搬遷後移除（內容見下方「方式 B：手動兩步」，
+> 或 git 歷史）。自架 mongo / caddy 的長期設定以 `docker-compose.yml` 為準。
+
 把資料庫從 MongoDB Atlas 改成「跟 bot 跑在同一台 Vultr 的 docker-compose 自架 mongo」。
 DB 名稱在程式內固定為 `MorningBot`（見 `src/events/ready/connectDb.js`），搬遷時保持不變即可。
 
