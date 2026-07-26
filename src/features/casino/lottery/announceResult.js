@@ -18,7 +18,10 @@ async function announceDrawResult(client, drawResult, options = {}) {
     console.log(`[LOTTERY] 無 announceChannelId,跳過公告`.yellow);
     return;
   }
-  const channel = client.channels.cache.get(channelId);
+  // 啟動補開獎時頻道可能還沒進 cache,fetch 回來保底。
+  const channel =
+    client.channels.cache.get(channelId) ||
+    (await client.channels.fetch(channelId).catch(() => null));
   if (!channel) {
     console.log(`[LOTTERY] 找不到公告頻道 ${channelId}`.red);
     return;

@@ -76,12 +76,19 @@ module.exports = {
     .addSubcommand((s) =>
       s
         .setName("re-announce")
-        .setDescription("重發某一期的開獎結果圖卡(用已結算資料重繪,不重抽號、不重派彩)")
+        .setDescription("重發開獎結果圖卡(用已結算資料重繪,不重抽號、不重派彩)")
+        .addStringOption((o) =>
+          o
+            .setName("玩法")
+            .setDescription("重發該玩法最新一期(免填 drawId)")
+            .setRequired(false)
+            .addChoices(...TYPE_CHOICES)
+        )
         .addStringOption((o) =>
           o
             .setName("drawid")
-            .setDescription("該期 drawId,例:20260702-power_38_8")
-            .setRequired(true)
+            .setDescription("指定期別 drawId(優先於玩法),例:20260702-power_38_8")
+            .setRequired(false)
         )
     )
     .addSubcommand((s) =>
@@ -162,18 +169,32 @@ module.exports = {
 
       if (sub === "re-announce") {
         const drawId = interaction.options.getString("drawid");
-        const draw = await client.lotteryDrawsCollection.findOne({ drawId });
-        if (!draw) return interaction.editReply(`找不到 drawId \`${drawId}\``);
+        const type = interaction.options.getString("玩法");
+        let draw;
+        if (drawId) {
+          draw = await client.lotteryDrawsCollection.findOne({ drawId });
+          if (!draw) return interaction.editReply(`找不到 drawId \`${drawId}\``);
+        } else if (type) {
+          const latest = await client.lotteryDrawsCollection
+            .find({ lotteryType: type, status: "settled" })
+            .sort({ drawNumber: -1 })
+            .limit(1)
+            .toArray();
+          draw = latest[0];
+          if (!draw) return interaction.editReply("該玩法尚無已開獎的期別。");
+        } else {
+          return interaction.editReply("請提供 `玩法` 或 `drawid` 其一。");
+        }
         if (draw.status !== "settled") {
           return interaction.editReply(
             `該期尚未結算(status=${draw.status}),無法重發。`
           );
         }
         const tickets = await client.lotteryTicketsCollection
-          .find({ drawId })
+          .find({ drawId: draw.drawId })
           .toArray();
         await announceDrawResult(client, { draw, tickets }, { skipWinnerDm: true });
-        return interaction.editReply(`✅ 已重發 \`${drawId}\` 的開獎結果圖卡。`);
+        return interaction.editReply(`✅ 已重發 \`${draw.drawId}\` 的開獎結果圖卡。`);
       }
 
       if (sub === "inspect") {
@@ -181,6 +202,12 @@ module.exports = {
         const draw = await getCurrentOpenDraw(client, t);
         if (!draw) return interaction.editReply("沒有 open 期");
         const cfg = getLotteryConfig(t);
+        const latest = await client.lotteryDrawsCollection
+          .find({ lotteryType: t, status: "settled" })
+          .sort({ drawNumber: -1 })
+          .limit(1)
+          .toArray();
+        const lastSettled = latest[0];
         const reminders = (draw.scheduledReminders || [])
           .map(
             (r, i) =>
@@ -193,6 +220,7 @@ module.exports = {
             `期數 #${draw.drawNumber}, 狀態 ${draw.status}`,
             `彩池 ${draw.pool}, 票數 ${draw.totalTickets || 0}, 系統底池 ${draw.systemSeedAmount}`,
             `滾入 from ${draw.rolledOverFrom || "(無)"}`,
+            `最近已開獎期:${lastSettled ? `\`${lastSettled.drawId}\`(第 ${lastSettled.drawNumber} 期)` : "(無)"}`,
             `已播里程碑 [${(draw.announcedMilestones || []).join(",")}]`,
             `提醒:`,
             reminders || "  (無)",
