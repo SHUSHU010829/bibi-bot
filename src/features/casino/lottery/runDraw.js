@@ -853,10 +853,61 @@ async function settleStuckDrawInPlace(client, lotteryType, { allowMissingNumbers
   };
 }
 
+/**
+ * 反轉某一期的所有派彩(主獎 + 側獎),把已發獎金收回,供「反轉後重開」使用。
+ * 精確反轉原本 grantCoins 對餘額的影響(totalCoins / coinsFrom_payout / lifetimeCoins),
+ * 並寫一筆 payout_reversal 交易留痕。已反轉過(存在 payout_reversal 紀錄)則跳過,避免重複收回。
+ * @returns {Promise<{reversed:number, users:number, total:number, alreadyReversed?:boolean}>}
+ */
+async function reversePayouts(client, drawId) {
+  if (!client.coinTransactionsCollection || !client.userCoinsCollection) {
+    return { reversed: 0, users: 0, total: 0 };
+  }
+  const already = await client.coinTransactionsCollection.countDocuments({
+    source: "payout_reversal",
+    "meta.drawId": drawId,
+  });
+  if (already > 0) return { reversed: 0, users: 0, total: 0, alreadyReversed: true };
+
+  const payouts = await client.coinTransactionsCollection
+    .find({ source: "payout", "meta.game": "lottery", "meta.drawId": drawId })
+    .toArray();
+
+  const byUser = new Map();
+  for (const p of payouts) {
+    const key = `${p.userId} ${p.guildId}`;
+    byUser.set(key, (byUser.get(key) || 0) + (p.amount || 0));
+  }
+
+  let total = 0;
+  for (const [key, amt] of byUser) {
+    if (!amt) continue;
+    const [userId, guildId] = key.split(" ");
+    await client.userCoinsCollection.updateOne(
+      { userId, guildId },
+      {
+        $inc: { totalCoins: -amt, coinsFrom_payout: -amt, lifetimeCoins: -amt },
+        $set: { updatedAt: new Date() },
+      }
+    );
+    await client.coinTransactionsCollection.insertOne({
+      userId,
+      guildId,
+      amount: -amt,
+      source: "payout_reversal",
+      meta: { game: "lottery", drawId, reason: "maintenance_redraw" },
+      createdAt: new Date(),
+    });
+    total += amt;
+  }
+  return { reversed: payouts.length, users: byUser.size, total };
+}
+
 module.exports = {
   getCurrentOpenDraw,
   ensureNextDraw,
   runDraw,
   recoverStuckDraw,
   settleStuckDrawInPlace,
+  reversePayouts,
 };

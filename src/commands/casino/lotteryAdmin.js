@@ -14,6 +14,7 @@ const {
   getCurrentOpenDraw,
   recoverStuckDraw,
   settleStuckDrawInPlace,
+  reversePayouts,
 } = require("../../features/casino/lottery/runDraw");
 const { announceDrawResult } = require("../../features/casino/lottery/announceResult");
 const { processAllSubscriptions } = require("../../features/casino/lottery/subscriptions");
@@ -90,6 +91,12 @@ module.exports = {
           o
             .setName("強制")
             .setDescription("已派彩且無法反推中獎號碼時,仍標記結算(公告不顯示號碼)")
+            .setRequired(false)
+        )
+        .addBooleanOption((o) =>
+          o
+            .setName("重抽")
+            .setDescription("已派彩時:收回原派彩後用全新號碼重開(而非就地結算)")
             .setRequired(false)
         )
     )
@@ -194,6 +201,27 @@ module.exports = {
 
         if (rec.reason === "no_stuck") {
           return interaction.editReply("沒有卡在 drawing 的期。");
+        }
+
+        // 已派過彩,且指定「重抽」→ 收回原派彩後用全新號碼重開。
+        if (rec.reason === "already_paid" && interaction.options.getBoolean("重抽")) {
+          const rev = await reversePayouts(client, rec.drawId);
+          await client.lotteryDrawsCollection.updateOne(
+            { lotteryType: t, drawId: rec.drawId, status: "drawing" },
+            { $set: { status: "open", updatedAt: new Date() } }
+          );
+          const result = await runDraw(client, t);
+          if (!result) {
+            return interaction.editReply(
+              `已收回原派彩(${rev.reversed} 筆 / ${rev.users} 人 / 共 ${rev.total.toLocaleString()})並重置為 open,` +
+                `但 runDraw 沒開成,請再試或用 force-draw。`
+            );
+          }
+          await announceDrawResult(client, result);
+          return interaction.editReply(
+            `✅ 已收回原派彩${rev.alreadyReversed ? "(先前已收回,未重複)" : `(${rev.reversed} 筆 / ${rev.users} 人 / 共 ${rev.total.toLocaleString()} credits)`}` +
+              `並重新開獎 \`${result.draw.drawId}\`,中獎號碼 ${result.draw.winningNumbers.join(",")},已發公告。`
+          );
         }
 
         // 已派過彩 → 不重付,改就地結算(用票券已寫回的中獎資料重建 + 補公告)。
