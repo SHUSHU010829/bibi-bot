@@ -54,7 +54,28 @@ async function ensureNextDraw(client, lotteryType, options = {}) {
   if (!client.lotteryDrawsCollection) return null;
 
   const existing = await getCurrentOpenDraw(client, lotteryType);
-  if (existing) return existing;
+  if (existing) {
+    // 補開/亂序開獎時下一期可能已存在:把滾池金額補進既有開期,避免金額落空。
+    const add = Math.max(0, Math.floor(options.rolledOverAmount || 0));
+    if (
+      add > 0 &&
+      options.rolledOverFromDrawId &&
+      existing.rolledOverFrom !== options.rolledOverFromDrawId
+    ) {
+      await client.lotteryDrawsCollection.updateOne(
+        { _id: existing._id },
+        {
+          $inc: { pool: add },
+          $set: {
+            rolledOverFrom: options.rolledOverFromDrawId,
+            updatedAt: new Date(),
+          },
+        }
+      );
+      return { ...existing, pool: existing.pool + add, rolledOverFrom: options.rolledOverFromDrawId };
+    }
+    return existing;
+  }
 
   const typeCfg = getTypeConfig(lotteryType);
   if (!typeCfg.enabled) return null;
@@ -387,8 +408,43 @@ async function runDraw(client, lotteryType) {
   };
 }
 
+/**
+ * 救援卡在 status="drawing" 的期(開獎鎖期後、結算前被中斷,例如維修/重啟)。
+ * 開獎的中獎號碼只在結算時才落地,中斷的期沒有結果可續跑,只能重置回 open 由 runDraw 重抽。
+ * 為避免重複派彩:若該期已有 payout 交易紀錄,預設拒絕重置(force 才強制)。
+ * @returns {Promise<{recovered:boolean, reason?:string, drawId?:string, paidCount?:number}>}
+ */
+async function recoverStuckDraw(client, lotteryType, { force = false } = {}) {
+  if (!client.lotteryDrawsCollection) return { recovered: false, reason: "db_not_ready" };
+
+  const stuck = await client.lotteryDrawsCollection.findOne({
+    lotteryType,
+    status: "drawing",
+  });
+  if (!stuck) return { recovered: false, reason: "no_stuck" };
+
+  const paidCount = client.coinTransactionsCollection
+    ? await client.coinTransactionsCollection.countDocuments({
+        source: "payout",
+        "meta.game": "lottery",
+        "meta.drawId": stuck.drawId,
+      })
+    : 0;
+
+  if (paidCount > 0 && !force) {
+    return { recovered: false, reason: "already_paid", drawId: stuck.drawId, paidCount };
+  }
+
+  await client.lotteryDrawsCollection.updateOne(
+    { _id: stuck._id, status: "drawing" },
+    { $set: { status: "open", updatedAt: new Date() } }
+  );
+  return { recovered: true, drawId: stuck.drawId, paidCount };
+}
+
 module.exports = {
   getCurrentOpenDraw,
   ensureNextDraw,
   runDraw,
+  recoverStuckDraw,
 };

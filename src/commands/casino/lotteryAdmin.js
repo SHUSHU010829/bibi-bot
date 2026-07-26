@@ -8,7 +8,12 @@ const {
   InteractionContextType,
 } = require("discord.js");
 
-const { runDraw, ensureNextDraw, getCurrentOpenDraw } = require("../../features/casino/lottery/runDraw");
+const {
+  runDraw,
+  ensureNextDraw,
+  getCurrentOpenDraw,
+  recoverStuckDraw,
+} = require("../../features/casino/lottery/runDraw");
 const { announceDrawResult } = require("../../features/casino/lottery/announceResult");
 const { processAllSubscriptions } = require("../../features/casino/lottery/subscriptions");
 const {
@@ -72,6 +77,20 @@ module.exports = {
       s
         .setName("ensure-next")
         .setDescription("補建當期(若不存在)")
+    )
+    .addSubcommand((s) =>
+      s
+        .setName("recover-draw")
+        .setDescription("救援卡在 drawing 的期(維修中斷),重置後補開")
+        .addStringOption((o) =>
+          o.setName("玩法").setDescription("玩法").setRequired(true).addChoices(...TYPE_CHOICES)
+        )
+        .addBooleanOption((o) =>
+          o
+            .setName("強制")
+            .setDescription("該期已有派彩紀錄時仍強制重開(會重複派彩,慎用)")
+            .setRequired(false)
+        )
     )
     .addSubcommand((s) =>
       s
@@ -165,6 +184,33 @@ module.exports = {
           else lines.push(`${t}: 跳過`);
         }
         return interaction.editReply(lines.join("\n") || "無動作");
+      }
+
+      if (sub === "recover-draw") {
+        const t = interaction.options.getString("玩法");
+        const force = interaction.options.getBoolean("強制") || false;
+        const rec = await recoverStuckDraw(client, t, { force });
+        if (rec.reason === "no_stuck") {
+          return interaction.editReply("沒有卡在 drawing 的期。");
+        }
+        if (rec.reason === "already_paid") {
+          return interaction.editReply(
+            `⚠ \`${rec.drawId}\` 卡在 drawing,但已有 **${rec.paidCount}** 筆派彩紀錄。\n` +
+              `直接重開會重複派彩。確認要重開請加上 \`強制:是\`(僅在確定那些派彩要作廢/可接受重複時使用)。`
+          );
+        }
+        // 已重置為 open,接著補開
+        const result = await runDraw(client, t);
+        if (!result) {
+          return interaction.editReply(
+            `已把 \`${rec.drawId}\` 重置為 open,但 runDraw 沒開成(可能開獎時間未到或狀態競爭),請再試一次或用 force-draw。`
+          );
+        }
+        await announceDrawResult(client, result);
+        return interaction.editReply(
+          `✅ 已救援並補開 \`${result.draw.drawId}\`,中獎號碼 ${result.draw.winningNumbers.join(",")}` +
+            (rec.paidCount ? `(強制重開,原有 ${rec.paidCount} 筆派彩)` : "")
+        );
       }
 
       if (sub === "re-announce") {

@@ -5,7 +5,11 @@ require("colors");
 const { registerCron } = require("../../utils/cronRegistry");
 
 const { casino } = require("../../config");
-const { runDraw, ensureNextDraw } = require("../../features/casino/lottery/runDraw");
+const {
+  runDraw,
+  ensureNextDraw,
+  recoverStuckDraw,
+} = require("../../features/casino/lottery/runDraw");
 const { announceDrawResult } = require("../../features/casino/lottery/announceResult");
 const { listLotteryTypes } = require("../../features/casino/lottery/numbers");
 const { buildDrawCron } = require("../../features/casino/lottery/schedule");
@@ -30,6 +34,17 @@ module.exports = (client) => {
       const typeCfg = cfg.types?.[t];
       if (!typeCfg?.enabled) continue;
       try {
+        // 先救援卡在 drawing 的期(開獎鎖期後被維修/重啟中斷)。啟動當下不會有真的在跑的開獎,
+        // 這種 drawing 都是前一個 process 中斷留下的。已派過彩的期不自動重置,避免重複發錢。
+        const rec = await recoverStuckDraw(client, t);
+        if (rec.reason === "already_paid") {
+          console.log(
+            `[LOTTERY] ⚠ ${rec.drawId} 卡在 drawing 且已有 ${rec.paidCount} 筆派彩,需人工處理(/lotteryadmin recover-draw 強制)`.yellow
+          );
+        } else if (rec.recovered) {
+          console.log(`[LOTTERY] 救援卡住的開獎 ${rec.drawId}(重置為 open 待補開)`.green);
+        }
+
         // runDraw 只鎖 scheduledAt <= now 的 open 期:當期開獎時間未到 → 回傳 null 不動作;
         // 維修期間 cron 沒觸發、當期開獎時間已過 → 這裡補開並公告(補完會自動開下一期)。
         const missed = await runDraw(client, t);
