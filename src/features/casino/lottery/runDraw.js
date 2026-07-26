@@ -490,10 +490,120 @@ function reconstructWinningNumbers(tickets, range, pickCount) {
   return null;
 }
 
+function combinations(arr, k) {
+  const res = [];
+  const rec = (start, combo) => {
+    if (combo.length === k) {
+      res.push(combo.slice());
+      return;
+    }
+    for (let i = start; i < arr.length; i++) {
+      combo.push(arr[i]);
+      rec(i + 1, combo);
+      combo.pop();
+    }
+  };
+  rec(0, []);
+  return res;
+}
+
+const SOLVER_CANDIDATE_CAP = 800000;
+
 /**
- * 就地結算「已派彩但卡在 drawing」的期:不重抽、不重付,只用票券上已寫回的中獎資料
- * 重建開獎結果、補標記 settled 並滾池。派彩迴圈已跑完(票券有 matched/prize)才適用。
- * @returns {Promise<{ok:boolean, reason?:string, drawId?:string, draw?:object, tickets?:object[], numbersRecovered?:boolean}>}
+ * 由「中獎票 + 其精確命中數(取自交易紀錄 meta.matched)」反推中獎號碼。
+ * 以命中數最高的中獎票為錨:S 含它的 m 個號碼 + (pickCount-m) 個它以外的號碼,枚舉所有
+ * 候選,再要求「每張中獎票 ∩ S === 其命中數」且「每張落選票 ∩ S < 最低得獎門檻」。
+ * 唯一通過者即 S;否則(資訊不足以決定或候選超上限)回 null。驗證保證不會給出錯號碼。
+ */
+function solveWinningNumbersFromWinners(winners, losers, range, pickCount) {
+  if (!winners.length) return null;
+  let anchor = winners[0];
+  for (const w of winners) if (w.matched > anchor.matched) anchor = w;
+  const m = anchor.matched;
+  if (m <= 0 || m > pickCount) return null;
+  const minWin = Math.min(...winners.map((w) => w.matched));
+  const anchorSet = new Set(anchor.numbers);
+  const outPool = [];
+  for (let n = 1; n <= range; n++) if (!anchorSet.has(n)) outPool.push(n);
+  const inCombos = combinations(anchor.numbers, m);
+  const outCombos = combinations(outPool, pickCount - m);
+  if (inCombos.length * outCombos.length > SOLVER_CANDIDATE_CAP) return null;
+
+  let found = null;
+  let count = 0;
+  for (const inPart of inCombos) {
+    for (const outPart of outCombos) {
+      const S = new Set([...inPart, ...outPart]);
+      let ok = true;
+      for (const w of winners) {
+        let c = 0;
+        for (const n of w.numbers) if (S.has(n)) c++;
+        if (c !== w.matched) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) {
+        for (const l of losers) {
+          let c = 0;
+          for (const n of l.numbers) if (S.has(n)) c++;
+          if (c >= minWin) {
+            ok = false;
+            break;
+          }
+        }
+      }
+      if (ok) {
+        count++;
+        if (count > 1) return null;
+        found = [...S];
+      }
+    }
+  }
+  return count === 1 ? found.sort((a, b) => a - b) : null;
+}
+
+/**
+ * 威力彩第二區號碼反推:試 1..specialRange,挑出讓每張中獎票重算獎項層級與交易紀錄
+ * (meta.prize)完全一致的那個號碼;不唯一則回 null。
+ */
+function solveSpecialNumber(lotteryType, tickets, matchedByTicket, mainTxns, typeCfg, pool, specialRange) {
+  const prizeByTicket = new Map(mainTxns.map((x) => [x.meta.ticketId, x.meta.prize]));
+  let hit = null;
+  let count = 0;
+  for (let s = 1; s <= specialRange; s++) {
+    const tm = tickets.map((t) => ({
+      ticketId: t.ticketId,
+      quantity: t.quantity || 1,
+      matched: matchedByTicket.get(t.ticketId) || 0,
+      specialMatched: t.special === s,
+    }));
+    const { ticketAssignments } = calculatePayout({ lotteryType, pool, tickets: tm, config: typeCfg });
+    const assigned = new Map(ticketAssignments.map((a) => [a.ticketId, a.prize]));
+    let ok = true;
+    for (const [tid, pr] of prizeByTicket) {
+      if (assigned.get(tid) !== pr) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) {
+      count++;
+      if (count > 1) return null;
+      hit = s;
+    }
+  }
+  return count === 1 ? hit : null;
+}
+
+/**
+ * 就地結算「已派彩但卡在 drawing」的期:不重抽、不重付,重建開獎結果、補標記 settled、滾池。
+ * 兩種資料來源:
+ *   A. 票券已寫回 matched/prize(bulkWrite 有跑)→ 直接用票券反推。
+ *   B. 票券沒寫回(bulkWrite 前就中斷)→ 用 CoinTransactions 每筆 meta(ticketId/matched/prize)
+ *      反推中獎號碼,再用號碼重算全體並回填票券(修好被中斷的 bulkWrite)。
+ * 全程不呼叫 grantCoins。
+ * @returns {Promise<{ok:boolean, reason?:string, drawId?:string, draw?:object, tickets?:object[], numbersRecovered?:boolean, payoutMatches?:boolean}>}
  */
 async function settleStuckDrawInPlace(client, lotteryType, { allowMissingNumbers = false } = {}) {
   if (!client.lotteryDrawsCollection || !client.lotteryTicketsCollection) {
@@ -508,52 +618,141 @@ async function settleStuckDrawInPlace(client, lotteryType, { allowMissingNumbers
   const tickets = await client.lotteryTicketsCollection
     .find({ drawId: draw.drawId })
     .toArray();
-
-  // 派彩結算(bulkWrite)有把 matched/prize 寫回票券才能無損重建;否則屬中斷更早的殘局。
-  const resultsWritten = tickets.some((t) => (t.matched || 0) > 0 || t.prize != null);
-  if (!resultsWritten) {
-    return { ok: false, reason: "no_ticket_results", drawId: draw.drawId };
-  }
-
+  const ticketById = new Map(tickets.map((t) => [t.ticketId, t]));
   const typeCfg = getTypeConfig(lotteryType);
   const numCfg = getNumberConfig(lotteryType) || {};
+  const range = numCfg.range;
+  const pickCount = numCfg.pickCount;
+
+  const resultsWritten = tickets.some((t) => (t.matched || 0) > 0 || t.prize != null);
+
+  let winningNumbers = null;
+  const matchedByTicket = new Map();
+  let mainTxns = [];
+  let bonusTxns = [];
+  let repairTickets = false;
+
+  if (resultsWritten) {
+    for (const t of tickets) matchedByTicket.set(t.ticketId, t.matched || 0);
+    winningNumbers = reconstructWinningNumbers(tickets, range, pickCount);
+  } else {
+    // 票券沒寫回結果 → 從交易紀錄反推(每筆派彩 meta 都記了 ticketId/matched/prize)。
+    if (!client.coinTransactionsCollection) {
+      return { ok: false, reason: "no_ticket_results", drawId: draw.drawId };
+    }
+    const txns = await client.coinTransactionsCollection
+      .find({ source: "payout", "meta.game": "lottery", "meta.drawId": draw.drawId })
+      .toArray();
+    mainTxns = txns.filter(
+      (x) => x.meta && x.meta.prize !== "bonus" && typeof x.meta.matched === "number"
+    );
+    bonusTxns = txns.filter((x) => x.meta && x.meta.prize === "bonus");
+    if (!mainTxns.length) {
+      return { ok: false, reason: "no_ticket_results", drawId: draw.drawId };
+    }
+    const winnerIds = new Set();
+    const winners = [];
+    for (const x of mainTxns) {
+      const tk = ticketById.get(x.meta.ticketId);
+      if (!tk) continue;
+      winnerIds.add(x.meta.ticketId);
+      winners.push({ numbers: tk.numbers, matched: x.meta.matched });
+    }
+    const losers = tickets
+      .filter((t) => !winnerIds.has(t.ticketId))
+      .map((t) => ({ numbers: t.numbers }));
+    winningNumbers = solveWinningNumbersFromWinners(winners, losers, range, pickCount);
+    if (winningNumbers) {
+      const Sset = new Set(winningNumbers);
+      for (const t of tickets) {
+        let c = 0;
+        for (const n of t.numbers) if (Sset.has(n)) c++;
+        matchedByTicket.set(t.ticketId, c);
+      }
+    } else {
+      // 沒解出號碼:退而用交易紀錄的中獎票命中數,落選票視為 0(獎項仍正確,只缺號碼)。
+      for (const t of tickets) matchedByTicket.set(t.ticketId, 0);
+      for (const x of mainTxns) matchedByTicket.set(x.meta.ticketId, x.meta.matched);
+    }
+    repairTickets = true;
+  }
+
+  if (!winningNumbers && !allowMissingNumbers) {
+    return { ok: false, reason: "numbers_unrecoverable", drawId: draw.drawId };
+  }
+
+  // 第二區(威力彩):有號碼且是 txn 來源就重算 special;A 來源沿用票券已寫回的 specialMatched。
+  let specialNumber = null;
+  if (hasSecondZone(lotteryType)) {
+    if (winningNumbers && mainTxns.length) {
+      specialNumber = solveSpecialNumber(
+        lotteryType,
+        tickets,
+        matchedByTicket,
+        mainTxns,
+        typeCfg,
+        draw.pool,
+        numCfg.special?.range || 8
+      );
+    } else if (resultsWritten) {
+      specialNumber = tickets.find((t) => t.specialMatched)?.special ?? null;
+    }
+  }
+
+  const specialMatchedOf = (t) =>
+    specialNumber != null ? t.special === specialNumber : !!t.specialMatched;
 
   const ticketMatched = tickets.map((t) => ({
     ticketId: t.ticketId,
     quantity: t.quantity || 1,
-    matched: t.matched || 0,
-    specialMatched: !!t.specialMatched,
+    matched: matchedByTicket.get(t.ticketId) || 0,
+    specialMatched: specialMatchedOf(t),
   }));
-  // 純函式:給相同 pool + 每張 matched,重現與中斷前完全相同的獎項/滾池。
-  const { prizes } = calculatePayout({
+  const { prizes, ticketAssignments } = calculatePayout({
     lotteryType,
     pool: draw.pool,
     tickets: ticketMatched,
     config: typeCfg,
   });
 
-  const winningNumbers = reconstructWinningNumbers(
-    tickets,
-    numCfg.range,
-    numCfg.pickCount
-  );
-  if (!winningNumbers && !allowMissingNumbers) {
-    return { ok: false, reason: "numbers_unrecoverable", drawId: draw.drawId };
+  // 一致性檢查:重算的主獎總額應等於交易紀錄的主獎派彩總額。
+  let payoutMatches = true;
+  if (mainTxns.length) {
+    const qtyOf = new Map(tickets.map((t) => [t.ticketId, t.quantity || 1]));
+    const recomputed = ticketAssignments.reduce(
+      (s, a) => s + (a.payoutAmount || 0) * (qtyOf.get(a.ticketId) || 1),
+      0
+    );
+    const paid = mainTxns.reduce((s, x) => s + (x.amount || 0), 0);
+    payoutMatches = recomputed === paid;
   }
-  const specialTicket = tickets.find((t) => t.specialMatched);
-  const specialNumber = hasSecondZone(lotteryType)
-    ? specialTicket?.special ?? null
-    : null;
 
-  // 側獎彙總:由票券已寫回的 bonusFlags / bonusPayout 還原(加碼球號碼已遺失,記 null)。
+  // 側獎彙總:txn 來源用 bonusTxns;票券來源用票券已寫回欄位。加碼球號碼已遺失,記 null。
   let bonusBallWinners = 0;
   let consecutiveWinners = 0;
   let totalBonusPaid = 0;
-  for (const t of tickets) {
-    const q = t.quantity || 1;
-    if (t.bonusFlags?.bonusBall) bonusBallWinners += q;
-    if (t.bonusFlags?.consecutive) consecutiveWinners += q;
-    if (t.bonusPayout) totalBonusPaid += t.bonusPayout * q;
+  const bonusByTicket = new Map();
+  if (bonusTxns.length) {
+    for (const x of bonusTxns) {
+      const q = x.meta.quantity || 1;
+      if (x.meta.bonusFlags?.bonusBall) bonusBallWinners += q;
+      if (x.meta.bonusFlags?.consecutive) consecutiveWinners += q;
+      totalBonusPaid += x.amount || 0;
+      bonusByTicket.set(x.meta.ticketId, {
+        amount: Math.round((x.amount || 0) / q),
+        flags: {
+          bonusBall: !!x.meta.bonusFlags?.bonusBall,
+          consecutive: !!x.meta.bonusFlags?.consecutive,
+        },
+      });
+    }
+  } else {
+    for (const t of tickets) {
+      const q = t.quantity || 1;
+      if (t.bonusFlags?.bonusBall) bonusBallWinners += q;
+      if (t.bonusFlags?.consecutive) consecutiveWinners += q;
+      if (t.bonusPayout) totalBonusPaid += t.bonusPayout * q;
+    }
   }
   const bonusBallCfg = typeCfg.bonusBall || {};
   const consecutiveCfg = typeCfg.consecutiveBonus || {};
@@ -569,6 +768,32 @@ async function settleStuckDrawInPlace(client, lotteryType, { allowMissingNumbers
           totalBonusPaid,
         }
       : null;
+
+  // 回填票券結果(修好被中斷的 bulkWrite),讓 /彩券 歷史 顯示正確;不派彩。
+  if (repairTickets) {
+    const smOf = new Map(ticketMatched.map((tm) => [tm.ticketId, tm.specialMatched]));
+    const ops = ticketAssignments.map((a) => {
+      const bonus = bonusByTicket.get(a.ticketId);
+      return {
+        updateOne: {
+          filter: { ticketId: a.ticketId },
+          update: {
+            $set: {
+              matched: matchedByTicket.get(a.ticketId) || 0,
+              specialMatched: !!smOf.get(a.ticketId),
+              prize: a.prize,
+              payoutAmount: a.payoutAmount,
+              bonusPayout: bonus?.amount || 0,
+              bonusFlags: bonus?.flags || { bonusBall: false, consecutive: false },
+            },
+          },
+        },
+      };
+    });
+    if (ops.length > 0) {
+      await client.lotteryTicketsCollection.bulkWrite(ops, { ordered: false });
+    }
+  }
 
   const rolledOverAmount = prizes.rolledOver?.amount || 0;
   const payoutDoc = {};
@@ -611,15 +836,20 @@ async function settleStuckDrawInPlace(client, lotteryType, { allowMissingNumbers
   }
 
   const settled = await client.lotteryDrawsCollection.findOne({ _id: draw._id });
+  const freshTickets = await client.lotteryTicketsCollection
+    .find({ drawId: draw.drawId })
+    .toArray();
   console.log(
-    `[LOTTERY] 就地結算 ${draw.drawId}(不重付,重建自票券)${winningNumbers ? "" : ",中獎號碼無法還原"}`.green
+    `[LOTTERY] 就地結算 ${draw.drawId}(不重付,來源:${resultsWritten ? "票券" : "交易紀錄"})` +
+      `${winningNumbers ? "" : ",中獎號碼無法還原"}${payoutMatches ? "" : ",⚠派彩總額對不上"}`.green
   );
   return {
     ok: true,
     drawId: draw.drawId,
     draw: settled,
-    tickets,
+    tickets: freshTickets,
     numbersRecovered: !!winningNumbers,
+    payoutMatches,
   };
 }
 
