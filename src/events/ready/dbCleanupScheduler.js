@@ -103,4 +103,12 @@ module.exports = (client) => {
     timezone: "Asia/Taipei",
     runner: () => cleanupOnce(client),
   });
+
+  // 啟動 30 秒後補跑一次：部署 / 重啟後不必等到隔天 04:30 才清一輪。
+  // 延遲讓 connectDb 掛好 collection、避開啟動當下的負載尖峰。
+  setTimeout(() => {
+    cleanupOnce(client).catch((err) => {
+      console.log(`[DB-CLEANUP] 啟動補跑失敗：${err.message}`.red);
+    });
+  }, 30 * 1000);
 };
