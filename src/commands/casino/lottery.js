@@ -75,6 +75,12 @@ function getTypeConfig(t) {
   return getLotteryFeatureConfig().types?.[t] || {};
 }
 
+// 購買上限：擋住「一次買到爆」造成的票券文件量失控（config 驅動）
+const LOTTERY_LIMITS = casino?.lottery?.limits || {};
+const MAX_TICKETS_PER_BUY = LOTTERY_LIMITS.maxTicketsPerBuy || 100;
+const MAX_TICKETS_PER_DRAW = LOTTERY_LIMITS.maxTicketsPerDraw || 100;
+const MAX_SUB_DRAWS = LOTTERY_LIMITS.maxSubscriptionDraws || 52;
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("彩券")
@@ -97,6 +103,7 @@ module.exports = {
             .setDescription("買幾張(隨機選號模式才用)")
             .setRequired(false)
             .setMinValue(1)
+            .setMaxValue(MAX_TICKETS_PER_BUY)
         )
         .addStringOption((o) =>
           o
@@ -158,6 +165,7 @@ module.exports = {
                 .setDescription("自動買幾期")
                 .setRequired(true)
                 .setMinValue(1)
+                .setMaxValue(MAX_SUB_DRAWS)
             )
             .addIntegerOption((o) =>
               o
@@ -165,6 +173,7 @@ module.exports = {
                 .setDescription("每期買幾張")
                 .setRequired(false)
                 .setMinValue(1)
+                .setMaxValue(MAX_TICKETS_PER_DRAW)
             )
             .addStringOption((o) =>
               o
@@ -306,15 +315,24 @@ async function runBuy(client, interaction) {
       return interaction.editReply("🔧 扣款失敗,請稍後再試。");
     }
 
-    const ticketDocs = entries.map((e) => ({
+    // 相同號碼（含第二區）聚合成單一 doc + quantity，避免自選買 N 張產生 N 筆相同資料
+    const grouped = new Map();
+    for (const e of entries) {
+      const key = `${e.numbers.join(",")}|${e.special ?? ""}`;
+      const g = grouped.get(key);
+      if (g) g.quantity += 1;
+      else grouped.set(key, { numbers: e.numbers, special: e.special, quantity: 1 });
+    }
+    const ticketDocs = [...grouped.values()].map((g) => ({
       ticketId: crypto.randomUUID(),
       drawId: draw.drawId,
       lotteryType,
       userId,
       guildId,
       username,
-      numbers: e.numbers,
-      special: e.special,
+      numbers: g.numbers,
+      special: g.special,
+      quantity: g.quantity,
       pricePaid: ticketPrice,
       source: "manual",
       subscriptionId: null,
@@ -355,11 +373,12 @@ async function runBuy(client, interaction) {
       .map(
         (t, i) =>
           `\`${String(i + 1).padStart(2, " ")}.\` ${t.numbers.join(" ・ ")}` +
-          (t.special != null ? ` ＋ 第二區 **${t.special}**` : "")
+          (t.special != null ? ` ＋ 第二區 **${t.special}**` : "") +
+          (t.quantity > 1 ? ` ×${t.quantity}` : "")
       )
       .join("\n");
     const moreLine =
-      ticketDocs.length > 10 ? `\n…再 ${ticketDocs.length - 10} 張` : "";
+      ticketDocs.length > 10 ? `\n…再 ${ticketDocs.length - 10} 組` : "";
 
     await saveLastBet(client, {
       userId,
@@ -378,7 +397,7 @@ async function runBuy(client, interaction) {
 
     await interaction.editReply({
       content:
-        `${cfg.emoji} **${cfg.label}** 第 ${draw.drawNumber} 期 已買 **${ticketDocs.length}** 張\n` +
+        `${cfg.emoji} **${cfg.label}** 第 ${draw.drawNumber} 期 已買 **${entries.length}** 張\n` +
         `${previewLines}${moreLine}\n\n` +
         `花費:**${totalCost.toLocaleString()}** ・ 餘額:**${balanceAfter.toLocaleString()}**\n` +
         `當前彩池:**${(drawDoc?.pool || draw.pool + totalCost).toLocaleString()}** credits\n` +
@@ -503,6 +522,7 @@ async function runWheel(client, interaction) {
       guildId,
       username,
       numbers: nums,
+      quantity: 1,
       pricePaid: ticketPrice,
       source: "wheeling",
       subscriptionId: null,
@@ -590,10 +610,13 @@ async function runStatus(client, interaction) {
         continue;
       }
       const drawAtUnix = Math.floor(new Date(draw.scheduledAt).getTime() / 1000);
-      const userTickets = await client.lotteryTicketsCollection.countDocuments({
-        drawId: draw.drawId,
-        userId: interaction.user.id,
-      });
+      const [userAgg] = await client.lotteryTicketsCollection
+        .aggregate([
+          { $match: { drawId: draw.drawId, userId: interaction.user.id } },
+          { $group: { _id: null, tickets: { $sum: { $ifNull: ["$quantity", 1] } } } },
+        ])
+        .toArray();
+      const userTickets = userAgg?.tickets || 0;
       lines.push(
         `${cfg.emoji} **${cfg.label}** 第 ${draw.drawNumber} 期\n` +
           `彩池:**${draw.pool.toLocaleString()}** credits\n` +
@@ -679,9 +702,18 @@ async function runHistory(client, interaction) {
           {
             $group: {
               _id: null,
-              spent: { $sum: "$pricePaid" },
+              // quantity 聚合：花費 / 獎金都要乘上每筆代表的張數
+              tickets: { $sum: { $ifNull: ["$quantity", 1] } },
+              spent: {
+                $sum: { $multiply: ["$pricePaid", { $ifNull: ["$quantity", 1] }] },
+              },
               won: {
-                $sum: { $add: ["$payoutAmount", { $ifNull: ["$bonusPayout", 0] }] },
+                $sum: {
+                  $multiply: [
+                    { $add: ["$payoutAmount", { $ifNull: ["$bonusPayout", 0] }] },
+                    { $ifNull: ["$quantity", 1] },
+                  ],
+                },
               },
             },
           },
@@ -725,19 +757,23 @@ async function runHistory(client, interaction) {
       const lines = tickets.map((t) => {
         const cfg = getLotteryConfig(t.lotteryType);
         const draw = drawById.get(t.drawId);
+        const qtyN = t.quantity || 1;
+        const qtyStr = qtyN > 1 ? ` ×${qtyN}` : "";
         const numStr =
-          t.numbers.join(" ・ ") + (t.special != null ? ` ＋${t.special}` : "");
+          t.numbers.join(" ・ ") +
+          (t.special != null ? ` ＋${t.special}` : "") +
+          qtyStr;
         const bonusTags = [];
         if (t.bonusFlags?.bonusBall) bonusTags.push("🎯加碼球");
         if (t.bonusFlags?.consecutive) bonusTags.push("🔗連號");
         const bonusStr =
           (t.bonusPayout || 0) > 0
-            ? ` ・ ${bonusTags.join("")} +${t.bonusPayout.toLocaleString()}`
+            ? ` ・ ${bonusTags.join("")} +${((t.bonusPayout || 0) * qtyN).toLocaleString()}`
             : "";
         const status =
           draw?.status === "settled"
             ? t.prize
-              ? `${PRIZE_LABEL[t.prize] || t.prize} +${(t.payoutAmount || 0).toLocaleString()}`
+              ? `${PRIZE_LABEL[t.prize] || t.prize} +${((t.payoutAmount || 0) * qtyN).toLocaleString()}`
               : `沒中(中 ${t.matched || 0})`
             : "等開獎";
         return `\`${draw?.drawNumber ?? "?"}\` ${cfg?.emoji || "🎟"} ${numStr} ・ ${status}${bonusStr}`;
@@ -745,12 +781,13 @@ async function runHistory(client, interaction) {
 
       const spent = agg?.spent || 0;
       const won = agg?.won || 0;
+      const ticketCount = agg?.tickets || total;
 
       embed.setDescription(lines.join("\n"));
       embed.addFields({
         name: "統計",
         value:
-          `總筆數:${total} ・ 總花費:${spent.toLocaleString()} ・ ` +
+          `總張數:${ticketCount.toLocaleString()} ・ 總花費:${spent.toLocaleString()} ・ ` +
           `總獎金:${won.toLocaleString()} ・ 淨值:${(won - spent).toLocaleString()}`,
       });
 

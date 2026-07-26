@@ -156,8 +156,10 @@ async function runDraw(client, lotteryType) {
     .toArray();
 
   // 比對每張票（第一區命中數 + 第二區是否命中）
+  // quantity：一個 doc 可代表多張相同號碼的票，派彩分母與實得金額都要吃這個數量
   const ticketMatched = tickets.map((t) => ({
     ticketId: t.ticketId,
+    quantity: t.quantity || 1,
     matched: countMatches(t.numbers, winningNumbers),
     specialMatched: winningSpecial != null && t.special === winningSpecial,
   }));
@@ -174,6 +176,7 @@ async function runDraw(client, lotteryType) {
       : null;
   const consecMinRun = consecutiveCfg.minRun ?? 3;
   // 每張票的側獎：bonusBall 命中 + 中獎號碼中含連號
+  // amount 為「每張」側獎金額；實際派彩與統計時再乘 quantity
   const ticketBonus = new Map();
   for (const t of tickets) {
     let amount = 0;
@@ -213,10 +216,12 @@ async function runDraw(client, lotteryType) {
     const ops = [];
     for (const a of ticketAssignments) {
       const tk = ticketsById.get(a.ticketId);
+      const quantity = tk?.quantity || 1;
       const mInfo = ticketMatched.find((m) => m.ticketId === a.ticketId);
       const matched = mInfo?.matched || 0;
       const bonus = ticketBonus.get(a.ticketId);
       const bonusAmount = bonus?.amount || 0;
+      // 存「每張」金額（payoutAmount / bonusPayout），實得由讀取端 × quantity 換算
       ops.push({
         updateOne: {
           filter: { ticketId: a.ticketId },
@@ -232,13 +237,13 @@ async function runDraw(client, lotteryType) {
           },
         },
       });
-      // 派彩(只發中獎的)
+      // 派彩(只發中獎的)：整個 doc 一次發 perWinner × quantity
       if (a.prize && a.payoutAmount > 0 && tk) {
         await grantCoins(client, {
           userId: tk.userId,
           guildId: tk.guildId,
           username: tk.username,
-          amount: a.payoutAmount,
+          amount: a.payoutAmount * quantity,
           source: "payout",
           meta: {
             game: "lottery",
@@ -247,19 +252,20 @@ async function runDraw(client, lotteryType) {
             ticketId: a.ticketId,
             prize: a.prize,
             matched,
+            quantity,
           },
         });
       }
-      // 側獎派彩（加碼球 / 連號），系統固定額，獨立發放
+      // 側獎派彩（加碼球 / 連號），系統固定額，獨立發放（同樣 × quantity）
       if (bonusAmount > 0 && tk) {
-        if (bonus.flags.bonusBall) bonusSummary.bonusBallWinners += 1;
-        if (bonus.flags.consecutive) bonusSummary.consecutiveWinners += 1;
-        bonusSummary.totalBonusPaid += bonusAmount;
+        if (bonus.flags.bonusBall) bonusSummary.bonusBallWinners += quantity;
+        if (bonus.flags.consecutive) bonusSummary.consecutiveWinners += quantity;
+        bonusSummary.totalBonusPaid += bonusAmount * quantity;
         await grantCoins(client, {
           userId: tk.userId,
           guildId: tk.guildId,
           username: tk.username,
-          amount: bonusAmount,
+          amount: bonusAmount * quantity,
           source: "payout",
           meta: {
             game: "lottery",
@@ -268,6 +274,7 @@ async function runDraw(client, lotteryType) {
             ticketId: a.ticketId,
             prize: "bonus",
             bonusFlags: bonus.flags,
+            quantity,
           },
         });
       }
@@ -289,7 +296,7 @@ async function runDraw(client, lotteryType) {
     for (const t of wheelTickets) {
       const a = ticketAssignments.find((x) => x.ticketId === t.ticketId);
       if (!a) continue;
-      totalWon += a.payoutAmount || 0;
+      totalWon += (a.payoutAmount || 0) * (t.quantity || 1);
       if (a.prize && (!bestPrize || prizeRank[a.prize] > prizeRank[bestPrize])) {
         bestPrize = a.prize;
       }
@@ -309,7 +316,7 @@ async function runDraw(client, lotteryType) {
     let won = 0;
     for (const t of subTickets) {
       const a = ticketAssignments.find((x) => x.ticketId === t.ticketId);
-      if (a) won += a.payoutAmount || 0;
+      if (a) won += (a.payoutAmount || 0) * (t.quantity || 1);
     }
     if (won > 0) {
       await client.lotterySubscriptionsCollection?.updateOne(

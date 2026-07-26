@@ -85,31 +85,27 @@ async function processSubscription(client, sub) {
   });
   if (!result) return { status: "charge_failed" };
 
-  // 寫票券
-  const ticketIds = [];
-  const docs = [];
-  for (let i = 0; i < sub.ticketsPerDraw; i++) {
-    const ticketId = crypto.randomUUID();
-    ticketIds.push(ticketId);
-    docs.push({
-      ticketId,
-      drawId: draw.drawId,
-      lotteryType: sub.lotteryType,
-      userId: sub.userId,
-      guildId: sub.guildId,
-      username: sub.username,
-      numbers: [...sub.numbers],
-      pricePaid: ticketPrice,
-      source: "subscription",
-      subscriptionId: sub.subscriptionId,
-      wheelingId: null,
-      matched: 0,
-      prize: null,
-      payoutAmount: 0,
-      createdAt: new Date(),
-    });
-  }
-  await client.lotteryTicketsCollection.insertMany(docs);
+  // 寫票券：訂閱每期同一組號碼，聚合成單一 doc + quantity（原本每張一筆）
+  const ticketId = crypto.randomUUID();
+  const ticketIds = [ticketId];
+  await client.lotteryTicketsCollection.insertOne({
+    ticketId,
+    drawId: draw.drawId,
+    lotteryType: sub.lotteryType,
+    userId: sub.userId,
+    guildId: sub.guildId,
+    username: sub.username,
+    numbers: [...sub.numbers],
+    quantity: sub.ticketsPerDraw,
+    pricePaid: ticketPrice,
+    source: "subscription",
+    subscriptionId: sub.subscriptionId,
+    wheelingId: null,
+    matched: 0,
+    prize: null,
+    payoutAmount: 0,
+    createdAt: new Date(),
+  });
 
   // 更新 draw 統計
   const updatedDraw = await client.lotteryDrawsCollection.findOneAndUpdate(

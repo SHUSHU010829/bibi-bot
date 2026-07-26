@@ -126,9 +126,6 @@ module.exports = async (client) => {
     // 拉霸 jackpot 累積彩池（每 guild 一筆）
     const jackpotPoolCollection = database.collection("JackpotPool");
 
-    // 玩家轉帳每日額度（記每日轉出總額）
-    const coinTransfersCollection = database.collection("CoinTransfers");
-
     // 待收轉帳 / 贈送（收帳者可拒收，24 小時未答覆自動退回，收下才真正扣款/扣物）
     const pendingTransfersCollection = database.collection("PendingTransfers");
 
@@ -332,7 +329,6 @@ module.exports = async (client) => {
     client.lotterySubscriptionsCollection = lotterySubscriptionsCollection;
     client.lotteryWheelsCollection = lotteryWheelsCollection;
     client.jackpotPoolCollection = jackpotPoolCollection;
-    client.coinTransfersCollection = coinTransfersCollection;
     client.pendingTransfersCollection = pendingTransfersCollection;
     client.coinDepositsCollection = coinDepositsCollection;
     client.creditProfilesCollection = creditProfilesCollection;
@@ -704,6 +700,63 @@ module.exports = async (client) => {
       .catch((e) =>
         console.log(`[WARN] NotifySettings index 建立失敗：${e.message}`.yellow),
       );
+
+    // === 資料庫瘦身：補上遺漏的 TTL，讓「用完即丟」的資料自動過期 ===
+    // 設計原則：TTL 錨在「終態專屬」的 Date 欄位（settledAt / closedAt / ended_at…），
+    // 進行中的 doc 因缺該欄位天然被排除，不需 partial index。保留天數走 config.dbMaintenance。
+    // 型別限制：Mongo TTL 只認 BSON Date；數字時間欄（如 BossEvents.settled_at）改用 cron 清。
+    {
+      const { dbMaintenance: dbm } = require("../../config");
+      const days = (n) => Math.max(1, Math.round(n * 86400));
+      const ttl = async (col, key, retDays, name, extra = {}) => {
+        await col
+          .createIndex(
+            { [key]: 1 },
+            { expireAfterSeconds: days(retDays), name, ...extra },
+          )
+          .catch((e) =>
+            console.log(`[WARN] TTL 索引 ${name} 建立失敗：${e.message}`.yellow),
+          );
+      };
+
+      // 去重記錄：純冪等，過期無影響
+      await ttl(twitchScoreFlushesCollection, "flushedAt", dbm.twitchFlushRetentionDays, "twitch_flush_ttl");
+      await ttl(rssWeeklyPostsCollection, "postedAt", dbm.rssWeeklyPostRetentionDays, "rss_weekly_post_ttl");
+
+      // 股市事件日誌：只讀近 4 小時 + 當天，舊事件不再讀
+      await ttl(stockEventsCollection, "timestamp", dbm.stockEventRetentionDays, "stock_events_ttl");
+
+      // 結束的對局 / 活動：錨在終態欄位（sparse，進行中的 doc 不受影響）
+      await ttl(quizGamesCollection, "settledAt", dbm.quizRetentionDays, "quiz_settled_ttl", { sparse: true });
+      await ttl(quizGamesCollection, "cancelledAt", dbm.quizRetentionDays, "quiz_cancelled_ttl", { sparse: true });
+      await ttl(hostedEventsCollection, "settledAt", dbm.hostedEventRetentionDays, "hosted_settled_ttl", { sparse: true });
+      await ttl(hostedEventsCollection, "cancelledAt", dbm.hostedEventRetentionDays, "hosted_cancelled_ttl", { sparse: true });
+      await ttl(votingProposalsCollection, "finalizedAt", dbm.votingRetentionDays, "voting_finalized_ttl", { sparse: true });
+      await ttl(votingProposalsCollection, "cancelledAt", dbm.votingRetentionDays, "voting_cancelled_ttl", { sparse: true });
+      await ttl(gameRoomsCollection, "closedAt", dbm.gameRoomRetentionDays, "gameroom_closed_ttl", { sparse: true });
+
+      // 世界事件：終態後仍需 ≥ 冷卻期（同類 7 天）供 isOnCooldown 查詢，保留 14 天含 buffer
+      await ttl(worldEventsCollection, "ended_at", dbm.worldEventEndedRetentionDays, "world_event_ended_ttl", { sparse: true });
+
+      // 公會週任務領取：防重複領取只在當週有效，過期週期可清
+      await ttl(guildClubQuestClaimsCollection, "claimedAt", dbm.guildQuestClaimRetentionDays, "gcqc_claimed_ttl");
+
+      // 每日經濟快照：通膨趨勢，讀取只用近 30 天，保留一年綽綽有餘
+      await ttl(economySnapshotsCollection, "takenAt", dbm.economySnapshotRetentionDays, "economy_snapshot_ttl", { sparse: true });
+
+      // 統計三表：只進不出的成長主因；加 TTL 後 /統計「全部」= 近 statsRetentionDays 天
+      await ttl(messageStatsCollection, "lastMessageAt", dbm.statsRetentionDays, "message_stats_ttl", { sparse: true });
+      await ttl(voiceStatsCollection, "leftAt", dbm.statsRetentionDays, "voice_stats_ttl", { sparse: true });
+      await ttl(channelActivityCollection, "lastActivityAt", dbm.statsRetentionDays, "channel_activity_ttl", { sparse: true });
+    }
+
+    // 移除孤兒 collection：CoinTransfers 是舊版每日轉帳額度的殘留，
+    // 現行額度改由 CoinTransactions 即時聚合（見 transferService），全 codebase 已無讀寫。
+    await database
+      .dropCollection("CoinTransfers")
+      .then(() => console.log(`[DATA] 已移除孤兒 collection：CoinTransfers`.cyan))
+      .catch(() => {});
+
     console.log(`[DATA] Successfully connected to MongoDB!`.cyan);
 
     // 自動修補沒有 category / drawCount 的舊資料（idempotent，沒事就不動）

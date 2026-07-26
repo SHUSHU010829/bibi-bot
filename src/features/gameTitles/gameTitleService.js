@@ -217,6 +217,17 @@ function makeCache(client, userId, guildId) {
     count(coll, query) {
       return client[coll]?.countDocuments(query).catch(() => 0) ?? Promise.resolve(0);
     },
+    // 累加 quantity（樂透票券聚合後一個 doc 可代表多張；舊資料無此欄位視為 1）
+    async sumQuantity(coll, query) {
+      const rows = await client[coll]
+        ?.aggregate([
+          { $match: query },
+          { $group: { _id: null, total: { $sum: { $ifNull: ["$quantity", 1] } } } },
+        ])
+        .toArray()
+        .catch(() => []);
+      return rows?.[0]?.total || 0;
+    },
     async exists(coll, query) {
       const d = await client[coll]?.findOne(query).catch(() => null);
       return !!d;
@@ -278,7 +289,7 @@ const RESOLVERS = {
     return income >= req.income;
   },
   lottery_fan: async (cache, ctx, req) =>
-    (await cache.count("lotteryTicketsCollection", {
+    (await cache.sumQuantity("lotteryTicketsCollection", {
       userId: ctx.userId,
       guildId: ctx.guildId,
     })) >= req.ticketCount,
@@ -446,7 +457,7 @@ async function progress(client, { userId, guildId }) {
       case "lottery_fan":
         push(
           "購買張數",
-          await cache.count("lotteryTicketsCollection", { userId, guildId }),
+          await cache.sumQuantity("lotteryTicketsCollection", { userId, guildId }),
           req.ticketCount
         );
         break;
