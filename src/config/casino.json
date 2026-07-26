@@ -332,6 +332,7 @@
         "maxTicketsPerDraw": 100,
         "maxSubscriptionDraws": 52
       },
+      "ticketRetentionDays": 365,
       "poolMilestones": {
         "6_49": [10000, 20000, 30000, 50000, 75000, 100000, 150000, 200000],
         "3_20": [1000, 2000, 5000, 10000],

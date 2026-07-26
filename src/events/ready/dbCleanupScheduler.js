@@ -1,6 +1,6 @@
 require("colors");
 const { registerCron } = require("../../utils/cronRegistry");
-const { dbMaintenance } = require("../../config");
+const { dbMaintenance, casino } = require("../../config");
 
 // 每日資料庫瘦身：處理「無法用純 TTL 索引清理」的終態資料。
 //
@@ -14,8 +14,42 @@ const { dbMaintenance } = require("../../config");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// 刪除「已結算很久」的樂透票券明細：保留 draw 本身（開獎號碼 / 彩池 / 派彩摘要 =
+// 精簡歷史），只清個別票券。config casino.lottery.ticketRetentionDays，設 0 / null 停用。
+// open / drawing 期的票券永遠不動（只挑 status:"settled" 且開很久的期）。
+async function cleanupLotteryTickets(client) {
+  const retentionDays = casino?.lottery?.ticketRetentionDays || 0;
+  if (
+    retentionDays <= 0 ||
+    !client.lotteryDrawsCollection ||
+    !client.lotteryTicketsCollection
+  ) {
+    return 0;
+  }
+
+  const cutoff = new Date(Date.now() - retentionDays * DAY_MS);
+  const cursor = client.lotteryDrawsCollection.find(
+    { status: "settled", drawnAt: { $lt: cutoff } },
+    { projection: { drawId: 1 } },
+  );
+
+  let removed = 0;
+  for await (const draw of cursor) {
+    const res = await client.lotteryTicketsCollection
+      .deleteMany({ drawId: draw.drawId })
+      .catch((e) => {
+        console.log(
+          `[DB-CLEANUP] LotteryTickets ${draw.drawId} 清理失敗：${e.message}`.red,
+        );
+        return { deletedCount: 0 };
+      });
+    removed += res.deletedCount || 0;
+  }
+  return removed;
+}
+
 async function cleanupOnce(client) {
-  const result = { boss: 0, wanted: 0 };
+  const result = { boss: 0, wanted: 0, lotteryTickets: 0 };
 
   // BOSS 終態（defeated / expired）：settled_at 為毫秒數字
   if (client.bossEventsCollection) {
@@ -49,9 +83,12 @@ async function cleanupOnce(client) {
     result.wanted = res.deletedCount || 0;
   }
 
-  if (result.boss || result.wanted) {
+  // 已結算很久的樂透票券明細
+  result.lotteryTickets = await cleanupLotteryTickets(client);
+
+  if (result.boss || result.wanted || result.lotteryTickets) {
     console.log(
-      `[DB-CLEANUP] 清理終態資料：BossEvents ${result.boss} 筆、WantedList ${result.wanted} 筆`
+      `[DB-CLEANUP] 清理終態資料：BossEvents ${result.boss} 筆、WantedList ${result.wanted} 筆、樂透舊票 ${result.lotteryTickets} 筆`
         .cyan,
     );
   }
@@ -61,7 +98,7 @@ async function cleanupOnce(client) {
 module.exports = (client) => {
   registerCron(client, {
     name: "db.cleanup",
-    label: "資料庫終態資料清理（BOSS / 通緝榜）",
+    label: "資料庫終態資料清理（BOSS / 通緝榜 / 樂透舊票）",
     schedule: "30 4 * * *",
     timezone: "Asia/Taipei",
     runner: () => cleanupOnce(client),
