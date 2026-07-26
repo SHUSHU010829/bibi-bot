@@ -46,6 +46,7 @@ const theft = require("./theft.json");
 const bank = require("./bank.json");
 const countdown = require("./countdown.json");
 const dbMaintenance = require("./dbMaintenance.json");
+const maintenance = require("./maintenance.json");
 
 module.exports = {
   ...server,
@@ -94,4 +95,5 @@ module.exports = {
   ...bank,
   ...countdown,
   ...dbMaintenance,
+  ...maintenance,
 };
