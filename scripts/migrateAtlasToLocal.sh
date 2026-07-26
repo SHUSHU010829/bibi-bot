@@ -23,9 +23,14 @@ DUMP_DIR="${DUMP_DIR:-$(pwd)/atlas-dump}"
 # 若你的資料夾不是 bibi-bot，用 `docker network ls` 找出正確名稱後用 COMPOSE_NETWORK 覆寫。
 COMPOSE_NETWORK="${COMPOSE_NETWORK:-bibi-bot_default}"
 
+# 用宿主機使用者身分跑容器，否則 mongo image 內的 mongodb(UID 999) 無法寫入
+# 由宿主使用者建立的掛載目錄 → mkdir /dump/<db>: permission denied。
+DOCKER_USER="$(id -u):$(id -g)"
+
 echo "==> [1/3] 從 Atlas dump 出 ${DB_NAME} 到 ${DUMP_DIR}"
 mkdir -p "${DUMP_DIR}"
 docker run --rm \
+  -u "${DOCKER_USER}" \
   -v "${DUMP_DIR}:/dump" \
   mongo:7 \
   mongodump --uri="${ATLAS_URI}" --out=/dump
@@ -38,6 +43,7 @@ docker network inspect "${COMPOSE_NETWORK}" >/dev/null 2>&1 || {
 
 echo "==> [3/3] restore 進本機 mongo（host=mongo，走 docker 內網）"
 docker run --rm \
+  -u "${DOCKER_USER}" \
   --network "${COMPOSE_NETWORK}" \
   -v "${DUMP_DIR}:/dump" \
   mongo:7 \
