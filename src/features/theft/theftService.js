@@ -80,7 +80,8 @@ async function getFund(client, guildId) {
   const doc = await client.countersCollection.findOne({ _id: fundKey(guildId) }).catch(() => null);
   return doc?.pool || 0;
 }
-// 週結算：本週賞金收入前幾名的獵人依名次權重瓜分整池，池歸零。無人可領則累積到下週。
+// 週結算：本週逮捕人數最多的獵人依名次權重瓜分整池，池歸零。無人可領則累積到下週。
+// 排名以「逮捕人數」為主，人數相同再比賞金收入。
 async function payoutWeeklyFund(client, guildId) {
   const f = cfg().fund || {};
   if (!client.countersCollection || !client.theftLogsCollection) return null;
@@ -93,7 +94,7 @@ async function payoutWeeklyFund(client, guildId) {
     .aggregate([
       { $match: { guildId, type: "hunt", success: true, ts: { $gte: since } } },
       { $group: { _id: "$actor_id", earned: { $sum: "$amount" }, hunts: { $sum: 1 } } },
-      { $sort: { earned: -1, hunts: -1 } },
+      { $sort: { hunts: -1, earned: -1 } },
       { $limit: shares.length },
     ])
     .toArray()

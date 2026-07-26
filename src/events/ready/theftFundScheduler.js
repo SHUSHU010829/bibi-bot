@@ -10,7 +10,7 @@ const { theft } = require("../../config");
 const theftService = require("../../features/theft/theftService");
 const theftBoard = require("../../features/theft/theftBoard");
 
-// 每週結算治安基金：發給本週賞金收入最高的獵人，並在通緝廣播頻道公告。
+// 每週結算治安基金：發給本週逮捕人數最多的獵人，並在通緝廣播頻道公告。
 async function payoutOnce(client) {
   const chId = theft?.announceChannelId;
   if (!theft?.fund?.enabled || !chId) return { paid: false };

@@ -70,7 +70,7 @@ async function render(client, guildId) {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🏦 **治安基金**：${fund.toLocaleString()} 🪙\n-# 每週日 21:00 由本週賞金收入前五名的獵人依名次瓜分`
+          `🏦 **治安基金**：${fund.toLocaleString()} 🪙\n-# 每週日 21:00 由本週逮捕人數前五名的獵人依名次瓜分`
         )
       );
   }
