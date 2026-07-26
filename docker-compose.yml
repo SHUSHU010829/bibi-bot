@@ -1,10 +1,46 @@
 services:
+  mongo:
+    image: mongo:7
+    container_name: bbmongo
+    restart: unless-stopped
+    # 限制 WiredTiger cache，避免在小記憶體 Vultr 上把整台機器吃爆
+    command: --wiredTigerCacheSizeGB 0.75
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    volumes:
+      # 資料落在 named volume，容器重建 / 升級不會掉資料
+      - mongo-data:/data/db
+    # 不 publish 到宿主機，只讓同一 docker network 的 bot 連得到（27017 不對公網開）。
+    # 要用 Compass 本機連線時，改走 SSH tunnel，不要在這裡開 port。
+    expose:
+      - "27017"
+    deploy:
+      resources:
+        limits:
+          memory: 1200M
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   bot:
     build: .
     container_name: bbbot
     restart: unless-stopped
     env_file:
       - .env
+    # 等 mongo 通過 healthcheck 再啟動，避免第一次啟動搶連線失敗
+    depends_on:
+      mongo:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8080:8080"
     logging:
@@ -12,3 +48,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  mongo-data:
