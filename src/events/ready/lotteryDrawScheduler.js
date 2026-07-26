@@ -9,6 +9,7 @@ const {
   runDraw,
   ensureNextDraw,
   recoverStuckDraw,
+  settleStuckDrawInPlace,
 } = require("../../features/casino/lottery/runDraw");
 const { announceDrawResult } = require("../../features/casino/lottery/announceResult");
 const { listLotteryTypes } = require("../../features/casino/lottery/numbers");
@@ -38,9 +39,20 @@ module.exports = (client) => {
         // 這種 drawing 都是前一個 process 中斷留下的。已派過彩的期不自動重置,避免重複發錢。
         const rec = await recoverStuckDraw(client, t);
         if (rec.reason === "already_paid") {
-          console.log(
-            `[LOTTERY] ⚠ ${rec.drawId} 卡在 drawing 且已有 ${rec.paidCount} 筆派彩,需人工處理(/lotteryadmin recover-draw 強制)`.yellow
-          );
+          // 已派過彩 → 不重付,就地結算(重建自票券)並補公告。
+          const s = await settleStuckDrawInPlace(client, t);
+          if (s.ok) {
+            console.log(
+              `[LOTTERY] 就地結算已派彩但卡住的期 ${s.drawId}${s.numbersRecovered ? "" : "(號碼無法還原)"}`.green
+            );
+            if (s.numbersRecovered) {
+              await announceDrawResult(client, { draw: s.draw, tickets: s.tickets }, { skipWinnerDm: true });
+            }
+          } else {
+            console.log(
+              `[LOTTERY] ⚠ ${rec.drawId} 已派彩但無法就地結算(${s.reason}),需人工處理(/lotteryadmin recover-draw)`.yellow
+            );
+          }
         } else if (rec.recovered) {
           console.log(`[LOTTERY] 救援卡住的開獎 ${rec.drawId}(重置為 open 待補開)`.green);
         }

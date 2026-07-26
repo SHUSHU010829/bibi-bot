@@ -13,6 +13,7 @@ const {
   ensureNextDraw,
   getCurrentOpenDraw,
   recoverStuckDraw,
+  settleStuckDrawInPlace,
 } = require("../../features/casino/lottery/runDraw");
 const { announceDrawResult } = require("../../features/casino/lottery/announceResult");
 const { processAllSubscriptions } = require("../../features/casino/lottery/subscriptions");
@@ -88,7 +89,7 @@ module.exports = {
         .addBooleanOption((o) =>
           o
             .setName("強制")
-            .setDescription("該期已有派彩紀錄時仍強制重開(會重複派彩,慎用)")
+            .setDescription("已派彩且無法反推中獎號碼時,仍標記結算(公告不顯示號碼)")
             .setRequired(false)
         )
     )
@@ -189,27 +190,57 @@ module.exports = {
       if (sub === "recover-draw") {
         const t = interaction.options.getString("玩法");
         const force = interaction.options.getBoolean("強制") || false;
-        const rec = await recoverStuckDraw(client, t, { force });
+        const rec = await recoverStuckDraw(client, t);
+
         if (rec.reason === "no_stuck") {
           return interaction.editReply("沒有卡在 drawing 的期。");
         }
+
+        // 已派過彩 → 不重付,改就地結算(用票券已寫回的中獎資料重建 + 補公告)。
         if (rec.reason === "already_paid") {
+          const s = await settleStuckDrawInPlace(client, t, {
+            allowMissingNumbers: force,
+          });
+          if (s.reason === "no_ticket_results") {
+            return interaction.editReply(
+              `⚠ \`${rec.drawId}\` 已有 **${rec.paidCount}** 筆派彩,但票券沒有寫回中獎結果` +
+                `(派彩迴圈中途中斷),無法自動重建,需人工核對。`
+            );
+          }
+          if (s.reason === "numbers_unrecoverable") {
+            return interaction.editReply(
+              `⚠ \`${rec.drawId}\` 已派彩、獎項可重建,但票券數不足以反推中獎號碼。\n` +
+                `要仍然結算(公告不顯示號碼)請加 \`強制:是\`。`
+            );
+          }
+          if (!s.ok) {
+            return interaction.editReply(`就地結算失敗:${s.reason}`);
+          }
+          if (s.numbersRecovered) {
+            await announceDrawResult(
+              client,
+              { draw: s.draw, tickets: s.tickets },
+              { skipWinnerDm: true }
+            );
+          }
           return interaction.editReply(
-            `⚠ \`${rec.drawId}\` 卡在 drawing,但已有 **${rec.paidCount}** 筆派彩紀錄。\n` +
-              `直接重開會重複派彩。確認要重開請加上 \`強制:是\`(僅在確定那些派彩要作廢/可接受重複時使用)。`
+            `✅ 已就地結算 \`${s.drawId}\`(不重付,共 ${rec.paidCount} 筆原派彩保留)。` +
+              (s.numbersRecovered
+                ? `\n中獎號碼 ${s.draw.winningNumbers.join(",")},已補發公告。`
+                : `\n中獎號碼無法還原,已標記結算但未發公告。`)
           );
         }
-        // 已重置為 open,接著補開
+
+        // 未派彩 → 重置後重新開獎(等同補開)。
         const result = await runDraw(client, t);
         if (!result) {
           return interaction.editReply(
-            `已把 \`${rec.drawId}\` 重置為 open,但 runDraw 沒開成(可能開獎時間未到或狀態競爭),請再試一次或用 force-draw。`
+            `已把 \`${rec.drawId}\` 重置為 open,但 runDraw 沒開成(可能開獎時間未到或狀態競爭),請再試或用 force-draw。`
           );
         }
         await announceDrawResult(client, result);
         return interaction.editReply(
-          `✅ 已救援並補開 \`${result.draw.drawId}\`,中獎號碼 ${result.draw.winningNumbers.join(",")}` +
-            (rec.paidCount ? `(強制重開,原有 ${rec.paidCount} 筆派彩)` : "")
+          `✅ 已救援並補開 \`${result.draw.drawId}\`,中獎號碼 ${result.draw.winningNumbers.join(",")}`
         );
       }
 

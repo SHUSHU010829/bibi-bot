@@ -13,7 +13,12 @@ const {
   generateBonusBall,
   buildDrawId,
 } = require("./draw");
-const { countMatches, hasConsecutiveRun, hasSecondZone } = require("./numbers");
+const {
+  countMatches,
+  hasConsecutiveRun,
+  hasSecondZone,
+  getLotteryConfig: getNumberConfig,
+} = require("./numbers");
 const { calculatePayout } = require("./payout");
 const { generateReminderSchedule } = require("./reminderScheduler");
 const { nextDrawTime } = require("./schedule");
@@ -442,9 +447,186 @@ async function recoverStuckDraw(client, lotteryType, { force = false } = {}) {
   return { recovered: true, drawId: stuck.drawId, paidCount };
 }
 
+/**
+ * 由每張票券已存的命中數(matched)反推中獎號碼。
+ * 對每張票:恰有 matched 個號碼落在中獎集合 S 內。用約束傳播推導:
+ *   - matched=0 → 該票所有號碼都不在 S
+ *   - matched=票數 → 該票所有號碼都在 S
+ *   - 已知在/不在的數量湊齊後,剩下的未知號碼也能定死
+ * 票量夠大(尤其有大量 matched=0 的落選票)時 S 可被唯一決定;無法決定則回 null。
+ * 只會在「被票券證明」時斷定,故重建結果必與所有票券一致,不會給出錯的號碼。
+ */
+function reconstructWinningNumbers(tickets, range, pickCount) {
+  const inS = new Set();
+  const notIn = new Set();
+  for (const t of tickets) {
+    const m = t.matched || 0;
+    if (m === 0) t.numbers.forEach((n) => notIn.add(n));
+    else if (m === pickCount) t.numbers.forEach((n) => inS.add(n));
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const t of tickets) {
+      const m = t.matched || 0;
+      const unknown = t.numbers.filter((n) => !inS.has(n) && !notIn.has(n));
+      if (unknown.length === 0) continue;
+      const knownIn = t.numbers.filter((n) => inS.has(n)).length;
+      const needIn = m - knownIn;
+      if (needIn === 0) {
+        unknown.forEach((n) => notIn.add(n));
+        changed = true;
+      } else if (needIn === unknown.length) {
+        unknown.forEach((n) => inS.add(n));
+        changed = true;
+      }
+    }
+  }
+  if (inS.size === pickCount) return [...inS].sort((a, b) => a - b);
+  // 後備:1..range 中未被排除者恰好 pickCount 個,即為 S
+  const remaining = [];
+  for (let n = 1; n <= range; n++) if (!notIn.has(n)) remaining.push(n);
+  if (remaining.length === pickCount) return remaining.sort((a, b) => a - b);
+  return null;
+}
+
+/**
+ * 就地結算「已派彩但卡在 drawing」的期:不重抽、不重付,只用票券上已寫回的中獎資料
+ * 重建開獎結果、補標記 settled 並滾池。派彩迴圈已跑完(票券有 matched/prize)才適用。
+ * @returns {Promise<{ok:boolean, reason?:string, drawId?:string, draw?:object, tickets?:object[], numbersRecovered?:boolean}>}
+ */
+async function settleStuckDrawInPlace(client, lotteryType, { allowMissingNumbers = false } = {}) {
+  if (!client.lotteryDrawsCollection || !client.lotteryTicketsCollection) {
+    return { ok: false, reason: "db_not_ready" };
+  }
+  const draw = await client.lotteryDrawsCollection.findOne({
+    lotteryType,
+    status: "drawing",
+  });
+  if (!draw) return { ok: false, reason: "no_stuck" };
+
+  const tickets = await client.lotteryTicketsCollection
+    .find({ drawId: draw.drawId })
+    .toArray();
+
+  // 派彩結算(bulkWrite)有把 matched/prize 寫回票券才能無損重建;否則屬中斷更早的殘局。
+  const resultsWritten = tickets.some((t) => (t.matched || 0) > 0 || t.prize != null);
+  if (!resultsWritten) {
+    return { ok: false, reason: "no_ticket_results", drawId: draw.drawId };
+  }
+
+  const typeCfg = getTypeConfig(lotteryType);
+  const numCfg = getNumberConfig(lotteryType) || {};
+
+  const ticketMatched = tickets.map((t) => ({
+    ticketId: t.ticketId,
+    quantity: t.quantity || 1,
+    matched: t.matched || 0,
+    specialMatched: !!t.specialMatched,
+  }));
+  // 純函式:給相同 pool + 每張 matched,重現與中斷前完全相同的獎項/滾池。
+  const { prizes } = calculatePayout({
+    lotteryType,
+    pool: draw.pool,
+    tickets: ticketMatched,
+    config: typeCfg,
+  });
+
+  const winningNumbers = reconstructWinningNumbers(
+    tickets,
+    numCfg.range,
+    numCfg.pickCount
+  );
+  if (!winningNumbers && !allowMissingNumbers) {
+    return { ok: false, reason: "numbers_unrecoverable", drawId: draw.drawId };
+  }
+  const specialTicket = tickets.find((t) => t.specialMatched);
+  const specialNumber = hasSecondZone(lotteryType)
+    ? specialTicket?.special ?? null
+    : null;
+
+  // 側獎彙總:由票券已寫回的 bonusFlags / bonusPayout 還原(加碼球號碼已遺失,記 null)。
+  let bonusBallWinners = 0;
+  let consecutiveWinners = 0;
+  let totalBonusPaid = 0;
+  for (const t of tickets) {
+    const q = t.quantity || 1;
+    if (t.bonusFlags?.bonusBall) bonusBallWinners += q;
+    if (t.bonusFlags?.consecutive) consecutiveWinners += q;
+    if (t.bonusPayout) totalBonusPaid += t.bonusPayout * q;
+  }
+  const bonusBallCfg = typeCfg.bonusBall || {};
+  const consecutiveCfg = typeCfg.consecutiveBonus || {};
+  const bonusSummary =
+    totalBonusPaid > 0
+      ? {
+          bonusBall: null,
+          bonusBallPrize: bonusBallCfg.prize || 0,
+          consecutivePrize: consecutiveCfg.prize || 0,
+          consecutiveMinRun: consecutiveCfg.minRun ?? 3,
+          bonusBallWinners,
+          consecutiveWinners,
+          totalBonusPaid,
+        }
+      : null;
+
+  const rolledOverAmount = prizes.rolledOver?.amount || 0;
+  const payoutDoc = {};
+  for (const [k, v] of Object.entries(prizes)) {
+    if (k !== "rolledOver") payoutDoc[k] = v;
+  }
+  if (payoutDoc.third === undefined) payoutDoc.third = null;
+  if (payoutDoc.fourth === undefined) payoutDoc.fourth = null;
+  payoutDoc.rolledOver = { amount: rolledOverAmount, toDrawId: null };
+  payoutDoc.bonus = bonusSummary;
+
+  const updateRes = await client.lotteryDrawsCollection.updateOne(
+    { _id: draw._id, status: "drawing" },
+    {
+      $set: {
+        status: "settled",
+        drawnAt: new Date(),
+        winningNumbers,
+        specialNumber,
+        bonusBall: null,
+        payout: payoutDoc,
+        reconciled: true,
+        updatedAt: new Date(),
+      },
+    }
+  );
+  if (updateRes.matchedCount === 0) {
+    return { ok: false, reason: "status_changed", drawId: draw.drawId };
+  }
+
+  const newDraw = await ensureNextDraw(client, lotteryType, {
+    rolledOverAmount,
+    rolledOverFromDrawId: draw.drawId,
+  });
+  if (newDraw && rolledOverAmount > 0) {
+    await client.lotteryDrawsCollection.updateOne(
+      { _id: draw._id },
+      { $set: { "payout.rolledOver.toDrawId": newDraw.drawId } }
+    );
+  }
+
+  const settled = await client.lotteryDrawsCollection.findOne({ _id: draw._id });
+  console.log(
+    `[LOTTERY] 就地結算 ${draw.drawId}(不重付,重建自票券)${winningNumbers ? "" : ",中獎號碼無法還原"}`.green
+  );
+  return {
+    ok: true,
+    drawId: draw.drawId,
+    draw: settled,
+    tickets,
+    numbersRecovered: !!winningNumbers,
+  };
+}
+
 module.exports = {
   getCurrentOpenDraw,
   ensureNextDraw,
   runDraw,
   recoverStuckDraw,
+  settleStuckDrawInPlace,
 };
