@@ -519,12 +519,8 @@ module.exports = async (client) => {
         console.log(`[WARN] UnmatchedDonations resolved 索引建立失敗：${e.message}`.yellow),
       );
 
-    // Dashboard 稽核日誌索引：依時間倒序查、依 admin / action 篩、90 天 TTL 自動清
-    await dashboardAuditLogCollection
-      .createIndex({ ts: -1 }, { name: "audit_ts_desc" })
-      .catch((e) =>
-        console.log(`[WARN] DashboardAuditLog ts 索引建立失敗：${e.message}`.yellow),
-      );
+    // Dashboard 稽核日誌索引：依 admin / action 篩、90 天 TTL 自動清。
+    // 純依時間倒序查由 TTL 的 { ts: 1 } 反向掃描即可，不另建 { ts: -1 }。
     await dashboardAuditLogCollection
       .createIndex({ adminId: 1, ts: -1 }, { name: "audit_admin_time" })
       .catch((e) =>
@@ -544,16 +540,13 @@ module.exports = async (client) => {
         console.log(`[WARN] DashboardAuditLog TTL 索引建立失敗：${e.message}`.yellow),
       );
 
-    // Cron 任務紀錄索引：依任務名 + 時間倒序查、30 天 TTL 自動清
+    // Cron 任務紀錄索引：依任務名 + 時間倒序查（唯一讀取路徑）、30 天 TTL 自動清。
+    // 不建純 { startedAt: -1 }：沒有不帶 name 的查詢會用到它，且 TTL 的
+    // { startedAt: 1 } 也能反向掃描。
     await cronJobLogCollection
       .createIndex({ name: 1, startedAt: -1 }, { name: "cron_log_name_time" })
       .catch((e) =>
         console.log(`[WARN] CronJobLog name 索引建立失敗：${e.message}`.yellow),
-      );
-    await cronJobLogCollection
-      .createIndex({ startedAt: -1 }, { name: "cron_log_time_desc" })
-      .catch((e) =>
-        console.log(`[WARN] CronJobLog ts 索引建立失敗：${e.message}`.yellow),
       );
     await cronJobLogCollection
       .createIndex(
@@ -756,6 +749,21 @@ module.exports = async (client) => {
       .dropCollection("CoinTransfers")
       .then(() => console.log(`[DATA] 已移除孤兒 collection：CoinTransfers`.cyan))
       .catch(() => {});
+
+    // 移除冗餘索引：讓既有部署也真的把不再建立的索引清掉，回收儲存 + 少一份寫入放大。
+    // - inv_user_guild：是 inv_user_guild_item 的前綴，查整包背包走複合索引即可。
+    // - audit_ts_desc / cron_log_time_desc：單欄反向索引，對應的 TTL 升冪索引反向掃描即可，
+    //   且 cron 只有帶 name 的查詢（走 cron_log_name_time）。
+    for (const [coll, idx] of [
+      [userInventoryCollection, "inv_user_guild"],
+      [dashboardAuditLogCollection, "audit_ts_desc"],
+      [cronJobLogCollection, "cron_log_time_desc"],
+    ]) {
+      await coll
+        .dropIndex(idx)
+        .then(() => console.log(`[DATA] 已移除冗餘索引：${idx}`.cyan))
+        .catch(() => {});
+    }
 
     console.log(`[DATA] Successfully connected to MongoDB!`.cyan);
 
@@ -1156,10 +1164,8 @@ module.exports = async (client) => {
       );
 
       // 商店：背包索引（同人同 guild 同 itemId 可有多筆，因為到期時間/裝備狀態不同）
-      await userInventoryCollection.createIndex(
-        { userId: 1, guildId: 1 },
-        { name: "inv_user_guild" }
-      );
+      // 只建 (userId, guildId, itemId)；(userId, guildId) 是它的前綴，查整包背包
+      // 同樣走這條，不另建避免重複寫入放大。
       await userInventoryCollection.createIndex(
         { userId: 1, guildId: 1, itemId: 1 },
         { name: "inv_user_guild_item" }
