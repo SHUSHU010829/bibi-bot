@@ -11,10 +11,12 @@ services:
     volumes:
       # 資料落在 named volume，容器重建 / 升級不會掉資料
       - mongo-data:/data/db
-    # 不 publish 到宿主機，只讓同一 docker network 的 bot 連得到（27017 不對公網開）。
+    # 不 publish 到宿主機，只讓同一 docker network(web)的 bot 連得到（27017 不對公網開）。
     # 要用 Compass 本機連線時，改走 SSH tunnel，不要在這裡開 port。
     expose:
       - "27017"
+    networks:
+      - web
     deploy:
       resources:
         limits:
@@ -41,13 +43,35 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
-    ports:
-      - "127.0.0.1:8080:8080"
+    # 8080 只 expose 給同網路的 caddy 反代，不對宿主機 publish
+    expose:
+      - "8080"
+    networks:
+      - web
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - web
+
+networks:
+  web:
+
 volumes:
   mongo-data:
+  caddy_data:
+  caddy_config:
