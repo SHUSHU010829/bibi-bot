@@ -26,6 +26,9 @@ async function announceDrawResult(client, drawResult, options = {}) {
 
   const draw = drawResult.draw;
   const tickets = drawResult.tickets || [];
+  // quantity 聚合後 tickets 是「doc」數，總張數要累加 quantity（優先用 draw 統計）
+  const totalTicketLines =
+    draw.totalTickets ?? tickets.reduce((s, t) => s + (t.quantity || 1), 0);
   const lotteryCfg = getLotteryConfig(draw.lotteryType);
   const label = lotteryCfg?.label || draw.lotteryType;
   const emoji = lotteryCfg?.emoji || "🎟";
@@ -53,7 +56,7 @@ async function announceDrawResult(client, drawResult, options = {}) {
     specialNumber: draw.specialNumber,
     pool: draw.pool,
     payout: draw.payout,
-    totalTickets: tickets.length,
+    totalTickets: totalTicketLines,
     jackpotWinners,
   });
 
@@ -109,9 +112,13 @@ async function announceDrawResult(client, drawResult, options = {}) {
     try {
       const user = await client.users.fetch(t.userId).catch(() => null);
       if (!user) continue;
+      const qtyN = t.quantity || 1;
+      const perWinner = draw.payout.jackpot.perWinner || 0;
+      const totalWon = perWinner * qtyN;
+      const qtyNote = qtyN > 1 ? `（${qtyN} 張 × ${perWinner.toLocaleString()}）` : "";
       await user.send(
         `🎉 ${label} 第 ${draw.drawNumber} 期 你的票 **${t.numbers.join(" ・ ")}** 中了頭獎!\n` +
-        `獎金:**${draw.payout.jackpot.perWinner.toLocaleString()}** credits 已入帳。`
+        `獎金:**${totalWon.toLocaleString()}** credits${qtyNote} 已入帳。`
       ).catch(() => {});
     } catch (err) {
       console.log(`[LOTTERY] 頭獎 DM 失敗 ${t.userId}:${err.message}`.yellow);
