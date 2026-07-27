@@ -3,6 +3,7 @@ const { boss, serverId } = require("../../config");
 const buffResolver = require("../buff/buffResolver");
 const { getOrCreate } = require("../mining/miningProfile");
 const { resolveStamina, staminaMax, getMemberClub, playerAtk } = require("../mining/dungeonService");
+const grantActivityXp = require("../leveling/grantActivityXp");
 const bus = require("../eventBus");
 
 function cfg() {
@@ -478,6 +479,18 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     ts: now,
   });
 
+  // 命中即給活動經驗（被反擊的空刀不給）。攻擊次數本身有上限，天生防刷。
+  let xpGained = 0;
+  if (!isCounter && damage > 0) {
+    xpGained = await grantActivityXp(client, "boss", {
+      userId,
+      guildId,
+      username,
+      member,
+      meta: { boss_id: bossDoc.boss_id },
+    });
+  }
+
   bus.emit("boss.attacked", {
     userId,
     guildId,
@@ -511,6 +524,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     sameUserStreak,
     killed,
     killerUserId: killed ? userId : null,
+    xpGained,
     boss: { ...bossDoc, current_hp: newHp, phase: newPhase, hits_taken: afterDoc.hits_taken },
     stamina: newStamina,
     staminaMax: max,

@@ -96,6 +96,7 @@
       "firstStrikeBonus": 225,
       "killerBonusRatio": 0.05,
       "killerRareReward": 1,
+      "killXpBonus": 120,
       "topRareRewardTiers": [4, 3, 2, 1, 1],
       "topRankDiamondTiers": [7, 4, 2]
     },

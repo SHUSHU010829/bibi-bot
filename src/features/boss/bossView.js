@@ -129,7 +129,7 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🔋 體力：${result.stamina}/${result.staminaMax}\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}`,
+          `🔋 體力：${result.stamina}/${result.staminaMax}\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}${result.xpGained > 0 ? `\n✨ 經驗 +${result.xpGained}` : ""}`,
         ),
       );
     if (result.sameUserStreak > 1) {
@@ -165,6 +165,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   const container = new ContainerBuilder().setAccentColor(color);
 
   const totalDamage = hits.reduce((s, h) => s + (h.damage || 0), 0);
+  const totalXp = hits.reduce((s, h) => s + (h.xpGained || 0), 0);
   const counters = hits.filter((h) => h.isCounter).length;
   const phaseChange = hits.find((h) => h.phaseChanged);
   const comboTriggered = hits.some((h) => h.comboTriggered);
@@ -191,7 +192,11 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   });
   container
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(hitLines.join("\n")));
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${hitLines.join("\n")}${totalXp > 0 ? `\n✨ 本次共獲得經驗 +${totalXp}` : ""}`,
+      ),
+    );
 
   if (!killed) {
     container
@@ -336,6 +341,13 @@ function buildSettlementContainer(settlement) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(headline))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(statusLine));
+
+  const killXpBonus = boss?.rewards?.killXpBonus ?? 0;
+  if (killed && killXpBonus > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`✨ **擊殺加碼**：全體參戰者各 +${killXpBonus} 經驗`),
+    );
+  }
 
   if (killed && killerUserId) {
     container.addTextDisplayComponents(
