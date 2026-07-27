@@ -16,9 +16,9 @@ const bossTreasure = require("../../features/boss/bossTreasure");
 async function spawnSaturday(client) {
   const guildId = serverId;
   if (!guildId) return;
-  const existing = await bossEngine.getLiveBoss(client, guildId);
+  const existing = await bossEngine.getActiveBoss(client, guildId);
   if (existing) {
-    console.log(`[BOSS] saturday_spawn skip：${existing.boss_id}（${existing.status}）仍佔用場地`.gray);
+    console.log(`[BOSS] saturday_spawn skip：${existing.boss_id} 仍在進行中`.gray);
     return;
   }
   const spec = boss?.saturdaySpawn || {};
@@ -36,18 +36,6 @@ async function spawnSaturday(client) {
 async function expirySweep(client) {
   const guildId = serverId;
   const guild = guildId ? client.guilds.cache.get(guildId) : null;
-
-  // 0. 出場預告時間到的 pending 魔王 → 正式登場（血量、線上人數屆時即時計算）
-  const duePending = await bossEngine.findDuePendingBosses(client);
-  for (const p of duePending) {
-    const activeDoc = await bossEngine.promotePendingBoss(client, p);
-    if (activeDoc) {
-      console.log(`[BOSS] summon spawned ${activeDoc.boss_id} hp=${activeDoc.max_hp}`.cyan);
-      await bossAnnouncer
-        .announceSpawn(client, activeDoc, { summon: true, contributorCount: activeDoc.contributor_count || 0 })
-        .catch((e) => console.log(`[BOSS] summon spawn announce failed: ${e.message}`.red));
-    }
-  }
 
   // 1. 被擊殺但還沒結算的 → 補做結算
   const defeated = await bossEngine.findFreshlyDefeatedBosses(client);

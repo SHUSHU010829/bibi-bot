@@ -31,14 +31,8 @@
       "bonusAttackPerDungeonClear": 1,
       "maxBonusAttacksPerPlayer": 5,
       "summonHpMult": 0.7,
-      "previewMinutes": 60,
-      "summonIntro": "討伐能量集滿了！社群連日的地下城探索驚醒了沉睡的魔王——",
-      "previewIntro": "討伐能量集滿了！地底深處傳來躁動——一隻魔王正在甦醒，即將破土而出。",
-      "previewIntros": [
-        "牠還在打哈欠伸懶腰，一小時後就會正式登場，先磨好你的武器吧。",
-        "地面隱隱震動，牠正卡在洞口喬姿勢，等等就會爬出來給你們好看。",
-        "牠說要先吃個雞排補充體力，等等就到，趁現在去 /合成 強化裝備！"
-      ]
+      "spawnCooldownMinutes": 180,
+      "summonIntro": "討伐能量集滿了！社群連日的地下城探索驚醒了沉睡的魔王——"
     },
     "saturdaySpawn": {
       "schedule": "0 21 * * 6",

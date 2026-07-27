@@ -138,23 +138,28 @@ async function getActiveBoss(client, guildId) {
   return client.bossEventsCollection.findOne({ guild_id: guildId, status: "active" });
 }
 
-// 出場預告中（pending）的魔王：已排定出場時間但還沒登場。
-async function getPendingBoss(client, guildId) {
-  if (!client.bossEventsCollection) return null;
-  return client.bossEventsCollection.findOne({ guild_id: guildId, status: "pending" });
+// 魔王結束時間（防連續出場冷卻用）：存在 BossSummonState.last_boss_ended_at。
+async function markBossEnded(client, guildId, when = Date.now()) {
+  if (!client.bossSummonStateCollection || !guildId) return;
+  await client.bossSummonStateCollection.updateOne(
+    { guild_id: guildId },
+    { $set: { last_boss_ended_at: when, updated_at: new Date() } },
+    { upsert: true },
+  ).catch(() => {});
 }
 
-// 佔用判定：只要有 active 或 pending 的魔王就算「場上有魔王」，避免預告期間又疊一隻。
-async function getLiveBoss(client, guildId) {
-  if (!client.bossEventsCollection) return null;
-  return client.bossEventsCollection.findOne({
-    guild_id: guildId,
-    status: { $in: ["active", "pending"] },
-  });
+// 距離上一隻魔王結束是否還在冷卻中；回傳 { onCooldown, until }。
+async function bossCooldown(client, guildId, cooldownMs) {
+  if (!cooldownMs || cooldownMs <= 0 || !client.bossSummonStateCollection) {
+    return { onCooldown: false, until: 0 };
+  }
+  const state = await client.bossSummonStateCollection.findOne({ guild_id: guildId }).catch(() => null);
+  const last = state?.last_boss_ended_at || 0;
+  const until = last + cooldownMs;
+  return { onCooldown: Date.now() < until, until };
 }
 
 // 依線上人數 + 社群平均戰力即時算出魔王血量。hpMult 給招喚場「血量少一點」用。
-// 回傳 { onlineCount, scaling, finalHp }，spawn 與 pending 出場共用同一套換算。
 async function computeScaledHp(client, guildId, hpMult = 1) {
   const onlineCount = await countOnlineMembers(client);
   const base = Math.max(cfg().minHp ?? 3000, onlineCount * (cfg().hpPerPlayer ?? 500));
@@ -190,9 +195,10 @@ function freshCombatFields() {
   };
 }
 
-async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSource }) {
+// hpMult：招喚場「血量少一點」；noExpiry：招喚場無時間限制（ends_at=null，待到被擊殺為止）。
+async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSource, hpMult, noExpiry }) {
   const now = Date.now();
-  const existing = await getLiveBoss(client, guildId);
+  const existing = await getActiveBoss(client, guildId);
   if (existing) return { ok: false, reason: "already_active", boss: existing };
 
   let onlineCount = null;
@@ -201,7 +207,7 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSo
   if (hp != null) {
     finalHp = hp;
   } else {
-    ({ onlineCount, scaling, finalHp } = await computeScaledHp(client, guildId));
+    ({ onlineCount, scaling, finalHp } = await computeScaledHp(client, guildId, hpMult ?? 1));
   }
   const duration = durationMs ?? (cfg().durationMinutes ?? 30) * 60 * 1000;
   const bossId = `boss_${guildId}_${now}`;
@@ -218,7 +224,7 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSo
     phase: "normal",
     status: "active",
     started_at: now,
-    ends_at: now + duration,
+    ends_at: noExpiry ? null : now + duration,
     online_count: onlineCount ?? null,
     spawn_source: spawnSource || "scheduled",
     scaling,
@@ -226,78 +232,6 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSo
   };
   await client.bossEventsCollection.insertOne(doc);
   return { ok: true, boss: doc };
-}
-
-// 招喚場「出場預告」：先建立一隻 pending 魔王，排定 previewMs 之後才正式登場。
-// 血量、線上人數等在真正出場（promote）時才即時計算，反映當下社群狀態。
-// 招喚場沒有時間限制：登場後會一直待到被討伐擊殺為止（ends_at 為 null）。
-async function createPendingSummon(client, { guildId, previewMs, hpMult, contributorCount }) {
-  const now = Date.now();
-  const existing = await getLiveBoss(client, guildId);
-  if (existing) return { ok: false, reason: "already_active", boss: existing };
-
-  const generated = generateRandomBoss();
-  const doc = {
-    boss_id: `boss_${guildId}_${now}`,
-    guild_id: guildId,
-    name: generated.name,
-    emoji: generated.emoji,
-    max_hp: null,
-    current_hp: null,
-    phase: "normal",
-    status: "pending",
-    spawn_source: "summon",
-    created_at: now,
-    spawn_at: now + previewMs,
-    hp_mult: hpMult ?? 1,
-    contributor_count: contributorCount ?? 0,
-    online_count: null,
-    scaling: null,
-    ...freshCombatFields(),
-  };
-  await client.bossEventsCollection.insertOne(doc);
-  return { ok: true, boss: doc };
-}
-
-// 預告時間到 → 把 pending 魔王轉成 active（原子搶轉，避免重複登場）。
-// 若當下已有 active 魔王（例如週六場正在打），維持 pending，下一輪掃描再試。
-// 招喚場登場後不設 ends_at（null）＝ 無時間限制，待到被擊殺為止。
-async function promotePendingBoss(client, pendingDoc) {
-  const now = Date.now();
-  const active = await getActiveBoss(client, pendingDoc.guild_id);
-  if (active) return null;
-
-  const { onlineCount, scaling, finalHp } = await computeScaledHp(
-    client,
-    pendingDoc.guild_id,
-    pendingDoc.hp_mult ?? 1,
-  );
-
-  const res = await client.bossEventsCollection.findOneAndUpdate(
-    { boss_id: pendingDoc.boss_id, status: "pending" },
-    {
-      $set: {
-        status: "active",
-        max_hp: finalHp,
-        current_hp: finalHp,
-        phase: "normal",
-        started_at: now,
-        ends_at: null,
-        online_count: onlineCount,
-        scaling,
-        ...freshCombatFields(),
-      },
-    },
-    { returnDocument: "after" },
-  );
-  return res?.value || res;
-}
-
-async function findDuePendingBosses(client, now = Date.now()) {
-  if (!client.bossEventsCollection) return [];
-  return client.bossEventsCollection
-    .find({ status: "pending", spawn_at: { $lte: now } })
-    .toArray();
 }
 
 async function getBossInfo(client, guildId) {
@@ -731,6 +665,9 @@ async function settleBoss(client, bossDoc) {
     },
   );
 
+  // 記錄結束時間 → 防「連續出場」冷卻。
+  await markBossEnded(client, bossDoc.guild_id);
+
   return {
     bossDoc,
     killed,
@@ -827,15 +764,12 @@ async function applyComboAttack(client, params, count) {
 module.exports = {
   cfg,
   spawnBoss,
-  createPendingSummon,
-  promotePendingBoss,
-  findDuePendingBosses,
+  markBossEnded,
+  bossCooldown,
   applyAttack,
   applyComboAttack,
   settleBoss,
   getActiveBoss,
-  getPendingBoss,
-  getLiveBoss,
   getBossInfo,
   findExpiredActiveBosses,
   findFreshlyDefeatedBosses,

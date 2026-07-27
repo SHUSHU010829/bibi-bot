@@ -464,17 +464,16 @@ function buildSummonProgressContainer(p) {
       ),
     );
 
-  if (p.pendingBoss) {
-    const spawnAt = Math.floor((p.pendingBoss.spawn_at || Date.now()) / 1000);
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `-# 🔮 **${p.pendingBoss.emoji} ${p.pendingBoss.name}** 已收到出場預告，將於 <t:${spawnAt}:R> 正式登場！先備好裝備與 buff。`,
-      ),
-    );
-  } else if (p.activeBoss) {
+  if (p.activeBoss) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `-# ⚔️ **${p.activeBoss.emoji} ${p.activeBoss.name}** 正在場上！用 /魔王 攻擊 出手，庫存會自動用在超過基礎次數的攻擊上。`,
+      ),
+    );
+  } else if (p.cooldownUntil) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 🧊 魔王剛離場，討伐冷卻中——<t:${Math.floor(p.cooldownUntil / 1000)}:R> 後才會再召喚（避免連續出場）。`,
       ),
     );
   } else if (full && p.summonedThisWeek >= p.maxPerWeek) {
