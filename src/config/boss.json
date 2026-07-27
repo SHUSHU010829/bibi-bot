@@ -22,6 +22,16 @@
       "maxCounterRate": 0.6
     },
     "rareMaterial": "legendary_fragment",
+    "summon": {
+      "enabled": true,
+      "energyThreshold": 120,
+      "energyPerDungeonClear": 3,
+      "energyPerMiniBoss": 12,
+      "maxPerWeek": 3,
+      "bonusAttackPerDungeonClear": 1,
+      "maxBonusAttacksPerPlayer": 5,
+      "summonIntro": "討伐能量集滿了！社群連日的地下城探索驚醒了沉睡的魔王——"
+    },
     "saturdaySpawn": {
       "schedule": "0 21 * * 6",
       "timezone": "Asia/Taipei"

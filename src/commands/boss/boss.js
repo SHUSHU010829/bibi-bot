@@ -7,6 +7,7 @@ const {
 
 const { boss } = require("../../config");
 const bossEngine = require("../../features/boss/bossEngine");
+const bossSummon = require("../../features/boss/bossSummon");
 const bossView = require("../../features/boss/bossView");
 
 async function runInfo(client, interaction) {
@@ -47,6 +48,25 @@ async function runInfo(client, interaction) {
   });
 }
 
+async function runSummonProgress(client, interaction) {
+  if (!boss?.enabled || !boss?.summon?.enabled) {
+    return interaction.editReply({
+      components: [
+        bossView.buildErrorContainer({
+          title: "🔧 討伐能量未啟用",
+          body: "目前還沒開放靠地下城召喚魔王的功能。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  const p = await bossSummon.progress(client, interaction.guildId, interaction.user.id);
+  return interaction.editReply({
+    components: [bossView.buildSummonProgressContainer(p)],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
 const attackCmd = require("./attack");
 
 // 把 /攻擊 的 builder 轉成 /魔王 底下的 subcommand
@@ -73,16 +93,26 @@ module.exports = {
         description: "查看當前 BOSS 戰況 📊",
         options: [],
       },
+      {
+        type: ApplicationCommandOptionType.Subcommand,
+        name: "召喚進度",
+        description: "查看討伐能量：打地下城累積，集滿自動召喚魔王 🔮",
+        options: [],
+      },
     ],
   },
 
   run: async (client, interaction) => {
-    if (interaction.options.getSubcommand() === "攻擊") {
+    const sub = interaction.options.getSubcommand();
+    if (sub === "攻擊") {
       return attackCmd.run(client, interaction);
     }
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
+      if (sub === "召喚進度") {
+        return await runSummonProgress(client, interaction);
+      }
       return await runInfo(client, interaction);
     } catch (e) {
       console.log(`[BOSS] /魔王 戰況 失敗：${e.stack || e.message}`.red);

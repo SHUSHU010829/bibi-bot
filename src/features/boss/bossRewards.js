@@ -80,6 +80,11 @@ async function depositToClub(client, { clubId, amount, locked, source, meta, loc
 }
 
 async function distribute(client, guild, settlement) {
+  // BOSS 逃離＝討伐失敗，不發放任何金幣、稀有材料、公會分潤與稱號。
+  if (!settlement.rewarded) {
+    settlement.guildAggregates = [];
+    return;
+  }
   const guildId = guild?.id || settlement.bossDoc.guild_id;
   // 預先建立 userId → membership 快取（B/C 都會用到）
   const userIds = new Set();
