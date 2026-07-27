@@ -33,6 +33,7 @@ const ALLOWED_COLLECTIONS = new Set([
   "UserPortfolio",
   "StockMarket",
   "DonationRecords",
+  "DonationSessions",
 ]);
 
 // 唯讀查詢 / 聚合運算子白名單（其餘 $ 開頭 key 一律拒絕）。
