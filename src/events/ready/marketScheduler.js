@@ -28,6 +28,9 @@ const SENTIMENT_LABEL = {
   sideways: "🦀 震盪",
 };
 
+// tick 心跳計數（節流用）：每 N 次成功 tick log 一次摘要，確認排程還活著。
+let tickCount = 0;
+
 function pickWeightedSentiment(weights) {
   const entries = Object.entries(weights || {}).filter(([, w]) => Number(w) > 0);
   if (entries.length === 0) return "sideways";
@@ -152,13 +155,18 @@ async function tickOnce(client) {
           { _id: s._id },
           { $set: update }
         );
+        // 價格歷史（走勢圖資料源）：currentPrice 已寫入，這筆失敗不該讓整檔 tick
+        // 算失敗，但必須 log——之前這裡吞掉錯誤，遇到連線斷 / 容量滿時網站走勢圖
+        // 停在最後一筆成功的時間，log 卻毫無線索，無從判斷卡在哪。
         await client.stockPricesCollection.insertOne({
           guildId,
           symbol: s.symbol,
           price: next,
           timestamp: new Date(),
           source: "tick",
-        }).catch(() => {});
+        }).catch((e) =>
+          console.log(`[STOCK] tick 價格歷史寫入失敗 ${s.symbol} guild=${guildId}: ${e?.message || e}`.red)
+        );
         ticked += 1;
       } catch (e) {
         failed += 1;
@@ -171,6 +179,16 @@ async function tickOnce(client) {
   await runMarginScan(client).catch((e) =>
     console.log(`[STOCK] margin scan failed: ${e?.message || e}`.yellow)
   );
+
+  // 成功且快速的 tick 不會寫 CronJobLog（cronRegistry 只記慢 / 失敗 run），操作者
+  // 無從確認「tick 還活著、有沒有在寫價」。節流心跳：每 heartbeatEvery 次 log 一次
+  // 摘要；只要有寫入失敗就必 log（紅字），讓股價凍結當下能立刻分辨是連線斷還是容量滿。
+  tickCount += 1;
+  const heartbeatEvery = stockSystem?.tickHeartbeatEvery ?? 30;
+  if (failed > 0 || tickCount % heartbeatEvery === 0) {
+    const line = `[STOCK] tick 心跳：ticked=${ticked} failed=${failed} guilds=${guildIds.length}`;
+    console.log(failed > 0 ? line.red : line.gray);
+  }
 
   return { ticked, failed, guilds: guildIds.length };
 }

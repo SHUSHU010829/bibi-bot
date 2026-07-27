@@ -3,6 +3,7 @@ const createFlushChatScoreHandler = require("./flushChatScore");
 const createDonationSessionHandler = require("./donationSession");
 const createDonationGrantHandler = require("./donationGrant");
 const createLeaderboardRouter = require("./leaderboardApi");
+const createStocksRouter = require("./stocksApi");
 const createGuildClubsRouter = require("./guildClubsApi");
 const createAdminMeHandler = require("./adminMe");
 const createAdminDonationRouter = require("./adminDonationApi");
@@ -63,6 +64,9 @@ module.exports = function startHttpServer(client) {
 
   // 排行榜 API（Dashboard 讀取）
   app.use("/api/v1/leaderboard", createLeaderboardRouter(client));
+
+  // 股市 API（Dashboard 股市頁讀取；網站在 Vercel 連不到內網 Mongo，一律走這裡）
+  app.use("/api/v1/stocks", createStocksRouter(client));
 
   // 公會排行 API（公開，Phase A）
   app.use("/api/v1/guild_clubs", createGuildClubsRouter(client));
