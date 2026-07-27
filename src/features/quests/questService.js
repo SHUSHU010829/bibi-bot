@@ -54,6 +54,93 @@ const grantSourceFor = (period) => {
   return "quest_daily";
 };
 
+// ── 任務里程碑：完成 N 個當期任務額外送 CD 券（每期每個里程碑只發一次）──
+const milestonesFor = (tier) => {
+  const list = questSystem?.milestones?.[tier];
+  return Array.isArray(list) ? list : [];
+};
+
+const tierQuestIds = (tier) =>
+  (tier === "weekly" ? weeklyQuests() : dailyQuests()).map((q) => q.id);
+
+// 當期（daily/weekly）已領取的任務數（只算正式任務，里程碑 doc 不在 tierQuestIds 內）。
+const countClaimedQuests = async (client, userId, guildId, tier) => {
+  const ids = tierQuestIds(tier);
+  if (!ids.length) return 0;
+  const period = periodKey(tier);
+  return client.questProgressCollection
+    .countDocuments({ userId, guildId, period, claimed: true, questId: { $in: ids } })
+    .catch(() => 0);
+};
+
+// 檢查並發放本次新達成的里程碑。回傳 [{ id, name, count, rewardItems, grantedItems, tier }]。
+const grantTierMilestones = async (client, userId, guildId, tier) => {
+  const milestones = milestonesFor(tier);
+  if (!milestones.length) return [];
+  const claimedCount = await countClaimedQuests(client, userId, guildId, tier);
+  const period = periodKey(tier);
+  const out = [];
+  for (const ms of milestones) {
+    if (claimedCount < ms.count) continue;
+    const existing = await client.questProgressCollection
+      .findOne({ userId, guildId, questId: ms.id, period })
+      .catch(() => null);
+    if (existing?.claimed) continue;
+
+    let after = null;
+    try {
+      const upd = await client.questProgressCollection.findOneAndUpdate(
+        { userId, guildId, questId: ms.id, period, claimed: { $ne: true } },
+        {
+          $set: {
+            claimed: true,
+            claimedAt: new Date(),
+            milestone: true,
+            completed: true,
+            progress: ms.count,
+            updatedAt: new Date(),
+          },
+          $setOnInsert: { userId, guildId, questId: ms.id, period, createdAt: new Date() },
+        },
+        { upsert: true, returnDocument: "after" }
+      );
+      after = upd?.value || upd;
+    } catch (e) {
+      // 併發：另一路徑已搶先標記 → upsert 撞 unique index，視為已領略過
+      continue;
+    }
+    if (!after) continue;
+
+    let grantedItems = [];
+    try {
+      grantedItems = await questRewards.grantQuestItems(
+        client,
+        userId,
+        guildId,
+        ms.rewardItems
+      );
+    } catch (e) {
+      console.log(`[QUEST] grant milestone items ${ms.id} for ${userId}: ${e}`.red);
+      await client.questProgressCollection
+        .updateOne(
+          { userId, guildId, questId: ms.id, period },
+          { $set: { claimed: false }, $unset: { claimedAt: "" } }
+        )
+        .catch(() => {});
+      continue;
+    }
+    out.push({
+      id: ms.id,
+      name: ms.name,
+      count: ms.count,
+      rewardItems: ms.rewardItems || null,
+      grantedItems,
+      tier,
+    });
+  }
+  return out;
+};
+
 // 原子標 claimed + 發幣。成功 → { id, name, reward, period }；已 claimed → null
 const tryClaimOne = async (
   client,
@@ -402,13 +489,60 @@ const getStatus = async (client, userId, guildId) => {
     };
   };
 
+  const dailyRows = dailyDefs.map((q) => enrich(q, dailyPeriod));
+  const weeklyRows = weeklyDefs.map((q) => enrich(q, weeklyPeriod));
+
+  // 里程碑狀態（供面板顯示「完成 N 個任務再拿 CD 券」）。
+  const msSpecs = [
+    ...milestonesFor("daily").map((m) => ({
+      ...m,
+      tier: "daily",
+      period: dailyPeriod,
+      claimedCount: dailyRows.filter((q) => q.state === "claimed").length,
+    })),
+    ...milestonesFor("weekly").map((m) => ({
+      ...m,
+      tier: "weekly",
+      period: weeklyPeriod,
+      claimedCount: weeklyRows.filter((q) => q.state === "claimed").length,
+    })),
+  ];
+  let msDocs = [];
+  if (msSpecs.length) {
+    msDocs = await client.questProgressCollection
+      .find({
+        userId,
+        guildId,
+        $or: msSpecs.map((m) => ({ questId: m.id, period: m.period })),
+      })
+      .toArray()
+      .catch(() => []);
+  }
+  const msClaimed = new Set(
+    msDocs.filter((d) => d.claimed).map((d) => `${d.questId}|${d.period}`)
+  );
+  const milestoneRow = (m) => ({
+    id: m.id,
+    name: m.name,
+    count: m.count,
+    rewardItems: m.rewardItems || null,
+    tier: m.tier,
+    claimedCount: m.claimedCount,
+    reached: m.claimedCount >= m.count,
+    claimed: msClaimed.has(`${m.id}|${m.period}`),
+  });
+
   return {
-    daily: dailyDefs.map((q) => enrich(q, dailyPeriod)),
-    weekly: weeklyDefs.map((q) => enrich(q, weeklyPeriod)),
+    daily: dailyRows,
+    weekly: weeklyRows,
     event: eventDefs.map((q) => enrich(q, q.period)),
     assignment: {
       daily: dailyAssignment,
       weekly: weeklyAssignment,
+    },
+    milestones: {
+      daily: msSpecs.filter((m) => m.tier === "daily").map(milestoneRow),
+      weekly: msSpecs.filter((m) => m.tier === "weekly").map(milestoneRow),
     },
   };
 };
@@ -433,7 +567,12 @@ const claimSingle = async (client, userId, guildId, questId, member, username) =
 
   const result = await tryClaimOne(client, userId, guildId, def, member, username);
   if (!result) return { ok: false, reason: "stale" };
-  return { ok: true, claimed: result };
+
+  const tier = questAssignmentService.tierFromPeriod(def.period);
+  const milestones = tier
+    ? await grantTierMilestones(client, userId, guildId, tier).catch(() => [])
+    : [];
+  return { ok: true, claimed: result, milestones };
 };
 
 // 一鍵領取：掃出 ready 的任務，依「獎勵高 → 低」順序逐一領取
@@ -471,7 +610,23 @@ const claimAll = async (client, userId, guildId, member, username) => {
     }
   }
 
-  return { claimed: claimedList, total, itemTotals };
+  // 領完後結算里程碑（完成 N 個任務額外送 CD 券），把獎勵併進 itemTotals。
+  const milestones = [];
+  if (claimedList.length > 0) {
+    for (const tier of ["daily", "weekly"]) {
+      const reached = await grantTierMilestones(client, userId, guildId, tier).catch(
+        () => []
+      );
+      for (const ms of reached) {
+        milestones.push(ms);
+        for (const { key, qty } of ms.grantedItems || []) {
+          itemTotals[key] = (itemTotals[key] || 0) + qty;
+        }
+      }
+    }
+  }
+
+  return { claimed: claimedList, total, itemTotals, milestones };
 };
 
 // 每日 23:50 cron 用：掃出所有「completed=true, claimed=false」的玩家，逐一 claimAll

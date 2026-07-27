@@ -10,6 +10,16 @@
       "skipCost": { "daily": 30, "weekly": 100 },
       "actionLimit": { "daily": 4, "weekly": 2 }
     },
+    "milestones": {
+      "daily": [
+        { "id": "daily_ms_3", "name": "每日任務達人", "count": 3, "rewardItems": { "cd_ticket": 2 } },
+        { "id": "daily_ms_5", "name": "每日全勤", "count": 5, "rewardItems": { "cd_ticket": 3 } }
+      ],
+      "weekly": [
+        { "id": "weekly_ms_3", "name": "週常任務達人", "count": 3, "rewardItems": { "cd_ticket": 3 } },
+        { "id": "weekly_ms_5", "name": "週常全勤", "count": 5, "rewardItems": { "cd_ticket": 6 } }
+      ]
+    },
     "daily": [
       {
         "id": "daily_morning",
@@ -124,7 +134,7 @@
         "name": "勤釣不倦",
         "description": "當日成功釣魚 ≥ 8 次",
         "reward": 150,
-        "rewardItems": { "cd_ticket": 1 },
+        "rewardItems": { "cd_ticket": 2 },
         "target": 8
       },
       {
@@ -132,8 +142,16 @@
         "name": "勤挖不輟",
         "description": "當日成功挖礦 ≥ 12 次",
         "reward": 150,
-        "rewardItems": { "cd_ticket": 1 },
+        "rewardItems": { "cd_ticket": 2 },
         "target": 12
+      },
+      {
+        "id": "daily_cd_dungeon",
+        "name": "地城速通",
+        "description": "當日完成地下城探索 ≥ 10 次",
+        "reward": 200,
+        "rewardItems": { "cd_ticket": 2 },
+        "target": 10
       }
     ],
     "weekly": [
@@ -233,7 +251,7 @@
         "name": "海釣達人",
         "description": "本週成功釣魚 ≥ 60 次",
         "reward": 500,
-        "rewardItems": { "cd_ticket": 3 },
+        "rewardItems": { "cd_ticket": 5 },
         "target": 60
       },
       {
@@ -241,8 +259,16 @@
         "name": "礦坑常駐",
         "description": "本週成功挖礦 ≥ 80 次",
         "reward": 500,
-        "rewardItems": { "cd_ticket": 3 },
+        "rewardItems": { "cd_ticket": 5 },
         "target": 80
+      },
+      {
+        "id": "weekly_cd_farm",
+        "name": "豐收季",
+        "description": "本週累積收成 ≥ 30 次",
+        "reward": 500,
+        "rewardItems": { "cd_ticket": 5 },
+        "target": 30
       },
       {
         "id": "weekly_cook_50",

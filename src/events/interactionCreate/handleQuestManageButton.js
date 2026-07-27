@@ -142,9 +142,15 @@ module.exports = async (client, interaction) => {
     } else {
       const c = result.claimed;
       const tag = c.period === "weekly" ? "📅 週常" : "🌞 每日";
+      const msLines = (result.milestones || []).map(
+        (m) =>
+          `\n🎁 里程碑達成 **${m.name}**（完成 ${m.count} 個任務）→ ${questRewards.rewardText(
+            { rewardItems: m.rewardItems },
+          )}`,
+      );
       await replyEphemeral(
         interaction,
-        `💰 ${tag} ・ **${c.name}** ・ ${questRewards.rewardText(c)}`,
+        `💰 ${tag} ・ **${c.name}** ・ ${questRewards.rewardText(c)}${msLines.join("")}`,
       );
     }
     trackSuccess(`quest-manage-${action}`);

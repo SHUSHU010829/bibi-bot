@@ -65,6 +65,24 @@ const renderQuestLine = (q) => {
   ].join("\n");
 };
 
+function appendMilestones(container, header, milestones) {
+  if (!Array.isArray(milestones) || milestones.length === 0) return;
+  const lines = milestones.map((m) => {
+    const reward = questRewards.rewardText({ rewardItems: m.rewardItems });
+    if (m.claimed) {
+      return `🎫 **${m.name}**｜完成 ${m.count} 個任務 → ${reward} ・ 已領取`;
+    }
+    const icon = m.reached ? "✅" : "⬜";
+    const prog = Math.min(m.claimedCount, m.count);
+    return `${icon} **${m.name}**｜完成任務 \`${prog} / ${m.count}\` → ${reward}`;
+  });
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `${header}\n${lines.join("\n")}\n-# 達成後領任務時自動入帳，不需另外點領取。`,
+    ),
+  );
+}
+
 function appendQuestList(container, header, quests, userId, tier, assignment) {
   const showButtons =
     !!tier && questAssignmentService.isEnabled() && !!assignment;
@@ -163,6 +181,7 @@ async function buildQuestContainer(client, userId, guildId) {
     "daily",
     status.assignment?.daily,
   );
+  appendMilestones(container, "🎁 **每日里程碑**", status.milestones?.daily);
 
   appendQuestList(
     container,
@@ -172,6 +191,7 @@ async function buildQuestContainer(client, userId, guildId) {
     "weekly",
     status.assignment?.weekly,
   );
+  appendMilestones(container, "🎁 **週常里程碑**", status.milestones?.weekly);
 
   if (eventQuestList.length > 0) {
     container.addTextDisplayComponents(
