@@ -98,6 +98,7 @@ async function harvestAll(client, interaction) {
   for (const r of result.results) {
     hooks.push({ questId: "daily_farm_harvest" });
     hooks.push({ questId: "weekly_farm_harvest" });
+    hooks.push({ questId: "weekly_cd_farm" });
     if (r.crop === "black_rose") hooks.push({ questId: "weekly_farm_rose" });
   }
   await applyQuestHooks(
@@ -299,6 +300,7 @@ module.exports = {
       const hooks = [
         { questId: "daily_farm_harvest" },
         { questId: "weekly_farm_harvest" },
+        { questId: "weekly_cd_farm" },
       ];
       if (result.crop === "black_rose") {
         hooks.push({ questId: "weekly_farm_rose" });

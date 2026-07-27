@@ -222,6 +222,7 @@ function runPostTasks(client, interaction, result, notifyInfo) {
       const dungeonHooks = [
         { questId: "daily_dungeon_10" },
         { questId: "weekly_dungeon" },
+        { questId: "daily_cd_dungeon" },
       ];
       if (result.won) {
         dungeonHooks.push({ questId: "daily_dungeon_win" });

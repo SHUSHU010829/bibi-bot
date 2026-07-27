@@ -100,6 +100,15 @@ module.exports = async (client, interaction) => {
     for (const [key, qty] of Object.entries(result.itemTotals || {})) {
       summaryParts.push(`**${questRewards.itemRewardLabel(key)} ×${qty}**`);
     }
+    if (result.milestones?.length) {
+      for (const m of result.milestones) {
+        lines.push(
+          `🎁 里程碑達成 **${m.name}**（完成 ${m.count} 個任務）→ ${questRewards.rewardText(
+            { rewardItems: m.rewardItems }
+          )}`
+        );
+      }
+    }
     await replyEphemeral(
       interaction,
       `${COIN_EMOJI} 共補領 **${result.claimed.length}** 筆 ・ ${summaryParts.join(
