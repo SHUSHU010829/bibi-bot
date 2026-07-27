@@ -124,6 +124,7 @@ module.exports = async (client, interaction) => {
       active,
       items,
       banner,
+      selectedFish: result.exchange?.cost?.fish || "all",
     });
     await interaction.update(view);
 

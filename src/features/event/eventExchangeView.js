@@ -6,13 +6,18 @@ const {
   SeparatorBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
   MessageFlags,
 } = require("discord.js");
 const eventExchangeService = require("./eventExchangeService");
 const eventEngine = require("./eventEngine");
 
 const EXCHANGE_BTN_PREFIX = "evt_exch_";
-const MAX_ITEMS = 10; // 元件上限保護：每項 3 元件，10 項 + 標題約 33 < 40
+const FISH_SELECT_PREFIX = "evtxfish_";
+const ALL_FISH = "all";
+const MAX_ITEMS = 8; // 元件上限保護：每項 3 元件 + 下拉與標題約 9，8 項約 33 < 40
 
 function rewardLabel(reward) {
   switch (reward?.type) {
@@ -27,6 +32,10 @@ function rewardLabel(reward) {
     case "ore": {
       const def = eventEngine.resolveOreDef(reward.oreKey) || {};
       return `${def.emoji || "⛏️"} ${def.name || reward.oreKey} ×${reward.qty}`;
+    }
+    case "backpackItem": {
+      const def = eventExchangeService.backpackItemDef(reward.itemKey);
+      return `${def.emoji} ${def.name} ×${reward.qty}`;
     }
     default:
       return "獎勵";
@@ -62,8 +71,43 @@ function itemButton(ownerId, x) {
     .setDisabled(!x.affordable);
 }
 
+// 從兌換項目中抓出「不同的成本魚種」，供下拉選單切換顯示。
+function fishSpecies(items) {
+  const seen = new Map();
+  for (const x of items) {
+    const key = x.cost.fish;
+    if (!seen.has(key)) {
+      const def = x.costFishDef || {};
+      seen.set(key, { key, name: def.name || key, emoji: def.emoji || "🐟" });
+    }
+  }
+  return [...seen.values()];
+}
+
+function fishSelectRow(ownerId, species, selectedFish) {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`${FISH_SELECT_PREFIX}${ownerId}`)
+    .setPlaceholder("依魚種篩選兌換項目");
+  menu.addOptions(
+    new StringSelectMenuOptionBuilder()
+      .setLabel("全部魚種")
+      .setEmoji("🎣")
+      .setValue(ALL_FISH)
+      .setDefault(selectedFish === ALL_FISH),
+    ...species.map((s) =>
+      new StringSelectMenuOptionBuilder()
+        .setLabel(s.name)
+        .setEmoji(s.emoji)
+        .setValue(s.key)
+        .setDefault(selectedFish === s.key),
+    ),
+  );
+  return new ActionRowBuilder().addComponents(menu);
+}
+
 // 組兌換所面板。banner：兌換成功後置頂的一行提示（可省略）。
-function buildExchangeView({ ownerId, active, items, banner = null }) {
+// selectedFish：目前選中的魚種（"all" 或魚 key），決定顯示哪些兌換項目。
+function buildExchangeView({ ownerId, active, items, banner = null, selectedFish = ALL_FISH }) {
   const container = new ContainerBuilder().setAccentColor(active ? 0xf1c40f : 0x95a5a6);
 
   if (banner) {
@@ -83,19 +127,33 @@ function buildExchangeView({ ownerId, active, items, banner = null }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          "-# 活動開跑時，用 `/釣魚` 撈到的限定魚就能來這裡換 CD 券、通行證、金幣與限定稱號。",
+          "-# 活動開跑時，用 `/釣魚` 撈到的限定魚就能來這裡換 CD 券、通行證、月光露水、金幣與限定稱號。",
         ),
       );
     return { components: [container], flags: MessageFlags.IsComponentsV2 };
   }
 
-  container
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# 用活動限定魚兌換限定獎勵，換完不補！"),
-    )
-    .addSeparatorComponents(new SeparatorBuilder());
+  const species = fishSpecies(items);
+  // 選中的魚種已不在清單（活動換檔）時退回「全部」，避免顯示空清單。
+  const activeFish =
+    selectedFish !== ALL_FISH && species.some((s) => s.key === selectedFish)
+      ? selectedFish
+      : ALL_FISH;
+  const filtered =
+    activeFish === ALL_FISH ? items : items.filter((x) => x.cost.fish === activeFish);
 
-  const shown = items.slice(0, MAX_ITEMS);
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent("-# 用活動限定魚兌換限定獎勵，換完不補！"),
+  );
+
+  // 兩種以上魚種才給下拉選單（單一魚種切了也沒差）。
+  if (species.length >= 2) {
+    container.addActionRowComponents(fishSelectRow(ownerId, species, activeFish));
+  }
+
+  container.addSeparatorComponents(new SeparatorBuilder());
+
+  const shown = filtered.slice(0, MAX_ITEMS);
   for (const x of shown) {
     container.addSectionComponents(
       new SectionBuilder()
@@ -103,10 +161,10 @@ function buildExchangeView({ ownerId, active, items, banner = null }) {
         .setButtonAccessory(itemButton(ownerId, x)),
     );
   }
-  if (items.length > shown.length) {
+  if (filtered.length > shown.length) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 還有 ${items.length - shown.length} 項兌換未顯示。`,
+        `-# 還有 ${filtered.length - shown.length} 項未顯示，用上方下拉選單依魚種篩選查看。`,
       ),
     );
   }
@@ -122,9 +180,19 @@ function parseExchangeButtonId(customId) {
   return { ownerId: rest.slice(0, idx), exchangeId: rest.slice(idx + 1) };
 }
 
+function parseFishSelectId(customId) {
+  if (!customId.startsWith(FISH_SELECT_PREFIX)) return null;
+  const ownerId = customId.slice(FISH_SELECT_PREFIX.length);
+  if (!ownerId) return null;
+  return { ownerId };
+}
+
 module.exports = {
   buildExchangeView,
   parseExchangeButtonId,
+  parseFishSelectId,
   rewardLabel,
   EXCHANGE_BTN_PREFIX,
+  FISH_SELECT_PREFIX,
+  ALL_FISH,
 };
