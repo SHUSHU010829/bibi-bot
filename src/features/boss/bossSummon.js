@@ -91,10 +91,10 @@ async function trySummon(client, guildId) {
 
   const contributorCount = Object.keys(claimed.contributors || {}).length;
   // 出場預告：先建立 pending 魔王，一小時後才由排程正式登場（血量、線上人數屆時即時計算）。
+  // 招喚場登場後無時間限制，待到被擊殺為止。
   const res = await bossEngine.createPendingSummon(client, {
     guildId,
     previewMs: (cfg().previewMinutes ?? 60) * 60 * 1000,
-    durationMs: (cfg().durationMinutes ?? 60) * 60 * 1000,
     hpMult: cfg().summonHpMult ?? 1,
     contributorCount,
   });

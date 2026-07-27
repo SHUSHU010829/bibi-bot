@@ -32,7 +32,6 @@
       "maxBonusAttacksPerPlayer": 5,
       "summonHpMult": 0.7,
       "previewMinutes": 60,
-      "durationMinutes": 60,
       "summonIntro": "討伐能量集滿了！社群連日的地下城探索驚醒了沉睡的魔王——",
       "previewIntro": "討伐能量集滿了！地底深處傳來躁動——一隻魔王正在甦醒，即將破土而出。",
       "previewIntros": [

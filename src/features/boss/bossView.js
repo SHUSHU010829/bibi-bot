@@ -246,7 +246,9 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
 
 function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive, guild }) {
   const phase = b.phase || "normal";
-  const remainMs = Math.max(0, b.ends_at - Date.now());
+  // ends_at 為 null＝招喚場無時間限制，待到被擊殺為止。
+  const noLimit = b.ends_at == null;
+  const remainMs = noLimit ? 0 : Math.max(0, b.ends_at - Date.now());
   const remainMin = Math.floor(remainMs / 60000);
   const remainSec = Math.floor((remainMs % 60000) / 1000);
   const container = new ContainerBuilder().setAccentColor(phaseColor(phase));
@@ -264,7 +266,7 @@ function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `⏰ 剩餘時間：${remainMin}m ${remainSec}s${comboActive ? `\n⚡ Combo 進行中（×${boss?.combo?.bonusMult ?? 1.3}）` : ""}`,
+        `${noLimit ? "⏰ 討伐期限：無時限，待到被擊殺" : `⏰ 剩餘時間：${remainMin}m ${remainSec}s`}${comboActive ? `\n⚡ Combo 進行中（×${boss?.combo?.bonusMult ?? 1.3}）` : ""}`,
       ),
     );
 

@@ -230,7 +230,8 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSo
 
 // 招喚場「出場預告」：先建立一隻 pending 魔王，排定 previewMs 之後才正式登場。
 // 血量、線上人數等在真正出場（promote）時才即時計算，反映當下社群狀態。
-async function createPendingSummon(client, { guildId, previewMs, durationMs, hpMult, contributorCount }) {
+// 招喚場沒有時間限制：登場後會一直待到被討伐擊殺為止（ends_at 為 null）。
+async function createPendingSummon(client, { guildId, previewMs, hpMult, contributorCount }) {
   const now = Date.now();
   const existing = await getLiveBoss(client, guildId);
   if (existing) return { ok: false, reason: "already_active", boss: existing };
@@ -248,7 +249,6 @@ async function createPendingSummon(client, { guildId, previewMs, durationMs, hpM
     spawn_source: "summon",
     created_at: now,
     spawn_at: now + previewMs,
-    duration_ms: durationMs ?? (cfg().durationMinutes ?? 30) * 60 * 1000,
     hp_mult: hpMult ?? 1,
     contributor_count: contributorCount ?? 0,
     online_count: null,
@@ -261,6 +261,7 @@ async function createPendingSummon(client, { guildId, previewMs, durationMs, hpM
 
 // 預告時間到 → 把 pending 魔王轉成 active（原子搶轉，避免重複登場）。
 // 若當下已有 active 魔王（例如週六場正在打），維持 pending，下一輪掃描再試。
+// 招喚場登場後不設 ends_at（null）＝ 無時間限制，待到被擊殺為止。
 async function promotePendingBoss(client, pendingDoc) {
   const now = Date.now();
   const active = await getActiveBoss(client, pendingDoc.guild_id);
@@ -271,7 +272,6 @@ async function promotePendingBoss(client, pendingDoc) {
     pendingDoc.guild_id,
     pendingDoc.hp_mult ?? 1,
   );
-  const duration = pendingDoc.duration_ms ?? (cfg().durationMinutes ?? 30) * 60 * 1000;
 
   const res = await client.bossEventsCollection.findOneAndUpdate(
     { boss_id: pendingDoc.boss_id, status: "pending" },
@@ -282,7 +282,7 @@ async function promotePendingBoss(client, pendingDoc) {
         current_hp: finalHp,
         phase: "normal",
         started_at: now,
-        ends_at: now + duration,
+        ends_at: null,
         online_count: onlineCount,
         scaling,
         ...freshCombatFields(),
@@ -329,7 +329,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   const bossDoc = await getActiveBoss(client, guildId);
   if (!bossDoc) return { ok: false, reason: "no_active" };
   const now = Date.now();
-  if (now >= bossDoc.ends_at) return { ok: false, reason: "expired" };
+  // ends_at 為 null＝招喚場無時間限制，待到被擊殺為止；只有設了到期時間的場才會過期。
+  if (bossDoc.ends_at != null && now >= bossDoc.ends_at) return { ok: false, reason: "expired" };
 
   const profile = await getOrCreate(client, userId, guildId);
   const club = await getMemberClub(client, userId, guildId);
@@ -755,8 +756,9 @@ async function settleBoss(client, bossDoc) {
 
 async function findExpiredActiveBosses(client, now = Date.now()) {
   if (!client.bossEventsCollection) return [];
+  // 只掃有設到期時間的場（ends_at 為數字）；招喚場 ends_at=null（無時限）不會被掃到。
   return client.bossEventsCollection
-    .find({ status: "active", ends_at: { $lte: now } })
+    .find({ status: "active", ends_at: { $type: "number", $lte: now } })
     .toArray();
 }
 

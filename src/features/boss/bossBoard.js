@@ -49,7 +49,7 @@ function render(info, guild) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `⏰ 結束 <t:${Math.floor(b.ends_at / 1000)}:R>${info.comboActive ? `　⚡ Combo ×${boss?.combo?.bonusMult ?? 1.3}` : ""}`,
+        `${b.ends_at != null ? `⏰ 結束 <t:${Math.floor(b.ends_at / 1000)}:R>` : "⏰ 無時限，待到被擊殺"}${info.comboActive ? `　⚡ Combo ×${boss?.combo?.bonusMult ?? 1.3}` : ""}`,
       ),
     );
 

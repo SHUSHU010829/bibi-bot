@@ -66,8 +66,11 @@ async function tick(client, guild) {
     return; // 場上已有進行中的寶箱，不再生成
   }
 
-  const remainMin = (bossDoc.ends_at - now) / 60000;
-  if (remainMin < (cfg.minRemainingMinutes ?? 3)) return;
+  // ends_at 為 null＝招喚場無時間限制，隨時都還有時間，跳過「剩餘時間不足」的攔截。
+  if (bossDoc.ends_at != null) {
+    const remainMin = (bossDoc.ends_at - now) / 60000;
+    if (remainMin < (cfg.minRemainingMinutes ?? 3)) return;
+  }
   if (Math.random() >= (cfg.spawnChancePerMinute ?? 0.3)) return;
 
   await spawnTreasure(client, bossDoc);
