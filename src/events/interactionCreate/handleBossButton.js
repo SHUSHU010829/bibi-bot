@@ -3,6 +3,7 @@
 // customId：
 //   boss_attack_<ownerId>  — 再次攻擊
 //   boss_info_<ownerId>    — 查看戰況
+//   boss_weapon_<ownerId>  — 查看武器耐久
 //
 // owner 驗證：customId 含 userId，只有本人能按。
 require("colors");
@@ -10,10 +11,13 @@ const { MessageFlags } = require("discord.js");
 const attackCmd = require("../../commands/boss/attack");
 const infoCmd = require("../../commands/boss/boss");
 const bossView = require("../../features/boss/bossView");
+const { getOrCreate } = require("../../features/mining/miningProfile");
+const buildingService = require("../../features/guild_club/buildingService");
 const { deferReplySafe } = require("../../utils/safeAck");
 
 const PREFIX_ATTACK = "boss_attack_";
 const PREFIX_INFO = "boss_info_";
+const PREFIX_WEAPON = "boss_weapon_";
 
 function parseOwner(customId) {
   if (customId.startsWith(PREFIX_ATTACK)) {
@@ -21,6 +25,9 @@ function parseOwner(customId) {
   }
   if (customId.startsWith(PREFIX_INFO)) {
     return { action: "info", ownerId: customId.slice(PREFIX_INFO.length) };
+  }
+  if (customId.startsWith(PREFIX_WEAPON)) {
+    return { action: "weapon", ownerId: customId.slice(PREFIX_WEAPON.length) };
   }
   return null;
 }
@@ -69,6 +76,19 @@ module.exports = async (client, interaction) => {
     if (parsed.action === "info") {
       if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       return await infoCmd.runInfo(client, interaction);
+    }
+    if (parsed.action === "weapon") {
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+      const [profile, weaponMaxPct] = await Promise.all([
+        getOrCreate(client, interaction.user.id, interaction.guildId),
+        buildingService
+          .getWeaponMaxDurabilityPct(client, interaction.user.id, interaction.guildId)
+          .catch(() => 0),
+      ]);
+      return interaction.editReply({
+        components: [bossView.buildWeaponContainer({ profile, weaponMaxPct })],
+        flags: MessageFlags.IsComponentsV2,
+      });
     }
   } catch (e) {
     console.log(`[BOSS] 按鈕處理失敗：${e.stack || e.message}`.red);

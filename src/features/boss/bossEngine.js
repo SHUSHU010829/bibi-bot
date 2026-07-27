@@ -1,6 +1,7 @@
 require("colors");
 const { boss, serverId } = require("../../config");
 const buffResolver = require("../buff/buffResolver");
+const cook = require("../fishing/cookService");
 const { getOrCreate } = require("../mining/miningProfile");
 const { resolveStamina, staminaMax, getMemberClub, playerAtk } = require("../mining/dungeonService");
 const grantActivityXp = require("../leveling/grantActivityXp");
@@ -358,11 +359,11 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   }
 
   // 傷害計算
+  const atk = sum?.atk ?? (await buffResolver.getEffectiveAtk(client, userId, guildId));
+  const luck = sum?.luckBonus ?? 0;
   let damage = 0;
   let isCrit = false;
   if (!isCounter) {
-    const atk = sum?.atk ?? (await buffResolver.getEffectiveAtk(client, userId, guildId));
-    const luck = sum?.luckBonus ?? 0;
     const dmgCfg = cfg().damage || {};
     const base = atk
       + rand(dmgCfg.baseRandMin ?? 10, dmgCfg.baseRandMax ?? 50)
@@ -534,6 +535,14 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     rageStacks: rageState({ hits_taken: afterDoc.hits_taken }).stacks,
     counterRate,
     firstStrike,
+    buffInfo: {
+      atk,
+      luckBonus: luck,
+      foodBuffs: cook.getActiveFoodBuffs(profile).map((b) => cook.describeFoodBuff(b)),
+      bossAtkPct: guildBossAtkPct,
+      bossDmgPct: guildBossDmgPct,
+      comboActive: now < comboActiveUntil,
+    },
   };
 }
 
