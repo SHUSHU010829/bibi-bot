@@ -129,7 +129,7 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🔋 體力：${result.stamina}/${result.staminaMax}\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}`,
+          `🔋 體力：${result.stamina}/${result.staminaMax}\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}${result.xpGained > 0 ? `\n✨ 經驗 +${result.xpGained}` : ""}`,
         ),
       );
     if (result.sameUserStreak > 1) {
@@ -165,6 +165,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   const container = new ContainerBuilder().setAccentColor(color);
 
   const totalDamage = hits.reduce((s, h) => s + (h.damage || 0), 0);
+  const totalXp = hits.reduce((s, h) => s + (h.xpGained || 0), 0);
   const counters = hits.filter((h) => h.isCounter).length;
   const phaseChange = hits.find((h) => h.phaseChanged);
   const comboTriggered = hits.some((h) => h.comboTriggered);
@@ -191,7 +192,11 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   });
   container
     .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(hitLines.join("\n")));
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${hitLines.join("\n")}${totalXp > 0 ? `\n✨ 本次共獲得經驗 +${totalXp}` : ""}`,
+      ),
+    );
 
   if (!killed) {
     container
@@ -246,7 +251,9 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
 
 function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive, guild }) {
   const phase = b.phase || "normal";
-  const remainMs = Math.max(0, b.ends_at - Date.now());
+  // ends_at 為 null＝招喚場無時間限制，待到被擊殺為止。
+  const noLimit = b.ends_at == null;
+  const remainMs = noLimit ? 0 : Math.max(0, b.ends_at - Date.now());
   const remainMin = Math.floor(remainMs / 60000);
   const remainSec = Math.floor((remainMs % 60000) / 1000);
   const container = new ContainerBuilder().setAccentColor(phaseColor(phase));
@@ -264,7 +271,7 @@ function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `⏰ 剩餘時間：${remainMin}m ${remainSec}s${comboActive ? `\n⚡ Combo 進行中（×${boss?.combo?.bonusMult ?? 1.3}）` : ""}`,
+        `${noLimit ? "⏰ 討伐期限：無時限，待到被擊殺" : `⏰ 剩餘時間：${remainMin}m ${remainSec}s`}${comboActive ? `\n⚡ Combo 進行中（×${boss?.combo?.bonusMult ?? 1.3}）` : ""}`,
       ),
     );
 
@@ -315,18 +322,32 @@ function buildErrorContainer({ title, body, hint }) {
 
 function buildSettlementContainer(settlement) {
   const { bossDoc, killed, payouts, totalDamage, totalPool, killerUserId, killerBonus, killerRare, mvpUserId, comboMvpUserId, punchingBagUserId, firstStrikerUserId, firstStrikeBonus, guild } = settlement;
-  const color = killed ? COLOR_VICTORY : COLOR_EXPIRED;
+  // 招喚場時間到雖沒擊殺，仍依個人輸出發獎（damageRewarded）——與「完全無獎」的逃離區分開。
+  const damageRewarded = settlement.damageRewarded ?? killed;
+  const escapedButPaid = !killed && damageRewarded;
+  const color = killed ? COLOR_VICTORY : escapedButPaid ? COLOR_BROKEN : COLOR_EXPIRED;
   const container = new ContainerBuilder().setAccentColor(color);
   const headline = killed
     ? `# 🏆 ${bossDoc.emoji} ${bossDoc.name} 已被擊敗！`
-    : `# ⏳ ${bossDoc.emoji} ${bossDoc.name} 逃離了戰場`;
+    : escapedButPaid
+      ? `# ⏳ ${bossDoc.emoji} ${bossDoc.name} 逃離了戰場（依輸出發放討伐獎勵）`
+      : `# ⏳ ${bossDoc.emoji} ${bossDoc.name} 逃離了戰場`;
   const statusLine = killed
     ? `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：${totalPool.toLocaleString()} ${COIN_EMOJI}`
-    : `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：—（未擊敗，無獎勵）`;
+    : escapedButPaid
+      ? `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　討伐獎勵：${totalPool.toLocaleString()} ${COIN_EMOJI}（依個人輸出發放）`
+      : `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：—（未擊敗，無獎勵）`;
   container
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(headline))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(statusLine));
+
+  const killXpBonus = boss?.rewards?.killXpBonus ?? 0;
+  if (killed && killXpBonus > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`✨ **擊殺加碼**：全體參戰者各 +${killXpBonus} 經驗`),
+    );
+  }
 
   if (killed && killerUserId) {
     container.addTextDisplayComponents(
@@ -364,7 +385,7 @@ function buildSettlementContainer(settlement) {
   const top = payouts.slice(0, 5);
   if (top.length) {
     const lines = top.map((p, i) => {
-      if (!killed) {
+      if (!damageRewarded) {
         return `**#${i + 1}** ${nameOf(guild, p.userId)} — ${p.damage.toLocaleString()} 傷害`;
       }
       const extras = [];
@@ -374,11 +395,12 @@ function buildSettlementContainer(settlement) {
       if (p.guildClubName) extras.push(`🏰 ${p.guildClubName}`);
       return `**#${i + 1}** ${nameOf(guild, p.userId)} — ${p.damage.toLocaleString()} 傷害　→ ${p.share.toLocaleString()} ${COIN_EMOJI}${extras.length ? "（" + extras.join("、") + "）" : ""}`;
     });
+    const topSuffix = killed ? "" : escapedButPaid ? "（依輸出發放）" : "（本場無獎勵）";
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**Top 5 戰報**${killed ? "" : "（本場無獎勵）"}\n${lines.join("\n")}`,
+          `**Top 5 戰報**${topSuffix}\n${lines.join("\n")}`,
         ),
       );
   }
@@ -409,7 +431,13 @@ function buildSettlementContainer(settlement) {
     }
   }
 
-  if (!killed) {
+  if (escapedButPaid) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 💨 沒能在時限內擊敗牠，但這是社群召喚出來的魔王，已依你的輸出發放討伐獎勵。若能在時間內把牠打死，還能多拿擊殺結算獎勵（稀有材料、鑽石、擊殺金、首刀）！",
+      ),
+    );
+  } else if (!killed) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         "-# 💨 沒能在時限內擊敗牠，BOSS 帶著寶藏逃走了——本場沒有任何獎勵。下次要在時間內解決牠！",
@@ -452,6 +480,12 @@ function buildSummonProgressContainer(p) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `-# ⚔️ **${p.activeBoss.emoji} ${p.activeBoss.name}** 正在場上！用 /魔王 攻擊 出手，庫存會自動用在超過基礎次數的攻擊上。`,
+      ),
+    );
+  } else if (p.cooldownUntil) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 🧊 魔王剛離場，討伐冷卻中——<t:${Math.floor(p.cooldownUntil / 1000)}:R> 後才會再召喚（避免連續出場）。`,
       ),
     );
   } else if (full && p.summonedThisWeek >= p.maxPerWeek) {

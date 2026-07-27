@@ -76,7 +76,7 @@ module.exports = {
             components: [
               bossView.buildErrorContainer({
                 title: "⚔️ 已有 BOSS 在場",
-                body: `**${res.boss.emoji} ${res.boss.name}** 仍在進行中（HP ${res.boss.current_hp.toLocaleString()}/${res.boss.max_hp.toLocaleString()}）。`,
+                body: `**${res.boss.emoji} ${res.boss.name}** 仍在進行中（HP ${(res.boss.current_hp ?? 0).toLocaleString()}/${(res.boss.max_hp ?? 0).toLocaleString()}）。`,
                 hint: "等這場結算後才能再召喚",
               }),
             ],

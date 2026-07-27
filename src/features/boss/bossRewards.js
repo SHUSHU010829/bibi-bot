@@ -1,6 +1,7 @@
 require("colors");
 const { boss, guildClub } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
+const grantActivityXp = require("../leveling/grantActivityXp");
 const gameTitleService = require("../gameTitles/gameTitleService");
 const guildClubContribution = require("../guild_club/guildClubContribution");
 
@@ -165,6 +166,19 @@ async function distribute(client, guild, settlement) {
         amount: p.firstStrikeBonus,
         source: "boss_first_strike",
       }).catch(() => {});
+    }
+    // 擊殺加碼經驗：把牠打死時，所有有輸出的參戰者多拿一筆 XP（結算獎勵）。
+    const killXpBonus = boss?.rewards?.killXpBonus ?? 0;
+    if (settlement.killRewarded && killXpBonus > 0 && p.damage > 0) {
+      const xp = await grantActivityXp(client, "boss", {
+        userId: p.userId,
+        guildId,
+        username,
+        member,
+        amount: killXpBonus,
+        meta: { boss_id: settlement.bossDoc.boss_id, kind: "kill_bonus" },
+      });
+      p.xpBonus = xp;
     }
     const totalRare = (p.rareReward || 0) + (p.killerRare || 0);
     if (totalRare > 0) {

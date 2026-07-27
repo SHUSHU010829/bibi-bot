@@ -3,6 +3,7 @@ const { boss, serverId } = require("../../config");
 const buffResolver = require("../buff/buffResolver");
 const { getOrCreate } = require("../mining/miningProfile");
 const { resolveStamina, staminaMax, getMemberClub, playerAtk } = require("../mining/dungeonService");
+const grantActivityXp = require("../leveling/grantActivityXp");
 const bus = require("../eventBus");
 
 function cfg() {
@@ -138,29 +139,76 @@ async function getActiveBoss(client, guildId) {
   return client.bossEventsCollection.findOne({ guild_id: guildId, status: "active" });
 }
 
-async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSource }) {
+// 魔王結束時間（防連續出場冷卻用）：存在 BossSummonState.last_boss_ended_at。
+async function markBossEnded(client, guildId, when = Date.now()) {
+  if (!client.bossSummonStateCollection || !guildId) return;
+  await client.bossSummonStateCollection.updateOne(
+    { guild_id: guildId },
+    { $set: { last_boss_ended_at: when, updated_at: new Date() } },
+    { upsert: true },
+  ).catch(() => {});
+}
+
+// 距離上一隻魔王結束是否還在冷卻中；回傳 { onCooldown, until }。
+async function bossCooldown(client, guildId, cooldownMs) {
+  if (!cooldownMs || cooldownMs <= 0 || !client.bossSummonStateCollection) {
+    return { onCooldown: false, until: 0 };
+  }
+  const state = await client.bossSummonStateCollection.findOne({ guild_id: guildId }).catch(() => null);
+  const last = state?.last_boss_ended_at || 0;
+  const until = last + cooldownMs;
+  return { onCooldown: Date.now() < until, until };
+}
+
+// 依線上人數 + 社群平均戰力即時算出魔王血量。hpMult 給招喚場「血量少一點」用。
+async function computeScaledHp(client, guildId, hpMult = 1) {
+  const onlineCount = await countOnlineMembers(client);
+  const base = Math.max(cfg().minHp ?? 3000, onlineCount * (cfg().hpPerPlayer ?? 500));
+  let gearMult = 1;
+  let scaling = null;
+  if (cfg().scaling?.enabled) {
+    const stats = await activePlayerStats(client, guildId);
+    gearMult = gearMultiplier(stats.avgAtk);
+    scaling = {
+      active_count: stats.activeCount,
+      avg_atk: Math.round(stats.avgAtk),
+      gear_mult: Number(gearMult.toFixed(2)),
+    };
+  }
+  return { onlineCount, scaling, finalHp: Math.round(base * gearMult * hpMult) };
+}
+
+function freshCombatFields() {
+  return {
+    killer_user_id: null,
+    first_striker: null,
+    hits_taken: 0,
+    damage_by_user: {},
+    combo: {
+      count: 0,
+      last_user: null,
+      last_ts: 0,
+      same_user_streak: 0,
+      active_until: 0,
+      combo_mvp: null,
+    },
+    attack_counts: {},
+  };
+}
+
+// hpMult：招喚場「血量少一點」；noExpiry：招喚場無時間限制（ends_at=null，待到被擊殺為止）。
+async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSource, hpMult, noExpiry }) {
   const now = Date.now();
   const existing = await getActiveBoss(client, guildId);
   if (existing) return { ok: false, reason: "already_active", boss: existing };
 
-  const onlineCount = hp == null ? await countOnlineMembers(client) : null;
+  let onlineCount = null;
   let scaling = null;
   let finalHp;
   if (hp != null) {
     finalHp = hp;
   } else {
-    const base = Math.max(cfg().minHp ?? 3000, onlineCount * (cfg().hpPerPlayer ?? 500));
-    let gearMult = 1;
-    if (cfg().scaling?.enabled) {
-      const stats = await activePlayerStats(client, guildId);
-      gearMult = gearMultiplier(stats.avgAtk);
-      scaling = {
-        active_count: stats.activeCount,
-        avg_atk: Math.round(stats.avgAtk),
-        gear_mult: Number(gearMult.toFixed(2)),
-      };
-    }
-    finalHp = Math.round(base * gearMult);
+    ({ onlineCount, scaling, finalHp } = await computeScaledHp(client, guildId, hpMult ?? 1));
   }
   const duration = durationMs ?? (cfg().durationMinutes ?? 30) * 60 * 1000;
   const bossId = `boss_${guildId}_${now}`;
@@ -177,23 +225,11 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSo
     phase: "normal",
     status: "active",
     started_at: now,
-    ends_at: now + duration,
-    killer_user_id: null,
-    first_striker: null,
+    ends_at: noExpiry ? null : now + duration,
     online_count: onlineCount ?? null,
     spawn_source: spawnSource || "scheduled",
     scaling,
-    hits_taken: 0,
-    damage_by_user: {},
-    combo: {
-      count: 0,
-      last_user: null,
-      last_ts: 0,
-      same_user_streak: 0,
-      active_until: 0,
-      combo_mvp: null,
-    },
-    attack_counts: {},
+    ...freshCombatFields(),
   };
   await client.bossEventsCollection.insertOne(doc);
   return { ok: true, boss: doc };
@@ -228,7 +264,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   const bossDoc = await getActiveBoss(client, guildId);
   if (!bossDoc) return { ok: false, reason: "no_active" };
   const now = Date.now();
-  if (now >= bossDoc.ends_at) return { ok: false, reason: "expired" };
+  // ends_at 為 null＝招喚場無時間限制，待到被擊殺為止；只有設了到期時間的場才會過期。
+  if (bossDoc.ends_at != null && now >= bossDoc.ends_at) return { ok: false, reason: "expired" };
 
   const profile = await getOrCreate(client, userId, guildId);
   const club = await getMemberClub(client, userId, guildId);
@@ -442,6 +479,18 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     ts: now,
   });
 
+  // 命中即給活動經驗（被反擊的空刀不給）。攻擊次數本身有上限，天生防刷。
+  let xpGained = 0;
+  if (!isCounter && damage > 0) {
+    xpGained = await grantActivityXp(client, "boss", {
+      userId,
+      guildId,
+      username,
+      member,
+      meta: { boss_id: bossDoc.boss_id },
+    });
+  }
+
   bus.emit("boss.attacked", {
     userId,
     guildId,
@@ -475,6 +524,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     sameUserStreak,
     killed,
     killerUserId: killed ? userId : null,
+    xpGained,
     boss: { ...bossDoc, current_hp: newHp, phase: newPhase, hits_taken: afterDoc.hits_taken },
     stamina: newStamina,
     staminaMax: max,
@@ -523,19 +573,28 @@ async function settleBoss(client, bossDoc) {
   const totalDamage = ranking.reduce((s, r) => s + r.damage, 0);
 
   const killed = bossDoc.status === "defeated";
-  // BOSS 逃離（時間到卻沒被擊殺）＝討伐失敗，全員無獎勵；戰報仍保留供回顧。
-  const rewarded = killed;
+  const isSummon = bossDoc.spawn_source === "summon";
+  // 招喚場：即使時間到（沒擊殺）也依「個人輸出」發放討伐獎勵；其他來源（週六 / 手動）維持「未擊殺＝無獎」。
+  const damageRewarded = killed || isSummon;
+  // 結算（擊殺）獎勵：稀有材料、鑽石、擊殺金、首刀、稱號——只有真的把牠打死才「多發」。
+  const killRewarded = killed;
   const rwd = rewardsCfg();
-  const totalPool = rewarded ? Math.floor(bossDoc.max_hp * (rwd.poolRatio ?? 0.5)) : 0;
+  const poolRatio = rwd.poolRatio ?? 0.5;
+  // 擊殺：獎勵池 = 血量上限 × poolRatio。招喚場時間到：改成「依實際輸出」＝ 總傷害 × poolRatio。
+  const totalPool = !damageRewarded
+    ? 0
+    : killed
+      ? Math.floor(bossDoc.max_hp * poolRatio)
+      : Math.floor(totalDamage * poolRatio);
   const tiers = Array.isArray(rwd.topRareRewardTiers)
     ? rwd.topRareRewardTiers
     : new Array(rwd.topRareRewards ?? 3).fill(1);
   const diamondTiers = Array.isArray(rwd.topRankDiamondTiers) ? rwd.topRankDiamondTiers : [];
 
   const payouts = ranking.map((r, idx) => {
-    const share = rewarded && totalDamage > 0 ? Math.floor(r.damage / totalDamage * totalPool) : 0;
-    const rareReward = rewarded ? (tiers[idx] || 0) : 0;
-    const diamondReward = rewarded ? (diamondTiers[idx] || 0) : 0;
+    const share = damageRewarded && totalDamage > 0 ? Math.floor(r.damage / totalDamage * totalPool) : 0;
+    const rareReward = killRewarded ? (tiers[idx] || 0) : 0;
+    const diamondReward = killRewarded ? (diamondTiers[idx] || 0) : 0;
     const killBonus = killed ? (rwd.killBonus ?? 100) : 0;
     return {
       ...r,
@@ -573,9 +632,9 @@ async function settleBoss(client, bossDoc) {
     }
   }
 
-  // 首刀獎勵：頒給第一個對 boss 造成傷害的人。
+  // 首刀獎勵：屬於「結算獎勵」，只有把牠打死才頒。
   let firstStrikeBonus = 0;
-  const firstStrikerUserId = rewarded ? (bossDoc.first_striker || null) : null;
+  const firstStrikerUserId = killRewarded ? (bossDoc.first_striker || null) : null;
   if (firstStrikerUserId) {
     firstStrikeBonus = rwd.firstStrikeBonus ?? 0;
     if (firstStrikeBonus > 0) {
@@ -620,17 +679,25 @@ async function settleBoss(client, bossDoc) {
     },
   );
 
+  // 記錄結束時間 → 防「連續出場」冷卻。
+  await markBossEnded(client, bossDoc.guild_id);
+
   return {
     bossDoc,
     killed,
-    rewarded,
+    isSummon,
+    // rewarded 控制 distribute 是否發放（含依輸出的金幣）；招喚場時間到也為 true。
+    rewarded: damageRewarded,
+    damageRewarded,
+    killRewarded,
     killerUserId: bossDoc.killer_user_id,
     payouts,
     totalDamage,
     totalPool,
-    mvpUserId: rewarded ? (payouts[0]?.userId || null) : null,
-    comboMvpUserId: rewarded ? (bossDoc.combo?.combo_mvp || null) : null,
-    punchingBagUserId: rewarded ? punchingBag : null,
+    // MVP / 開團王 / 被龍揍王稱號屬於結算獎勵，只有擊殺才頒。
+    mvpUserId: killRewarded ? (payouts[0]?.userId || null) : null,
+    comboMvpUserId: killRewarded ? (bossDoc.combo?.combo_mvp || null) : null,
+    punchingBagUserId: killRewarded ? punchingBag : null,
     killerBonus,
     killerRare,
     firstStrikerUserId,
@@ -640,8 +707,9 @@ async function settleBoss(client, bossDoc) {
 
 async function findExpiredActiveBosses(client, now = Date.now()) {
   if (!client.bossEventsCollection) return [];
+  // 只掃有設到期時間的場（ends_at 為數字）；招喚場 ends_at=null（無時限）不會被掃到。
   return client.bossEventsCollection
-    .find({ status: "active", ends_at: { $lte: now } })
+    .find({ status: "active", ends_at: { $type: "number", $lte: now } })
     .toArray();
 }
 
@@ -710,6 +778,8 @@ async function applyComboAttack(client, params, count) {
 module.exports = {
   cfg,
   spawnBoss,
+  markBossEnded,
+  bossCooldown,
   applyAttack,
   applyComboAttack,
   settleBoss,

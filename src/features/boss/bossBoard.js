@@ -49,7 +49,7 @@ function render(info, guild) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `⏰ 結束 <t:${Math.floor(b.ends_at / 1000)}:R>${info.comboActive ? `　⚡ Combo ×${boss?.combo?.bonusMult ?? 1.3}` : ""}`,
+        `${b.ends_at != null ? `⏰ 結束 <t:${Math.floor(b.ends_at / 1000)}:R>` : "⏰ 無時限，待到被擊殺"}${info.comboActive ? `　⚡ Combo ×${boss?.combo?.bonusMult ?? 1.3}` : ""}`,
       ),
     );
 
@@ -80,7 +80,7 @@ function render(info, guild) {
     );
   }
 
-  // 寶箱進看板：進行中的寶箱常駐一顆按鈕，不會被洗走錯過。
+  // 寶箱進看板：只放提示指路（開寶箱 / 賭一把都在專屬寶箱訊息上操作，避免看板重繪洗掉按鈕）。
   const t = b.active_treasure;
   const treasureActive = t && !t.claimed_by && Date.now() < t.expires_at;
   if (treasureActive) {
@@ -88,16 +88,7 @@ function render(info, guild) {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🎁 **寶箱出現！先搶先贏** · <t:${Math.floor(t.expires_at / 1000)}:R> 消失`,
-        ),
-      )
-      .addActionRowComponents(
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`boss_chest_${b.boss_id}_${t.id}`)
-            .setLabel("開寶箱")
-            .setEmoji("🎁")
-            .setStyle(ButtonStyle.Success),
+          `🎁 **寶箱出現！先搶先贏** · <t:${Math.floor(t.expires_at / 1000)}:R> 消失\n-# 往上找「開寶箱」訊息，手速最快的人搶到！`,
         ),
       );
   }

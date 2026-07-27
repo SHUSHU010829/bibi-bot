@@ -57,11 +57,22 @@ async function grantAttackCharge(client, { userId, guildId }) {
   ).catch(() => {});
 }
 
+function cooldownMs() {
+  return (cfg().spawnCooldownMinutes ?? 0) * 60 * 1000;
+}
+
 // 集滿時嘗試召喚（原子搶結算權，只有一個 dungeon clear 會真的召出魔王）
+// 招喚場立即登場、無時間限制、血量少一點；並有「防連續出場」冷卻。
 async function trySummon(client, guildId) {
   const threshold = cfg().energyThreshold ?? 120;
   const active = await bossEngine.getActiveBoss(client, guildId);
   if (active) {
+    await capEnergy(client, guildId, threshold);
+    return null;
+  }
+  // 防連續出場：距離上一隻魔王結束還沒過冷卻 → 能量先滿著等，冷卻過了下次通關再召。
+  const cd = await bossEngine.bossCooldown(client, guildId, cooldownMs());
+  if (cd.onCooldown) {
     await capEnergy(client, guildId, threshold);
     return null;
   }
@@ -89,11 +100,17 @@ async function trySummon(client, guildId) {
   const claimed = claim?.value || claim;
   if (!claimed) return null; // 別的 dungeon clear 已搶先召喚
 
-  const res = await bossEngine.spawnBoss(client, { guildId, spawnSource: "summon" });
+  const contributorCount = Object.keys(claimed.contributors || {}).length;
+  // 立即登場：血量少一點（summonHpMult）、無時間限制（noExpiry），待到被擊殺為止。
+  const res = await bossEngine.spawnBoss(client, {
+    guildId,
+    spawnSource: "summon",
+    hpMult: cfg().summonHpMult ?? 1,
+    noExpiry: true,
+  });
   if (!res.ok) return null; // 極端情況：期間已有 boss，能量已消耗，下週再來
 
-  const contributorCount = Object.keys(claimed.contributors || {}).length;
-  console.log(`[BOSS] summon spawned ${res.boss.boss_id} by ${contributorCount} contributors`.cyan);
+  console.log(`[BOSS] summon spawned ${res.boss.boss_id} hp=${res.boss.max_hp} by ${contributorCount} contributors`.cyan);
   await bossAnnouncer
     .announceSpawn(client, res.boss, { summon: true, contributorCount })
     .catch((e) => console.log(`[BOSS] summon announce failed: ${e.message}`.red));
@@ -142,6 +159,7 @@ async function progress(client, guildId, userId) {
   const wk = weekKey();
   const summonedThisWeek = state?.week_key === wk ? (state.summoned_count || 0) : 0;
   const active = await bossEngine.getActiveBoss(client, guildId);
+  const cd = await bossEngine.bossCooldown(client, guildId, cooldownMs());
   let myCharges = 0;
   if (userId && client.miningProfilesCollection) {
     const profile = await client.miningProfilesCollection
@@ -157,6 +175,7 @@ async function progress(client, guildId, userId) {
     maxPerWeek: cfg().maxPerWeek ?? 3,
     contributorCount: Object.keys(state?.contributors || {}).length,
     activeBoss: active,
+    cooldownUntil: cd.onCooldown ? cd.until : 0,
     myCharges,
     chargeCap,
   };

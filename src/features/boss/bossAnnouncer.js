@@ -18,7 +18,10 @@ async function resolveChannel(client, id) {
 async function announceSpawn(client, bossDoc, opts = {}) {
   const ch = await resolveChannel(client, boss?.announceChannelId);
   if (!ch) return;
-  const endsAt = Math.floor(bossDoc.ends_at / 1000);
+  // ends_at 為 null＝招喚場無時間限制，待到被擊殺為止。
+  const endField = bossDoc.ends_at != null
+    ? { name: "⏳ 戰鬥結束", value: `<t:${Math.floor(bossDoc.ends_at / 1000)}:R>`, inline: true }
+    : { name: "⏳ 討伐期限", value: "無時限，待到被擊殺", inline: true };
   const onlineSuffix = bossDoc.online_count != null
     ? `\n-# 依當前 ${bossDoc.online_count} 名線上玩家決定`
     : "";
@@ -38,7 +41,7 @@ async function announceSpawn(client, bossDoc, opts = {}) {
         value: `${bossDoc.max_hp.toLocaleString()}${onlineSuffix}`,
         inline: false,
       },
-      { name: "⏳ 戰鬥結束", value: `<t:${endsAt}:R>`, inline: true },
+      endField,
       { name: "⚔️ 攻擊上限", value: `每人 ${limit} 次`, inline: true },
     )
     .setFooter({

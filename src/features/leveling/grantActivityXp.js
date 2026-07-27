@@ -12,6 +12,7 @@ const META = {
   fish: { source: "fish", counterField: "xpFromFishing" },
   dungeon: { source: "dungeon", counterField: "xpFromDungeon" },
   farm: { source: "farm", counterField: "xpFromFarm" },
+  boss: { source: "boss", counterField: "xpFromBoss" },
 };
 
 // 只 roll 出本次活動的基礎 XP（不套倍率、不寫 DB）。連續挖礦 / 釣魚 / 一鍵收成用來逐次累計，

@@ -46,6 +46,8 @@ module.exports = {
           },
         },
       );
+      // 清除也算魔王離場，啟動防連續出場冷卻。
+      await bossEngine.markBossEnded(client, interaction.guildId);
 
       console.log(
         `[BOSS] manual abort by ${interaction.user.id}: ${active.boss_id} hp=${active.current_hp}/${active.max_hp}`.cyan,
@@ -67,7 +69,7 @@ module.exports = {
       }
 
       return interaction.editReply({
-        content: `✅ 已清除 ${active.emoji} **${active.name}**（HP ${active.current_hp.toLocaleString()}/${active.max_hp.toLocaleString()}）\n-# 此場不結算、不發獎`,
+        content: `✅ 已清除 ${active.emoji} **${active.name}**（HP ${(active.current_hp ?? 0).toLocaleString()}/${(active.max_hp ?? 0).toLocaleString()}）\n-# 此場不結算、不發獎`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (e) {
