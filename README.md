@@ -93,7 +93,7 @@ src/
 ├── events/                 # 事件處理器（每個事件一個資料夾）
 │   ├── ready/              # bot 啟動時要做的事（連 DB、註冊指令、起 cron…）
 │   ├── interactionCreate/  # 按鈕、Select Menu、Modal 互動
-│   ├── messageCreate/      # 訊息統計、Twitter/Threads 連結修正
+│   ├── messageCreate/      # 訊息統計、Threads / IG / X(Twitter) 連結修正
 │   ├── messageReactionAdd/ # 反應 XP
 │   ├── voiceStateUpdate/   # 動態語音、語音時長統計
 │   ├── inviteCreate / inviteDelete       # 邀請追蹤
@@ -213,7 +213,8 @@ docker run -d --env-file .env --name bibi-bot discord-bot
 | Twitch 開台通知 | `features/twitch`（Helix App Token + 去重） | `twitch.json` 指定頻道 |
 | RSS 週報 thread | `features/rssWeeklyThreads`、`config/rssFeeds.js` | 每週彙整 RSS 開 thread |
 | 每日早安卡 | `events/ready/sendMorningMessage.js`（satori 繪卡） | 含日期 / 節氣 / 農民曆 / 詩詞 / 運勢 |
-| Twitter / Threads 連結修正 | `messageCreate/threadsLinkHandler.js` | 回覆 fxtwitter / fixthreads 版本 |
+| Threads 連結修正 | `messageCreate/threadsLinkHandler.js` | 抓貼文內容後回覆完整預覽卡 |
+| IG / X(Twitter) 連結修正 | `messageCreate/socialLinkHandler.js` | 回覆 oginstagram / fixupx / fxtwitter 版本 |
 
 ### 生活娛樂
 
