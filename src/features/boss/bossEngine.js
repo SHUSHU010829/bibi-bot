@@ -573,28 +573,20 @@ async function settleBoss(client, bossDoc) {
   const totalDamage = ranking.reduce((s, r) => s + r.damage, 0);
 
   const killed = bossDoc.status === "defeated";
-  const isSummon = bossDoc.spawn_source === "summon";
-  // 招喚場：即使時間到（沒擊殺）也依「個人輸出」發放討伐獎勵；其他來源（週六 / 手動）維持「未擊殺＝無獎」。
-  const damageRewarded = killed || isSummon;
-  // 結算（擊殺）獎勵：稀有材料、鑽石、擊殺金、首刀、稱號——只有真的把牠打死才「多發」。
-  const killRewarded = killed;
+  // BOSS 逃離（時間到卻沒被擊殺）＝討伐失敗，全員無獎勵；戰報仍保留供回顧。
+  // （招喚場不限時間，只會以「擊殺」結束，所以實際上都是有獎的。）
+  const rewarded = killed;
   const rwd = rewardsCfg();
-  const poolRatio = rwd.poolRatio ?? 0.5;
-  // 擊殺：獎勵池 = 血量上限 × poolRatio。招喚場時間到：改成「依實際輸出」＝ 總傷害 × poolRatio。
-  const totalPool = !damageRewarded
-    ? 0
-    : killed
-      ? Math.floor(bossDoc.max_hp * poolRatio)
-      : Math.floor(totalDamage * poolRatio);
+  const totalPool = rewarded ? Math.floor(bossDoc.max_hp * (rwd.poolRatio ?? 0.5)) : 0;
   const tiers = Array.isArray(rwd.topRareRewardTiers)
     ? rwd.topRareRewardTiers
     : new Array(rwd.topRareRewards ?? 3).fill(1);
   const diamondTiers = Array.isArray(rwd.topRankDiamondTiers) ? rwd.topRankDiamondTiers : [];
 
   const payouts = ranking.map((r, idx) => {
-    const share = damageRewarded && totalDamage > 0 ? Math.floor(r.damage / totalDamage * totalPool) : 0;
-    const rareReward = killRewarded ? (tiers[idx] || 0) : 0;
-    const diamondReward = killRewarded ? (diamondTiers[idx] || 0) : 0;
+    const share = rewarded && totalDamage > 0 ? Math.floor(r.damage / totalDamage * totalPool) : 0;
+    const rareReward = rewarded ? (tiers[idx] || 0) : 0;
+    const diamondReward = rewarded ? (diamondTiers[idx] || 0) : 0;
     const killBonus = killed ? (rwd.killBonus ?? 100) : 0;
     return {
       ...r,
@@ -632,9 +624,9 @@ async function settleBoss(client, bossDoc) {
     }
   }
 
-  // 首刀獎勵：屬於「結算獎勵」，只有把牠打死才頒。
+  // 首刀獎勵：頒給第一個對 boss 造成傷害的人（只有擊殺才發）。
   let firstStrikeBonus = 0;
-  const firstStrikerUserId = killRewarded ? (bossDoc.first_striker || null) : null;
+  const firstStrikerUserId = rewarded ? (bossDoc.first_striker || null) : null;
   if (firstStrikerUserId) {
     firstStrikeBonus = rwd.firstStrikeBonus ?? 0;
     if (firstStrikeBonus > 0) {
@@ -685,19 +677,14 @@ async function settleBoss(client, bossDoc) {
   return {
     bossDoc,
     killed,
-    isSummon,
-    // rewarded 控制 distribute 是否發放（含依輸出的金幣）；招喚場時間到也為 true。
-    rewarded: damageRewarded,
-    damageRewarded,
-    killRewarded,
+    rewarded,
     killerUserId: bossDoc.killer_user_id,
     payouts,
     totalDamage,
     totalPool,
-    // MVP / 開團王 / 被龍揍王稱號屬於結算獎勵，只有擊殺才頒。
-    mvpUserId: killRewarded ? (payouts[0]?.userId || null) : null,
-    comboMvpUserId: killRewarded ? (bossDoc.combo?.combo_mvp || null) : null,
-    punchingBagUserId: killRewarded ? punchingBag : null,
+    mvpUserId: rewarded ? (payouts[0]?.userId || null) : null,
+    comboMvpUserId: rewarded ? (bossDoc.combo?.combo_mvp || null) : null,
+    punchingBagUserId: rewarded ? punchingBag : null,
     killerBonus,
     killerRare,
     firstStrikerUserId,

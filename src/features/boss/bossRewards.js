@@ -169,7 +169,7 @@ async function distribute(client, guild, settlement) {
     }
     // 擊殺加碼經驗：把牠打死時，所有有輸出的參戰者多拿一筆 XP（結算獎勵）。
     const killXpBonus = boss?.rewards?.killXpBonus ?? 0;
-    if (settlement.killRewarded && killXpBonus > 0 && p.damage > 0) {
+    if (settlement.killed && killXpBonus > 0 && p.damage > 0) {
       const xp = await grantActivityXp(client, "boss", {
         userId: p.userId,
         guildId,
