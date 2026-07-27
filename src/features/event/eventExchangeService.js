@@ -1,16 +1,23 @@
 require("colors");
-const { gameTitles } = require("../../config");
+const { gameTitles, farming } = require("../../config");
 const eventEngine = require("./eventEngine");
 const { getOrCreate } = require("../mining/miningProfile");
 const grantCoins = require("../economy/grantCoins");
 const gameTitleService = require("../gameTitles/gameTitleService");
 
-// 限定魚兌換所服務：用生效中活動的限定魚換獎勵（金幣 / CD 縮短券 / 連續通行證 / 稱號）。
+// 限定魚兌換所服務：用生效中活動的限定魚換獎勵（金幣 / CD 縮短券 / 連續通行證 / 礦石 / 背包道具 / 稱號）。
 // 兌換次數記在 miningProfiles.event_exchange_counts.<exchangeId>，扣魚與計次原子完成。
 
 function titleName(titleId) {
   const def = gameTitles?.defs?.[titleId];
   return def ? `${def.emoji || "🏅"} ${def.name}` : titleId;
+}
+
+// 背包道具獎勵的中文標籤（單一來源：farming 施肥材料表）。新增可兌換背包道具時補這裡。
+function backpackItemDef(itemKey) {
+  const fert = farming?.fertilizers?.[itemKey];
+  if (fert) return { name: fert.name, emoji: fert.emoji || "🎁" };
+  return { name: itemKey, emoji: "🎁" };
 }
 
 // 某獎勵在玩家視角的完整狀態（持有量、已兌換、上限、可否兌換）。
@@ -77,6 +84,14 @@ async function grantReward(client, { userId, guildId, username, member, exchange
     );
     const def = eventEngine.resolveOreDef(rw.oreKey) || {};
     return { text: `${def.emoji || "⛏️"} ${def.name || rw.oreKey} ×${rw.qty}` };
+  }
+  if (rw.type === "backpackItem") {
+    await client.miningProfilesCollection.updateOne(
+      { userId, guildId },
+      { $inc: { [`backpack.${rw.itemKey}`]: rw.qty }, $set: { updatedAt: new Date() } },
+    );
+    const def = backpackItemDef(rw.itemKey);
+    return { text: `${def.emoji} ${def.name} ×${rw.qty}` };
   }
   if (rw.type === "title") {
     const res = await gameTitleService
@@ -149,4 +164,4 @@ async function redeem(client, { userId, guildId, username, member, exchangeId })
   };
 }
 
-module.exports = { listExchanges, redeem, titleName };
+module.exports = { listExchanges, redeem, titleName, backpackItemDef };

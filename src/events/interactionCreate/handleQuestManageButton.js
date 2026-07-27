@@ -13,6 +13,7 @@ const questAssignmentService = require("../../features/quests/questAssignmentSer
 const questService = require("../../features/quests/questService");
 const { getQuestById } = require("../../features/quests/questDefinitions");
 const { buildQuestContainer } = require("../../features/quests/questView");
+const questRewards = require("../../features/quests/questRewards");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 const REASON_MSG = {
@@ -143,7 +144,7 @@ module.exports = async (client, interaction) => {
       const tag = c.period === "weekly" ? "📅 週常" : "🌞 每日";
       await replyEphemeral(
         interaction,
-        `💰 ${tag} ・ **${c.name}** ・ +**${c.reward.toLocaleString()}** ${COIN_EMOJI}`,
+        `💰 ${tag} ・ **${c.name}** ・ ${questRewards.rewardText(c)}`,
       );
     }
     trackSuccess(`quest-manage-${action}`);

@@ -1,6 +1,6 @@
 require("colors");
 const { EmbedBuilder, MessageFlags } = require("discord.js");
-const { COIN_EMOJI } = require("../../constants/coin");
+const questRewards = require("./questRewards");
 const questNotifyPref = require("./questNotifyPref");
 const notifyPrefs = require("../reminders/notifyPrefs");
 
@@ -13,7 +13,7 @@ const buildReadyEmbed = (quest, { optOut = false } = {}) => {
     .setTitle("✅ 任務完成！")
     .setDescription(
       `${tag} ・ **${quest.name}**\n` +
-        `可領 **+${quest.reward.toLocaleString()}** ${COIN_EMOJI}\n` +
+        `可領 ${questRewards.rewardText(quest)}\n` +
         `-# 用 \`/逼幣任務\` 點「💰 領取」即可入帳。`,
     );
   if (optOut) {

@@ -894,9 +894,15 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       username: interaction.user.username,
     };
     const caughtQty = result.qty || 1;
-    const fishHooks = eventEngine
-      .getEventQuestHooksByType("fish_count", { fish: result.fish })
-      .map((h) => ({ ...h, delta: (h.delta ?? 1) * caughtQty }));
+    const fishHooks = [
+      { questId: "daily_cd_fish", delta: caughtQty },
+      { questId: "weekly_cd_fish", delta: caughtQty },
+    ];
+    fishHooks.push(
+      ...eventEngine
+        .getEventQuestHooksByType("fish_count", { fish: result.fish })
+        .map((h) => ({ ...h, delta: (h.delta ?? 1) * caughtQty })),
+    );
     if (fishDef.event) {
       fishHooks.push(
         ...eventEngine
@@ -1172,11 +1178,13 @@ async function runFishBatch(client, interaction, { location = "stream", count })
       flags: MessageFlags.IsComponentsV2,
     });
 
-    // 活動任務 hook：以整批各魚種釣到的數量推進（比照連續挖礦 mine.js）。
+    // 每日／週常釣魚計數 + 活動任務 hook：以整批各魚種釣到的數量推進（比照連續挖礦 mine.js）。
     const batchHooks = [];
+    let batchCaught = 0;
     for (const [fishKey, info] of Object.entries(result.fishByType || {})) {
       const c = info.qty || 0;
       if (c <= 0) continue;
+      batchCaught += c;
       for (const h of eventEngine.getEventQuestHooksByType("fish_count", { fish: fishKey })) {
         batchHooks.push({ ...h, delta: (h.delta ?? 1) * c });
       }
@@ -1185,6 +1193,12 @@ async function runFishBatch(client, interaction, { location = "stream", count })
           batchHooks.push({ ...h, delta: (h.delta ?? 1) * c });
         }
       }
+    }
+    if (batchCaught > 0) {
+      batchHooks.unshift(
+        { questId: "daily_cd_fish", delta: batchCaught },
+        { questId: "weekly_cd_fish", delta: batchCaught },
+      );
     }
     if (batchHooks.length) {
       applyQuestHooks(
