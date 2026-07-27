@@ -121,29 +121,70 @@
       "spawnChancePerMinute": 0.3,
       "durationSec": 120,
       "minRemainingMinutes": 3,
-      "mimicChance": 0.35,
-      "chestCoinMin": 300,
-      "chestCoinMax": 900,
-      "chestRareChance": 0.12,
+      "mimicChance": 0.3,
       "mimicConsolationCoins": 60,
-      "spawnMessages": [
-        "🎁 戰場上突然滾出一個閃著金光的寶箱！手速最快的人才能開！",
-        "🎁 魔王掉了個寶箱出來，牠好像還沒發現……先搶先贏！",
-        "🎁 不知道哪來的寶箱從天而降，砸中了地上的雞排攤。快去開！"
+      "mimicSlayChance": 0.25,
+      "mimicSlayCoinMin": 900,
+      "mimicSlayCoinMax": 1800,
+      "mimicSlayRareChance": 0.35,
+      "tiers": [
+        { "key": "wood", "name": "木寶箱", "emoji": "📦", "weight": 48, "banner": "📦 一個普通的木寶箱從魔王身上滾了出來！", "coinMin": 300, "coinMax": 700, "rareChance": 0.04, "rareQty": 1, "diamond": 0 },
+        { "key": "silver", "name": "白銀寶箱", "emoji": "🎁", "weight": 30, "banner": "🎁 一個綁著銀色緞帶的寶箱閃亮登場！", "coinMin": 600, "coinMax": 1300, "rareChance": 0.12, "rareQty": 1, "diamond": 0 },
+        { "key": "gold", "name": "黃金寶箱", "emoji": "🏆", "weight": 16, "banner": "🏆✨ 金光刺眼！一個沉甸甸的黃金寶箱砸在場中央！", "coinMin": 1200, "coinMax": 2600, "rareChance": 0.28, "rareQty": 1, "diamond": 1 },
+        { "key": "rainbow", "name": "傳說寶箱", "emoji": "🌈", "weight": 6, "banner": "🌈💎 全場屏息——傳說寶箱降臨！這種東西一輩子開不到幾次！", "coinMin": 2600, "coinMax": 5200, "rareChance": 0.7, "rareQty": 2, "diamond": 3, "mimicChance": 0 }
+      ],
+      "gamble": {
+        "enabled": true,
+        "winChance": 0.5,
+        "winMult": 2,
+        "windowSec": 30
+      },
+      "spawnFlavors": [
+        "手速最快的人才能開，先搶先贏！",
+        "魔王好像還沒發現……趁現在！",
+        "不知道哪來的，砸中了地上的雞排攤。快去開！"
       ],
       "chestMessages": [
-        "🎉 是真寶箱！{user} 開出了 {coins} 金幣，笑得合不攏嘴！",
-        "🎉 {user} 手氣爆棚，箱子裡塞滿了 {coins} 金幣！",
-        "🎉 {user} 一把掀開寶箱，{coins} 金幣嘩啦啦倒了出來！"
+        "🎉 {user} 掀開{tier}，{coins} 金幣嘩啦啦倒了出來！",
+        "🎉 {user} 手氣爆棚，{tier}裡塞滿了 {coins} 金幣！",
+        "🎉 是真的！{user} 從{tier}開出了 {coins} 金幣！"
       ],
       "chestRareMessages": [
-        "🌟 {user} 開出了傳說碎片 ×{rare}！運氣好到讓魔王都傻眼！",
-        "🌟 寶箱底部藏著傳說碎片 ×{rare}，{user} 賺翻了！"
+        "🌟 {tier}底部還藏著傳說碎片 ×{rare}，{user} 賺翻了！",
+        "🌟 {user} 從{tier}挖出傳說碎片 ×{rare}！運氣好到讓魔王都傻眼！"
+      ],
+      "chestDiamondMessages": [
+        "💎 {tier}裡竟然鑲著鑽石 ×{diamond}！{user} 笑到合不攏嘴！",
+        "💎 {user} 從{tier}摳出鑽石 ×{diamond}，全場羨慕！"
       ],
       "mimicMessages": [
-        "😱 是擬態怪！箱子長出牙齒咬了 {user} 一口……只摸到 {coins} 金幣壓驚。",
+        "😱 是擬態怪！{tier}長出牙齒咬了 {user} 一口……只摸到 {coins} 金幣壓驚。",
         "😱 {user} 一開箱就被裡面的怪吐了一臉口水，撿到 {coins} 金幣安慰獎。",
         "😱 擬態怪對 {user} 大喊「哈哈上當了」，順手塞了 {coins} 金幣打發人。"
+      ],
+      "mimicSlayMessages": [
+        "⚔️😱➡️🎉 是擬態怪！但 {user} 反手一刀把牠劈了，從牠嘴裡搜出 {coins} 金幣！",
+        "🔥 擬態怪撲向 {user}——結果被 {user} 一把摁在地上暴打，抖出 {coins} 金幣！",
+        "💥 {user} 早看穿是擬態怪，先下手為強反殺，戰利品 {coins} 金幣到手！"
+      ],
+      "gamblePromptMessages": [
+        "🎲 {user} 手裡握著 {coins} 金幣——要見好就收，還是賭一把翻倍？（30 秒內決定）",
+        "🎲 {coins} 金幣在手，{user}……要穩穩收下，還是搏一個雙倍？"
+      ],
+      "gambleWinMessages": [
+        "🎉🎲 賭贏了！{user} 的 {base} 金幣直接翻成 {coins} 金幣！全場歡呼！",
+        "🤑 骰子站在 {user} 這邊！{base} → {coins} 金幣，爽賺一倍！"
+      ],
+      "gambleLoseMessages": [
+        "💸🎲 崩盤了！{user} 的 {base} 金幣全部飛走，一毛都沒留下……",
+        "😭 {user} 手一抖，{base} 金幣全賠光。這就是賭博的代價。"
+      ],
+      "gambleTakeMessages": [
+        "💰 {user} 見好就收，穩穩把 {coins} 金幣收進口袋。聰明！",
+        "💰 {user} 不冒險，{coins} 金幣落袋為安。"
+      ],
+      "gambleAutoMessages": [
+        "⌛ {user} 猶豫太久，{coins} 金幣自動收進口袋（沒賭）。"
       ],
       "expiredMessage": "💨 沒人敢開……寶箱自己長腳溜走了。"
     },
