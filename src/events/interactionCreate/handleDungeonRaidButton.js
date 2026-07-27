@@ -40,6 +40,8 @@ const PREFIXES = [
   dungeonCmd.RAID_SETTINGS_PREFIX,
   dungeonCmd.RAID_PREF_TOGGLE_PREFIX,
   dungeonCmd.RAID_PREF_TIER_PREFIX,
+  dungeonCmd.RAID_PREF_STAMINA_TOGGLE_PREFIX,
+  dungeonCmd.RAID_PREF_STAMINA_TIER_PREFIX,
 ];
 
 function matchAction(cid) {
@@ -177,6 +179,7 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
   const resultContainer = dungeonCmd.buildBattleResultPanel(interaction.user.id, result, {
     bossPending,
     bossName,
+    guildId: interaction.guildId,
   });
   await interaction.editReply({
     components: [resultContainer],
@@ -694,6 +697,51 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.IsComponentsV2,
       });
       trackSuccess("raid-pref-tier");
+      return;
+    }
+
+    if (m.prefix === dungeonCmd.RAID_PREF_STAMINA_TOGGLE_PREFIX) {
+      // StringSelect 值：'on' / 'off'
+      const themeId = m.payload.split("_")[1]; // 可選
+      const value = interaction.values?.[0];
+      if (!(await deferUpdateSafe(interaction))) return;
+      await dungeonService.setAutoPotionPref(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        autoStamina: value === "on",
+      });
+      const status = await dungeonService.getDungeonStatus(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+      });
+      await interaction.editReply({
+        components: [dungeonCmd.buildSettingsPanel(interaction.user.id, status, themeId)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      trackSuccess("raid-pref-sta-toggle");
+      return;
+    }
+
+    if (m.prefix === dungeonCmd.RAID_PREF_STAMINA_TIER_PREFIX) {
+      const themeId = m.payload.split("_")[1]; // 可選
+      const value = interaction.values?.[0];
+      if (!(await deferUpdateSafe(interaction))) return;
+      await dungeonService.setAutoPotionPref(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        staminaTier: value,
+      });
+      const status = await dungeonService.getDungeonStatus(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+        member: interaction.member,
+      });
+      await interaction.editReply({
+        components: [dungeonCmd.buildSettingsPanel(interaction.user.id, status, themeId)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+      trackSuccess("raid-pref-sta-tier");
       return;
     }
   } catch (err) {
