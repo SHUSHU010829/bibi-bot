@@ -131,6 +131,40 @@ const BACKFILL_MAP = {
     return { progress: n };
   },
 
+  // ── CD 縮短券任務：挖礦 / 釣魚次數（MineLogs / FishLogs 皆為每次一筆）──
+  daily_cd_mine: async (client, userId, guildId) => {
+    if (!client.mineLogsCollection) return null;
+    const { start, end } = todayTsRange();
+    const n = await client.mineLogsCollection
+      .countDocuments({ user_id: userId, guild_id: guildId, ts: { $gte: start, $lte: end } })
+      .catch(() => 0);
+    return { progress: n };
+  },
+  weekly_cd_mine: async (client, userId, guildId) => {
+    if (!client.mineLogsCollection) return null;
+    const { start, end } = weekTsRange();
+    const n = await client.mineLogsCollection
+      .countDocuments({ user_id: userId, guild_id: guildId, ts: { $gte: start, $lte: end } })
+      .catch(() => 0);
+    return { progress: n };
+  },
+  daily_cd_fish: async (client, userId, guildId) => {
+    if (!client.fishLogsCollection) return null;
+    const { start, end } = todayTsRange();
+    const n = await client.fishLogsCollection
+      .countDocuments({ user_id: userId, guild_id: guildId, ts: { $gte: start, $lte: end } })
+      .catch(() => 0);
+    return { progress: n };
+  },
+  weekly_cd_fish: async (client, userId, guildId) => {
+    if (!client.fishLogsCollection) return null;
+    const { start, end } = weekTsRange();
+    const n = await client.fishLogsCollection
+      .countDocuments({ user_id: userId, guild_id: guildId, ts: { $gte: start, $lte: end } })
+      .catch(() => 0);
+    return { progress: n };
+  },
+
   // ── 賣礦（CoinTransactions source=mining_sell）────────────
   daily_sell_ore: async (client, userId, guildId) => {
     if (!client.coinTransactionsCollection) return null;

@@ -1,10 +1,10 @@
 require("colors");
 const { EmbedBuilder, MessageFlags } = require("discord.js");
-const { COIN_EMOJI } = require("../../constants/coin");
+const questRewards = require("./questRewards");
 const questNotifyPref = require("./questNotifyPref");
 const notifyPrefs = require("../reminders/notifyPrefs");
 
-// COIN_EMOJI 為動態自訂 emoji，只會在 Embed 描述渲染；標題／footer 用 🪙 文字。
+// 獎勵文字（金幣 + 道具）走 questRewards.rewardText；標題／footer 用 🪙 文字。
 // optOut：被動任務的 DM 才附「如何關閉提醒」的 footer；ephemeral 私人回覆不附。
 const buildClaimEmbed = (claimed, { optOut = false } = {}) => {
   const tag = claimed.period === "weekly" ? "📅 週常" : "🌞 每日";
@@ -12,7 +12,7 @@ const buildClaimEmbed = (claimed, { optOut = false } = {}) => {
     .setColor(0xfee75c)
     .setTitle("🪙 任務完成！")
     .setDescription(
-      `${tag} ・ **${claimed.name}**\n自動入帳 **+${claimed.reward.toLocaleString()}** ${COIN_EMOJI}`
+      `${tag} ・ **${claimed.name}**\n自動入帳 ${questRewards.rewardText(claimed)}`
     );
   if (optOut) {
     embed.setFooter({ text: "不想再收到提醒？用 /通知設定 即可關閉" });

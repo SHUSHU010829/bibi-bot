@@ -14,6 +14,7 @@ const { questSystem } = require("../../config");
 const questService = require("../../features/quests/questService");
 const questClaimButton = require("../../features/quests/questClaimButton");
 const { buildQuestContainer } = require("../../features/quests/questView");
+const questRewards = require("../../features/quests/questRewards");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 async function replyEphemeral(interaction, content) {
@@ -93,13 +94,17 @@ module.exports = async (client, interaction) => {
 
     const lines = result.claimed.map((q) => {
       const tag = q.period === "weekly" ? "📅 週常" : "🌞 每日";
-      return `${tag} ・ **${q.name}** ・ +**${q.reward.toLocaleString()}** ${COIN_EMOJI}`;
+      return `${tag} ・ **${q.name}** ・ ${questRewards.rewardText(q)}`;
     });
+    const summaryParts = [`**+${result.total.toLocaleString()}** ${COIN_EMOJI}`];
+    for (const [key, qty] of Object.entries(result.itemTotals || {})) {
+      summaryParts.push(`**${questRewards.itemRewardLabel(key)} ×${qty}**`);
+    }
     await replyEphemeral(
       interaction,
-      `${COIN_EMOJI} 共補領 **${result.claimed.length}** 筆 ・ **+${result.total.toLocaleString()}** ${COIN_EMOJI}\n${lines.join(
-        "\n"
-      )}`
+      `${COIN_EMOJI} 共補領 **${result.claimed.length}** 筆 ・ ${summaryParts.join(
+        " + "
+      )}\n${lines.join("\n")}`
     );
     trackSuccess("quest-claim-button");
   } catch (err) {

@@ -118,6 +118,22 @@
         "description": "當日種植任意作物 ≥ 1 次",
         "reward": 100,
         "target": 1
+      },
+      {
+        "id": "daily_cd_fish",
+        "name": "勤釣不倦",
+        "description": "當日成功釣魚 ≥ 8 次",
+        "reward": 150,
+        "rewardItems": { "cd_ticket": 1 },
+        "target": 8
+      },
+      {
+        "id": "daily_cd_mine",
+        "name": "勤挖不輟",
+        "description": "當日成功挖礦 ≥ 12 次",
+        "reward": 150,
+        "rewardItems": { "cd_ticket": 1 },
+        "target": 12
       }
     ],
     "weekly": [
@@ -211,6 +227,22 @@
         "description": "本週成功收成黑玫瑰 ≥ 1 次",
         "reward": 2500,
         "target": 1
+      },
+      {
+        "id": "weekly_cd_fish",
+        "name": "海釣達人",
+        "description": "本週成功釣魚 ≥ 60 次",
+        "reward": 500,
+        "rewardItems": { "cd_ticket": 3 },
+        "target": 60
+      },
+      {
+        "id": "weekly_cd_mine",
+        "name": "礦坑常駐",
+        "description": "本週成功挖礦 ≥ 80 次",
+        "reward": 500,
+        "rewardItems": { "cd_ticket": 3 },
+        "target": 80
       },
       {
         "id": "weekly_cook_50",

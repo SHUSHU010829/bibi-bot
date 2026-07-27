@@ -3,6 +3,7 @@
 // questId 可能含有底線（例：daily_messages），所以解析時取「第二個底線之後的全部」當 questId。
 
 const { ButtonBuilder, ButtonStyle } = require("discord.js");
+const questRewards = require("./questRewards");
 
 const REROLL_PREFIX = "qrr";
 const CLAIM_PREFIX = "qcl";
@@ -32,10 +33,10 @@ function parseCustomId(customId) {
 }
 
 // Section 側邊配件用：單顆「領取」按鈕（state === ready）
-function buildClaimButton({ userId, questId, reward, disabled }) {
+function buildClaimButton({ userId, questId, reward, rewardItems, disabled }) {
   return new ButtonBuilder()
     .setCustomId(buildCustomId(CLAIM_PREFIX, userId, questId))
-    .setLabel(`領取 (+${reward})`)
+    .setLabel(questRewards.claimButtonLabel({ reward, rewardItems }))
     .setEmoji("💰")
     .setStyle(ButtonStyle.Success)
     .setDisabled(!!disabled);

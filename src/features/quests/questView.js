@@ -13,6 +13,7 @@ const questService = require("./questService");
 const questClaimButton = require("./questClaimButton");
 const questManageButton = require("./questManageButton");
 const questAssignmentService = require("./questAssignmentService");
+const questRewards = require("./questRewards");
 const { COIN_EMOJI } = require("../../constants/coin");
 
 const TZ = () => questSystem?.resetTimezone || "Asia/Taipei";
@@ -60,7 +61,7 @@ const renderQuestLine = (q) => {
   return [
     `${STATE_EMOJI[q.state]} **${q.name}** ・ ${STATE_LABEL[q.state]}`,
     `-# ${q.description}`,
-    `${bar} \`${q.progress} / ${q.target}\` ・ 獎勵 **${q.reward}** ${COIN_EMOJI}`,
+    `${bar} \`${q.progress} / ${q.target}\` ・ 獎勵 ${questRewards.rewardText(q)}`,
   ].join("\n");
 };
 
@@ -110,6 +111,7 @@ function appendQuestList(container, header, quests, userId, tier, assignment) {
         userId,
         questId: q.id,
         reward: q.reward,
+        rewardItems: q.rewardItems,
       });
     } else if (showButtons) {
       accessory = questManageButton.buildRerollButton({

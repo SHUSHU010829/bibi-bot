@@ -536,6 +536,8 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
     const mineHooks = [
       { questId: "daily_mine_3" },
       { questId: "weekly_mine_20" },
+      { questId: "daily_cd_mine" },
+      { questId: "weekly_cd_mine" },
     ];
     if (RARE_ORES.includes(result.ore)) {
       mineHooks.push({ questId: "daily_rare_ore" });
@@ -1041,6 +1043,8 @@ async function runMineBatch(client, interaction, { count }) {
     const hooks = [
       { questId: "daily_mine_3", delta: result.performed },
       { questId: "weekly_mine_20", delta: result.performed },
+      { questId: "daily_cd_mine", delta: result.performed },
+      { questId: "weekly_cd_mine", delta: result.performed },
     ];
     if (result.rareActions > 0) {
       hooks.push({ questId: "daily_rare_ore", delta: result.rareActions });

@@ -10,6 +10,7 @@ const {
   isEnabled,
 } = require("./questDefinitions");
 const questAssignmentService = require("./questAssignmentService");
+const questRewards = require("./questRewards");
 const notifyQuestReady = require("./notifyQuestReady");
 
 // 進度更新後判定「剛從未達標 → 達標」就觸發通知（非阻塞）。
@@ -27,6 +28,7 @@ function fireReadyNotifyIfFlipped(client, quest, existing, doc, claimCtx) {
     id: quest.id,
     name: quest.name,
     reward: quest.reward,
+    rewardItems: quest.rewardItems || null,
     period: quest.period,
   }).catch(() => {});
 }
@@ -85,30 +87,57 @@ const tryClaimOne = async (
   const after = update?.value || update;
   if (!after) return null;
 
-  const grantResult = await grantCoins(client, {
-    userId,
-    guildId,
-    username,
-    amount: questDef.reward,
-    source: grantSourceFor(questDef.period),
-    member,
-    meta: { questId: questDef.id, period },
-  });
-
-  if (!grantResult) {
-    await client.questProgressCollection
+  const rollbackClaim = () =>
+    client.questProgressCollection
       .updateOne(
         { userId, guildId, questId: questDef.id, period },
         { $set: { claimed: false }, $unset: { claimedAt: "" } }
       )
       .catch(() => {});
-    return null;
+
+  let granted = 0;
+  if (questDef.reward > 0) {
+    const grantResult = await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      amount: questDef.reward,
+      source: grantSourceFor(questDef.period),
+      member,
+      meta: { questId: questDef.id, period },
+    });
+    if (!grantResult) {
+      await rollbackClaim();
+      return null;
+    }
+    granted = grantResult.granted;
+  }
+
+  // 道具獎勵（如 CD 縮短券）：發到 miningProfiles。純道具任務若發放失敗就還原
+  // claimed 讓玩家可重領；已入帳金幣的任務則只記 log（金幣無法回滾）。
+  let grantedItems = [];
+  if (questRewards.hasItemRewards(questDef.rewardItems)) {
+    try {
+      grantedItems = await questRewards.grantQuestItems(
+        client,
+        userId,
+        guildId,
+        questDef.rewardItems
+      );
+    } catch (e) {
+      console.log(`[QUEST] grant items ${questDef.id} for ${userId}: ${e}`.red);
+      if (questDef.reward > 0) return null;
+      await rollbackClaim();
+      return null;
+    }
   }
 
   return {
     id: questDef.id,
     name: questDef.name,
-    reward: grantResult.granted,
+    reward: granted,
+    rewardItems: questDef.rewardItems || null,
+    grantedItems,
     period: questDef.period,
   };
 };
@@ -363,6 +392,7 @@ const getStatus = async (client, userId, guildId) => {
       name: def.name,
       description: def.description,
       reward: def.reward,
+      rewardItems: def.rewardItems || null,
       target,
       progress: displayProgress,
       completed,
@@ -421,6 +451,7 @@ const claimAll = async (client, userId, guildId, member, username) => {
     .sort((a, b) => (b.reward || 0) - (a.reward || 0));
 
   const claimedList = [];
+  const itemTotals = {};
   let total = 0;
   for (const quest of ready) {
     const questDef = getQuestById(quest.id);
@@ -435,9 +466,12 @@ const claimAll = async (client, userId, guildId, member, username) => {
     if (!result) continue;
     claimedList.push(result);
     total += result.reward;
+    for (const { key, qty } of result.grantedItems || []) {
+      itemTotals[key] = (itemTotals[key] || 0) + qty;
+    }
   }
 
-  return { claimed: claimedList, total };
+  return { claimed: claimedList, total, itemTotals };
 };
 
 // 每日 23:50 cron 用：掃出所有「completed=true, claimed=false」的玩家，逐一 claimAll
