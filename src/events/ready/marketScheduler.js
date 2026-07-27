@@ -101,53 +101,69 @@ async function tickOnce(client) {
   }
   const guildIds = await listGuildIdsWithMarket(client);
   let ticked = 0;
+  let failed = 0;
   for (const guildId of guildIds) {
-    const stocks = await client.stockMarketCollection
-      .find({ guildId, enabled: { $ne: false } })
-      .toArray();
+    let stocks;
+    try {
+      stocks = await client.stockMarketCollection
+        .find({ guildId, enabled: { $ne: false } })
+        .toArray();
+    } catch (e) {
+      failed += 1;
+      console.log(`[STOCK] tick 讀取個股失敗 guild=${guildId}: ${e?.message || e}`.yellow);
+      continue;
+    }
     for (const s of stocks) {
-      const sentiment = s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways";
-      const drift = stockDrift(s.symbol, sentiment);
-      const sigma = poolParams(s.symbol)?.sigma ?? s.sigma;
-      const stepped = nextPriceAdvanced(
-        {
-          lastPrice: s.currentPrice,
-          momentum: s.momentum || 0,
-          fairValue: s.fairValue || s.currentPrice,
-        },
-        { sigma, drift, floor: s.floor, symbol: s.symbol },
-      );
-      const raw = stepped.price;
-      const ref = s.openPrice || s.currentPrice;
-      let next = clampToLimit(raw, ref, stockSystem?.limitBoard);
+      // 單一個股資料異常（缺欄位 / 引擎邊界）必須就地吞掉、換下一檔續跑。
+      // 否則整批 tick 會直接拋錯，連續 3 次觸發 cronRegistry 自動停用 → 整個
+      // 股市價格從此凍結、不再寫 StockPrices，網站「1 小時」走勢圖就變空。
+      try {
+        const sentiment = s.marketSentiment || stockSystem?.defaultMarketSentiment || "sideways";
+        const drift = stockDrift(s.symbol, sentiment);
+        const sigma = poolParams(s.symbol)?.sigma ?? s.sigma;
+        const stepped = nextPriceAdvanced(
+          {
+            lastPrice: s.currentPrice,
+            momentum: s.momentum || 0,
+            fairValue: s.fairValue || s.currentPrice,
+          },
+          { sigma, drift, floor: s.floor, symbol: s.symbol },
+        );
+        const raw = stepped.price;
+        const ref = s.openPrice || s.currentPrice;
+        let next = clampToLimit(raw, ref, stockSystem?.limitBoard);
 
-      // 累積的買 / 賣壓在此一次反映（買為正、賣為負）。單 tick 衝擊沿用
-      // maxStepFrac 上限，超過上限的股數結轉到下一個 tick 慢慢消化。
-      const impactCfg = stockSystem?.priceImpact;
-      const pending = s.pendingImpactShares || 0;
-      const update = { currentPrice: next, momentum: stepped.momentum, updatedAt: new Date() };
-      if (impactCfg?.enabled && pending !== 0) {
-        const perShare = impactCfg.perShareFrac ?? 0;
-        const capShares = perShare > 0 ? (impactCfg.maxStepFrac ?? 0.05) / perShare : Math.abs(pending);
-        const applyShares = Math.min(Math.abs(pending), capShares);
-        const impacted = priceImpact(next, applyShares, pending > 0 ? "buy" : "sell", impactCfg, s.floor);
-        next = clampToLimit(impacted.price, ref, stockSystem?.limitBoard);
-        update.currentPrice = next;
-        update.pendingImpactShares = pending - Math.sign(pending) * applyShares;
+        // 累積的買 / 賣壓在此一次反映（買為正、賣為負）。單 tick 衝擊沿用
+        // maxStepFrac 上限，超過上限的股數結轉到下一個 tick 慢慢消化。
+        const impactCfg = stockSystem?.priceImpact;
+        const pending = s.pendingImpactShares || 0;
+        const update = { currentPrice: next, momentum: stepped.momentum, updatedAt: new Date() };
+        if (impactCfg?.enabled && pending !== 0) {
+          const perShare = impactCfg.perShareFrac ?? 0;
+          const capShares = perShare > 0 ? (impactCfg.maxStepFrac ?? 0.05) / perShare : Math.abs(pending);
+          const applyShares = Math.min(Math.abs(pending), capShares);
+          const impacted = priceImpact(next, applyShares, pending > 0 ? "buy" : "sell", impactCfg, s.floor);
+          next = clampToLimit(impacted.price, ref, stockSystem?.limitBoard);
+          update.currentPrice = next;
+          update.pendingImpactShares = pending - Math.sign(pending) * applyShares;
+        }
+
+        await client.stockMarketCollection.updateOne(
+          { _id: s._id },
+          { $set: update }
+        );
+        await client.stockPricesCollection.insertOne({
+          guildId,
+          symbol: s.symbol,
+          price: next,
+          timestamp: new Date(),
+          source: "tick",
+        }).catch(() => {});
+        ticked += 1;
+      } catch (e) {
+        failed += 1;
+        console.log(`[STOCK] tick 個股失敗 ${s?.symbol} guild=${guildId}: ${e?.message || e}`.yellow);
       }
-
-      await client.stockMarketCollection.updateOne(
-        { _id: s._id },
-        { $set: update }
-      );
-      await client.stockPricesCollection.insertOne({
-        guildId,
-        symbol: s.symbol,
-        price: next,
-        timestamp: new Date(),
-        source: "tick",
-      }).catch(() => {});
-      ticked += 1;
     }
   }
 
@@ -156,7 +172,7 @@ async function tickOnce(client) {
     console.log(`[STOCK] margin scan failed: ${e?.message || e}`.yellow)
   );
 
-  return { ticked, guilds: guildIds.length };
+  return { ticked, failed, guilds: guildIds.length };
 }
 
 // 突發事件 roll + 播報重繪，與價格 tick 拆開跑（較低頻，避免 Discord 編輯過於頻繁撞 rate limit）。
@@ -589,6 +605,9 @@ module.exports = async (client) => {
     label: "股市價格 tick",
     schedule: stockSystem.tickCronSchedule || "* * * * *",
     timezone: tz,
+    // 每分鐘心跳：短暫 DB 抖動不該讓它被永久停用（停了就得重啟 bot 才恢復，
+    // 期間股價凍結、網站走勢圖變空）。個股層級的錯誤已在 tickOnce 內就地隔離。
+    maxConsecutiveErrors: Infinity,
     runner: () => tickOnce(client),
   });
 
