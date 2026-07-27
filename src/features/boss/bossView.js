@@ -6,10 +6,11 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
-const { boss } = require("../../config");
+const { boss, dungeon } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const bossEngine = require("./bossEngine");
+const buildingService = require("../guild_club/buildingService");
 
 function nameOf(guild, userId) {
   return plainifyUserMentions(guild, `<@${userId}>`);
@@ -57,6 +58,63 @@ function infoButton(userId) {
     .setLabel("查看戰況")
     .setEmoji("📊")
     .setStyle(ButtonStyle.Secondary);
+}
+
+// 沿用背包的體力藥水處理器（mining_use_stamina_potion_<ownerId>，tier 省略＝用持有中最大的一瓶）
+function staminaPotionButton(userId) {
+  return new ButtonBuilder()
+    .setCustomId(`mining_use_stamina_potion_${userId}`)
+    .setLabel("喝體力藥水")
+    .setEmoji("🧪")
+    .setStyle(ButtonStyle.Success);
+}
+
+function weaponButton(userId) {
+  return new ButtonBuilder()
+    .setCustomId(`boss_weapon_${userId}`)
+    .setLabel("查看武器耐久")
+    .setEmoji("🗡️")
+    .setStyle(ButtonStyle.Secondary);
+}
+
+// 攻擊結果附帶的「目前戰力加成」區塊：攻擊力 + 食物 buff + 公會世界王加成 + Combo。
+function buffBlockContent(buffInfo) {
+  if (!buffInfo) return null;
+  const lines = [
+    `⚔️ 攻擊力 **${buffInfo.atk}**${buffInfo.luckBonus > 0 ? `　🍀 幸運 +${Math.round(buffInfo.luckBonus * 100)}%` : ""}`,
+  ];
+  for (const f of buffInfo.foodBuffs || []) {
+    lines.push(`${f.emoji} **${f.name}**：${f.desc}${f.expire}`);
+  }
+  const gbits = [];
+  if (buffInfo.bossAtkPct > 0) gbits.push(`攻擊力 +${Math.round(buffInfo.bossAtkPct * 100)}%`);
+  if (buffInfo.bossDmgPct > 0) gbits.push(`傷害 +${buffInfo.bossDmgPct}%`);
+  if (gbits.length) lines.push(`🏰 公會世界王加成：${gbits.join("・")}`);
+  if (buffInfo.comboActive) lines.push(`⚡ Combo 加成生效中（×${boss?.combo?.bonusMult ?? 1.3}）`);
+  if (!(buffInfo.foodBuffs || []).length) {
+    lines.push("-# 沒有食物 buff — 用 /烹飪 煮「地下城 ATK / 全屬性」料理，打魔王更痛");
+  }
+  return `**🍽️ 目前戰力加成**\n${lines.join("\n")}`;
+}
+
+function addBuffBlock(container, buffInfo) {
+  const content = buffBlockContent(buffInfo);
+  if (!content) return;
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+}
+
+// 攻擊結果 / 戰況共用的操作按鈕列：能攻擊時放「再次攻擊」，一律附喝藥水 + 查耐久 + 查戰況。
+function actionRow(userId, { canAttack, staminaEmpty } = {}) {
+  const row = new ActionRowBuilder();
+  if (canAttack) {
+    const btn = attackButton(userId);
+    if (staminaEmpty) btn.setDisabled(true);
+    row.addComponents(btn);
+  }
+  row.addComponents(staminaPotionButton(userId), weaponButton(userId), infoButton(userId));
+  return row;
 }
 
 function buildAttackResultContainer({ userId, displayName, result }) {
@@ -143,13 +201,13 @@ function buildAttackResultContainer({ userId, displayName, result }) {
     if (rl) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(rl));
   }
 
-  if (!result.killed && result.attackCount < result.attackLimit) {
+  if (!result.killed) {
+    addBuffBlock(container, result.buffInfo);
     container.addActionRowComponents(
-      new ActionRowBuilder().addComponents(attackButton(userId), infoButton(userId)),
-    );
-  } else if (!result.killed) {
-    container.addActionRowComponents(
-      new ActionRowBuilder().addComponents(infoButton(userId)),
+      actionRow(userId, {
+        canAttack: result.attackCount < result.attackLimit,
+        staminaEmpty: result.stamina <= 0,
+      }),
     );
   }
   return container;
@@ -233,16 +291,13 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# 體力低落，建議等回復再戰`));
   }
 
-  if (!killed && last.attackCount < last.attackLimit) {
-    const canAttack = last.stamina > 0;
-    const btn = attackButton(userId);
-    if (!canAttack) btn.setDisabled(true);
+  if (!killed) {
+    addBuffBlock(container, last.buffInfo);
     container.addActionRowComponents(
-      new ActionRowBuilder().addComponents(btn, infoButton(userId)),
-    );
-  } else if (!killed) {
-    container.addActionRowComponents(
-      new ActionRowBuilder().addComponents(infoButton(userId)),
+      actionRow(userId, {
+        canAttack: last.attackCount < last.attackLimit,
+        staminaEmpty: last.stamina <= 0,
+      }),
     );
   }
 
@@ -304,9 +359,58 @@ function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive
       );
   }
 
-  container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(attackButton(userId), infoButton(userId)),
-  );
+  container.addActionRowComponents(actionRow(userId, { canAttack: true }));
+  return container;
+}
+
+// 查看武器耐久（攻擊結果的快捷鈕）。順帶回答「打魔王不會損耗武器耐久」。
+function buildWeaponContainer({ profile, weaponMaxPct }) {
+  const weapons = dungeon?.weapons || {};
+  const key = profile?.weapon || "fist";
+  const wdef = weapons[key] || weapons.fist || {};
+  const hasWeapon = key && key !== "fist";
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_NORMAL)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent("# 🗡️ 武器耐久"))
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  if (!hasWeapon) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `目前武器：👊 **${weapons.fist?.name || "赤手空拳"}**（攻擊力 ${dungeon?.baseAtk ?? 20}）\n赤手空拳也能揍魔王，但傷害偏低。\n-# 用 /合成 打造鐵劍以上的武器提升攻擊力`,
+      ),
+    );
+  } else {
+    const baseMax = profile.weapon_max_durability;
+    const effMax = buildingService.effectiveWeaponMaxDurability(baseMax, weaponMaxPct);
+    const cur =
+      typeof profile.weapon_durability === "number" ? profile.weapon_durability : effMax;
+    const durText = typeof effMax === "number" ? `${cur}/${effMax}` : `${cur}`;
+    const lines = [
+      `目前武器：${wdef.emoji || "🗡️"} **${wdef.name || key}**（攻擊力 +${wdef.atk || 0}）`,
+      `🛡️ 耐久：**${durText}**`,
+    ];
+    if (weaponMaxPct > 0 && typeof baseMax === "number") {
+      lines.push(`-# 🏰 公會鐵匠鋪：耐久上限 +${weaponMaxPct}%（${baseMax} → ${effMax}）`);
+    }
+    const warn = dungeon?.durabilityWarn || {};
+    if (typeof effMax === "number") {
+      if (cur <= (warn.critical ?? 1)) {
+        lines.push("⚠️ 耐久快見底了！去 /背包 用材料或磨石修復再進地下城。");
+      } else if (cur <= (warn.low ?? 5)) {
+        lines.push("⚠️ 耐久偏低，記得找時間修復。");
+      }
+    }
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+  }
+
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "✅ **攻擊魔王不會損耗武器耐久**\n-# 武器耐久只在 /地下城 戰鬥時消耗；打魔王可以放心連續出擊。",
+      ),
+    );
   return container;
 }
 
@@ -499,6 +603,7 @@ module.exports = {
   buildAttackResultContainer,
   buildComboResultContainer,
   buildInfoContainer,
+  buildWeaponContainer,
   buildErrorContainer,
   buildSettlementContainer,
   buildSummonProgressContainer,
