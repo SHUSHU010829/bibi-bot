@@ -43,7 +43,7 @@ const SLOW_RUN_MS = 3000;
 const jobs = new Map();
 
 function registerCron(client, opts) {
-  const { name, label, schedule, timezone = "Asia/Taipei", runner } = opts;
+  const { name, label, schedule, timezone = "Asia/Taipei", runner, maxConsecutiveErrors } = opts;
   if (!name || !runner) {
     throw new Error("registerCron: name 與 runner 必填");
   }
@@ -52,12 +52,19 @@ function registerCron(client, opts) {
     return;
   }
 
+  // 心跳型任務（如股市每分鐘 tick）不該因短暫連續錯誤被永久停用——一旦停用就
+  // 要人工重啟 bot 才會恢復，期間股價凍結、網站走勢圖變空。傳 Infinity 可讓它
+  // 持續重試、隨下次成功自動康復。未指定則沿用預設門檻。
+  const errorLimit =
+    maxConsecutiveErrors == null ? MAX_CONSECUTIVE_ERRORS : maxConsecutiveErrors;
+
   const job = {
     name,
     label: label || name,
     schedule,
     timezone,
     runner,
+    errorLimit,
     consecutiveErrors: 0,
     task: null,
     stopped: false,
@@ -69,7 +76,7 @@ function registerCron(client, opts) {
       schedule,
       async () => {
         await runOnce(client, job, "scheduled");
-        if (job.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS && job.task) {
+        if (job.consecutiveErrors >= job.errorLimit && job.task) {
           job.task.stop();
           job.stopped = true;
           console.log(
