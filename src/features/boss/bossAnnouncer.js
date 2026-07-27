@@ -15,6 +15,29 @@ async function resolveChannel(client, id) {
   return ch?.isTextBased?.() ? ch : null;
 }
 
+// 招喚場「出場預告」：魔王甦醒但還沒登場，一小時後才正式出場。
+async function announcePreview(client, bossDoc, opts = {}) {
+  const ch = await resolveChannel(client, boss?.announceChannelId);
+  if (!ch) return;
+  const spawnAt = Math.floor((bossDoc.spawn_at || Date.now()) / 1000);
+  const intro = boss?.summon?.previewIntro || "討伐能量集滿，一隻魔王正在甦醒——";
+  const flavor = pickFrom(boss?.summon?.previewIntros);
+
+  const embed = new EmbedBuilder()
+    .setColor(0x9b59b6)
+    .setTitle(`🔮 出場預告：${bossDoc.emoji} ${bossDoc.name} 即將現身！`)
+    .setDescription(flavor ? `${intro}\n\n${flavor}` : intro)
+    .addFields(
+      { name: "⏰ 正式出場", value: `<t:${spawnAt}:R>（<t:${spawnAt}:t>）`, inline: false },
+      { name: "🗡️ 討伐準備", value: "趁現在 /合成 強化武器、/烹飪 備 buff，出場後就能立刻開打！", inline: false },
+    )
+    .setFooter({
+      text: `由社群 ${opts.contributorCount || 0} 位冒險者的地下城探索喚醒 · 出場後 /魔王 攻擊 一起討伐！`,
+    });
+
+  await ch.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch(() => {});
+}
+
 async function announceSpawn(client, bossDoc, opts = {}) {
   const ch = await resolveChannel(client, boss?.announceChannelId);
   if (!ch) return;
@@ -94,6 +117,7 @@ async function announceSettlement(client, settlement) {
 }
 
 module.exports = {
+  announcePreview,
   announceSpawn,
   announcePhase,
   announceCombo,

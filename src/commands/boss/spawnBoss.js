@@ -72,11 +72,15 @@ module.exports = {
 
       if (!res.ok) {
         if (res.reason === "already_active") {
+          const pending = res.boss.status === "pending";
+          const body = pending
+            ? `**${res.boss.emoji} ${res.boss.name}** 正處於出場預告中，將於 <t:${Math.floor((res.boss.spawn_at || Date.now()) / 1000)}:R> 登場。`
+            : `**${res.boss.emoji} ${res.boss.name}** 仍在進行中（HP ${(res.boss.current_hp ?? 0).toLocaleString()}/${(res.boss.max_hp ?? 0).toLocaleString()}）。`;
           return interaction.editReply({
             components: [
               bossView.buildErrorContainer({
                 title: "⚔️ 已有 BOSS 在場",
-                body: `**${res.boss.emoji} ${res.boss.name}** 仍在進行中（HP ${res.boss.current_hp.toLocaleString()}/${res.boss.max_hp.toLocaleString()}）。`,
+                body,
                 hint: "等這場結算後才能再召喚",
               }),
             ],

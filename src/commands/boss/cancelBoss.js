@@ -23,13 +23,13 @@ module.exports = {
   run: async (client, interaction) => {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
-      const active = await bossEngine.getActiveBoss(client, interaction.guildId);
+      const active = await bossEngine.getLiveBoss(client, interaction.guildId);
       if (!active) {
         return interaction.editReply({
           components: [
             bossView.buildErrorContainer({
               title: "🌙 沒有正在進行的 BOSS",
-              body: "目前沒有 active 狀態的 BOSS 可以清除。",
+              body: "目前沒有 active / pending 狀態的 BOSS 可以清除。",
             }),
           ],
           flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
@@ -37,7 +37,7 @@ module.exports = {
       }
 
       await client.bossEventsCollection.updateOne(
-        { boss_id: active.boss_id, status: "active" },
+        { boss_id: active.boss_id, status: active.status },
         {
           $set: {
             status: "aborted",
@@ -66,8 +66,11 @@ module.exports = {
         }
       }
 
+      const hpText = active.status === "pending"
+        ? "出場預告中"
+        : `HP ${(active.current_hp ?? 0).toLocaleString()}/${(active.max_hp ?? 0).toLocaleString()}`;
       return interaction.editReply({
-        content: `✅ 已清除 ${active.emoji} **${active.name}**（HP ${active.current_hp.toLocaleString()}/${active.max_hp.toLocaleString()}）\n-# 此場不結算、不發獎`,
+        content: `✅ 已清除 ${active.emoji} **${active.name}**（${hpText}）\n-# 此場不結算、不發獎`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (e) {
