@@ -44,8 +44,10 @@ const RAID_CHOICE_PREFIX = "raid_choice_";     // 選擇事件：raid_choice_<ow
 const RAID_STAMINA_PICK_PREFIX = "raid_stamina_pick_"; // 體力耗盡時先選要喝哪個大小：raid_stamina_pick_<ownerId>
 const RAID_USE_STAMINA_PREFIX = "raid_use_stamina_"; // 喝體力藥水：raid_use_stamina_<ownerId>_<tier?>（tier ∈ small/medium/large；缺省用最大）
 const RAID_SETTINGS_PREFIX = "raid_settings_"; // 開設定面板：raid_settings_<ownerId>
-const RAID_PREF_TOGGLE_PREFIX = "raid_pref_toggle_"; // SelectMenu：自動藥水開關
-const RAID_PREF_TIER_PREFIX = "raid_pref_tier_";     // SelectMenu：用哪瓶偏好
+const RAID_PREF_TOGGLE_PREFIX = "raid_pref_toggle_"; // SelectMenu：自動生命藥水開關
+const RAID_PREF_TIER_PREFIX = "raid_pref_tier_";     // SelectMenu：生命藥水用哪瓶偏好
+const RAID_PREF_STAMINA_TOGGLE_PREFIX = "raid_pref_sta_toggle_"; // SelectMenu：自動體力藥水開關
+const RAID_PREF_STAMINA_TIER_PREFIX = "raid_pref_sta_tier_";     // SelectMenu：體力藥水用哪瓶偏好
 
 const MAX_LABEL_LEN = 80;
 
@@ -57,6 +59,17 @@ function oreLabel(oreKey) {
 function weaponLabel(key) {
   const def = (dungeon?.weapons || {})[key] || {};
   return `${def.emoji || "👊"} ${def.name || key}`;
+}
+
+// 武器快壞 / 已斷時的捷徑：Discord 按鈕無法直接觸發 slash command，
+// 改用連結按鈕把玩家導到可用 /合成 的挖礦頻道。無 guild / 頻道則回 null。
+function craftLinkButton(guildId, label = "🛠️ 去合成新武器") {
+  const channelId = commandChannels?.mining?.[0] || normalChannelId;
+  if (!guildId || !channelId) return null;
+  return new ButtonBuilder()
+    .setStyle(ButtonStyle.Link)
+    .setLabel(label)
+    .setURL(`https://discord.com/channels/${guildId}/${channelId}`);
 }
 
 async function dmWeaponLowDurability(interaction, weaponKey, durabilityAfter, level) {
@@ -135,6 +148,18 @@ function appendCombatExtras(container, result, interaction) {
         result.weaponDurabilityWarnCrossed,
       ).catch(() => {});
     }
+  }
+
+  // 武器已斷 / 耐久偏低 → 附一顆「去合成」捷徑按鈕，玩家不用自己找頻道。
+  const warnCfg = dungeon?.durabilityWarn || {};
+  const weaponNeedsCraft =
+    result.weaponBroke ||
+    (result.weaponDurabilityAfter != null &&
+      typeof warnCfg.low === "number" &&
+      result.weaponDurabilityAfter <= warnCfg.low);
+  if (weaponNeedsCraft && interaction) {
+    const btn = craftLinkButton(interaction.guildId);
+    if (btn) container.addActionRowComponents(new ActionRowBuilder().addComponents(btn));
   }
 
   if (result.encounter) {
@@ -338,43 +363,70 @@ function buildActionsRow(ownerId, status, themeId = "mine") {
 
 // Phase H+ 設定面板：自動藥水開關 + 用哪瓶優先
 function buildSettingsPanel(ownerId, status, themeId = "mine") {
-  const autoPotion = status.autoPotion !== false;
-  const tier = status.autoPotionTier || "smallest";
-  const tierLabel = {
+  const TIER_LABELS = {
     smallest: "最小可用瓶（最省，預設）",
     largest: "最大可用瓶（救急）",
-    small: "只用 💊 小瓶",
-    medium: "只用 💊 中瓶",
-    large: "只用 💊 大瓶",
-  }[tier] || tier;
+    small: "只用小瓶",
+    medium: "只用中瓶",
+    large: "只用大瓶",
+  };
+  const autoPotion = status.autoPotion !== false;
+  const tier = status.autoPotionTier || "smallest";
+  const autoStamina = status.autoStamina === true;
+  const staTier = status.autoStaminaTier || "smallest";
+
   const stateLines = [
-    `自動藥水：**${autoPotion ? "✅ 開啟" : "⛔ 關閉"}**`,
-    `優先順序：**${tierLabel}**`,
-    "-# HP ≤ 30% 時觸發；開關關閉時戰鬥中完全不自動吃，請在面板上手動補血。",
+    `💊 自動生命藥水：**${autoPotion ? "✅ 開啟" : "⛔ 關閉"}**（${TIER_LABELS[tier] || tier}）`,
+    "-# HP ≤ 30% 時自動補血；關閉時戰鬥中完全不自動吃，請在面板手動補血。",
+    `🥤 自動體力藥水：**${autoStamina ? "✅ 開啟" : "⛔ 關閉"}**（${TIER_LABELS[staTier] || staTier}）`,
+    "-# 體力不足以進場時自動喝體力藥水補到夠；關閉時需自己按按鈕喝。",
   ];
 
   const toggleSelect = new StringSelectMenuBuilder()
     .setCustomId(`${RAID_PREF_TOGGLE_PREFIX}${ownerId}_${themeId}`)
-    .setPlaceholder("自動藥水：開 / 關")
+    .setPlaceholder("自動生命藥水：開 / 關")
     .addOptions(
       new StringSelectMenuOptionBuilder()
-        .setLabel("✅ 開啟自動藥水（HP ≤ 30% 自動吃）")
+        .setLabel("✅ 開啟自動生命藥水（HP ≤ 30% 自動吃）")
         .setValue("on")
         .setDefault(autoPotion),
       new StringSelectMenuOptionBuilder()
-        .setLabel("⛔ 關閉自動藥水（完全手動補血）")
+        .setLabel("⛔ 關閉自動生命藥水（完全手動補血）")
         .setValue("off")
         .setDefault(!autoPotion),
     );
   const tierSelect = new StringSelectMenuBuilder()
     .setCustomId(`${RAID_PREF_TIER_PREFIX}${ownerId}_${themeId}`)
-    .setPlaceholder("用哪瓶優先")
+    .setPlaceholder("生命藥水用哪瓶優先")
     .addOptions(
       new StringSelectMenuOptionBuilder().setLabel("最小可用瓶（小→中→大，最省）").setValue("smallest").setDefault(tier === "smallest"),
       new StringSelectMenuOptionBuilder().setLabel("最大可用瓶（大→中→小，救急）").setValue("largest").setDefault(tier === "largest"),
       new StringSelectMenuOptionBuilder().setLabel("只用 💊 小瓶").setValue("small").setDefault(tier === "small"),
       new StringSelectMenuOptionBuilder().setLabel("只用 💊 中瓶").setValue("medium").setDefault(tier === "medium"),
       new StringSelectMenuOptionBuilder().setLabel("只用 💊 大瓶").setValue("large").setDefault(tier === "large"),
+    );
+  const staToggleSelect = new StringSelectMenuBuilder()
+    .setCustomId(`${RAID_PREF_STAMINA_TOGGLE_PREFIX}${ownerId}_${themeId}`)
+    .setPlaceholder("自動體力藥水：開 / 關")
+    .addOptions(
+      new StringSelectMenuOptionBuilder()
+        .setLabel("✅ 開啟自動體力藥水（體力不足自動喝）")
+        .setValue("on")
+        .setDefault(autoStamina),
+      new StringSelectMenuOptionBuilder()
+        .setLabel("⛔ 關閉自動體力藥水（自己手動喝）")
+        .setValue("off")
+        .setDefault(!autoStamina),
+    );
+  const staTierSelect = new StringSelectMenuBuilder()
+    .setCustomId(`${RAID_PREF_STAMINA_TIER_PREFIX}${ownerId}_${themeId}`)
+    .setPlaceholder("體力藥水用哪瓶優先")
+    .addOptions(
+      new StringSelectMenuOptionBuilder().setLabel("最小可用瓶（小→中→大，最省）").setValue("smallest").setDefault(staTier === "smallest"),
+      new StringSelectMenuOptionBuilder().setLabel("最大可用瓶（大→中→小，救急）").setValue("largest").setDefault(staTier === "largest"),
+      new StringSelectMenuOptionBuilder().setLabel("只用 🥤 小瓶").setValue("small").setDefault(staTier === "small"),
+      new StringSelectMenuOptionBuilder().setLabel("只用 🧴 中瓶").setValue("medium").setDefault(staTier === "medium"),
+      new StringSelectMenuOptionBuilder().setLabel("只用 🍶 大瓶").setValue("large").setDefault(staTier === "large"),
     );
 
   const container = new ContainerBuilder()
@@ -384,6 +436,8 @@ function buildSettingsPanel(ownerId, status, themeId = "mine") {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(stateLines.join("\n")))
     .addActionRowComponents(new ActionRowBuilder().addComponents(toggleSelect))
     .addActionRowComponents(new ActionRowBuilder().addComponents(tierSelect))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(staToggleSelect))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(staTierSelect))
     .addActionRowComponents(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -461,6 +515,18 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
   container.addActionRowComponents(themeRow);
   container.addActionRowComponents(buildActionsRow(interaction.user.id, status, themeId));
 
+  // 武器快斷 / 已退回赤手 → 面板直接附「去合成」捷徑。
+  const warnCfg = dungeon?.durabilityWarn || {};
+  const weaponNeedsCraft =
+    status.weapon === "fist" ||
+    (typeof status.weaponDurability === "number" &&
+      typeof warnCfg.low === "number" &&
+      status.weaponDurability <= warnCfg.low);
+  if (weaponNeedsCraft) {
+    const btn = craftLinkButton(interaction.guildId, status.weapon === "fist" ? "🛠️ 去合成武器" : "🛠️ 武器快斷了，去合成");
+    if (btn) container.addActionRowComponents(new ActionRowBuilder().addComponents(btn));
+  }
+
   // Phase H+ mini-BOSS 遭遇：蓄力滿即「當道」，強制迎戰（但可先去準備補血/換裝）。
   if (bossPending) {
     const mb = mbState.miniBoss;
@@ -533,7 +599,7 @@ function deathDropLabel(drop) {
   return drop.key;
 }
 
-function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName = "BOSS" } = {}) {
+function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName = "BOSS", guildId = null } = {}) {
   const container = new ContainerBuilder();
   const isWin = result.won;
   container.setAccentColor(isWin ? 0x2ecc71 : 0xe74c3c);
@@ -564,6 +630,11 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
   stateLines.push(`❤️ HP：${result.hpBefore} → **${result.hpAfter}/${result.hpMax}** \`${hpBar(result.hpAfter, result.hpMax)}\``);
   if (result.shieldBefore != null) stateLines.push(`🛡️ 盾耐久：${result.shieldBefore} → ${result.shieldAfter}`);
   stateLines.push(`🔋 體力：${result.staminaBefore} → ${result.staminaAfter}/${result.staminaMax}`);
+  if (result.autoStamina?.drank > 0) {
+    const TIER_NAME = { small: "小", medium: "中", large: "大" };
+    const summary = result.autoStamina.tiers.map((t) => `${TIER_NAME[t] || t}`).join("、");
+    stateLines.push(`-# 🥤 自動喝了體力藥水（${summary}）補足體力進場`);
+  }
   if (result.weaponDurabilityAfter != null) {
     stateLines.push(`⚔️ 武器耐久：${weaponLabel(result.weaponBefore)} 剩 ${result.weaponDurabilityAfter}（-${result.weaponDurabilityCost}）`);
   } else if (result.weaponBroke) {
@@ -670,16 +741,22 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
   const hasPotion = (potionsAfter.small + potionsAfter.medium + potionsAfter.large) > 0;
   // 補血預設用最小可用瓶（與戰中自動藥水規則一致，避免浪費）
   const healTier = potionsAfter.small > 0 ? "small" : potionsAfter.medium > 0 ? "medium" : potionsAfter.large > 0 ? "large" : null;
-  // mini-BOSS 打完一場就消耗遭遇（勝敗皆然），無法立刻再戰 → 主鈕改為回主面板。
+  // mini-BOSS 打完一場就消耗遭遇（勝敗皆然），無法立刻再戰同一隻 → 主鈕給「繼續打該層」，
+  // 讓玩家直接重刷 5F 累積下一次遭遇。
   // 一般樓層戰後若 mini-BOSS 已蓄力滿（當道），強制把主鈕換成「迎戰 BOSS」，
   // 不提供再戰 / 換樓層等刷樓層選項，避免玩家用結算面板繞過 BOSS。
   const row = new ActionRowBuilder();
   if (result.isMiniBoss) {
+    // mini-BOSS 打完（勝敗皆消耗遭遇）→ 想再遇到得重刷該層，直接給「繼續打該層」捷徑。
     row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${RAID_AGAIN_PREFIX}${ownerId}_${result.theme}_${result.floor}`)
+        .setLabel(`⚔️ 繼續打 ${result.floor}F`)
+        .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId(`${RAID_PANEL_PREFIX}${ownerId}_${result.theme}`)
         .setLabel("⬅️ 回主面板")
-        .setStyle(ButtonStyle.Primary),
+        .setStyle(ButtonStyle.Secondary),
     );
   } else if (bossPending) {
     row.addComponents(
@@ -735,6 +812,19 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
       new TextDisplayBuilder().setContent("-# 你的武器斷了！到 /合成 打一把新的，或到 /裝備 用劣質磨石修復。"),
     );
   }
+
+  // 武器已斷 / 耐久偏低 → 附「去合成」捷徑按鈕。
+  const warnCfg = dungeon?.durabilityWarn || {};
+  const weaponNeedsCraft =
+    result.weaponBroke ||
+    (result.weaponDurabilityAfter != null &&
+      typeof warnCfg.low === "number" &&
+      result.weaponDurabilityAfter <= warnCfg.low);
+  if (weaponNeedsCraft) {
+    const btn = craftLinkButton(guildId);
+    if (btn) container.addActionRowComponents(new ActionRowBuilder().addComponents(btn));
+  }
+
   if (result.hpAfter < result.hpMax * 0.3) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent("-# ❤️ HP 偏低，建議補血或先休息再戰。/商店 → 挖礦道具 有生命藥水。"),
@@ -1319,6 +1409,9 @@ module.exports = {
   RAID_SETTINGS_PREFIX,
   RAID_PREF_TOGGLE_PREFIX,
   RAID_PREF_TIER_PREFIX,
+  RAID_PREF_STAMINA_TOGGLE_PREFIX,
+  RAID_PREF_STAMINA_TIER_PREFIX,
+  craftLinkButton,
   buildEntryPanel,
   buildBattleResultPanel,
   buildBossPrepPanel,

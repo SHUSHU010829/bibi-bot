@@ -224,6 +224,38 @@ async function useStaminaPotion(client, { userId, guildId, member, tier }) {
   };
 }
 
+// 自動喝體力藥水：依偏好挑一瓶（回傳 tier 或 null）。
+// 偏好同生命藥水設定：smallest / largest / small / medium / large。
+function pickAutoStaminaTier(profile, tierPref = "smallest") {
+  const has = (t) => (profile?.[STAMINA_POTION_TIERS[t].field] || 0) > 0;
+  if (["small", "medium", "large"].includes(tierPref)) {
+    return has(tierPref) ? tierPref : null;
+  }
+  const order = tierPref === "largest"
+    ? ["large", "medium", "small"]
+    : ["small", "medium", "large"];
+  return order.find(has) || null;
+}
+
+// 進場前體力不足時自動補：連續喝體力藥水直到夠進場（或喝光 / 補滿）。
+// 回傳喝掉的瓶數與明細，交給呼叫端顯示。
+async function autoDrinkStaminaFor(client, { userId, guildId, member, needed, tierPref }) {
+  const tiers = [];
+  for (let i = 0; i < 12; i += 1) {
+    const club = await getMemberClub(client, userId, guildId);
+    const max = staminaMax(member, club);
+    const profile = await getOrCreate(client, userId, guildId);
+    if (resolveStamina(profile, max).stamina >= needed) break;
+    const tier = pickAutoStaminaTier(profile, tierPref);
+    if (!tier) break;
+    const r = await useStaminaPotion(client, { userId, guildId, member, tier });
+    if (!r.ok) break;
+    tiers.push(tier);
+    if (r.staminaAfter >= r.max) break;
+  }
+  return { drank: tiers.length, tiers };
+}
+
 // 估算「體力補滿」的 epoch ms。已滿回 0；用於到點通知與 /通知設定 面板。
 // member 可選，用於把 Twitch 訂閱的體力上限加乘算進去。
 async function staminaFullAt(client, { userId, guildId, member }) {
@@ -732,7 +764,7 @@ async function enterDungeonHp(client, {
   const club = await getMemberClub(client, userId, guildId);
   const staMaxV = staminaMax(member, club);
   const level = await getPlayerLevel(client, userId, guildId);
-  const profile = await getOrCreate(client, userId, guildId);
+  let profile = await getOrCreate(client, userId, guildId);
 
   // mini-BOSS 路徑：解鎖檢查走 floorService.miniBossUnlockState；非樓層解鎖。
   let miniBossDef = null;
@@ -764,9 +796,26 @@ async function enterDungeonHp(client, {
     f = floorState.floor;
   }
 
-  // 2) 體力檢查
-  const st = resolveStamina(profile, staMaxV);
+  // 2) 體力檢查（不足時，若玩家開了「自動喝體力藥水」就先自動補到夠再進場）
   const staCost = f.staminaCost || 1;
+  let st = resolveStamina(profile, staMaxV);
+  let autoStamina = null;
+  if (
+    st.stamina < staCost &&
+    profile.dungeon_auto_stamina === true &&
+    totalStaminaPotions(profile) > 0
+  ) {
+    const drink = await autoDrinkStaminaFor(client, {
+      userId, guildId, member,
+      needed: staCost,
+      tierPref: profile.dungeon_auto_stamina_tier || "smallest",
+    });
+    if (drink.drank > 0) {
+      autoStamina = drink;
+      profile = await getOrCreate(client, userId, guildId);
+      st = resolveStamina(profile, staMaxV);
+    }
+  }
   if (st.stamina < staCost) {
     return {
       ok: false,
@@ -1142,6 +1191,7 @@ async function enterDungeonHp(client, {
     staminaMax: staMaxV,
     staminaBonus: staminaBonus(member),
     staminaCost: staCost,
+    autoStamina,
     weaponBefore,
     weaponBroke,
     weaponDurabilityAfter,
@@ -1306,16 +1356,20 @@ async function getDungeonStatus(client, { userId, guildId, member }) {
     shieldMaxDurability: profile.shield_max_durability,
     autoPotion: profile.dungeon_auto_potion !== false,
     autoPotionTier: profile.dungeon_auto_potion_tier || "smallest",
+    autoStamina: profile.dungeon_auto_stamina === true,
+    autoStaminaTier: profile.dungeon_auto_stamina_tier || "smallest",
   };
 }
 
 // Phase H+ 設定面板：寫入自動藥水偏好。
-async function setAutoPotionPref(client, { userId, guildId, autoPotion, tier }) {
+async function setAutoPotionPref(client, { userId, guildId, autoPotion, tier, autoStamina, staminaTier }) {
   if (!client?.miningProfilesCollection) return { ok: false, reason: "disabled" };
   const set = { updatedAt: new Date() };
-  if (typeof autoPotion === "boolean") set.dungeon_auto_potion = autoPotion;
   const VALID_TIERS = ["smallest", "largest", "small", "medium", "large"];
+  if (typeof autoPotion === "boolean") set.dungeon_auto_potion = autoPotion;
   if (tier && VALID_TIERS.includes(tier)) set.dungeon_auto_potion_tier = tier;
+  if (typeof autoStamina === "boolean") set.dungeon_auto_stamina = autoStamina;
+  if (staminaTier && VALID_TIERS.includes(staminaTier)) set.dungeon_auto_stamina_tier = staminaTier;
   if (Object.keys(set).length <= 1) return { ok: false, reason: "no_change" };
   await client.miningProfilesCollection.updateOne({ userId, guildId }, { $set: set });
   return { ok: true };
