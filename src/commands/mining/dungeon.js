@@ -20,6 +20,7 @@ const dungeonService = require("../../features/mining/dungeonService");
 const floorService = require("../../features/dungeon/floorService");
 const diamondAnnouncer = require("../../features/mining/diamondAnnouncer");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
+const dungeonQuestHooks = require("../../features/quests/dungeonQuestHooks");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const { buildOverflowConfirmView } = require("../../features/mining/overflowConfirm");
 const { COIN_EMOJI } = require("../../constants/coin");
@@ -219,15 +220,6 @@ async function applyStaminaNotifyPost(client, interaction, notifyInfo) {
 function runPostTasks(client, interaction, result, notifyInfo) {
   (async () => {
     try {
-      const dungeonHooks = [
-        { questId: "daily_dungeon_10" },
-        { questId: "weekly_dungeon" },
-        { questId: "daily_cd_dungeon" },
-      ];
-      if (result.won) {
-        dungeonHooks.push({ questId: "daily_dungeon_win" });
-        dungeonHooks.push({ questId: "weekly_dungeon_win" });
-      }
       await applyQuestHooks(
         client,
         {
@@ -238,7 +230,7 @@ function runPostTasks(client, interaction, result, notifyInfo) {
           member: interaction.member,
           username: interaction.user.username,
         },
-        dungeonHooks,
+        dungeonQuestHooks(result),
       );
       await applyStaminaNotifyPost(client, interaction, notifyInfo);
     } catch (e) {
