@@ -234,15 +234,7 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
         .catch(() => {});
 
       const applyQuestHooks = require("../../features/quests/applyQuestHooks");
-      const hooks = [{ questId: "daily_dungeon_10" }, { questId: "weekly_dungeon" }];
-      if (result.won) {
-        hooks.push({ questId: "daily_dungeon_win" });
-        hooks.push({ questId: "weekly_dungeon_win" });
-        // Phase H+ 新增任務鉤點
-        if (result.floor >= 3) hooks.push({ questId: "daily_dungeon_floor3" });
-        if (result.isMiniBoss) hooks.push({ questId: "weekly_mini_boss" });
-        if (result.theme === "ice") hooks.push({ questId: "weekly_dungeon_ice" });
-      }
+      const dungeonQuestHooks = require("../../features/quests/dungeonQuestHooks");
       await applyQuestHooks(
         client,
         {
@@ -253,7 +245,7 @@ async function runBattleAndRender(client, interaction, { themeId, floor, isMiniB
           member: interaction.member,
           username: interaction.user.username,
         },
-        hooks,
+        dungeonQuestHooks(result),
       );
       // 稱號自動檢查（dungeon 類 + 龍裔屠龍累積，category boss）
       if (result.won) {
