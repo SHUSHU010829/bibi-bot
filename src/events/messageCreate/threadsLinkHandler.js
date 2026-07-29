@@ -243,19 +243,36 @@ function postCodeFromUrl(url) {
   return url?.match(/\/post\/([\w-]+)/)?.[1] || null;
 }
 
-// 分享短連結（/share/xxx）本身沒有 shortcode，得從頁面找出真正的貼文永久連結
-function extractCanonicalUrl(html) {
-  const patterns = [
+// 分享短連結（/share/xxx）本身沒有 shortcode（那串是分享 id，跟貼文 code 無關），
+// 得從頁面找出真正的貼文。轉址可能發生在 server（fetch 直接跟到）也可能在前端 JS
+// （fetch 停在短連結），所以每種線索都試一次。
+// 回傳 { code, url }：url 可能為 null（只挖到 shortcode，仍足以鎖定 JSON 裡的貼文）
+function extractPostRef(html) {
+  const urlPatterns = [
     /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i,
     /<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i,
     /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:url["']/i,
+    /<meta[^>]+http-equiv=["']refresh["'][^>]+content=["'][^"']*url=([^"';]+)["']/i,
   ];
-  for (const re of patterns) {
+  for (const re of urlPatterns) {
     const href = html.match(re)?.[1];
     if (!href) continue;
-    const decoded = decodeHtmlEntities(href);
-    if (postCodeFromUrl(decoded)) return decoded;
+    const decoded = decodeHtmlEntities(href.trim());
+    const code = postCodeFromUrl(decoded);
+    if (code) return { code, url: decoded };
   }
+
+  // App Links（barcelona://post?shortcode=xxx）只給得出 shortcode，沒有永久連結
+  const appLink = html.match(
+    /<meta[^>]+property=["']al:(?:ios|android):url["'][^>]+content=["']([^"']+)["']/i,
+  )?.[1];
+  if (appLink) {
+    const decoded = decodeHtmlEntities(appLink);
+    const code =
+      postCodeFromUrl(decoded) || decoded.match(/shortcode=([\w-]+)/)?.[1];
+    if (code) return { code, url: null };
+  }
+
   return null;
 }
 
@@ -291,14 +308,17 @@ async function fetchThreadsData(url) {
 
     const { html, finalUrl } = fetched;
 
-    // 分享短連結：先把它解析成貼文永久連結，才有 shortcode 可以比對
+    // 分享短連結：先解析出真正的貼文，才有 shortcode 可以比對
     if (!targetCode) {
-      const resolved = postCodeFromUrl(finalUrl)
-        ? finalUrl
-        : extractCanonicalUrl(html);
-      if (resolved) {
-        canonicalUrl = resolved;
-        targetCode = postCodeFromUrl(resolved);
+      if (postCodeFromUrl(finalUrl)) {
+        canonicalUrl = finalUrl;
+        targetCode = postCodeFromUrl(finalUrl);
+      } else {
+        const ref = extractPostRef(html);
+        if (ref) {
+          targetCode = ref.code;
+          if (ref.url) canonicalUrl = ref.url;
+        }
       }
     }
 
@@ -307,7 +327,7 @@ async function fetchThreadsData(url) {
     // 沒有 code 比對會抓到別人的推薦貼文，寧可退回 og:meta。
     if (targetCode) {
       const data = extractThreadDataFromHtml(html, targetCode);
-      if (data) return { data, reachable: true, canonicalUrl };
+      if (data) return { data, reachable: true, canonicalUrl: canonicalUrl || url };
     }
 
     // 還沒成功，先留著這個 UA 的 og:meta（登入牆會被濾成 null）
