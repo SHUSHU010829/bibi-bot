@@ -225,35 +225,76 @@ async function fetchHtml(url, userAgent) {
           "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       },
+      redirect: "follow",
       signal: controller.signal,
     });
     if (!response.ok) {
       console.log(`[Threads] HTTP ${response.status} for ${url}`);
       return null;
     }
-    return await response.text();
+    return { html: await response.text(), finalUrl: response.url || url };
   } finally {
     clearTimeout(timeout);
   }
 }
 
+// 貼文永久連結的 shortcode（分享短連結的 code 不是這個，不能直接拿來比對）
+function postCodeFromUrl(url) {
+  return url?.match(/\/post\/([\w-]+)/)?.[1] || null;
+}
+
+// 分享短連結（/share/xxx）本身沒有 shortcode（那串是分享 id，跟貼文 code 無關），
+// 得從頁面找出真正的貼文。轉址可能發生在 server（fetch 直接跟到）也可能在前端 JS
+// （fetch 停在短連結），所以每種線索都試一次。
+// 回傳 { code, url }：url 可能為 null（只挖到 shortcode，仍足以鎖定 JSON 裡的貼文）
+function extractPostRef(html) {
+  const urlPatterns = [
+    /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i,
+    /<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:url["']/i,
+    /<meta[^>]+http-equiv=["']refresh["'][^>]+content=["'][^"']*url=([^"';]+)["']/i,
+  ];
+  for (const re of urlPatterns) {
+    const href = html.match(re)?.[1];
+    if (!href) continue;
+    const decoded = decodeHtmlEntities(href.trim());
+    const code = postCodeFromUrl(decoded);
+    if (code) return { code, url: decoded };
+  }
+
+  // App Links（barcelona://post?shortcode=xxx）只給得出 shortcode，沒有永久連結
+  const appLink = html.match(
+    /<meta[^>]+property=["']al:(?:ios|android):url["'][^>]+content=["']([^"']+)["']/i,
+  )?.[1];
+  if (appLink) {
+    const decoded = decodeHtmlEntities(appLink);
+    const code =
+      postCodeFromUrl(decoded) || decoded.match(/shortcode=([\w-]+)/)?.[1];
+    if (code) return { code, url: null };
+  }
+
+  return null;
+}
+
 // 主要抓取函數
-// 回傳 { data, reachable }：
-//   data      解析到的貼文，抓不到為 null
-//   reachable 是否至少有一個 UA 成功取得頁面（HTTP 200）
-//             用來區分「網路/被擋」與「這篇沒有可用的公開資料（gate 掉）」，
-//             後者不該算進 circuit breaker，否則會連累正常貼文。
+// 回傳 { data, reachable, canonicalUrl }：
+//   data         解析到的貼文，抓不到為 null
+//   reachable    是否至少有一個 UA 成功取得頁面（HTTP 200）
+//                用來區分「網路/被擋」與「這篇沒有可用的公開資料（gate 掉）」，
+//                後者不該算進 circuit breaker，否則會連累正常貼文。
+//   canonicalUrl 短連結解析後的貼文永久連結，解析不到就是原網址
 async function fetchThreadsData(url) {
   // 從 URL 取出貼文 shortcode，用來鎖定頁面 JSON 中正確的那一篇
-  const targetCode = url.match(/\/post\/([\w-]+)/)?.[1] || null;
+  let targetCode = postCodeFromUrl(url);
+  let canonicalUrl = targetCode ? url : null;
 
   let ogFallback = null; // 各 UA 拿到的最佳 og:meta（已濾掉登入牆）
   let reachable = false;
 
   for (const ua of FETCH_USER_AGENTS) {
-    let html;
+    let fetched;
     try {
-      html = await fetchHtml(url, ua);
+      fetched = await fetchHtml(url, ua);
     } catch (error) {
       if (error.name === "AbortError") {
         console.log(`[Threads] 請求超時：${url}`);
@@ -262,12 +303,32 @@ async function fetchThreadsData(url) {
       }
       continue;
     }
-    if (!html) continue;
+    if (!fetched) continue;
     reachable = true;
 
-    // 拿到 code 吻合的貼文 → 直接成功
-    const data = extractThreadDataFromHtml(html, targetCode);
-    if (data) return { data, reachable: true };
+    const { html, finalUrl } = fetched;
+
+    // 分享短連結：先解析出真正的貼文，才有 shortcode 可以比對
+    if (!targetCode) {
+      if (postCodeFromUrl(finalUrl)) {
+        canonicalUrl = finalUrl;
+        targetCode = postCodeFromUrl(finalUrl);
+      } else {
+        const ref = extractPostRef(html);
+        if (ref) {
+          targetCode = ref.code;
+          if (ref.url) canonicalUrl = ref.url;
+        }
+      }
+    }
+
+    // 拿到 code 吻合的貼文 → 直接成功。
+    // 短連結還沒解出 code 時不能走 JSON fallback：頁面 JSON 夾帶多篇貼文，
+    // 沒有 code 比對會抓到別人的推薦貼文，寧可退回 og:meta。
+    if (targetCode) {
+      const data = extractThreadDataFromHtml(html, targetCode);
+      if (data) return { data, reachable: true, canonicalUrl: canonicalUrl || url };
+    }
 
     // 還沒成功，先留著這個 UA 的 og:meta（登入牆會被濾成 null）
     if (!ogFallback) {
@@ -276,13 +337,15 @@ async function fetchThreadsData(url) {
   }
 
   // 所有 UA 都拿不到目標貼文的 JSON → 退回非登入牆的 og:meta（可能為 null）
-  return { data: ogFallback, reachable };
+  return { data: ogFallback, reachable, canonicalUrl: canonicalUrl || url };
 }
 
-// 擷取 Threads 連結（支援 threads.net 和 threads.com）
+// 擷取 Threads 連結（支援 threads.net / threads.com，含新版分享短連結）
+//   永久連結：/@user/post/<code>
+//   短連結　：/share/<code>、/t/<code>、/p/<code>
 function extractThreadsUrl(content) {
   const match = content.match(
-    /https?:\/\/(www\.)?(threads\.net|threads\.com)\/@[\w.]+\/post\/[\w-]+/i
+    /https?:\/\/(?:www\.)?threads\.(?:net|com)\/(?:@[\w.]+\/post\/[\w-]+|(?:share|t|p)\/[\w-]+)/i,
   );
   return match ? match[0] : null;
 }
@@ -337,7 +400,7 @@ module.exports = async (client, message) => {
   if (circuitOpen()) return;
 
   try {
-    const { data, reachable } = await fetchThreadsData(threadsUrl);
+    const { data, reachable, canonicalUrl } = await fetchThreadsData(threadsUrl);
     if (!data) {
       // 只有真的連不上才算進熔斷；頁面拿到但這篇無公開資料（gate 掉）不算，
       // 否則會害正常貼文一起被暫停。此時不 suppressEmbeds，保留 Discord 原生預覽。
@@ -348,7 +411,7 @@ module.exports = async (client, message) => {
 
     // 主頭：作者 + 文字
     const headLines = [
-      `-# [@${data.username}${data.isVerified ? " ✓" : ""}](${threadsUrl})`,
+      `-# [@${data.username}${data.isVerified ? " ✓" : ""}](${canonicalUrl})`,
     ];
     if (data.text) {
       const desc =
