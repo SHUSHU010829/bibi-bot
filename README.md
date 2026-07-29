@@ -213,7 +213,7 @@ docker run -d --env-file .env --name bibi-bot discord-bot
 | Twitch 開台通知 | `features/twitch`（Helix App Token + 去重） | `twitch.json` 指定頻道 |
 | RSS 週報 thread | `features/rssWeeklyThreads`、`config/rssFeeds.js` | 每週彙整 RSS 開 thread |
 | 每日早安卡 | `events/ready/sendMorningMessage.js`（satori 繪卡） | 含日期 / 節氣 / 農民曆 / 詩詞 / 運勢 |
-| Threads 連結修正 | `messageCreate/threadsLinkHandler.js` | 抓貼文內容後回覆完整預覽卡 |
+| Threads 連結修正 | `messageCreate/threadsLinkHandler.js` | 抓貼文內容後回覆完整預覽卡；支援 `/share/` 短連結 |
 | IG / X(Twitter) 連結修正 | `messageCreate/socialLinkHandler.js` | 回覆 oginstagram / fixupx / fxtwitter 版本 |
 
 ### 生活娛樂
