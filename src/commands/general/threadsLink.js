@@ -14,6 +14,8 @@ const {
 const {
   resolveCleanThreadsUrl,
 } = require("../../features/threads/threadsLinkResolver");
+const { extractThreadsUrl } = require("../../features/threads/threadsScraper");
+const { buildThreadsPreview } = require("../../features/threads/threadsPreview");
 
 const ERRORS = {
   invalid: {
@@ -23,14 +25,18 @@ const ERRORS = {
   },
   unresolved: {
     title: "❌ 解析不出原始連結",
-    detail:
-      "這則貼文可能已被刪除、設為私人，或脆這次沒有回傳貼文資訊。",
+    detail: "這則貼文可能已被刪除、設為私人，或脆這次沒有回傳貼文資訊。",
     hint: "可以在脆上打開貼文，改用右上角「複製連結」拿到的網址再試一次。",
   },
   unreachable: {
     title: "❌ 連不上脆",
     detail: "脆目前沒有回應，可能是暫時被擋下或網路不穩。",
     hint: "過幾分鐘再試一次就好。",
+  },
+  unexpected: {
+    title: "❌ 出了點問題",
+    detail: "解析連結時發生非預期錯誤。",
+    hint: "稍後再試一次，如果一直失敗請回報開發者。",
   },
 };
 
@@ -41,6 +47,15 @@ function errorContainer({ title, detail, hint }) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(detail))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${hint}`));
+}
+
+// 失敗只給發指令的人看。已經公開 defer 過，先把等待中的訊息收掉再補一則私人的。
+async function replyErrorPrivately(interaction, spec) {
+  await interaction.deleteReply().catch(() => {});
+  await interaction.followUp({
+    components: [errorContainer(spec)],
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+  });
 }
 
 module.exports = {
@@ -57,18 +72,28 @@ module.exports = {
     ),
 
   run: async (client, interaction) => {
+    const input = interaction.options.getString("連結");
+
+    // 網址格式不對在連外前就擋掉，直接回私人訊息，不用先公開 defer
+    if (!extractThreadsUrl(input)) {
+      return interaction.reply({
+        components: [errorContainer(ERRORS.invalid)],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
+
     await interaction.deferReply();
 
     try {
-      const input = interaction.options.getString("連結");
-      const result = await resolveCleanThreadsUrl(input);
+      const result = await resolveCleanThreadsUrl(input, { withPreview: true });
 
       if (!result.ok) {
-        return interaction.editReply({
-          components: [errorContainer(ERRORS[result.reason])],
-          flags: MessageFlags.IsComponentsV2,
-        });
+        return replyErrorPrivately(interaction, ERRORS[result.reason]);
       }
+
+      const container = result.data
+        ? buildThreadsPreview(result.data, result.url)
+        : new ContainerBuilder().setAccentColor(0x000000);
 
       const note =
         result.source === "resolved"
@@ -77,14 +102,15 @@ module.exports = {
             ? "這個連結本來就是乾淨的，沒東西可以拿掉。"
             : "已移除追蹤參數。";
 
-      const container = new ContainerBuilder()
-        .setAccentColor(0x000000)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`## 🧵 乾淨連結\n${result.url}`)
-        )
+      container
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`-# ${note}`)
+          new TextDisplayBuilder().setContent(`🧵 ${result.url}`)
+        )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            result.data ? `-# ${note}` : `-# ${note}（抓不到貼文內容，只給連結）`
+          )
         )
         .addActionRowComponents(
           new ActionRowBuilder().addComponents(
@@ -101,16 +127,7 @@ module.exports = {
       });
     } catch (error) {
       console.log(`[ERROR] /脆 發生錯誤：\n${error}`.red);
-      await interaction.editReply({
-        components: [
-          errorContainer({
-            title: "❌ 出了點問題",
-            detail: "解析連結時發生非預期錯誤。",
-            hint: "稍後再試一次，如果一直失敗請回報開發者。",
-          }),
-        ],
-        flags: MessageFlags.IsComponentsV2,
-      });
+      await replyErrorPrivately(interaction, ERRORS.unexpected);
     }
   },
 };
