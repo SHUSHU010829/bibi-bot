@@ -25,21 +25,26 @@ function permalinkFrom(username, code) {
 }
 
 // 把任何 Threads 連結整理成乾淨的貼文永久連結
+// withPreview：連永久連結也去抓一次頁面，順便帶回貼文內容（拿不到不影響連結）
 // 回傳：
-//   { ok: true, url, original, source }  source: "clean"（本來就是永久連結）/ "resolved"（短連結解析出來的）
-//   { ok: false, reason }                reason: "invalid" | "unresolved" | "unreachable"
-async function resolveCleanThreadsUrl(input) {
+//   { ok: true, url, original, source, data }  source: "clean"（本來就是永久連結）/ "resolved"（短連結解析出來的）
+//                                              data: 貼文內容，沒抓到為 null
+//   { ok: false, reason }                      reason: "invalid" | "unresolved" | "unreachable"
+async function resolveCleanThreadsUrl(input, { withPreview = false } = {}) {
   const url = extractThreadsUrl(input || "");
   if (!url) return { ok: false, reason: "invalid" };
+  const original = input.trim();
 
-  // 已經是永久連結 → 只要去掉追蹤碼，不用連外
+  // 已經是永久連結 → 去掉追蹤碼就結束，不需要連外（除非要順便抓內容）
   if (postCodeFromUrl(url)) {
-    return {
-      ok: true,
-      url: stripTracking(url),
-      original: input.trim(),
-      source: "clean",
-    };
+    const cleanUrl = stripTracking(url);
+    if (!withPreview) {
+      return { ok: true, url: cleanUrl, original, source: "clean", data: null };
+    }
+    const { data, reachable } = await fetchThreadsData(cleanUrl);
+    if (data) recordSuccess();
+    else if (!reachable) recordFailure();
+    return { ok: true, url: cleanUrl, original, source: "clean", data };
   }
 
   const { data, reachable, canonicalUrl, postCode } = await fetchThreadsData(url);
@@ -49,8 +54,9 @@ async function resolveCleanThreadsUrl(input) {
     return {
       ok: true,
       url: stripTracking(canonicalUrl),
-      original: input.trim(),
+      original,
       source: "resolved",
+      data,
     };
   }
 
@@ -63,8 +69,9 @@ async function resolveCleanThreadsUrl(input) {
     return {
       ok: true,
       url: permalinkFrom(username, code),
-      original: input.trim(),
+      original,
       source: "resolved",
+      data,
     };
   }
 
