@@ -92,25 +92,14 @@ module.exports = {
       }
 
       const container = result.data
-        ? buildThreadsPreview(result.data, result.url)
+        ? buildThreadsPreview(result.data, result.url).addSeparatorComponents(
+            new SeparatorBuilder()
+          )
         : new ContainerBuilder().setAccentColor(0x000000);
 
-      const note =
-        result.source === "resolved"
-          ? "已還原成貼文原始連結，追蹤碼都拿掉了。"
-          : result.original === result.url
-            ? "這個連結本來就是乾淨的，沒東西可以拿掉。"
-            : "已移除追蹤參數。";
-
       container
-        .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(`🧵 ${result.url}`)
-        )
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            result.data ? `-# ${note}` : `-# ${note}（抓不到貼文內容，只給連結）`
-          )
         )
         .addActionRowComponents(
           new ActionRowBuilder().addComponents(
