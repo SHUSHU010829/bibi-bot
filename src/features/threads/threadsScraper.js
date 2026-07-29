@@ -267,20 +267,13 @@ function extractPostRef(html) {
   return null;
 }
 
-// 主要抓取函數
-// 回傳 { data, reachable, canonicalUrl, postCode }：
-//   data         解析到的貼文，抓不到為 null
-//   reachable    是否至少有一個 UA 成功取得頁面（HTTP 200）
-//                用來區分「網路/被擋」與「這篇沒有可用的公開資料（gate 掉）」，
-//                後者不該算進 circuit breaker，否則會連累正常貼文。
-//   canonicalUrl 短連結解析後的貼文永久連結，解析不到就是原網址
-//   postCode     貼文 shortcode，短連結沒解出來為 null
-async function fetchThreadsData(url) {
-  // 從 URL 取出貼文 shortcode，用來鎖定頁面 JSON 中正確的那一篇
-  let targetCode = postCodeFromUrl(url);
-  let canonicalUrl = targetCode ? url : null;
+// 抓一個網址：逐個 UA 試，回傳 JSON 解析到的貼文（data）與 og:meta 備援（og）
+// knownCode：已知的貼文 shortcode，用來鎖定頁面 JSON 中正確的那一篇
+async function scrapePage(url, knownCode) {
+  let targetCode = knownCode || postCodeFromUrl(url);
+  let canonicalUrl = postCodeFromUrl(url) ? url : null;
 
-  let ogFallback = null; // 各 UA 拿到的最佳 og:meta（已濾掉登入牆）
+  let og = null; // 各 UA 拿到的最佳 og:meta（已濾掉登入牆）
   let reachable = false;
 
   for (const ua of FETCH_USER_AGENTS) {
@@ -301,14 +294,14 @@ async function fetchThreadsData(url) {
     const { html, finalUrl } = fetched;
 
     // 分享短連結：先解析出真正的貼文，才有 shortcode 可以比對
-    if (!targetCode) {
+    if (!targetCode || !canonicalUrl) {
       if (postCodeFromUrl(finalUrl)) {
         canonicalUrl = finalUrl;
-        targetCode = postCodeFromUrl(finalUrl);
+        targetCode = targetCode || postCodeFromUrl(finalUrl);
       } else {
         const ref = extractPostRef(html);
         if (ref) {
-          targetCode = ref.code;
+          targetCode = targetCode || ref.code;
           if (ref.url) canonicalUrl = ref.url;
         }
       }
@@ -320,27 +313,70 @@ async function fetchThreadsData(url) {
     if (targetCode) {
       const data = extractThreadDataFromHtml(html, targetCode);
       if (data) {
-        return {
-          data,
-          reachable: true,
-          canonicalUrl: canonicalUrl || url,
-          postCode: targetCode,
-        };
+        return { data, og, reachable: true, canonicalUrl, postCode: targetCode };
       }
     }
 
-    // 還沒成功，先留著這個 UA 的 og:meta（登入牆會被濾成 null）
-    if (!ogFallback) {
-      ogFallback = extractFromOgMeta(html);
+    if (!og) og = extractFromOgMeta(html);
+
+    // 短連結頁沒有貼文 JSON 時，換 UA 再試也沒用（那頁本來就只有 og:meta），
+    // 直接讓外層改抓永久連結那頁，省下兩次 request。
+    if (canonicalUrl && canonicalUrl !== url) break;
+  }
+
+  return { data: null, og, reachable, canonicalUrl, postCode: targetCode };
+}
+
+// 主要抓取函數
+// 回傳 { data, reachable, canonicalUrl, postCode }：
+//   data         解析到的貼文，抓不到為 null
+//   reachable    是否至少有一個 UA 成功取得頁面（HTTP 200）
+//                用來區分「網路/被擋」與「這篇沒有可用的公開資料（gate 掉）」，
+//                後者不該算進 circuit breaker，否則會連累正常貼文。
+//   canonicalUrl 短連結解析後的貼文永久連結，解析不到就是原網址
+//   postCode     貼文 shortcode，短連結沒解出來為 null
+async function fetchThreadsData(url) {
+  const first = await scrapePage(url);
+  if (first.data) {
+    return {
+      data: first.data,
+      reachable: true,
+      canonicalUrl: first.canonicalUrl || url,
+      postCode: first.postCode,
+    };
+  }
+
+  // 分享短連結那頁常常只有 og:meta（就一張預覽圖、沒有 carousel），完整貼文 JSON
+  // 只在永久連結那頁。解出永久連結就再抓一次，多圖 / 影片 / 互動數才會回來。
+  const permalink =
+    first.canonicalUrl && first.canonicalUrl !== url
+      ? first.canonicalUrl
+      : first.postCode && first.og?.username && first.og.username !== "unknown"
+        ? `https://www.threads.com/@${first.og.username}/post/${first.postCode}`
+        : null;
+
+  if (permalink) {
+    const second = await scrapePage(permalink, first.postCode);
+    const data = second.data || second.og;
+    if (data) {
+      return {
+        data,
+        reachable: true,
+        canonicalUrl: permalink,
+        postCode: second.postCode || first.postCode,
+      };
     }
   }
 
-  // 所有 UA 都拿不到目標貼文的 JSON → 退回非登入牆的 og:meta（可能為 null）
+  if (first.og) {
+    console.log(`[Threads] 只拿到 og:meta 備援（沒有多圖 / 互動數）：${url}`);
+  }
+
   return {
-    data: ogFallback,
-    reachable,
-    canonicalUrl: canonicalUrl || url,
-    postCode: targetCode,
+    data: first.og,
+    reachable: first.reachable,
+    canonicalUrl: first.canonicalUrl || url,
+    postCode: first.postCode,
   };
 }
 
