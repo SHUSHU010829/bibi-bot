@@ -30,8 +30,8 @@
       "maxPerWeek": 3,
       "bonusAttackPerDungeonClear": 1,
       "maxBonusAttacksPerPlayer": 5,
-      "summonHpMult": 0.7,
-      "spawnCooldownMinutes": 180,
+      "summonHpMult": 1,
+      "spawnCooldownMinutes": 540,
       "summonIntro": "討伐能量集滿了！社群連日的地下城探索驚醒了沉睡的魔王——"
     },
     "saturdaySpawn": {
