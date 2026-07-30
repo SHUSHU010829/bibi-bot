@@ -25,7 +25,7 @@ const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
 const { deferUpdateSafe } = require("../../utils/safeAck");
 
-const { TAB_PREFIX, CRAFT_SUB_PREFIX, CRAFT_PREFIX, CRAFT_ALL_PREFIX, CONFIRM_PREFIX, CANCEL_PREFIX, REPAIR_TOOL_PREFIX, TABS, CRAFT_SUB_IDS } = workshopView;
+const { TAB_PREFIX, CRAFT_SUB_PREFIX, CRAFT_PREFIX, CRAFT_ALL_PREFIX, CONFIRM_PREFIX, CANCEL_PREFIX, REPAIR_TOOL_PREFIX, TABS, CRAFT_SUBS, CRAFT_SUB_IDS } = workshopView;
 
 function gearLabel(type, id) {
   if (type === "weapon") {
@@ -91,7 +91,8 @@ function buildSuccessContainer(result, userId) {
   const isAppraisalTrigger = result.type === "stone_appraisal_trigger";
   const isAdvancedTrap = result.type === "advanced_trap";
   const isTreasureMap = result.type === "treasure_map";
-  const accent = isRepairTool || isFishingNet || isAppraisalTrigger || isAdvancedTrap || isTreasureMap
+  const isOre = result.type === "ore";
+  const accent = isRepairTool || isFishingNet || isAppraisalTrigger || isAdvancedTrap || isTreasureMap || isOre
     ? 0x3498db
     : result.type === "weapon"
       ? 0xe67e22
@@ -112,6 +113,8 @@ function buildSuccessContainer(result, userId) {
       + (dropped ? `\n-# 達上限，多餘次數已丟棄` : `\n-# 下次 /農場 來犯時自動抵擋`);
   } else if (isTreasureMap) {
     tail = `**目前藏寶圖**　${result.mapsAfter} 張\n-# 到 \`/背包\` 「探險道具」區按「使用 1 張」撕開觸發隨機事件`;
+  } else if (isOre) {
+    tail = `**產出**　${result.oreEmoji || ""} ${result.oreName} ×${result.oreQty}\n-# 已放進背包，可用 \`/賣出\` 換錢或留著打造裝備`;
   } else {
     tail = `**耐久**　${result.durability == null ? "永久" : `${result.durability} 次`}\n**累積合成**　${result.craftCountTotal} 件`;
   }
@@ -189,14 +192,11 @@ async function postCraftSideEffects(client, interaction) {
   ).catch(() => {});
 }
 
+// 直接由 CRAFT_SUBS 的 types 推導，避免這裡與分頁定義各維護一份而漂移。
 function craftSubForRecipe(recipeId) {
   const recipe = (craft?.recipes || []).find((r) => r.id === recipeId);
   const type = recipe?.result?.type || "pickaxe";
-  if (type === "pickaxe") return "pickaxe";
-  if (type === "repair_tool") return "repair";
-  if (type === "weapon") return "battle";
-  if (type === "rod" || type === "fishing_net") return "fish";
-  return "misc";
+  return CRAFT_SUBS.find((s) => s.types.includes(type))?.id || "pickaxe";
 }
 
 async function refreshWorkshop(client, interaction, tab, craftSub) {
@@ -214,6 +214,26 @@ async function refreshWorkshop(client, interaction, tab, craftSub) {
 }
 
 module.exports = async (client, interaction) => {
+  // 合成分類改用 Select（省元件），其餘工坊互動仍是按鈕
+  if (interaction.isStringSelectMenu()) {
+    if (!interaction.customId.startsWith(CRAFT_SUB_PREFIX)) return;
+    const ownerId = interaction.customId.slice(CRAFT_SUB_PREFIX.length);
+    if (interaction.user.id !== ownerId) {
+      return interaction.reply({
+        content: "❌ 這不是你的工坊！",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    const sub = interaction.values?.[0];
+    if (!CRAFT_SUB_IDS.includes(sub)) return;
+    if (!(await deferUpdateSafe(interaction))) return;
+    try {
+      await refreshWorkshop(client, interaction, "craft", sub);
+    } catch (err) {
+      console.log(`[ERROR] wsCraftSub select handler:\n${err}\n${err.stack}`.red);
+    }
+    return;
+  }
   if (!interaction.isButton()) return;
   const { customId } = interaction;
 
@@ -300,6 +320,29 @@ module.exports = async (client, interaction) => {
           );
         await interaction.followUp({
           components: [fullC],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!result.ok && result.reason === "backpack_full") {
+        const bagC = new ContainerBuilder()
+          .setAccentColor(0xe74c3c)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`# 🎒 背包空間不足`),
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `這次熔煉會產出 **${result.need}** 個礦石，但背包只剩 **${Math.max(0, result.capacity - result.used)}** 格\n目前：**${result.used} / ${result.capacity}**`,
+            ),
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `-# 先用 \`/賣出\` 清掉石頭或煤炭，或到 \`/商店\` 買背包擴充`,
+            ),
+          );
+        await interaction.followUp({
+          components: [bagC],
           flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
         });
         return;

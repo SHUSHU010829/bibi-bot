@@ -18,8 +18,13 @@ const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
 
-function recipeChoices() {
-  return (craft?.recipes || []).map((r) => ({ name: r.name, value: r.id }));
+// 配方數已超過 Discord 靜態 choices 上限（25），改走 autocomplete。
+function recipeMatches(query) {
+  const q = (query || "").trim().toLowerCase();
+  return (craft?.recipes || [])
+    .filter((r) => !q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q))
+    .slice(0, 25)
+    .map((r) => ({ name: r.name, value: r.id }));
 }
 
 // 裝備標籤：依類型取鎬子 / 武器 / 釣竿 / 盾定義。
@@ -52,7 +57,7 @@ module.exports = {
         .setName("裝備")
         .setDescription("要合成的鎬子或武器；不填則打開工坊「合成」分頁，用按鈕直接合成")
         .setRequired(false)
-        .addChoices(...recipeChoices())
+        .setAutocomplete(true)
     )
     .addBooleanOption((o) =>
       o
@@ -60,6 +65,17 @@ module.exports = {
         .setDescription("確認替換目前仍可用的裝備")
         .setRequired(false)
     ),
+
+  autocomplete: async (client, interaction) => {
+    const focused = interaction.options.getFocused(true);
+    try {
+      if (focused.name !== "裝備") return interaction.respond([]).catch(() => {});
+      return interaction.respond(recipeMatches(focused.value)).catch(() => {});
+    } catch (error) {
+      console.log(`[ERROR] /合成 autocomplete: ${error}`.red);
+      return interaction.respond([]).catch(() => {});
+    }
+  },
 
   run: async (client, interaction) => {
     const recipeId = interaction.options.getString("裝備");

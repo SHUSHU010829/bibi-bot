@@ -2,7 +2,7 @@
 //
 // customId 規約：
 //   wsTab_<userId>_<tab>            — 切換分頁（tab: equipment / craft / repair）
-//   wsCraftSub_<userId>_<sub>       — 在合成分頁切子分類（pickaxe / repair / battle / fish / misc）
+//   wsCraftSub_<userId>            — 合成分頁的子分類 Select（值為 pickaxe / repair / weapon / shield / fish / misc / farm）
 //   wsCraft_<userId>_<recipeId>     — 在合成分頁點某配方的「合成」按鈕
 //   wsConfirm_<userId>_<recipeId>   — confirm_needed 時的「確認替換」
 //   wsCancel_<userId>               — confirm_needed 時的「取消」
@@ -17,6 +17,8 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
   MessageFlags,
 } = require("discord.js");
 
@@ -52,10 +54,12 @@ const TABS = ["equipment", "craft", "repair"];
 const CRAFT_SUBS = [
   { id: "pickaxe", label: "鎬子", emoji: "⛏️", types: ["pickaxe"] },
   { id: "repair", label: "維修", emoji: "🛠️", types: ["repair_tool"] },
-  // Phase H+ 武器分頁加入盾牌；都是地下城戰鬥裝備，併在同一頁省 Tab
-  { id: "battle", label: "武器/盾", emoji: "⚔️", types: ["weapon", "shield"] },
+  // 武器與盾牌各自獨立分頁：合計 10 個配方併在一頁會頂破元件上限 40
+  { id: "weapon", label: "武器", emoji: "⚔️", types: ["weapon"] },
+  { id: "shield", label: "盾牌", emoji: "🛡️", types: ["shield"] },
   { id: "fish", label: "釣魚", emoji: "🎣", types: ["rod", "fishing_net"] },
-  { id: "misc", label: "其他", emoji: "🪨", types: ["stone_appraisal_trigger", "advanced_trap", "treasure_map"] },
+  { id: "misc", label: "賭石/藏寶", emoji: "🪨", types: ["stone_appraisal_trigger", "treasure_map"] },
+  { id: "farm", label: "農場", emoji: "🪤", types: ["advanced_trap", "ore"] },
 ];
 const CRAFT_SUB_IDS = CRAFT_SUBS.map((s) => s.id);
 
@@ -72,19 +76,23 @@ function rodLabel(key) {
   return `${def.emoji || "🎣"} ${def.name || key}`;
 }
 
-function craftSubRow(userId, currentSub) {
-  const row = new ActionRowBuilder();
-  for (const sub of CRAFT_SUBS) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`${CRAFT_SUB_PREFIX}${userId}_${sub.id}`)
-        .setLabel(sub.label)
-        .setEmoji(sub.emoji)
-        .setStyle(currentSub === sub.id ? ButtonStyle.Primary : ButtonStyle.Secondary)
-        .setDisabled(currentSub === sub.id),
-    );
-  }
-  return row;
+// 分類用 Select 而非一排按鈕：按鈕版每個分頁要 1 顆（分頁數 >5 還得多一個 ActionRow），
+// 在元件上限 40 之下會擠掉配方；Select 固定只花 2 個元件。
+function craftSubSelect(userId, currentSub) {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`${CRAFT_SUB_PREFIX}${userId}`)
+      .setPlaceholder("選擇合成分類")
+      .addOptions(
+        CRAFT_SUBS.map((sub) =>
+          new StringSelectMenuOptionBuilder()
+            .setLabel(sub.label)
+            .setValue(sub.id)
+            .setEmoji(sub.emoji)
+            .setDefault(currentSub === sub.id),
+        ),
+      ),
+  );
 }
 
 function tabRow(userId, current) {
@@ -247,6 +255,10 @@ function recipeBodyText(recipe, profile, type) {
       propLine = `效果：+${acfg.blocksPerCraft || 4} 次被動抵擋（上限 ${acfg.maxStack || 12}）`;
     } else if (type === "treasure_map") {
       propLine = `效果：合成 1 張藏寶圖，到 /背包 「探險道具」按「使用 1 張」撕開觸發隨機事件`;
+    } else if (type === "ore") {
+      const odef = mining?.ores?.[recipe.result?.id] || {};
+      const oqty = recipe.result?.qty ?? 1;
+      propLine = `效果：產出 ${odef.emoji || ""} ${odef.name || recipe.result?.id} ×${oqty}（佔背包格）`;
     } else if (type === "weapon") {
       const wdef = (dungeon?.weapons || {})[resultId] || {};
       const totalAtk = (dungeon?.baseAtk ?? 20) + (wdef.atk || 0);
@@ -338,7 +350,7 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`# 🛠️ ${displayName} 的工坊\n### 🔨 合成`),
     )
-    .addActionRowComponents(craftSubRow(userId, craftSub))
+    .addActionRowComponents(craftSubSelect(userId, craftSub))
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `-# 點配方右側「合成」即可打造；舊裝備若仍有耐久會跳出二次確認`,
@@ -355,6 +367,7 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
   const appraisalTriggers = recipes.filter((r) => r.result?.type === "stone_appraisal_trigger");
   const farmTools = recipes.filter((r) => r.result?.type === "advanced_trap");
   const treasureMaps = recipes.filter((r) => r.result?.type === "treasure_map");
+  const oreRecycles = recipes.filter((r) => r.result?.type === "ore");
 
   if (craftSub === "pickaxe") {
     if (pickaxes.length) {
@@ -374,13 +387,14 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
         );
       craftableSection(container, repairTools, profile, "repair_tool", userId);
     }
-  } else if (craftSub === "battle") {
+  } else if (craftSub === "weapon") {
     if (weapons.length) {
       container
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(new TextDisplayBuilder().setContent("### ⚔️ 武器（戰鬥）"));
       craftableSection(container, weapons, profile, "weapon", userId);
     }
+  } else if (craftSub === "shield") {
     if (shields.length) {
       container
         .addSeparatorComponents(new SeparatorBuilder())
@@ -420,20 +434,6 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
         );
       appraisalCraftSection(container, appraisalTriggers, profile, userId);
     }
-    if (farmTools.length) {
-      const trapCfg = craft?.advancedTrap || {};
-      const fragCount = profile.broken_trap_fragments || 0;
-      const usesNow = profile.advanced_trap_uses || 0;
-      const cap = trapCfg.maxStack ?? 12;
-      container
-        .addSeparatorComponents(new SeparatorBuilder())
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `### 🪤 農場防護（持有碎片 **${fragCount}**，目前保護 ${usesNow} / ${cap} 次）\n-# 合成即自動生效，被動抵擋下一次農場 raid；達上限多餘的次數會被丟掉`,
-          ),
-        );
-      craftableSection(container, farmTools, profile, "advanced_trap", userId);
-    }
     if (treasureMaps.length) {
       const fragCount = profile.treasure_map_fragments || 0;
       const mapCount = profile.treasure_maps || 0;
@@ -445,6 +445,31 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
           ),
         );
       craftableSection(container, treasureMaps, profile, "treasure_map", userId);
+    }
+  } else if (craftSub === "farm") {
+    const fragCount = profile.broken_trap_fragments || 0;
+    if (farmTools.length) {
+      const trapCfg = craft?.advancedTrap || {};
+      const usesNow = profile.advanced_trap_uses || 0;
+      const cap = trapCfg.maxStack ?? 12;
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `### 🪤 農場防護（持有破損陷阱碎片 **${fragCount}**，目前保護 ${usesNow} / ${cap} 次）\n-# 合成即自動生效，被動抵擋下一次農場怪物入侵；達上限多餘的次數會被丟掉\n-# 鐵礦打造穩定可控；碎片回收留給農場防禦打下來的舊碎片`,
+          ),
+        );
+      craftableSection(container, farmTools, profile, "advanced_trap", userId);
+    }
+    if (oreRecycles.length) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `### 🔥 碎片熔煉（持有破損陷阱碎片 **${fragCount}**）\n-# 用不完的碎片可以熔回鐵料。熔煉有損耗，直接打造陷阱還是比較划算`,
+          ),
+        );
+      craftableSection(container, oreRecycles, profile, "ore", userId);
     }
   }
 
@@ -680,5 +705,6 @@ module.exports = {
   CANCEL_PREFIX,
   REPAIR_TOOL_PREFIX,
   TABS,
+  CRAFT_SUBS,
   CRAFT_SUB_IDS,
 };

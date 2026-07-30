@@ -156,11 +156,25 @@
         "result": { "type": "stone_appraisal_trigger", "quality": "high" }
       },
       {
+        "id": "advanced_trap_iron",
+        "name": "高級陷阱（鐵礦打造）",
+        "emoji": "🪤",
+        "materials": { "iron": 20 },
+        "result": { "type": "advanced_trap" }
+      },
+      {
         "id": "advanced_trap",
-        "name": "高級陷阱",
+        "name": "高級陷阱（碎片回收）",
         "emoji": "🪤",
         "materials": { "broken_trap_fragment": 5 },
         "result": { "type": "advanced_trap" }
+      },
+      {
+        "id": "trap_fragment_smelt",
+        "name": "熔回鐵料",
+        "emoji": "🔥",
+        "materials": { "broken_trap_fragment": 5 },
+        "result": { "type": "ore", "id": "iron", "qty": 15 }
       },
       {
         "id": "treasure_map",

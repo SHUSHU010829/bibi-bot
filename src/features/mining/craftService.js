@@ -1,6 +1,11 @@
 require("colors");
 const { mining, craft, dungeon, fishing } = require("../../config");
-const { getOrCreate } = require("./miningProfile");
+const {
+  getOrCreate,
+  backpackCapacity,
+  backpackUsed,
+  ORE_KEYS,
+} = require("./miningProfile");
 const { SPECIAL_MAT_FIELDS, isFishMaterial, ownedMaterial } = require("./craftMaterials");
 
 // 鎬子 / 武器 / 釣竿階級（用於判定升級 / 同級 / 降級）
@@ -121,6 +126,11 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
   // 藏寶圖：累加 treasure_maps（無上限，到 /背包 探險道具區按使用觸發）
   if (type === "treasure_map") {
     return craftTreasureMap(client, { userId, guildId, recipe });
+  }
+
+  // 礦石回收：把素材熔回礦石（例：破損陷阱碎片 → 鐵礦）
+  if (type === "ore") {
+    return craftOre(client, { userId, guildId, recipe });
   }
 
   const slot = resolveSlot(type);
@@ -456,6 +466,64 @@ async function craftTreasureMap(client, { userId, guildId, recipe }) {
   };
 }
 
+async function craftOre(client, { userId, guildId, recipe }) {
+  const profile = await getOrCreate(client, userId, guildId);
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const have = ownedMaterial(profile, mat);
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) {
+    return { ok: false, reason: "insufficient", missing, recipe };
+  }
+
+  const oreKey = recipe.result?.id;
+  const qty = recipe.result?.qty ?? 1;
+
+  // 產出礦石佔背包格。材料若本身也是礦石要扣回來，才是真正的淨增量。
+  let delta = qty;
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    if (ORE_KEYS.includes(mat)) delta -= need;
+  }
+  const capacity = backpackCapacity(profile, mining);
+  const used = backpackUsed(profile);
+  if (delta > 0 && used + delta > capacity) {
+    return { ok: false, reason: "backpack_full", capacity, used, need: delta, recipe };
+  }
+
+  const inc = { craft_count_total: 1, [`backpack.${oreKey}`]: qty };
+  for (const [mat, need] of Object.entries(recipe.materials)) {
+    if (SPECIAL_MAT_FIELDS[mat]) {
+      const field = SPECIAL_MAT_FIELDS[mat];
+      inc[field] = (inc[field] || 0) - need;
+    } else if (isFishMaterial(mat)) {
+      inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+    } else {
+      inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+    }
+  }
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: inc, $set: { updatedAt: new Date() } },
+  );
+
+  const oreDef = mining?.ores?.[oreKey] || {};
+  return {
+    ok: true,
+    recipe,
+    type: "ore",
+    resultId: oreKey,
+    resultName: recipe.name,
+    resultEmoji: recipe.emoji || "🔥",
+    durability: null,
+    oreQty: qty,
+    oreName: oreDef.name || oreKey,
+    oreEmoji: oreDef.emoji || "",
+    craftCountTotal: (profile.craft_count_total || 0) + 1,
+  };
+}
+
 module.exports = {
   craftItem,
   craftRepairTool,
@@ -463,6 +531,7 @@ module.exports = {
   craftStoneAppraisalTrigger,
   craftAdvancedTrap,
   craftTreasureMap,
+  craftOre,
   getRecipe,
   maxCraftTimes,
   PICKAXE_TIER,
