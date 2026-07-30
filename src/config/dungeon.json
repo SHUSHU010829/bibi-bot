@@ -78,7 +78,6 @@
         "durability": 70,
         "unlockLevel": 30,
         "tier": "v2",
-        "enabled": false,
         "recipe": { "gold": 8, "iron": 15 }
       },
       "diamond_shield": {
@@ -90,7 +89,6 @@
         "durability": 90,
         "unlockLevel": 50,
         "tier": "v2",
-        "enabled": false,
         "recipe": { "diamond": 5, "gold": 15 }
       },
       "legendary_shield": {
@@ -103,7 +101,6 @@
         "durability": 120,
         "unlockLevel": 75,
         "tier": "v2",
-        "enabled": false,
         "recipe": { "legendary_fragment": 3, "diamond": 10, "gold": 20 }
       }
     },

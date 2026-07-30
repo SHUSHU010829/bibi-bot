@@ -93,6 +93,27 @@
         "result": { "type": "shield", "id": "steel_shield" }
       },
       {
+        "id": "shield_gold",
+        "name": "黃金盾",
+        "emoji": "🟡",
+        "materials": { "gold": 8, "iron": 15 },
+        "result": { "type": "shield", "id": "gold_shield" }
+      },
+      {
+        "id": "shield_diamond",
+        "name": "鑽石盾",
+        "emoji": "💠",
+        "materials": { "diamond": 5, "gold": 15 },
+        "result": { "type": "shield", "id": "diamond_shield" }
+      },
+      {
+        "id": "shield_legendary",
+        "name": "傳說之盾",
+        "emoji": "🔥",
+        "materials": { "legendary_fragment": 3, "diamond": 10, "gold": 20 },
+        "result": { "type": "shield", "id": "legendary_shield" }
+      },
+      {
         "id": "repair_tool_iron",
         "name": "鐵製維修工具",
         "emoji": "🔩",
