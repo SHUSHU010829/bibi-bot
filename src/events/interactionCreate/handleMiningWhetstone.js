@@ -22,9 +22,11 @@ const {
   parseRepairMaterialId,
   parseRepairWeaponId,
   parseRepairRodId,
+  parseRepairShieldId,
   REPAIR_MATERIAL_CONFIRM_PREFIX,
   REPAIR_WEAPON_CONFIRM_PREFIX,
   REPAIR_ROD_CONFIRM_PREFIX,
+  REPAIR_SHIELD_CONFIRM_PREFIX,
   USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX,
   USE_WHETSTONE_WEAPON_CONFIRM_PREFIX,
   USE_WHETSTONE_SHIELD_CONFIRM_PREFIX,
@@ -463,6 +465,87 @@ module.exports = async (client, interaction) => {
         components: [],
       });
       trackSuccess("mining-repair-rod");
+      return;
+    }
+
+    // ── 盾牌材料修復（預覽 or 確認）──────────────────────────────────────────────
+    const parsedShield = parseRepairShieldId(customId);
+    if (parsedShield) {
+      const { ownerId, confirm } = parsedShield;
+      const rl = consume(interaction.user.id, "btn:miningRepairShield", {
+        windowMs: 2000,
+        max: 3,
+      });
+      if (!rl.allowed) {
+        await replyEphemeral(interaction, `⏳ 點太快了，等 ${Math.ceil(rl.retryAfterMs / 1000)} 秒。`);
+        return;
+      }
+      if (interaction.user.id !== ownerId) {
+        await replyEphemeral(interaction, "🚫 這是別人的裝備按鈕，請用 /裝備 開自己的～");
+        return;
+      }
+
+      if (!confirm) {
+        if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+        const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
+        const discountPct = await getRepairDiscountPct(client, interaction.user.id, interaction.guildId);
+        const cost = mineService.applyRepairDiscount(
+          mineService.getShieldRepairCost(profile),
+          discountPct
+        );
+        if (!cost || !profile.shield) {
+          await replyEphemeral(interaction, "🛡️ 你目前沒有裝著可修復的盾。");
+          return;
+        }
+        if (
+          typeof profile.shield_durability === "number" &&
+          typeof profile.shield_max_durability === "number" &&
+          profile.shield_durability >= profile.shield_max_durability
+        ) {
+          await replyEphemeral(interaction, "✅ 盾牌耐久已滿，不需要修復！");
+          return;
+        }
+        const sdef = dungeon?.shields?.[profile.shield] || {};
+        const confirmBtn = new ButtonBuilder()
+          .setCustomId(`${REPAIR_SHIELD_CONFIRM_PREFIX}${interaction.user.id}`)
+          .setLabel("確認修復")
+          .setStyle(ButtonStyle.Danger);
+        await interaction.editReply({
+          content: `🛠️ 確認要修復 **${sdef.name || profile.shield}**（耐久 ${profile.shield_durability} → ${profile.shield_max_durability}）？\n\n**消耗材料**：${formatCostLine(cost)}\n\n-# 此操作無法撤回，請確認背包有足夠材料後再按確認。`,
+          components: [new ActionRowBuilder().addComponents(confirmBtn)],
+        });
+        return;
+      }
+
+      if (!(await deferUpdateSafe(interaction))) return;
+      const result = await mineService.repairShieldWithMaterials(client, {
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+      });
+      if (!result.ok) {
+        const messages = {
+          disabled: "🔧 挖礦系統尚未啟動！",
+          no_shield: "🛡️ 你目前沒有裝著可修復的盾。",
+          no_recipe: "🔧 找不到該盾牌的合成配方，請呼叫舒舒！",
+          already_full: "✅ 盾牌耐久已滿，不需要修復！",
+          insufficient: `🪨 材料不足！${
+            result.missing
+              ? result.missing.map((m) => `${materialLabel(m.mat)}（需 ${m.need}，有 ${m.have}）`).join("、")
+              : ""
+          }`,
+          retry: "⏳ 操作衝突，請再試一次。",
+        };
+        await interaction.editReply({
+          content: messages[result.reason] || "🔧 修復失敗，請稍後再試。",
+          components: [],
+        });
+        return;
+      }
+      await interaction.editReply({
+        content: `🛠️ 修復完成！盾牌耐久恢復至 **${result.durabilityAfter}**。\n消耗了：${formatCostLine(result.cost)}\n\n-# 重新打開 /裝備 可看到最新狀態。`,
+        components: [],
+      });
+      trackSuccess("mining-repair-shield");
       return;
     }
 

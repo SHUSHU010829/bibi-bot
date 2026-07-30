@@ -31,6 +31,7 @@ const {
   getPickaxeRepairCost,
   getWeaponRepairCost,
   getRodRepairCost,
+  getShieldRepairCost,
   applyRepairDiscount,
 } = require("../mining/mineService");
 const buildingService = require("../guild_club/buildingService");
@@ -39,6 +40,7 @@ const {
   REPAIR_MATERIAL_PREFIX,
   REPAIR_WEAPON_PREFIX,
   REPAIR_ROD_PREFIX,
+  REPAIR_SHIELD_PREFIX,
 } = require("../shop/backpackView");
 
 const TAB_PREFIX = "wsTab_";
@@ -517,7 +519,7 @@ function buildRepairTab(container, { userId, displayName, profile, repairDiscoun
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 用礦石（鎬子 / 釣竿）或魚（武器）補滿耐久；點下方按鈕直接修`,
+        `-# 用礦石／魚補滿耐久，不扣上限（鎬子・武器・盾牌・釣竿）；點右側按鈕直接修`,
       ),
     );
 
@@ -595,27 +597,47 @@ function buildRepairTab(container, { userId, displayName, profile, repairDiscoun
     }
   }
 
-  // Phase H+ 盾牌（沒有材料修復配方，只能用劣質磨石；提示玩家到 /背包 點修盾）
+  // 盾牌
   {
     const sKey = profile.shield;
-    if (sKey) {
+    if (!sKey) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🛡️ **盾**：—\n-# 還沒裝盾。先到「合成 → 盾牌」打一面盾再回來修。`,
+        ),
+      );
+    } else {
       const sdef = (dungeon?.shields || {})[sKey] || {};
+      const cost = applyRepairDiscount(getShieldRepairCost(profile), repairDiscountPct);
+      const can =
+        cost !== null &&
+        typeof profile.shield_durability === "number" &&
+        typeof profile.shield_max_durability === "number" &&
+        profile.shield_durability < profile.shield_max_durability;
       const dura =
         profile.shield_durability == null
           ? "—"
           : `${profile.shield_durability}/${profile.shield_max_durability ?? "?"} 次`;
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `🛡️ **盾**：${sdef.emoji || "🛡️"} ${sdef.name || sKey}（耐久 ${dura}）\n` +
-            `-# 盾無材料修復配方，到 /背包 用劣質磨石修盾（補滿耐久，盾最大耐久 -10）`,
-        ),
-      );
-    } else {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `🛡️ **盾**：—\n-# 還沒裝盾。先到「合成 → 武器/盾」打一面盾再回來修。`,
-        ),
-      );
+      const label = `${sdef.emoji || "🛡️"} ${sdef.name || sKey}`;
+      const body = cost
+        ? `🛡️ **盾**：${label}（耐久 ${dura}）\n🛠️ 消耗：${formatCostInline(profile, cost)}`
+        : `🛡️ **盾**：${label}（耐久 ${dura}）\n-# 無修復配方`;
+      if (cost) {
+        container.addSectionComponents(
+          new SectionBuilder()
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(body))
+            .setButtonAccessory(
+              new ButtonBuilder()
+                .setCustomId(`${REPAIR_SHIELD_PREFIX}${userId}`)
+                .setLabel("修復")
+                .setEmoji("🛠️")
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(!can),
+            ),
+        );
+      } else {
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+      }
     }
   }
 

@@ -219,6 +219,23 @@ function parseRepairRodId(customId) {
   return null;
 }
 
+// 盾牌材料修復：mining_repair_shield_<ownerId> / _confirm_
+const REPAIR_SHIELD_PREFIX = "mining_repair_shield_";
+const REPAIR_SHIELD_CONFIRM_PREFIX = "mining_repair_shield_confirm_";
+
+function parseRepairShieldId(customId) {
+  if (!customId) return null;
+  if (customId.startsWith(REPAIR_SHIELD_CONFIRM_PREFIX)) {
+    const ownerId = customId.slice(REPAIR_SHIELD_CONFIRM_PREFIX.length);
+    return ownerId ? { ownerId, confirm: true } : null;
+  }
+  if (customId.startsWith(REPAIR_SHIELD_PREFIX)) {
+    const ownerId = customId.slice(REPAIR_SHIELD_PREFIX.length);
+    return ownerId ? { ownerId, confirm: false } : null;
+  }
+  return null;
+}
+
 const TYPE_LABEL = {
   role_color: "🎨 顏色身份組",
   role_color_custom: "🎨 自訂顏色身份組",
@@ -1288,6 +1305,9 @@ module.exports = {
   REPAIR_ROD_PREFIX,
   REPAIR_ROD_CONFIRM_PREFIX,
   parseRepairRodId,
+  REPAIR_SHIELD_PREFIX,
+  REPAIR_SHIELD_CONFIRM_PREFIX,
+  parseRepairShieldId,
   USE_STAMINA_POTION_PREFIX,
   USE_TREASURE_MAP_PREFIX,
   parseUseTreasureMapId,

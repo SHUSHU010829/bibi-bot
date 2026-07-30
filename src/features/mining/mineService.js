@@ -715,6 +715,23 @@ function getRodRepairCost(profile) {
   return cost;
 }
 
+function getShieldRepairCost(profile) {
+  const { craft } = require("../../config");
+  const shieldId = profile?.shield;
+  if (!shieldId) return null;
+  const recipe = (craft?.recipes || []).find(
+    (r) => r.result?.type === "shield" && r.result?.id === shieldId
+  );
+  if (!recipe) return null;
+  const cost = { stone: 20, coal: 10, iron: 5 };
+  for (const [mat, qty] of Object.entries(recipe.materials || {})) {
+    if (mat === "coal") continue;
+    if (REPAIR_SKIP_MATERIALS.has(mat)) continue;
+    cost[mat] = (cost[mat] || 0) + Math.ceil(qty / 2);
+  }
+  return cost;
+}
+
 // 使用一個劣質磨石：補滿鎬子耐久到目前 pickaxe_max_durability，然後 max -10。
 // max < 20 時拒用（避免降至 10 以下，讓玩家知道是最終次數）。
 async function useInferiorWhetstone(client, { userId, guildId }) {
@@ -1190,6 +1207,91 @@ async function repairRodWithMaterials(client, { userId, guildId }) {
   };
 }
 
+async function getShieldRepairPreview(client, { userId, guildId }) {
+  if (!mining?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+  const profile = await getOrCreate(client, userId, guildId);
+  if (!profile.shield) return { ok: false, reason: "no_shield" };
+  const baseCost = getShieldRepairCost(profile);
+  if (!baseCost) return { ok: false, reason: "no_recipe" };
+  const guildBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const cost = applyRepairDiscount(baseCost, guildBuffs.equipment_repair_discount_pct || 0);
+
+  const bp = profile.backpack || {};
+  const items = [];
+  let affordable = true;
+  for (const [mat, need] of Object.entries(cost)) {
+    const have = bp[mat] || 0;
+    if (have < need) affordable = false;
+    items.push({ mat, need, have, isFish: false });
+  }
+  return { ok: true, cost, items, affordable };
+}
+
+// 盾牌材料修復：補滿耐久至 shield_max_durability，無懲罰。
+// 盾原本只有劣質磨石一條路（補滿但 max -10），是四種裝備裡唯一沒有材料修復的。
+async function repairShieldWithMaterials(client, { userId, guildId }) {
+  if (!mining?.enabled || !client.miningProfilesCollection) {
+    return { ok: false, reason: "disabled" };
+  }
+
+  const profile = await getOrCreate(client, userId, guildId);
+
+  if (!profile.shield) return { ok: false, reason: "no_shield" };
+  if (typeof profile.shield_max_durability !== "number") {
+    return { ok: false, reason: "no_shield" };
+  }
+  if (
+    typeof profile.shield_durability === "number" &&
+    profile.shield_durability >= profile.shield_max_durability
+  ) {
+    return { ok: false, reason: "already_full", durability: profile.shield_durability };
+  }
+
+  const baseCost = getShieldRepairCost(profile);
+  if (!baseCost) return { ok: false, reason: "no_recipe" };
+  const guildBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const cost = applyRepairDiscount(
+    baseCost,
+    guildBuffs.equipment_repair_discount_pct || 0
+  );
+
+  const bp = profile.backpack || {};
+  const missing = [];
+  for (const [mat, need] of Object.entries(cost)) {
+    if ((bp[mat] || 0) < need) missing.push({ mat, need, have: bp[mat] || 0 });
+  }
+  if (missing.length > 0) {
+    return { ok: false, reason: "insufficient", missing, cost };
+  }
+
+  const inc = {};
+  for (const [mat, need] of Object.entries(cost)) inc[`backpack.${mat}`] = -need;
+
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    {
+      $inc: inc,
+      $set: {
+        shield_durability: profile.shield_max_durability,
+        updatedAt: new Date(),
+      },
+    }
+  );
+
+  return {
+    ok: true,
+    cost,
+    durabilityAfter: profile.shield_max_durability,
+    maxDurability: profile.shield_max_durability,
+  };
+}
+
 module.exports = {
   mine,
   mineBatch,
@@ -1198,6 +1300,9 @@ module.exports = {
   useCdTicket,
   getPickaxeRepairCost,
   getWeaponRepairCost,
+  getShieldRepairCost,
+  getShieldRepairPreview,
+  repairShieldWithMaterials,
   getRodRepairCost,
   applyRepairDiscount,
   useInferiorWhetstone,
