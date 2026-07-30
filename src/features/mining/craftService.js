@@ -185,13 +185,13 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
     }
   }
   // 儲存的最大耐久一律是「原始上限」（config durability）；公會鐵匠鋪加成不寫死進 DB，
-  // 由讀取端動態換算。新武器現值直接補到「有效上限」，讓剛打造的武器吃滿當前加成。
+  // 由讀取端動態換算。新裝備現值直接補到「有效上限」，讓剛打造的裝備吃滿當前加成。
   const baseDurability = targetDef.durability ?? null;
   let currentDurability = baseDurability;
-  if (type === "weapon" && typeof baseDurability === "number") {
+  if (typeof baseDurability === "number") {
     const buildingService = require("../guild_club/buildingService");
-    const pct = await buildingService.getWeaponMaxDurabilityPct(client, userId, guildId);
-    currentDurability = buildingService.effectiveWeaponMaxDurability(baseDurability, pct);
+    const pct = await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId);
+    currentDurability = buildingService.effectiveMaxDurability(baseDurability, pct);
   }
 
   await client.miningProfilesCollection.updateOne(

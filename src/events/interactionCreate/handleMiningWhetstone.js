@@ -194,9 +194,9 @@ module.exports = async (client, interaction) => {
           return;
         }
         // -10 作用在原始上限；顯示補滿目標與上限用「有效上限」（含鐵匠鋪加成）。
-        const weaponPct = await buildingService.getWeaponMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
-        const effMaxNow = buildingService.effectiveWeaponMaxDurability(maxDur, weaponPct);
-        const effMaxAfter = buildingService.effectiveWeaponMaxDurability(maxDur - 10, weaponPct);
+        const weaponPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
+        const effMaxNow = buildingService.effectiveMaxDurability(maxDur, weaponPct);
+        const effMaxAfter = buildingService.effectiveMaxDurability(maxDur - 10, weaponPct);
         const wdef = dungeon?.weapons?.[profile.weapon] || {};
         const confirmBtn = new ButtonBuilder()
           .setCustomId(`${USE_WHETSTONE_WEAPON_CONFIRM_PREFIX}${interaction.user.id}`)
@@ -333,8 +333,8 @@ module.exports = async (client, interaction) => {
           await replyEphemeral(interaction, "⚔️ 你目前沒有可修復的武器。");
           return;
         }
-        const weaponPct = await buildingService.getWeaponMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
-        const effMax = buildingService.effectiveWeaponMaxDurability(profile.weapon_max_durability, weaponPct);
+        const weaponPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
+        const effMax = buildingService.effectiveMaxDurability(profile.weapon_max_durability, weaponPct);
         if (
           typeof profile.weapon_durability === "number" &&
           typeof effMax === "number" &&

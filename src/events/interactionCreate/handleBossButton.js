@@ -82,7 +82,7 @@ module.exports = async (client, interaction) => {
       const [profile, weaponMaxPct] = await Promise.all([
         getOrCreate(client, interaction.user.id, interaction.guildId),
         buildingService
-          .getWeaponMaxDurabilityPct(client, interaction.user.id, interaction.guildId)
+          .getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId)
           .catch(() => 0),
       ]);
       return interaction.editReply({

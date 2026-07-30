@@ -382,7 +382,7 @@ function buildWeaponContainer({ profile, weaponMaxPct }) {
     );
   } else {
     const baseMax = profile.weapon_max_durability;
-    const effMax = buildingService.effectiveWeaponMaxDurability(baseMax, weaponMaxPct);
+    const effMax = buildingService.effectiveMaxDurability(baseMax, weaponMaxPct);
     const cur =
       typeof profile.weapon_durability === "number" ? profile.weapon_durability : effMax;
     const durText = typeof effMax === "number" ? `${cur}/${effMax}` : `${cur}`;

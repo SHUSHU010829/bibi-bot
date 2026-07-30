@@ -750,6 +750,9 @@ async function useInferiorWhetstone(client, { userId, guildId }) {
   if (typeof profile.pickaxe_max_durability !== "number") {
     return { ok: false, reason: "no_pickaxe" };
   }
+  const guildBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
   if (profile.pickaxe_max_durability < 20) {
     return { ok: false, reason: "max_too_low", maxDurability: profile.pickaxe_max_durability };
   }
@@ -765,6 +768,11 @@ async function useInferiorWhetstone(client, { userId, guildId }) {
   //      的 max（profile.pickaxe_max_durability），避免 $add(null,-10) → null
   //      把鎬子上限算成空值。
   const fallbackMax = profile.pickaxe_max_durability;
+  // 上限 -10 作用在原始 base；耐久補到「有效上限」（吃鐵匠鋪 %），比照武器版
+  const effMaxAfter = buildingService.effectiveMaxDurability(
+    fallbackMax - 10,
+    guildBuffs.equipment_max_durability_pct || 0,
+  );
   const res = await client.miningProfilesCollection.updateOne(
     {
       userId,
@@ -778,9 +786,7 @@ async function useInferiorWhetstone(client, { userId, guildId }) {
           pickaxe_max_durability: {
             $add: [{ $ifNull: ["$pickaxe_max_durability", fallbackMax] }, -10],
           },
-          pickaxe_durability: {
-            $add: [{ $ifNull: ["$pickaxe_max_durability", fallbackMax] }, -10],
-          },
+          pickaxe_durability: effMaxAfter,
           whetstone_inferior_count: { $add: ["$whetstone_inferior_count", -1] },
           updatedAt: "$$NOW",
         },
@@ -817,7 +823,7 @@ async function useInferiorWhetstoneOnWeapon(client, { userId, guildId }) {
 
   const fallbackMax = profile.weapon_max_durability;
   // 磨石 -10 作用在「原始上限」；補滿的當前耐久則補到「有效上限」（原始 × 鐵匠鋪加成）。
-  const pct = await buildingService.getWeaponMaxDurabilityPct(client, userId, guildId);
+  const pct = await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId);
   const res = await client.miningProfilesCollection.updateOne(
     {
       userId,
@@ -848,7 +854,7 @@ async function useInferiorWhetstoneOnWeapon(client, { userId, guildId }) {
 
   if (res.modifiedCount === 0) return { ok: false, reason: "retry" };
   const newBase = profile.weapon_max_durability - 10;
-  const newEffMax = buildingService.effectiveWeaponMaxDurability(newBase, pct);
+  const newEffMax = buildingService.effectiveMaxDurability(newBase, pct);
   return {
     ok: true,
     durabilityAfter: newEffMax,
@@ -929,6 +935,13 @@ const REPAIR_TOOL_TARGETS = {
   },
 };
 
+// 有效耐久上限 = DB 存的原始 base × (1 + 鐵匠鋪%)。DB 一律只存 base。
+const effectiveMaxOf = (profile, target, pct) => {
+  const spec = REPAIR_TOOL_TARGETS[target];
+  if (!spec) return null;
+  return buildingService.effectiveMaxDurability(profile?.[spec.maxField], pct);
+};
+
 const repairToolTargetEquipped = (profile, target) => {
   const spec = REPAIR_TOOL_TARGETS[target];
   if (!spec) return false;
@@ -966,10 +979,10 @@ async function useRepairTool(client, { userId, guildId, tier, target = "pickaxe"
   // 否則裝了加成反而補不滿（比照 repairWeaponWithMaterials）。
   const newMax = Math.max(1, curMax + maxDelta);
   const pct = target === "weapon"
-    ? await buildingService.getWeaponMaxDurabilityPct(client, userId, guildId).catch(() => 0)
+    ? await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId).catch(() => 0)
     : 0;
   const fillMax = target === "weapon"
-    ? buildingService.effectiveWeaponMaxDurability(newMax, pct)
+    ? buildingService.effectiveMaxDurability(newMax, pct)
     : newMax;
   const newDura = Math.min(fillMax, Math.ceil(fillMax * (def.duraPct ?? 1)));
 
@@ -1020,18 +1033,19 @@ async function repairPickaxeWithMaterials(client, { userId, guildId }) {
   if (typeof profile.pickaxe_max_durability !== "number") {
     return { ok: false, reason: "no_pickaxe" };
   }
+  const guildBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const effMax = effectiveMaxOf(profile, "pickaxe", guildBuffs.equipment_max_durability_pct || 0);
   if (
     typeof profile.pickaxe_durability === "number" &&
-    profile.pickaxe_durability >= profile.pickaxe_max_durability
+    profile.pickaxe_durability >= effMax
   ) {
     return { ok: false, reason: "already_full", durability: profile.pickaxe_durability };
   }
 
   const baseCost = getPickaxeRepairCost(profile);
   if (!baseCost) return { ok: false, reason: "no_recipe" };
-  const guildBuffs = await buildingService
-    .getMemberBuildingBuffs(client, userId, guildId)
-    .catch(() => ({}));
   const cost = applyRepairDiscount(
     baseCost,
     guildBuffs.equipment_repair_discount_pct || 0
@@ -1059,7 +1073,7 @@ async function repairPickaxeWithMaterials(client, { userId, guildId }) {
     {
       $inc: inc,
       $set: {
-        pickaxe_durability: profile.pickaxe_max_durability,
+        pickaxe_durability: effMax,
         updatedAt: new Date(),
       },
     }
@@ -1068,8 +1082,8 @@ async function repairPickaxeWithMaterials(client, { userId, guildId }) {
   return {
     ok: true,
     cost,
-    durabilityAfter: profile.pickaxe_max_durability,
-    maxDurability: profile.pickaxe_max_durability,
+    durabilityAfter: effMax,
+    maxDurability: effMax,
   };
 }
 
@@ -1090,9 +1104,9 @@ async function repairWeaponWithMaterials(client, { userId, guildId }) {
   const guildBuffs = await buildingService
     .getMemberBuildingBuffs(client, userId, guildId)
     .catch(() => ({}));
-  const effMax = buildingService.effectiveWeaponMaxDurability(
+  const effMax = buildingService.effectiveMaxDurability(
     profile.weapon_max_durability,
-    guildBuffs.weapon_max_durability_pct || 0
+    guildBuffs.equipment_max_durability_pct || 0
   );
   if (
     typeof profile.weapon_durability === "number" &&
@@ -1155,9 +1169,6 @@ async function getRodRepairPreview(client, { userId, guildId }) {
   }
   const baseCost = getRodRepairCost(profile);
   if (!baseCost) return { ok: false, reason: "no_recipe" };
-  const guildBuffs = await buildingService
-    .getMemberBuildingBuffs(client, userId, guildId)
-    .catch(() => ({}));
   const cost = applyRepairDiscount(baseCost, guildBuffs.equipment_repair_discount_pct || 0);
 
   const bp = profile.backpack || {};
@@ -1190,18 +1201,19 @@ async function repairRodWithMaterials(client, { userId, guildId }) {
   if (typeof profile.rod_max_durability !== "number") {
     return { ok: false, reason: "no_rod" };
   }
+  const guildBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const effMax = effectiveMaxOf(profile, "rod", guildBuffs.equipment_max_durability_pct || 0);
   if (
     typeof profile.rod_durability === "number" &&
-    profile.rod_durability >= profile.rod_max_durability
+    profile.rod_durability >= effMax
   ) {
     return { ok: false, reason: "already_full", durability: profile.rod_durability };
   }
 
   const baseCost = getRodRepairCost(profile);
   if (!baseCost) return { ok: false, reason: "no_recipe" };
-  const guildBuffs = await buildingService
-    .getMemberBuildingBuffs(client, userId, guildId)
-    .catch(() => ({}));
   const cost = applyRepairDiscount(
     baseCost,
     guildBuffs.equipment_repair_discount_pct || 0
@@ -1235,7 +1247,7 @@ async function repairRodWithMaterials(client, { userId, guildId }) {
     {
       $inc: inc,
       $set: {
-        rod_durability: profile.rod_max_durability,
+        rod_durability: effMax,
         updatedAt: new Date(),
       },
     }
@@ -1244,8 +1256,8 @@ async function repairRodWithMaterials(client, { userId, guildId }) {
   return {
     ok: true,
     cost,
-    durabilityAfter: profile.rod_max_durability,
-    maxDurability: profile.rod_max_durability,
+    durabilityAfter: effMax,
+    maxDurability: effMax,
   };
 }
 
@@ -1257,9 +1269,6 @@ async function getShieldRepairPreview(client, { userId, guildId }) {
   if (!profile.shield) return { ok: false, reason: "no_shield" };
   const baseCost = getShieldRepairCost(profile);
   if (!baseCost) return { ok: false, reason: "no_recipe" };
-  const guildBuffs = await buildingService
-    .getMemberBuildingBuffs(client, userId, guildId)
-    .catch(() => ({}));
   const cost = applyRepairDiscount(baseCost, guildBuffs.equipment_repair_discount_pct || 0);
 
   const bp = profile.backpack || {};
@@ -1286,18 +1295,19 @@ async function repairShieldWithMaterials(client, { userId, guildId }) {
   if (typeof profile.shield_max_durability !== "number") {
     return { ok: false, reason: "no_shield" };
   }
+  const guildBuffs = await buildingService
+    .getMemberBuildingBuffs(client, userId, guildId)
+    .catch(() => ({}));
+  const effMax = effectiveMaxOf(profile, "shield", guildBuffs.equipment_max_durability_pct || 0);
   if (
     typeof profile.shield_durability === "number" &&
-    profile.shield_durability >= profile.shield_max_durability
+    profile.shield_durability >= effMax
   ) {
     return { ok: false, reason: "already_full", durability: profile.shield_durability };
   }
 
   const baseCost = getShieldRepairCost(profile);
   if (!baseCost) return { ok: false, reason: "no_recipe" };
-  const guildBuffs = await buildingService
-    .getMemberBuildingBuffs(client, userId, guildId)
-    .catch(() => ({}));
   const cost = applyRepairDiscount(
     baseCost,
     guildBuffs.equipment_repair_discount_pct || 0
@@ -1320,7 +1330,7 @@ async function repairShieldWithMaterials(client, { userId, guildId }) {
     {
       $inc: inc,
       $set: {
-        shield_durability: profile.shield_max_durability,
+        shield_durability: effMax,
         updatedAt: new Date(),
       },
     }
@@ -1329,8 +1339,8 @@ async function repairShieldWithMaterials(client, { userId, guildId }) {
   return {
     ok: true,
     cost,
-    durabilityAfter: profile.shield_max_durability,
-    maxDurability: profile.shield_max_durability,
+    durabilityAfter: effMax,
+    maxDurability: effMax,
   };
 }
 

@@ -224,7 +224,7 @@ async function summary(client, userId, guildId, member) {
   const guildHarvestCoinPct = gc.buffsByType.harvest_coin_pct || 0;
   const guildCookingCritPct = gc.buffsByType.cooking_crit_pct || 0;
   const guildFarmLowTierExtra = gc.buffsByType.farm_low_tier_extra_count || 0;
-  const guildWeaponMaxDurPct = gc.buffsByType.weapon_max_durability_pct || 0;
+  const guildWeaponMaxDurPct = gc.buffsByType.equipment_max_durability_pct || 0;
   const guildRepairDiscountPct = gc.buffsByType.equipment_repair_discount_pct || 0;
   const guildCombatDurSavePct = gc.buffsByType.combat_durability_save_pct || 0;
   const guildWhBonus = gc.club ? buildingService.warehouseCapacityBonus(gc.club) : 0;

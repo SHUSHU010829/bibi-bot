@@ -205,20 +205,20 @@ const upgradeBuilding = async (client, { userId, guildId, kind }) => {
   };
 };
 
-// 鐵匠鋪 weapon_max_durability_pct → 有效武器耐久上限。
+// 鐵匠鋪 equipment_max_durability_pct → 有效耐久上限（鎬 / 劍 / 盾 / 釣竿共用）。
 // baseMax 為玩家儲存的「原始上限」（config durability，可能被劣質磨石 -10）。
 // 加成不寫進 DB：改由讀取端動態換算，玩家目前公會狀態變了就即時反映。
-const effectiveWeaponMaxDurability = (baseMax, pct) => {
+const effectiveMaxDurability = (baseMax, pct) => {
   if (typeof baseMax !== "number") return baseMax;
   const p = Number(pct) || 0;
   if (p <= 0) return baseMax;
   return Math.floor(baseMax * (1 + p / 100));
 };
 
-// 查玩家目前公會鐵匠鋪提供的武器耐久上限加成（%）；沒公會 → 0。
-async function getWeaponMaxDurabilityPct(client, userId, guildId) {
+// 查玩家目前公會鐵匠鋪提供的裝備耐久上限加成（%）；沒公會 → 0。
+async function getEquipmentMaxDurabilityPct(client, userId, guildId) {
   const buffs = await getMemberBuildingBuffs(client, userId, guildId).catch(() => ({}));
-  return buffs.weapon_max_durability_pct || 0;
+  return buffs.equipment_max_durability_pct || 0;
 }
 
 module.exports = {
@@ -232,6 +232,6 @@ module.exports = {
   getMemberBuildingBuffs,
   checkUpgradeRequirements,
   upgradeBuilding,
-  effectiveWeaponMaxDurability,
-  getWeaponMaxDurabilityPct,
+  effectiveMaxDurability,
+  getEquipmentMaxDurabilityPct,
 };

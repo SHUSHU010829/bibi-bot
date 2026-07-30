@@ -28,7 +28,7 @@ const BUFF_META = {
   harvest_coin_pct: { label: "收成金幣", unit: "+{v}%" },
   cooking_crit_pct: { label: "烹飪美味暴擊", unit: "+{v}%" },
   farm_low_tier_extra_count: { label: "低階作物額外產出", unit: "+{v} 個（限紅蘿蔔/玉米）" },
-  weapon_max_durability_pct: { label: "武器耐久上限", unit: "+{v}%" },
+  equipment_max_durability_pct: { label: "裝備耐久上限", unit: "+{v}%" },
   equipment_repair_discount_pct: { label: "裝備修復材料", unit: "-{v}%（武器/鎬/釣竿）" },
   combat_durability_save_pct: { label: "戰鬥耐久節省", unit: "+{v}%（武器/盾）" },
 };

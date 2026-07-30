@@ -597,12 +597,19 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       );
     }
 
+    const guildBuildingBuffs = await buildingService
+      .getMemberBuildingBuffs(client, userId, guildId)
+      .catch(() => ({}));
+    const repairDiscountPct = guildBuildingBuffs.equipment_repair_discount_pct || 0;
+    const equipMaxPct = guildBuildingBuffs.equipment_max_durability_pct || 0;
+    const effMaxOf = (v) => buildingService.effectiveMaxDurability(v, equipMaxPct);
+
     const pdef = mining.pickaxes[profile.pickaxe] || mining.pickaxes.wood;
     const durabilityText =
       profile.pickaxe === "wood" || profile.pickaxe_durability == null
         ? "永久"
         : typeof profile.pickaxe_max_durability === "number"
-          ? `耐久 ${profile.pickaxe_durability} / ${profile.pickaxe_max_durability}`
+          ? `耐久 ${profile.pickaxe_durability} / ${effMaxOf(profile.pickaxe_max_durability)}`
           : `耐久 ${profile.pickaxe_durability}`;
 
     const now = Date.now();
@@ -618,11 +625,6 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     const repairTools = profile.repair_tools || {};
     const reductionMin = Math.round((mining?.cdTicketReductionMs || 0) / 60000);
 
-    const guildBuildingBuffs = await buildingService
-      .getMemberBuildingBuffs(client, userId, guildId)
-      .catch(() => ({}));
-    const repairDiscountPct = guildBuildingBuffs.equipment_repair_discount_pct || 0;
-    const weaponMaxPct = guildBuildingBuffs.weapon_max_durability_pct || 0;
     const repairCost = applyRepairDiscount(
       getPickaxeRepairCost(profile),
       repairDiscountPct
@@ -632,7 +634,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       profile.pickaxe !== "wood" &&
       typeof profile.pickaxe_durability === "number" &&
       typeof profile.pickaxe_max_durability === "number" &&
-      profile.pickaxe_durability < profile.pickaxe_max_durability;
+      profile.pickaxe_durability < effMaxOf(profile.pickaxe_max_durability);
 
     const formatCost = (cost) => {
       if (!cost) return "";
@@ -699,7 +701,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         const weaponMax = profile.weapon_max_durability;
         const shieldMax = profile.shield_max_durability;
         // 磨石 -10 的門檻看「原始上限」(weaponMax)；顯示則看「有效上限」(含鐵匠鋪加成)。
-        const weaponEffMax = buildingService.effectiveWeaponMaxDurability(weaponMax, weaponMaxPct);
+        const weaponEffMax = buildingService.effectiveMaxDurability(weaponMax, equipMaxPct);
         const canPickaxe = inferiorCount > 0 && profile.pickaxe !== "wood" && typeof pickaxeMax === "number" && pickaxeMax >= 20;
         const canWeapon = inferiorCount > 0 && profile.weapon !== "fist" && typeof weaponMax === "number" && weaponMax >= 20;
         const canShield = inferiorCount > 0 && !!profile.shield && typeof shieldMax === "number" && shieldMax >= 20;
@@ -749,7 +751,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
                 ? "需要非木鎬才能修復"
                 : !canRepair && typeof profile.pickaxe_durability === "number" &&
                   typeof profile.pickaxe_max_durability === "number" &&
-                  profile.pickaxe_durability >= profile.pickaxe_max_durability
+                  profile.pickaxe_durability >= effMaxOf(profile.pickaxe_max_durability)
                 ? "耐久已滿，不需要修復"
                 : "裝備鎬子後可使用"
             }`;
