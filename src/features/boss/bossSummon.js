@@ -62,7 +62,7 @@ function cooldownMs() {
 }
 
 // 集滿時嘗試召喚（原子搶結算權，只有一個 dungeon clear 會真的召出魔王）
-// 招喚場立即登場、無時間限制、血量少一點；並有「防連續出場」冷卻。
+// 招喚場立即登場、無時間限制、血量與固定場同級；並有「防連續出場」冷卻。
 async function trySummon(client, guildId) {
   const threshold = cfg().energyThreshold ?? 120;
   const active = await bossEngine.getActiveBoss(client, guildId);
@@ -101,7 +101,7 @@ async function trySummon(client, guildId) {
   if (!claimed) return null; // 別的 dungeon clear 已搶先召喚
 
   const contributorCount = Object.keys(claimed.contributors || {}).length;
-  // 立即登場：血量少一點（summonHpMult）、無時間限制（noExpiry），待到被擊殺為止。
+  // 立即登場：血量倍率（summonHpMult）、無時間限制（noExpiry），待到被擊殺為止。
   const res = await bossEngine.spawnBoss(client, {
     guildId,
     spawnSource: "summon",

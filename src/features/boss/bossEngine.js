@@ -161,7 +161,7 @@ async function bossCooldown(client, guildId, cooldownMs) {
   return { onCooldown: Date.now() < until, until };
 }
 
-// 依線上人數 + 社群平均戰力即時算出魔王血量。hpMult 給招喚場「血量少一點」用。
+// 依線上人數 + 社群平均戰力即時算出魔王血量。hpMult 給招喚場調整血量倍率用。
 async function computeScaledHp(client, guildId, hpMult = 1) {
   const onlineCount = await countOnlineMembers(client);
   const base = Math.max(cfg().minHp ?? 3000, onlineCount * (cfg().hpPerPlayer ?? 500));
@@ -197,7 +197,7 @@ function freshCombatFields() {
   };
 }
 
-// hpMult：招喚場「血量少一點」；noExpiry：招喚場無時間限制（ends_at=null，待到被擊殺為止）。
+// hpMult：招喚場血量倍率；noExpiry：招喚場無時間限制（ends_at=null，待到被擊殺為止）。
 async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSource, hpMult, noExpiry }) {
   const now = Date.now();
   const existing = await getActiveBoss(client, guildId);
