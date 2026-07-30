@@ -18,6 +18,14 @@ const COLOR_END = 0x95a5a6;
 const COLOR_ERROR = 0xe74c3c;
 const COLOR_INFO = 0x3498db;
 
+// 主線活動要跑好幾天，只印 "3200 / 10000" 很難一眼看出進度，補一條視覺條。
+function progressBar(filled, total, width = 12) {
+  if (!total || total <= 0) return "";
+  const ratio = Math.max(0, Math.min(1, filled / total));
+  const on = Math.round(ratio * width);
+  return `${"█".repeat(on)}${"░".repeat(width - on)} ${Math.floor(ratio * 100)}%`;
+}
+
 function buildHomePanel({ viewerId, events }) {
   const c = new ContainerBuilder().setAccentColor(COLOR_INFO);
   c.addTextDisplayComponents(
@@ -42,7 +50,8 @@ function buildHomePanel({ viewerId, events }) {
       .map(([k, total]) => {
         const remain = (e.requirements_remaining || {})[k] || 0;
         const filled = total - remain;
-        return `• ${itemEmoji(k)} ${itemLabel(k)}　${filled} / ${total}`;
+        const head = `• ${itemEmoji(k)} ${itemLabel(k)}　${filled.toLocaleString()} / ${total.toLocaleString()}`;
+        return e.kind === "mainline" ? `${head}\n\`${progressBar(filled, total)}\`` : head;
       })
       .join("\n");
     const buffLines = Object.entries(e.rewards?.buffs || {})
@@ -125,7 +134,9 @@ function buildQtyPicker({ viewerId, event, itemId, maxPersonal, maxGuild }) {
     );
     return c;
   }
-  const choices = [1, 10, 50, Math.min(100, totalAvail), totalAvail]
+  // 逼幣的量級跟礦石差兩三個數量級，1/10/50 這種級距按到天荒地老
+  const steps = itemId === "coins" ? [1000, 10000, 50000] : [1, 10, 50];
+  const choices = [...steps, Math.min(steps[2] * 2, totalAvail), totalAvail]
     .filter((v, i, arr) => v > 0 && v <= totalAvail && arr.indexOf(v) === i)
     .slice(0, 5);
   const row = new ActionRowBuilder();

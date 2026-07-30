@@ -133,6 +133,11 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
     return craftOre(client, { userId, guildId, recipe });
   }
 
+  // 拓荒錘：主線活動的參與門檻，非消耗品，持有一把即可
+  if (type === "pioneer_hammer") {
+    return craftPioneerHammer(client, { userId, guildId, recipe });
+  }
+
   const slot = resolveSlot(type);
   const targetDef = slot.defs[resultId];
   if (!targetDef) return { ok: false, reason: "no_recipe" };
@@ -524,8 +529,48 @@ async function craftOre(client, { userId, guildId, recipe }) {
   };
 }
 
+async function craftPioneerHammer(client, { userId, guildId, recipe }) {
+  const profile = await getOrCreate(client, userId, guildId);
+  if (profile.pioneer_hammer) return { ok: false, reason: "already_owned", recipe };
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const have = ownedMaterial(profile, mat);
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) return { ok: false, reason: "insufficient", missing, recipe };
+
+  const inc = { craft_count_total: 1 };
+  for (const [mat, need] of Object.entries(recipe.materials)) {
+    if (SPECIAL_MAT_FIELDS[mat]) {
+      inc[SPECIAL_MAT_FIELDS[mat]] = (inc[SPECIAL_MAT_FIELDS[mat]] || 0) - need;
+    } else if (isFishMaterial(mat)) {
+      inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+    } else {
+      inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+    }
+  }
+  const res = await client.miningProfilesCollection.updateOne(
+    { userId, guildId, pioneer_hammer: { $ne: true } },
+    { $inc: inc, $set: { pioneer_hammer: true, updatedAt: new Date() } },
+  );
+  if (res.modifiedCount === 0) return { ok: false, reason: "already_owned", recipe };
+
+  return {
+    ok: true,
+    recipe,
+    type: "pioneer_hammer",
+    resultId: "pioneer_hammer",
+    resultName: recipe.name,
+    resultEmoji: recipe.emoji || "🔨",
+    durability: null,
+    craftCountTotal: (profile.craft_count_total || 0) + 1,
+  };
+}
+
 module.exports = {
   craftItem,
+  craftPioneerHammer,
   craftRepairTool,
   craftFishingNet,
   craftStoneAppraisalTrigger,

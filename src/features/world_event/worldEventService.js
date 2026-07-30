@@ -1,5 +1,6 @@
 require("colors");
 const crypto = require("crypto");
+const { DateTime } = require("luxon");
 const { worldEvents } = require("../../config");
 const worldEventBuffs = require("./worldEventBuffs");
 
@@ -15,6 +16,89 @@ const globalCooldownMs = () => (cfg().donation?.globalCooldownHours || 72) * 360
 const concurrent = () => cfg().concurrent || 1;
 
 const newEventDbId = () => `we_${crypto.randomBytes(4).toString("hex")}`;
+
+const isMainline = (def) => def?.kind === "mainline";
+
+// 逼幣在 requirements 裡的 item id。它不是倉庫物品，扣的是錢包。
+const CURRENCY_ITEM = "coins";
+
+// 今天（台北日界）某人對某事件已投入的量。沿用貢獻明細 aggregate，
+// 不另存每日計數欄位——活動結束後明細還要拿來發稱號，本來就得保留。
+async function donatedTodayBy(client, { eventDbId, userId, itemId }) {
+  if (!client?.worldEventContributionsCollection) return 0;
+  const startOfToday = DateTime.now().setZone("Asia/Taipei").startOf("day").toJSDate();
+  const [agg] = await client.worldEventContributionsCollection
+    .aggregate([
+      {
+        $match: {
+          event_db_id: eventDbId,
+          user_id: userId,
+          item_id: itemId,
+          created_at: { $gte: startOfToday },
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$qty" } } },
+    ])
+    .toArray()
+    .catch(() => []);
+  return agg?.total || 0;
+}
+
+// 逼幣捐獻：條件式原子扣款，餘額不足就整筆不動（捐獻按鈕可連點，不能讓餘額變負）。
+// 欄位比照 grantCoins 的寫法（totalCoins / lifetimeSpent / coinsFrom_<source>）。
+async function donateCoins(client, { userId, guildId, event, eventDbId, amount }) {
+  if (!client?.userCoinsCollection) return { ok: false, reason: "disabled" };
+  const SOURCE = "world_event_donate";
+
+  const dec = await client.userCoinsCollection.updateOne(
+    { userId, guildId, totalCoins: { $gte: amount } },
+    {
+      $inc: {
+        totalCoins: -amount,
+        lifetimeSpent: amount,
+        [`coinsFrom_${SOURCE}`]: -amount,
+      },
+      $set: { updatedAt: new Date() },
+    }
+  );
+  if (dec.modifiedCount === 0) {
+    const doc = await client.userCoinsCollection.findOne({ userId, guildId }).catch(() => null);
+    return { ok: false, reason: "insufficient_coins", have: doc?.totalCoins || 0, need: amount };
+  }
+
+  client.coinTransactionsCollection
+    ?.insertOne({
+      userId,
+      guildId,
+      amount: -amount,
+      source: SOURCE,
+      meta: { event_db_id: eventDbId, event_id: event.event_id },
+      date: DateTime.now().setZone("Asia/Taipei").toISODate(),
+      createdAt: new Date(),
+    })
+    .catch(() => {});
+
+  return applyProgress(client, {
+    eventDbId,
+    itemId: CURRENCY_ITEM,
+    actualQty: amount,
+    userId,
+    guildId,
+    fromCoins: amount,
+    rollback: async () => {
+      await client.userCoinsCollection.updateOne(
+        { userId, guildId },
+        {
+          $inc: {
+            totalCoins: amount,
+            lifetimeSpent: -amount,
+            [`coinsFrom_${SOURCE}`]: amount,
+          },
+        }
+      ).catch(() => {});
+    },
+  });
+}
 
 // 取「目前活躍」事件（state collecting / buffing）
 async function getActiveEvents(client) {
@@ -47,11 +131,12 @@ async function isOnCooldown(client, eventId) {
   return Date.now() - since < cooldownMs();
 }
 
-// 全域冷卻：任何事件觸發後 globalCooldown 內，所有事件都不能再開
+// 全域冷卻：任何事件觸發後 globalCooldown 內，所有事件都不能再開。
+// 主線活動不計入——否則開一次主線就把後續一般事件鎖 72 小時。
 async function isOnGlobalCooldown(client) {
   if (!client?.worldEventsCollection) return false;
   const last = await client.worldEventsCollection
-    .find({})
+    .find({ kind: { $ne: "mainline" } })
     .sort({ started_at: -1 })
     .limit(1)
     .toArray()
@@ -63,31 +148,46 @@ async function isOnGlobalCooldown(client) {
 
 // 嘗試開啟事件：(1) 並發上限 (2) 冷卻中 (3) trigger 條件
 // 回傳 { opened: bool, event? } — opened=false 時不報錯，呼叫端決定要不要通知。
+//
+// 主線活動（kind: "mainline"）走另一條規則：它會跑好幾天甚至幾週，若也吃
+// concurrent / 冷卻，整段期間所有一般世界事件都會被鎖死；反過來它自己也不該
+// 被一般事件的並發數擋住。所以兩邊在計數時互相排除。
 async function tryOpenEvent(client, eventId) {
   if (!isEnabled()) return { opened: false, reason: "disabled" };
   if (!client?.worldEventsCollection) return { opened: false, reason: "disabled" };
 
   const def = eventDef(eventId);
   if (!def) return { opened: false, reason: "unknown_event" };
+  const mainline = isMainline(def);
 
   const active = await getActiveEvents(client);
-  const collecting = active.filter((e) => e.state === "collecting").length;
-  if (collecting >= concurrent()) return { opened: false, reason: "concurrent_full" };
+  const collecting = active.filter(
+    (e) => e.state === "collecting" && isMainline(eventDef(e.event_id)) === mainline,
+  ).length;
+  const limit = mainline ? 1 : concurrent();
+  if (collecting >= limit) return { opened: false, reason: "concurrent_full" };
 
-  if (await isOnGlobalCooldown(client)) return { opened: false, reason: "global_cooldown" };
-  if (await isOnCooldown(client, eventId)) return { opened: false, reason: "cooldown" };
+  if (!mainline) {
+    if (await isOnGlobalCooldown(client)) return { opened: false, reason: "global_cooldown" };
+    if (await isOnCooldown(client, eventId)) return { opened: false, reason: "cooldown" };
+  }
 
   const now = new Date();
-  const endsAt = new Date(now.getTime() + collectWindowMs());
+  const windowMs = mainline
+    ? (def.collectWindowHoursOverride || 336) * 3600 * 1000
+    : collectWindowMs();
+  const endsAt = new Date(now.getTime() + windowMs);
 
   const doc = {
     event_db_id: newEventDbId(),
     event_id: eventId,
+    kind: def.kind || "buff",
     state: "collecting",
     started_at: now,
     ends_at: endsAt,
     requirements_remaining: { ...(def.requirements || {}) },
     requirements_total: { ...(def.requirements || {}) },
+    daily_limits: { ...(def.dailyLimits || {}) },
     total_contributions: {},
     rewards: def.rewards || {},
     label: def.label,
@@ -146,9 +246,34 @@ async function donate(client, { userId, guildId, eventDbId, itemId, qty, from })
     return { ok: false, reason: "event_expired" };
   }
 
+  // 主線活動的參與門檻：得先打造拓荒錘（防洗頻，也讓「準備階段」本身是個小目標）
+  if (event.kind === "mainline") {
+    const p = await client.miningProfilesCollection
+      .findOne({ userId, guildId }, { projection: { pioneer_hammer: 1 } })
+      .catch(() => null);
+    if (!p?.pioneer_hammer) return { ok: false, reason: "no_pioneer_hammer" };
+  }
+
   const remaining = (event.requirements_remaining || {})[itemId] || 0;
   if (remaining <= 0) return { ok: false, reason: "no_more_needed", item_id: itemId };
-  const actualQty = Math.min(qty, remaining);
+  let actualQty = Math.min(qty, remaining);
+
+  // 每日投入上限（主線活動用）：擋住少數大戶一天清空進度條。
+  // 直接對既有的貢獻明細做 aggregate，不必另存欄位。
+  const dailyLimit = (event.daily_limits || {})[itemId] || 0;
+  if (dailyLimit > 0) {
+    const usedToday = await donatedTodayBy(client, { eventDbId, userId, itemId });
+    const room = Math.max(0, dailyLimit - usedToday);
+    if (room <= 0) {
+      return { ok: false, reason: "daily_limit", item_id: itemId, limit: dailyLimit, usedToday };
+    }
+    actualQty = Math.min(actualQty, room);
+  }
+
+  // 逼幣：不走背包 / 倉庫，直接從錢包原子扣款
+  if (itemId === CURRENCY_ITEM) {
+    return donateCoins(client, { userId, guildId, event, eventDbId, amount: actualQty });
+  }
 
   // 決定來源：先看個人背包再公會倉庫
   const { guildWarehouse } = require("../../config");
@@ -241,7 +366,39 @@ async function donate(client, { userId, guildId, eventDbId, itemId, qty, from })
     }
   }
 
-  // 更新事件進度
+  return applyProgress(client, {
+    eventDbId, itemId, actualQty, userId, guildId,
+    fromPersonal: takeFromPersonal,
+    fromGuild: takeFromGuild,
+    rollback: async () => {
+      if (takeFromPersonal > 0) {
+        await client.miningProfilesCollection.updateOne(
+          { userId, guildId },
+          {
+            $inc: { [`${bagField}.${itemId}`]: takeFromPersonal },
+            $set: { updatedAt: new Date() },
+          }
+        ).catch(() => {});
+      }
+      if (takeFromGuild > 0 && guildClubId) {
+        await client.guildClubWarehouseCollection.updateOne(
+          { guild_club_id: guildClubId, item_id: itemId },
+          {
+            $inc: { qty: takeFromGuild, available_qty: takeFromGuild },
+            $set: { updated_at: new Date() },
+          }
+        ).catch(() => {});
+      }
+    },
+  });
+}
+
+// 推進進度 + 寫貢獻明細 + 達標判定。資源已由呼叫端扣好（背包 / 倉庫 / 錢包），
+// 進度更新若輸掉競態就呼叫 rollback() 把資源還回去。
+async function applyProgress(client, {
+  eventDbId, itemId, actualQty, userId, guildId,
+  fromPersonal = 0, fromGuild = 0, fromCoins = 0, rollback,
+}) {
   const upd = await client.worldEventsCollection.findOneAndUpdate(
     {
       event_db_id: eventDbId,
@@ -259,29 +416,10 @@ async function donate(client, { userId, guildId, eventDbId, itemId, qty, from })
   );
   const updDoc = upd?.value || upd;
   if (!updDoc) {
-    // 回滾兩邊
-    if (takeFromPersonal > 0) {
-      await client.miningProfilesCollection.updateOne(
-        { userId, guildId },
-        {
-          $inc: { [`${bagField}.${itemId}`]: takeFromPersonal },
-          $set: { updatedAt: new Date() },
-        }
-      ).catch(() => {});
-    }
-    if (takeFromGuild > 0 && guildClubId) {
-      await client.guildClubWarehouseCollection.updateOne(
-        { guild_club_id: guildClubId, item_id: itemId },
-        {
-          $inc: { qty: takeFromGuild, available_qty: takeFromGuild },
-          $set: { updated_at: new Date() },
-        }
-      ).catch(() => {});
-    }
+    await rollback?.();
     return { ok: false, reason: "event_progress_race" };
   }
 
-  // 寫貢獻明細
   await client.worldEventContributionsCollection.insertOne({
     event_db_id: eventDbId,
     event_id: updDoc.event_id,
@@ -289,12 +427,12 @@ async function donate(client, { userId, guildId, eventDbId, itemId, qty, from })
     guild_id: guildId,
     item_id: itemId,
     qty: actualQty,
-    from_personal: takeFromPersonal,
-    from_guild: takeFromGuild,
+    from_personal: fromPersonal,
+    from_guild: fromGuild,
+    from_coins: fromCoins,
     created_at: new Date(),
   }).catch(() => {});
 
-  // 檢查達標
   const remainingAll = Object.values(updDoc.requirements_remaining || {});
   const completed = remainingAll.every((v) => (v || 0) <= 0);
   let buffStarted = false;
@@ -319,8 +457,9 @@ async function donate(client, { userId, guildId, eventDbId, itemId, qty, from })
     ok: true,
     event: updDoc,
     deposited: actualQty,
-    fromPersonal: takeFromPersonal,
-    fromGuild: takeFromGuild,
+    fromPersonal,
+    fromGuild,
+    fromCoins,
     buffStarted,
     buffEndsAt,
     completed,
@@ -370,5 +509,8 @@ module.exports = {
   tryOpenEvent,
   rollTrigger,
   donate,
+  donatedTodayBy,
+  isMainline,
+  CURRENCY_ITEM,
   settleExpired,
 };

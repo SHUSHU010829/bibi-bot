@@ -191,6 +191,13 @@
         "result": { "type": "advanced_trap" }
       },
       {
+        "id": "pioneer_hammer",
+        "name": "拓荒錘",
+        "emoji": "🔨",
+        "materials": { "iron": 50, "coal": 10 },
+        "result": { "type": "pioneer_hammer" }
+      },
+      {
         "id": "trap_fragment_smelt",
         "name": "熔回鐵料",
         "emoji": "🔥",

@@ -34,6 +34,7 @@ function defaultProfile(userId, guildId) {
     broken_net_fragments: 0,
     fishing_net_uses: 0,
     broken_trap_fragments: 0,
+    pioneer_hammer: false,
     advanced_trap_uses: 0,
     treasure_map_fragments: 0,
     treasure_maps: 0,
@@ -93,6 +94,7 @@ function normalize(doc) {
   doc.broken_net_fragments ??= 0;
   doc.fishing_net_uses ??= 0;
   doc.broken_trap_fragments ??= 0;
+  doc.pioneer_hammer ??= false;
   doc.advanced_trap_uses ??= 0;
   doc.treasure_map_fragments ??= 0;
   doc.treasure_maps ??= 0;

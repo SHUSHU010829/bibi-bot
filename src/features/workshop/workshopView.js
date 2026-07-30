@@ -65,6 +65,7 @@ const CRAFT_SUBS = [
   { id: "fish", label: "釣魚", emoji: "🎣", types: ["rod", "fishing_net"] },
   { id: "misc", label: "賭石/藏寶", emoji: "🪨", types: ["stone_appraisal_trigger", "treasure_map"] },
   { id: "farm", label: "農場", emoji: "🪤", types: ["advanced_trap", "ore"] },
+  { id: "event", label: "活動", emoji: "🛤️", types: ["pioneer_hammer"] },
 ];
 const CRAFT_SUB_IDS = CRAFT_SUBS.map((s) => s.id);
 
@@ -342,6 +343,8 @@ function recipeBodyText(recipe, profile, type) {
       propLine = `效果：+${acfg.blocksPerCraft || 4} 次被動抵擋（上限 ${acfg.maxStack || 12}）`;
     } else if (type === "treasure_map") {
       propLine = `效果：合成 1 張藏寶圖，到 /背包 「探險道具」按「使用 1 張」撕開觸發隨機事件`;
+    } else if (type === "pioneer_hammer") {
+      propLine = `效果：解鎖全服共建活動的投入資格（非消耗品，持有一把即可）`;
     } else if (type === "ore") {
       const odef = mining?.ores?.[recipe.result?.id] || {};
       const oqty = recipe.result?.qty ?? 1;
@@ -455,6 +458,7 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
   const farmTools = recipes.filter((r) => r.result?.type === "advanced_trap");
   const treasureMaps = recipes.filter((r) => r.result?.type === "treasure_map");
   const oreRecycles = recipes.filter((r) => r.result?.type === "ore");
+  const eventTools = recipes.filter((r) => r.result?.type === "pioneer_hammer");
 
   if (craftSub === "pickaxe") {
     if (pickaxes.length) {
@@ -557,6 +561,19 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
           ),
         );
       craftableSection(container, oreRecycles, profile, "ore", userId);
+    }
+  } else if (craftSub === "event") {
+    if (eventTools.length) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            profile.pioneer_hammer
+              ? `### 🛤️ 世界主線活動\n✅ 你已經有 **拓荒錘**，可以到 \`/世界事件\` 對進度條投入資源`
+              : `### 🛤️ 世界主線活動\n-# 打造拓荒錘才能參與全服共建。非消耗品，一把用到底`,
+          ),
+        );
+      craftableSection(container, eventTools, profile, "pioneer_hammer", userId);
     }
   }
 

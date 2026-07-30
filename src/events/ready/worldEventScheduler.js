@@ -112,6 +112,49 @@ function buildBuffStartContainer(event) {
   return c;
 }
 
+// 整體進度取各項需求完成率的平均：主線同時要鐵礦與逼幣，只看其中一項會誤導。
+function overallProgressPct(event) {
+  const totals = Object.entries(event.requirements_total || {});
+  if (!totals.length) return 0;
+  const sum = totals.reduce((acc, [k, total]) => {
+    if (!total) return acc + 1;
+    const remain = (event.requirements_remaining || {})[k] || 0;
+    return acc + Math.max(0, Math.min(1, (total - remain) / total));
+  }, 0);
+  return Math.floor((sum / totals.length) * 100);
+}
+
+function buildMilestoneContainer(event, milestone) {
+  const c = new ContainerBuilder().setAccentColor(event.color || COLOR_OPEN);
+  const lines = Object.entries(event.requirements_total || {})
+    .map(([k, total]) => {
+      const remain = (event.requirements_remaining || {})[k] || 0;
+      const filled = total - remain;
+      const ratio = total ? Math.max(0, Math.min(1, filled / total)) : 1;
+      const on = Math.round(ratio * 12);
+      return `• ${itemLabel(k)}　${filled.toLocaleString()} / ${total.toLocaleString()}\n`
+        + `\`${"█".repeat(on)}${"░".repeat(12 - on)} ${Math.floor(ratio * 100)}%\``;
+    })
+    .join("\n");
+  c.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `# ${event.emoji || "🌍"} ${event.label} 進度 ${milestone}%`,
+    ),
+  );
+  c.addSeparatorComponents(new SeparatorBuilder());
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines));
+  c.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`we_view|${event.event_db_id}`)
+        .setLabel("查看事件 / 捐獻")
+        .setEmoji("🎁")
+        .setStyle(ButtonStyle.Primary),
+    ),
+  );
+  return c;
+}
+
 function buildEndContainer(event, kind) {
   const c = new ContainerBuilder().setAccentColor(
     kind === "buff_ended" ? COLOR_END : COLOR_FAIL
@@ -169,6 +212,17 @@ async function scanOnce(client) {
     } else if (e.state === "buffing") {
       if (await claimAnnounce(client, e.event_db_id, "buff_started")) {
         await sendAnnounce(client, channelId, buildBuffStartContainer(e), { ping: true });
+      }
+    }
+    // 主線活動跑好幾天，中間要有進度回報維持參與感
+    if (e.kind === "mainline" && e.state === "collecting") {
+      const pct = overallProgressPct(e);
+      for (const milestone of [75, 50, 25]) {
+        if (pct < milestone) continue;
+        if (await claimAnnounce(client, e.event_db_id, `pct${milestone}`)) {
+          await sendAnnounce(client, channelId, buildMilestoneContainer(e, milestone), { ping: true });
+        }
+        break;
       }
     }
   }
