@@ -78,6 +78,34 @@ function rodLabel(key) {
 
 // 分類用 Select 而非一排按鈕：按鈕版每個分頁要 1 顆（分頁數 >5 還得多一個 ActionRow），
 // 在元件上限 40 之下會擠掉配方；Select 固定只花 2 個元件。
+function toolEffectText(def) {
+  const deltaTxt = def.maxDelta === 0
+    ? "上限不變"
+    : def.maxDelta > 0
+      ? `上限 +${def.maxDelta}`
+      : `上限 ${def.maxDelta}`;
+  return `修復 ${Math.round((def.duraPct || 0) * 100)}% 耐久 ・ ${deltaTxt}`;
+}
+
+// 維修工具用 Select 而非每階一個 Section+按鈕：6 階原本要 20 個元件，
+// 修復分頁實測已到 37/40，再加一階就爆掉。Select 固定 2 個元件、可放 25 個選項。
+function repairToolSelect(userId, ownedTiers, tools) {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`${REPAIR_TOOL_PREFIX}${userId}`)
+      .setPlaceholder("選一張維修工具使用")
+      .addOptions(
+        ownedTiers.map(([tier, def]) =>
+          new StringSelectMenuOptionBuilder()
+            .setLabel(`${def.name} ×${tools[tier] || 0}`)
+            .setValue(tier)
+            .setDescription(toolEffectText(def))
+            .setEmoji(def.emoji || "🔧"),
+        ),
+      ),
+  );
+}
+
 function craftSubSelect(userId, currentSub) {
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
@@ -640,28 +668,14 @@ function buildRepairTab(container, { userId, displayName, profile, repairDiscoun
           `### 🛠️ 維修工具（消耗品，僅對鎬子）\n-# 每使用一張會依階級調整鎬子最大耐久；無背包扣費`,
         ),
       );
-    for (const [tier, def] of ownedTiers) {
-      const owned = tools[tier];
-      const deltaTxt = def.maxDelta === 0
-        ? "max 不變"
-        : def.maxDelta > 0
-          ? `max +${def.maxDelta}`
-          : `max ${def.maxDelta}`;
-      const body =
-        `${def.emoji || "🔧"} **${def.name}** ×${owned}\n` +
-        `-# +${Math.round((def.duraPct || 0) * 100)}% 耐久 ・ ${deltaTxt}`;
-      container.addSectionComponents(
-        new SectionBuilder()
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(body))
-          .setButtonAccessory(
-            new ButtonBuilder()
-              .setCustomId(`${REPAIR_TOOL_PREFIX}${userId}_${tier}`)
-              .setLabel("使用 1 張")
-              .setEmoji("🛠️")
-              .setStyle(ButtonStyle.Primary),
-          ),
-      );
-    }
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        ownedTiers
+          .map(([tier, def]) => `${def.emoji || "🔧"} **${def.name}** ×${tools[tier]}　-# ${toolEffectText(def)}`)
+          .join("\n"),
+      ),
+    );
+    container.addActionRowComponents(repairToolSelect(userId, ownedTiers, tools));
   }
 
   container.addTextDisplayComponents(

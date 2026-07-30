@@ -199,6 +199,69 @@ function craftSubForRecipe(recipeId) {
   return CRAFT_SUBS.find((s) => s.types.includes(type))?.id || "pickaxe";
 }
 
+// 維修工具使用：Select（新）與舊訊息的按鈕共用同一份流程。
+async function runRepairTool(client, interaction, tier) {
+  if (!(await deferUpdateSafe(interaction))) return;
+  try {
+    const toolName = (craft?.repairTools || {})[tier]?.name;
+    const result = await useRepairTool(client, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      tier,
+    });
+    if (!result.ok) {
+      const titleAndHint = {
+        no_tool: {
+          title: "❌ 沒有維修工具",
+          body: `你手上沒有${toolName ? ` **${toolName}**` : "這種維修工具"}。`,
+          hint: "切到「合成」分頁打造",
+        },
+        no_pickaxe: { title: "❌ 不需要修復", body: "木鎬不需要修復。", hint: "先合成一把鐵鎬以上再使用" },
+        max_too_low: {
+          title: "❌ 鎬子耐久上限過低",
+          body: `目前上限為 **${result.maxDurability}**，使用這張會降到 **${result.after}**。`,
+          hint: "改用上限不降的密銀以上工具，或走「材料修復」",
+        },
+        retry: { title: "⚠️ 操作衝突", body: "請再試一次。", hint: "" },
+        no_tool_def: { title: "🔧 設定錯誤", body: "請呼叫舒舒。", hint: "" },
+        disabled: { title: "🔧 系統未啟用", body: "請稍後再試。", hint: "" },
+      }[result.reason] || { title: "🔧 修復失敗", body: "請再試一次，若持續發生請呼叫舒舒。", hint: "" };
+      const errC = new ContainerBuilder()
+        .setAccentColor(0xe74c3c)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${titleAndHint.title}`))
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(titleAndHint.body));
+      if (titleAndHint.hint) {
+        errC.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${titleAndHint.hint}`));
+      }
+      await interaction.followUp({
+        components: [errC],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const okC = new ContainerBuilder()
+      .setAccentColor(0x2ecc71)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`# 🛠️ 已使用 ${result.def.name}`),
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `鎬子耐久：**${result.durabilityAfter} / ${result.maxAfter}**\n` +
+            `${result.def.emoji || "🔧"} ${result.def.name} 剩餘 **${result.toolsLeft}** 張`,
+        ),
+      );
+    await interaction.followUp({
+      components: [okC],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+    await refreshWorkshop(client, interaction, "repair").catch(() => {});
+  } catch (err) {
+    console.log(`[ERROR] wsRepairTool handler:\n${err}\n${err.stack}`.red);
+  }
+}
+
 async function refreshWorkshop(client, interaction, tab, craftSub) {
   const view = await workshopView.buildView(client, {
     userId: interaction.user.id,
@@ -214,21 +277,27 @@ async function refreshWorkshop(client, interaction, tab, craftSub) {
 }
 
 module.exports = async (client, interaction) => {
-  // 合成分類改用 Select（省元件），其餘工坊互動仍是按鈕
+  // 合成分類與維修工具都改用 Select（省元件），其餘工坊互動仍是按鈕
   if (interaction.isStringSelectMenu()) {
-    if (!interaction.customId.startsWith(CRAFT_SUB_PREFIX)) return;
-    const ownerId = interaction.customId.slice(CRAFT_SUB_PREFIX.length);
+    const selectId = interaction.customId;
+    const prefix = [CRAFT_SUB_PREFIX, REPAIR_TOOL_PREFIX].find((p) => selectId.startsWith(p));
+    if (!prefix) return;
+    const ownerId = selectId.slice(prefix.length);
     if (interaction.user.id !== ownerId) {
       return interaction.reply({
         content: "❌ 這不是你的工坊！",
         flags: MessageFlags.Ephemeral,
       });
     }
-    const sub = interaction.values?.[0];
-    if (!CRAFT_SUB_IDS.includes(sub)) return;
+    const value = interaction.values?.[0];
+    if (prefix === REPAIR_TOOL_PREFIX) {
+      if (!(craft?.repairTools || {})[value]) return;
+      return runRepairTool(client, interaction, value);
+    }
+    if (!CRAFT_SUB_IDS.includes(value)) return;
     if (!(await deferUpdateSafe(interaction))) return;
     try {
-      await refreshWorkshop(client, interaction, "craft", sub);
+      await refreshWorkshop(client, interaction, "craft", value);
     } catch (err) {
       console.log(`[ERROR] wsCraftSub select handler:\n${err}\n${err.stack}`.red);
     }
@@ -468,7 +537,7 @@ module.exports = async (client, interaction) => {
     return;
   }
 
-  // 維修工具使用
+  // 維修工具使用（舊訊息的按鈕；新訊息走 Select，見檔案頂部）
   if (customId.startsWith(REPAIR_TOOL_PREFIX)) {
     const { ownerId, payload: tier } = parseOwnerAndPayload(customId, REPAIR_TOOL_PREFIX);
     if (interaction.user.id !== ownerId) {
@@ -477,61 +546,7 @@ module.exports = async (client, interaction) => {
         flags: MessageFlags.Ephemeral,
       });
     }
-    if (!(await deferUpdateSafe(interaction))) return;
-    try {
-      const result = await useRepairTool(client, {
-        userId: interaction.user.id,
-        guildId: interaction.guildId,
-        tier,
-      });
-      if (!result.ok) {
-        const titleAndHint = {
-          no_tool: { title: "❌ 沒有維修工具", body: `你沒有 \`${tier}\` 階維修工具。`, hint: "切到「合成」分頁打造" },
-          no_pickaxe: { title: "❌ 不需要修復", body: "木鎬不需要修復。", hint: "先合成一把鐵鎬以上再使用" },
-          max_too_low: {
-            title: "❌ 鎬子最大耐久過低",
-            body: `目前 max 為 **${result.maxDurability}**，使用此工具會降到 **${result.after}**。`,
-            hint: "改用更高階工具（max 不降的密銀以上）或「材料修復」",
-          },
-          retry: { title: "⚠️ 操作衝突", body: "請再試一次。", hint: "" },
-          no_tool_def: { title: "🔧 設定錯誤", body: "請呼叫舒舒。", hint: "" },
-          disabled: { title: "🔧 系統未啟用", body: "請稍後再試。", hint: "" },
-        }[result.reason] || { title: "🔧 修復失敗", body: `原因：\`${result.reason}\``, hint: "" };
-        const errC = new ContainerBuilder()
-          .setAccentColor(0xe74c3c)
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${titleAndHint.title}`))
-          .addSeparatorComponents(new SeparatorBuilder())
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(titleAndHint.body));
-        if (titleAndHint.hint) {
-          errC.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${titleAndHint.hint}`));
-        }
-        await interaction.followUp({
-          components: [errC],
-          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      const okC = new ContainerBuilder()
-        .setAccentColor(0x2ecc71)
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`# 🛠️ 已使用 ${result.def.name}`),
-        )
-        .addSeparatorComponents(new SeparatorBuilder())
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `鎬子耐久：**${result.durabilityAfter} / ${result.maxAfter}**\n` +
-              `${result.def.emoji || "🔧"} ${result.def.name} 剩餘 **${result.toolsLeft}** 張`,
-          ),
-        );
-      await interaction.followUp({
-        components: [okC],
-        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-      });
-      await refreshWorkshop(client, interaction, "repair").catch(() => {});
-    } catch (err) {
-      console.log(`[ERROR] wsRepairTool handler:\n${err}\n${err.stack}`.red);
-    }
-    return;
+    return runRepairTool(client, interaction, tier);
   }
 
   // 取消：deferUpdate + editReply 把確認框改成「已取消」
