@@ -909,43 +909,81 @@ async function useInferiorWhetstoneOnShield(client, { userId, guildId }) {
 // 使用維修工具修復鎬子：依工具階級補 % 耐久、調整 max。
 // 例：鋼製 +75% 當前 max、max -3；傳說 +100% 且 max +2。
 // max 不能低於 10（避免變垃圾），低於 20 時不允許使用會降 max 的工具。
-async function useRepairTool(client, { userId, guildId, tier }) {
+// 維修工具可作用的四種裝備。none = 「等於沒裝」的哨兵值（盾用 null）。
+const REPAIR_TOOL_TARGETS = {
+  pickaxe: {
+    label: "鎬子", emoji: "⛏️", none: "wood", reason: "no_pickaxe",
+    idField: "pickaxe", maxField: "pickaxe_max_durability", duraField: "pickaxe_durability",
+  },
+  weapon: {
+    label: "武器", emoji: "⚔️", none: "fist", reason: "no_weapon",
+    idField: "weapon", maxField: "weapon_max_durability", duraField: "weapon_durability",
+  },
+  shield: {
+    label: "盾牌", emoji: "🛡️", none: null, reason: "no_shield",
+    idField: "shield", maxField: "shield_max_durability", duraField: "shield_durability",
+  },
+  rod: {
+    label: "釣竿", emoji: "🪝", none: "bamboo", reason: "no_rod",
+    idField: "fishing_rod", maxField: "rod_max_durability", duraField: "rod_durability",
+  },
+};
+
+const repairToolTargetEquipped = (profile, target) => {
+  const spec = REPAIR_TOOL_TARGETS[target];
+  if (!spec) return false;
+  const id = profile?.[spec.idField];
+  if (!id || id === spec.none) return false;
+  return typeof profile?.[spec.maxField] === "number";
+};
+
+async function useRepairTool(client, { userId, guildId, tier, target = "pickaxe" }) {
   if (!mining?.enabled || !client.miningProfilesCollection) {
     return { ok: false, reason: "disabled" };
   }
   const def = (craft?.repairTools || {})[tier];
   if (!def) return { ok: false, reason: "no_tool_def" };
+  const spec = REPAIR_TOOL_TARGETS[target];
+  if (!spec) return { ok: false, reason: "no_target" };
 
   const profile = await getOrCreate(client, userId, guildId);
   const owned = (profile.repair_tools || {})[tier] || 0;
   if (owned <= 0) return { ok: false, reason: "no_tool", tier };
-  if (!profile.pickaxe || profile.pickaxe === "wood") {
-    return { ok: false, reason: "no_pickaxe" };
-  }
-  if (typeof profile.pickaxe_max_durability !== "number") {
-    return { ok: false, reason: "no_pickaxe" };
-  }
-  const curMax = profile.pickaxe_max_durability;
-  const maxDelta = def.maxDelta || 0;
-  if (maxDelta < 0 && curMax + maxDelta < 10) {
-    return { ok: false, reason: "max_too_low", maxDurability: curMax, after: curMax + maxDelta };
+  if (!repairToolTargetEquipped(profile, target)) {
+    return { ok: false, reason: spec.reason, target };
   }
 
+  const curMax = profile[spec.maxField];
+  const maxDelta = def.maxDelta || 0;
+  if (maxDelta < 0 && curMax + maxDelta < 10) {
+    return {
+      ok: false, reason: "max_too_low", target,
+      maxDurability: curMax, after: curMax + maxDelta,
+    };
+  }
+
+  // maxField 一律存原始 base；武器另有鐵匠鋪 % 加成，補耐久時要補到「有效上限」，
+  // 否則裝了加成反而補不滿（比照 repairWeaponWithMaterials）。
   const newMax = Math.max(1, curMax + maxDelta);
-  const restoreAmount = Math.ceil(newMax * (def.duraPct ?? 1));
-  const newDura = Math.min(newMax, restoreAmount);
+  const pct = target === "weapon"
+    ? await buildingService.getWeaponMaxDurabilityPct(client, userId, guildId).catch(() => 0)
+    : 0;
+  const fillMax = target === "weapon"
+    ? buildingService.effectiveWeaponMaxDurability(newMax, pct)
+    : newMax;
+  const newDura = Math.min(fillMax, Math.ceil(fillMax * (def.duraPct ?? 1)));
 
   const res = await client.miningProfilesCollection.updateOne(
     {
       userId,
       guildId,
-      pickaxe: { $ne: "wood" },
+      [spec.idField]: profile[spec.idField],
       [`repair_tools.${tier}`]: { $gte: 1 },
     },
     {
       $set: {
-        pickaxe_max_durability: newMax,
-        pickaxe_durability: newDura,
+        [spec.maxField]: newMax,
+        [spec.duraField]: newDura,
         updatedAt: new Date(),
       },
       $inc: { [`repair_tools.${tier}`]: -1 },
@@ -956,8 +994,12 @@ async function useRepairTool(client, { userId, guildId, tier }) {
   return {
     ok: true,
     tier,
+    target,
+    targetLabel: spec.label,
+    targetEmoji: spec.emoji,
     durabilityAfter: newDura,
-    maxAfter: newMax,
+    maxAfter: fillMax,
+    baseMaxAfter: newMax,
     toolsLeft: owned - 1,
     def,
   };
@@ -1309,6 +1351,8 @@ module.exports = {
   useInferiorWhetstoneOnWeapon,
   useInferiorWhetstoneOnShield,
   useRepairTool,
+  REPAIR_TOOL_TARGETS,
+  repairToolTargetEquipped,
   repairPickaxeWithMaterials,
   repairWeaponWithMaterials,
   repairRodWithMaterials,

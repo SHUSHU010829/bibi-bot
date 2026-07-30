@@ -33,6 +33,8 @@ const {
   getRodRepairCost,
   getShieldRepairCost,
   applyRepairDiscount,
+  REPAIR_TOOL_TARGETS,
+  repairToolTargetEquipped,
 } = require("../mining/mineService");
 const buildingService = require("../guild_club/buildingService");
 const { effectiveWeaponMaxDurability } = buildingService;
@@ -50,6 +52,7 @@ const CRAFT_ALL_PREFIX = "wsCraftAll_";
 const CONFIRM_PREFIX = "wsConfirm_";
 const CANCEL_PREFIX = "wsCancel_";
 const REPAIR_TOOL_PREFIX = "wsRepairTool_";
+const REPAIR_TOOL_APPLY_PREFIX = "wsRepairToolApply_";
 
 const TABS = ["equipment", "craft", "repair"];
 
@@ -78,8 +81,6 @@ function rodLabel(key) {
   return `${def.emoji || "🎣"} ${def.name || key}`;
 }
 
-// 分類用 Select 而非一排按鈕：按鈕版每個分頁要 1 顆（分頁數 >5 還得多一個 ActionRow），
-// 在元件上限 40 之下會擠掉配方；Select 固定只花 2 個元件。
 function toolEffectText(def) {
   const deltaTxt = def.maxDelta === 0
     ? "上限不變"
@@ -108,6 +109,61 @@ function repairToolSelect(userId, ownedTiers, tools) {
   );
 }
 
+function shieldLabel(key) {
+  const d = (dungeon?.shields || {})[key] || {};
+  return `${d.emoji || "🛡️"} ${d.name || key}`;
+}
+
+const equippedLabel = (profile, target) => {
+  if (target === "pickaxe") return pickaxeLabel(profile.pickaxe);
+  if (target === "weapon") return weaponLabel(profile.weapon);
+  if (target === "shield") return shieldLabel(profile.shield);
+  return rodLabel(profile.fishing_rod);
+};
+
+// 維修工具第二段：選完工具後跳這張面板挑要修哪件裝備。
+// 不做成「工具 × 裝備」的 24 個 Select 選項，避免選單變成一面牆。
+function buildRepairToolTargetPanel({ userId, tier, def, profile }) {
+  const c = new ContainerBuilder()
+    .setAccentColor(0x16a085)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ${def.emoji || "🔧"} ${def.name}\n${toolEffectText(def)}`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  const rows = [];
+  const row = new ActionRowBuilder();
+  for (const [target, spec] of Object.entries(REPAIR_TOOL_TARGETS)) {
+    const equipped = repairToolTargetEquipped(profile, target);
+    const curMax = profile[spec.maxField];
+    const blocked = equipped && (def.maxDelta || 0) < 0 && curMax + def.maxDelta < 10;
+    rows.push(
+      equipped
+        ? `${spec.emoji} **${spec.label}**：${equippedLabel(profile, target)}（耐久 ${profile[spec.duraField] ?? "—"}/${curMax}）`
+          + (blocked ? `　-# 上限會降到 ${curMax + def.maxDelta}，低於 10 不可用` : "")
+        : `${spec.emoji} **${spec.label}**：未裝備`,
+    );
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${REPAIR_TOOL_APPLY_PREFIX}${userId}_${tier}_${target}`)
+        .setLabel(spec.label)
+        .setEmoji(spec.emoji)
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(!equipped || blocked),
+    );
+  }
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(rows.join("\n")));
+  c.addActionRowComponents(row);
+  c.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent("-# 選一件裝備使用這張工具；用掉後不可撤回"),
+  );
+  return c;
+}
+
+// 分類用 Select 而非一排按鈕：按鈕版每個分頁要 1 顆（分頁數 >5 還得多一個 ActionRow），
+// 在元件上限 40 之下會擠掉配方；Select 固定只花 2 個元件。
 function craftSubSelect(userId, currentSub) {
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
@@ -682,12 +738,15 @@ function buildRepairTab(container, { userId, displayName, profile, repairDiscoun
   const tools = profile.repair_tools || {};
   const ownedTiers = Object.entries((craft?.repairTools || {}))
     .filter(([tier]) => (tools[tier] || 0) > 0);
-  if (ownedTiers.length > 0 && profile.pickaxe && profile.pickaxe !== "wood") {
+  const anyTargetEquipped = Object.keys(REPAIR_TOOL_TARGETS).some((t) =>
+    repairToolTargetEquipped(profile, t),
+  );
+  if (ownedTiers.length > 0 && anyTargetEquipped) {
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `### 🛠️ 維修工具（消耗品，僅對鎬子）\n-# 每使用一張會依階級調整鎬子最大耐久；無背包扣費`,
+          `### 🛠️ 維修工具（消耗品）\n-# 鎬子・武器・盾牌・釣竿都能用，不吃背包材料；每張會依階級調整該裝備的耐久上限`,
         ),
       );
     container.addTextDisplayComponents(
@@ -740,6 +799,8 @@ module.exports = {
   CONFIRM_PREFIX,
   CANCEL_PREFIX,
   REPAIR_TOOL_PREFIX,
+  REPAIR_TOOL_APPLY_PREFIX,
+  buildRepairToolTargetPanel,
   TABS,
   CRAFT_SUBS,
   CRAFT_SUB_IDS,
