@@ -7,6 +7,7 @@
     "fishBagBaseSlots": 100,
     "bagLimitEnforceAt": "2026-07-03T00:00:00+08:00",
     "failCooldownMs": 1800000,
+    "rareBaitBonus": 1.0,
     "cdTicketReductionMs": 1800000,
     "cdTicketDailyUseLimit": 0,
     "batch": {

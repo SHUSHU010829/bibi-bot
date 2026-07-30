@@ -346,8 +346,15 @@ async function fish(client, { userId, guildId, location = "stream", member, user
 
   // ── 釣到魚 ──：依稀有度偏移後的權重抽魚。
   // 限時活動：限定魚混進該釣點魚群（getEffectiveFishWeights），活動「魚汛」再給稀有偏移加成。
+  // 稀有魚餌：有庫存就自動吃掉 1 個換稀有偏移（比照幸運藥水 luck_potion_uses 的次數制）。
+  // 只在真的上鉤時消耗——rareBonus 只影響「抽到哪種魚」，失敗時它沒起作用。
+  const useRareBait = (profile.rare_bait || 0) > 0;
   const rareBonus =
-    (rodDef.rareBonus || 0) + (foodFish.rare || 0) + eventEngine.getFishingRareBonus();
+    (rodDef.rareBonus || 0)
+    + (foodFish.rare || 0)
+    + eventEngine.getFishingRareBonus()
+    + (useRareBait ? fishing.rareBaitBonus ?? 1 : 0);
+  if (useRareBait) inc.rare_bait = (inc.rare_bait || 0) - 1;
   const weights = adjustedFishWeights(
     eventEngine.getEffectiveFishWeights(location),
     rareBonus,
@@ -433,6 +440,8 @@ async function fish(client, { userId, guildId, location = "stream", member, user
     qty,
     bumperCatch,
     rareDrops,
+    usedRareBait: useRareBait,
+    rareBaitLeft: Math.max(0, (profile.rare_bait || 0) - (useRareBait ? 1 : 0)),
     fishBagCap: fishCap,
     fishBagUsed: fishUsed + qty,
   };

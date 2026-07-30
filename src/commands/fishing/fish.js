@@ -755,6 +755,14 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       );
     }
 
+    if (result.usedRareBait) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🎏 用掉 **稀有魚餌** ×1（稀有魚偏移 +${fishing.rareBaitBonus ?? 1}）・剩 **${result.rareBaitLeft}** 個`,
+        ),
+      );
+    }
+
     if (result.foodBuffLines?.length) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(

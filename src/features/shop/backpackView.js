@@ -1031,7 +1031,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     if (farmProfile.rare_bait > 0) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**🎏 稀有魚餌** ×${farmProfile.rare_bait}\n-# 黑玫瑰收成額外掉落物`,
+          `**🎏 稀有魚餌** ×${farmProfile.rare_bait}\n-# 黑玫瑰收成額外掉落物・下次 \`/釣魚\` 上鉤時自動吃 1 個，大幅提高稀有魚機率`,
         ),
       );
     }
