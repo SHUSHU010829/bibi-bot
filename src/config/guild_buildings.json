@@ -11,20 +11,43 @@
         "levels": [
           {
             "level": 1,
-            "cost": { "building_material": 1 },
-            "buffs": [{ "type": "mining_cooldown_pct", "value": 5 }]
+            "cost": {
+              "building_material": 1
+            },
+            "buffs": [
+              {
+                "type": "mining_cooldown_pct",
+                "value": 5
+              }
+            ]
           },
           {
             "level": 2,
-            "cost": { "building_material": 5 },
-            "buffs": [{ "type": "mining_cooldown_pct", "value": 10 }]
+            "cost": {
+              "building_material": 5
+            },
+            "buffs": [
+              {
+                "type": "mining_cooldown_pct",
+                "value": 10
+              }
+            ]
           },
           {
             "level": 3,
-            "cost": { "building_material": 15, "steel_ingot": 5 },
+            "cost": {
+              "building_material": 15,
+              "steel_ingot": 5
+            },
             "buffs": [
-              { "type": "mining_cooldown_pct", "value": 10 },
-              { "type": "mining_luck_pct", "value": 0.05 }
+              {
+                "type": "mining_cooldown_pct",
+                "value": 10
+              },
+              {
+                "type": "mining_luck_pct",
+                "value": 0.05
+              }
             ]
           }
         ]
@@ -37,20 +60,43 @@
         "levels": [
           {
             "level": 1,
-            "cost": { "building_material": 1 },
-            "buffs": [{ "type": "fishing_cooldown_pct", "value": 5 }]
+            "cost": {
+              "building_material": 1
+            },
+            "buffs": [
+              {
+                "type": "fishing_cooldown_pct",
+                "value": 5
+              }
+            ]
           },
           {
             "level": 2,
-            "cost": { "building_material": 5 },
-            "buffs": [{ "type": "fishing_cooldown_pct", "value": 10 }]
+            "cost": {
+              "building_material": 5
+            },
+            "buffs": [
+              {
+                "type": "fishing_cooldown_pct",
+                "value": 10
+              }
+            ]
           },
           {
             "level": 3,
-            "cost": { "building_material": 15, "steel_ingot": 5 },
+            "cost": {
+              "building_material": 15,
+              "steel_ingot": 5
+            },
             "buffs": [
-              { "type": "fishing_cooldown_pct", "value": 15 },
-              { "type": "fishing_success_rate_pct", "value": 5 }
+              {
+                "type": "fishing_cooldown_pct",
+                "value": 15
+              },
+              {
+                "type": "fishing_success_rate_pct",
+                "value": 5
+              }
             ]
           }
         ]
@@ -63,24 +109,52 @@
         "levels": [
           {
             "level": 1,
-            "cost": { "steel_ingot": 1 },
-            "buffs": [{ "type": "dungeon_damage_pct", "value": 5 }]
+            "cost": {
+              "steel_ingot": 1
+            },
+            "buffs": [
+              {
+                "type": "dungeon_damage_pct",
+                "value": 5
+              }
+            ]
           },
           {
             "level": 2,
-            "cost": { "steel_ingot": 8, "building_material": 5 },
+            "cost": {
+              "steel_ingot": 8,
+              "building_material": 5
+            },
             "buffs": [
-              { "type": "dungeon_damage_pct", "value": 10 },
-              { "type": "crit_rate_pct", "value": 3 }
+              {
+                "type": "dungeon_damage_pct",
+                "value": 10
+              },
+              {
+                "type": "crit_rate_pct",
+                "value": 3
+              }
             ]
           },
           {
             "level": 3,
-            "cost": { "steel_ingot": 15, "building_material": 10 },
+            "cost": {
+              "steel_ingot": 15,
+              "building_material": 10
+            },
             "buffs": [
-              { "type": "dungeon_damage_pct", "value": 10 },
-              { "type": "crit_rate_pct", "value": 5 },
-              { "type": "boss_damage_pct", "value": 5 }
+              {
+                "type": "dungeon_damage_pct",
+                "value": 10
+              },
+              {
+                "type": "crit_rate_pct",
+                "value": 5
+              },
+              {
+                "type": "boss_damage_pct",
+                "value": 5
+              }
             ]
           }
         ]
@@ -88,14 +162,71 @@
       "warehouse": {
         "label": "倉庫擴建",
         "emoji": "📦",
-        "maxLevel": 5,
+        "maxLevel": 7,
         "unlockClubLevel": 2,
         "levels": [
-          { "level": 1, "cost": { "building_material": 1,  "coins": 5000 },                                       "capacity_bonus": 50 },
-          { "level": 2, "cost": { "building_material": 2,  "coins": 10000 },                                      "capacity_bonus": 100 },
-          { "level": 3, "cost": { "building_material": 4,  "coins": 15000 },                                      "capacity_bonus": 200 },
-          { "level": 4, "cost": { "building_material": 8,  "steel_ingot": 2, "coins": 30000 },                    "capacity_bonus": 400 },
-          { "level": 5, "cost": { "building_material": 15, "steel_ingot": 5, "coins": 50000 },                    "capacity_bonus": 800 }
+          {
+            "level": 1,
+            "cost": {
+              "building_material": 1,
+              "coins": 5000
+            },
+            "capacity_bonus": 50
+          },
+          {
+            "level": 2,
+            "cost": {
+              "building_material": 2,
+              "coins": 10000
+            },
+            "capacity_bonus": 100
+          },
+          {
+            "level": 3,
+            "cost": {
+              "building_material": 4,
+              "coins": 15000
+            },
+            "capacity_bonus": 200
+          },
+          {
+            "level": 4,
+            "cost": {
+              "building_material": 8,
+              "steel_ingot": 2,
+              "coins": 30000
+            },
+            "capacity_bonus": 400
+          },
+          {
+            "level": 5,
+            "cost": {
+              "building_material": 15,
+              "steel_ingot": 5,
+              "coins": 50000
+            },
+            "capacity_bonus": 800
+          },
+          {
+            "level": 6,
+            "cost": {
+              "building_material": 25,
+              "steel_ingot": 8,
+              "magic_alloy": 2,
+              "coins": 80000
+            },
+            "capacity_bonus": 1200
+          },
+          {
+            "level": 7,
+            "cost": {
+              "building_material": 40,
+              "steel_ingot": 15,
+              "magic_alloy": 5,
+              "coins": 130000
+            },
+            "capacity_bonus": 1600
+          }
         ]
       },
       "farm_kitchen": {
@@ -106,45 +237,101 @@
         "levels": [
           {
             "level": 1,
-            "cost": { "building_material": 2 },
+            "cost": {
+              "building_material": 2
+            },
             "buffs": [
-              { "type": "farm_growth_reduction_pct", "value": 3 }
+              {
+                "type": "farm_growth_reduction_pct",
+                "value": 3
+              }
             ]
           },
           {
             "level": 2,
-            "cost": { "building_material": 4, "steel_ingot": 2 },
+            "cost": {
+              "building_material": 4,
+              "steel_ingot": 2
+            },
             "buffs": [
-              { "type": "farm_growth_reduction_pct", "value": 5 },
-              { "type": "harvest_coin_pct", "value": 5 }
+              {
+                "type": "farm_growth_reduction_pct",
+                "value": 5
+              },
+              {
+                "type": "harvest_coin_pct",
+                "value": 5
+              }
             ]
           },
           {
             "level": 3,
-            "cost": { "building_material": 6, "steel_ingot": 5, "coins": 20000 },
+            "cost": {
+              "building_material": 6,
+              "steel_ingot": 5,
+              "coins": 20000
+            },
             "buffs": [
-              { "type": "farm_growth_reduction_pct", "value": 8 },
-              { "type": "harvest_coin_pct", "value": 10 },
-              { "type": "cooking_crit_pct", "value": 10 }
+              {
+                "type": "farm_growth_reduction_pct",
+                "value": 8
+              },
+              {
+                "type": "harvest_coin_pct",
+                "value": 10
+              },
+              {
+                "type": "cooking_crit_pct",
+                "value": 10
+              }
             ]
           },
           {
             "level": 4,
-            "cost": { "building_material": 10, "steel_ingot": 10, "coins": 40000 },
+            "cost": {
+              "building_material": 10,
+              "steel_ingot": 10,
+              "coins": 40000
+            },
             "buffs": [
-              { "type": "farm_growth_reduction_pct", "value": 10 },
-              { "type": "harvest_coin_pct", "value": 15 },
-              { "type": "cooking_crit_pct", "value": 15 }
+              {
+                "type": "farm_growth_reduction_pct",
+                "value": 10
+              },
+              {
+                "type": "harvest_coin_pct",
+                "value": 15
+              },
+              {
+                "type": "cooking_crit_pct",
+                "value": 15
+              }
             ]
           },
           {
             "level": 5,
-            "cost": { "building_material": 15, "steel_ingot": 15, "coins": 60000 },
+            "cost": {
+              "building_material": 15,
+              "steel_ingot": 15,
+              "coins": 60000
+            },
             "buffs": [
-              { "type": "farm_growth_reduction_pct", "value": 12 },
-              { "type": "harvest_coin_pct", "value": 20 },
-              { "type": "cooking_crit_pct", "value": 20 },
-              { "type": "farm_low_tier_extra_count", "value": 1 }
+              {
+                "type": "farm_growth_reduction_pct",
+                "value": 12
+              },
+              {
+                "type": "harvest_coin_pct",
+                "value": 20
+              },
+              {
+                "type": "cooking_crit_pct",
+                "value": 20
+              },
+              {
+                "type": "farm_low_tier_extra_count",
+                "value": 1
+              }
             ]
           }
         ]
@@ -157,41 +344,86 @@
         "levels": [
           {
             "level": 1,
-            "cost": { "building_material": 2, "steel_ingot": 3 },
+            "cost": {
+              "building_material": 2,
+              "steel_ingot": 3
+            },
             "buffs": [
-              { "type": "equipment_max_durability_pct", "value": 5 }
+              {
+                "type": "equipment_max_durability_pct",
+                "value": 5
+              }
             ]
           },
           {
             "level": 2,
-            "cost": { "building_material": 4, "steel_ingot": 6 },
+            "cost": {
+              "building_material": 4,
+              "steel_ingot": 6
+            },
             "buffs": [
-              { "type": "equipment_max_durability_pct", "value": 10 }
+              {
+                "type": "equipment_max_durability_pct",
+                "value": 10
+              }
             ]
           },
           {
             "level": 3,
-            "cost": { "building_material": 6, "steel_ingot": 10, "coins": 15000 },
+            "cost": {
+              "building_material": 6,
+              "steel_ingot": 10,
+              "coins": 15000
+            },
             "buffs": [
-              { "type": "equipment_max_durability_pct", "value": 15 },
-              { "type": "equipment_repair_discount_pct", "value": 10 }
+              {
+                "type": "equipment_max_durability_pct",
+                "value": 15
+              },
+              {
+                "type": "equipment_repair_discount_pct",
+                "value": 10
+              }
             ]
           },
           {
             "level": 4,
-            "cost": { "building_material": 10, "steel_ingot": 15, "coins": 30000 },
+            "cost": {
+              "building_material": 10,
+              "steel_ingot": 15,
+              "coins": 30000
+            },
             "buffs": [
-              { "type": "equipment_max_durability_pct", "value": 20 },
-              { "type": "equipment_repair_discount_pct", "value": 25 }
+              {
+                "type": "equipment_max_durability_pct",
+                "value": 20
+              },
+              {
+                "type": "equipment_repair_discount_pct",
+                "value": 25
+              }
             ]
           },
           {
             "level": 5,
-            "cost": { "building_material": 15, "steel_ingot": 20, "coins": 50000 },
+            "cost": {
+              "building_material": 15,
+              "steel_ingot": 20,
+              "coins": 50000
+            },
             "buffs": [
-              { "type": "equipment_max_durability_pct", "value": 20 },
-              { "type": "equipment_repair_discount_pct", "value": 40 },
-              { "type": "combat_durability_save_pct", "value": 5 }
+              {
+                "type": "equipment_max_durability_pct",
+                "value": 20
+              },
+              {
+                "type": "equipment_repair_discount_pct",
+                "value": 40
+              },
+              {
+                "type": "combat_durability_save_pct",
+                "value": 5
+              }
             ]
           }
         ]

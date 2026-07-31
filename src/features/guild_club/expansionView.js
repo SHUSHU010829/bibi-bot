@@ -184,6 +184,19 @@ function buildForgePanel({ viewerId, club, warehouseRows, isManager }) {
         );
       }
     }
+    // 高階精煉站除了金庫還要材料，按鈕 label 塞不下，另外印一行
+    const nextRefMats = forgeService.upgradeRefineryRow(refineryLv)?.materials;
+    if (nextRefMats && Object.keys(nextRefMats).length > 0) {
+      const line = Object.entries(nextRefMats)
+        .map(([id, qty]) => {
+          const meta = guildWarehouse?.items?.[id];
+          return `${meta?.emoji || ""} ${meta?.name || id} ×${qty}`.trim();
+        })
+        .join("・");
+      c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`-# 精煉站下一級另需公會倉庫材料：${line}`)
+      );
+    }
     if (row.components.length > 0) c.addActionRowComponents(row);
   } else if ((club.level || 1) >= refineryCfg.unlockClubLevel && refineryLv < refineryCfg.maxLevel) {
     c.addTextDisplayComponents(

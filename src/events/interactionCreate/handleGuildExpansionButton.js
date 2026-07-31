@@ -486,6 +486,15 @@ function forgeErrorView(result) {
       title: "❌ 權限不足",
       body: "只有會長 / 副會長能升級熔爐 / 精煉站。",
     });
+  if (r === "insufficient_materials") {
+    const meta = guildWarehouse?.items?.[result.item_id];
+    const name = meta ? `${meta.emoji || ""} ${meta.name}`.trim() : result.item_id;
+    return expansionView.buildSimpleError({
+      title: "❌ 公會倉庫材料不足",
+      body: `需要 **${name}** ×${result.need}，倉庫只有 ${result.have}（差 ${result.need - result.have}）。`,
+      hint: "會員可用 /公會 倉庫 存入材料。",
+    });
+  }
   if (r === "race_lost")
     return expansionView.buildSimpleError({
       title: "⏳ 操作衝突",
@@ -493,7 +502,8 @@ function forgeErrorView(result) {
     });
   return expansionView.buildSimpleError({
     title: "❌ 操作失敗",
-    body: `原因：${r}`,
+    body: "這次操作沒有成功，請再試一次。",
+    hint: "若持續發生請呼叫舒舒",
   });
 }
 

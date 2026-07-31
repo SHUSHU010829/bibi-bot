@@ -14,11 +14,16 @@ function cfg() {
 }
 
 // 逐顆開石頭（純函式，不碰 DB）。回傳贏得礦石總表與每顆結果（供呈現）。
-// quality === "high" 時用 outcomesHigh（gold / diamond 機率提升）。
+// 三張表：normal = 一般挖到的石頭；low = 碎石合成的劣質賭石；high = 優質賭石。
+// low 原本沒有自己的表而落到 normal，導致「劣質賭石限定」的產物會從一般石頭開出來。
 function rollOutcomes(count, quality = "normal") {
   const c = cfg();
   const table =
-    quality === "high" && Array.isArray(c.outcomesHigh) ? c.outcomesHigh : c.outcomes;
+    quality === "high" && Array.isArray(c.outcomesHigh)
+      ? c.outcomesHigh
+      : quality === "low" && Array.isArray(c.outcomesLow)
+        ? c.outcomesLow
+        : c.outcomes;
   const outcomes = Array.isArray(table) ? table : [];
   const weights = {};
   outcomes.forEach((o, i) => {
@@ -78,7 +83,9 @@ async function appraise(client, { userId, guildId, member, username, ts, allowOv
     count = Math.min(count, Math.max(0, Math.floor(requestedCount)));
   }
   if (count <= 0) return { ok: false, reason: "no_stone" };
-  const quality = pending.quality === "high" ? "high" : "normal";
+  const quality = pending.quality === "high" || pending.quality === "low"
+    ? pending.quality
+    : "normal";
 
   const feePerStone = Math.max(0, Math.floor(c.feePerStone || 0));
   const fee = feePerStone * count;

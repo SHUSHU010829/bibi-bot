@@ -284,6 +284,24 @@ const upgradeRefinery = async (client, { userId, guildId }) => {
       have: club.treasury_current || 0,
     };
 
+  // 高階升級除了金庫還要材料（例：魔晶礦）。先扣材料，等級沒升成再還回去。
+  const materials = upgrade.materials || {};
+  if (Object.keys(materials).length > 0) {
+    const consumed = await consumeWarehouseInputs(client, club.guild_club_id, materials);
+    if (!consumed.ok) {
+      const row = await client.guildClubWarehouseCollection
+        .findOne({ guild_club_id: club.guild_club_id, item_id: consumed.item_id })
+        .catch(() => null);
+      return {
+        ok: false,
+        reason: "insufficient_materials",
+        item_id: consumed.item_id,
+        need: materials[consumed.item_id],
+        have: row?.available_qty || 0,
+      };
+    }
+  }
+
   const upd = await client.guildsClubCollection.findOneAndUpdate(
     {
       guild_club_id: club.guild_club_id,
@@ -299,18 +317,26 @@ const upgradeRefinery = async (client, { userId, guildId }) => {
     { returnDocument: "after" }
   );
   const newDoc = upd?.value || upd;
-  if (!newDoc) return { ok: false, reason: "race_lost" };
+  if (!newDoc) {
+    for (const [itemId, qty] of Object.entries(materials)) {
+      await client.guildClubWarehouseCollection.updateOne(
+        { guild_club_id: club.guild_club_id, item_id: itemId },
+        { $inc: { qty, available_qty: qty }, $set: { updated_at: new Date() } }
+      ).catch(() => {});
+    }
+    return { ok: false, reason: "race_lost" };
+  }
 
   await client.guildClubLogsCollection.insertOne({
     guild_club_id: club.guild_club_id,
     user_id: userId,
     amount: -upgrade.cost,
     source: "refinery_upgrade",
-    meta: { fromLevel: currentLv, toLevel: upgrade.toLevel },
+    meta: { fromLevel: currentLv, toLevel: upgrade.toLevel, materials },
     createdAt: new Date(),
   }).catch(() => {});
 
-  return { ok: true, club: newDoc, fromLevel: currentLv, toLevel: upgrade.toLevel, cost: upgrade.cost };
+  return { ok: true, club: newDoc, fromLevel: currentLv, toLevel: upgrade.toLevel, cost: upgrade.cost, materials };
 };
 
 module.exports = {

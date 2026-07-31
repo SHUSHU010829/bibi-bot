@@ -8,32 +8,247 @@
     "largeDepositAnnounceValue": 10000,
     "withdraw": {
       "dailyMaxTimesDefault": 3,
-      "dailyMaxTimesRange": [1, 8],
+      "dailyMaxTimesRange": [
+        1,
+        8
+      ],
       "feeRateDefault": 0.1,
-      "feeRateRange": [0.05, 0.2],
+      "feeRateRange": [
+        0.05,
+        0.2
+      ],
       "feeMinAbsolute": 20,
       "tenureHoursDefault": 24,
-      "tenureHoursRange": [6, 168],
+      "tenureHoursRange": [
+        6,
+        168
+      ],
       "minContributionDefault": 200,
-      "minContributionRange": [0, 5000]
+      "minContributionRange": [
+        0,
+        5000
+      ]
     },
     "items": {
-      "stone":       { "kind": "backpack", "name": "石頭",   "emoji": "<:ore_stone:1509063638684794901>",   "perTakeMaxDefault": 25, "perTakeMaxRange": [1, 40], "capacityDefault": 1000, "unitPrice": 8 },
-      "coal":        { "kind": "backpack", "name": "煤炭",   "emoji": "<:ore_coal:1509063448481366106>",    "perTakeMaxDefault": 25, "perTakeMaxRange": [1, 40], "capacityDefault": 600,  "unitPrice": 20 },
-      "iron":        { "kind": "backpack", "name": "鐵礦",   "emoji": "<:ore_iron:1509064765249556670>",    "perTakeMaxDefault": 15, "perTakeMaxRange": [1, 30], "capacityDefault": 300,  "unitPrice": 60 },
-      "gold":        { "kind": "backpack", "name": "黃金",   "emoji": "<:ore_gold:1509064763550994432>",    "perTakeMaxDefault": 10, "perTakeMaxRange": [1, 20], "capacityDefault": 100,  "unitPrice": 200 },
-      "diamond":     { "kind": "backpack", "name": "鑽石",   "emoji": "<:ore_diamond:1509064761709559818>", "perTakeMaxDefault": 2,  "perTakeMaxRange": [1, 5],  "capacityDefault": 25,   "unitPrice": 800 },
-      "carrot":      { "kind": "veggie_bag", "name": "紅蘿蔔", "emoji": "🥕", "perTakeMaxDefault": 25, "perTakeMaxRange": [1, 40], "capacityDefault": 300,  "unitPrice": 65 },
-      "corn":        { "kind": "veggie_bag", "name": "玉米",   "emoji": "🌽", "perTakeMaxDefault": 15, "perTakeMaxRange": [1, 30], "capacityDefault": 150,  "unitPrice": 175 },
-      "strawberry":  { "kind": "veggie_bag", "name": "草莓",   "emoji": "🍓", "perTakeMaxDefault": 10, "perTakeMaxRange": [1, 20], "capacityDefault": 80,   "unitPrice": 450 },
-      "black_rose":  { "kind": "veggie_bag", "name": "黑玫瑰", "emoji": "🌹", "perTakeMaxDefault": 2,  "perTakeMaxRange": [1, 5],  "capacityDefault": 25,   "unitPrice": 1350 },
-      "small_fish":  { "kind": "fish_bag", "name": "小雜魚", "emoji": "🐟", "perTakeMaxDefault": 25, "perTakeMaxRange": [1, 40], "capacityDefault": 1000, "unitPrice": 5 },
-      "crucian":     { "kind": "fish_bag", "name": "鯽魚",   "emoji": "🎣", "perTakeMaxDefault": 25, "perTakeMaxRange": [1, 40], "capacityDefault": 600,  "unitPrice": 15 },
-      "shark":       { "kind": "fish_bag", "name": "鯊魚",   "emoji": "🦈", "perTakeMaxDefault": 15, "perTakeMaxRange": [1, 30], "capacityDefault": 300,  "unitPrice": 60 },
-      "octopus":     { "kind": "fish_bag", "name": "章魚",   "emoji": "🐙", "perTakeMaxDefault": 10, "perTakeMaxRange": [1, 20], "capacityDefault": 100,  "unitPrice": 150 },
-      "lava_fish":   { "kind": "fish_bag", "name": "熔岩魚", "emoji": "🐉", "perTakeMaxDefault": 2,  "perTakeMaxRange": [1, 5],  "capacityDefault": 25,   "unitPrice": 600 },
-      "building_material": { "kind": "guild_only", "name": "建材", "emoji": "🧱", "perTakeMaxDefault": 0, "perTakeMaxRange": [0, 0], "capacityDefault": 200, "unitPrice": 0, "craftedOnly": true },
-      "steel_ingot":       { "kind": "guild_only", "name": "鋼錠", "emoji": "⛓️", "perTakeMaxDefault": 0, "perTakeMaxRange": [0, 0], "capacityDefault": 100, "unitPrice": 0, "craftedOnly": true }
+      "stone": {
+        "kind": "backpack",
+        "name": "石頭",
+        "emoji": "<:ore_stone:1509063638684794901>",
+        "perTakeMaxDefault": 25,
+        "perTakeMaxRange": [
+          1,
+          40
+        ],
+        "capacityDefault": 1000,
+        "unitPrice": 8
+      },
+      "coal": {
+        "kind": "backpack",
+        "name": "煤炭",
+        "emoji": "<:ore_coal:1509063448481366106>",
+        "perTakeMaxDefault": 25,
+        "perTakeMaxRange": [
+          1,
+          40
+        ],
+        "capacityDefault": 600,
+        "unitPrice": 20
+      },
+      "iron": {
+        "kind": "backpack",
+        "name": "鐵礦",
+        "emoji": "<:ore_iron:1509064765249556670>",
+        "perTakeMaxDefault": 15,
+        "perTakeMaxRange": [
+          1,
+          30
+        ],
+        "capacityDefault": 300,
+        "unitPrice": 60
+      },
+      "gold": {
+        "kind": "backpack",
+        "name": "黃金",
+        "emoji": "<:ore_gold:1509064763550994432>",
+        "perTakeMaxDefault": 10,
+        "perTakeMaxRange": [
+          1,
+          20
+        ],
+        "capacityDefault": 100,
+        "unitPrice": 200
+      },
+      "diamond": {
+        "kind": "backpack",
+        "name": "鑽石",
+        "emoji": "<:ore_diamond:1509064761709559818>",
+        "perTakeMaxDefault": 2,
+        "perTakeMaxRange": [
+          1,
+          5
+        ],
+        "capacityDefault": 25,
+        "unitPrice": 800
+      },
+      "carrot": {
+        "kind": "veggie_bag",
+        "name": "紅蘿蔔",
+        "emoji": "🥕",
+        "perTakeMaxDefault": 25,
+        "perTakeMaxRange": [
+          1,
+          40
+        ],
+        "capacityDefault": 300,
+        "unitPrice": 65
+      },
+      "corn": {
+        "kind": "veggie_bag",
+        "name": "玉米",
+        "emoji": "🌽",
+        "perTakeMaxDefault": 15,
+        "perTakeMaxRange": [
+          1,
+          30
+        ],
+        "capacityDefault": 150,
+        "unitPrice": 175
+      },
+      "strawberry": {
+        "kind": "veggie_bag",
+        "name": "草莓",
+        "emoji": "🍓",
+        "perTakeMaxDefault": 10,
+        "perTakeMaxRange": [
+          1,
+          20
+        ],
+        "capacityDefault": 80,
+        "unitPrice": 450
+      },
+      "black_rose": {
+        "kind": "veggie_bag",
+        "name": "黑玫瑰",
+        "emoji": "🌹",
+        "perTakeMaxDefault": 2,
+        "perTakeMaxRange": [
+          1,
+          5
+        ],
+        "capacityDefault": 25,
+        "unitPrice": 1350
+      },
+      "small_fish": {
+        "kind": "fish_bag",
+        "name": "小雜魚",
+        "emoji": "🐟",
+        "perTakeMaxDefault": 25,
+        "perTakeMaxRange": [
+          1,
+          40
+        ],
+        "capacityDefault": 1000,
+        "unitPrice": 5
+      },
+      "crucian": {
+        "kind": "fish_bag",
+        "name": "鯽魚",
+        "emoji": "🎣",
+        "perTakeMaxDefault": 25,
+        "perTakeMaxRange": [
+          1,
+          40
+        ],
+        "capacityDefault": 600,
+        "unitPrice": 15
+      },
+      "shark": {
+        "kind": "fish_bag",
+        "name": "鯊魚",
+        "emoji": "🦈",
+        "perTakeMaxDefault": 15,
+        "perTakeMaxRange": [
+          1,
+          30
+        ],
+        "capacityDefault": 300,
+        "unitPrice": 60
+      },
+      "octopus": {
+        "kind": "fish_bag",
+        "name": "章魚",
+        "emoji": "🐙",
+        "perTakeMaxDefault": 10,
+        "perTakeMaxRange": [
+          1,
+          20
+        ],
+        "capacityDefault": 100,
+        "unitPrice": 150
+      },
+      "lava_fish": {
+        "kind": "fish_bag",
+        "name": "熔岩魚",
+        "emoji": "🐉",
+        "perTakeMaxDefault": 2,
+        "perTakeMaxRange": [
+          1,
+          5
+        ],
+        "capacityDefault": 25,
+        "unitPrice": 600
+      },
+      "building_material": {
+        "kind": "guild_only",
+        "name": "建材",
+        "emoji": "🧱",
+        "perTakeMaxDefault": 0,
+        "perTakeMaxRange": [
+          0,
+          0
+        ],
+        "capacityDefault": 200,
+        "unitPrice": 0,
+        "craftedOnly": true
+      },
+      "steel_ingot": {
+        "kind": "guild_only",
+        "name": "鋼錠",
+        "emoji": "⛓️",
+        "perTakeMaxDefault": 0,
+        "perTakeMaxRange": [
+          0,
+          0
+        ],
+        "capacityDefault": 100,
+        "unitPrice": 0,
+        "craftedOnly": true
+      },
+      "magic_crystal": {
+        "name": "魔晶礦",
+        "emoji": "🔮",
+        "kind": "backpack",
+        "withdrawDefault": 2,
+        "withdrawRange": [
+          1,
+          5
+        ],
+        "capacityDefault": 30,
+        "unitPrice": 1000
+      },
+      "magic_alloy": {
+        "name": "魔晶合金",
+        "emoji": "✨",
+        "kind": "guild_only",
+        "withdrawDefault": 0,
+        "withdrawRange": [
+          0,
+          0
+        ],
+        "capacityDefault": 50,
+        "unitPrice": 0,
+        "craftedOnly": true
+      }
     },
     "capacityLevelMultiplier": {
       "2": 1.0,
