@@ -466,6 +466,38 @@ async function applyProgress(client, {
   };
 }
 
+// 管理員手動收掉一個事件（主線活動沒有 trigger，開跟關都靠指令）。
+// 直接標成 ended，交由 scheduler 的公告流程收尾。
+async function forceEndEvent(client, eventDbId) {
+  if (!client?.worldEventsCollection) return { ok: false, reason: "disabled" };
+  const now = new Date();
+  const upd = await client.worldEventsCollection.findOneAndUpdate(
+    { event_db_id: eventDbId, state: { $in: ["collecting", "buffing"] } },
+    { $set: { state: "ended", ended_at: now, updated_at: now } },
+    { returnDocument: "after" }
+  );
+  const doc = upd?.value || upd;
+  if (!doc) return { ok: false, reason: "not_active" };
+  await worldEventBuffs.refreshCache(client).catch(() => {});
+  return { ok: true, event: doc };
+}
+
+// 主線活動的貢獻排行（發稱號、公告前 N 名用）。
+async function contributionRanking(client, eventDbId, { itemId, limit = 10 } = {}) {
+  if (!client?.worldEventContributionsCollection) return [];
+  const match = { event_db_id: eventDbId };
+  if (itemId) match.item_id = itemId;
+  return await client.worldEventContributionsCollection
+    .aggregate([
+      { $match: match },
+      { $group: { _id: "$user_id", total: { $sum: "$qty" } } },
+      { $sort: { total: -1 } },
+      { $limit: limit },
+    ])
+    .toArray()
+    .catch(() => []);
+}
+
 // 用於 scheduler：處理過期。collecting 過 ends_at → ended（失敗）。
 //                            buffing 過 ends_at → ended（buff 結束）。
 async function settleExpired(client) {
@@ -512,5 +544,7 @@ module.exports = {
   donatedTodayBy,
   isMainline,
   CURRENCY_ITEM,
+  forceEndEvent,
+  contributionRanking,
   settleExpired,
 };
