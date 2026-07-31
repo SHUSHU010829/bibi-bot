@@ -450,6 +450,22 @@ async function applyProgress(client, {
       buffStarted = true;
       buffEndsAt = endsAt;
       await worldEventBuffs.refreshCache(client).catch(() => {});
+      // 主線活動達標 → 依貢獻量發稱號（fire-and-forget，不擋捐獻回應）
+      if (updDoc.kind === "mainline") {
+        awardContributionTitles(client, updDoc, guildId).catch((e) =>
+          console.log(`[WORLD_EVENT] 發稱號失敗：${e.message}`.yellow),
+        );
+      }
+      // 主線活動達標 → 寫入永久解鎖旗標（不是會過期的 buff）
+      for (const flag of eventDef(updDoc.event_id)?.unlocks || []) {
+        await client.serverFlagsCollection
+          ?.updateOne(
+            { guildId, key: flag },
+            { $set: { value: true, unlocked_at: new Date(), event_db_id: eventDbId } },
+            { upsert: true },
+          )
+          .catch(() => {});
+      }
     }
   }
 
@@ -464,6 +480,38 @@ async function applyProgress(client, {
     buffEndsAt,
     completed,
   };
+}
+
+// 主線活動達標後依貢獻量發稱號。
+// 門檻用「佔總目標的百分比」定義，這樣總目標之後被調整（例如依實際庫存重新定案）
+// 時，門檻會自動等比縮放，不必回頭改 titles.json。
+async function awardContributionTitles(client, event, guildId) {
+  const { gameTitles } = require("../../config");
+  const gameTitleService = require("../gameTitles/gameTitleService");
+  if (!client?.worldEventContributionsCollection) return { granted: 0 };
+
+  const totalGoal = Object.values(event.requirements_total || {}).reduce((a, b) => a + b, 0);
+  if (!totalGoal) return { granted: 0 };
+
+  const rows = await contributionRanking(client, event.event_db_id, { limit: 500 });
+  const defs = Object.entries(gameTitles?.defs || {}).filter(
+    ([, d]) => d.req?.contributionPct || d.req?.contributionRank,
+  );
+
+  let granted = 0;
+  for (const [idx, row] of rows.entries()) {
+    const pct = (row.total / totalGoal) * 100;
+    for (const [titleId, def] of defs) {
+      const okPct = def.req.contributionPct && pct >= def.req.contributionPct;
+      const okRank = def.req.contributionRank && idx < def.req.contributionRank;
+      if (!okPct && !okRank) continue;
+      const r = await gameTitleService
+        .grant(client, { userId: row._id, guildId, titleId, source: "world_event" })
+        .catch(() => null);
+      if (r?.newlyAdded) granted++;
+    }
+  }
+  return { granted };
 }
 
 // 管理員手動收掉一個事件（主線活動沒有 trigger，開跟關都靠指令）。
@@ -546,5 +594,6 @@ module.exports = {
   CURRENCY_ITEM,
   forceEndEvent,
   contributionRanking,
+  awardContributionTitles,
   settleExpired,
 };
