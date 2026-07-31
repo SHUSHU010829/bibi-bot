@@ -105,6 +105,14 @@
         "luckBonus": 0.12,
         "qtyBonus": 1,
         "durability": 80
+      },
+      "magic": {
+        "name": "魔晶鎬",
+        "emoji": "🔮",
+        "cdReductionMs": 4500000,
+        "luckBonus": 0.15,
+        "qtyBonus": 2,
+        "durability": 100
       }
     },
     "luckPotionBonus": 0.08,

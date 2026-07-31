@@ -38,6 +38,8 @@ function defaultProfile(userId, guildId) {
     deep_stamina: null,
     deep_stamina_updated_at: 0,
     deep_mine_count_total: 0,
+    sealing_ammo_count: 0,
+    sealing_ammo_week: "",
     advanced_trap_uses: 0,
     treasure_map_fragments: 0,
     treasure_maps: 0,
@@ -101,6 +103,8 @@ function normalize(doc) {
   doc.deep_stamina ??= null;
   doc.deep_stamina_updated_at ??= 0;
   doc.deep_mine_count_total ??= 0;
+  doc.sealing_ammo_count ??= 0;
+  doc.sealing_ammo_week ??= "";
   doc.advanced_trap_uses ??= 0;
   doc.treasure_map_fragments ??= 0;
   doc.treasure_maps ??= 0;

@@ -24,12 +24,61 @@
       "感覺有東西咬，拉起來只剩空鉤…",
       "魚試探了一下餌，轉頭就游走了…"
     ],
-    "durabilityWarn": { "low": 5, "critical": 1 },
+    "durabilityWarn": {
+      "low": 5,
+      "critical": 1
+    },
     "rods": {
-      "bamboo":  { "name": "竹釣竿",   "emoji": "🎣", "successBonus": 0,    "rareBonus": 0,   "cdReductionMs": 0,       "qtyBonus": 0, "bonusChance": 0,    "durability": null },
-      "carbon":  { "name": "碳纖釣竿", "emoji": "🎏", "successBonus": 0.12, "rareBonus": 0.5, "cdReductionMs": 1800000, "qtyBonus": 0, "bonusChance": 0.12, "durability": 30 },
-      "gold":    { "name": "黃金釣竿", "emoji": "🥇", "successBonus": 0.20, "rareBonus": 1.0, "cdReductionMs": 2700000, "qtyBonus": 0, "bonusChance": 0.2,  "durability": 50 },
-      "mythril": { "name": "秘銀釣竿", "emoji": "🔱", "successBonus": 0.28, "rareBonus": 1.5, "cdReductionMs": 3600000, "qtyBonus": 1, "bonusChance": 0.25, "durability": 80 }
+      "bamboo": {
+        "name": "竹釣竿",
+        "emoji": "🎣",
+        "successBonus": 0,
+        "rareBonus": 0,
+        "cdReductionMs": 0,
+        "qtyBonus": 0,
+        "bonusChance": 0,
+        "durability": null
+      },
+      "carbon": {
+        "name": "碳纖釣竿",
+        "emoji": "🎏",
+        "successBonus": 0.12,
+        "rareBonus": 0.5,
+        "cdReductionMs": 1800000,
+        "qtyBonus": 0,
+        "bonusChance": 0.12,
+        "durability": 30
+      },
+      "gold": {
+        "name": "黃金釣竿",
+        "emoji": "🥇",
+        "successBonus": 0.2,
+        "rareBonus": 1.0,
+        "cdReductionMs": 2700000,
+        "qtyBonus": 0,
+        "bonusChance": 0.2,
+        "durability": 50
+      },
+      "mythril": {
+        "name": "秘銀釣竿",
+        "emoji": "🔱",
+        "successBonus": 0.28,
+        "rareBonus": 1.5,
+        "cdReductionMs": 3600000,
+        "qtyBonus": 1,
+        "bonusChance": 0.25,
+        "durability": 80
+      },
+      "magic": {
+        "name": "魔晶釣竿",
+        "emoji": "🔮",
+        "successBonus": 0.28,
+        "rareBonus": 2.0,
+        "qtyBonus": 2,
+        "bonusChance": 0.31,
+        "cdReductionMs": 4500000,
+        "durability": 100
+      }
     },
     "locations": {
       "stream": {
@@ -52,20 +101,74 @@
       }
     },
     "fish": {
-      "small_fish": { "name": "小雜魚", "emoji": "🐟", "rarity": "普通", "price": 5,   "rareFactor": 0 },
-      "crucian":    { "name": "鯽魚",   "emoji": "🎣", "rarity": "普通", "price": 15,  "rareFactor": 0 },
-      "shark":      { "name": "鯊魚",   "emoji": "🦈", "rarity": "稀有", "price": 60,  "rareFactor": 0.8 },
-      "octopus":    { "name": "章魚",   "emoji": "🐙", "rarity": "稀有", "price": 150, "rareFactor": 1.0 },
-      "lava_fish":  { "name": "熔岩魚", "emoji": "🐉", "rarity": "傳說", "price": 600, "rareFactor": 1.2 }
+      "small_fish": {
+        "name": "小雜魚",
+        "emoji": "🐟",
+        "rarity": "普通",
+        "price": 5,
+        "rareFactor": 0
+      },
+      "crucian": {
+        "name": "鯽魚",
+        "emoji": "🎣",
+        "rarity": "普通",
+        "price": 15,
+        "rareFactor": 0
+      },
+      "shark": {
+        "name": "鯊魚",
+        "emoji": "🦈",
+        "rarity": "稀有",
+        "price": 60,
+        "rareFactor": 0.8
+      },
+      "octopus": {
+        "name": "章魚",
+        "emoji": "🐙",
+        "rarity": "稀有",
+        "price": 150,
+        "rareFactor": 1.0
+      },
+      "lava_fish": {
+        "name": "熔岩魚",
+        "emoji": "🐉",
+        "rarity": "傳說",
+        "price": 600,
+        "rareFactor": 1.2
+      }
     },
     "dropTable": {
-      "stream":    { "small_fish": 62, "crucian": 28, "shark": 9,  "octopus": 1,  "lava_fish": 0 },
-      "sea":       { "small_fish": 38, "crucian": 30, "shark": 22, "octopus": 10, "lava_fish": 0 },
-      "lava_lake": { "small_fish": 28, "crucian": 18, "shark": 24, "octopus": 24, "lava_fish": 6 }
+      "stream": {
+        "small_fish": 62,
+        "crucian": 28,
+        "shark": 9,
+        "octopus": 1,
+        "lava_fish": 0
+      },
+      "sea": {
+        "small_fish": 38,
+        "crucian": 30,
+        "shark": 22,
+        "octopus": 10,
+        "lava_fish": 0
+      },
+      "lava_lake": {
+        "small_fish": 28,
+        "crucian": 18,
+        "shark": 24,
+        "octopus": 24,
+        "lava_fish": 6
+      }
     },
     "rareItemDrops": {
       "lava_lake": [
-        { "item": "moonlight_dew", "field": "backpack.moonlight_dew", "chance": 0.05, "name": "月光露水", "emoji": "🌟" }
+        {
+          "item": "moonlight_dew",
+          "field": "backpack.moonlight_dew",
+          "chance": 0.05,
+          "name": "月光露水",
+          "emoji": "🌟"
+        }
       ]
     },
     "nonFishCatch": {
@@ -73,18 +176,108 @@
       "treasureBase": 0.16,
       "treasureRodFactor": 0.14,
       "junk": [
-        { "name": "破靴子",         "emoji": "🥾", "weight": 24, "coins": [1, 4], "flavor": "一隻濕透的破靴子，鞋帶上還纏著水草…" },
-        { "name": "生鏽空罐頭",     "emoji": "🥫", "weight": 22, "coins": [1, 5], "flavor": "標籤早就泡爛了，搖一搖裡面還有水。" },
-        { "name": "纏成一團的海帶", "emoji": "🌿", "weight": 20, "coins": [2, 6], "flavor": "花了三分鐘才把鉤子從海帶裡解出來。" },
-        { "name": "別人掉的拖鞋",   "emoji": "🩴", "weight": 18, "coins": [1, 4], "flavor": "只有一隻，另一隻大概還在某條魚肚子裡。" },
-        { "name": "沉船的爛木板",   "emoji": "🪵", "weight": 16, "coins": [2, 8], "flavor": "上面好像刻著字，但早就看不清了。" }
+        {
+          "name": "破靴子",
+          "emoji": "🥾",
+          "weight": 24,
+          "coins": [
+            1,
+            4
+          ],
+          "flavor": "一隻濕透的破靴子，鞋帶上還纏著水草…"
+        },
+        {
+          "name": "生鏽空罐頭",
+          "emoji": "🥫",
+          "weight": 22,
+          "coins": [
+            1,
+            5
+          ],
+          "flavor": "標籤早就泡爛了，搖一搖裡面還有水。"
+        },
+        {
+          "name": "纏成一團的海帶",
+          "emoji": "🌿",
+          "weight": 20,
+          "coins": [
+            2,
+            6
+          ],
+          "flavor": "花了三分鐘才把鉤子從海帶裡解出來。"
+        },
+        {
+          "name": "別人掉的拖鞋",
+          "emoji": "🩴",
+          "weight": 18,
+          "coins": [
+            1,
+            4
+          ],
+          "flavor": "只有一隻，另一隻大概還在某條魚肚子裡。"
+        },
+        {
+          "name": "沉船的爛木板",
+          "emoji": "🪵",
+          "weight": 16,
+          "coins": [
+            2,
+            8
+          ],
+          "flavor": "上面好像刻著字，但早就看不清了。"
+        }
       ],
       "treasure": [
-        { "name": "古錢幣",       "emoji": "🪙", "weight": 30, "coins": [25, 70],   "flavor": "沉在水底不知多少年的古錢，還能換點錢。" },
-        { "name": "漂流寶箱",     "emoji": "📦", "weight": 16, "coins": [70, 180],  "flavor": "鎖早就鏽掉了，掀開竟然是一把銅板！" },
-        { "name": "沉沒的金幣袋", "emoji": "💰", "weight": 8,  "coins": [150, 320], "flavor": "繩結一拉就鬆開，金幣嘩啦嘩啦灑了出來！" },
-        { "name": "藏寶圖碎片",   "emoji": "🗺️", "weight": 14, "material": { "field": "treasure_map_fragments", "qty": 1 }, "flavor": "邊緣燒焦的羊皮紙，集滿 6 張就能拼出藏寶圖。" },
-        { "name": "月光露水",     "emoji": "🌟", "weight": 10, "material": { "field": "backpack.moonlight_dew", "qty": 1 }, "flavor": "在鉤子上凝成一顆發光的水珠，是農場施肥的好東西。" }
+        {
+          "name": "古錢幣",
+          "emoji": "🪙",
+          "weight": 30,
+          "coins": [
+            25,
+            70
+          ],
+          "flavor": "沉在水底不知多少年的古錢，還能換點錢。"
+        },
+        {
+          "name": "漂流寶箱",
+          "emoji": "📦",
+          "weight": 16,
+          "coins": [
+            70,
+            180
+          ],
+          "flavor": "鎖早就鏽掉了，掀開竟然是一把銅板！"
+        },
+        {
+          "name": "沉沒的金幣袋",
+          "emoji": "💰",
+          "weight": 8,
+          "coins": [
+            150,
+            320
+          ],
+          "flavor": "繩結一拉就鬆開，金幣嘩啦嘩啦灑了出來！"
+        },
+        {
+          "name": "藏寶圖碎片",
+          "emoji": "🗺️",
+          "weight": 14,
+          "material": {
+            "field": "treasure_map_fragments",
+            "qty": 1
+          },
+          "flavor": "邊緣燒焦的羊皮紙，集滿 6 張就能拼出藏寶圖。"
+        },
+        {
+          "name": "月光露水",
+          "emoji": "🌟",
+          "weight": 10,
+          "material": {
+            "field": "backpack.moonlight_dew",
+            "qty": 1
+          },
+          "flavor": "在鉤子上凝成一顆發光的水珠，是農場施肥的好東西。"
+        }
       ]
     },
     "foodStorage": {
@@ -97,7 +290,9 @@
         "name": "魚排便當",
         "emoji": "🍱",
         "description": "鯽魚製成的便當，接下來幾次打工都格外有精神",
-        "materials": { "crucian": 3 },
+        "materials": {
+          "crucian": 3
+        },
         "coalFuel": 3,
         "buff": {
           "type": "work_income",
@@ -116,11 +311,14 @@
         "name": "海鮮拼盤",
         "emoji": "🍤",
         "description": "章魚與小雜魚的豪華拼盤，吃了手感超好，接下來幾竿都旺",
-        "materials": { "octopus": 1, "small_fish": 4 },
+        "materials": {
+          "octopus": 1,
+          "small_fish": 4
+        },
         "coalFuel": 4,
         "buff": {
           "type": "fish_fortune",
-          "value": 0.10,
+          "value": 0.1,
           "uses": 3,
           "label": "接下來 3 次釣魚 成功率/稀有度提升"
         },
@@ -135,7 +333,10 @@
         "name": "鯊魚麵",
         "emoji": "🍜",
         "description": "鯊魚熬成的湯底，戰鬥力大幅提升",
-        "materials": { "shark": 2, "small_fish": 5 },
+        "materials": {
+          "shark": 2,
+          "small_fish": 5
+        },
         "coalFuel": 5,
         "buff": {
           "type": "dungeon_atk",
@@ -154,7 +355,9 @@
         "name": "章魚飯",
         "emoji": "🐙",
         "description": "章魚的神奇能量，讓礦工直覺大幅提升",
-        "materials": { "octopus": 1 },
+        "materials": {
+          "octopus": 1
+        },
         "coalFuel": 3,
         "buff": {
           "type": "mine_luck",
@@ -173,7 +376,10 @@
         "name": "熔岩鍋",
         "emoji": "🍲",
         "description": "熔岩魚與鯊魚共煮，全屬性短暫爆發",
-        "materials": { "lava_fish": 1, "shark": 1 },
+        "materials": {
+          "lava_fish": 1,
+          "shark": 1
+        },
         "coalFuel": 10,
         "buff": {
           "type": "all_boost",
@@ -183,7 +389,7 @@
         },
         "coalBuff": {
           "type": "all_boost",
-          "value": 0.20,
+          "value": 0.2,
           "durationMs": 5400000,
           "label": "全屬性 +20%（90 分鐘，煤炭烤製）"
         }
@@ -192,8 +398,12 @@
         "name": "蔬菜魚湯",
         "emoji": "🥣",
         "description": "紅蘿蔔燉鯽魚的暖心湯，吃了讓接下來幾次收成更豐厚",
-        "materials": { "crucian": 3 },
-        "veggies": { "carrot": 2 },
+        "materials": {
+          "crucian": 3
+        },
+        "veggies": {
+          "carrot": 2
+        },
         "coalFuel": 3,
         "buff": {
           "type": "farm_yield",
@@ -212,12 +422,16 @@
         "name": "玉米巧達濃湯",
         "emoji": "🌽",
         "description": "玉米與雜魚熬煮，地下城與挖礦同時受益",
-        "materials": { "small_fish": 4 },
-        "veggies": { "corn": 2 },
+        "materials": {
+          "small_fish": 4
+        },
+        "veggies": {
+          "corn": 2
+        },
         "coalFuel": 4,
         "buff": {
           "type": "all_boost",
-          "value": 0.10,
+          "value": 0.1,
           "durationMs": 5400000,
           "label": "全屬性 +10%（90 分鐘）"
         },
@@ -233,9 +447,16 @@
         "emoji": "🌹",
         "description": "黑玫瑰煉成的稀有藥劑，殘餘的露水可再用於施肥",
         "materials": {},
-        "veggies": { "black_rose": 1 },
+        "veggies": {
+          "black_rose": 1
+        },
         "coalFuel": 6,
-        "byproduct": { "field": "backpack.moonlight_dew", "qty": 1, "name": "月光露水", "emoji": "🌟" },
+        "byproduct": {
+          "field": "backpack.moonlight_dew",
+          "qty": 1,
+          "name": "月光露水",
+          "emoji": "🌟"
+        },
         "buff": {
           "type": "all_boost",
           "value": 0.25,
@@ -244,7 +465,7 @@
         },
         "coalBuff": {
           "type": "all_boost",
-          "value": 0.30,
+          "value": 0.3,
           "durationMs": 5400000,
           "label": "全屬性 +30%（90 分鐘，煤炭烤製）"
         }
@@ -253,7 +474,9 @@
         "name": "小魚乾",
         "emoji": "🐟",
         "description": "小雜魚日曬風乾的解嘴饞零食，吃了還想再多釣幾竿",
-        "materials": { "small_fish": 8 },
+        "materials": {
+          "small_fish": 8
+        },
         "coalFuel": 2,
         "buff": {
           "type": "fish_fortune",
@@ -263,7 +486,7 @@
         },
         "coalBuff": {
           "type": "fish_fortune",
-          "value": 0.10,
+          "value": 0.1,
           "uses": 3,
           "label": "接下來 3 次釣魚 成功率/稀有度提升（煤炭烤製）"
         }
@@ -272,7 +495,9 @@
         "name": "鯽魚握壽司",
         "emoji": "🍣",
         "description": "新鮮鯽魚現切現捏，吃了眼神都變銳利了",
-        "materials": { "crucian": 4 },
+        "materials": {
+          "crucian": 4
+        },
         "coalFuel": 2,
         "buff": {
           "type": "mine_luck",
@@ -291,7 +516,9 @@
         "name": "鯊魚生魚片",
         "emoji": "🔪",
         "description": "鯊魚切薄片直接生吃，獸性與戰意一起被喚醒",
-        "materials": { "shark": 3 },
+        "materials": {
+          "shark": 3
+        },
         "coalFuel": 4,
         "buff": {
           "type": "dungeon_atk",
@@ -310,7 +537,9 @@
         "name": "章魚串燒",
         "emoji": "🍢",
         "description": "章魚串得整整齊齊烤到焦香，吃完打工像是上了發條",
-        "materials": { "octopus": 2 },
+        "materials": {
+          "octopus": 2
+        },
         "coalFuel": 5,
         "buff": {
           "type": "work_income",
@@ -329,7 +558,10 @@
         "name": "熔岩雙拼刺身",
         "emoji": "🌶️",
         "description": "熔岩魚與章魚的火海雙拼，全身湧現灼熱的力量",
-        "materials": { "lava_fish": 1, "octopus": 1 },
+        "materials": {
+          "lava_fish": 1,
+          "octopus": 1
+        },
         "coalFuel": 8,
         "buff": {
           "type": "all_boost",
@@ -349,7 +581,9 @@
         "emoji": "🥤",
         "description": "現榨紅蘿蔔汁配薄荷，喝了視野清明、連魚都看得透",
         "materials": {},
-        "veggies": { "carrot": 4 },
+        "veggies": {
+          "carrot": 4
+        },
         "coalFuel": 2,
         "buff": {
           "type": "fish_fortune",
@@ -369,17 +603,19 @@
         "emoji": "🌽",
         "description": "奶油融在烤玉米上香氣四溢，吃了打工像加滿油",
         "materials": {},
-        "veggies": { "corn": 3 },
+        "veggies": {
+          "corn": 3
+        },
         "coalFuel": 3,
         "buff": {
           "type": "work_income",
-          "value": 0.30,
+          "value": 0.3,
           "uses": 3,
           "label": "接下來 3 次打工收入 +30%"
         },
         "coalBuff": {
           "type": "work_income",
-          "value": 0.40,
+          "value": 0.4,
           "uses": 4,
           "label": "接下來 4 次打工收入 +40%（煤炭烤製）"
         }
@@ -389,17 +625,20 @@
         "emoji": "🍲",
         "description": "自家田裡的紅蘿蔔玉米同鍋慢燉，土地的循環又轉了一圈",
         "materials": {},
-        "veggies": { "carrot": 3, "corn": 2 },
+        "veggies": {
+          "carrot": 3,
+          "corn": 2
+        },
         "coalFuel": 4,
         "buff": {
           "type": "farm_yield",
-          "value": 0.30,
+          "value": 0.3,
           "uses": 3,
           "label": "接下來 3 次收成 +30%"
         },
         "coalBuff": {
           "type": "farm_yield",
-          "value": 0.40,
+          "value": 0.4,
           "uses": 4,
           "label": "接下來 4 次收成 +40%（煤炭烤製）"
         }
@@ -409,7 +648,9 @@
         "emoji": "🍰",
         "description": "滿滿草莓堆成小山的法式塔，咬一口幸福感拉滿",
         "materials": {},
-        "veggies": { "strawberry": 3 },
+        "veggies": {
+          "strawberry": 3
+        },
         "coalFuel": 5,
         "buff": {
           "type": "mine_luck",
@@ -429,7 +670,11 @@
         "emoji": "🥗",
         "description": "紅蘿蔔、玉米、草莓全部端上桌，田野的氣息圍繞全身",
         "materials": {},
-        "veggies": { "carrot": 3, "corn": 3, "strawberry": 2 },
+        "veggies": {
+          "carrot": 3,
+          "corn": 3,
+          "strawberry": 2
+        },
         "coalFuel": 8,
         "buff": {
           "type": "all_boost",
@@ -448,7 +693,10 @@
         "name": "章魚鎧甲鍋",
         "emoji": "🐙",
         "description": "章魚 8 隻腳熬煮成稠湯，吃下去像把鎧甲穿在身上，進地下城更耐打（Phase H+ HP 戰鬥用）",
-        "materials": { "octopus": 1, "crucian": 3 },
+        "materials": {
+          "octopus": 1,
+          "crucian": 3
+        },
         "coalFuel": 4,
         "buff": {
           "type": "dungeon_def",
@@ -467,8 +715,13 @@
         "name": "燉肉鍋",
         "emoji": "🍖",
         "description": "豐厚肉塊與菜根熬煮，體格暫時撐到更高 HP 上限",
-        "materials": { "shark": 1, "small_fish": 3 },
-        "veggies": { "carrot": 2 },
+        "materials": {
+          "shark": 1,
+          "small_fish": 3
+        },
+        "veggies": {
+          "carrot": 2
+        },
         "coalFuel": 5,
         "buff": {
           "type": "dungeon_hp_max",
@@ -487,12 +740,17 @@
         "name": "戰前晚餐",
         "emoji": "🍱",
         "description": "戰前一定要吃飽 — ATK / DEF / HP 三項小幅暫時提升，撐過硬骨頭地下城",
-        "materials": { "shark": 1, "octopus": 1 },
-        "veggies": { "corn": 2 },
+        "materials": {
+          "shark": 1,
+          "octopus": 1
+        },
+        "veggies": {
+          "corn": 2
+        },
         "coalFuel": 8,
         "buff": {
           "type": "all_boost",
-          "value": 0.10,
+          "value": 0.1,
           "durationMs": 3600000,
           "label": "全屬性 +10%（60 分鐘）"
         },
@@ -507,11 +765,14 @@
         "name": "順風魚粥",
         "emoji": "🥣",
         "description": "熱騰騰的鯽魚粥暖身又提神，接下來一段時間收竿下竿都特別快",
-        "materials": { "crucian": 4, "small_fish": 6 },
+        "materials": {
+          "crucian": 4,
+          "small_fish": 6
+        },
         "coalFuel": 4,
         "buff": {
           "type": "fish_haste",
-          "value": 0.10,
+          "value": 0.1,
           "durationMs": 3600000,
           "label": "釣魚冷卻 -10%（60 分鐘）"
         },

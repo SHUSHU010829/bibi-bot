@@ -9,7 +9,7 @@ const {
 const { SPECIAL_MAT_FIELDS, isFishMaterial, ownedMaterial } = require("./craftMaterials");
 
 // 鎬子 / 武器 / 釣竿階級（用於判定升級 / 同級 / 降級）
-const PICKAXE_TIER = { wood: 0, iron: 1, gold: 2, diamond: 3 };
+const PICKAXE_TIER = { wood: 0, iron: 1, gold: 2, diamond: 3, magic: 4 };
 const WEAPON_TIER = {
   fist: 0,
   iron_sword: 1,
@@ -17,8 +17,9 @@ const WEAPON_TIER = {
   gold_sword: 3,
   diamond_sword: 4,
   legendary_sword: 5,
+  magic_sword: 6,
 };
-const ROD_TIER = { bamboo: 0, carbon: 1, gold: 2, mythril: 3 };
+const ROD_TIER = { bamboo: 0, carbon: 1, gold: 2, mythril: 3, magic: 4 };
 // Phase H+ 盾牌階級（v1：鐵盾 / 鋼盾；v2：黃金 / 鑽石 / 傳說）
 const SHIELD_TIER = {
   iron_shield: 1,
@@ -26,6 +27,7 @@ const SHIELD_TIER = {
   gold_shield: 3,
   diamond_shield: 4,
   legendary_shield: 5,
+  magic_shield: 6,
 };
 
 // 傳說碎片 key（對外保留）
@@ -133,6 +135,11 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
     return craftOre(client, { userId, guildId, recipe });
   }
 
+  // 封魔彈藥：週六魔王戰專用消耗品，每週限做 1 個
+  if (type === "sealing_ammo") {
+    return craftSealingAmmo(client, { userId, guildId, recipe });
+  }
+
   // 拓荒錘：主線活動的參與門檻，非消耗品，持有一把即可
   if (type === "pioneer_hammer") {
     return craftPioneerHammer(client, { userId, guildId, recipe });
@@ -143,6 +150,20 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
   if (!targetDef) return { ok: false, reason: "no_recipe" };
 
   const profile = await getOrCreate(client, userId, guildId);
+
+  // 升級型配方：材料較省，但必須正在裝備指定的前一階裝備（會被覆蓋掉）
+  const needEquipped = recipe.requires?.equipped;
+  if (needEquipped && (profile[slot.equippedField] || slot.defaultId) !== needEquipped) {
+    return {
+      ok: false,
+      reason: "requires_equipped",
+      recipe,
+      type,
+      needEquipped,
+      needEquippedName: slot.defs[needEquipped]?.name || needEquipped,
+      currentName: slot.defs[profile[slot.equippedField]]?.name || "（未裝備）",
+    };
+  }
 
   // 材料檢查
   const missing = [];
@@ -529,6 +550,78 @@ async function craftOre(client, { userId, guildId, recipe }) {
   };
 }
 
+// 週鍵（台北時區、週一為週首）。封魔彈藥每週限做 1 個。
+function weekKeyTaipei() {
+  const { DateTime } = require("luxon");
+  const t = DateTime.now().setZone("Asia/Taipei");
+  return `${t.weekYear}-W${String(t.weekNumber).padStart(2, "0")}`;
+}
+
+async function craftSealingAmmo(client, { userId, guildId, recipe }) {
+  const { boss } = require("../../config");
+  const acfg = boss?.sealingAmmo || {};
+  const profile = await getOrCreate(client, userId, guildId);
+
+  const week = weekKeyTaipei();
+  const limit = acfg.weeklyCraftLimit ?? 1;
+  if (profile.sealing_ammo_week === week && limit > 0) {
+    return { ok: false, reason: "weekly_limit", limit, recipe };
+  }
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const have = ownedMaterial(profile, mat);
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) return { ok: false, reason: "insufficient", missing, recipe };
+
+  // 逼幣走條件式原子扣款，餘額不足就整筆不動
+  const coinCost = acfg.coinCost || 0;
+  if (coinCost > 0) {
+    const dec = await client.userCoinsCollection.updateOne(
+      { userId, guildId, totalCoins: { $gte: coinCost } },
+      { $inc: { totalCoins: -coinCost, lifetimeSpent: coinCost }, $set: { updatedAt: new Date() } },
+    );
+    if (dec.modifiedCount === 0) {
+      const doc = await client.userCoinsCollection.findOne({ userId, guildId }).catch(() => null);
+      return { ok: false, reason: "insufficient_coins", need: coinCost, have: doc?.totalCoins || 0, recipe };
+    }
+  }
+
+  const inc = { craft_count_total: 1, sealing_ammo_count: 1 };
+  for (const [mat, need] of Object.entries(recipe.materials)) {
+    if (SPECIAL_MAT_FIELDS[mat]) inc[SPECIAL_MAT_FIELDS[mat]] = (inc[SPECIAL_MAT_FIELDS[mat]] || 0) - need;
+    else if (isFishMaterial(mat)) inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+    else inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+  }
+  const res = await client.miningProfilesCollection.updateOne(
+    { userId, guildId, sealing_ammo_week: { $ne: week } },
+    { $inc: inc, $set: { sealing_ammo_week: week, updatedAt: new Date() } },
+  );
+  if (res.modifiedCount === 0) {
+    if (coinCost > 0) {
+      await client.userCoinsCollection.updateOne(
+        { userId, guildId },
+        { $inc: { totalCoins: coinCost, lifetimeSpent: -coinCost } },
+      ).catch(() => {});
+    }
+    return { ok: false, reason: "weekly_limit", limit, recipe };
+  }
+
+  return {
+    ok: true,
+    recipe,
+    type: "sealing_ammo",
+    resultId: "sealing_ammo",
+    resultName: recipe.name,
+    resultEmoji: recipe.emoji || "💥",
+    durability: null,
+    coinCost,
+    ammoAfter: (profile.sealing_ammo_count || 0) + 1,
+    craftCountTotal: (profile.craft_count_total || 0) + 1,
+  };
+}
+
 async function craftPioneerHammer(client, { userId, guildId, recipe }) {
   const profile = await getOrCreate(client, userId, guildId);
   if (profile.pioneer_hammer) return { ok: false, reason: "already_owned", recipe };
@@ -571,6 +664,7 @@ async function craftPioneerHammer(client, { userId, guildId, recipe }) {
 module.exports = {
   craftItem,
   craftPioneerHammer,
+  craftSealingAmmo,
   craftRepairTool,
   craftFishingNet,
   craftStoneAppraisalTrigger,

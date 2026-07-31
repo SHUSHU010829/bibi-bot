@@ -39,8 +39,18 @@ function resolveDeepStamina(profile) {
 // 深層礦脈的產出量：刻意不吃 mining_qty_bonus。
 // 鑽石鎬 +1 與公會 Lv2 +1 是為舊礦坑的機率表平衡設計的，帶進來會讓每種產出
 // 都 ×3，鑽石通膨最嚴重。這裡只認礦石自身的 minQty/maxQty。
-function rollDeep() {
-  const table = cfg().dropTable || {};
+// luckPct（魔晶熬煮宴的 deep_mining_luck_pct）只放大稀有礦的權重，
+// 比照舊礦坑 dropTable 的 luckFactor 做法，不是全表等比放大。
+const DEEP_LUCK_FACTOR = { magic_crystal: 1, diamond: 2, gold: 1.5, iron: 0 };
+
+function rollDeep(luckPct = 0) {
+  const base = cfg().dropTable || {};
+  const luck = (Number(luckPct) || 0) / 100;
+  const table = luck > 0
+    ? Object.fromEntries(
+        Object.entries(base).map(([k, w]) => [k, w * (1 + luck * (DEEP_LUCK_FACTOR[k] ?? 0))]),
+      )
+    : base;
   const ore = weightedRandom(table);
   if (!ore) return null;
   const def = mining?.ores?.[ore] || {};
@@ -95,7 +105,11 @@ async function deepMine(client, { userId, guildId, member, username }) {
   const used = backpackUsed(profile);
   if (used >= cap) return { ok: false, reason: "backpack_full", used, cap };
 
-  const drop = rollDeep();
+  const gc = await require("../buff/buffResolver")
+    .getGuildClubBuffs(client, userId, guildId)
+    .catch(() => ({ buffsByType: {} }));
+  const deepLuck = gc?.buffsByType?.deep_mining_luck_pct || 0;
+  const drop = rollDeep(deepLuck);
   if (!drop) return { ok: false, reason: "no_drop" };
   const qty = Math.min(drop.qty, Math.max(0, cap - used));
 
@@ -131,6 +145,7 @@ async function deepMine(client, { userId, guildId, member, username }) {
     staminaMax: max,
     nextRegenAt: after >= max ? null : Date.now() + (cfg().staminaRegenMs ?? 10800000),
     xpGained,
+    deepLuck,
     backpackUsed: used + (ORE_KEYS.includes(drop.ore) ? qty : 0),
     backpackCap: cap,
   };

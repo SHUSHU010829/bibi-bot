@@ -3,6 +3,7 @@
 
 const BUFF_META = {
   mining_qty_bonus: { label: "挖礦額外產出", unit: "+{v} 個" },
+  deep_mining_luck_pct: { label: "深層礦脈幸運", unit: "+{v}%" },
   mining_luck_pct: { label: "挖礦幸運", unit: "+{vp}%" },
   mining_cooldown_pct: { label: "挖礦冷卻", unit: "-{v}%" },
   work_income_multiplier: { label: "打工金幣", unit: "×{vplus1}" },

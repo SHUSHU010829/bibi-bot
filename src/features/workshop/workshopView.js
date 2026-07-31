@@ -65,7 +65,7 @@ const CRAFT_SUBS = [
   { id: "fish", label: "釣魚", emoji: "🎣", types: ["rod", "fishing_net"] },
   { id: "misc", label: "賭石/藏寶", emoji: "🪨", types: ["stone_appraisal_trigger", "treasure_map"] },
   { id: "farm", label: "農場", emoji: "🪤", types: ["advanced_trap", "ore"] },
-  { id: "event", label: "活動", emoji: "🛤️", types: ["pioneer_hammer"] },
+  { id: "event", label: "活動", emoji: "🛤️", types: ["pioneer_hammer", "sealing_ammo"] },
 ];
 const CRAFT_SUB_IDS = CRAFT_SUBS.map((s) => s.id);
 
@@ -343,6 +343,9 @@ function recipeBodyText(recipe, profile, type) {
       propLine = `效果：+${acfg.blocksPerCraft || 4} 次被動抵擋（上限 ${acfg.maxStack || 12}）`;
     } else if (type === "treasure_map") {
       propLine = `效果：合成 1 張藏寶圖，到 /背包 「探險道具」按「使用 1 張」撕開觸發隨機事件`;
+    } else if (type === "sealing_ammo") {
+      const acfg = require("../../config").boss?.sealingAmmo || {};
+      propLine = `效果：魔王戰攻擊次數 +${acfg.attackLimitBonus || 0}・世界王傷害 +${acfg.bossDamagePct || 0}%（另需 ${(acfg.coinCost || 0).toLocaleString()} 逼幣）`;
     } else if (type === "pioneer_hammer") {
       propLine = `效果：解鎖全服共建活動的投入資格（非消耗品，持有一把即可）`;
     } else if (type === "ore") {
@@ -459,6 +462,7 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
   const treasureMaps = recipes.filter((r) => r.result?.type === "treasure_map");
   const oreRecycles = recipes.filter((r) => r.result?.type === "ore");
   const eventTools = recipes.filter((r) => r.result?.type === "pioneer_hammer");
+  const bossAmmo = recipes.filter((r) => r.result?.type === "sealing_ammo");
 
   if (craftSub === "pickaxe") {
     if (pickaxes.length) {
@@ -574,6 +578,19 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
           ),
         );
       craftableSection(container, eventTools, profile, "pioneer_hammer", userId);
+    }
+    if (bossAmmo.length) {
+      const acfg = require("../../config").boss?.sealingAmmo || {};
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `### 💥 封魔彈藥（持有 **${profile.sealing_ammo_count || 0}**）\n`
+              + `-# 以魔制魔的消耗品，週六魔王戰用。每週限做 1 個，另需 ${(acfg.coinCost || 0).toLocaleString()} 逼幣\n`
+              + `-# 效果：該場魔王戰攻擊次數 +${acfg.attackLimitBonus || 0}、世界王傷害 +${acfg.bossDamagePct || 0}%（單場限用 1 個）`,
+          ),
+        );
+      craftableSection(container, bossAmmo, profile, "sealing_ammo", userId);
     }
   }
 

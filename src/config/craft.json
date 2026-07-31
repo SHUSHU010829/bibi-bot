@@ -5,219 +5,571 @@
         "id": "pickaxe_iron",
         "name": "鐵鎬",
         "emoji": "<:pickaxe_iron:1509061628698693713>",
-        "materials": { "iron": 10 },
-        "result": { "type": "pickaxe", "id": "iron" }
+        "materials": {
+          "iron": 10
+        },
+        "result": {
+          "type": "pickaxe",
+          "id": "iron"
+        }
       },
       {
         "id": "pickaxe_gold",
         "name": "黃金鎬",
         "emoji": "<:pickaxe_gold:1509066702489649296>",
-        "materials": { "gold": 5, "iron": 20, "coal": 8 },
-        "result": { "type": "pickaxe", "id": "gold" }
+        "materials": {
+          "gold": 5,
+          "iron": 20,
+          "coal": 8
+        },
+        "result": {
+          "type": "pickaxe",
+          "id": "gold"
+        }
       },
       {
         "id": "pickaxe_diamond",
         "name": "鑽石鎬",
         "emoji": "<:pickaxe_diamond:1509126881184583740>",
-        "materials": { "diamond": 7, "gold": 14, "coal": 10 },
-        "result": { "type": "pickaxe", "id": "diamond" }
+        "materials": {
+          "diamond": 7,
+          "gold": 14,
+          "coal": 10
+        },
+        "result": {
+          "type": "pickaxe",
+          "id": "diamond"
+        }
       },
       {
         "id": "rod_carbon",
         "name": "碳纖釣竿",
         "emoji": "🎏",
-        "materials": { "iron": 8, "coal": 5 },
-        "result": { "type": "rod", "id": "carbon" }
+        "materials": {
+          "iron": 8,
+          "coal": 5
+        },
+        "result": {
+          "type": "rod",
+          "id": "carbon"
+        }
       },
       {
         "id": "rod_gold",
         "name": "黃金釣竿",
         "emoji": "🥇",
-        "materials": { "gold": 5, "iron": 12, "shark": 2 },
-        "result": { "type": "rod", "id": "gold" }
+        "materials": {
+          "gold": 5,
+          "iron": 12,
+          "shark": 2
+        },
+        "result": {
+          "type": "rod",
+          "id": "gold"
+        }
       },
       {
         "id": "rod_mythril",
         "name": "秘銀釣竿",
         "emoji": "🔱",
-        "materials": { "diamond": 5, "gold": 10, "lava_fish": 2 },
-        "result": { "type": "rod", "id": "mythril" }
+        "materials": {
+          "diamond": 5,
+          "gold": 10,
+          "lava_fish": 2
+        },
+        "result": {
+          "type": "rod",
+          "id": "mythril"
+        }
       },
       {
         "id": "sword_iron",
         "name": "鐵劍",
         "emoji": "🗡️",
-        "materials": { "iron": 15 },
-        "result": { "type": "weapon", "id": "iron_sword" }
+        "materials": {
+          "iron": 15
+        },
+        "result": {
+          "type": "weapon",
+          "id": "iron_sword"
+        }
       },
       {
         "id": "sword_steel",
         "name": "鋼劍",
         "emoji": "⚔️",
-        "materials": { "iron": 30, "coal": 20 },
-        "result": { "type": "weapon", "id": "steel_sword" }
+        "materials": {
+          "iron": 30,
+          "coal": 20
+        },
+        "result": {
+          "type": "weapon",
+          "id": "steel_sword"
+        }
       },
       {
         "id": "sword_gold",
         "name": "黃金劍",
         "emoji": "🌟",
-        "materials": { "gold": 8, "iron": 24, "coal": 10 },
-        "result": { "type": "weapon", "id": "gold_sword" }
+        "materials": {
+          "gold": 8,
+          "iron": 24,
+          "coal": 10
+        },
+        "result": {
+          "type": "weapon",
+          "id": "gold_sword"
+        }
       },
       {
         "id": "sword_diamond",
         "name": "鑽石劍",
         "emoji": "💎",
-        "materials": { "diamond": 8, "gold": 18, "coal": 12 },
-        "result": { "type": "weapon", "id": "diamond_sword" }
+        "materials": {
+          "diamond": 8,
+          "gold": 18,
+          "coal": 12
+        },
+        "result": {
+          "type": "weapon",
+          "id": "diamond_sword"
+        }
       },
       {
         "id": "sword_legendary",
         "name": "傳說之劍",
         "emoji": "🔥",
-        "materials": { "legendary_fragment": 18, "diamond": 12, "coal": 15 },
-        "result": { "type": "weapon", "id": "legendary_sword" }
+        "materials": {
+          "legendary_fragment": 18,
+          "diamond": 12,
+          "coal": 15
+        },
+        "result": {
+          "type": "weapon",
+          "id": "legendary_sword"
+        }
       },
       {
         "id": "shield_iron",
         "name": "鐵盾",
         "emoji": "🪨",
-        "materials": { "iron": 5, "coal": 2 },
-        "result": { "type": "shield", "id": "iron_shield" }
+        "materials": {
+          "iron": 5,
+          "coal": 2
+        },
+        "result": {
+          "type": "shield",
+          "id": "iron_shield"
+        }
       },
       {
         "id": "shield_steel",
         "name": "鋼盾",
         "emoji": "⚙️",
-        "materials": { "iron": 10, "coal": 5 },
-        "result": { "type": "shield", "id": "steel_shield" }
+        "materials": {
+          "iron": 10,
+          "coal": 5
+        },
+        "result": {
+          "type": "shield",
+          "id": "steel_shield"
+        }
       },
       {
         "id": "shield_gold",
         "name": "黃金盾",
         "emoji": "🟡",
-        "materials": { "gold": 8, "iron": 15 },
-        "result": { "type": "shield", "id": "gold_shield" }
+        "materials": {
+          "gold": 8,
+          "iron": 15
+        },
+        "result": {
+          "type": "shield",
+          "id": "gold_shield"
+        }
       },
       {
         "id": "shield_diamond",
         "name": "鑽石盾",
         "emoji": "💠",
-        "materials": { "diamond": 5, "gold": 15 },
-        "result": { "type": "shield", "id": "diamond_shield" }
+        "materials": {
+          "diamond": 5,
+          "gold": 15
+        },
+        "result": {
+          "type": "shield",
+          "id": "diamond_shield"
+        }
       },
       {
         "id": "shield_legendary",
         "name": "傳說之盾",
         "emoji": "🔥",
-        "materials": { "legendary_fragment": 3, "diamond": 10, "gold": 20 },
-        "result": { "type": "shield", "id": "legendary_shield" }
+        "materials": {
+          "legendary_fragment": 3,
+          "diamond": 10,
+          "gold": 20
+        },
+        "result": {
+          "type": "shield",
+          "id": "legendary_shield"
+        }
       },
       {
         "id": "repair_tool_iron",
         "name": "鐵製維修工具",
         "emoji": "🔩",
-        "materials": { "iron": 8, "coal": 4 },
-        "result": { "type": "repair_tool", "id": "iron" }
+        "materials": {
+          "iron": 8,
+          "coal": 4
+        },
+        "result": {
+          "type": "repair_tool",
+          "id": "iron"
+        }
       },
       {
         "id": "repair_tool_steel",
         "name": "鋼製維修工具",
         "emoji": "⚙️",
-        "materials": { "iron": 16, "coal": 10 },
-        "result": { "type": "repair_tool", "id": "steel" }
+        "materials": {
+          "iron": 16,
+          "coal": 10
+        },
+        "result": {
+          "type": "repair_tool",
+          "id": "steel"
+        }
       },
       {
         "id": "repair_tool_gold",
         "name": "黃金維修工具",
         "emoji": "🪛",
-        "materials": { "gold": 4, "iron": 12 },
-        "result": { "type": "repair_tool", "id": "gold" }
+        "materials": {
+          "gold": 4,
+          "iron": 12
+        },
+        "result": {
+          "type": "repair_tool",
+          "id": "gold"
+        }
       },
       {
         "id": "repair_tool_mythril",
         "name": "密銀維修工具",
         "emoji": "🔧",
-        "materials": { "diamond": 3, "gold": 6 },
-        "result": { "type": "repair_tool", "id": "mythril" }
+        "materials": {
+          "diamond": 3,
+          "gold": 6
+        },
+        "result": {
+          "type": "repair_tool",
+          "id": "mythril"
+        }
       },
       {
         "id": "repair_tool_diamond",
         "name": "鑽石維修工具",
         "emoji": "💠",
-        "materials": { "diamond": 6, "gold": 10 },
-        "result": { "type": "repair_tool", "id": "diamond" }
+        "materials": {
+          "diamond": 6,
+          "gold": 10
+        },
+        "result": {
+          "type": "repair_tool",
+          "id": "diamond"
+        }
       },
       {
         "id": "repair_tool_legendary",
         "name": "傳說維修工具",
         "emoji": "✨",
-        "materials": { "legendary_fragment": 4, "diamond": 8 },
-        "result": { "type": "repair_tool", "id": "legendary" }
+        "materials": {
+          "legendary_fragment": 4,
+          "diamond": 8
+        },
+        "result": {
+          "type": "repair_tool",
+          "id": "legendary"
+        }
       },
       {
         "id": "fishing_net",
         "name": "撈網",
         "emoji": "🕸️",
-        "materials": { "broken_net_fragment": 5 },
-        "result": { "type": "fishing_net" }
+        "materials": {
+          "broken_net_fragment": 5
+        },
+        "result": {
+          "type": "fishing_net"
+        }
       },
       {
         "id": "stone_from_shards_low",
         "name": "劣質賭石（5 碎石）",
         "emoji": "🪨",
-        "materials": { "stone_shard": 5 },
-        "result": { "type": "stone_appraisal_trigger", "quality": "low" }
+        "materials": {
+          "stone_shard": 5
+        },
+        "result": {
+          "type": "stone_appraisal_trigger",
+          "quality": "low"
+        }
       },
       {
         "id": "stone_from_shards_high",
         "name": "優質賭石（10 碎石）",
         "emoji": "💎",
-        "materials": { "stone_shard": 10 },
-        "result": { "type": "stone_appraisal_trigger", "quality": "high" }
+        "materials": {
+          "stone_shard": 10
+        },
+        "result": {
+          "type": "stone_appraisal_trigger",
+          "quality": "high"
+        }
       },
       {
         "id": "advanced_trap_iron",
         "name": "高級陷阱（鐵礦打造）",
         "emoji": "🪤",
-        "materials": { "iron": 20 },
-        "result": { "type": "advanced_trap" }
+        "materials": {
+          "iron": 20
+        },
+        "result": {
+          "type": "advanced_trap"
+        }
       },
       {
         "id": "advanced_trap",
         "name": "高級陷阱（碎片回收）",
         "emoji": "🪤",
-        "materials": { "broken_trap_fragment": 5 },
-        "result": { "type": "advanced_trap" }
+        "materials": {
+          "broken_trap_fragment": 5
+        },
+        "result": {
+          "type": "advanced_trap"
+        }
       },
       {
         "id": "pioneer_hammer",
         "name": "拓荒錘",
         "emoji": "🔨",
-        "materials": { "iron": 50, "coal": 10 },
-        "result": { "type": "pioneer_hammer" }
+        "materials": {
+          "iron": 50,
+          "coal": 10
+        },
+        "result": {
+          "type": "pioneer_hammer"
+        }
       },
       {
         "id": "trap_fragment_smelt",
         "name": "熔回鐵料",
         "emoji": "🔥",
-        "materials": { "broken_trap_fragment": 5 },
-        "result": { "type": "ore", "id": "iron", "qty": 15 }
+        "materials": {
+          "broken_trap_fragment": 5
+        },
+        "result": {
+          "type": "ore",
+          "id": "iron",
+          "qty": 15
+        }
       },
       {
         "id": "treasure_map",
         "name": "藏寶圖",
         "emoji": "🗺️",
-        "materials": { "treasure_map_fragment": 6 },
-        "result": { "type": "treasure_map" }
+        "materials": {
+          "treasure_map_fragment": 6
+        },
+        "result": {
+          "type": "treasure_map"
+        }
+      },
+      {
+        "id": "pickaxe_magic_up",
+        "name": "魔晶鎬（升級鑽石鎬）",
+        "emoji": "🔮",
+        "materials": {
+          "magic_crystal": 10,
+          "diamond": 5,
+          "coal": 7
+        },
+        "requires": {
+          "equipped": "diamond"
+        },
+        "result": {
+          "type": "pickaxe",
+          "id": "magic"
+        }
+      },
+      {
+        "id": "sword_magic_up",
+        "name": "傳說·魔晶劍（升級傳說之劍）",
+        "emoji": "🔮",
+        "materials": {
+          "magic_crystal": 10,
+          "legendary_fragment": 11,
+          "diamond": 7,
+          "coal": 10
+        },
+        "requires": {
+          "equipped": "legendary_sword"
+        },
+        "result": {
+          "type": "weapon",
+          "id": "magic_sword"
+        }
+      },
+      {
+        "id": "shield_magic_up",
+        "name": "魔晶盾（升級傳說之盾）",
+        "emoji": "🔮",
+        "materials": {
+          "magic_crystal": 10,
+          "legendary_fragment": 6,
+          "diamond": 5,
+          "coal": 10
+        },
+        "requires": {
+          "equipped": "legendary_shield"
+        },
+        "result": {
+          "type": "shield",
+          "id": "magic_shield"
+        }
+      },
+      {
+        "id": "rod_magic_up",
+        "name": "魔晶釣竿（升級秘銀釣竿）",
+        "emoji": "🔮",
+        "materials": {
+          "magic_crystal": 7,
+          "diamond": 4,
+          "gold": 7,
+          "lava_fish": 2
+        },
+        "requires": {
+          "equipped": "mythril"
+        },
+        "result": {
+          "type": "rod",
+          "id": "magic"
+        }
+      },
+      {
+        "id": "pickaxe_magic",
+        "name": "魔晶鎬（直接打造）",
+        "emoji": "🔮",
+        "materials": {
+          "magic_crystal": 22,
+          "diamond": 16,
+          "gold": 18,
+          "coal": 22
+        },
+        "result": {
+          "type": "pickaxe",
+          "id": "magic"
+        }
+      },
+      {
+        "id": "sword_magic",
+        "name": "傳說·魔晶劍（直接打造）",
+        "emoji": "🔮",
+        "materials": {
+          "magic_crystal": 25,
+          "legendary_fragment": 32,
+          "diamond": 24,
+          "coal": 32
+        },
+        "result": {
+          "type": "weapon",
+          "id": "magic_sword"
+        }
+      },
+      {
+        "id": "shield_magic",
+        "name": "魔晶盾（直接打造）",
+        "emoji": "🔮",
+        "materials": {
+          "magic_crystal": 25,
+          "legendary_fragment": 12,
+          "diamond": 20,
+          "gold": 26,
+          "coal": 13
+        },
+        "result": {
+          "type": "shield",
+          "id": "magic_shield"
+        }
+      },
+      {
+        "id": "rod_magic",
+        "name": "魔晶釣竿（直接打造）",
+        "emoji": "🔮",
+        "materials": {
+          "magic_crystal": 18,
+          "diamond": 12,
+          "gold": 22,
+          "lava_fish": 6
+        },
+        "result": {
+          "type": "rod",
+          "id": "magic"
+        }
+      },
+      {
+        "id": "repair_tool_magic",
+        "name": "魔晶維修工具",
+        "emoji": "🔮",
+        "materials": {
+          "magic_crystal": 10,
+          "legendary_fragment": 8,
+          "diamond": 8
+        },
+        "result": {
+          "type": "repair_tool",
+          "id": "magic"
+        }
+      },
+      {
+        "id": "sealing_ammo",
+        "name": "封魔彈藥",
+        "emoji": "💥",
+        "materials": {
+          "magic_crystal": 8,
+          "diamond": 2
+        },
+        "result": {
+          "type": "sealing_ammo"
+        }
       }
     ],
     "materials": {
-      "legendary_fragment": { "name": "傳說素材碎片", "emoji": "✨" },
-      "broken_net_fragment": { "name": "破損漁網碎片", "emoji": "🕸️" },
-      "broken_trap_fragment": { "name": "破損陷阱碎片", "emoji": "🪤" },
-      "treasure_map_fragment": { "name": "藏寶圖碎片", "emoji": "🗺️" },
-      "stone_shard": { "name": "碎石", "emoji": "<:crack_stone:1516055109199597708>" }
+      "legendary_fragment": {
+        "name": "傳說素材碎片",
+        "emoji": "✨"
+      },
+      "broken_net_fragment": {
+        "name": "破損漁網碎片",
+        "emoji": "🕸️"
+      },
+      "broken_trap_fragment": {
+        "name": "破損陷阱碎片",
+        "emoji": "🪤"
+      },
+      "treasure_map_fragment": {
+        "name": "藏寶圖碎片",
+        "emoji": "🗺️"
+      },
+      "stone_shard": {
+        "name": "碎石",
+        "emoji": "<:crack_stone:1516055109199597708>"
+      },
+      "sealing_ammo": {
+        "name": "封魔彈藥",
+        "emoji": "💥"
+      }
     },
     "advancedTrap": {
       "blocksPerCraft": 4,
@@ -225,16 +577,52 @@
     },
     "fishingNet": {
       "dropChancePerFish": 0.02,
-      "successBonus": 0.10,
+      "successBonus": 0.1,
       "usesPerCraft": 3
     },
     "repairTools": {
-      "iron":      { "name": "鐵製維修工具", "emoji": "🔩", "duraPct": 0.60, "maxDelta": -5 },
-      "steel":     { "name": "鋼製維修工具", "emoji": "⚙️", "duraPct": 0.75, "maxDelta": -3 },
-      "gold":      { "name": "黃金維修工具", "emoji": "🪛", "duraPct": 0.85, "maxDelta": -1 },
-      "mythril":   { "name": "密銀維修工具", "emoji": "🔧", "duraPct": 0.95, "maxDelta": 0 },
-      "diamond":   { "name": "鑽石維修工具", "emoji": "💠", "duraPct": 1.00, "maxDelta": 0 },
-      "legendary": { "name": "傳說維修工具", "emoji": "✨", "duraPct": 1.00, "maxDelta": 2 }
+      "iron": {
+        "name": "鐵製維修工具",
+        "emoji": "🔩",
+        "duraPct": 0.6,
+        "maxDelta": -5
+      },
+      "steel": {
+        "name": "鋼製維修工具",
+        "emoji": "⚙️",
+        "duraPct": 0.75,
+        "maxDelta": -3
+      },
+      "gold": {
+        "name": "黃金維修工具",
+        "emoji": "🪛",
+        "duraPct": 0.85,
+        "maxDelta": -1
+      },
+      "mythril": {
+        "name": "密銀維修工具",
+        "emoji": "🔧",
+        "duraPct": 0.95,
+        "maxDelta": 0
+      },
+      "diamond": {
+        "name": "鑽石維修工具",
+        "emoji": "💠",
+        "duraPct": 1.0,
+        "maxDelta": 0
+      },
+      "legendary": {
+        "name": "傳說維修工具",
+        "emoji": "✨",
+        "duraPct": 1.0,
+        "maxDelta": 2
+      },
+      "magic": {
+        "name": "魔晶維修工具",
+        "emoji": "🔮",
+        "duraPct": 1.0,
+        "maxDelta": 3
+      }
     }
   }
 }

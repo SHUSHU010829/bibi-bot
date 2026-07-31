@@ -418,6 +418,29 @@ module.exports = async (client, interaction) => {
         });
         return;
       }
+      if (!result.ok && result.reason === "requires_equipped") {
+        const reqC = new ContainerBuilder()
+          .setAccentColor(0xe67e22)
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`# ⚠️ 這是升級配方`),
+          )
+          .addSeparatorComponents(new SeparatorBuilder())
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `**${result.recipe.name}** 需要你正在裝備 **${result.needEquippedName}**。\n目前裝備：${result.currentName}`,
+            ),
+          )
+          .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(
+              `-# 升級路線材料較省但要先養到前一階；沒有的話改用「直接打造」版本`,
+            ),
+          );
+        await interaction.followUp({
+          components: [reqC],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
+        return;
+      }
       if (!result.ok && result.reason === "backpack_full") {
         const bagC = new ContainerBuilder()
           .setAccentColor(0xe74c3c)
