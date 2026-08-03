@@ -16,6 +16,18 @@ async function grantRare(client, { userId, guildId, qty }) {
   );
 }
 
+async function grantDiamond(client, { userId, guildId, qty }) {
+  if (!client.miningProfilesCollection || qty <= 0) return;
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    {
+      $inc: { "backpack.diamond": qty, "lifetime_ore.diamond": qty },
+      $set: { updatedAt: new Date() },
+    },
+    { upsert: true },
+  ).catch(() => {});
+}
+
 async function fetchMember(guild, userId) {
   if (!guild) return null;
   return guild.members.fetch(userId).catch(() => null);
@@ -80,8 +92,47 @@ async function depositToClub(client, { clubId, amount, locked, source, meta, loc
   return updDoc;
 }
 
+// 參加獎：只要出手就有，依本場傷害分檔加碼（金幣 / 經驗 / 傳說碎片 / 鑽石）。
+// BOSS 逃離也照發——討伐失敗不等於白打。
+async function grantParticipation(client, guild, settlement) {
+  const guildId = guild?.id || settlement.bossDoc.guild_id;
+  for (const p of settlement.payouts) {
+    const tier = p.participation;
+    if (!tier) continue;
+    const member = await fetchMember(guild, p.userId);
+    const username = member?.user?.username || p.username || p.userId;
+    if (tier.coins > 0) {
+      await grantCoins(client, {
+        userId: p.userId,
+        guildId,
+        username,
+        member,
+        amount: tier.coins,
+        source: "boss_participation",
+      }).catch((e) => console.log(`[BOSS] grant participation fail ${p.userId}: ${e.message}`.red));
+    }
+    if (tier.xp > 0) {
+      p.participationXp = await grantActivityXp(client, "boss", {
+        userId: p.userId,
+        guildId,
+        username,
+        member,
+        amount: tier.xp,
+        meta: { boss_id: settlement.bossDoc.boss_id, kind: "participation" },
+      }).catch(() => 0);
+    }
+    if (tier.rare > 0) {
+      await grantRare(client, { userId: p.userId, guildId, qty: tier.rare });
+    }
+    if (tier.diamond > 0) {
+      await grantDiamond(client, { userId: p.userId, guildId, qty: tier.diamond });
+    }
+  }
+}
+
 async function distribute(client, guild, settlement) {
-  // BOSS 逃離＝討伐失敗，不發放任何金幣、稀有材料、公會分潤與稱號。
+  await grantParticipation(client, guild, settlement);
+  // BOSS 逃離＝討伐失敗，除了參加獎不發放金幣、稀有材料、公會分潤與稱號。
   if (!settlement.rewarded) {
     settlement.guildAggregates = [];
     return;
@@ -185,14 +236,7 @@ async function distribute(client, guild, settlement) {
       await grantRare(client, { userId: p.userId, guildId, qty: totalRare });
     }
     if ((p.diamondReward || 0) > 0) {
-      await client.miningProfilesCollection.updateOne(
-        { userId: p.userId, guildId },
-        {
-          $inc: { "backpack.diamond": p.diamondReward, "lifetime_ore.diamond": p.diamondReward },
-          $set: { updatedAt: new Date() },
-        },
-        { upsert: true },
-      ).catch(() => {});
+      await grantDiamond(client, { userId: p.userId, guildId, qty: p.diamondReward });
     }
 
     // ── B: 個人公會貢獻 ──────────────────────────────

@@ -36,6 +36,7 @@ async function runInfo(client, interaction) {
   }
   const container = bossView.buildInfoContainer({
     userId: interaction.user.id,
+    displayName: interaction.member?.displayName || interaction.user.username,
     boss: info.boss,
     ranking: info.ranking,
     totalDamage: info.totalDamage,

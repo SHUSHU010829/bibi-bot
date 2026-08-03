@@ -63,6 +63,18 @@ function aggroCfg() {
   return cfg().aggro || {};
 }
 
+// 參加獎依「本場造成的傷害」分檔：出手就有底檔，打越痛檔位越高（金幣 / 經驗 / 碎片 / 鑽石一起加碼）。
+// 取所有符合門檻中最高的一檔，config 順序不影響結果。
+function participationTier(damage) {
+  const tiers = rewardsCfg().participation?.tiers || [];
+  let best = null;
+  for (const t of tiers) {
+    const min = t.minDamage ?? 0;
+    if (damage >= min && (!best || min > (best.minDamage ?? 0))) best = t;
+  }
+  return best;
+}
+
 // 目前累積傷害最高的玩家（嘲諷/仇恨用）。damage_by_user 存於 boss doc，攻擊當下即時判定。
 function topDamageUser(map) {
   let best = null;
@@ -292,7 +304,6 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   if (used >= attackLimit) {
     return { ok: false, reason: "attack_limit", used, limit: attackLimit };
   }
-  const consumesCharge = used >= baseLimit;
   const st = resolveStamina(profile, max);
   if (st.stamina <= 0) {
     return {
@@ -404,7 +415,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     },
     { upsert: true },
   ).catch(() => {});
-  if (consumesCharge) {
+  // 被反擊＝空刀，只扣體力：不佔本場攻擊次數，也不吃攻擊庫存。
+  if (!isCounter && used >= baseLimit) {
     await client.miningProfilesCollection.updateOne(
       { userId, guildId, boss_attack_charges: { $gt: 0 } },
       { $inc: { boss_attack_charges: -1 } },
@@ -415,20 +427,22 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   // 原子扣血：只在 boss 仍存活時生效，避免兩人同時讀到舊血量、各自算出「最後一擊」。
   const incFields = { current_hp: -damage, hits_taken: 1 };
   if (damage > 0) incFields[`damage_by_user.${userId}`] = damage;
+  const attackCount = isCounter ? used : used + 1;
+  const setFields = {
+    "combo.count": comboCount,
+    "combo.last_user": comboLastUser,
+    "combo.last_ts": comboLastTs,
+    "combo.same_user_streak": sameUserStreak,
+    "combo.active_until": comboActiveUntil,
+    "combo.combo_mvp": comboMvp,
+    updatedAt: new Date(),
+  };
+  if (!isCounter) setFields[`attack_counts.${userId}`] = attackCount;
   const afterRes = await client.bossEventsCollection.findOneAndUpdate(
     { boss_id: bossDoc.boss_id, status: "active" },
     {
       $inc: incFields,
-      $set: {
-        "combo.count": comboCount,
-        "combo.last_user": comboLastUser,
-        "combo.last_ts": comboLastTs,
-        "combo.same_user_streak": sameUserStreak,
-        "combo.active_until": comboActiveUntil,
-        "combo.combo_mvp": comboMvp,
-        [`attack_counts.${userId}`]: used + 1,
-        updatedAt: new Date(),
-      },
+      $set: setFields,
     },
     { returnDocument: "after" },
   );
@@ -529,7 +543,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     boss: { ...bossDoc, current_hp: newHp, phase: newPhase, hits_taken: afterDoc.hits_taken },
     stamina: newStamina,
     staminaMax: max,
-    attackCount: used + 1,
+    myDamage: afterDoc.damage_by_user?.[userId] || 0,
+    attackCount,
     attackLimit,
     bonusAttacks: allowedExtra,
     rageStacks: rageState({ hits_taken: afterDoc.hits_taken }).stacks,
@@ -570,10 +585,11 @@ async function settleBoss(client, bossDoc) {
     }
     attackByUser.set(l.user_id, (attackByUser.get(l.user_id) || 0) + 1);
   }
-  const ranking = [...dmgByUser.entries()]
-    .map(([userId, damage]) => ({
+  // 出過手就算參戰（含整場都被反擊的空刀玩家），這樣參加獎才不會漏人。
+  const ranking = [...attackByUser.keys()]
+    .map((userId) => ({
       userId,
-      damage,
+      damage: dmgByUser.get(userId) || 0,
       counters: counterByUser.get(userId) || 0,
       attacks: attackByUser.get(userId) || 0,
       username: logs.find((x) => x.user_id === userId)?.username || "",
@@ -582,7 +598,7 @@ async function settleBoss(client, bossDoc) {
   const totalDamage = ranking.reduce((s, r) => s + r.damage, 0);
 
   const killed = bossDoc.status === "defeated";
-  // BOSS 逃離（時間到卻沒被擊殺）＝討伐失敗，全員無獎勵；戰報仍保留供回顧。
+  // BOSS 逃離（時間到卻沒被擊殺）＝討伐失敗，只剩參加獎；戰報仍保留供回顧。
   // （招喚場不限時間，只會以「擊殺」結束，所以實際上都是有獎的。）
   const rewarded = killed;
   const rwd = rewardsCfg();
@@ -594,9 +610,9 @@ async function settleBoss(client, bossDoc) {
 
   const payouts = ranking.map((r, idx) => {
     const share = rewarded && totalDamage > 0 ? Math.floor(r.damage / totalDamage * totalPool) : 0;
-    const rareReward = rewarded ? (tiers[idx] || 0) : 0;
-    const diamondReward = rewarded ? (diamondTiers[idx] || 0) : 0;
-    const killBonus = killed ? (rwd.killBonus ?? 100) : 0;
+    const rareReward = rewarded && r.damage > 0 ? (tiers[idx] || 0) : 0;
+    const diamondReward = rewarded && r.damage > 0 ? (diamondTiers[idx] || 0) : 0;
+    const killBonus = killed && r.damage > 0 ? (rwd.killBonus ?? 100) : 0;
     return {
       ...r,
       rank: idx + 1,
@@ -604,6 +620,7 @@ async function settleBoss(client, bossDoc) {
       rareReward,
       diamondReward,
       killBonus,
+      participation: participationTier(r.damage),
     };
   });
 
@@ -625,6 +642,7 @@ async function settleBoss(client, bossDoc) {
         share: 0,
         rareReward: 0,
         killBonus: rwd.killBonus ?? 100,
+        participation: participationTier(0),
         killerBonus,
         killerRare,
         counters: 0,
@@ -651,6 +669,7 @@ async function settleBoss(client, bossDoc) {
           share: 0,
           rareReward: 0,
           killBonus: 0,
+          participation: participationTier(0),
           firstStrikeBonus,
           counters: 0,
           attacks: attackByUser.get(firstStrikerUserId) || 0,
@@ -786,6 +805,7 @@ module.exports = {
   countOnlineMembers,
   phaseOf,
   phaseDef,
+  participationTier,
   rageState,
   effectiveCounterRate,
 };

@@ -16,8 +16,6 @@ async function resolveChannel(client, id) {
 }
 
 async function announceSpawn(client, bossDoc, opts = {}) {
-  const ch = await resolveChannel(client, boss?.announceChannelId);
-  if (!ch) return;
   // ends_at 為 null＝招喚場無時間限制，待到被擊殺為止。
   const endField = bossDoc.ends_at != null
     ? { name: "⏳ 戰鬥結束", value: `<t:${Math.floor(bossDoc.ends_at / 1000)}:R>`, inline: true }
@@ -30,6 +28,24 @@ async function announceSpawn(client, bossDoc, opts = {}) {
     ? (boss?.summon?.summonIntro || "討伐能量集滿，魔王被喚醒了！")
     : (pickFrom(boss?.spawnIntros) || "傳說中的存在現身了！");
   const titlePrefix = opts.summon ? "🔮 " : "";
+  // 參加獎檔位表放進出場公告，讓玩家一眼看到「出手就有、打越痛拿越多」。
+  const ptiers = [...(boss?.rewards?.participation?.tiers || [])]
+    .sort((a, b) => (a.minDamage ?? 0) - (b.minDamage ?? 0));
+  const participationField = ptiers.length
+    ? {
+      name: "🎖️ 參加獎（出手就有，依傷害分檔）",
+      value: ptiers
+        .map((t) => {
+          const gains = [`${(t.coins || 0).toLocaleString()} 金幣`, `${t.xp || 0} 經驗`];
+          if (t.rare > 0) gains.push(`✨ 傳說碎片 ×${t.rare}`);
+          if (t.diamond > 0) gains.push(`💎 鑽石 ×${t.diamond}`);
+          const threshold = (t.minDamage ?? 0) > 0 ? `傷害 ≥ ${t.minDamage.toLocaleString()}` : "有出手";
+          return `${t.emoji} **${t.name}**（${threshold}）：${gains.join("・")}`;
+        })
+        .join("\n"),
+      inline: false,
+    }
+    : null;
 
   const embed = new EmbedBuilder()
     .setColor(0xe74c3c)
@@ -43,6 +59,7 @@ async function announceSpawn(client, bossDoc, opts = {}) {
       },
       endField,
       { name: "⚔️ 攻擊上限", value: `每人 ${limit} 次`, inline: true },
+      ...(participationField ? [participationField] : []),
     )
     .setFooter({
       text: opts.summon
@@ -50,7 +67,14 @@ async function announceSpawn(client, bossDoc, opts = {}) {
         : "輸入 /魔王 攻擊 一起討伐！",
     });
 
-  await ch.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch(() => {});
+  // 出場公告同步到戰鬥頻道與編年史頻道（結算公告同樣走兩邊）。
+  const payload = { embeds: [embed], allowedMentions: { parse: [] } };
+  const liveCh = await resolveChannel(client, boss?.announceChannelId);
+  if (liveCh) await liveCh.send(payload).catch(() => {});
+  if (boss?.chronicleChannelId && boss.chronicleChannelId !== boss.announceChannelId) {
+    const chronicleCh = await resolveChannel(client, boss.chronicleChannelId);
+    if (chronicleCh) await chronicleCh.send(payload).catch(() => {});
+  }
 
   // 召喚後立即建立置頂即時看板
   bossBoard.scheduleRefresh(client, bossDoc.guild_id, true);

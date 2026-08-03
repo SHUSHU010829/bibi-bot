@@ -6,11 +6,11 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
-const { boss, dungeon } = require("../../config");
+const { boss } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const bossEngine = require("./bossEngine");
-const buildingService = require("../guild_club/buildingService");
+const dungeonService = require("../mining/dungeonService");
 
 function nameOf(guild, userId) {
   return plainifyUserMentions(guild, `<@${userId}>`);
@@ -60,25 +60,17 @@ function infoButton(userId) {
     .setStyle(ButtonStyle.Secondary);
 }
 
-// 沿用背包的體力藥水處理器（mining_use_stamina_potion_<ownerId>，tier 省略＝用持有中最大的一瓶）
+// 先開藥水選擇面板（boss_potion_<ownerId>），由玩家挑小 / 中 / 大，不直接灌下最大的一瓶。
 function staminaPotionButton(userId) {
   return new ButtonBuilder()
-    .setCustomId(`mining_use_stamina_potion_${userId}`)
+    .setCustomId(`boss_potion_${userId}`)
     .setLabel("喝體力藥水")
     .setEmoji("🧪")
     .setStyle(ButtonStyle.Success);
 }
 
-function weaponButton(userId) {
-  return new ButtonBuilder()
-    .setCustomId(`boss_weapon_${userId}`)
-    .setLabel("查看武器耐久")
-    .setEmoji("🗡️")
-    .setStyle(ButtonStyle.Secondary);
-}
-
 // 攻擊結果附帶的「目前戰力加成」區塊：攻擊力 + 食物 buff + 公會世界王加成 + Combo。
-function buffBlockContent(buffInfo) {
+function buffBlockContent(buffInfo, displayName) {
   if (!buffInfo) return null;
   const lines = [
     `⚔️ 攻擊力 **${buffInfo.atk}**${buffInfo.luckBonus > 0 ? `　🍀 幸運 +${Math.round(buffInfo.luckBonus * 100)}%` : ""}`,
@@ -94,18 +86,39 @@ function buffBlockContent(buffInfo) {
   if (!(buffInfo.foodBuffs || []).length) {
     lines.push("-# 沒有食物 buff — 用 /烹飪 煮「地下城 ATK / 全屬性」料理，打魔王更痛");
   }
-  return `**🍽️ 目前戰力加成**\n${lines.join("\n")}`;
+  return `**🍽️ ${displayName} 的戰力加成**\n${lines.join("\n")}`;
 }
 
-function addBuffBlock(container, buffInfo) {
-  const content = buffBlockContent(buffInfo);
+// 戰鬥中即時提示「目前參加獎檔位 + 離下一檔還差多少傷害」，讓玩家看得到繼續打的回報。
+function participationProgressLine(myDamage) {
+  const tiers = [...(boss?.rewards?.participation?.tiers || [])]
+    .sort((a, b) => (a.minDamage ?? 0) - (b.minDamage ?? 0));
+  const current = bossEngine.participationTier(myDamage);
+  if (!current) return null;
+  const next = tiers.find((t) => myDamage < (t.minDamage ?? 0));
+  const gains = [`${(current.coins || 0).toLocaleString()} ${COIN_EMOJI}`, `${current.xp || 0} 經驗`];
+  if (current.rare > 0) gains.push(`✨ 傳說碎片 ×${current.rare}`);
+  if (current.diamond > 0) gains.push(`💎 鑽石 ×${current.diamond}`);
+  const tail = next
+    ? `　再 ${(next.minDamage - myDamage).toLocaleString()} 傷害升到 ${next.emoji} ${next.name}`
+    : "　已是最高檔";
+  return `-# 🎖️ 參加獎 ${current.emoji} **${current.name}**（本場傷害 ${myDamage.toLocaleString()}）：${gains.join("・")}${tail}`;
+}
+
+function addParticipationLine(container, myDamage) {
+  const line = participationProgressLine(myDamage);
+  if (line) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(line));
+}
+
+function addBuffBlock(container, buffInfo, displayName) {
+  const content = buffBlockContent(buffInfo, displayName);
   if (!content) return;
   container
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
 }
 
-// 攻擊結果 / 戰況共用的操作按鈕列：能攻擊時放「再次攻擊」，一律附喝藥水 + 查耐久 + 查戰況。
+// 攻擊結果 / 戰況共用的操作按鈕列：能攻擊時放「再次攻擊」，一律附喝藥水 + 查戰況。
 function actionRow(userId, { canAttack, staminaEmpty } = {}) {
   const row = new ActionRowBuilder();
   if (canAttack) {
@@ -113,7 +126,7 @@ function actionRow(userId, { canAttack, staminaEmpty } = {}) {
     if (staminaEmpty) btn.setDisabled(true);
     row.addComponents(btn);
   }
-  row.addComponents(staminaPotionButton(userId), weaponButton(userId), infoButton(userId));
+  row.addComponents(staminaPotionButton(userId), infoButton(userId));
   return row;
 }
 
@@ -124,23 +137,25 @@ function buildAttackResultContainer({ userId, displayName, result }) {
   const container = new ContainerBuilder().setAccentColor(color);
 
   if (result.isCounter) {
-    const messages = boss?.counterMessages || ["BOSS 反擊了你！"];
-    const text = messages[Math.floor(Math.random() * messages.length)].replace(/\{name\}/g, b.name);
+    const messages = boss?.counterMessages || ["{name} 反擊了 **{user}**！"];
+    const text = messages[Math.floor(Math.random() * messages.length)]
+      .replace(/\{name\}/g, b.name)
+      .replace(/\{user\}/g, displayName);
     container
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ${b.emoji} 被反擊了！\n${text}`,
+          `# ${b.emoji} ${displayName} 被反擊了！\n${text}`,
         ),
       )
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**BOSS 狀態**（${phaseLabel(phase)}）\n${hpBar(b.current_hp, b.max_hp)}`,
+          `**${b.emoji} ${b.name} 狀態**（${phaseLabel(phase)}）\n${hpBar(b.current_hp, b.max_hp)}`,
         ),
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🔋 體力：${result.stamina}/${result.staminaMax}（被反擊額外 -1）\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}`,
+          `**${displayName}** 的狀態\n🔋 體力：${result.stamina}/${result.staminaMax}（被反擊額外 -1）\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}`,
         ),
       );
     const rl = rageLine(result.rageStacks, result.counterRate);
@@ -149,13 +164,13 @@ function buildAttackResultContainer({ userId, displayName, result }) {
     container
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# 🏆 致命一擊！\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 點傷害，給予最後一擊！`,
+          `# 🏆 ${displayName} 的致命一擊！\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 點傷害，給予最後一擊！`,
         ),
       )
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🐉 **${b.name}** 已被擊敗！結算公告即將發布。`,
+          `🐉 **${b.name}** 被 **${displayName}** 擊敗了！結算公告即將發布。`,
         ),
       );
   } else {
@@ -170,24 +185,24 @@ function buildAttackResultContainer({ userId, displayName, result }) {
     const firstStrikeLine = result.firstStrike ? `\n🥇 **首刀命中！結算時可獲得首刀獎勵**` : "";
     const critLine = result.isCrit ? `\n💥 **會心一擊！傷害 ×${boss?.crit?.damageMult ?? 2}**` : "";
     const targetedLine = result.targeted
-      ? `\n-# 🎯 你是目前的傷害王，魔王火力鎖定你（反擊率 +${Math.round((boss?.aggro?.counterBonus ?? 0) * 100)}%）`
+      ? `\n-# 🎯 **${displayName}** 是目前的傷害王，魔王火力鎖定你（反擊率 +${Math.round((boss?.aggro?.counterBonus ?? 0) * 100)}%）`
       : "";
     const hitTitle = result.isCrit ? "💥 會心一擊！" : "⚔️ 攻擊命中！";
     container
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ${hitTitle}\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 點傷害！${critLine}${firstStrikeLine}${phaseChangeLine}${comboLine}${targetedLine}`,
+          `# ${hitTitle}${displayName} 出手\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 點傷害！${critLine}${firstStrikeLine}${phaseChangeLine}${comboLine}${targetedLine}`,
         ),
       )
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**BOSS 狀態**（${phaseLabel(phase)}）\n${hpBar(b.current_hp, b.max_hp)}`,
+          `**${b.emoji} ${b.name} 狀態**（${phaseLabel(phase)}）\n${hpBar(b.current_hp, b.max_hp)}`,
         ),
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🔋 體力：${result.stamina}/${result.staminaMax}\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}${result.xpGained > 0 ? `\n✨ 經驗 +${result.xpGained}` : ""}`,
+          `**${displayName}** 的狀態\n🔋 體力：${result.stamina}/${result.staminaMax}\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}${result.xpGained > 0 ? `\n✨ 經驗 +${result.xpGained}` : ""}`,
         ),
       );
     if (result.sameUserStreak > 1) {
@@ -202,7 +217,8 @@ function buildAttackResultContainer({ userId, displayName, result }) {
   }
 
   if (!result.killed) {
-    addBuffBlock(container, result.buffInfo);
+    addParticipationLine(container, result.myDamage);
+    addBuffBlock(container, result.buffInfo, displayName);
     container.addActionRowComponents(
       actionRow(userId, {
         canAttack: result.attackCount < result.attackLimit,
@@ -229,14 +245,14 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   const comboTriggered = hits.some((h) => h.comboTriggered);
 
   const headline = killed
-    ? `# 🏆 致命一擊！\n**${displayName}** 連擊 ${hits.length} 刀，最終擊敗 **${b.emoji} ${b.name}**！`
+    ? `# 🏆 ${displayName} 的致命一擊！\n**${displayName}** 連擊 ${hits.length} 刀，最終擊敗 **${b.emoji} ${b.name}**！`
     : lowStamina
-      ? `# ⚠️ 體力低落\n**${displayName}** 連擊 ${hits.length} 刀，對 **${b.emoji} ${b.name}** 造成共 **${totalDamage.toLocaleString()}** 點傷害！`
-      : `# ⚔️ 連擊 ${hits.length} 刀！\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成共 **${totalDamage.toLocaleString()}** 點傷害！`;
+      ? `# ⚠️ ${displayName} 體力低落\n**${displayName}** 連擊 ${hits.length} 刀，對 **${b.emoji} ${b.name}** 造成共 **${totalDamage.toLocaleString()}** 點傷害！`
+      : `# ⚔️ ${displayName} 連擊 ${hits.length} 刀！\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成共 **${totalDamage.toLocaleString()}** 點傷害！`;
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headline));
   if (hits.some((h) => h.firstStrike)) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`🥇 **首刀命中！結算時可獲得首刀獎勵**`),
+      new TextDisplayBuilder().setContent(`🥇 **${displayName} 首刀命中！結算時可獲得首刀獎勵**`),
     );
   }
 
@@ -261,12 +277,12 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**BOSS 狀態**（${phaseLabel(phase)}）\n${hpBar(b.current_hp, b.max_hp)}`,
+          `**${b.emoji} ${b.name} 狀態**（${phaseLabel(phase)}）\n${hpBar(b.current_hp, b.max_hp)}`,
         ),
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🔋 體力：${last.stamina}/${last.staminaMax}${counters > 0 ? `（${counters} 次被反擊）` : ""}\n⚔️ 本場攻擊次數：${last.attackCount}/${last.attackLimit}${last.bonusAttacks > 0 ? `（含庫存 +${last.bonusAttacks}）` : ""}`,
+          `**${displayName}** 的狀態\n🔋 體力：${last.stamina}/${last.staminaMax}${counters > 0 ? `（${counters} 次被反擊）` : ""}\n⚔️ 本場攻擊次數：${last.attackCount}/${last.attackLimit}${last.bonusAttacks > 0 ? `（含庫存 +${last.bonusAttacks}）` : ""}`,
         ),
       );
     const rl = rageLine(last.rageStacks, last.counterRate);
@@ -274,25 +290,26 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
     if (last.targeted) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `-# 🎯 你是目前的傷害王，魔王火力鎖定你（反擊率 +${Math.round((boss?.aggro?.counterBonus ?? 0) * 100)}%）`,
+          `-# 🎯 **${displayName}** 是目前的傷害王，魔王火力鎖定你（反擊率 +${Math.round((boss?.aggro?.counterBonus ?? 0) * 100)}%）`,
         ),
       );
     }
   }
 
   const stopHint = {
-    stamina_drained: `已自動停止：體力歸零`,
-    attack_limit_reached: `已自動停止：用完本場攻擊次數`,
+    stamina_drained: `已自動停止：${displayName} 體力歸零`,
+    attack_limit_reached: `已自動停止：${displayName} 用完本場攻擊次數`,
     killed: null,
   }[stopReason];
   if (stopHint) {
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${stopHint}`));
   } else if (lowStamina) {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# 體力低落，建議等回復再戰`));
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${displayName} 體力低落，建議等回復再戰`));
   }
 
   if (!killed) {
-    addBuffBlock(container, last.buffInfo);
+    addParticipationLine(container, last.myDamage);
+    addBuffBlock(container, last.buffInfo, displayName);
     container.addActionRowComponents(
       actionRow(userId, {
         canAttack: last.attackCount < last.attackLimit,
@@ -304,7 +321,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   return { container, killed, phaseChange, comboTriggered };
 }
 
-function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive, guild }) {
+function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage, comboActive, guild }) {
   const phase = b.phase || "normal";
   // ends_at 為 null＝招喚場無時間限制，待到被擊殺為止。
   const noLimit = b.ends_at == null;
@@ -346,9 +363,9 @@ function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive
     });
     if (myIdx >= 5) {
       const me = ranking[myIdx];
-      lines.push(`-# 你目前排第 ${myIdx + 1}：${me.damage.toLocaleString()} 傷害`);
+      lines.push(`-# ${displayName} 目前排第 ${myIdx + 1}：${me.damage.toLocaleString()} 傷害`);
     } else if (myIdx < 0) {
-      lines.push(`-# 你還沒出手，快去 /魔王 攻擊！`);
+      lines.push(`-# ${displayName} 還沒出手，快去 /魔王 攻擊！`);
     }
     container
       .addSeparatorComponents(new SeparatorBuilder())
@@ -359,58 +376,73 @@ function buildInfoContainer({ userId, boss: b, ranking, totalDamage, comboActive
       );
   }
 
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`-# 📋 ${displayName} 的戰況面板 — 按鈕只有你能按`),
+  );
   container.addActionRowComponents(actionRow(userId, { canAttack: true }));
   return container;
 }
 
-// 查看武器耐久（攻擊結果的快捷鈕）。順帶回答「打魔王不會損耗武器耐久」。
-function buildWeaponContainer({ profile, weaponMaxPct }) {
-  const weapons = dungeon?.weapons || {};
-  const key = profile?.weapon || "fist";
-  const wdef = weapons[key] || weapons.fist || {};
-  const hasWeapon = key && key !== "fist";
-  const container = new ContainerBuilder()
-    .setAccentColor(COLOR_NORMAL)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent("# 🗡️ 武器耐久"))
-    .addSeparatorComponents(new SeparatorBuilder());
+// 喝體力藥水前的選瓶面板：列出小 / 中 / 大各持有幾瓶，玩家自己挑一瓶再喝。
+// 每個 tier 的按鈕沿用背包的處理器（mining_use_stamina_potion_<tier>_<ownerId>）。
+const POTION_TIERS = [
+  { tier: "small", emoji: "🥤" },
+  { tier: "medium", emoji: "🧴" },
+  { tier: "large", emoji: "🍶" },
+];
 
-  if (!hasWeapon) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `目前武器：👊 **${weapons.fist?.name || "赤手空拳"}**（攻擊力 ${dungeon?.baseAtk ?? 20}）\n赤手空拳也能揍魔王，但傷害偏低。\n-# 用 /合成 打造鐵劍以上的武器提升攻擊力`,
-      ),
-    );
-  } else {
-    const baseMax = profile.weapon_max_durability;
-    const effMax = buildingService.effectiveWeaponMaxDurability(baseMax, weaponMaxPct);
-    const cur =
-      typeof profile.weapon_durability === "number" ? profile.weapon_durability : effMax;
-    const durText = typeof effMax === "number" ? `${cur}/${effMax}` : `${cur}`;
-    const lines = [
-      `目前武器：${wdef.emoji || "🗡️"} **${wdef.name || key}**（攻擊力 +${wdef.atk || 0}）`,
-      `🛡️ 耐久：**${durText}**`,
-    ];
-    if (weaponMaxPct > 0 && typeof baseMax === "number") {
-      lines.push(`-# 🏰 公會鐵匠鋪：耐久上限 +${weaponMaxPct}%（${baseMax} → ${effMax}）`);
-    }
-    const warn = dungeon?.durabilityWarn || {};
-    if (typeof effMax === "number") {
-      if (cur <= (warn.critical ?? 1)) {
-        lines.push("⚠️ 耐久快見底了！去 /背包 用材料或磨石修復再進地下城。");
-      } else if (cur <= (warn.low ?? 5)) {
-        lines.push("⚠️ 耐久偏低，記得找時間修復。");
-      }
-    }
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+function buildStaminaPotionPickerContainer({ userId, displayName, profile, stamina, staminaMax: max }) {
+  const owned = POTION_TIERS.map((t) => {
+    const meta = dungeonService.STAMINA_POTION_TIERS[t.tier];
+    const restore = dungeonService.staminaPotionRestore(t.tier);
+    return {
+      ...t,
+      name: meta.name,
+      count: profile?.[meta.field] || 0,
+      restoreText: restore >= 9999 ? "補滿體力" : `恢復 ${restore} 點體力`,
+    };
+  });
+  const total = owned.reduce((s, t) => s + t.count, 0);
+
+  if (total <= 0) {
+    return buildErrorContainer({
+      title: "🧪 沒有體力藥水",
+      body: `**${displayName}** 目前持有 0 瓶體力藥水。\n🔋 體力：**${stamina}/${max}**`,
+      hint: "到 /商店 → 地下城道具 購買體力藥水（小 / 中 / 大）。",
+    });
   }
 
-  container
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_NORMAL)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# 🧪 ${displayName} 要喝哪一種體力藥水？`),
+    )
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        "✅ **攻擊魔王不會損耗武器耐久**\n-# 武器耐久只在 /地下城 戰鬥時消耗；打魔王可以放心連續出擊。",
+      new TextDisplayBuilder().setContent(`🔋 目前體力：**${stamina}/${max}**`),
+    );
+
+  const empty = [];
+  for (const t of owned) {
+    if (t.count <= 0) {
+      empty.push(`${t.emoji} ${t.name}`);
+      continue;
+    }
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`mining_use_stamina_potion_${t.tier}_${userId}`)
+          .setLabel(`${t.name} ×${t.count}：${t.restoreText}`)
+          .setEmoji(t.emoji)
+          .setStyle(ButtonStyle.Success),
       ),
     );
+  }
+  if (empty.length) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# 尚無：${empty.join("・")}`),
+    );
+  }
   return container;
 }
 
@@ -424,6 +456,28 @@ function buildErrorContainer({ title, body, hint }) {
   return c;
 }
 
+// 參加獎摘要：本場有人拿到的檔位各列一行（門檻 + 內容 + 人數），沒人達到的檔位不占版面。
+function participationSummaryLines(payouts) {
+  const byTier = new Map();
+  for (const p of payouts) {
+    if (!p.participation) continue;
+    const key = p.participation.minDamage ?? 0;
+    if (!byTier.has(key)) byTier.set(key, { tier: p.participation, count: 0 });
+    byTier.get(key).count += 1;
+  }
+  return [...byTier.values()]
+    .sort((a, b) => (b.tier.minDamage ?? 0) - (a.tier.minDamage ?? 0))
+    .map(({ tier, count }) => {
+      const gains = [`＋${(tier.coins || 0).toLocaleString()} ${COIN_EMOJI}`, `＋${tier.xp || 0} 經驗`];
+      if (tier.rare > 0) gains.push(`✨ 傳說碎片 ×${tier.rare}`);
+      if (tier.diamond > 0) gains.push(`💎 鑽石 ×${tier.diamond}`);
+      const threshold = (tier.minDamage ?? 0) > 0
+        ? `傷害 ≥ ${tier.minDamage.toLocaleString()}`
+        : "有出手";
+      return `${tier.emoji} **${tier.name}**（${threshold}）：${gains.join("・")} — ${count} 人`;
+    });
+}
+
 function buildSettlementContainer(settlement) {
   const { bossDoc, killed, payouts, totalDamage, totalPool, killerUserId, killerBonus, killerRare, mvpUserId, comboMvpUserId, punchingBagUserId, firstStrikerUserId, firstStrikeBonus, guild } = settlement;
   const color = killed ? COLOR_VICTORY : COLOR_EXPIRED;
@@ -433,11 +487,20 @@ function buildSettlementContainer(settlement) {
     : `# ⏳ ${bossDoc.emoji} ${bossDoc.name} 逃離了戰場`;
   const statusLine = killed
     ? `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：${totalPool.toLocaleString()} ${COIN_EMOJI}`
-    : `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：—（未擊敗，無獎勵）`;
+    : `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：—（未擊敗，只發參加獎）`;
   container
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(headline))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(statusLine));
+
+  const participationLines = participationSummaryLines(payouts);
+  if (participationLines.length) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🎖️ **參加獎（依本場傷害發放，出手就有）**\n${participationLines.join("\n")}`,
+      ),
+    );
+  }
 
   const killXpBonus = boss?.rewards?.killXpBonus ?? 0;
   if (killed && killXpBonus > 0) {
@@ -449,7 +512,7 @@ function buildSettlementContainer(settlement) {
   if (killed && killerUserId) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `🗡️ **最後一擊**：${nameOf(guild, killerUserId)}　＋${killerBonus.toLocaleString()} ${COIN_EMOJI}　＋✨ ×${killerRare}`,
+        `🗡️ **最後一擊**：${nameOf(guild, killerUserId)}　＋${killerBonus.toLocaleString()} ${COIN_EMOJI}　＋✨ 傳說碎片 ×${killerRare}`,
       ),
     );
   }
@@ -482,17 +545,18 @@ function buildSettlementContainer(settlement) {
   const top = payouts.slice(0, 5);
   if (top.length) {
     const lines = top.map((p, i) => {
+      const tierTag = p.participation ? `　${p.participation.emoji} ${p.participation.name}` : "";
       if (!killed) {
-        return `**#${i + 1}** ${nameOf(guild, p.userId)} — ${p.damage.toLocaleString()} 傷害`;
+        return `**#${i + 1}** ${nameOf(guild, p.userId)} — ${p.damage.toLocaleString()} 傷害${tierTag}`;
       }
       const extras = [];
-      if (p.rareReward) extras.push("✨ ×1");
-      if (p.diamondReward) extras.push(`💎 ×${p.diamondReward}`);
+      if (p.rareReward) extras.push(`✨ 傳說碎片 ×${p.rareReward}`);
+      if (p.diamondReward) extras.push(`💎 鑽石 ×${p.diamondReward}`);
       if (p.killBonus) extras.push(`擊殺 +${p.killBonus}`);
       if (p.guildClubName) extras.push(`🏰 ${p.guildClubName}`);
-      return `**#${i + 1}** ${nameOf(guild, p.userId)} — ${p.damage.toLocaleString()} 傷害　→ ${p.share.toLocaleString()} ${COIN_EMOJI}${extras.length ? "（" + extras.join("、") + "）" : ""}`;
+      return `**#${i + 1}** ${nameOf(guild, p.userId)} — ${p.damage.toLocaleString()} 傷害　→ ${p.share.toLocaleString()} ${COIN_EMOJI}${extras.length ? "（" + extras.join("、") + "）" : ""}${tierTag}`;
     });
-    const topSuffix = killed ? "" : "（本場無獎勵）";
+    const topSuffix = killed ? "" : "（未擊敗，只有參加獎）";
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
@@ -531,7 +595,7 @@ function buildSettlementContainer(settlement) {
   if (!killed) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 💨 沒能在時限內擊敗牠，BOSS 帶著寶藏逃走了——本場沒有任何獎勵。下次要在時間內解決牠！",
+        "-# 💨 沒能在時限內擊敗牠，BOSS 帶著寶藏逃走了——參戰者仍拿到參加獎，但傷害分潤與稀有掉落都沒了。下次要在時間內解決牠！",
       ),
     );
   }
@@ -603,7 +667,7 @@ module.exports = {
   buildAttackResultContainer,
   buildComboResultContainer,
   buildInfoContainer,
-  buildWeaponContainer,
+  buildStaminaPotionPickerContainer,
   buildErrorContainer,
   buildSettlementContainer,
   buildSummonProgressContainer,
