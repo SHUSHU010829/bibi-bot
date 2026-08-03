@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const { DateTime } = require("luxon");
 const { worldEvents } = require("../../config");
 const worldEventBuffs = require("./worldEventBuffs");
+const serverFlags = require("../serverFlags");
 
 const isEnabled = () => worldEvents?.enabled !== false;
 const cfg = () => worldEvents || {};
@@ -458,13 +459,7 @@ async function applyProgress(client, {
       }
       // 主線活動達標 → 寫入永久解鎖旗標（不是會過期的 buff）
       for (const flag of eventDef(updDoc.event_id)?.unlocks || []) {
-        await client.serverFlagsCollection
-          ?.updateOne(
-            { guildId, key: flag },
-            { $set: { value: true, unlocked_at: new Date(), event_db_id: eventDbId } },
-            { upsert: true },
-          )
-          .catch(() => {});
+        await serverFlags.set(client, guildId, flag).catch(() => {});
       }
     }
   }

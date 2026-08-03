@@ -3,7 +3,10 @@ const { mining } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed, ORE_KEYS } = require("./miningProfile");
 const { weightedRandom } = require("./weightedRandom");
 const grantActivityXp = require("../leveling/grantActivityXp");
+const serverFlags = require("../serverFlags");
 const bus = require("../eventBus");
+
+const UNLOCK_FLAG = "deep_vein_unlocked";
 
 const cfg = () => mining?.deepVein || {};
 const isEnabled = () => !!cfg().enabled;
@@ -60,23 +63,8 @@ function rollDeep(luckPct = 0) {
 }
 
 // 全服是否已解鎖（主線活動達標後寫入的永久旗標，不是會過期的 buff）
-async function isUnlocked(client, guildId) {
-  if (!client?.serverFlagsCollection) return false;
-  const doc = await client.serverFlagsCollection
-    .findOne({ guildId, key: "deep_vein_unlocked" })
-    .catch(() => null);
-  return !!doc?.value;
-}
-
-async function unlock(client, guildId) {
-  if (!client?.serverFlagsCollection) return { ok: false, reason: "disabled" };
-  await client.serverFlagsCollection.updateOne(
-    { guildId, key: "deep_vein_unlocked" },
-    { $set: { value: true, unlocked_at: new Date() } },
-    { upsert: true },
-  );
-  return { ok: true };
-}
+const isUnlocked = (client, guildId) => serverFlags.isSet(client, guildId, UNLOCK_FLAG);
+const unlock = (client, guildId) => serverFlags.set(client, guildId, UNLOCK_FLAG);
 
 async function deepMine(client, { userId, guildId, member, username }) {
   if (!isEnabled() || !client.miningProfilesCollection) {

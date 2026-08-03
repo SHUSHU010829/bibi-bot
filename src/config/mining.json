@@ -217,7 +217,8 @@
           "ore": "magic_crystal",
           "weight": 1,
           "minQty": 1,
-          "maxQty": 1
+          "maxQty": 1,
+          "requiresFlag": "deep_vein_unlocked"
         }
       ],
       "outcomesHigh": [
@@ -255,7 +256,8 @@
           "ore": "magic_crystal",
           "weight": 3,
           "minQty": 1,
-          "maxQty": 1
+          "maxQty": 1,
+          "requiresFlag": "deep_vein_unlocked"
         }
       ]
     },

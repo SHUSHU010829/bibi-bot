@@ -7,6 +7,7 @@ const {
 } = require("./miningProfile");
 const { weightedRandom } = require("./weightedRandom");
 const { priceOf } = require("./overflowConfirm");
+const serverFlags = require("../serverFlags");
 const grantCoins = require("../economy/grantCoins");
 
 function cfg() {
@@ -16,7 +17,9 @@ function cfg() {
 // 逐顆開石頭（純函式，不碰 DB）。回傳贏得礦石總表與每顆結果（供呈現）。
 // 三張表：normal = 一般挖到的石頭；low = 碎石合成的劣質賭石；high = 優質賭石。
 // low 原本沒有自己的表而落到 normal，導致「劣質賭石限定」的產物會從一般石頭開出來。
-function rollOutcomes(count, quality = "normal") {
+// flags：全服解鎖旗標集合。帶 requiresFlag 的產物在旗標未開之前權重視為 0
+// （魔晶礦要等主線活動達標才會從賭石開出，不能在活動前就外流）。
+function rollOutcomes(count, quality = "normal", flags = {}) {
   const c = cfg();
   const table =
     quality === "high" && Array.isArray(c.outcomesHigh)
@@ -27,7 +30,8 @@ function rollOutcomes(count, quality = "normal") {
   const outcomes = Array.isArray(table) ? table : [];
   const weights = {};
   outcomes.forEach((o, i) => {
-    weights[String(i)] = o.weight || 0;
+    const locked = o.requiresFlag && !flags[o.requiresFlag];
+    weights[String(i)] = locked ? 0 : o.weight || 0;
   });
 
   const winnings = {}; // ore -> qty
@@ -99,7 +103,8 @@ async function appraise(client, { userId, guildId, member, username, ts, allowOv
   }
 
   // 先 roll，再算背包淨變化（石頭被消耗、贏得礦石加回）
-  const { winnings, rolls } = rollOutcomes(count, quality);
+  const flags = await serverFlags.allSet(client, guildId);
+  const { winnings, rolls } = rollOutcomes(count, quality, flags);
   const gained = Object.values(winnings).reduce((s, n) => s + n, 0);
   const cap = backpackCapacity(profile, mining);
   const used = backpackUsed(profile);
