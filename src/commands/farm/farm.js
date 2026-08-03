@@ -60,8 +60,8 @@ module.exports = {
       const plotCount = farmService.getPlotCount(profile);
       const plots = await farmService.getPlots(client, userId, guildId, plotCount);
 
-      // 兌現已排定且到時間的入侵（高級陷阱優先抵擋）；觸發與 /收成 走同一支共用邏輯。
-      const { trapBlocksRemaining, trapBlocksUsedThisOpen } =
+      // 兌現已排定且到時間的入侵（陷阱優先抵擋）；觸發與 /收成 走同一支共用邏輯。
+      const { trapBlocksRemaining, trapBlocksUsedThisOpen, trapBlocksBlocked, trapFailures, trapHoldings } =
         await farmService.applyPendingRaids(client, { userId, guildId, plots, profile });
 
       const club = await getMemberClub(client, interaction.user.id, interaction.guildId);
@@ -79,6 +79,9 @@ module.exports = {
         stamina,
         trapBlocksRemaining,
         trapBlocksUsedThisOpen,
+        trapBlocksBlocked,
+        trapFailures,
+        trapHoldings,
         foodYieldPct,
         worldYieldPct,
       });

@@ -1055,11 +1055,13 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       );
     }
     // 高級陷阱保護中（自動抵擋農場 raid，與農場 raid 系統強相關，放這裡）
-    const farmTrapUses = farmProfile.advanced_trap_uses || 0;
+    const farmTrapUses = trapTiers.totalTrapUses(farmProfile);
     if (farmTrapUses > 0) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🪤 **高級陷阱保護中**：剩 ${farmTrapUses} 次\n-# 自動抵擋鄰居對你農場的 raid`,
+          `🪤 **農場陷阱保護中**：剩 ${farmTrapUses} 次\n`
+            + `-# ${trapTiers.describeHoldings(farmProfile).join("・")}\n`
+            + `-# 自動抵擋農場怪物入侵`,
         ),
       );
     }

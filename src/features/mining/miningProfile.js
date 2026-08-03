@@ -41,6 +41,7 @@ function defaultProfile(userId, guildId) {
     sealing_ammo_count: 0,
     sealing_ammo_week: "",
     advanced_trap_uses: 0,
+    basic_trap_uses: 0,
     treasure_map_fragments: 0,
     treasure_maps: 0,
     neighbor_prank_count: 0,
@@ -106,6 +107,7 @@ function normalize(doc) {
   doc.sealing_ammo_count ??= 0;
   doc.sealing_ammo_week ??= "";
   doc.advanced_trap_uses ??= 0;
+  doc.basic_trap_uses ??= 0;
   doc.treasure_map_fragments ??= 0;
   doc.treasure_maps ??= 0;
   doc.neighbor_prank_count ??= 0;

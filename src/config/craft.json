@@ -330,24 +330,26 @@
       },
       {
         "id": "advanced_trap_iron",
-        "name": "高級陷阱（鐵礦打造）",
+        "name": "簡易陷阱（鐵礦打造）",
         "emoji": "🪤",
         "materials": {
           "iron": 20
         },
         "result": {
-          "type": "advanced_trap"
+          "type": "advanced_trap",
+          "tier": "basic"
         }
       },
       {
         "id": "advanced_trap",
-        "name": "高級陷阱（碎片回收）",
+        "name": "高級陷阱（碎片打造）",
         "emoji": "🪤",
         "materials": {
           "broken_trap_fragment": 5
         },
         "result": {
-          "type": "advanced_trap"
+          "type": "advanced_trap",
+          "tier": "advanced"
         }
       },
       {
@@ -572,8 +574,23 @@
       }
     },
     "advancedTrap": {
-      "blocksPerCraft": 4,
-      "maxStack": 12
+      "maxStack": 12,
+      "tiers": {
+        "basic": {
+          "name": "簡易陷阱",
+          "emoji": "🪤",
+          "field": "basic_trap_uses",
+          "blocksPerCraft": 4,
+          "blockChance": 0.7
+        },
+        "advanced": {
+          "name": "高級陷阱",
+          "emoji": "⚙️",
+          "field": "advanced_trap_uses",
+          "blocksPerCraft": 4,
+          "blockChance": 1
+        }
+      }
     },
     "fishingNet": {
       "dropChancePerFish": 0.02,

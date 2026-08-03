@@ -7,6 +7,7 @@ const {
   ORE_KEYS,
 } = require("./miningProfile");
 const { SPECIAL_MAT_FIELDS, isFishMaterial, ownedMaterial } = require("./craftMaterials");
+const { trapTier, totalTrapUses } = require("../farm/trapTiers");
 
 // 鎬子 / 武器 / 釣竿階級（用於判定升級 / 同級 / 降級）
 const PICKAXE_TIER = { wood: 0, iron: 1, gold: 2, diamond: 3, magic: 4 };
@@ -407,10 +408,12 @@ async function craftAdvancedTrap(client, { userId, guildId, recipe }) {
   }
 
   const cfg = craft?.advancedTrap || {};
-  const blocksPerCraft = cfg.blocksPerCraft ?? 4;
+  const tier = trapTier(recipe.result?.tier);
+  const blocksPerCraft = tier.blocksPerCraft ?? cfg.blocksPerCraft ?? 4;
   const maxStack = cfg.maxStack ?? 12;
 
-  const current = profile.advanced_trap_uses || 0;
+  // 上限是兩階共用的總次數，否則兩種各囤 12 次等於保護翻倍
+  const current = totalTrapUses(profile);
   if (current >= maxStack) {
     return { ok: false, reason: "trap_full", current, maxStack, recipe };
   }
@@ -419,7 +422,7 @@ async function craftAdvancedTrap(client, { userId, guildId, recipe }) {
 
   const inc = {
     craft_count_total: 1,
-    advanced_trap_uses: actualAdd,
+    [tier.field]: actualAdd,
   };
   for (const [mat, need] of Object.entries(recipe.materials)) {
     if (SPECIAL_MAT_FIELDS[mat]) {
@@ -440,12 +443,14 @@ async function craftAdvancedTrap(client, { userId, guildId, recipe }) {
     ok: true,
     recipe,
     type: "advanced_trap",
-    resultId: "advanced_trap",
+    resultId: tier.id,
     resultName: recipe.name,
-    resultEmoji: recipe.emoji || "🪤",
+    resultEmoji: recipe.emoji || tier.emoji || "🪤",
     durability: null,
     blocksAdded: actualAdd,
     blocksAfter: current + actualAdd,
+    blockChancePct: Math.round((tier.blockChance ?? 1) * 100),
+    tierName: tier.name,
     maxStack,
     craftCountTotal: (profile.craft_count_total || 0) + 1,
   };

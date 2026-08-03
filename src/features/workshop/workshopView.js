@@ -37,6 +37,7 @@ const {
   repairToolTargetEquipped,
 } = require("../mining/mineService");
 const buildingService = require("../guild_club/buildingService");
+const trapTiers = require("../farm/trapTiers");
 const { effectiveMaxDurability } = buildingService;
 const {
   REPAIR_MATERIAL_PREFIX,
@@ -329,7 +330,7 @@ function recipeBodyText(recipe, profile, type) {
         : tdef.maxDelta > 0
           ? `max +${tdef.maxDelta}`
           : `max ${tdef.maxDelta}`;
-      propLine = `效果：+${Math.round((tdef.duraPct || 0) * 100)}% 鎬子耐久 ・ ${deltaTxt}`;
+      propLine = `效果：+${Math.round((tdef.duraPct || 0) * 100)}% 耐久 ・ ${deltaTxt} ・ 鎬/劍/盾/釣竿通用`;
     } else if (type === "fishing_net") {
       const fcfg = craft?.fishingNet || {};
       propLine = `效果：+${Math.round((fcfg.successBonus || 0) * 100)}% 釣魚成功率 ・ ${fcfg.usesPerCraft || 3} 次釣魚成功後失效`;
@@ -339,8 +340,12 @@ function recipeBodyText(recipe, profile, type) {
         ? "效果：觸發優質賭石（diamond 5%、gold 11%，期望 EV ≈ 82 幣 / 顆）"
         : "效果：觸發劣質賭石（與普通賭石同表，期望 EV ≈ 50 幣 / 顆）";
     } else if (type === "advanced_trap") {
-      const acfg = craft?.advancedTrap || {};
-      propLine = `效果：+${acfg.blocksPerCraft || 4} 次被動抵擋（上限 ${acfg.maxStack || 12}）`;
+      const t = trapTiers.trapTier(recipe.result?.tier);
+      const pct = Math.round((t.blockChance ?? 1) * 100);
+      const rate = pct >= 100 ? "**必定抵擋**" : `**${pct}% 抵擋**（會失效）`;
+      propLine =
+        `效果：+${t.blocksPerCraft || 4} 次被動抵擋，${rate}`
+        + `・期望擋下 ${((t.blocksPerCraft || 4) * (t.blockChance ?? 1)).toFixed(1)} 次（共用上限 ${trapTiers.maxStack()}）`;
     } else if (type === "treasure_map") {
       propLine = `效果：合成 1 張藏寶圖，到 /背包 「探險道具」按「使用 1 張」撕開觸發隨機事件`;
     } else if (type === "sealing_ammo") {
@@ -544,14 +549,17 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
   } else if (craftSub === "farm") {
     const fragCount = profile.broken_trap_fragments || 0;
     if (farmTools.length) {
-      const trapCfg = craft?.advancedTrap || {};
-      const usesNow = profile.advanced_trap_uses || 0;
-      const cap = trapCfg.maxStack ?? 12;
+      const usesNow = trapTiers.totalTrapUses(profile);
+      const cap = trapTiers.maxStack();
+      const held = trapTiers.describeHoldings(profile);
       container
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `### 🪤 農場防護（持有破損陷阱碎片 **${fragCount}**，目前保護 ${usesNow} / ${cap} 次）\n-# 合成即自動生效，被動抵擋下一次農場怪物入侵；達上限多餘的次數會被丟掉\n-# 鐵礦打造穩定可控；碎片回收留給農場防禦打下來的舊碎片`,
+            `### 🪤 農場防護（持有破損陷阱碎片 **${fragCount}**，目前保護 ${usesNow} / ${cap} 次）\n`
+              + (held.length ? `-# 持有：${held.join("・")}\n` : "")
+              + `-# 🪤 簡易陷阱（鐵礦 ×20）好取得但 **70% 抵擋**；⚙️ 高級陷阱（碎片 ×5）**必定抵擋**\n`
+              + `-# 抵擋時先消耗簡易的，把高級的留到後面；兩階共用 ${cap} 次上限`,
           ),
         );
       craftableSection(container, farmTools, profile, "advanced_trap", userId);

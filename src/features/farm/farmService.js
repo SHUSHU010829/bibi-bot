@@ -4,6 +4,7 @@ const { getOrCreate, veggieBagCapacity, veggieBagUsed } = require("../mining/min
 const { isBagLimitEnforced } = require("../mining/bagStatus");
 const grantCoins = require("../economy/grantCoins");
 const grantActivityXp = require("../leveling/grantActivityXp");
+const trapTiers = require("./trapTiers");
 const {
   getFoodFarmYieldBonus,
   consumeFarmYieldUse,
@@ -1010,19 +1011,38 @@ function shouldTriggerRaid(plot, now = Date.now()) {
   return live.status === "growing" || live.status === "ready";
 }
 
-// 共用兌現：把所有「已到 raid_at」的地塊翻成入侵（高級陷阱優先抵擋）。view / 收成 /
+// 共用兌現：把所有「已到 raid_at」的地塊翻成入侵（陷阱優先抵擋）。view / 收成 /
 // 施肥 各路徑都走這支，確保觸發一致、無法繞過。直接 mutate 傳入的 plots，
 // 回傳陷阱使用摘要與本次真正被入侵的地塊，供 UI 顯示與主動通知使用。
+//
+// 陷阱分兩階：簡易（鐵礦，70%）與高級（碎片，100%）。由弱到強消耗，
+// 把必定成功的留到後面；簡易陷阱擲骰失敗時仍會被消耗，該地塊照樣被入侵。
 async function applyPendingRaids(client, { userId, guildId, plots, profile, now = Date.now() }) {
-  let trapBlocksRemaining = profile?.advanced_trap_uses || 0;
+  const remaining = {};
+  for (const t of trapTiers.tiers()) remaining[t.field] = profile?.[t.field] || 0;
+  const usedByField = {};
   let trapBlocksUsedThisOpen = 0;
+  let trapFailures = 0;
   const raided = [];
+
+  // 取出一次抵擋機會：由弱到強，回傳是否真的擋下來
+  const consumeTrap = () => {
+    for (const t of trapTiers.tiers()) {
+      if (remaining[t.field] <= 0) continue;
+      remaining[t.field] -= 1;
+      usedByField[t.field] = (usedByField[t.field] || 0) + 1;
+      trapBlocksUsedThisOpen += 1;
+      const blocked = Math.random() < (t.blockChance ?? 1);
+      if (!blocked) trapFailures += 1;
+      return blocked;
+    }
+    return false;
+  };
+
   for (const p of plots) {
     if (p.raid?.active) continue;
     if (!shouldTriggerRaid(p, now)) continue;
-    if (trapBlocksRemaining > 0) {
-      trapBlocksRemaining -= 1;
-      trapBlocksUsedThisOpen += 1;
+    if (consumeTrap()) {
       await coll(client).updateOne(
         { userId, guildId, plotIndex: p.plotIndex },
         { $set: { raid_at: null, updatedAt: new Date() } },
@@ -1042,12 +1062,23 @@ async function applyPendingRaids(client, { userId, guildId, plots, profile, now 
     }
   }
   if (trapBlocksUsedThisOpen > 0) {
+    const inc = {};
+    for (const [field, n] of Object.entries(usedByField)) inc[field] = -n;
     await client.miningProfilesCollection.updateOne(
       { userId, guildId },
-      { $inc: { advanced_trap_uses: -trapBlocksUsedThisOpen }, $set: { updatedAt: new Date() } },
+      { $inc: inc, $set: { updatedAt: new Date() } },
     );
   }
-  return { trapBlocksRemaining, trapBlocksUsedThisOpen, raided };
+  return {
+    trapBlocksRemaining: Object.values(remaining).reduce((a, b) => a + b, 0),
+    trapBlocksUsedThisOpen,
+    trapBlocksBlocked: trapBlocksUsedThisOpen - trapFailures,
+    trapFailures,
+    // remaining 是「這次消耗完之後」的狀態；傳入的 profile 沒被 mutate，
+    // 呼叫端拿 profile 去算會顯示舊數字。
+    trapHoldings: trapTiers.describeHoldings(remaining),
+    raided,
+  };
 }
 
 // 標記地塊進入 raid 狀態。回傳怪物資訊。
