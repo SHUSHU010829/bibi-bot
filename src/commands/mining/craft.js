@@ -19,12 +19,36 @@ const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
 
 // 配方數已超過 Discord 靜態 choices 上限（25），改走 autocomplete。
+//
+// 沒打字時只回得了 25 筆，若照 config 原順序切，排在後面的整個類別會完全消失
+// （拓荒錘、魔晶系列全都在第 26 筆之後，而拓荒錘是參加主線活動的必要前置）。
+// 所以空字串時改成「各類別輪流取」，保證每個分類都露得到；有打字就照一般過濾。
+function balancedSample(recipes, limit) {
+  const byType = new Map();
+  for (const r of recipes) {
+    const t = r.result?.type || "?";
+    if (!byType.has(t)) byType.set(t, []);
+    byType.get(t).push(r);
+  }
+  const queues = [...byType.values()];
+  const out = [];
+  while (out.length < limit && queues.some((q) => q.length)) {
+    for (const q of queues) {
+      if (!q.length) continue;
+      out.push(q.shift());
+      if (out.length >= limit) break;
+    }
+  }
+  return out;
+}
+
 function recipeMatches(query) {
   const q = (query || "").trim().toLowerCase();
-  return (craft?.recipes || [])
-    .filter((r) => !q || r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q))
-    .slice(0, 25)
-    .map((r) => ({ name: r.name, value: r.id }));
+  const all = craft?.recipes || [];
+  const hits = q
+    ? all.filter((r) => r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q))
+    : balancedSample(all, 25);
+  return hits.slice(0, 25).map((r) => ({ name: r.name, value: r.id }));
 }
 
 // 裝備標籤：依類型取鎬子 / 武器 / 釣竿 / 盾定義。
