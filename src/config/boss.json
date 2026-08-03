@@ -92,7 +92,15 @@
     "comboAnnouncement": "⚡ Combo 滿格！全場傷害 ×1.3 持續 120 秒！（由 <@{user}> 接力觸發）",
     "rewards": {
       "poolRatio": 1,
-      "participationBonus": 350,
+      "participation": {
+        "tiers": [
+          { "minDamage": 0,    "emoji": "🔰", "name": "到場應援",   "coins": 200,  "xp": 25,  "rare": 0, "diamond": 0 },
+          { "minDamage": 300,  "emoji": "⚔️", "name": "出力討伐",   "coins": 550,  "xp": 60,  "rare": 0, "diamond": 0 },
+          { "minDamage": 1000, "emoji": "🔥", "name": "主力輸出",   "coins": 1100, "xp": 120, "rare": 0, "diamond": 1 },
+          { "minDamage": 2500, "emoji": "💪", "name": "王牌打手",   "coins": 1900, "xp": 200, "rare": 1, "diamond": 2 },
+          { "minDamage": 5000, "emoji": "🌟", "name": "傳說級輸出", "coins": 3000, "xp": 320, "rare": 2, "diamond": 3 }
+        ]
+      },
       "killBonus": 450,
       "firstStrikeBonus": 450,
       "killerBonusRatio": 0.09,

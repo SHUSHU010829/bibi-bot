@@ -63,6 +63,18 @@ function aggroCfg() {
   return cfg().aggro || {};
 }
 
+// 參加獎依「本場造成的傷害」分檔：出手就有底檔，打越痛檔位越高（金幣 / 經驗 / 碎片 / 鑽石一起加碼）。
+// 取所有符合門檻中最高的一檔，config 順序不影響結果。
+function participationTier(damage) {
+  const tiers = rewardsCfg().participation?.tiers || [];
+  let best = null;
+  for (const t of tiers) {
+    const min = t.minDamage ?? 0;
+    if (damage >= min && (!best || min > (best.minDamage ?? 0))) best = t;
+  }
+  return best;
+}
+
 // 目前累積傷害最高的玩家（嘲諷/仇恨用）。damage_by_user 存於 boss doc，攻擊當下即時判定。
 function topDamageUser(map) {
   let best = null;
@@ -531,6 +543,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     boss: { ...bossDoc, current_hp: newHp, phase: newPhase, hits_taken: afterDoc.hits_taken },
     stamina: newStamina,
     staminaMax: max,
+    myDamage: afterDoc.damage_by_user?.[userId] || 0,
     attackCount,
     attackLimit,
     bonusAttacks: allowedExtra,
@@ -594,8 +607,6 @@ async function settleBoss(client, bossDoc) {
     ? rwd.topRareRewardTiers
     : new Array(rwd.topRareRewards ?? 3).fill(1);
   const diamondTiers = Array.isArray(rwd.topRankDiamondTiers) ? rwd.topRankDiamondTiers : [];
-  // 參加獎：只要出手就有，不看是否擊殺、不看傷害多寡。
-  const participationBonus = rwd.participationBonus ?? 0;
 
   const payouts = ranking.map((r, idx) => {
     const share = rewarded && totalDamage > 0 ? Math.floor(r.damage / totalDamage * totalPool) : 0;
@@ -609,7 +620,7 @@ async function settleBoss(client, bossDoc) {
       rareReward,
       diamondReward,
       killBonus,
-      participationBonus,
+      participation: participationTier(r.damage),
     };
   });
 
@@ -631,7 +642,7 @@ async function settleBoss(client, bossDoc) {
         share: 0,
         rareReward: 0,
         killBonus: rwd.killBonus ?? 100,
-        participationBonus,
+        participation: participationTier(0),
         killerBonus,
         killerRare,
         counters: 0,
@@ -658,7 +669,7 @@ async function settleBoss(client, bossDoc) {
           share: 0,
           rareReward: 0,
           killBonus: 0,
-          participationBonus,
+          participation: participationTier(0),
           firstStrikeBonus,
           counters: 0,
           attacks: attackByUser.get(firstStrikerUserId) || 0,
@@ -699,7 +710,6 @@ async function settleBoss(client, bossDoc) {
     payouts,
     totalDamage,
     totalPool,
-    participationBonus,
     mvpUserId: rewarded ? (payouts[0]?.userId || null) : null,
     comboMvpUserId: rewarded ? (bossDoc.combo?.combo_mvp || null) : null,
     punchingBagUserId: rewarded ? punchingBag : null,
@@ -795,6 +805,7 @@ module.exports = {
   countOnlineMembers,
   phaseOf,
   phaseDef,
+  participationTier,
   rageState,
   effectiveCounterRate,
 };

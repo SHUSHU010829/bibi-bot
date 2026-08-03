@@ -28,6 +28,24 @@ async function announceSpawn(client, bossDoc, opts = {}) {
     ? (boss?.summon?.summonIntro || "討伐能量集滿，魔王被喚醒了！")
     : (pickFrom(boss?.spawnIntros) || "傳說中的存在現身了！");
   const titlePrefix = opts.summon ? "🔮 " : "";
+  // 參加獎檔位表放進出場公告，讓玩家一眼看到「出手就有、打越痛拿越多」。
+  const ptiers = [...(boss?.rewards?.participation?.tiers || [])]
+    .sort((a, b) => (a.minDamage ?? 0) - (b.minDamage ?? 0));
+  const participationField = ptiers.length
+    ? {
+      name: "🎖️ 參加獎（出手就有，依傷害分檔）",
+      value: ptiers
+        .map((t) => {
+          const gains = [`${(t.coins || 0).toLocaleString()} 金幣`, `${t.xp || 0} 經驗`];
+          if (t.rare > 0) gains.push(`✨ 傳說碎片 ×${t.rare}`);
+          if (t.diamond > 0) gains.push(`💎 鑽石 ×${t.diamond}`);
+          const threshold = (t.minDamage ?? 0) > 0 ? `傷害 ≥ ${t.minDamage.toLocaleString()}` : "有出手";
+          return `${t.emoji} **${t.name}**（${threshold}）：${gains.join("・")}`;
+        })
+        .join("\n"),
+      inline: false,
+    }
+    : null;
 
   const embed = new EmbedBuilder()
     .setColor(0xe74c3c)
@@ -41,6 +59,7 @@ async function announceSpawn(client, bossDoc, opts = {}) {
       },
       endField,
       { name: "⚔️ 攻擊上限", value: `每人 ${limit} 次`, inline: true },
+      ...(participationField ? [participationField] : []),
     )
     .setFooter({
       text: opts.summon
