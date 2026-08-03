@@ -439,12 +439,18 @@ async function applyProgress(client, {
   let buffStarted = false;
   let buffEndsAt = null;
   if (completed && updDoc.state === "collecting") {
+    // 主線活動給的是永久解鎖，沒有會過期的 buff —— 直接收成 ended，
+    // 否則 24 小時後 settleExpired 會發一則「buff 結束」公告，
+    // 但深層礦脈根本不會關掉。
+    const mainline = isMainline(eventDef(updDoc.event_id));
     const buffMs = (eventDef(updDoc.event_id)?.buffDurationHoursOverride || 0) * 3600 * 1000
       || defaultBuffMs();
     const endsAt = new Date(Date.now() + buffMs);
     const transition = await client.worldEventsCollection.findOneAndUpdate(
       { event_db_id: eventDbId, state: "collecting" },
-      { $set: { state: "buffing", buff_started_at: new Date(), ends_at: endsAt, updated_at: new Date() } },
+      mainline
+        ? { $set: { state: "completed", completed_at: new Date(), updated_at: new Date() } }
+        : { $set: { state: "buffing", buff_started_at: new Date(), ends_at: endsAt, updated_at: new Date() } },
       { returnDocument: "after" }
     );
     if (transition?.value || transition) {
@@ -526,6 +532,19 @@ async function forceEndEvent(client, eventDbId) {
 // 主線活動的貢獻排行（發稱號、公告前 N 名用）。
 // 貢獻分數：各物資先除以自己的目標再平均，不能把鐵礦與逼幣的原始數量直接相加
 // —— 目標差了 400 倍，直接加總會讓逼幣完全主導，專心倒鐵礦的人反而拿不到稱號。
+// 主線達標後 state 直接進 completed（不經過會過期的 buffing），
+// 所以它不在 getActiveEvents 裡 —— scheduler 得另外撈才發得出達標公告。
+// 公告去重靠 WorldEventAnnouncements 的 unique index，所以這裡回傳重複也無妨；
+// 時間窗只是避免每分鐘都掃到很久以前的紀錄。
+async function getRecentlyCompleted(client, { withinDays = 7 } = {}) {
+  if (!client?.worldEventsCollection) return [];
+  const since = new Date(Date.now() - withinDays * 86400000);
+  return await client.worldEventsCollection
+    .find({ state: "completed", completed_at: { $gte: since } })
+    .toArray()
+    .catch(() => []);
+}
+
 async function contributionScores(client, event) {
   if (!client?.worldEventContributionsCollection) return [];
   const goals = event.requirements_total || {};
@@ -618,6 +637,7 @@ module.exports = {
   forceEndEvent,
   contributionRanking,
   contributionScores,
+  getRecentlyCompleted,
   awardContributionTitles,
   settleExpired,
 };

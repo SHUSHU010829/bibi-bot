@@ -16,6 +16,8 @@ const worldEventBuffs = require("../../features/world_event/worldEventBuffs");
 const { formatBuff } = require("../../features/buff/buffLabels");
 const { itemLabel } = require("../../features/world_event/worldEventItems");
 
+const eventDef = (id) => worldEventService.eventDef(id);
+
 const COLOR_OPEN = 0xf1c40f;
 const COLOR_BUFF = 0x2ecc71;
 const COLOR_END = 0x95a5a6;
@@ -65,12 +67,21 @@ async function claimAnnounce(client, eventDbId, phase) {
 
 function buildOpenContainer(event) {
   const c = new ContainerBuilder().setAccentColor(event.color || COLOR_OPEN);
+  const def = eventDef(event.event_id) || {};
+  const mainline = event.kind === "mainline";
+  const daily = event.daily_limits || {};
   const reqLines = Object.entries(event.requirements_remaining || {})
-    .map(([k, v]) => `• ${itemLabel(k)} 0 / ${v}`)
+    .map(([k, v]) => {
+      const limit = daily[k];
+      return (
+        `• ${itemLabel(k)} 0 / ${(v || 0).toLocaleString()}`
+        + (limit ? `　-# 每人每日上限 ${limit.toLocaleString()}` : "")
+      );
+    })
     .join("\n");
   c.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `# ${event.emoji || "🌍"} 世界事件開啟：${event.label}\n${event.description || ""}`
+      `# ${event.emoji || "🌍"} ${mainline ? "主線活動開啟" : "世界事件開啟"}：${event.label}\n${event.description || ""}`
     )
   );
   c.addSeparatorComponents(new SeparatorBuilder());
@@ -80,6 +91,13 @@ function buildOpenContainer(event) {
         `截止時間：<t:${Math.floor(new Date(event.ends_at).getTime() / 1000)}:R>`
     )
   );
+  // 主線需要拓荒錘才捐得了，不在開場講的話玩家會直接撞到「還沒有拓荒錘」
+  if (def.entryRequirement) {
+    c.addSeparatorComponents(new SeparatorBuilder());
+    c.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`🔨 **參加前置**\n${def.entryRequirement}`)
+    );
+  }
   c.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -94,6 +112,27 @@ function buildOpenContainer(event) {
 
 function buildBuffStartContainer(event) {
   const c = new ContainerBuilder().setAccentColor(COLOR_BUFF);
+  // 主線活動給的是永久解鎖、不是會過期的 buff，rewards.buffs 是空的。
+  // 沿用一般事件的「全服 buff 啟動 / 持續至 X」會印出空白區塊而且語意也錯。
+  const completion = eventDef(event.event_id)?.completion;
+  if (completion) {
+    c.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ✅ ${event.emoji || "🌍"} ${event.label} 達標！\n## ${completion.title}`
+      )
+    );
+    c.addSeparatorComponents(new SeparatorBuilder());
+    c.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent((completion.lines || []).join("\n"))
+    );
+    if (completion.footer) {
+      c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`-# ${completion.footer}`)
+      );
+    }
+    return c;
+  }
+
   const buffLines = Object.entries(event.rewards?.buffs || {})
     .map(([k, v]) => `• ${formatBuff(k, v)}`)
     .join("\n");
@@ -227,7 +266,15 @@ async function scanOnce(client) {
     }
   }
 
-  // 3) refresh buff cache（每分鐘）
+  // 3) 主線達標公告：mainline 達標後 state 直接進 completed（沒有會過期的
+  //    buffing 階段），所以不在 getActiveEvents 裡，得另外撈才發得出來。
+  for (const e of await worldEventService.getRecentlyCompleted(client)) {
+    if (await claimAnnounce(client, e.event_db_id, "completed")) {
+      await sendAnnounce(client, channelId, buildBuffStartContainer(e), { ping: true });
+    }
+  }
+
+  // 4) refresh buff cache（每分鐘）
   await worldEventBuffs.refreshCache(client).catch(() => {});
 }
 
