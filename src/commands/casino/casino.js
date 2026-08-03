@@ -15,6 +15,7 @@ const GAMES = [
   require("./horseRacing"),
   require("./keno"),
   require("./casinoHoldem"),
+  require("./pokerOpen"),
   require("./roulette"),
   require("./sicbo"),
   require("./slot"),

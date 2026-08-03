@@ -13,8 +13,8 @@ function getCfg() {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName("德州撲克")
-    .setDescription("開一桌德州撲克 🃏（會自動建立執行緒，桌面在裡面跑）")
+    .setName("多人德州")
+    .setDescription("開一桌多人德州撲克 🃏（會自動建立執行緒，桌面在裡面跑）")
     .setContexts(InteractionContextType.Guild)
     .addSubcommand((sub) =>
       sub
@@ -62,7 +62,7 @@ module.exports = {
           `其他人到 ${result.thread} 點「🪑 加入」入座，開桌者按「🃏 開始」開局！`
       );
     } catch (err) {
-      console.log(`[ERROR] /德州撲克 開桌:\n${err}\n${err.stack}`.red);
+      console.log(`[ERROR] /賭場 多人德州 開桌:\n${err}\n${err.stack}`.red);
       await interaction
         .editReply("🔧 開桌失敗，請呼叫舒舒！")
         .catch(() => {});
