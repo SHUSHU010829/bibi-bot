@@ -95,7 +95,7 @@ async function main() {
   console.log("\n=== 逼幣流通量 ===".cyan);
   const coins = db.collection("UserCoins");
   const [coinAgg] = await coins
-    .aggregate([{ $group: { _id: null, total: { $sum: "$coins" }, holders: { $sum: 1 } } }])
+    .aggregate([{ $group: { _id: null, total: { $sum: "$totalCoins" }, holders: { $sum: 1 } } }])
     .toArray();
   // 銀行定存的本金還沒回到錢包，但仍是玩家資產，要一起算進流通量
   const [bankAgg] = await db
@@ -106,12 +106,22 @@ async function main() {
     ])
     .toArray();
 
+  // 公會金庫捐不出來（捐獻只扣個人錢包），單獨列出當背景資訊，不計入基數
+  const [treasuryAgg] = await db
+    .collection("GuildsClub")
+    .aggregate([
+      { $match: { disbanded_at: null } },
+      { $group: { _id: null, total: { $sum: "$treasury_current" } } },
+    ])
+    .toArray();
+
   const wallet = coinAgg?.total || 0;
   const bank = bankAgg?.total || 0;
   console.log(`錢包合計           : ${fmt(wallet)}（${fmt(coinAgg?.holders || 0)} 人）`);
   console.log(`銀行定存本金       : ${fmt(bank)}`);
   console.log(`總流通量           : ${fmt(wallet + bank)}`.yellow);
   console.log(`→ 建議目標（8–12%）: ${pctOf(wallet + bank, 0.08, 0.12)}`.green);
+  console.log(`-# 另有公會金庫 ${fmt(treasuryAgg?.total || 0)}（捐獻只扣個人錢包，未計入基數）`.gray);
 
   console.log("\n=== 節奏對照 ===".cyan);
   console.log("兩個目標要落在相近天數。以每人每日上限 鐵礦 200 / 逼幣 100,000 估：");
