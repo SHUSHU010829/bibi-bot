@@ -84,6 +84,18 @@ function buildOpenContainer(event) {
       `# ${event.emoji || "🌍"} ${mainline ? "主線活動開啟" : "世界事件開啟"}：${event.label}\n${event.description || ""}`
     )
   );
+  // 先講「達標後拿得到什麼」再講「要交什麼」——沒有這段，玩家只看得到成本。
+  // 文案與達標公告共用 completion.lines，避免兩邊各寫一份而改到不一致。
+  const unlockLines = def.completion?.lines || [];
+  if (unlockLines.length) {
+    c.addSeparatorComponents(new SeparatorBuilder());
+    c.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🎁 **達標後全服永久解鎖**\n${unlockLines.join("\n")}\n` +
+          `-# 這些是永久開放，不是限時 buff。`
+      )
+    );
+  }
   c.addSeparatorComponents(new SeparatorBuilder());
   c.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
