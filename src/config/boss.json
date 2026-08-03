@@ -3,8 +3,8 @@
     "enabled": true,
     "announceChannelId": "1511617684532367440",
     "chronicleChannelId": "1511610220856475701",
-    "hpPerPlayer": 4500,
-    "minHp": 37500,
+    "hpPerPlayer": 3200,
+    "minHp": 26000,
     "durationMinutes": 30,
     "attackLimitPerPlayer": 5,
     "scaling": {
@@ -12,14 +12,14 @@
       "activeWithinDays": 14,
       "baseAtk": 20,
       "atkPerGearStep": 60,
-      "hpBonusPerStep": 0.15,
-      "maxGearMultiplier": 2.5
+      "hpBonusPerStep": 0.12,
+      "maxGearMultiplier": 2
     },
     "rage": {
       "enabled": true,
-      "hitsPerStack": 15,
-      "counterRatePerStack": 0.03,
-      "maxCounterRate": 0.6
+      "hitsPerStack": 20,
+      "counterRatePerStack": 0.02,
+      "maxCounterRate": 0.35
     },
     "rareMaterial": "legendary_fragment",
     "summon": {
@@ -73,9 +73,9 @@
       "你不知道為什麼，但牠看起來就是欠扁。"
     ],
     "phases": {
-      "normal":  { "hpThreshold": 1.0, "damageMult": 1.0, "counterRate": 0.15, "label": "正常" },
-      "broken":  { "hpThreshold": 0.5, "damageMult": 1.5, "counterRate": 0.15, "label": "破防" },
-      "enraged": { "hpThreshold": 0.2, "damageMult": 1.8, "counterRate": 0.30, "label": "狂暴" }
+      "normal":  { "hpThreshold": 1.0, "damageMult": 1.0, "counterRate": 0.07, "label": "正常" },
+      "broken":  { "hpThreshold": 0.5, "damageMult": 1.5, "counterRate": 0.07, "label": "破防" },
+      "enraged": { "hpThreshold": 0.2, "damageMult": 1.8, "counterRate": 0.15, "label": "狂暴" }
     },
     "phaseAnnouncements": {
       "broken":  "💥 **{name}** 護甲破損！全員傷害提升 ×1.5！",
@@ -91,14 +91,14 @@
     },
     "comboAnnouncement": "⚡ Combo 滿格！全場傷害 ×1.3 持續 120 秒！（由 <@{user}> 接力觸發）",
     "rewards": {
-      "poolRatio": 0.5,
-      "killBonus": 225,
-      "firstStrikeBonus": 225,
-      "killerBonusRatio": 0.05,
-      "killerRareReward": 1,
-      "killXpBonus": 120,
-      "topRareRewardTiers": [4, 3, 2, 1, 1],
-      "topRankDiamondTiers": [7, 4, 2]
+      "poolRatio": 1,
+      "killBonus": 450,
+      "firstStrikeBonus": 450,
+      "killerBonusRatio": 0.09,
+      "killerRareReward": 2,
+      "killXpBonus": 240,
+      "topRareRewardTiers": [6, 5, 4, 3, 2, 1, 1, 1],
+      "topRankDiamondTiers": [10, 6, 4, 2, 1]
     },
     "damage": {
       "baseRandMin": 10,
@@ -114,7 +114,7 @@
     },
     "aggro": {
       "enabled": true,
-      "counterBonus": 0.15,
+      "counterBonus": 0.06,
       "minParticipants": 2
     },
     "treasure": {
@@ -198,10 +198,10 @@
       "treasuryLockHours": 168
     },
     "counterMessages": [
-      "{name} 一巴掌把你打飛！這次攻擊沒造成任何傷害。",
-      "你揮空了！{name} 還順便嗆了你一句。",
-      "{name} 用尾巴掃過來，你連武器都差點沒抓住。",
-      "你的劍卡在 {name} 的鱗片上，這次傷害無效。"
+      "{name} 一巴掌把 **{user}** 打飛！這次攻擊沒造成任何傷害。",
+      "**{user}** 揮空了！{name} 還順便嗆了一句。",
+      "{name} 用尾巴掃過來，**{user}** 連武器都差點沒抓住。",
+      "**{user}** 的劍卡在 {name} 的鱗片上，這次傷害無效。"
     ]
   }
 }

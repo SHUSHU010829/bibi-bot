@@ -16,8 +16,6 @@ async function resolveChannel(client, id) {
 }
 
 async function announceSpawn(client, bossDoc, opts = {}) {
-  const ch = await resolveChannel(client, boss?.announceChannelId);
-  if (!ch) return;
   // ends_at 為 null＝招喚場無時間限制，待到被擊殺為止。
   const endField = bossDoc.ends_at != null
     ? { name: "⏳ 戰鬥結束", value: `<t:${Math.floor(bossDoc.ends_at / 1000)}:R>`, inline: true }
@@ -42,7 +40,7 @@ async function announceSpawn(client, bossDoc, opts = {}) {
         inline: false,
       },
       endField,
-      { name: "⚔️ 攻擊上限", value: `每人 ${limit} 次`, inline: true },
+      { name: "⚔️ 攻擊上限", value: `每人 ${limit} 次（被反擊不計次數）`, inline: true },
     )
     .setFooter({
       text: opts.summon
@@ -50,7 +48,14 @@ async function announceSpawn(client, bossDoc, opts = {}) {
         : "輸入 /魔王 攻擊 一起討伐！",
     });
 
-  await ch.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch(() => {});
+  // 出場公告同步到戰鬥頻道與編年史頻道（結算公告同樣走兩邊）。
+  const payload = { embeds: [embed], allowedMentions: { parse: [] } };
+  const liveCh = await resolveChannel(client, boss?.announceChannelId);
+  if (liveCh) await liveCh.send(payload).catch(() => {});
+  if (boss?.chronicleChannelId && boss.chronicleChannelId !== boss.announceChannelId) {
+    const chronicleCh = await resolveChannel(client, boss.chronicleChannelId);
+    if (chronicleCh) await chronicleCh.send(payload).catch(() => {});
+  }
 
   // 召喚後立即建立置頂即時看板
   bossBoard.scheduleRefresh(client, bossDoc.guild_id, true);

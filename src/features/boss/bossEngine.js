@@ -292,7 +292,6 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   if (used >= attackLimit) {
     return { ok: false, reason: "attack_limit", used, limit: attackLimit };
   }
-  const consumesCharge = used >= baseLimit;
   const st = resolveStamina(profile, max);
   if (st.stamina <= 0) {
     return {
@@ -404,7 +403,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     },
     { upsert: true },
   ).catch(() => {});
-  if (consumesCharge) {
+  // 被反擊＝空刀，只扣體力：不佔本場攻擊次數，也不吃攻擊庫存。
+  if (!isCounter && used >= baseLimit) {
     await client.miningProfilesCollection.updateOne(
       { userId, guildId, boss_attack_charges: { $gt: 0 } },
       { $inc: { boss_attack_charges: -1 } },
@@ -415,20 +415,22 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   // 原子扣血：只在 boss 仍存活時生效，避免兩人同時讀到舊血量、各自算出「最後一擊」。
   const incFields = { current_hp: -damage, hits_taken: 1 };
   if (damage > 0) incFields[`damage_by_user.${userId}`] = damage;
+  const attackCount = isCounter ? used : used + 1;
+  const setFields = {
+    "combo.count": comboCount,
+    "combo.last_user": comboLastUser,
+    "combo.last_ts": comboLastTs,
+    "combo.same_user_streak": sameUserStreak,
+    "combo.active_until": comboActiveUntil,
+    "combo.combo_mvp": comboMvp,
+    updatedAt: new Date(),
+  };
+  if (!isCounter) setFields[`attack_counts.${userId}`] = attackCount;
   const afterRes = await client.bossEventsCollection.findOneAndUpdate(
     { boss_id: bossDoc.boss_id, status: "active" },
     {
       $inc: incFields,
-      $set: {
-        "combo.count": comboCount,
-        "combo.last_user": comboLastUser,
-        "combo.last_ts": comboLastTs,
-        "combo.same_user_streak": sameUserStreak,
-        "combo.active_until": comboActiveUntil,
-        "combo.combo_mvp": comboMvp,
-        [`attack_counts.${userId}`]: used + 1,
-        updatedAt: new Date(),
-      },
+      $set: setFields,
     },
     { returnDocument: "after" },
   );
@@ -529,7 +531,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     boss: { ...bossDoc, current_hp: newHp, phase: newPhase, hits_taken: afterDoc.hits_taken },
     stamina: newStamina,
     staminaMax: max,
-    attackCount: used + 1,
+    attackCount,
     attackLimit,
     bonusAttacks: allowedExtra,
     rageStacks: rageState({ hits_taken: afterDoc.hits_taken }).stacks,
