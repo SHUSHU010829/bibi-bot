@@ -134,7 +134,7 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**${displayName}** 的狀態\n🔋 體力：${result.stamina}/${result.staminaMax}（被反擊額外 -1）\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}\n-# 空刀不算次數，這刀只扣體力，休息一下再上。`,
+          `**${displayName}** 的狀態\n🔋 體力：${result.stamina}/${result.staminaMax}（被反擊額外 -1）\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}`,
         ),
       );
     const rl = rageLine(result.rageStacks, result.counterRate);
@@ -235,7 +235,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   }
 
   const hitLines = hits.map((h, i) => {
-    if (h.isCounter) return `**第 ${i + 1} 刀** 被反擊（-2 體力，不計次數）`;
+    if (h.isCounter) return `**第 ${i + 1} 刀** 被反擊（-2 體力）`;
     const extras = [];
     if (h.isCrit) extras.push(`💥 會心`);
     if (h.phaseChanged) extras.push(`進入 ${phaseLabel(h.phaseAfter)}`);
@@ -434,7 +434,7 @@ function buildErrorContainer({ title, body, hint }) {
 }
 
 function buildSettlementContainer(settlement) {
-  const { bossDoc, killed, payouts, totalDamage, totalPool, killerUserId, killerBonus, killerRare, mvpUserId, comboMvpUserId, punchingBagUserId, firstStrikerUserId, firstStrikeBonus, guild } = settlement;
+  const { bossDoc, killed, payouts, totalDamage, totalPool, participationBonus, killerUserId, killerBonus, killerRare, mvpUserId, comboMvpUserId, punchingBagUserId, firstStrikerUserId, firstStrikeBonus, guild } = settlement;
   const color = killed ? COLOR_VICTORY : COLOR_EXPIRED;
   const container = new ContainerBuilder().setAccentColor(color);
   const headline = killed
@@ -442,11 +442,19 @@ function buildSettlementContainer(settlement) {
     : `# ⏳ ${bossDoc.emoji} ${bossDoc.name} 逃離了戰場`;
   const statusLine = killed
     ? `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：${totalPool.toLocaleString()} ${COIN_EMOJI}`
-    : `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：—（未擊敗，無獎勵）`;
+    : `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：—（未擊敗，只發參加獎）`;
   container
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(headline))
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(statusLine));
+
+  if (participationBonus > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🎖️ **參加獎**：全體參戰者各 ＋${participationBonus.toLocaleString()} ${COIN_EMOJI}（出手就有，共 ${payouts.length} 人）`,
+      ),
+    );
+  }
 
   const killXpBonus = boss?.rewards?.killXpBonus ?? 0;
   if (killed && killXpBonus > 0) {
@@ -501,7 +509,7 @@ function buildSettlementContainer(settlement) {
       if (p.guildClubName) extras.push(`🏰 ${p.guildClubName}`);
       return `**#${i + 1}** ${nameOf(guild, p.userId)} — ${p.damage.toLocaleString()} 傷害　→ ${p.share.toLocaleString()} ${COIN_EMOJI}${extras.length ? "（" + extras.join("、") + "）" : ""}`;
     });
-    const topSuffix = killed ? "" : "（本場無獎勵）";
+    const topSuffix = killed ? "" : "（未擊敗，只有參加獎）";
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
@@ -540,7 +548,7 @@ function buildSettlementContainer(settlement) {
   if (!killed) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 💨 沒能在時限內擊敗牠，BOSS 帶著寶藏逃走了——本場沒有任何獎勵。下次要在時間內解決牠！",
+        "-# 💨 沒能在時限內擊敗牠，BOSS 帶著寶藏逃走了——參戰者仍拿到參加獎，但傷害分潤與稀有掉落都沒了。下次要在時間內解決牠！",
       ),
     );
   }

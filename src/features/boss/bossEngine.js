@@ -572,10 +572,11 @@ async function settleBoss(client, bossDoc) {
     }
     attackByUser.set(l.user_id, (attackByUser.get(l.user_id) || 0) + 1);
   }
-  const ranking = [...dmgByUser.entries()]
-    .map(([userId, damage]) => ({
+  // 出過手就算參戰（含整場都被反擊的空刀玩家），這樣參加獎才不會漏人。
+  const ranking = [...attackByUser.keys()]
+    .map((userId) => ({
       userId,
-      damage,
+      damage: dmgByUser.get(userId) || 0,
       counters: counterByUser.get(userId) || 0,
       attacks: attackByUser.get(userId) || 0,
       username: logs.find((x) => x.user_id === userId)?.username || "",
@@ -584,7 +585,7 @@ async function settleBoss(client, bossDoc) {
   const totalDamage = ranking.reduce((s, r) => s + r.damage, 0);
 
   const killed = bossDoc.status === "defeated";
-  // BOSS 逃離（時間到卻沒被擊殺）＝討伐失敗，全員無獎勵；戰報仍保留供回顧。
+  // BOSS 逃離（時間到卻沒被擊殺）＝討伐失敗，只剩參加獎；戰報仍保留供回顧。
   // （招喚場不限時間，只會以「擊殺」結束，所以實際上都是有獎的。）
   const rewarded = killed;
   const rwd = rewardsCfg();
@@ -593,12 +594,14 @@ async function settleBoss(client, bossDoc) {
     ? rwd.topRareRewardTiers
     : new Array(rwd.topRareRewards ?? 3).fill(1);
   const diamondTiers = Array.isArray(rwd.topRankDiamondTiers) ? rwd.topRankDiamondTiers : [];
+  // 參加獎：只要出手就有，不看是否擊殺、不看傷害多寡。
+  const participationBonus = rwd.participationBonus ?? 0;
 
   const payouts = ranking.map((r, idx) => {
     const share = rewarded && totalDamage > 0 ? Math.floor(r.damage / totalDamage * totalPool) : 0;
-    const rareReward = rewarded ? (tiers[idx] || 0) : 0;
-    const diamondReward = rewarded ? (diamondTiers[idx] || 0) : 0;
-    const killBonus = killed ? (rwd.killBonus ?? 100) : 0;
+    const rareReward = rewarded && r.damage > 0 ? (tiers[idx] || 0) : 0;
+    const diamondReward = rewarded && r.damage > 0 ? (diamondTiers[idx] || 0) : 0;
+    const killBonus = killed && r.damage > 0 ? (rwd.killBonus ?? 100) : 0;
     return {
       ...r,
       rank: idx + 1,
@@ -606,6 +609,7 @@ async function settleBoss(client, bossDoc) {
       rareReward,
       diamondReward,
       killBonus,
+      participationBonus,
     };
   });
 
@@ -627,6 +631,7 @@ async function settleBoss(client, bossDoc) {
         share: 0,
         rareReward: 0,
         killBonus: rwd.killBonus ?? 100,
+        participationBonus,
         killerBonus,
         killerRare,
         counters: 0,
@@ -653,6 +658,7 @@ async function settleBoss(client, bossDoc) {
           share: 0,
           rareReward: 0,
           killBonus: 0,
+          participationBonus,
           firstStrikeBonus,
           counters: 0,
           attacks: attackByUser.get(firstStrikerUserId) || 0,
@@ -693,6 +699,7 @@ async function settleBoss(client, bossDoc) {
     payouts,
     totalDamage,
     totalPool,
+    participationBonus,
     mvpUserId: rewarded ? (payouts[0]?.userId || null) : null,
     comboMvpUserId: rewarded ? (bossDoc.combo?.combo_mvp || null) : null,
     punchingBagUserId: rewarded ? punchingBag : null,

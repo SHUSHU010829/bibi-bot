@@ -40,7 +40,7 @@ async function announceSpawn(client, bossDoc, opts = {}) {
         inline: false,
       },
       endField,
-      { name: "⚔️ 攻擊上限", value: `每人 ${limit} 次（被反擊不計次數）`, inline: true },
+      { name: "⚔️ 攻擊上限", value: `每人 ${limit} 次`, inline: true },
     )
     .setFooter({
       text: opts.summon

@@ -80,8 +80,26 @@ async function depositToClub(client, { clubId, amount, locked, source, meta, loc
   return updDoc;
 }
 
+// 參加獎：只要出手就有，BOSS 逃離也照發（討伐失敗不等於白打）。
+async function grantParticipation(client, guild, settlement) {
+  const guildId = guild?.id || settlement.bossDoc.guild_id;
+  for (const p of settlement.payouts) {
+    if (!(p.participationBonus > 0)) continue;
+    const member = await fetchMember(guild, p.userId);
+    await grantCoins(client, {
+      userId: p.userId,
+      guildId,
+      username: member?.user?.username || p.username || p.userId,
+      member,
+      amount: p.participationBonus,
+      source: "boss_participation",
+    }).catch((e) => console.log(`[BOSS] grant participation fail ${p.userId}: ${e.message}`.red));
+  }
+}
+
 async function distribute(client, guild, settlement) {
-  // BOSS 逃離＝討伐失敗，不發放任何金幣、稀有材料、公會分潤與稱號。
+  await grantParticipation(client, guild, settlement);
+  // BOSS 逃離＝討伐失敗，除了參加獎不發放金幣、稀有材料、公會分潤與稱號。
   if (!settlement.rewarded) {
     settlement.guildAggregates = [];
     return;
