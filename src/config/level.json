@@ -38,7 +38,7 @@
       "fish": { "minXp": 6, "maxXp": 12 },
       "dungeon": { "minXp": 35, "maxXp": 60 },
       "farm": { "minXp": 8, "maxXp": 15 },
-      "boss": { "minXp": 15, "maxXp": 30 }
+      "boss": { "minXp": 30, "maxXp": 55 }
     },
     "levelUpAnnouncement": {
       "enabled": true,

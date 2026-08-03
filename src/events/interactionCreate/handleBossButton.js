@@ -3,7 +3,7 @@
 // customId：
 //   boss_attack_<ownerId>  — 再次攻擊
 //   boss_info_<ownerId>    — 查看戰況
-//   boss_weapon_<ownerId>  — 查看武器耐久
+//   boss_potion_<ownerId>  — 開體力藥水選瓶面板
 //
 // owner 驗證：customId 含 userId，只有本人能按。
 require("colors");
@@ -12,12 +12,12 @@ const attackCmd = require("../../commands/boss/attack");
 const infoCmd = require("../../commands/boss/boss");
 const bossView = require("../../features/boss/bossView");
 const { getOrCreate } = require("../../features/mining/miningProfile");
-const buildingService = require("../../features/guild_club/buildingService");
+const dungeonService = require("../../features/mining/dungeonService");
 const { deferReplySafe } = require("../../utils/safeAck");
 
 const PREFIX_ATTACK = "boss_attack_";
 const PREFIX_INFO = "boss_info_";
-const PREFIX_WEAPON = "boss_weapon_";
+const PREFIX_POTION = "boss_potion_";
 
 function parseOwner(customId) {
   if (customId.startsWith(PREFIX_ATTACK)) {
@@ -26,8 +26,8 @@ function parseOwner(customId) {
   if (customId.startsWith(PREFIX_INFO)) {
     return { action: "info", ownerId: customId.slice(PREFIX_INFO.length) };
   }
-  if (customId.startsWith(PREFIX_WEAPON)) {
-    return { action: "weapon", ownerId: customId.slice(PREFIX_WEAPON.length) };
+  if (customId.startsWith(PREFIX_POTION)) {
+    return { action: "potion", ownerId: customId.slice(PREFIX_POTION.length) };
   }
   return null;
 }
@@ -77,16 +77,26 @@ module.exports = async (client, interaction) => {
       if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       return await infoCmd.runInfo(client, interaction);
     }
-    if (parsed.action === "weapon") {
+    if (parsed.action === "potion") {
       if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
-      const [profile, weaponMaxPct] = await Promise.all([
-        getOrCreate(client, interaction.user.id, interaction.guildId),
-        buildingService
-          .getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId)
-          .catch(() => 0),
-      ]);
+      const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
+      const club = await dungeonService.getMemberClub(
+        client,
+        interaction.user.id,
+        interaction.guildId,
+      );
+      const max = dungeonService.staminaMax(interaction.member, club);
+      const st = dungeonService.resolveStamina(profile, max);
       return interaction.editReply({
-        components: [bossView.buildWeaponContainer({ profile, weaponMaxPct })],
+        components: [
+          bossView.buildStaminaPotionPickerContainer({
+            userId: interaction.user.id,
+            displayName: interaction.member?.displayName || interaction.user.username,
+            profile,
+            stamina: st.stamina,
+            staminaMax: max,
+          }),
+        ],
         flags: MessageFlags.IsComponentsV2,
       });
     }

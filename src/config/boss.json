@@ -3,8 +3,8 @@
     "enabled": true,
     "announceChannelId": "1511617684532367440",
     "chronicleChannelId": "1511610220856475701",
-    "hpPerPlayer": 4500,
-    "minHp": 37500,
+    "hpPerPlayer": 3200,
+    "minHp": 26000,
     "durationMinutes": 30,
     "attackLimitPerPlayer": 5,
     "scaling": {
@@ -12,14 +12,14 @@
       "activeWithinDays": 14,
       "baseAtk": 20,
       "atkPerGearStep": 60,
-      "hpBonusPerStep": 0.15,
-      "maxGearMultiplier": 2.5
+      "hpBonusPerStep": 0.12,
+      "maxGearMultiplier": 2
     },
     "rage": {
       "enabled": true,
-      "hitsPerStack": 15,
-      "counterRatePerStack": 0.03,
-      "maxCounterRate": 0.6
+      "hitsPerStack": 20,
+      "counterRatePerStack": 0.02,
+      "maxCounterRate": 0.35
     },
     "rareMaterial": "legendary_fragment",
     "summon": {
@@ -30,8 +30,8 @@
       "maxPerWeek": 3,
       "bonusAttackPerDungeonClear": 1,
       "maxBonusAttacksPerPlayer": 5,
-      "summonHpMult": 0.7,
-      "spawnCooldownMinutes": 180,
+      "summonHpMult": 1,
+      "spawnCooldownMinutes": 540,
       "summonIntro": "討伐能量集滿了！社群連日的地下城探索驚醒了沉睡的魔王——"
     },
     "saturdaySpawn": {
@@ -40,85 +40,26 @@
     },
     "nameGenerator": {
       "prefixes": [
-        "嗜睡的",
-        "暴躁的",
-        "失眠的",
-        "肚子餓的",
-        "宿醉的",
-        "減肥失敗的",
-        "心情不好的",
-        "週一症候群的",
-        "通靈中的",
-        "盜版的",
-        "腳臭味的",
-        "考試壓力大的",
-        "三天沒洗澡的",
-        "正在鬧脾氣的",
-        "剛被分手的",
-        "更年期的",
-        "黑眼圈的",
-        "假笑的",
-        "缺鈣的",
-        "口臭的",
-        "中二病末期的",
-        "便祕的",
-        "幼稚園畢業的",
-        "繳不出房租的",
-        "在排隊買雞排的"
+        "嗜睡的", "暴躁的", "失眠的", "肚子餓的", "宿醉的",
+        "減肥失敗的", "心情不好的", "週一症候群的", "通靈中的",
+        "盜版的", "腳臭味的", "考試壓力大的", "三天沒洗澡的",
+        "正在鬧脾氣的", "剛被分手的", "更年期的", "黑眼圈的",
+        "假笑的", "缺鈣的", "口臭的", "中二病末期的", "便祕的",
+        "幼稚園畢業的", "繳不出房租的", "在排隊買雞排的"
       ],
       "cores": [
-        "巨龍",
-        "魔王",
-        "史萊姆王",
-        "深淵領主",
-        "夢魘獸",
-        "暗黑帝皇",
-        "九頭蛇",
-        "海妖",
-        "邪神實習生",
-        "雞排炸彈魔",
-        "貪吃魔",
-        "毒舌獸",
-        "黑泥怪",
-        "末日機甲",
-        "冰封幼龍",
-        "獸人酋長",
-        "幽靈廚師",
-        "影武者",
-        "黏液女王",
-        "電子菩薩"
+        "巨龍", "魔王", "史萊姆王", "深淵領主", "夢魘獸",
+        "暗黑帝皇", "九頭蛇", "海妖", "邪神實習生", "雞排炸彈魔",
+        "貪吃魔", "毒舌獸", "黑泥怪", "末日機甲", "冰封幼龍",
+        "獸人酋長", "幽靈廚師", "影武者", "黏液女王", "電子菩薩"
       ],
       "suffixes": [
-        "",
-        "",
-        "",
-        "・之王",
-        "・二世",
-        "・Mk.II",
-        "・改",
-        "・終極形態",
-        "・限定版",
-        "・台灣版",
-        "・盜版",
-        "・破解版"
+        "", "", "", "・之王", "・二世", "・Mk.II", "・改",
+        "・終極形態", "・限定版", "・台灣版", "・盜版", "・破解版"
       ],
       "emojis": [
-        "🐉",
-        "👹",
-        "🦖",
-        "🐙",
-        "👾",
-        "🦑",
-        "🧌",
-        "👻",
-        "💀",
-        "🤖",
-        "🦂",
-        "🐲",
-        "🦇",
-        "🦈",
-        "🦏",
-        "🪲"
+        "🐉", "👹", "🦖", "🐙", "👾", "🦑", "🧌", "👻",
+        "💀", "🤖", "🦂", "🐲", "🦇", "🦈", "🦏", "🪲"
       ]
     },
     "spawnIntros": [
@@ -132,27 +73,12 @@
       "你不知道為什麼，但牠看起來就是欠扁。"
     ],
     "phases": {
-      "normal": {
-        "hpThreshold": 1.0,
-        "damageMult": 1.0,
-        "counterRate": 0.15,
-        "label": "正常"
-      },
-      "broken": {
-        "hpThreshold": 0.5,
-        "damageMult": 1.5,
-        "counterRate": 0.15,
-        "label": "破防"
-      },
-      "enraged": {
-        "hpThreshold": 0.2,
-        "damageMult": 1.8,
-        "counterRate": 0.3,
-        "label": "狂暴"
-      }
+      "normal":  { "hpThreshold": 1.0, "damageMult": 1.0, "counterRate": 0.07, "label": "正常" },
+      "broken":  { "hpThreshold": 0.5, "damageMult": 1.5, "counterRate": 0.07, "label": "破防" },
+      "enraged": { "hpThreshold": 0.2, "damageMult": 1.8, "counterRate": 0.15, "label": "狂暴" }
     },
     "phaseAnnouncements": {
-      "broken": "💥 **{name}** 護甲破損！全員傷害提升 ×1.5！",
+      "broken":  "💥 **{name}** 護甲破損！全員傷害提升 ×1.5！",
       "enraged": "🔥 **{name}** 進入狂暴狀態！傷害再提升，但小心被反擊！"
     },
     "combo": {
@@ -165,24 +91,23 @@
     },
     "comboAnnouncement": "⚡ Combo 滿格！全場傷害 ×1.3 持續 120 秒！（由 <@{user}> 接力觸發）",
     "rewards": {
-      "poolRatio": 0.5,
-      "killBonus": 225,
-      "firstStrikeBonus": 225,
-      "killerBonusRatio": 0.05,
-      "killerRareReward": 1,
-      "killXpBonus": 120,
-      "topRareRewardTiers": [
-        4,
-        3,
-        2,
-        1,
-        1
-      ],
-      "topRankDiamondTiers": [
-        7,
-        4,
-        2
-      ]
+      "poolRatio": 1,
+      "participation": {
+        "tiers": [
+          { "minDamage": 0,    "emoji": "🔰", "name": "到場應援",   "coins": 200,  "xp": 25,  "rare": 0, "diamond": 0 },
+          { "minDamage": 300,  "emoji": "⚔️", "name": "出力討伐",   "coins": 550,  "xp": 60,  "rare": 0, "diamond": 0 },
+          { "minDamage": 1000, "emoji": "🔥", "name": "主力輸出",   "coins": 1100, "xp": 120, "rare": 0, "diamond": 1 },
+          { "minDamage": 2500, "emoji": "💪", "name": "王牌打手",   "coins": 1900, "xp": 200, "rare": 1, "diamond": 2 },
+          { "minDamage": 5000, "emoji": "🌟", "name": "傳說級輸出", "coins": 3000, "xp": 320, "rare": 2, "diamond": 3 }
+        ]
+      },
+      "killBonus": 450,
+      "firstStrikeBonus": 450,
+      "killerBonusRatio": 0.09,
+      "killerRareReward": 2,
+      "killXpBonus": 240,
+      "topRareRewardTiers": [6, 5, 4, 3, 2, 1, 1, 1],
+      "topRankDiamondTiers": [10, 6, 4, 2, 1]
     },
     "damage": {
       "baseRandMin": 10,
@@ -198,7 +123,7 @@
     },
     "aggro": {
       "enabled": true,
-      "counterBonus": 0.15,
+      "counterBonus": 0.06,
       "minParticipants": 2
     },
     "treasure": {
@@ -213,55 +138,10 @@
       "mimicSlayCoinMax": 1800,
       "mimicSlayRareChance": 0.35,
       "tiers": [
-        {
-          "key": "wood",
-          "name": "木寶箱",
-          "emoji": "📦",
-          "weight": 48,
-          "banner": "📦 一個普通的木寶箱從魔王身上滾了出來！",
-          "coinMin": 300,
-          "coinMax": 700,
-          "rareChance": 0.04,
-          "rareQty": 1,
-          "diamond": 0
-        },
-        {
-          "key": "silver",
-          "name": "白銀寶箱",
-          "emoji": "🎁",
-          "weight": 30,
-          "banner": "🎁 一個綁著銀色緞帶的寶箱閃亮登場！",
-          "coinMin": 600,
-          "coinMax": 1300,
-          "rareChance": 0.12,
-          "rareQty": 1,
-          "diamond": 0
-        },
-        {
-          "key": "gold",
-          "name": "黃金寶箱",
-          "emoji": "🏆",
-          "weight": 16,
-          "banner": "🏆✨ 金光刺眼！一個沉甸甸的黃金寶箱砸在場中央！",
-          "coinMin": 1200,
-          "coinMax": 2600,
-          "rareChance": 0.28,
-          "rareQty": 1,
-          "diamond": 1
-        },
-        {
-          "key": "rainbow",
-          "name": "傳說寶箱",
-          "emoji": "🌈",
-          "weight": 6,
-          "banner": "🌈💎 全場屏息——傳說寶箱降臨！這種東西一輩子開不到幾次！",
-          "coinMin": 2600,
-          "coinMax": 5200,
-          "rareChance": 0.7,
-          "rareQty": 2,
-          "diamond": 3,
-          "mimicChance": 0
-        }
+        { "key": "wood", "name": "木寶箱", "emoji": "📦", "weight": 48, "banner": "📦 一個普通的木寶箱從魔王身上滾了出來！", "coinMin": 300, "coinMax": 700, "rareChance": 0.04, "rareQty": 1, "diamond": 0 },
+        { "key": "silver", "name": "白銀寶箱", "emoji": "🎁", "weight": 30, "banner": "🎁 一個綁著銀色緞帶的寶箱閃亮登場！", "coinMin": 600, "coinMax": 1300, "rareChance": 0.12, "rareQty": 1, "diamond": 0 },
+        { "key": "gold", "name": "黃金寶箱", "emoji": "🏆", "weight": 16, "banner": "🏆✨ 金光刺眼！一個沉甸甸的黃金寶箱砸在場中央！", "coinMin": 1200, "coinMax": 2600, "rareChance": 0.28, "rareQty": 1, "diamond": 1 },
+        { "key": "rainbow", "name": "傳說寶箱", "emoji": "🌈", "weight": 6, "banner": "🌈💎 全場屏息——傳說寶箱降臨！這種東西一輩子開不到幾次！", "coinMin": 2600, "coinMax": 5200, "rareChance": 0.7, "rareQty": 2, "diamond": 3, "mimicChance": 0 }
       ],
       "gamble": {
         "enabled": true,
@@ -327,19 +207,16 @@
       "treasuryLockHours": 168
     },
     "counterMessages": [
-      "{name} 一巴掌把你打飛！這次攻擊沒造成任何傷害。",
-      "你揮空了！{name} 還順便嗆了你一句。",
-      "{name} 用尾巴掃過來，你連武器都差點沒抓住。",
-      "你的劍卡在 {name} 的鱗片上，這次傷害無效。"
+      "{name} 一巴掌把 **{user}** 打飛！這次攻擊沒造成任何傷害。",
+      "**{user}** 揮空了！{name} 還順便嗆了一句。",
+      "{name} 用尾巴掃過來，**{user}** 連武器都差點沒抓住。",
+      "**{user}** 的劍卡在 {name} 的鱗片上，這次傷害無效。"
     ],
     "sealingAmmo": {
       "enabled": true,
       "label": "封魔彈藥",
       "emoji": "💥",
-      "materials": {
-        "magic_crystal": 8,
-        "diamond": 2
-      },
+      "materials": { "magic_crystal": 8, "diamond": 2 },
       "coinCost": 10000,
       "weeklyCraftLimit": 1,
       "bossDamagePct": 5,
