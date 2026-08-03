@@ -116,22 +116,45 @@ function buildDonatePicker({ viewerId, event }) {
   return c;
 }
 
-function buildQtyPicker({ viewerId, event, itemId, maxPersonal, maxGuild }) {
+function buildQtyPicker({
+  viewerId,
+  event,
+  itemId,
+  maxPersonal,
+  maxGuild,
+  dailyLimit = 0,
+  usedToday = 0,
+}) {
+  const n = (v) => (v || 0).toLocaleString();
   const c = new ContainerBuilder().setAccentColor(COLOR_INFO);
   const remain = (event.requirements_remaining || {})[itemId] || 0;
-  c.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `# 🎁 捐 ${itemEmoji(itemId)} ${itemLabel(itemId)}\n` +
-        `事件還缺 ${remain}\n` +
-        `你個人背包有 ${maxPersonal}・公會倉庫有 ${maxGuild}`
-    )
-  );
+  const roomToday = dailyLimit > 0 ? Math.max(0, dailyLimit - usedToday) : Infinity;
+
+  // 逼幣扣的是錢包、公會金庫捐不出來，講「背包 / 公會倉庫」會誤導
+  const isCurrency = itemId === "coins";
+  const headLines = [
+    `# 🎁 捐 ${itemEmoji(itemId)} ${itemLabel(itemId)}`,
+    `事件還缺 ${n(remain)}`,
+    isCurrency
+      ? `你的錢包有 ${n(maxPersonal)}`
+      : `你個人背包有 ${n(maxPersonal)}・公會倉庫有 ${n(maxGuild)}`,
+  ];
+  if (dailyLimit > 0) {
+    headLines.push(`今日額度 ${n(usedToday)} / ${n(dailyLimit)}（還可投入 ${n(roomToday)}）`);
+  }
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(headLines.join("\n")));
   c.addSeparatorComponents(new SeparatorBuilder());
-  const totalAvail = Math.min(remain, maxPersonal + maxGuild);
+
+  // 每日上限也要夾進去，否則會給出按了必被 daily_limit 打回來的按鈕
+  const totalAvail = Math.min(remain, maxPersonal + maxGuild, roomToday);
   if (totalAvail <= 0) {
-    c.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`-# 你和公會倉庫都沒有這個物資。`)
-    );
+    const body =
+      roomToday <= 0
+        ? `-# 今天的${itemLabel(itemId)}額度已用完，明天 00:00（台北）重置。`
+        : isCurrency
+          ? `-# 你的錢包沒有足夠的逼幣。`
+          : `-# 你和公會倉庫都沒有這個物資。`;
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
     return c;
   }
   // 逼幣的量級跟礦石差兩三個數量級，1/10/50 這種級距按到天荒地老
@@ -144,11 +167,18 @@ function buildQtyPicker({ viewerId, event, itemId, maxPersonal, maxGuild }) {
     row.addComponents(
       new ButtonBuilder()
         .setCustomId(`we_give|${viewerId}|${event.event_db_id}|${itemId}|${q}`)
-        .setLabel(`捐 ${q}`)
+        .setLabel(`捐 ${n(q)}`)
         .setStyle(q === totalAvail ? ButtonStyle.Success : ButtonStyle.Primary)
     );
   }
   c.addActionRowComponents(row);
+  if (dailyLimit > 0 && totalAvail === roomToday && roomToday < maxPersonal + maxGuild) {
+    c.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 最大值 ${n(roomToday)} 是今天剩下的額度，不是你的全部庫存`
+      )
+    );
+  }
   return c;
 }
 

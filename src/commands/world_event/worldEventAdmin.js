@@ -170,17 +170,23 @@ module.exports = {
       }
 
       // 進度
-      const ranking = await worldEventService.contributionRanking(client, activeMainline.event_db_id, {
-        limit: 10,
-      });
+      // 用正規化分數排，跟發稱號同一份依據（原始數量相加會讓逼幣完全主導）
+      const ranking = (await worldEventService.contributionScores(client, activeMainline)).slice(0, 10);
       const rankText = ranking.length
-        ? ranking.map((r, i) => `${i + 1}. <@${r._id}>　${r.total.toLocaleString()}`).join("\n")
+        ? ranking
+            .map((r, i) => {
+              const detail = Object.entries(r.byItem)
+                .map(([k, v]) => `${itemLabel(k)} ${v.toLocaleString()}`)
+                .join("・");
+              return `${i + 1}. <@${r._id}>　**${r.pct.toFixed(2)}%**\n　-# ${detail}`;
+            })
+            .join("\n")
         : "-# 還沒有人投入資源";
       return interaction.editReply({
         components: [
           ok(
             `${activeMainline.emoji || "🛤️"} ${activeMainline.label}`,
-            `${reqLines(activeMainline)}\n\n**貢獻榜（不分物資）**\n${rankText}`,
+            `${reqLines(activeMainline)}\n\n**貢獻榜（各物資按自身目標正規化）**\n${rankText}`,
             `狀態：${activeMainline.state} ・ 截止 <t:${Math.floor(new Date(activeMainline.ends_at).getTime() / 1000)}:R>`,
           ),
         ],

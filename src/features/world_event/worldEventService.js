@@ -485,17 +485,15 @@ async function awardContributionTitles(client, event, guildId) {
   const gameTitleService = require("../gameTitles/gameTitleService");
   if (!client?.worldEventContributionsCollection) return { granted: 0 };
 
-  const totalGoal = Object.values(event.requirements_total || {}).reduce((a, b) => a + b, 0);
-  if (!totalGoal) return { granted: 0 };
-
-  const rows = await contributionRanking(client, event.event_db_id, { limit: 500 });
+  const rows = await contributionScores(client, event);
+  if (!rows.length) return { granted: 0 };
   const defs = Object.entries(gameTitles?.defs || {}).filter(
     ([, d]) => d.req?.contributionPct || d.req?.contributionRank,
   );
 
   let granted = 0;
   for (const [idx, row] of rows.entries()) {
-    const pct = (row.total / totalGoal) * 100;
+    const pct = row.pct;
     for (const [titleId, def] of defs) {
       const okPct = def.req.contributionPct && pct >= def.req.contributionPct;
       const okRank = def.req.contributionRank && idx < def.req.contributionRank;
@@ -526,6 +524,36 @@ async function forceEndEvent(client, eventDbId) {
 }
 
 // 主線活動的貢獻排行（發稱號、公告前 N 名用）。
+// 貢獻分數：各物資先除以自己的目標再平均，不能把鐵礦與逼幣的原始數量直接相加
+// —— 目標差了 400 倍，直接加總會讓逼幣完全主導，專心倒鐵礦的人反而拿不到稱號。
+async function contributionScores(client, event) {
+  if (!client?.worldEventContributionsCollection) return [];
+  const goals = event.requirements_total || {};
+  const items = Object.keys(goals).filter((k) => goals[k] > 0);
+  if (!items.length) return [];
+
+  const rows = await client.worldEventContributionsCollection
+    .aggregate([
+      { $match: { event_db_id: event.event_db_id } },
+      { $group: { _id: { user: "$user_id", item: "$item_id" }, qty: { $sum: "$qty" } } },
+    ])
+    .toArray()
+    .catch(() => []);
+
+  const byUser = new Map();
+  for (const r of rows) {
+    const u = byUser.get(r._id.user) || { _id: r._id.user, byItem: {} };
+    u.byItem[r._id.item] = (u.byItem[r._id.item] || 0) + r.qty;
+    byUser.set(r._id.user, u);
+  }
+  return [...byUser.values()]
+    .map((u) => ({
+      ...u,
+      pct: (items.reduce((s, k) => s + (u.byItem[k] || 0) / goals[k], 0) / items.length) * 100,
+    }))
+    .sort((a, b) => b.pct - a.pct);
+}
+
 async function contributionRanking(client, eventDbId, { itemId, limit = 10 } = {}) {
   if (!client?.worldEventContributionsCollection) return [];
   const match = { event_db_id: eventDbId };
@@ -589,6 +617,7 @@ module.exports = {
   CURRENCY_ITEM,
   forceEndEvent,
   contributionRanking,
+  contributionScores,
   awardContributionTitles,
   settleExpired,
 };

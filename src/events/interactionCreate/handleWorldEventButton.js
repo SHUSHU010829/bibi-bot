@@ -139,9 +139,17 @@ async function handlePick(client, interaction) {
       })
     );
   }
-  const [maxPersonal, maxGuild] = await Promise.all([
+  const dailyLimit = (event.daily_limits || {})[itemId] || 0;
+  const [maxPersonal, maxGuild, usedToday] = await Promise.all([
     getPersonalQty(client, interaction.user.id, interaction.guildId, itemId),
     getGuildQty(client, interaction.user.id, interaction.guildId, itemId),
+    dailyLimit > 0
+      ? worldEventService.donatedTodayBy(client, {
+          eventDbId,
+          userId: interaction.user.id,
+          itemId,
+        })
+      : 0,
   ]);
   return editReplyV2(
     interaction,
@@ -151,6 +159,8 @@ async function handlePick(client, interaction) {
       itemId,
       maxPersonal,
       maxGuild,
+      dailyLimit,
+      usedToday,
     })
   );
 }

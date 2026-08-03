@@ -266,18 +266,18 @@
         "name": "拓荒英雄",
         "emoji": "⛏️",
         "category": "event",
-        "desc": "礦車軌道：投入量達全服目標 5%",
+        "desc": "礦車軌道：投入量達全服目標 2.5%",
         "req": {
-          "contributionPct": 5
+          "contributionPct": 2.5
         }
       },
       "rail_guardian": {
         "name": "礦道守護者",
         "emoji": "👑",
         "category": "event",
-        "desc": "礦車軌道：投入量達全服目標 10%",
+        "desc": "礦車軌道：投入量達全服目標 4%",
         "req": {
-          "contributionPct": 10
+          "contributionPct": 4
         }
       },
       "deep_vein_pioneer": {
