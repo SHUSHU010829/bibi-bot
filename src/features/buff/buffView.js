@@ -19,6 +19,7 @@ const {
 } = require("../mining/dungeonService");
 const { dungeon, theft } = require("../../config");
 const swordBreakService = require("../dungeon/swordBreakService");
+const deepMineService = require("../mining/deepMineService");
 const theftProfile = require("../theft/theftProfile");
 const theftService = require("../theft/theftService");
 const { SECTIONS, buildSectionRow } = require("../playerStatus/statusNav");
@@ -64,6 +65,21 @@ async function renderOverview(container, client, { userId, guildId, member }) {
     staminaLines.push("-# 體力已滿，隨時可進地下城");
   }
   addBlock(container, staminaLines.join("\n"));
+
+  // 深層礦脈是全服達標後才開放的獨立體力池，沒開放前不佔版面
+  if (deepMineService.isEnabled() && (await deepMineService.isUnlocked(client, guildId))) {
+    const d = deepMineService.resolveDeepStamina(miningProfileForStamina || {});
+    const deepLines = [`**🔮 深挖體力**：${d.stamina}/${d.max}`];
+    if (d.nextRegenAt) {
+      deepLines.push(`-# 下一點 <t:${Math.floor(d.nextRegenAt / 1000)}:R>・用 \`/深挖\` 開採魔晶礦`);
+    } else {
+      deepLines.push("-# 深挖體力已滿，隨時可用 `/深挖`");
+    }
+    if (s.deepMiningLuckPct > 0) {
+      deepLines.push(`**🍀 深層礦脈幸運**：+${s.deepMiningLuckPct}%`);
+    }
+    addBlock(container, deepLines.join("\n"));
+  }
 
   const overviewLines = [
     `**⚔️ 攻擊力**：${s.atk}`,
@@ -170,11 +186,13 @@ async function renderSources(container, client, { userId, guildId, member }) {
         `• 🥕 紅蘿蔔/玉米收成 +${s.guildClub.farmLowTierExtraCount} 個（農膳坊）`
       );
     // 公會建築（鐵匠鋪）buff
-    if (s.guildClub.weaponMaxDurabilityPct > 0)
-      lines.push(`• 🗡️ 武器耐久上限 +${s.guildClub.weaponMaxDurabilityPct}%（鐵匠鋪）`);
+    if (s.guildClub.equipmentMaxDurabilityPct > 0)
+      lines.push(
+        `• 🗡️ 裝備耐久上限 +${s.guildClub.equipmentMaxDurabilityPct}%（鐵匠鋪，鎬/劍/盾/釣竿）`
+      );
     if (s.guildClub.equipmentRepairDiscountPct > 0)
       lines.push(
-        `• 🔧 裝備修復材料 -${s.guildClub.equipmentRepairDiscountPct}%（鐵匠鋪，武器/鎬/釣竿）`
+        `• 🔧 裝備修復材料 -${s.guildClub.equipmentRepairDiscountPct}%（鐵匠鋪，鎬/劍/盾/釣竿）`
       );
     if (s.guildClub.combatDurabilitySavePct > 0)
       lines.push(
