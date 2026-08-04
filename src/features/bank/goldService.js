@@ -154,6 +154,7 @@ async function getVaultStatus(client, userId, guildId, member) {
   ]);
   const used = position.units + locked;
   const free = Number.isFinite(capacity) ? Math.max(0, capacity - used) : Infinity;
+  const over = Number.isFinite(capacity) && used > capacity;
   return {
     units: position.units,
     locked,
@@ -161,7 +162,11 @@ async function getVaultStatus(client, userId, guildId, member) {
     capacity,
     free,
     limited: Number.isFinite(capacity),
-    over: Number.isFinite(capacity) && used > capacity,
+    over,
+    // 超出的克數裡，鎖在定存的那部分只能等到期（claimTerm 會自動折現），現在賣不掉。
+    overUnits: over ? used - capacity : 0,
+    overSellable: over ? Math.min(used - capacity, position.units) : 0,
+    graceDeadline: position.overCapDeadline,
   };
 }
 
@@ -172,7 +177,12 @@ async function getPosition(client, userId, guildId) {
   const doc = await col.findOne({ userId, guildId }).catch(() => null);
   const units = doc?.units || 0;
   const costBasis = doc?.costBasis || 0;
-  return { units, costBasis, avgCost: units > 0 ? costBasis / units : 0 };
+  return {
+    units,
+    costBasis,
+    avgCost: units > 0 ? costBasis / units : 0,
+    overCapDeadline: doc?.overCapDeadline || null,
+  };
 }
 
 // 買進黃金：扣錢包、加金庫。回傳 { ok, reason, ... }。
@@ -258,6 +268,39 @@ async function sell(client, { userId, guildId, username, member, avatarHash, uni
     costRemoved: deducted.removedCost,
     pnl: gain - deducted.removedCost,
     balanceAfter: credit.doc?.totalCoins,
+  };
+}
+
+// 超出容量的強制折現（寬限期到期）：扣金庫、按當日賣出價入錢包。
+// 走 gold_overflow 記帳，與「黃金定存到期塞不下」同一個來源，玩家看得到是被折現而非賣出。
+async function liquidate(client, { userId, guildId, username, avatarHash, member, units, reason }) {
+  if (units < 1) return { ok: false, reason: "min" };
+  const deducted = await tryDeduct(client, userId, guildId, units);
+  if (!deducted.ok) return { ok: false, reason: "holding" };
+
+  const prices = await getPrices();
+  const gain = units * prices.sell;
+  const credit = await grantCoins(client, {
+    userId,
+    guildId,
+    username,
+    avatarHash,
+    amount: gain,
+    source: "gold_overflow",
+    member,
+    meta: { units, unitPrice: prices.sell, reason },
+  });
+  if (!credit) {
+    await addHolding(client, userId, guildId, units, deducted.removedCost / units);
+    return { ok: false, reason: "credit" };
+  }
+  return {
+    ok: true,
+    units,
+    gain,
+    prices,
+    holding: deducted.holding,
+    pnl: gain - deducted.removedCost,
   };
 }
 
@@ -458,6 +501,7 @@ module.exports = {
   getLockedUnits,
   getVaultStatus,
   addHolding,
+  liquidate,
   refineRecipe,
   buy,
   sell,

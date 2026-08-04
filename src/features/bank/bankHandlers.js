@@ -352,7 +352,16 @@ async function buildGold(client, ctx) {
       new TextDisplayBuilder().setContent(vaultText(holding, value, position, prices, vault)),
     );
 
-  if (vault.limited) {
+  if (vault.over) {
+    const deadline = vault.graceDeadline
+      ? `處理期限 **<t:${Math.floor(new Date(vault.graceDeadline).getTime() / 1000)}:R>**（<t:${Math.floor(new Date(vault.graceDeadline).getTime() / 1000)}:F>）`
+      : `逼逼會私訊通知你，並給 ${goldService.vaultCfg().grace?.days ?? 3} 天處理期限`;
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `⚠️ **金庫超出上限 ${fmt(vault.overUnits)} ${U()}**\n${deadline}，到期後超出的 **${fmt(vault.overSellable)}** ${U()}會按當日賣出價自動折現進錢包\n-# 自己賣出超額部分，或提升信用評等擴充容量即可解除`,
+      ),
+    );
+  } else if (vault.limited) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         "-# 金庫有容量上限（隨信用評等擴充），純金不能無限囤；放不下的財富只能留在錢包，每週照課財富稅",

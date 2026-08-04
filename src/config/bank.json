@@ -38,7 +38,16 @@
       "maxTradeUnits": 2000,
       "vault": {
         "enabled": true,
-        "baseCapacity": 200
+        "baseCapacity": 200,
+        "grace": {
+          "enabled": true,
+          "days": 3,
+          "cronSchedule": "0 5 * * *",
+          "timezone": "Asia/Taipei",
+          "dmEnabled": true,
+          "remindIntervalHours": 20,
+          "startupDelayMs": 60000
+        }
       },
       "broadcast": {
         "enabled": true,

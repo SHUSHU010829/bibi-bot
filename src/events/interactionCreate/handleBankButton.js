@@ -144,7 +144,7 @@ module.exports = async (client, interaction) => {
         return show(
           "gold",
           `✅ 黃金定存到期領回 **${fmt(res.payoutUnits)}** ${uLabel}，金庫只放得下 **${fmt(res.storedUnits)}** ${uLabel}\n` +
-            `🪙 超出容量的 **${fmt(res.overflowUnits)}** ${uLabel} 已按賣出價折現 **+${fmt(res.overflowGain)}** 幣入錢包\n` +
+            `🪙 超出容量的 **${fmt(res.overflowUnits)}** ${uLabel}已按賣出價折現 **+${fmt(res.overflowGain)}** 幣入錢包\n` +
             `-# 金庫上限 ${fmt(res.capacity)} ${uLabel}（提升信用評等可擴充）；留在錢包的部分會計入每週財富稅`,
         );
       }
