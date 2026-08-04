@@ -3,6 +3,7 @@ const { DateTime } = require("luxon");
 const { fishing, craft } = require("../../config");
 const { getOrCreate, fishBagCapacity, fishBagUsed, isBatchPassActive } = require("../mining/miningProfile");
 const { isBagLimitEnforced } = require("../mining/bagStatus");
+const { effectiveMaxOf, equipMaxPct } = require("../mining/equipDurability");
 const { weightedRandom } = require("../mining/weightedRandom");
 const {
   getFoodFishBonus,
@@ -66,6 +67,10 @@ function locationUnlockDesc(locKey) {
   return parts.join(" + ") || "預設解鎖";
 }
 
+// 釣竿有效耐久上限：DB 只存原始 base，鐵匠鋪加成讀取時才換算。
+const effectiveRodMax = (client, userId, guildId, profile) =>
+  equipMaxPct(client, userId, guildId).then((pct) => effectiveMaxOf(profile, "rod", pct));
+
 // 執行一次釣魚。回傳結果物件。
 // batchCtx（連續釣魚專用，單次釣魚不傳）：{ gc } 整批共用公會 buff、
 // { logSink } 收集 fishLog 由批次一次寫入、{ deferXp } 只 roll 經驗、由批次匯總後一次授予。
@@ -96,7 +101,7 @@ async function fish(client, { userId, guildId, location = "stream", member, user
       cdTicketReductionMs: fishing?.cdTicketReductionMs || 0,
       rodKey: profile.fishing_rod || "bamboo",
       rodDurability: profile.rod_durability,
-      rodMaxDurability: profile.rod_max_durability,
+      rodMaxDurability: await effectiveRodMax(client, userId, guildId, profile),
     };
   }
 
@@ -753,7 +758,7 @@ async function useCdTicket(client, { userId, guildId }) {
     dailyLimit,
     rodKey: profile.fishing_rod || "bamboo",
     rodDurability: profile.rod_durability,
-    rodMaxDurability: profile.rod_max_durability,
+    rodMaxDurability: await effectiveRodMax(client, userId, guildId, profile),
   };
 }
 

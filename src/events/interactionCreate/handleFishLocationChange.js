@@ -20,6 +20,7 @@ const {
   parseFishLocChangeId,
 } = require("../../commands/fishing/fish");
 const { getFishingProfile, isLocationUnlocked } = require("../../features/fishing/fishService");
+const { effectiveMaxOf, equipMaxPct } = require("../../features/mining/equipDurability");
 const reminder = require("../../features/reminders/cooldownReminderService");
 
 async function replyEphemeral(interaction, content) {
@@ -121,7 +122,11 @@ module.exports = async (client, interaction) => {
       notifyEnabled: !!notifyState?.enabled,
       rodKey: profile.fishing_rod || "bamboo",
       rodDurability: profile.rod_durability,
-      rodMaxDurability: profile.rod_max_durability,
+      rodMaxDurability: effectiveMaxOf(
+        profile,
+        "rod",
+        await equipMaxPct(client, interaction.user.id, interaction.guildId),
+      ),
     });
 
     await interaction.editReply({

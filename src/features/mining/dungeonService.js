@@ -1353,7 +1353,10 @@ async function getDungeonStatus(client, { userId, guildId, member }) {
     ),
     shield: profile.shield,
     shieldDurability: profile.shield_durability,
-    shieldMaxDurability: profile.shield_max_durability,
+    shieldMaxDurability: buildingService.effectiveMaxDurability(
+      profile.shield_max_durability,
+      clubBuildingPct(club, "equipment_max_durability_pct")
+    ),
     autoPotion: profile.dungeon_auto_potion !== false,
     autoPotionTier: profile.dungeon_auto_potion_tier || "smallest",
     autoStamina: profile.dungeon_auto_stamina === true,

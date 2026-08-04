@@ -111,10 +111,14 @@ module.exports = async (client, interaction) => {
         if (typeof maxDur !== "number" || maxDur < 20) {
           await replyEphemeral(
             interaction,
-            `⛏️ 鎬子最大耐久只剩 ${maxDur ?? "—"}，不足 20 無法使用劣質磨石。`
+            `⛏️ 鎬子的原始耐久上限只剩 ${maxDur ?? "—"}（不含鐵匠鋪加成），不足 20 無法使用劣質磨石。`
           );
           return;
         }
+        // -10 作用在原始上限；顯示補滿目標與上限用「有效上限」（含鐵匠鋪加成）。
+        const pickPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
+        const pickEffMaxNow = buildingService.effectiveMaxDurability(maxDur, pickPct);
+        const pickEffMaxAfter = buildingService.effectiveMaxDurability(maxDur - 10, pickPct);
         const pickDef = mining?.pickaxes?.[profile.pickaxe] || {};
         const confirmBtn = new ButtonBuilder()
           .setCustomId(`${USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX}${interaction.user.id}`)
@@ -124,8 +128,8 @@ module.exports = async (client, interaction) => {
         await interaction.editReply({
           content:
             `🪨 確認要對 **${pickDef.name || profile.pickaxe}** 使用劣質磨石？\n` +
-            `・耐久：${profile.pickaxe_durability} → ${maxDur}（補滿）\n` +
-            `・最大耐久上限：${maxDur} → **${maxDur - 10}**（-10）\n\n` +
+            `・耐久：${profile.pickaxe_durability} → ${pickEffMaxAfter}（補滿）\n` +
+            `・最大耐久上限：${pickEffMaxNow} → **${pickEffMaxAfter}**（原始 -10）\n\n` +
             `-# 此操作無法撤回，最大耐久下降後無法回復。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
         });
@@ -146,7 +150,7 @@ module.exports = async (client, interaction) => {
           disabled: "🔧 挖礦系統尚未啟動！",
           no_whetstone: "🪨 你沒有劣質磨石，可到 /商店 購買。",
           no_pickaxe: "⛏️ 你目前沒有可修復的鎬子（木鎬不需修復）。",
-          max_too_low: `⛏️ 鎬子最大耐久只剩 ${result.maxDurability}，不足 20 無法再使用劣質磨石。快去 /合成 一把新的吧！`,
+          max_too_low: `⛏️ 鎬子的原始耐久上限只剩 ${result.maxDurability}（不含鐵匠鋪加成），不足 20 無法再使用劣質磨石。快去 /合成 一把新的吧！`,
           retry: "⏳ 操作衝突，請再試一次。",
         };
         await interaction.editReply({
@@ -190,7 +194,7 @@ module.exports = async (client, interaction) => {
         }
         const maxDur = profile.weapon_max_durability;
         if (typeof maxDur !== "number" || maxDur < 20) {
-          await replyEphemeral(interaction, `⚔️ 武器最大耐久只剩 ${maxDur ?? "—"}，不足 20 無法使用劣質磨石。`);
+          await replyEphemeral(interaction, `⚔️ 武器的原始耐久上限只剩 ${maxDur ?? "—"}（不含鐵匠鋪加成），不足 20 無法使用劣質磨石。`);
           return;
         }
         // -10 作用在原始上限；顯示補滿目標與上限用「有效上限」（含鐵匠鋪加成）。
@@ -221,7 +225,7 @@ module.exports = async (client, interaction) => {
           disabled: "🔧 挖礦系統尚未啟動！",
           no_whetstone: "🪨 你沒有劣質磨石，可到 /商店 購買。",
           no_weapon: "⚔️ 你目前沒有可修復的武器。",
-          max_too_low: `⚔️ 武器最大耐久只剩 ${result.maxDurability}，不足 20 無法再使用劣質磨石。快去 /合成 一把新的吧！`,
+          max_too_low: `⚔️ 武器的原始耐久上限只剩 ${result.maxDurability}（不含鐵匠鋪加成），不足 20 無法再使用劣質磨石。快去 /合成 一把新的吧！`,
           retry: "⏳ 操作衝突，請再試一次。",
         };
         await interaction.editReply({ content: messages[result.reason] || "🔧 使用失敗，請稍後再試。", components: [] });
@@ -262,9 +266,13 @@ module.exports = async (client, interaction) => {
         }
         const maxDur = profile.shield_max_durability;
         if (typeof maxDur !== "number" || maxDur < 20) {
-          await replyEphemeral(interaction, `🛡️ 盾最大耐久只剩 ${maxDur ?? "—"}，不足 20 無法使用劣質磨石。`);
+          await replyEphemeral(interaction, `🛡️ 盾的原始耐久上限只剩 ${maxDur ?? "—"}（不含鐵匠鋪加成），不足 20 無法使用劣質磨石。`);
           return;
         }
+        // -10 作用在原始上限；顯示補滿目標與上限用「有效上限」（含鐵匠鋪加成）。
+        const shieldPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
+        const shieldEffMaxNow = buildingService.effectiveMaxDurability(maxDur, shieldPct);
+        const shieldEffMaxAfter = buildingService.effectiveMaxDurability(maxDur - 10, shieldPct);
         const sdef = dungeon?.shields?.[profile.shield] || {};
         const confirmBtn = new ButtonBuilder()
           .setCustomId(`${USE_WHETSTONE_SHIELD_CONFIRM_PREFIX}${interaction.user.id}`)
@@ -273,8 +281,8 @@ module.exports = async (client, interaction) => {
         await interaction.editReply({
           content:
             `🪨 確認要對 **${sdef.name || profile.shield}** 使用劣質磨石？\n` +
-            `・耐久：${profile.shield_durability} → ${maxDur}（補滿）\n` +
-            `・最大耐久上限：${maxDur} → **${maxDur - 10}**（-10）\n\n` +
+            `・耐久：${profile.shield_durability} → ${shieldEffMaxAfter}（補滿）\n` +
+            `・最大耐久上限：${shieldEffMaxNow} → **${shieldEffMaxAfter}**（原始 -10）\n\n` +
             `-# 此操作無法撤回，最大耐久下降後無法回復。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
         });
@@ -289,7 +297,7 @@ module.exports = async (client, interaction) => {
           disabled: "🔧 挖礦系統尚未啟動！",
           no_whetstone: "🪨 你沒有劣質磨石，可到 /商店 購買。",
           no_shield: "🛡️ 你目前沒有裝備盾牌。",
-          max_too_low: `🛡️ 盾最大耐久只剩 ${result.maxDurability}，不足 20 無法再使用劣質磨石。快去 /合成 一面新盾吧！`,
+          max_too_low: `🛡️ 盾的原始耐久上限只剩 ${result.maxDurability}（不含鐵匠鋪加成），不足 20 無法再使用劣質磨石。快去 /合成 一面新盾吧！`,
           retry: "⏳ 操作衝突，請再試一次。",
         };
         await interaction.editReply({ content: messages[result.reason] || "🔧 使用失敗，請稍後再試。", components: [] });
@@ -416,10 +424,12 @@ module.exports = async (client, interaction) => {
           await replyEphemeral(interaction, "🪝 你目前沒有可修復的釣竿。");
           return;
         }
+        const rodPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
+        const rodEffMax = buildingService.effectiveMaxDurability(profile.rod_max_durability, rodPct);
         if (
           typeof profile.rod_durability === "number" &&
-          typeof profile.rod_max_durability === "number" &&
-          profile.rod_durability >= profile.rod_max_durability
+          typeof rodEffMax === "number" &&
+          profile.rod_durability >= rodEffMax
         ) {
           await replyEphemeral(interaction, "✅ 釣竿耐久已滿，不需要修復！");
           return;
@@ -430,7 +440,7 @@ module.exports = async (client, interaction) => {
           .setLabel("確認修復")
           .setStyle(ButtonStyle.Danger);
         await interaction.editReply({
-          content: `🛠️ 確認要修復 **${rdef.name || profile.fishing_rod}**（耐久 ${profile.rod_durability} → ${profile.rod_max_durability}）？\n\n**消耗材料**：${formatCostLine(cost)}\n\n-# 此操作無法撤回，請確認背包/魚袋有足夠材料後再按確認。`,
+          content: `🛠️ 確認要修復 **${rdef.name || profile.fishing_rod}**（耐久 ${profile.rod_durability} → ${rodEffMax}）？\n\n**消耗材料**：${formatCostLine(cost)}\n\n-# 此操作無法撤回，請確認背包/魚袋有足夠材料後再按確認。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
         });
         return;
@@ -497,10 +507,12 @@ module.exports = async (client, interaction) => {
           await replyEphemeral(interaction, "🛡️ 你目前沒有裝著可修復的盾。");
           return;
         }
+        const shieldPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
+        const shieldEffMax = buildingService.effectiveMaxDurability(profile.shield_max_durability, shieldPct);
         if (
           typeof profile.shield_durability === "number" &&
-          typeof profile.shield_max_durability === "number" &&
-          profile.shield_durability >= profile.shield_max_durability
+          typeof shieldEffMax === "number" &&
+          profile.shield_durability >= shieldEffMax
         ) {
           await replyEphemeral(interaction, "✅ 盾牌耐久已滿，不需要修復！");
           return;
@@ -511,7 +523,7 @@ module.exports = async (client, interaction) => {
           .setLabel("確認修復")
           .setStyle(ButtonStyle.Danger);
         await interaction.editReply({
-          content: `🛠️ 確認要修復 **${sdef.name || profile.shield}**（耐久 ${profile.shield_durability} → ${profile.shield_max_durability}）？\n\n**消耗材料**：${formatCostLine(cost)}\n\n-# 此操作無法撤回，請確認背包有足夠材料後再按確認。`,
+          content: `🛠️ 確認要修復 **${sdef.name || profile.shield}**（耐久 ${profile.shield_durability} → ${shieldEffMax}）？\n\n**消耗材料**：${formatCostLine(cost)}\n\n-# 此操作無法撤回，請確認背包有足夠材料後再按確認。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
         });
         return;
@@ -583,10 +595,12 @@ module.exports = async (client, interaction) => {
         await replyEphemeral(interaction, "⛏️ 你目前沒有可修復的鎬子。");
         return;
       }
+      const pickPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
+      const pickEffMax = buildingService.effectiveMaxDurability(profile.pickaxe_max_durability, pickPct);
       if (
         typeof profile.pickaxe_durability === "number" &&
-        typeof profile.pickaxe_max_durability === "number" &&
-        profile.pickaxe_durability >= profile.pickaxe_max_durability
+        typeof pickEffMax === "number" &&
+        profile.pickaxe_durability >= pickEffMax
       ) {
         await replyEphemeral(interaction, "✅ 鎬子耐久已滿，不需要修復！");
         return;
@@ -608,7 +622,7 @@ module.exports = async (client, interaction) => {
         .setStyle(ButtonStyle.Danger);
 
       await interaction.editReply({
-        content: `🛠️ 確認要修復 **${pickDef.name || profile.pickaxe}**（耐久 ${profile.pickaxe_durability} → ${profile.pickaxe_max_durability}）？\n\n**消耗材料**：${costLines}\n\n-# 此操作無法撤回，請確認背包有足夠材料後再按確認。`,
+        content: `🛠️ 確認要修復 **${pickDef.name || profile.pickaxe}**（耐久 ${profile.pickaxe_durability} → ${pickEffMax}）？\n\n**消耗材料**：${costLines}\n\n-# 此操作無法撤回，請確認背包有足夠材料後再按確認。`,
         components: [new ActionRowBuilder().addComponents(confirmBtn)],
       });
       return;
