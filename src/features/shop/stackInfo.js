@@ -1,6 +1,7 @@
 const { stackMax } = require("./catalog");
 const { getTodayBoughtQty } = require("./dailyLimits");
 const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
+const backpackExpansion = require("./backpackExpansion");
 
 // 可堆疊商品 type → 玩家「目前持有」要查的 miningProfile 欄位、單位、payload 數量鍵。
 // payloadKey 是「每買一筆實際增加幾個」的來源（持有上限與今日進度都以此單位計）。
@@ -43,6 +44,26 @@ async function getStackInfo(client, { userId, guildId, item }) {
   let boughtToday = 0;
   if (dailyLimit != null) {
     boughtToday = await getTodayBoughtQty(client, { userId, guildId, itemId: item.id });
+  }
+
+  // 背包擴充：可買筆數由硬上限與最近一道未達成的門檻決定，並帶出下一筆的實際價格。
+  if (item.type === "mining_backpack") {
+    const prof = await getMiningProfile(client, userId, guildId).catch(() => null);
+    const q = backpackExpansion.quote(prof, 1, item);
+    const allowed = await backpackExpansion.maxChunksNow(client, { userId, guildId, profile: prof, item });
+    return {
+      max,
+      maxStack: null,
+      dailyLimit: null,
+      unit,
+      owned,
+      boughtToday: 0,
+      perQty,
+      maxBuyNow: Math.min(max, allowed),
+      capacity: q.capacityBefore,
+      capacityMax: backpackExpansion.maxSlots(),
+      nextPrice: q.nextPrice,
+    };
   }
 
   let maxBuyNow = max;

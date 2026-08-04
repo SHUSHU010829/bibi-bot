@@ -46,7 +46,7 @@
     },
     "items": [
       { "id": "mining_cd_ticket", "category": "通用道具", "type": "mining_cd_ticket", "name": "CD 縮短券", "description": "挖礦／釣魚冷卻中時，從 /挖礦 或 /釣魚 訊息點按鈕使用，立即縮短 30 分鐘冷卻（剩餘不足 30 分則直接歸零）。挖礦與釣魚共用同一批庫存。持有無上限，每日最多購買 120 張", "price": 150, "payload": { "qty": 1, "dailyLimit": 120 } },
-      { "id": "mining_backpack_expand", "category": "通用道具", "type": "mining_backpack", "name": "背包擴充", "description": "永久增加礦石／魚袋／菜籃容量 各 +5 格", "price": 2000, "payload": { "slots": 5 } },
+      { "id": "mining_backpack_expand", "category": "通用道具", "type": "mining_backpack", "name": "背包擴充", "description": "永久增加礦石／魚袋／菜籃容量 各 +5 格。容量 5,000 格以內維持固定價；超過之後每 500 格漲一段，並需要等級／累計挖礦／傳說素材碎片／地下城進度等條件，容量上限 20,000 格", "price": 2000, "payload": { "slots": 5 } },
 
       { "id": "mining_luck_potion", "category": "挖礦道具", "type": "mining_luck_potion", "name": "幸運藥水", "description": "挖礦 luck +8%，持續 3 次挖礦（自動生效）", "price": 300, "payload": { "uses": 3 } },
       { "id": "mining_stamina_potion", "category": "地下城道具", "type": "mining_stamina_potion", "name": "體力藥水（小）", "description": "到 /背包 使用，立即恢復 5 點地下城體力（不超過上限）。最多持有 30 瓶，每日最多購買 5 瓶", "price": 600, "payload": { "restore": 5, "qty": 1, "maxStack": 30, "dailyLimit": 5 } },

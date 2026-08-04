@@ -1382,6 +1382,7 @@ module.exports = {
   enterDungeon,
   enterDungeonHp,
   getDungeonStatus,
+  getPlayerLevel,
   effectiveHpMax,
   setAutoPotionPref,
   rollbackDungeon,

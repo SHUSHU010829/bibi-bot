@@ -13,6 +13,9 @@ const {
 const { getCatalog, getCategories } = require("./catalog");
 const { getTodayBoughtMap } = require("./dailyLimits");
 const { MONEY_EMOJI } = require("../../constants/coin");
+const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
+const backpackExpansion = require("./backpackExpansion");
+const backpackExpansionView = require("./backpackExpansionView");
 
 const PAGE_SIZE = 5;
 
@@ -184,6 +187,13 @@ async function buildShopView(catIndex = 0, page = 0, opts = {}) {
     boughtMap = await getTodayBoughtMap(client, { userId, guildId, itemIds: limitIds });
   }
 
+  // 背包擴充的價格隨玩家目前容量變動，清單上直接顯示個人化的下一筆價格。
+  let backpackProfile = null;
+  if (client?.miningProfilesCollection && userId && guildId
+      && pageItems.some((it) => it.type === "mining_backpack")) {
+    backpackProfile = await getMiningProfile(client, userId, guildId).catch(() => null);
+  }
+
   const container = new ContainerBuilder().setAccentColor(0xffd166);
 
   // 標題
@@ -222,10 +232,19 @@ async function buildShopView(catIndex = 0, page = 0, opts = {}) {
       const limit = dailyLimitInfo(it, boughtMap.get(it.id));
       const descLines = [head, it.description];
       if (limit) descLines.push(limit.line);
+      const atBackpackCap =
+        it.type === "mining_backpack" && backpackProfile
+          ? backpackExpansion.quote(backpackProfile, 1, it).atCap
+          : false;
+      if (it.type === "mining_backpack" && backpackProfile) {
+        descLines.push(backpackExpansionView.shopLine(backpackProfile, it));
+      }
       const button = new ButtonBuilder()
         .setCustomId(`shop_buy_${it.id}`)
         .setEmoji("🛒");
-      if (limit?.reached) {
+      if (atBackpackCap) {
+        button.setLabel("已達上限").setStyle(ButtonStyle.Secondary).setDisabled(true);
+      } else if (limit?.reached) {
         button.setLabel("今日已售完").setStyle(ButtonStyle.Secondary).setDisabled(true);
       } else {
         button.setLabel("購買").setStyle(ButtonStyle.Success);
