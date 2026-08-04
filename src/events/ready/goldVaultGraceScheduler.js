@@ -35,6 +35,7 @@ function usageLine(status) {
 
 function noticeContainer(status, deadline, sellPrice) {
   const estimate = status.overSellable * sellPrice;
+  const top = goldService.maxCapacity();
   const c = new ContainerBuilder()
     .setAccentColor(0xf1c40f)
     .addTextDisplayComponents(
@@ -52,7 +53,7 @@ function noticeContainer(status, deadline, sellPrice) {
         `**處理期限　<t:${unix(deadline)}:F>（<t:${unix(deadline)}:R>）**\n` +
           `期限內你可以：\n` +
           `・用 \`/銀行\` → 🪙 黃金存摺 **賣出**超出的部分\n` +
-          `・**提升信用評等**擴充金庫容量（信用 S 最高 1,000 ${U()}）\n\n` +
+          `・**提升信用評等**擴充金庫容量（${top.tier?.emoji ?? ""} ${top.tier?.name ?? "最高評等"} 最高 ${fmt(top.capacity)} ${U()}）\n\n` +
           `期限到仍超出的話，超出的 **${fmt(status.overSellable)}** ${U()}會按當日賣出價**自動折現進錢包**（以目前賣出價 ${fmt(sellPrice)}/${U()} 估約 **+${fmt(estimate)}** 幣）。`,
       ),
     )

@@ -19,10 +19,10 @@
       "dailyGainCap": 20,
       "tiers": [
         { "min": 0,   "name": "信用 D", "emoji": "🔴", "transferMax": 50000,   "dailyCap": 100000,  "dailyCount": 3,  "depositSlotBonus": 0,  "loanCap": 0,       "vaultBonus": 0 },
-        { "min": 150, "name": "信用 C", "emoji": "🟠", "transferMax": 100000,  "dailyCap": 300000,  "dailyCount": 6,  "depositSlotBonus": 2,  "loanCap": 50000,   "vaultBonus": 100 },
-        { "min": 350, "name": "信用 B", "emoji": "🟡", "transferMax": 250000,  "dailyCap": 800000,  "dailyCount": 10, "depositSlotBonus": 4,  "loanCap": 200000,  "vaultBonus": 300 },
-        { "min": 600, "name": "信用 A", "emoji": "🟢", "transferMax": 500000,  "dailyCap": 2000000, "dailyCount": 15, "depositSlotBonus": 6,  "loanCap": 500000,  "vaultBonus": 500 },
-        { "min": 850, "name": "信用 S", "emoji": "💎", "transferMax": 1000000, "dailyCap": 5000000, "dailyCount": 25, "depositSlotBonus": 10, "loanCap": 1500000, "vaultBonus": 800 }
+        { "min": 150, "name": "信用 C", "emoji": "🟠", "transferMax": 100000,  "dailyCap": 300000,  "dailyCount": 6,  "depositSlotBonus": 2,  "loanCap": 50000,   "vaultBonus": 1000 },
+        { "min": 350, "name": "信用 B", "emoji": "🟡", "transferMax": 250000,  "dailyCap": 800000,  "dailyCount": 10, "depositSlotBonus": 4,  "loanCap": 200000,  "vaultBonus": 3000 },
+        { "min": 600, "name": "信用 A", "emoji": "🟢", "transferMax": 500000,  "dailyCap": 2000000, "dailyCount": 15, "depositSlotBonus": 6,  "loanCap": 500000,  "vaultBonus": 5000 },
+        { "min": 850, "name": "信用 S", "emoji": "💎", "transferMax": 1000000, "dailyCap": 5000000, "dailyCount": 25, "depositSlotBonus": 10, "loanCap": 1500000, "vaultBonus": 8000 }
       ]
     },
     "gold": {
@@ -38,7 +38,7 @@
       "maxTradeUnits": 2000,
       "vault": {
         "enabled": true,
-        "baseCapacity": 200,
+        "baseCapacity": 2000,
         "grace": {
           "enabled": true,
           "days": 3,

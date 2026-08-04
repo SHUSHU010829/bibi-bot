@@ -132,6 +132,13 @@ async function getCapacity(client, userId, guildId, member) {
   return base + (limits.tier?.vaultBonus || 0);
 }
 
+// 最高信用評等能開到的容量（文案用，不要在各處寫死數字）。
+function maxCapacity() {
+  const base = vaultCfg().baseCapacity ?? 200;
+  const top = creditService.tiers().at(-1);
+  return { capacity: base + (top?.vaultBonus || 0), tier: top };
+}
+
 // 定存鎖倉的克數也算佔用容量，否則定存會變成繞過上限的無限倉庫。
 async function getLockedUnits(client, userId, guildId) {
   const col = client.goldDepositsCollection;
@@ -498,6 +505,7 @@ module.exports = {
   getHolding,
   getPosition,
   getCapacity,
+  maxCapacity,
   getLockedUnits,
   getVaultStatus,
   addHolding,
