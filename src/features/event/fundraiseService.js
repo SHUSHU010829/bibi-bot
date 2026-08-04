@@ -77,11 +77,12 @@ async function applyFundraise(client, opts) {
 
   const minGoal = c.minGoal ?? 1000;
   const maxGoal = c.maxGoal ?? 3000000;
-  if (goal < minGoal || goal > maxGoal) {
+  // 目標是選填的，只影響卡片上的進度條；不填就不畫進度條，募多少算多少。
+  if (goal != null && (goal < minGoal || goal > maxGoal)) {
     return err(
       "❌ 募資目標超出範圍",
       `可設定範圍：**${minGoal.toLocaleString()} ~ ${maxGoal.toLocaleString()}** credits\n你填的是：${goal.toLocaleString()}`,
-      "目標只是給贊助者看的進度條，募超過也不會被退回。",
+      "也可以不填目標，卡片就只顯示「已募得多少」。",
     );
   }
   if (rankCount < 1 || rankCount > maxRankCount()) {

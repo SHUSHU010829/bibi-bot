@@ -28,19 +28,19 @@ module.exports = {
     )
     .addIntegerOption((opt) =>
       opt
-        .setName("募資目標")
-        .setDescription(`想募到多少 credits（${MIN_GOAL} ~ ${MAX_GOAL}）`)
-        .setRequired(true)
-        .setMinValue(MIN_GOAL)
-        .setMaxValue(MAX_GOAL),
-    )
-    .addIntegerOption((opt) =>
-      opt
         .setName("名次數")
         .setDescription(`有幾個名次（1 ~ ${MAX_RANKS}）`)
         .setRequired(true)
         .setMinValue(1)
         .setMaxValue(MAX_RANKS),
+    )
+    .addIntegerOption((opt) =>
+      opt
+        .setName("募資目標")
+        .setDescription(`進度條的目標金額（${MIN_GOAL} ~ ${MAX_GOAL}；不填則不設目標）`)
+        .setRequired(false)
+        .setMinValue(MIN_GOAL)
+        .setMaxValue(MAX_GOAL),
     )
     .addStringOption((opt) =>
       opt.setName("描述").setDescription("活動說明（選填）").setRequired(false).setMaxLength(500),
@@ -96,7 +96,7 @@ module.exports = {
         member: interaction.member,
         name: interaction.options.getString("名稱").trim(),
         description: interaction.options.getString("描述")?.trim() || null,
-        goal: interaction.options.getInteger("募資目標"),
+        goal: interaction.options.getInteger("募資目標") ?? null,
         rankCount: interaction.options.getInteger("名次數"),
         days: interaction.options.getInteger("募資天數") ?? DEFAULT_DAYS,
         retentionPct: interaction.options.getInteger("保留比例") ?? 0,
@@ -118,7 +118,7 @@ module.exports = {
             title: "📨 申請已送出，等待審核",
             body:
               `**${doc.name}**\n` +
-              `募資目標：${doc.funding.goal.toLocaleString()} credits\n` +
+              `募資目標：${doc.funding.goal ? `${doc.funding.goal.toLocaleString()} credits` : "未設定"}\n` +
               `募資天數：${doc.funding.days} 天\n` +
               `你的保留比例：${doc.funding.hostRetentionPct}%\n` +
               `活動 ID：\`${doc.eventId}\``,
