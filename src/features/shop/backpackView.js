@@ -45,6 +45,7 @@ function bagFishDefs(bag) {
 const { getSellableItem, SELL_MODAL_OPEN_PREFIX } = require("./sellableItems");
 const foodBag = require("../fishing/foodBag");
 const foodBagView = require("../fishing/foodBagView");
+const trapTiers = require("../farm/trapTiers");
 
 function trendLabel(price, base) {
   if (!base) return "";
@@ -700,18 +701,20 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         const pickaxeMax = profile.pickaxe_max_durability;
         const weaponMax = profile.weapon_max_durability;
         const shieldMax = profile.shield_max_durability;
-        // 磨石 -10 的門檻看「原始上限」(weaponMax)；顯示則看「有效上限」(含鐵匠鋪加成)。
-        const weaponEffMax = buildingService.effectiveMaxDurability(weaponMax, equipMaxPct);
+        // 磨石 -10 的門檻看「原始上限」；顯示則看「有效上限」(含鐵匠鋪加成)，跟 /裝備 同一個數字。
+        const pickaxeEffMax = effMaxOf(pickaxeMax);
+        const weaponEffMax = effMaxOf(weaponMax);
+        const shieldEffMax = effMaxOf(shieldMax);
         const canPickaxe = inferiorCount > 0 && profile.pickaxe !== "wood" && typeof pickaxeMax === "number" && pickaxeMax >= 20;
         const canWeapon = inferiorCount > 0 && profile.weapon !== "fist" && typeof weaponMax === "number" && weaponMax >= 20;
         const canShield = inferiorCount > 0 && !!profile.shield && typeof shieldMax === "number" && shieldMax >= 20;
 
         const hintLines = [`🪨 **劣質磨石** ×${inferiorCount}`];
-        hintLines.push("-# 通用修復 — 補滿耐久，該裝備最大耐久 -10（max < 20 時無法使用）");
+        hintLines.push("-# 通用修復 — 補滿耐久，該裝備最大耐久 -10（原始上限 < 20 時無法使用）");
         const slots = [];
-        if (profile.pickaxe !== "wood") slots.push(`鎬 max ${pickaxeMax ?? "—"}`);
+        if (profile.pickaxe !== "wood") slots.push(`鎬 max ${pickaxeEffMax ?? "—"}`);
         if (profile.weapon !== "fist") slots.push(`武 max ${weaponEffMax ?? "—"}`);
-        if (profile.shield) slots.push(`盾 max ${shieldMax ?? "—"}`);
+        if (profile.shield) slots.push(`盾 max ${shieldEffMax ?? "—"}`);
         if (slots.length) hintLines.push(`-# 目前：${slots.join(" ・ ")}`);
 
         container.addTextDisplayComponents(
@@ -906,11 +909,15 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
 
     const rodKey = fishProfile.fishing_rod || "bamboo";
     const rodDef = (fishing.rods || {})[rodKey] || (fishing.rods || {}).bamboo || {};
+    const rodEffMaxDura = buildingService.effectiveMaxDurability(
+      fishProfile.rod_max_durability,
+      await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId),
+    );
     const rodDuraText =
       rodKey === "bamboo" || fishProfile.rod_durability == null
         ? "永久"
-        : typeof fishProfile.rod_max_durability === "number"
-          ? `耐久 ${fishProfile.rod_durability} / ${fishProfile.rod_max_durability}`
+        : typeof rodEffMaxDura === "number"
+          ? `耐久 ${fishProfile.rod_durability} / ${rodEffMaxDura}`
           : `耐久 ${fishProfile.rod_durability}`;
     const rodLine = `🪝 釣竿：**${rodDef.emoji || "🎣"} ${rodDef.name || "竹釣竿"}**（${rodDuraText}）`;
 
