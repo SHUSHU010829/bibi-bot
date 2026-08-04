@@ -108,7 +108,7 @@ async function renderFarm(interaction, client) {
   const profile = await getOrCreate(client, userId, guildId);
   const plotCount = farmService.getPlotCount(profile);
   const plots = await farmService.getPlots(client, userId, guildId, plotCount);
-  const { trapBlocksRemaining, trapBlocksUsedThisOpen } =
+  const { trapBlocksRemaining, trapBlocksUsedThisOpen, trapBlocksBlocked, trapFailures, trapHoldings } =
     await farmService.applyPendingRaids(client, { userId, guildId, plots, profile });
   const club = await getMemberClub(client, interaction.user.id, interaction.guildId);
   const sMax = staminaMax(interaction.member, club);
@@ -121,6 +121,9 @@ async function renderFarm(interaction, client) {
     stamina,
     trapBlocksRemaining,
     trapBlocksUsedThisOpen,
+    trapBlocksBlocked,
+    trapFailures,
+    trapHoldings,
   });
 }
 

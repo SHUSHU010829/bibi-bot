@@ -219,6 +219,23 @@ function parseRepairRodId(customId) {
   return null;
 }
 
+// 盾牌材料修復：mining_repair_shield_<ownerId> / _confirm_
+const REPAIR_SHIELD_PREFIX = "mining_repair_shield_";
+const REPAIR_SHIELD_CONFIRM_PREFIX = "mining_repair_shield_confirm_";
+
+function parseRepairShieldId(customId) {
+  if (!customId) return null;
+  if (customId.startsWith(REPAIR_SHIELD_CONFIRM_PREFIX)) {
+    const ownerId = customId.slice(REPAIR_SHIELD_CONFIRM_PREFIX.length);
+    return ownerId ? { ownerId, confirm: true } : null;
+  }
+  if (customId.startsWith(REPAIR_SHIELD_PREFIX)) {
+    const ownerId = customId.slice(REPAIR_SHIELD_PREFIX.length);
+    return ownerId ? { ownerId, confirm: false } : null;
+  }
+  return null;
+}
+
 const TYPE_LABEL = {
   role_color: "🎨 顏色身份組",
   role_color_custom: "🎨 自訂顏色身份組",
@@ -580,12 +597,19 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       );
     }
 
+    const guildBuildingBuffs = await buildingService
+      .getMemberBuildingBuffs(client, userId, guildId)
+      .catch(() => ({}));
+    const repairDiscountPct = guildBuildingBuffs.equipment_repair_discount_pct || 0;
+    const equipMaxPct = guildBuildingBuffs.equipment_max_durability_pct || 0;
+    const effMaxOf = (v) => buildingService.effectiveMaxDurability(v, equipMaxPct);
+
     const pdef = mining.pickaxes[profile.pickaxe] || mining.pickaxes.wood;
     const durabilityText =
       profile.pickaxe === "wood" || profile.pickaxe_durability == null
         ? "永久"
         : typeof profile.pickaxe_max_durability === "number"
-          ? `耐久 ${profile.pickaxe_durability} / ${profile.pickaxe_max_durability}`
+          ? `耐久 ${profile.pickaxe_durability} / ${effMaxOf(profile.pickaxe_max_durability)}`
           : `耐久 ${profile.pickaxe_durability}`;
 
     const now = Date.now();
@@ -601,11 +625,6 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     const repairTools = profile.repair_tools || {};
     const reductionMin = Math.round((mining?.cdTicketReductionMs || 0) / 60000);
 
-    const guildBuildingBuffs = await buildingService
-      .getMemberBuildingBuffs(client, userId, guildId)
-      .catch(() => ({}));
-    const repairDiscountPct = guildBuildingBuffs.equipment_repair_discount_pct || 0;
-    const weaponMaxPct = guildBuildingBuffs.weapon_max_durability_pct || 0;
     const repairCost = applyRepairDiscount(
       getPickaxeRepairCost(profile),
       repairDiscountPct
@@ -615,7 +634,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       profile.pickaxe !== "wood" &&
       typeof profile.pickaxe_durability === "number" &&
       typeof profile.pickaxe_max_durability === "number" &&
-      profile.pickaxe_durability < profile.pickaxe_max_durability;
+      profile.pickaxe_durability < effMaxOf(profile.pickaxe_max_durability);
 
     const formatCost = (cost) => {
       if (!cost) return "";
@@ -682,7 +701,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
         const weaponMax = profile.weapon_max_durability;
         const shieldMax = profile.shield_max_durability;
         // 磨石 -10 的門檻看「原始上限」(weaponMax)；顯示則看「有效上限」(含鐵匠鋪加成)。
-        const weaponEffMax = buildingService.effectiveWeaponMaxDurability(weaponMax, weaponMaxPct);
+        const weaponEffMax = buildingService.effectiveMaxDurability(weaponMax, equipMaxPct);
         const canPickaxe = inferiorCount > 0 && profile.pickaxe !== "wood" && typeof pickaxeMax === "number" && pickaxeMax >= 20;
         const canWeapon = inferiorCount > 0 && profile.weapon !== "fist" && typeof weaponMax === "number" && weaponMax >= 20;
         const canShield = inferiorCount > 0 && !!profile.shield && typeof shieldMax === "number" && shieldMax >= 20;
@@ -732,7 +751,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
                 ? "需要非木鎬才能修復"
                 : !canRepair && typeof profile.pickaxe_durability === "number" &&
                   typeof profile.pickaxe_max_durability === "number" &&
-                  profile.pickaxe_durability >= profile.pickaxe_max_durability
+                  profile.pickaxe_durability >= effMaxOf(profile.pickaxe_max_durability)
                 ? "耐久已滿，不需要修復"
                 : "裝備鎬子後可使用"
             }`;
@@ -1031,16 +1050,18 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     if (farmProfile.rare_bait > 0) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**🎏 稀有魚餌** ×${farmProfile.rare_bait}\n-# 黑玫瑰收成額外掉落物`,
+          `**🎏 稀有魚餌** ×${farmProfile.rare_bait}\n-# 黑玫瑰收成額外掉落物・下次 \`/釣魚\` 上鉤時自動吃 1 個，大幅提高稀有魚機率`,
         ),
       );
     }
     // 高級陷阱保護中（自動抵擋農場 raid，與農場 raid 系統強相關，放這裡）
-    const farmTrapUses = farmProfile.advanced_trap_uses || 0;
+    const farmTrapUses = trapTiers.totalTrapUses(farmProfile);
     if (farmTrapUses > 0) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🪤 **高級陷阱保護中**：剩 ${farmTrapUses} 次\n-# 自動抵擋鄰居對你農場的 raid`,
+          `🪤 **農場陷阱保護中**：剩 ${farmTrapUses} 次\n`
+            + `-# ${trapTiers.describeHoldings(farmProfile).join("・")}\n`
+            + `-# 自動抵擋農場怪物入侵`,
         ),
       );
     }
@@ -1288,6 +1309,9 @@ module.exports = {
   REPAIR_ROD_PREFIX,
   REPAIR_ROD_CONFIRM_PREFIX,
   parseRepairRodId,
+  REPAIR_SHIELD_PREFIX,
+  REPAIR_SHIELD_CONFIRM_PREFIX,
+  parseRepairShieldId,
   USE_STAMINA_POTION_PREFIX,
   USE_TREASURE_MAP_PREFIX,
   parseUseTreasureMapId,

@@ -478,13 +478,13 @@ async function trigger(client, ctx) {
         const wdef = (dungeon?.weapons || {})[profile.weapon] || {};
         if (profile.weapon !== "fist" && wdef.durability) {
           const buildingService = require("../guild_club/buildingService");
-          const pct = await buildingService.getWeaponMaxDurabilityPct(client, userId, guildId);
+          const pct = await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId);
           // 儲存的是「原始上限」；補耐久補到「有效上限」（原始 × 鐵匠鋪加成）。
           const baseMax =
             typeof profile.weapon_max_durability === "number"
               ? profile.weapon_max_durability
               : wdef.durability;
-          const effMax = buildingService.effectiveWeaponMaxDurability(baseMax, pct);
+          const effMax = buildingService.effectiveMaxDurability(baseMax, pct);
           const cur =
             typeof profile.weapon_durability === "number"
               ? profile.weapon_durability

@@ -16,6 +16,8 @@ const worldEventBuffs = require("../../features/world_event/worldEventBuffs");
 const { formatBuff } = require("../../features/buff/buffLabels");
 const { itemLabel } = require("../../features/world_event/worldEventItems");
 
+const eventDef = (id) => worldEventService.eventDef(id);
+
 const COLOR_OPEN = 0xf1c40f;
 const COLOR_BUFF = 0x2ecc71;
 const COLOR_END = 0x95a5a6;
@@ -65,14 +67,35 @@ async function claimAnnounce(client, eventDbId, phase) {
 
 function buildOpenContainer(event) {
   const c = new ContainerBuilder().setAccentColor(event.color || COLOR_OPEN);
+  const def = eventDef(event.event_id) || {};
+  const mainline = event.kind === "mainline";
+  const daily = event.daily_limits || {};
   const reqLines = Object.entries(event.requirements_remaining || {})
-    .map(([k, v]) => `• ${itemLabel(k)} 0 / ${v}`)
+    .map(([k, v]) => {
+      const limit = daily[k];
+      return (
+        `• ${itemLabel(k)} 0 / ${(v || 0).toLocaleString()}`
+        + (limit ? `　-# 每人每日上限 ${limit.toLocaleString()}` : "")
+      );
+    })
     .join("\n");
   c.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `# ${event.emoji || "🌍"} 世界事件開啟：${event.label}\n${event.description || ""}`
+      `# ${event.emoji || "🌍"} ${mainline ? "主線活動開啟" : "世界事件開啟"}：${event.label}\n${event.description || ""}`
     )
   );
+  // 先講「達標後拿得到什麼」再講「要交什麼」——沒有這段，玩家只看得到成本。
+  // 文案與達標公告共用 completion.lines，避免兩邊各寫一份而改到不一致。
+  const unlockLines = def.completion?.lines || [];
+  if (unlockLines.length) {
+    c.addSeparatorComponents(new SeparatorBuilder());
+    c.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `🎁 **達標後全服永久解鎖**\n${unlockLines.join("\n")}\n` +
+          `-# 這些是永久開放，不是限時 buff。`
+      )
+    );
+  }
   c.addSeparatorComponents(new SeparatorBuilder());
   c.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
@@ -80,6 +103,13 @@ function buildOpenContainer(event) {
         `截止時間：<t:${Math.floor(new Date(event.ends_at).getTime() / 1000)}:R>`
     )
   );
+  // 主線需要拓荒錘才捐得了，不在開場講的話玩家會直接撞到「還沒有拓荒錘」
+  if (def.entryRequirement) {
+    c.addSeparatorComponents(new SeparatorBuilder());
+    c.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`🔨 **參加前置**\n${def.entryRequirement}`)
+    );
+  }
   c.addActionRowComponents(
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -94,6 +124,27 @@ function buildOpenContainer(event) {
 
 function buildBuffStartContainer(event) {
   const c = new ContainerBuilder().setAccentColor(COLOR_BUFF);
+  // 主線活動給的是永久解鎖、不是會過期的 buff，rewards.buffs 是空的。
+  // 沿用一般事件的「全服 buff 啟動 / 持續至 X」會印出空白區塊而且語意也錯。
+  const completion = eventDef(event.event_id)?.completion;
+  if (completion) {
+    c.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ✅ ${event.emoji || "🌍"} ${event.label} 達標！\n## ${completion.title}`
+      )
+    );
+    c.addSeparatorComponents(new SeparatorBuilder());
+    c.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent((completion.lines || []).join("\n"))
+    );
+    if (completion.footer) {
+      c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`-# ${completion.footer}`)
+      );
+    }
+    return c;
+  }
+
   const buffLines = Object.entries(event.rewards?.buffs || {})
     .map(([k, v]) => `• ${formatBuff(k, v)}`)
     .join("\n");
@@ -108,6 +159,49 @@ function buildBuffStartContainer(event) {
       `**全伺服器 buff：**\n${buffLines}\n\n` +
         `持續至 <t:${Math.floor(new Date(event.ends_at).getTime() / 1000)}:R>`
     )
+  );
+  return c;
+}
+
+// 整體進度取各項需求完成率的平均：主線同時要鐵礦與逼幣，只看其中一項會誤導。
+function overallProgressPct(event) {
+  const totals = Object.entries(event.requirements_total || {});
+  if (!totals.length) return 0;
+  const sum = totals.reduce((acc, [k, total]) => {
+    if (!total) return acc + 1;
+    const remain = (event.requirements_remaining || {})[k] || 0;
+    return acc + Math.max(0, Math.min(1, (total - remain) / total));
+  }, 0);
+  return Math.floor((sum / totals.length) * 100);
+}
+
+function buildMilestoneContainer(event, milestone) {
+  const c = new ContainerBuilder().setAccentColor(event.color || COLOR_OPEN);
+  const lines = Object.entries(event.requirements_total || {})
+    .map(([k, total]) => {
+      const remain = (event.requirements_remaining || {})[k] || 0;
+      const filled = total - remain;
+      const ratio = total ? Math.max(0, Math.min(1, filled / total)) : 1;
+      const on = Math.round(ratio * 12);
+      return `• ${itemLabel(k)}　${filled.toLocaleString()} / ${total.toLocaleString()}\n`
+        + `\`${"█".repeat(on)}${"░".repeat(12 - on)} ${Math.floor(ratio * 100)}%\``;
+    })
+    .join("\n");
+  c.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `# ${event.emoji || "🌍"} ${event.label} 進度 ${milestone}%`,
+    ),
+  );
+  c.addSeparatorComponents(new SeparatorBuilder());
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines));
+  c.addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`we_view|${event.event_db_id}`)
+        .setLabel("查看事件 / 捐獻")
+        .setEmoji("🎁")
+        .setStyle(ButtonStyle.Primary),
+    ),
   );
   return c;
 }
@@ -171,9 +265,28 @@ async function scanOnce(client) {
         await sendAnnounce(client, channelId, buildBuffStartContainer(e), { ping: true });
       }
     }
+    // 主線活動跑好幾天，中間要有進度回報維持參與感
+    if (e.kind === "mainline" && e.state === "collecting") {
+      const pct = overallProgressPct(e);
+      for (const milestone of [75, 50, 25]) {
+        if (pct < milestone) continue;
+        if (await claimAnnounce(client, e.event_db_id, `pct${milestone}`)) {
+          await sendAnnounce(client, channelId, buildMilestoneContainer(e, milestone), { ping: true });
+        }
+        break;
+      }
+    }
   }
 
-  // 3) refresh buff cache（每分鐘）
+  // 3) 主線達標公告：mainline 達標後 state 直接進 completed（沒有會過期的
+  //    buffing 階段），所以不在 getActiveEvents 裡，得另外撈才發得出來。
+  for (const e of await worldEventService.getRecentlyCompleted(client)) {
+    if (await claimAnnounce(client, e.event_db_id, "completed")) {
+      await sendAnnounce(client, channelId, buildBuffStartContainer(e), { ping: true });
+    }
+  }
+
+  // 4) refresh buff cache（每分鐘）
   await worldEventBuffs.refreshCache(client).catch(() => {});
 }
 

@@ -12,7 +12,11 @@ function fertilizerByBackpackKey(itemId) {
   return null;
 }
 
+// 逼幣不是倉庫物資也不是背包道具，但主線活動會徵集它，得有中文名。
+const CURRENCY_META = { name: "逼幣", emoji: "🪙" };
+
 function itemMeta(id) {
+  if (id === "coins") return CURRENCY_META;
   return guildWarehouse?.items?.[id] || fertilizerByBackpackKey(id) || null;
 }
 

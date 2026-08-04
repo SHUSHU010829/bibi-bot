@@ -34,7 +34,14 @@ function defaultProfile(userId, guildId) {
     broken_net_fragments: 0,
     fishing_net_uses: 0,
     broken_trap_fragments: 0,
+    pioneer_hammer: false,
+    deep_stamina: null,
+    deep_stamina_updated_at: 0,
+    deep_mine_count_total: 0,
+    sealing_ammo_count: 0,
+    sealing_ammo_week: "",
     advanced_trap_uses: 0,
+    basic_trap_uses: 0,
     treasure_map_fragments: 0,
     treasure_maps: 0,
     neighbor_prank_count: 0,
@@ -93,7 +100,14 @@ function normalize(doc) {
   doc.broken_net_fragments ??= 0;
   doc.fishing_net_uses ??= 0;
   doc.broken_trap_fragments ??= 0;
+  doc.pioneer_hammer ??= false;
+  doc.deep_stamina ??= null;
+  doc.deep_stamina_updated_at ??= 0;
+  doc.deep_mine_count_total ??= 0;
+  doc.sealing_ammo_count ??= 0;
+  doc.sealing_ammo_week ??= "";
   doc.advanced_trap_uses ??= 0;
+  doc.basic_trap_uses ??= 0;
   doc.treasure_map_fragments ??= 0;
   doc.treasure_maps ??= 0;
   doc.neighbor_prank_count ??= 0;
@@ -235,7 +249,7 @@ function backpackCapacity(profile, mining) {
 }
 
 // 背包目前使用量（只計礦石，肥料類道具不占容量）
-const ORE_KEYS = ["stone", "coal", "iron", "gold", "diamond"];
+const ORE_KEYS = ["stone", "coal", "iron", "gold", "diamond", "magic_crystal"];
 function backpackUsed(profile) {
   const bp = profile?.backpack || {};
   return ORE_KEYS.reduce((sum, k) => sum + (bp[k] || 0), 0);

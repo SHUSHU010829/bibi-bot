@@ -18,8 +18,37 @@ const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
 
-function recipeChoices() {
-  return (craft?.recipes || []).map((r) => ({ name: r.name, value: r.id }));
+// 配方數已超過 Discord 靜態 choices 上限（25），改走 autocomplete。
+//
+// 沒打字時只回得了 25 筆，若照 config 原順序切，排在後面的整個類別會完全消失
+// （拓荒錘、魔晶系列全都在第 26 筆之後，而拓荒錘是參加主線活動的必要前置）。
+// 所以空字串時改成「各類別輪流取」，保證每個分類都露得到；有打字就照一般過濾。
+function balancedSample(recipes, limit) {
+  const byType = new Map();
+  for (const r of recipes) {
+    const t = r.result?.type || "?";
+    if (!byType.has(t)) byType.set(t, []);
+    byType.get(t).push(r);
+  }
+  const queues = [...byType.values()];
+  const out = [];
+  while (out.length < limit && queues.some((q) => q.length)) {
+    for (const q of queues) {
+      if (!q.length) continue;
+      out.push(q.shift());
+      if (out.length >= limit) break;
+    }
+  }
+  return out;
+}
+
+function recipeMatches(query) {
+  const q = (query || "").trim().toLowerCase();
+  const all = craft?.recipes || [];
+  const hits = q
+    ? all.filter((r) => r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q))
+    : balancedSample(all, 25);
+  return hits.slice(0, 25).map((r) => ({ name: r.name, value: r.id }));
 }
 
 // 裝備標籤：依類型取鎬子 / 武器 / 釣竿 / 盾定義。
@@ -52,7 +81,7 @@ module.exports = {
         .setName("裝備")
         .setDescription("要合成的鎬子或武器；不填則打開工坊「合成」分頁，用按鈕直接合成")
         .setRequired(false)
-        .addChoices(...recipeChoices())
+        .setAutocomplete(true)
     )
     .addBooleanOption((o) =>
       o
@@ -60,6 +89,17 @@ module.exports = {
         .setDescription("確認替換目前仍可用的裝備")
         .setRequired(false)
     ),
+
+  autocomplete: async (client, interaction) => {
+    const focused = interaction.options.getFocused(true);
+    try {
+      if (focused.name !== "裝備") return interaction.respond([]).catch(() => {});
+      return interaction.respond(recipeMatches(focused.value)).catch(() => {});
+    } catch (error) {
+      console.log(`[ERROR] /合成 autocomplete: ${error}`.red);
+      return interaction.respond([]).catch(() => {});
+    }
+  },
 
   run: async (client, interaction) => {
     const recipeId = interaction.options.getString("裝備");

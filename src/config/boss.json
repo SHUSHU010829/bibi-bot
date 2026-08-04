@@ -211,6 +211,16 @@
       "**{user}** 揮空了！{name} 還順便嗆了一句。",
       "{name} 用尾巴掃過來，**{user}** 連武器都差點沒抓住。",
       "**{user}** 的劍卡在 {name} 的鱗片上，這次傷害無效。"
-    ]
+    ],
+    "sealingAmmo": {
+      "enabled": true,
+      "label": "封魔彈藥",
+      "emoji": "💥",
+      "materials": { "magic_crystal": 8, "diamond": 2 },
+      "coinCost": 10000,
+      "weeklyCraftLimit": 1,
+      "bossDamagePct": 5,
+      "attackLimitBonus": 2
+    }
   }
 }

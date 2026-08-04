@@ -10,6 +10,7 @@ require("colors");
 const { MessageFlags } = require("discord.js");
 
 const worldEventService = require("../../features/world_event/worldEventService");
+const { itemLabel } = require("../../features/world_event/worldEventItems");
 const worldEventView = require("../../features/world_event/worldEventView");
 const { guildWarehouse } = require("../../config");
 const { deferReplySafe, deferUpdateSafe } = require("../../utils/safeAck");
@@ -38,6 +39,11 @@ async function loadEvent(client, eventDbId) {
 }
 
 async function getPersonalQty(client, userId, guildId, itemId) {
+  // 逼幣存在 UserCoins，不在任何袋子裡
+  if (itemId === worldEventService.CURRENCY_ITEM) {
+    const c = await client.userCoinsCollection?.findOne({ userId, guildId }).catch(() => null);
+    return c?.totalCoins || 0;
+  }
   const meta = guildWarehouse?.items?.[itemId];
   const bag =
     meta?.kind === "fish_bag"
@@ -52,6 +58,7 @@ async function getPersonalQty(client, userId, guildId, itemId) {
 }
 
 async function getGuildQty(client, userId, guildId, itemId) {
+  if (itemId === worldEventService.CURRENCY_ITEM) return 0;
   const m = await client.guildClubMembersCollection
     .findOne({ userId, guildId })
     .catch(() => null);
@@ -132,9 +139,17 @@ async function handlePick(client, interaction) {
       })
     );
   }
-  const [maxPersonal, maxGuild] = await Promise.all([
+  const dailyLimit = (event.daily_limits || {})[itemId] || 0;
+  const [maxPersonal, maxGuild, usedToday] = await Promise.all([
     getPersonalQty(client, interaction.user.id, interaction.guildId, itemId),
     getGuildQty(client, interaction.user.id, interaction.guildId, itemId),
+    dailyLimit > 0
+      ? worldEventService.donatedTodayBy(client, {
+          eventDbId,
+          userId: interaction.user.id,
+          itemId,
+        })
+      : 0,
   ]);
   return editReplyV2(
     interaction,
@@ -144,6 +159,8 @@ async function handlePick(client, interaction) {
       itemId,
       maxPersonal,
       maxGuild,
+      dailyLimit,
+      usedToday,
     })
   );
 }
@@ -211,9 +228,28 @@ function donateErrorView(r) {
       title: "❌ 必須在公會中才能用公會倉庫",
       body: "個人背包不足以填滿此次捐獻，且你不在公會。",
     });
+  if (reason === "no_pioneer_hammer")
+    return worldEventView.buildSimpleError({
+      title: "🔒 還沒有拓荒錘",
+      body: "全服共建活動需要先打造 **🔨 拓荒錘** 才能投入資源。\n合成材料：鐵礦 ×50、煤炭 ×10（非消耗品，打一把用到底）",
+      hint: "到 `/工坊` →「合成」→「活動」分頁打造",
+    });
+  if (reason === "daily_limit")
+    return worldEventView.buildSimpleError({
+      title: "⏳ 今天的投入額度已用完",
+      body: `**${itemLabel(r.item_id)}** 每日上限 ${(r.limit || 0).toLocaleString()}，你今天已投入 ${(r.usedToday || 0).toLocaleString()}。`,
+      hint: "每日上限是為了讓活動撐過多天，明天 00:00（台北）重置",
+    });
+  if (reason === "insufficient_coins")
+    return worldEventView.buildSimpleError({
+      title: "❌ 逼幣不足",
+      body: `需要 ${(r.need || 0).toLocaleString()} 逼幣，你只有 ${(r.have || 0).toLocaleString()}。`,
+      hint: "去 `/打工`、`/地下城` 或賣點礦石再回來",
+    });
   return worldEventView.buildSimpleError({
     title: "❌ 捐獻失敗",
-    body: `原因：${reason}`,
+    body: "這次捐獻沒有成功，請再試一次。",
+    hint: "若持續發生請呼叫舒舒",
   });
 }
 

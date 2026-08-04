@@ -294,7 +294,13 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   // 個人「攻擊庫存」：平時打地下城累積（存 profile，可事先備戰、跨場使用），
   // 每一場魔王（含週六固定場）最多動用 maxBonusAttacksPerPlayer 次；超過基礎額度才扣庫存。
   // 上限以「本場開打時的庫存」為準（= 現有庫存 + 本場已花掉的），避免邊扣邊縮上限而卡住剩餘庫存。
-  const baseLimit = (cfg().attackLimitPerPlayer ?? 5) + guildAttackLimitBonus;
+  // 封魔彈藥：本場已啟用的話，攻擊次數與傷害都吃加成。
+  // 標記存在 BossEvents doc 上，戰鬥結束整份 doc 失效，不需要另外清欄位。
+  const ammoCfg = cfg().sealingAmmo || {};
+  const ammoActive = !!(bossDoc.ammo_users || {})[userId];
+  const ammoLimitBonus = ammoActive ? (ammoCfg.attackLimitBonus || 0) : 0;
+
+  const baseLimit = (cfg().attackLimitPerPlayer ?? 5) + guildAttackLimitBonus + ammoLimitBonus;
   const chargeCap = cfg().summon?.maxBonusAttacksPerPlayer ?? 5;
   const used = (bossDoc.attack_counts || {})[userId] || 0;
   const extraUsed = Math.max(0, used - baseLimit);
@@ -386,7 +392,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     const comboActive = now < comboActiveUntil;
     const comboMult = comboActive ? (comboCfgVal.bonusMult ?? 1.3) : 1;
     const guildMult = 1 + guildBossAtkPct;
-    const buildingMult = 1 + guildBossDmgPct / 100;
+    const buildingMult = 1 + (guildBossDmgPct + (ammoActive ? ammoCfg.bossDamagePct || 0 : 0)) / 100;
     // 會心一擊：幸運越高機率越高，命中則傷害倍增。
     const crit = critCfg();
     if (crit.enabled) {
@@ -790,7 +796,43 @@ async function applyComboAttack(client, params, count) {
   };
 }
 
+// 對本場魔王啟用封魔彈藥：扣 1 個庫存並在 BossEvents doc 上標記。
+// 單場限用 1 個 —— 用 ammo_users.<userId> 不存在當條件，兩邊都原子。
+async function useSealingAmmo(client, { userId, guildId }) {
+  const acfg = cfg().sealingAmmo || {};
+  if (!acfg.enabled) return { ok: false, reason: "disabled" };
+
+  const bossDoc = await getActiveBoss(client, guildId);
+  if (!bossDoc) return { ok: false, reason: "no_boss" };
+  if ((bossDoc.ammo_users || {})[userId]) return { ok: false, reason: "already_used" };
+
+  const dec = await client.miningProfilesCollection.updateOne(
+    { userId, guildId, sealing_ammo_count: { $gte: 1 } },
+    { $inc: { sealing_ammo_count: -1 }, $set: { updatedAt: new Date() } },
+  );
+  if (dec.modifiedCount === 0) return { ok: false, reason: "no_ammo" };
+
+  const upd = await client.bossEventsCollection.findOneAndUpdate(
+    { boss_id: bossDoc.boss_id, [`ammo_users.${userId}`]: { $exists: false } },
+    { $set: { [`ammo_users.${userId}`]: true } },
+    { returnDocument: "after" },
+  );
+  if (!(upd?.value || upd)) {
+    await client.miningProfilesCollection
+      .updateOne({ userId, guildId }, { $inc: { sealing_ammo_count: 1 } })
+      .catch(() => {});
+    return { ok: false, reason: "already_used" };
+  }
+
+  return {
+    ok: true,
+    bossDamagePct: acfg.bossDamagePct || 0,
+    attackLimitBonus: acfg.attackLimitBonus || 0,
+  };
+}
+
 module.exports = {
+  useSealingAmmo,
   cfg,
   spawnBoss,
   markBossEnded,

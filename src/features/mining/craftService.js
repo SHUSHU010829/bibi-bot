@@ -1,10 +1,16 @@
 require("colors");
 const { mining, craft, dungeon, fishing } = require("../../config");
-const { getOrCreate } = require("./miningProfile");
+const {
+  getOrCreate,
+  backpackCapacity,
+  backpackUsed,
+  ORE_KEYS,
+} = require("./miningProfile");
 const { SPECIAL_MAT_FIELDS, isFishMaterial, ownedMaterial } = require("./craftMaterials");
+const { trapTier, totalTrapUses } = require("../farm/trapTiers");
 
 // 鎬子 / 武器 / 釣竿階級（用於判定升級 / 同級 / 降級）
-const PICKAXE_TIER = { wood: 0, iron: 1, gold: 2, diamond: 3 };
+const PICKAXE_TIER = { wood: 0, iron: 1, gold: 2, diamond: 3, magic: 4 };
 const WEAPON_TIER = {
   fist: 0,
   iron_sword: 1,
@@ -12,8 +18,9 @@ const WEAPON_TIER = {
   gold_sword: 3,
   diamond_sword: 4,
   legendary_sword: 5,
+  magic_sword: 6,
 };
-const ROD_TIER = { bamboo: 0, carbon: 1, gold: 2, mythril: 3 };
+const ROD_TIER = { bamboo: 0, carbon: 1, gold: 2, mythril: 3, magic: 4 };
 // Phase H+ 盾牌階級（v1：鐵盾 / 鋼盾；v2：黃金 / 鑽石 / 傳說）
 const SHIELD_TIER = {
   iron_shield: 1,
@@ -21,6 +28,7 @@ const SHIELD_TIER = {
   gold_shield: 3,
   diamond_shield: 4,
   legendary_shield: 5,
+  magic_shield: 6,
 };
 
 // 傳說碎片 key（對外保留）
@@ -123,11 +131,40 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
     return craftTreasureMap(client, { userId, guildId, recipe });
   }
 
+  // 礦石回收：把素材熔回礦石（例：破損陷阱碎片 → 鐵礦）
+  if (type === "ore") {
+    return craftOre(client, { userId, guildId, recipe });
+  }
+
+  // 封魔彈藥：週六魔王戰專用消耗品，每週限做 1 個
+  if (type === "sealing_ammo") {
+    return craftSealingAmmo(client, { userId, guildId, recipe });
+  }
+
+  // 拓荒錘：主線活動的參與門檻，非消耗品，持有一把即可
+  if (type === "pioneer_hammer") {
+    return craftPioneerHammer(client, { userId, guildId, recipe });
+  }
+
   const slot = resolveSlot(type);
   const targetDef = slot.defs[resultId];
   if (!targetDef) return { ok: false, reason: "no_recipe" };
 
   const profile = await getOrCreate(client, userId, guildId);
+
+  // 升級型配方：材料較省，但必須正在裝備指定的前一階裝備（會被覆蓋掉）
+  const needEquipped = recipe.requires?.equipped;
+  if (needEquipped && (profile[slot.equippedField] || slot.defaultId) !== needEquipped) {
+    return {
+      ok: false,
+      reason: "requires_equipped",
+      recipe,
+      type,
+      needEquipped,
+      needEquippedName: slot.defs[needEquipped]?.name || needEquipped,
+      currentName: slot.defs[profile[slot.equippedField]]?.name || "（未裝備）",
+    };
+  }
 
   // 材料檢查
   const missing = [];
@@ -175,13 +212,13 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
     }
   }
   // 儲存的最大耐久一律是「原始上限」（config durability）；公會鐵匠鋪加成不寫死進 DB，
-  // 由讀取端動態換算。新武器現值直接補到「有效上限」，讓剛打造的武器吃滿當前加成。
+  // 由讀取端動態換算。新裝備現值直接補到「有效上限」，讓剛打造的裝備吃滿當前加成。
   const baseDurability = targetDef.durability ?? null;
   let currentDurability = baseDurability;
-  if (type === "weapon" && typeof baseDurability === "number") {
+  if (typeof baseDurability === "number") {
     const buildingService = require("../guild_club/buildingService");
-    const pct = await buildingService.getWeaponMaxDurabilityPct(client, userId, guildId);
-    currentDurability = buildingService.effectiveWeaponMaxDurability(baseDurability, pct);
+    const pct = await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId);
+    currentDurability = buildingService.effectiveMaxDurability(baseDurability, pct);
   }
 
   await client.miningProfilesCollection.updateOne(
@@ -371,10 +408,12 @@ async function craftAdvancedTrap(client, { userId, guildId, recipe }) {
   }
 
   const cfg = craft?.advancedTrap || {};
-  const blocksPerCraft = cfg.blocksPerCraft ?? 4;
+  const tier = trapTier(recipe.result?.tier);
+  const blocksPerCraft = tier.blocksPerCraft ?? cfg.blocksPerCraft ?? 4;
   const maxStack = cfg.maxStack ?? 12;
 
-  const current = profile.advanced_trap_uses || 0;
+  // 上限是兩階共用的總次數，否則兩種各囤 12 次等於保護翻倍
+  const current = totalTrapUses(profile);
   if (current >= maxStack) {
     return { ok: false, reason: "trap_full", current, maxStack, recipe };
   }
@@ -383,7 +422,7 @@ async function craftAdvancedTrap(client, { userId, guildId, recipe }) {
 
   const inc = {
     craft_count_total: 1,
-    advanced_trap_uses: actualAdd,
+    [tier.field]: actualAdd,
   };
   for (const [mat, need] of Object.entries(recipe.materials)) {
     if (SPECIAL_MAT_FIELDS[mat]) {
@@ -404,12 +443,14 @@ async function craftAdvancedTrap(client, { userId, guildId, recipe }) {
     ok: true,
     recipe,
     type: "advanced_trap",
-    resultId: "advanced_trap",
+    resultId: tier.id,
     resultName: recipe.name,
-    resultEmoji: recipe.emoji || "🪤",
+    resultEmoji: recipe.emoji || tier.emoji || "🪤",
     durability: null,
     blocksAdded: actualAdd,
     blocksAfter: current + actualAdd,
+    blockChancePct: Math.round((tier.blockChance ?? 1) * 100),
+    tierName: tier.name,
     maxStack,
     craftCountTotal: (profile.craft_count_total || 0) + 1,
   };
@@ -456,13 +497,185 @@ async function craftTreasureMap(client, { userId, guildId, recipe }) {
   };
 }
 
+async function craftOre(client, { userId, guildId, recipe }) {
+  const profile = await getOrCreate(client, userId, guildId);
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const have = ownedMaterial(profile, mat);
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) {
+    return { ok: false, reason: "insufficient", missing, recipe };
+  }
+
+  const oreKey = recipe.result?.id;
+  const qty = recipe.result?.qty ?? 1;
+
+  // 產出礦石佔背包格。材料若本身也是礦石要扣回來，才是真正的淨增量。
+  let delta = qty;
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    if (ORE_KEYS.includes(mat)) delta -= need;
+  }
+  const capacity = backpackCapacity(profile, mining);
+  const used = backpackUsed(profile);
+  if (delta > 0 && used + delta > capacity) {
+    return { ok: false, reason: "backpack_full", capacity, used, need: delta, recipe };
+  }
+
+  const inc = { craft_count_total: 1, [`backpack.${oreKey}`]: qty };
+  for (const [mat, need] of Object.entries(recipe.materials)) {
+    if (SPECIAL_MAT_FIELDS[mat]) {
+      const field = SPECIAL_MAT_FIELDS[mat];
+      inc[field] = (inc[field] || 0) - need;
+    } else if (isFishMaterial(mat)) {
+      inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+    } else {
+      inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+    }
+  }
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $inc: inc, $set: { updatedAt: new Date() } },
+  );
+
+  const oreDef = mining?.ores?.[oreKey] || {};
+  return {
+    ok: true,
+    recipe,
+    type: "ore",
+    resultId: oreKey,
+    resultName: recipe.name,
+    resultEmoji: recipe.emoji || "🔥",
+    durability: null,
+    oreQty: qty,
+    oreName: oreDef.name || oreKey,
+    oreEmoji: oreDef.emoji || "",
+    craftCountTotal: (profile.craft_count_total || 0) + 1,
+  };
+}
+
+// 週鍵（台北時區、週一為週首）。封魔彈藥每週限做 1 個。
+function weekKeyTaipei() {
+  const { DateTime } = require("luxon");
+  const t = DateTime.now().setZone("Asia/Taipei");
+  return `${t.weekYear}-W${String(t.weekNumber).padStart(2, "0")}`;
+}
+
+async function craftSealingAmmo(client, { userId, guildId, recipe }) {
+  const { boss } = require("../../config");
+  const acfg = boss?.sealingAmmo || {};
+  const profile = await getOrCreate(client, userId, guildId);
+
+  const week = weekKeyTaipei();
+  const limit = acfg.weeklyCraftLimit ?? 1;
+  if (profile.sealing_ammo_week === week && limit > 0) {
+    return { ok: false, reason: "weekly_limit", limit, recipe };
+  }
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const have = ownedMaterial(profile, mat);
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) return { ok: false, reason: "insufficient", missing, recipe };
+
+  // 逼幣走條件式原子扣款，餘額不足就整筆不動
+  const coinCost = acfg.coinCost || 0;
+  if (coinCost > 0) {
+    const dec = await client.userCoinsCollection.updateOne(
+      { userId, guildId, totalCoins: { $gte: coinCost } },
+      { $inc: { totalCoins: -coinCost, lifetimeSpent: coinCost }, $set: { updatedAt: new Date() } },
+    );
+    if (dec.modifiedCount === 0) {
+      const doc = await client.userCoinsCollection.findOne({ userId, guildId }).catch(() => null);
+      return { ok: false, reason: "insufficient_coins", need: coinCost, have: doc?.totalCoins || 0, recipe };
+    }
+  }
+
+  const inc = { craft_count_total: 1, sealing_ammo_count: 1 };
+  for (const [mat, need] of Object.entries(recipe.materials)) {
+    if (SPECIAL_MAT_FIELDS[mat]) inc[SPECIAL_MAT_FIELDS[mat]] = (inc[SPECIAL_MAT_FIELDS[mat]] || 0) - need;
+    else if (isFishMaterial(mat)) inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+    else inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+  }
+  const res = await client.miningProfilesCollection.updateOne(
+    { userId, guildId, sealing_ammo_week: { $ne: week } },
+    { $inc: inc, $set: { sealing_ammo_week: week, updatedAt: new Date() } },
+  );
+  if (res.modifiedCount === 0) {
+    if (coinCost > 0) {
+      await client.userCoinsCollection.updateOne(
+        { userId, guildId },
+        { $inc: { totalCoins: coinCost, lifetimeSpent: -coinCost } },
+      ).catch(() => {});
+    }
+    return { ok: false, reason: "weekly_limit", limit, recipe };
+  }
+
+  return {
+    ok: true,
+    recipe,
+    type: "sealing_ammo",
+    resultId: "sealing_ammo",
+    resultName: recipe.name,
+    resultEmoji: recipe.emoji || "💥",
+    durability: null,
+    coinCost,
+    ammoAfter: (profile.sealing_ammo_count || 0) + 1,
+    craftCountTotal: (profile.craft_count_total || 0) + 1,
+  };
+}
+
+async function craftPioneerHammer(client, { userId, guildId, recipe }) {
+  const profile = await getOrCreate(client, userId, guildId);
+  if (profile.pioneer_hammer) return { ok: false, reason: "already_owned", recipe };
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const have = ownedMaterial(profile, mat);
+    if (have < need) missing.push({ mat, need, have });
+  }
+  if (missing.length > 0) return { ok: false, reason: "insufficient", missing, recipe };
+
+  const inc = { craft_count_total: 1 };
+  for (const [mat, need] of Object.entries(recipe.materials)) {
+    if (SPECIAL_MAT_FIELDS[mat]) {
+      inc[SPECIAL_MAT_FIELDS[mat]] = (inc[SPECIAL_MAT_FIELDS[mat]] || 0) - need;
+    } else if (isFishMaterial(mat)) {
+      inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+    } else {
+      inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+    }
+  }
+  const res = await client.miningProfilesCollection.updateOne(
+    { userId, guildId, pioneer_hammer: { $ne: true } },
+    { $inc: inc, $set: { pioneer_hammer: true, updatedAt: new Date() } },
+  );
+  if (res.modifiedCount === 0) return { ok: false, reason: "already_owned", recipe };
+
+  return {
+    ok: true,
+    recipe,
+    type: "pioneer_hammer",
+    resultId: "pioneer_hammer",
+    resultName: recipe.name,
+    resultEmoji: recipe.emoji || "🔨",
+    durability: null,
+    craftCountTotal: (profile.craft_count_total || 0) + 1,
+  };
+}
+
 module.exports = {
   craftItem,
+  craftPioneerHammer,
+  craftSealingAmmo,
   craftRepairTool,
   craftFishingNet,
   craftStoneAppraisalTrigger,
   craftAdvancedTrap,
   craftTreasureMap,
+  craftOre,
   getRecipe,
   maxCraftTimes,
   PICKAXE_TIER,

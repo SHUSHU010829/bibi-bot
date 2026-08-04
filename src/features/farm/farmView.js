@@ -101,7 +101,7 @@ function plotButtonRow(plot, userId, { stamina } = {}) {
 }
 
 // 主畫面：每塊地一個獨立區塊 + 緊接該地塊的 ActionRow（符合 UX 規則 #1）
-function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapBlocksRemaining, trapBlocksUsedThisOpen, foodYieldPct = 0, worldYieldPct = 0 }) {
+function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapBlocksRemaining, trapBlocksUsedThisOpen, trapBlocksBlocked, trapFailures = 0, trapHoldings = [], foodYieldPct = 0, worldYieldPct = 0 }) {
   const now = Date.now();
   const resolvedPlots = plots.map((p) => resolveLiveStatus(p, now));
   const readyCount = resolvedPlots.filter((p) => p.status === "ready").length;
@@ -130,11 +130,18 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapB
 
   if ((trapBlocksRemaining || 0) > 0 || (trapBlocksUsedThisOpen || 0) > 0) {
     const lines = [];
-    if (trapBlocksUsedThisOpen > 0) {
-      lines.push(`🪤 **高級陷阱抵擋了 ${trapBlocksUsedThisOpen} 次本次來犯**`);
+    const blocked = trapBlocksBlocked ?? trapBlocksUsedThisOpen;
+    if (blocked > 0) {
+      lines.push(`🪤 **陷阱抵擋了 ${blocked} 次本次來犯**`);
     }
-    if (trapBlocksRemaining > 0) {
-      lines.push(`-# 高級陷阱剩餘 ${trapBlocksRemaining} 次保護`);
+    // 簡易陷阱會失效，不講的話玩家會以為「明明有陷阱還被偷襲」是 bug
+    if (trapFailures > 0) {
+      lines.push(`💥 **有 ${trapFailures} 個簡易陷阱沒夾住**，該地塊仍被入侵`);
+    }
+    if (trapHoldings.length) {
+      lines.push(`-# 剩餘保護：${trapHoldings.join("・")}`);
+    } else if (trapBlocksRemaining > 0) {
+      lines.push(`-# 陷阱剩餘 ${trapBlocksRemaining} 次保護`);
     }
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
   }

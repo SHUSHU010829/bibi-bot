@@ -39,12 +39,62 @@
       "deathDropChance": 0.25
     },
     "weapons": {
-      "fist": { "name": "赤手空拳", "emoji": "👊", "atk": 0, "def": 0, "critRate": 0, "durability": null },
-      "iron_sword": { "name": "鐵劍", "emoji": "🗡️", "atk": 25, "def": 5, "critRate": 0, "durability": 40 },
-      "steel_sword": { "name": "鋼劍", "emoji": "⚔️", "atk": 50, "def": 10, "critRate": 0.03, "durability": 45 },
-      "gold_sword": { "name": "黃金劍", "emoji": "🌟", "atk": 80, "def": 18, "critRate": 0.06, "durability": 60 },
-      "diamond_sword": { "name": "鑽石劍", "emoji": "💎", "atk": 120, "def": 28, "critRate": 0.1, "durability": 80 },
-      "legendary_sword": { "name": "傳說之劍", "emoji": "🔥", "atk": 180, "def": 40, "critRate": 0.2, "durability": 120 }
+      "fist": {
+        "name": "赤手空拳",
+        "emoji": "👊",
+        "atk": 0,
+        "def": 0,
+        "critRate": 0,
+        "durability": null
+      },
+      "iron_sword": {
+        "name": "鐵劍",
+        "emoji": "🗡️",
+        "atk": 25,
+        "def": 5,
+        "critRate": 0,
+        "durability": 40
+      },
+      "steel_sword": {
+        "name": "鋼劍",
+        "emoji": "⚔️",
+        "atk": 50,
+        "def": 10,
+        "critRate": 0.03,
+        "durability": 45
+      },
+      "gold_sword": {
+        "name": "黃金劍",
+        "emoji": "🌟",
+        "atk": 80,
+        "def": 18,
+        "critRate": 0.06,
+        "durability": 60
+      },
+      "diamond_sword": {
+        "name": "鑽石劍",
+        "emoji": "💎",
+        "atk": 120,
+        "def": 28,
+        "critRate": 0.1,
+        "durability": 80
+      },
+      "legendary_sword": {
+        "name": "傳說之劍",
+        "emoji": "🔥",
+        "atk": 180,
+        "def": 40,
+        "critRate": 0.2,
+        "durability": 120
+      },
+      "magic_sword": {
+        "name": "傳說·魔晶劍",
+        "emoji": "🔮",
+        "atk": 220,
+        "def": 50,
+        "critRate": 0.25,
+        "durability": 145
+      }
     },
     "shields": {
       "iron_shield": {
@@ -56,18 +106,24 @@
         "durability": 50,
         "unlockLevel": 5,
         "tier": "v1",
-        "recipe": { "iron": 5, "coal": 2 }
+        "recipe": {
+          "iron": 5,
+          "coal": 2
+        }
       },
       "steel_shield": {
         "name": "鋼盾",
         "emoji": "⚙️",
         "def": 18,
-        "blockRate": 0.30,
+        "blockRate": 0.3,
         "reflectRate": 0,
         "durability": 60,
         "unlockLevel": 15,
         "tier": "v1",
-        "recipe": { "iron": 10, "coal": 5 }
+        "recipe": {
+          "iron": 10,
+          "coal": 5
+        }
       },
       "gold_shield": {
         "name": "黃金盾",
@@ -78,76 +134,230 @@
         "durability": 70,
         "unlockLevel": 30,
         "tier": "v2",
-        "enabled": false,
-        "recipe": { "gold": 8, "iron": 15 }
+        "recipe": {
+          "gold": 8,
+          "iron": 15
+        }
       },
       "diamond_shield": {
         "name": "鑽石盾",
         "emoji": "💠",
         "def": 42,
         "blockRate": 0.45,
-        "reflectRate": 0.10,
+        "reflectRate": 0.1,
         "durability": 90,
         "unlockLevel": 50,
         "tier": "v2",
-        "enabled": false,
-        "recipe": { "diamond": 5, "gold": 15 }
+        "recipe": {
+          "diamond": 5,
+          "gold": 15
+        }
       },
       "legendary_shield": {
         "name": "傳說之盾",
         "emoji": "🔥",
         "def": 65,
-        "blockRate": 0.60,
-        "reflectRate": 0.20,
-        "statusImmunity": ["poison", "burn", "paralyze"],
+        "blockRate": 0.6,
+        "reflectRate": 0.2,
+        "statusImmunity": [
+          "poison",
+          "burn",
+          "paralyze"
+        ],
         "durability": 120,
         "unlockLevel": 75,
         "tier": "v2",
-        "enabled": false,
-        "recipe": { "legendary_fragment": 3, "diamond": 10, "gold": 20 }
+        "recipe": {
+          "legendary_fragment": 3,
+          "diamond": 10,
+          "gold": 20
+        }
+      },
+      "magic_shield": {
+        "name": "魔晶盾",
+        "emoji": "🔮",
+        "def": 80,
+        "blockRate": 0.65,
+        "reflectRate": 0.25,
+        "statusImmunity": [
+          "poison",
+          "burn",
+          "paralyze"
+        ],
+        "durability": 145,
+        "unlockLevel": 85,
+        "tier": "v2",
+        "recipe": {
+          "magic_crystal": 25,
+          "legendary_fragment": 12,
+          "diamond": 20,
+          "gold": 26,
+          "coal": 13
+        }
       }
     },
     "shieldDurability": {
       "maxConsumePerBattle": 5,
       "maxConsumePerMiniBoss": 8
     },
-    "durabilityWarn": { "low": 5, "critical": 1 },
+    "durabilityWarn": {
+      "low": 5,
+      "critical": 1
+    },
     "monsters": [
-      { "name": "洞窟蝙蝠", "emoji": "🦇" },
-      { "name": "石化史萊姆", "emoji": "🪨" },
-      { "name": "地穴蜘蛛", "emoji": "🕷️" },
-      { "name": "礦坑哥布林", "emoji": "👺" },
-      { "name": "熔岩巨人", "emoji": "🗿" },
-      { "name": "深淵骷髏", "emoji": "💀" },
-      { "name": "暗影狼", "emoji": "🐺" }
+      {
+        "name": "洞窟蝙蝠",
+        "emoji": "🦇"
+      },
+      {
+        "name": "石化史萊姆",
+        "emoji": "🪨"
+      },
+      {
+        "name": "地穴蜘蛛",
+        "emoji": "🕷️"
+      },
+      {
+        "name": "礦坑哥布林",
+        "emoji": "👺"
+      },
+      {
+        "name": "熔岩巨人",
+        "emoji": "🗿"
+      },
+      {
+        "name": "深淵骷髏",
+        "emoji": "💀"
+      },
+      {
+        "name": "暗影狼",
+        "emoji": "🐺"
+      }
     ],
     "monsterDefs": {
-      "cave_bat":      { "name": "洞窟蝙蝠",   "emoji": "🦇", "skills": ["poison"] },
-      "stone_slime":   { "name": "石化史萊姆", "emoji": "🪨", "skills": ["poison"] },
-      "crypt_spider":  { "name": "地穴蜘蛛",   "emoji": "🕷️", "skills": [] },
-      "mine_goblin":   { "name": "礦坑哥布林", "emoji": "👺", "skills": [] },
-      "lava_giant":    { "name": "熔岩巨人",   "emoji": "🗿", "skills": ["burn"] },
-      "abyss_skeleton":{ "name": "深淵骷髏",   "emoji": "💀", "skills": [] },
-      "shadow_wolf":   { "name": "暗影狼",     "emoji": "🐺", "skills": ["stun"] },
-      "ice_crystal":   { "name": "冰晶怪",     "emoji": "❄️", "skills": ["paralyze"] },
-      "frost_spirit":  { "name": "霜息精靈",   "emoji": "🌨️", "skills": ["paralyze"] }
+      "cave_bat": {
+        "name": "洞窟蝙蝠",
+        "emoji": "🦇",
+        "skills": [
+          "poison"
+        ]
+      },
+      "stone_slime": {
+        "name": "石化史萊姆",
+        "emoji": "🪨",
+        "skills": [
+          "poison"
+        ]
+      },
+      "crypt_spider": {
+        "name": "地穴蜘蛛",
+        "emoji": "🕷️",
+        "skills": []
+      },
+      "mine_goblin": {
+        "name": "礦坑哥布林",
+        "emoji": "👺",
+        "skills": []
+      },
+      "lava_giant": {
+        "name": "熔岩巨人",
+        "emoji": "🗿",
+        "skills": [
+          "burn"
+        ]
+      },
+      "abyss_skeleton": {
+        "name": "深淵骷髏",
+        "emoji": "💀",
+        "skills": []
+      },
+      "shadow_wolf": {
+        "name": "暗影狼",
+        "emoji": "🐺",
+        "skills": [
+          "stun"
+        ]
+      },
+      "ice_crystal": {
+        "name": "冰晶怪",
+        "emoji": "❄️",
+        "skills": [
+          "paralyze"
+        ]
+      },
+      "frost_spirit": {
+        "name": "霜息精靈",
+        "emoji": "🌨️",
+        "skills": [
+          "paralyze"
+        ]
+      }
     },
     "themeMonsterOverrides": {
       "ruins": {
-        "3": ["abyss_skeleton", "abyss_skeleton", "mine_goblin"],
-        "4": ["abyss_skeleton", "abyss_skeleton", "lava_giant"],
-        "5": ["abyss_skeleton", "shadow_wolf"]
+        "3": [
+          "abyss_skeleton",
+          "abyss_skeleton",
+          "mine_goblin"
+        ],
+        "4": [
+          "abyss_skeleton",
+          "abyss_skeleton",
+          "lava_giant"
+        ],
+        "5": [
+          "abyss_skeleton",
+          "shadow_wolf"
+        ]
       },
       "ice": {
-        "3": ["ice_crystal", "crypt_spider"],
-        "4": ["ice_crystal", "frost_spirit", "mine_goblin"],
-        "5": ["frost_spirit", "ice_crystal", "shadow_wolf"]
+        "3": [
+          "ice_crystal",
+          "crypt_spider"
+        ],
+        "4": [
+          "ice_crystal",
+          "frost_spirit",
+          "mine_goblin"
+        ],
+        "5": [
+          "frost_spirit",
+          "ice_crystal",
+          "shadow_wolf"
+        ]
       }
     },
     "themes": [
-      { "id": "mine",  "name": "礦坑", "emoji": "⛏️", "unlock": null },
-      { "id": "ruins", "name": "廢墟", "emoji": "🏛️", "unlock": { "level": 35, "prereqFloor": { "mine": 3 }, "prereqClears": 15 } },
-      { "id": "ice",   "name": "冰窟", "emoji": "❄️", "unlock": { "level": 60, "prereqFloor": { "ruins": 3 }, "prereqClears": 15 } }
+      {
+        "id": "mine",
+        "name": "礦坑",
+        "emoji": "⛏️",
+        "unlock": null
+      },
+      {
+        "id": "ruins",
+        "name": "廢墟",
+        "emoji": "🏛️",
+        "unlock": {
+          "level": 35,
+          "prereqFloor": {
+            "mine": 3
+          },
+          "prereqClears": 15
+        }
+      },
+      {
+        "id": "ice",
+        "name": "冰窟",
+        "emoji": "❄️",
+        "unlock": {
+          "level": 60,
+          "prereqFloor": {
+            "ruins": 3
+          },
+          "prereqClears": 15
+        }
+      }
     ],
     "floors": [
       {
@@ -157,13 +367,25 @@
         "unlockLevel": 1,
         "staminaCost": 1,
         "weaponDurabilityCost": 1,
-        "monsterHpRange": [100, 200],
-        "monsterAtkRange": [8, 12],
-        "expectedTurns": [3, 5],
+        "monsterHpRange": [
+          100,
+          200
+        ],
+        "monsterAtkRange": [
+          8,
+          12
+        ],
+        "expectedTurns": [
+          3,
+          5
+        ],
         "rewardMultiplier": 1.0,
         "clearReward": 30,
         "encounterRatePct": 20,
-        "monsterPool": ["cave_bat", "stone_slime"],
+        "monsterPool": [
+          "cave_bat",
+          "stone_slime"
+        ],
         "petExp": 10
       },
       {
@@ -171,16 +393,31 @@
         "name": "礦工迷宮",
         "emoji": "⛏️",
         "unlockLevel": 15,
-        "prereqClears": { "floor": 1, "count": 5 },
+        "prereqClears": {
+          "floor": 1,
+          "count": 5
+        },
         "staminaCost": 1,
         "weaponDurabilityCost": 1,
-        "monsterHpRange": [250, 400],
-        "monsterAtkRange": [12, 18],
-        "expectedTurns": [4, 6],
+        "monsterHpRange": [
+          250,
+          400
+        ],
+        "monsterAtkRange": [
+          12,
+          18
+        ],
+        "expectedTurns": [
+          4,
+          6
+        ],
         "rewardMultiplier": 1.5,
         "clearReward": 80,
         "encounterRatePct": 20,
-        "monsterPool": ["stone_slime", "crypt_spider"],
+        "monsterPool": [
+          "stone_slime",
+          "crypt_spider"
+        ],
         "petExp": 18
       },
       {
@@ -188,16 +425,32 @@
         "name": "古遺跡",
         "emoji": "🏛️",
         "unlockLevel": 30,
-        "prereqClears": { "floor": 2, "count": 10 },
+        "prereqClears": {
+          "floor": 2,
+          "count": 10
+        },
         "staminaCost": 2,
         "weaponDurabilityCost": 2,
-        "monsterHpRange": [500, 800],
-        "monsterAtkRange": [20, 28],
-        "expectedTurns": [6, 8],
+        "monsterHpRange": [
+          500,
+          800
+        ],
+        "monsterAtkRange": [
+          20,
+          28
+        ],
+        "expectedTurns": [
+          6,
+          8
+        ],
         "rewardMultiplier": 2.6,
         "clearReward": 180,
         "encounterRatePct": 25,
-        "monsterPool": ["crypt_spider", "mine_goblin", "abyss_skeleton"],
+        "monsterPool": [
+          "crypt_spider",
+          "mine_goblin",
+          "abyss_skeleton"
+        ],
         "petExp": 28
       },
       {
@@ -205,16 +458,32 @@
         "name": "熔岩深淵",
         "emoji": "🔥",
         "unlockLevel": 50,
-        "prereqClears": { "floor": 3, "count": 15 },
+        "prereqClears": {
+          "floor": 3,
+          "count": 15
+        },
         "staminaCost": 2,
         "weaponDurabilityCost": 2,
-        "monsterHpRange": [1100, 1700],
-        "monsterAtkRange": [30, 42],
-        "expectedTurns": [8, 10],
+        "monsterHpRange": [
+          1100,
+          1700
+        ],
+        "monsterAtkRange": [
+          30,
+          42
+        ],
+        "expectedTurns": [
+          8,
+          10
+        ],
         "rewardMultiplier": 3.8,
         "clearReward": 400,
         "encounterRatePct": 25,
-        "monsterPool": ["mine_goblin", "lava_giant", "abyss_skeleton"],
+        "monsterPool": [
+          "mine_goblin",
+          "lava_giant",
+          "abyss_skeleton"
+        ],
         "petExp": 38
       },
       {
@@ -222,22 +491,41 @@
         "name": "虛空之門",
         "emoji": "🌌",
         "unlockLevel": 75,
-        "prereqClears": { "floor": 4, "count": 25 },
+        "prereqClears": {
+          "floor": 4,
+          "count": 25
+        },
         "staminaCost": 3,
         "weaponDurabilityCost": 3,
-        "monsterHpRange": [2100, 3000],
-        "monsterAtkRange": [40, 55],
-        "expectedTurns": [10, 15],
+        "monsterHpRange": [
+          2100,
+          3000
+        ],
+        "monsterAtkRange": [
+          40,
+          55
+        ],
+        "expectedTurns": [
+          10,
+          15
+        ],
         "rewardMultiplier": 5.5,
         "clearReward": 800,
         "encounterRatePct": 15,
-        "monsterPool": ["lava_giant", "shadow_wolf"],
+        "monsterPool": [
+          "lava_giant",
+          "shadow_wolf"
+        ],
         "petExp": 50,
-        "miniBossUnlock": { "floor": 5, "clears": 5, "rechargeClears": 3 }
+        "miniBossUnlock": {
+          "floor": 5,
+          "clears": 5,
+          "rechargeClears": 3
+        }
       }
     ],
     "miniBosses": {
-      "mine":  {
+      "mine": {
         "id": "mine_tyrant",
         "name": "礦坑暴君",
         "emoji": "👹",
@@ -250,8 +538,25 @@
         "clearReward": 1500,
         "petExp": 80,
         "variants": [
-          { "id": "mine_golem", "name": "崩岩魔像", "emoji": "🗿", "hp": 4400, "atk": 30, "armorTurns": 2, "clearReward": 1700 },
-          { "id": "mine_ratking", "name": "血牙礦鼠王", "emoji": "🐀", "hp": 3000, "atk": 44, "phase2HpRatio": 0.4, "phase2AtkMult": 2.2, "clearReward": 1600 }
+          {
+            "id": "mine_golem",
+            "name": "崩岩魔像",
+            "emoji": "🗿",
+            "hp": 4400,
+            "atk": 30,
+            "armorTurns": 2,
+            "clearReward": 1700
+          },
+          {
+            "id": "mine_ratking",
+            "name": "血牙礦鼠王",
+            "emoji": "🐀",
+            "hp": 3000,
+            "atk": 44,
+            "phase2HpRatio": 0.4,
+            "phase2AtkMult": 2.2,
+            "clearReward": 1600
+          }
         ]
       },
       "ruins": {
@@ -266,11 +571,28 @@
         "clearReward": 1800,
         "petExp": 80,
         "variants": [
-          { "id": "ruins_puppet", "name": "遺跡傀儡", "emoji": "🎎", "hp": 4800, "atk": 28, "phase2HpRatio": 0.5, "phase2AtkMult": 1.8, "clearReward": 2000 },
-          { "id": "ruins_pharaoh", "name": "詛咒法老", "emoji": "⚱️", "hp": 3900, "atk": 36, "paralyzeChance": 0.25, "clearReward": 1900 }
+          {
+            "id": "ruins_puppet",
+            "name": "遺跡傀儡",
+            "emoji": "🎎",
+            "hp": 4800,
+            "atk": 28,
+            "phase2HpRatio": 0.5,
+            "phase2AtkMult": 1.8,
+            "clearReward": 2000
+          },
+          {
+            "id": "ruins_pharaoh",
+            "name": "詛咒法老",
+            "emoji": "⚱️",
+            "hp": 3900,
+            "atk": 36,
+            "paralyzeChance": 0.25,
+            "clearReward": 1900
+          }
         ]
       },
-      "ice":   {
+      "ice": {
         "id": "ice_queen",
         "name": "冰晶女王",
         "emoji": "❄️",
@@ -282,46 +604,184 @@
         "clearReward": 2000,
         "petExp": 80,
         "variants": [
-          { "id": "ice_direwolf", "name": "霜牙巨狼", "emoji": "🐺", "hp": 4000, "atk": 40, "phase2HpRatio": 0.45, "phase2AtkMult": 2.0, "clearReward": 2100 },
-          { "id": "ice_permafrost", "name": "永凍領主", "emoji": "🧊", "hp": 5200, "atk": 26, "armorTurns": 3, "paralyzeChance": 0.2, "clearReward": 2300 }
+          {
+            "id": "ice_direwolf",
+            "name": "霜牙巨狼",
+            "emoji": "🐺",
+            "hp": 4000,
+            "atk": 40,
+            "phase2HpRatio": 0.45,
+            "phase2AtkMult": 2.0,
+            "clearReward": 2100
+          },
+          {
+            "id": "ice_permafrost",
+            "name": "永凍領主",
+            "emoji": "🧊",
+            "hp": 5200,
+            "atk": 26,
+            "armorTurns": 3,
+            "paralyzeChance": 0.2,
+            "clearReward": 2300
+          }
         ]
       }
     },
     "statusEffects": {
-      "poison":   { "name": "中毒", "emoji": "🐍", "tickPct": 0.05, "turns": 3 },
-      "stun":     { "name": "暈眩", "emoji": "💫", "skipTurns": 1 },
-      "armor":    { "name": "護甲", "emoji": "🛡️", "damageReductionPct": 0.5, "turns": 2 },
-      "burn":     { "name": "燃燒", "emoji": "🔥", "tickFlat": 8, "turns": 2 },
-      "paralyze": { "name": "麻痺", "emoji": "⚡", "critMult": 0.5, "turns": 3 }
+      "poison": {
+        "name": "中毒",
+        "emoji": "🐍",
+        "tickPct": 0.05,
+        "turns": 3
+      },
+      "stun": {
+        "name": "暈眩",
+        "emoji": "💫",
+        "skipTurns": 1
+      },
+      "armor": {
+        "name": "護甲",
+        "emoji": "🛡️",
+        "damageReductionPct": 0.5,
+        "turns": 2
+      },
+      "burn": {
+        "name": "燃燒",
+        "emoji": "🔥",
+        "tickFlat": 8,
+        "turns": 2
+      },
+      "paralyze": {
+        "name": "麻痺",
+        "emoji": "⚡",
+        "critMult": 0.5,
+        "turns": 3
+      }
     },
     "hpPotions": {
-      "small":  { "name": "生命藥水（小）", "emoji": "💊", "restore": 20,   "price": 200,   "stackMax": 99 },
-      "medium": { "name": "生命藥水（中）", "emoji": "💊", "restore": 50,   "price": 500,   "stackMax": 99 },
-      "large":  { "name": "生命藥水（大）", "emoji": "💊", "restore": 9999, "price": 1500,  "stackMax": 99 }
+      "small": {
+        "name": "生命藥水（小）",
+        "emoji": "💊",
+        "restore": 20,
+        "price": 200,
+        "stackMax": 99
+      },
+      "medium": {
+        "name": "生命藥水（中）",
+        "emoji": "💊",
+        "restore": 50,
+        "price": 500,
+        "stackMax": 99
+      },
+      "large": {
+        "name": "生命藥水（大）",
+        "emoji": "💊",
+        "restore": 9999,
+        "price": 1500,
+        "stackMax": 99
+      }
     },
     "petAssist": {
-      "combat":   { "triggerChance": 0.20, "extraDamagePct": 0.5 },
-      "healer":   { "triggerChance": 0.20, "healMin": 5, "healMax": 10 },
-      "gather":   { "lootBonusPct": 5 },
-      "commerce": { "coinBonusPct": 10 }
+      "combat": {
+        "triggerChance": 0.2,
+        "extraDamagePct": 0.5
+      },
+      "healer": {
+        "triggerChance": 0.2,
+        "healMin": 5,
+        "healMax": 10
+      },
+      "gather": {
+        "lootBonusPct": 5
+      },
+      "commerce": {
+        "coinBonusPct": 10
+      }
     },
     "petHunger": {
       "triggered": 5,
       "untriggered": 3
     },
     "loot": [
-      { "id": "ore_iron", "kind": "ore", "ore": "iron", "qty": 3, "weight": 22 },
-      { "id": "ore_coal", "kind": "ore", "ore": "coal", "qty": 4, "weight": 12 },
-      { "id": "ore_gold", "kind": "ore", "ore": "gold", "qty": 1, "weight": 8 },
-      { "id": "coins_small", "kind": "coins", "minCoins": 150, "maxCoins": 320, "weight": 18 },
-      { "id": "coins_big", "kind": "coins", "minCoins": 450, "maxCoins": 850, "weight": 6 },
-      { "id": "luck_potion", "kind": "luck_potion", "qty": 1, "weight": 6 },
-      { "id": "cd_ticket", "kind": "cd_ticket", "qty": 1, "weight": 6 },
-      { "id": "legendary_fragment", "kind": "fragment", "qty": 1, "weight": 3 },
-      { "id": "monster_slime", "kind": "slime", "qty": 1, "weight": 12 },
-      { "id": "seed_strawberry", "kind": "seed", "seedKey": "seed_strawberry", "qty": 1, "weight": 2 },
-      { "id": "seed_black_rose", "kind": "seed", "seedKey": "seed_black_rose", "qty": 1, "weight": 1, "minDungeonClears": 30 },
-      { "id": "nothing", "kind": "nothing", "weight": 12 }
+      {
+        "id": "ore_iron",
+        "kind": "ore",
+        "ore": "iron",
+        "qty": 3,
+        "weight": 22
+      },
+      {
+        "id": "ore_coal",
+        "kind": "ore",
+        "ore": "coal",
+        "qty": 4,
+        "weight": 12
+      },
+      {
+        "id": "ore_gold",
+        "kind": "ore",
+        "ore": "gold",
+        "qty": 1,
+        "weight": 8
+      },
+      {
+        "id": "coins_small",
+        "kind": "coins",
+        "minCoins": 150,
+        "maxCoins": 320,
+        "weight": 18
+      },
+      {
+        "id": "coins_big",
+        "kind": "coins",
+        "minCoins": 450,
+        "maxCoins": 850,
+        "weight": 6
+      },
+      {
+        "id": "luck_potion",
+        "kind": "luck_potion",
+        "qty": 1,
+        "weight": 6
+      },
+      {
+        "id": "cd_ticket",
+        "kind": "cd_ticket",
+        "qty": 1,
+        "weight": 6
+      },
+      {
+        "id": "legendary_fragment",
+        "kind": "fragment",
+        "qty": 1,
+        "weight": 3
+      },
+      {
+        "id": "monster_slime",
+        "kind": "slime",
+        "qty": 1,
+        "weight": 12
+      },
+      {
+        "id": "seed_strawberry",
+        "kind": "seed",
+        "seedKey": "seed_strawberry",
+        "qty": 1,
+        "weight": 2
+      },
+      {
+        "id": "seed_black_rose",
+        "kind": "seed",
+        "seedKey": "seed_black_rose",
+        "qty": 1,
+        "weight": 1,
+        "minDungeonClears": 30
+      },
+      {
+        "id": "nothing",
+        "kind": "nothing",
+        "weight": 12
+      }
     ],
     "duel": {
       "enabled": true,
@@ -369,9 +829,30 @@
               "label": "一飲而盡",
               "emoji": "🥴",
               "outcomes": [
-                { "weight": 42, "effect": { "type": "restore_full_stamina" }, "text": "🔋 是上等體力藥劑！精神大振，體力全滿！" },
-                { "weight": 42, "effect": { "type": "lose_hp_pct", "pct": 0.3 }, "text": "🤢 苦澀刺喉——是毒藥！你痛得直冒冷汗。" },
-                { "weight": 16, "effect": { "type": "bonus_coins", "min": 400, "max": 800 }, "text": "✨ 竟是煉金藥劑，喝完口袋叮噹作響！" }
+                {
+                  "weight": 42,
+                  "effect": {
+                    "type": "restore_full_stamina"
+                  },
+                  "text": "🔋 是上等體力藥劑！精神大振，體力全滿！"
+                },
+                {
+                  "weight": 42,
+                  "effect": {
+                    "type": "lose_hp_pct",
+                    "pct": 0.3
+                  },
+                  "text": "🤢 苦澀刺喉——是毒藥！你痛得直冒冷汗。"
+                },
+                {
+                  "weight": 16,
+                  "effect": {
+                    "type": "bonus_coins",
+                    "min": 400,
+                    "max": 800
+                  },
+                  "text": "✨ 竟是煉金藥劑，喝完口袋叮噹作響！"
+                }
               ]
             },
             {
@@ -379,8 +860,24 @@
               "label": "收起來變賣",
               "emoji": "💰",
               "outcomes": [
-                { "weight": 80, "effect": { "type": "bonus_coins", "min": 180, "max": 420 }, "text": "💰 你把藥水轉手賣給商人，穩穩賺了一筆。" },
-                { "weight": 20, "effect": { "type": "gift_hp_potion", "tier": "small", "qty": 1 }, "text": "🔍 商人看走眼，把它當成生命藥水找你換——你倒賺一瓶！" }
+                {
+                  "weight": 80,
+                  "effect": {
+                    "type": "bonus_coins",
+                    "min": 180,
+                    "max": 420
+                  },
+                  "text": "💰 你把藥水轉手賣給商人，穩穩賺了一筆。"
+                },
+                {
+                  "weight": 20,
+                  "effect": {
+                    "type": "gift_hp_potion",
+                    "tier": "small",
+                    "qty": 1
+                  },
+                  "text": "🔍 商人看走眼，把它當成生命藥水找你換——你倒賺一瓶！"
+                }
               ]
             }
           ]
@@ -397,9 +894,32 @@
               "label": "硬撬開",
               "emoji": "🔨",
               "outcomes": [
-                { "weight": 50, "effect": { "type": "bonus_coins", "min": 500, "max": 1100 }, "text": "💰 鎖應聲而開，滿滿金幣灑了一地！" },
-                { "weight": 35, "effect": { "type": "lose_hp_pct", "pct": 0.25 }, "text": "☠️ 是毒針陷阱！你的手背瞬間發黑。" },
-                { "weight": 15, "effect": { "type": "gift_stamina_potion", "tier": "medium", "qty": 1 }, "text": "🥤 箱底躺著一瓶體力藥水（中），收下！" }
+                {
+                  "weight": 50,
+                  "effect": {
+                    "type": "bonus_coins",
+                    "min": 500,
+                    "max": 1100
+                  },
+                  "text": "💰 鎖應聲而開，滿滿金幣灑了一地！"
+                },
+                {
+                  "weight": 35,
+                  "effect": {
+                    "type": "lose_hp_pct",
+                    "pct": 0.25
+                  },
+                  "text": "☠️ 是毒針陷阱！你的手背瞬間發黑。"
+                },
+                {
+                  "weight": 15,
+                  "effect": {
+                    "type": "gift_stamina_potion",
+                    "tier": "medium",
+                    "qty": 1
+                  },
+                  "text": "🥤 箱底躺著一瓶體力藥水（中），收下！"
+                }
               ]
             },
             {
@@ -407,8 +927,22 @@
               "label": "繞道離開",
               "emoji": "🚶",
               "outcomes": [
-                { "weight": 70, "effect": { "type": "nothing" }, "text": "🚶 你謹慎地繞了過去，什麼也沒發生。" },
-                { "weight": 30, "effect": { "type": "bonus_coins", "min": 80, "max": 200 }, "text": "🪙 路上撿到幾枚散落的錢幣，小賺不虧。" }
+                {
+                  "weight": 70,
+                  "effect": {
+                    "type": "nothing"
+                  },
+                  "text": "🚶 你謹慎地繞了過去，什麼也沒發生。"
+                },
+                {
+                  "weight": 30,
+                  "effect": {
+                    "type": "bonus_coins",
+                    "min": 80,
+                    "max": 200
+                  },
+                  "text": "🪙 路上撿到幾枚散落的錢幣，小賺不虧。"
+                }
               ]
             }
           ]
@@ -425,9 +959,33 @@
               "label": "出手相助",
               "emoji": "🤝",
               "outcomes": [
-                { "weight": 60, "effect": { "type": "bonus_coins", "min": 350, "max": 750 }, "text": "🤝 商人感激涕零，掏出重金答謝！" },
-                { "weight": 25, "effect": { "type": "gift_hp_potion", "tier": "medium", "qty": 1 }, "text": "💊 他把僅剩的生命藥水（中）塞給你答謝。" },
-                { "weight": 15, "effect": { "type": "lose_coins", "min": 100, "max": 300 }, "text": "🎭 竟是騙子！趁你不備摸走了一些錢幣。" }
+                {
+                  "weight": 60,
+                  "effect": {
+                    "type": "bonus_coins",
+                    "min": 350,
+                    "max": 750
+                  },
+                  "text": "🤝 商人感激涕零，掏出重金答謝！"
+                },
+                {
+                  "weight": 25,
+                  "effect": {
+                    "type": "gift_hp_potion",
+                    "tier": "medium",
+                    "qty": 1
+                  },
+                  "text": "💊 他把僅剩的生命藥水（中）塞給你答謝。"
+                },
+                {
+                  "weight": 15,
+                  "effect": {
+                    "type": "lose_coins",
+                    "min": 100,
+                    "max": 300
+                  },
+                  "text": "🎭 竟是騙子！趁你不備摸走了一些錢幣。"
+                }
               ]
             },
             {
@@ -435,7 +993,13 @@
               "label": "視而不見",
               "emoji": "🙈",
               "outcomes": [
-                { "weight": 100, "effect": { "type": "nothing" }, "text": "🙈 你別過頭快步離開，沒有多生事端。" }
+                {
+                  "weight": 100,
+                  "effect": {
+                    "type": "nothing"
+                  },
+                  "text": "🙈 你別過頭快步離開，沒有多生事端。"
+                }
               ]
             }
           ]
@@ -452,9 +1016,31 @@
               "label": "投入金幣獻祭",
               "emoji": "🪙",
               "outcomes": [
-                { "weight": 45, "effect": { "type": "bonus_coins", "min": 600, "max": 1400 }, "text": "🌟 祭壇綻放金光，回饋你數倍的財富！" },
-                { "weight": 40, "effect": { "type": "lose_coins", "min": 200, "max": 500 }, "text": "🕳️ 金幣沉入祭壇石縫，石沉大海……" },
-                { "weight": 15, "effect": { "type": "restore_hp_full" }, "text": "💫 一股暖流包覆全身，你的傷勢竟痊癒了！" }
+                {
+                  "weight": 45,
+                  "effect": {
+                    "type": "bonus_coins",
+                    "min": 600,
+                    "max": 1400
+                  },
+                  "text": "🌟 祭壇綻放金光，回饋你數倍的財富！"
+                },
+                {
+                  "weight": 40,
+                  "effect": {
+                    "type": "lose_coins",
+                    "min": 200,
+                    "max": 500
+                  },
+                  "text": "🕳️ 金幣沉入祭壇石縫，石沉大海……"
+                },
+                {
+                  "weight": 15,
+                  "effect": {
+                    "type": "restore_hp_full"
+                  },
+                  "text": "💫 一股暖流包覆全身，你的傷勢竟痊癒了！"
+                }
               ]
             },
             {
@@ -462,7 +1048,13 @@
               "label": "敬而遠之",
               "emoji": "🚷",
               "outcomes": [
-                { "weight": 100, "effect": { "type": "nothing" }, "text": "🚷 你決定不惹這來歷不明的東西，轉身離開。" }
+                {
+                  "weight": 100,
+                  "effect": {
+                    "type": "nothing"
+                  },
+                  "text": "🚷 你決定不惹這來歷不明的東西，轉身離開。"
+                }
               ]
             }
           ]

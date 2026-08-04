@@ -5,23 +5,60 @@
       "label": "熔爐",
       "emoji": "🔥",
       "unlockClubLevel": 4,
-      "maxLevel": 2,
+      "maxLevel": 3,
       "upgrades": [
-        { "fromLevel": 0, "toLevel": 1, "cost": 10000, "unlocks": ["building_material"] },
-        { "fromLevel": 1, "toLevel": 2, "cost": 30000, "unlocks": ["steel_ingot"] }
+        {
+          "fromLevel": 0,
+          "toLevel": 1,
+          "cost": 10000,
+          "unlocks": [
+            "building_material"
+          ]
+        },
+        {
+          "fromLevel": 1,
+          "toLevel": 2,
+          "cost": 30000,
+          "unlocks": [
+            "steel_ingot"
+          ]
+        },
+        {
+          "fromLevel": 2,
+          "toLevel": 3,
+          "cost": 100000,
+          "unlocks": [
+            "magic_alloy"
+          ]
+        }
       ],
       "recipes": {
         "building_material": {
           "label": "建材",
-          "inputs": { "stone": 30, "coal": 1 },
+          "inputs": {
+            "stone": 30,
+            "coal": 1
+          },
           "output": 1,
           "requiresForgeLevel": 1
         },
         "steel_ingot": {
           "label": "鋼錠",
-          "inputs": { "iron": 20, "coal": 10 },
+          "inputs": {
+            "iron": 20,
+            "coal": 10
+          },
           "output": 1,
           "requiresForgeLevel": 2
+        },
+        "magic_alloy": {
+          "label": "魔晶合金",
+          "inputs": {
+            "magic_crystal": 15,
+            "steel_ingot": 3
+          },
+          "output": 1,
+          "requiresForgeLevel": 3
         }
       }
     },
@@ -29,11 +66,44 @@
       "label": "精煉站",
       "emoji": "⚗️",
       "unlockClubLevel": 5,
-      "maxLevel": 3,
+      "maxLevel": 5,
       "upgrades": [
-        { "fromLevel": 0, "toLevel": 1, "cost": 50000, "discountPct": 10 },
-        { "fromLevel": 1, "toLevel": 2, "cost": 100000, "discountPct": 20 },
-        { "fromLevel": 2, "toLevel": 3, "cost": 150000, "discountPct": 30 }
+        {
+          "fromLevel": 0,
+          "toLevel": 1,
+          "cost": 50000,
+          "discountPct": 10
+        },
+        {
+          "fromLevel": 1,
+          "toLevel": 2,
+          "cost": 100000,
+          "discountPct": 20
+        },
+        {
+          "fromLevel": 2,
+          "toLevel": 3,
+          "cost": 150000,
+          "discountPct": 30
+        },
+        {
+          "fromLevel": 3,
+          "toLevel": 4,
+          "cost": 200000,
+          "materials": {
+            "magic_crystal": 30
+          },
+          "discountPct": 35
+        },
+        {
+          "fromLevel": 4,
+          "toLevel": 5,
+          "cost": 250000,
+          "materials": {
+            "magic_crystal": 60
+          },
+          "discountPct": 40
+        }
       ]
     }
   }

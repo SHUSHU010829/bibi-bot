@@ -34,35 +34,261 @@
       "habitual_thief",
       "bounty_hunter",
       "summer_fish_king",
-      "moonlight_angler"
+      "moonlight_angler",
+      "pioneer_vanguard",
+      "pioneer_hero",
+      "rail_guardian",
+      "deep_vein_pioneer"
     ],
     "defs": {
-      "coal_collector": { "name": "煤炭採集者", "emoji": "🪵", "category": "mining", "desc": "累積挖礦 50 次且持有 ≥ 500 幣", "req": { "mineCount": 50, "coins": 500 } },
-      "iron_smith": { "name": "鐵鍛師", "emoji": "🔨", "category": "mining", "desc": "累積合成 10 件且歷史鐵礦 ≥ 100 顆", "req": { "craftCount": 10, "iron": 100 } },
-      "gem_hunter": { "name": "寶石獵人", "emoji": "💎", "category": "mining", "desc": "歷史黃金 ≥ 20 顆且歷史鑽石 ≥ 1 顆", "req": { "gold": 20, "diamond": 1 } },
-      "mine_king": { "name": "礦坑之王", "emoji": "👑", "category": "mining", "desc": "當週挖礦數量第一（每週更替）", "weekly": true },
-      "legend_miner": { "name": "傳說礦工", "emoji": "✨", "category": "mining", "desc": "累積挖礦 1000 次、歷史鑽石 ≥ 5 顆且週冠 ≥ 3 次", "req": { "mineCount": 1000, "diamond": 5, "weeklyChamp": 3 } },
-      "casino_regular": { "name": "賭場常客", "emoji": "🎰", "category": "casino", "desc": "累積下注 100 局", "req": { "betCount": 100 } },
-      "casino_bigwin": { "name": "一夜致富", "emoji": "💰", "category": "casino", "desc": "單局派彩 ≥ 10,000 幣", "req": { "payout": 10000 } },
-      "casino_jackpot": { "name": "Jackpot 得主", "emoji": "🃏", "category": "casino", "desc": "開出一次拉霸 Jackpot" },
-      "stock_retail": { "name": "股海散戶", "emoji": "📈", "category": "stock", "desc": "完成 10 筆股票交易", "req": { "txCount": 10 } },
-      "stock_god": { "name": "股神", "emoji": "💹", "category": "stock", "desc": "累積賣股 + 股利收入 ≥ 50,000 幣", "req": { "income": 50000 } },
-      "stock_king": { "name": "最強操盤手", "emoji": "📊", "category": "stock", "desc": "當週已實現損益第一（每週更替）", "weekly": true },
-      "lottery_fan": { "name": "樂透愛好者", "emoji": "🎟️", "category": "lottery", "desc": "累積購買 50 張樂透", "req": { "ticketCount": 50 } },
-      "lottery_jackpot": { "name": "頭獎得主", "emoji": "🏆", "category": "lottery", "desc": "中過一次樂透頭獎" },
-      "auction_merchant": { "name": "拍賣商人", "emoji": "🏷️", "category": "auction", "desc": "拍賣成交 20 件", "req": { "soldCount": 20 } },
-      "dragon_slayer": { "name": "屠龍者", "emoji": "🗡️", "category": "boss", "desc": "對 BOSS 造成最後一擊" },
-      "dragon_heir": { "name": "龍裔", "emoji": "🐲", "category": "boss", "desc": "累積擊殺 BOSS 達 10 次", "req": { "bossKills": 10 } },
-      "boss_mvp": { "name": "萬人敵", "emoji": "⚔️", "category": "boss", "desc": "單場 BOSS 戰傷害第一（每月輪替）", "monthly": true },
-      "combo_starter": { "name": "開團王", "emoji": "🎯", "category": "boss", "desc": "第一個把 Combo 帶滿的人（每月輪替）", "monthly": true },
-      "punching_bag": { "name": "被龍揍王", "emoji": "🤡", "category": "boss", "desc": "單場 BOSS 戰被反擊次數最多且 ≥ 3 次（每月輪替）", "monthly": true },
-      "dungeon_conqueror": { "name": "副本征服者", "emoji": "🏆", "category": "dungeon", "desc": "當月 5F 通關次數第一（每月輪替）", "monthly": true },
-      "frozen_hero":       { "name": "冰封英雄",   "emoji": "❄️", "category": "dungeon", "desc": "冰窟 1F–5F 全部通關過 ≥ 1 次", "req": { "iceFloorsClearedAll": true } },
-      "ruins_scholar":     { "name": "廢墟學者",   "emoji": "🏛️", "category": "dungeon", "desc": "廢墟 1F–5F 全部通關過 ≥ 1 次", "req": { "ruinsFloorsClearedAll": true } },
-      "habitual_thief":    { "name": "慣竊",       "emoji": "🥷", "category": "theft", "desc": "偷竊得手累積 25 次", "req": { "stealSuccess": 25 } },
-      "bounty_hunter":     { "name": "賞金獵人",   "emoji": "🕵️", "category": "theft", "desc": "追捕通緝犯成功累積 15 次", "req": { "huntSuccess": 15 } },
-      "summer_fish_king":  { "name": "夏日魚王",   "emoji": "🎏", "category": "event", "desc": "夏日魚汛祭限定：用河豚王兌換的榮譽稱號" },
-      "moonlight_angler":  { "name": "月光釣者",   "emoji": "🌕", "category": "event", "desc": "中秋月光夜釣限定：獻上傳說錦鯉換取的榮譽稱號" }
+      "coal_collector": {
+        "name": "煤炭採集者",
+        "emoji": "🪵",
+        "category": "mining",
+        "desc": "累積挖礦 50 次且持有 ≥ 500 幣",
+        "req": {
+          "mineCount": 50,
+          "coins": 500
+        }
+      },
+      "iron_smith": {
+        "name": "鐵鍛師",
+        "emoji": "🔨",
+        "category": "mining",
+        "desc": "累積合成 10 件且歷史鐵礦 ≥ 100 顆",
+        "req": {
+          "craftCount": 10,
+          "iron": 100
+        }
+      },
+      "gem_hunter": {
+        "name": "寶石獵人",
+        "emoji": "💎",
+        "category": "mining",
+        "desc": "歷史黃金 ≥ 20 顆且歷史鑽石 ≥ 1 顆",
+        "req": {
+          "gold": 20,
+          "diamond": 1
+        }
+      },
+      "mine_king": {
+        "name": "礦坑之王",
+        "emoji": "👑",
+        "category": "mining",
+        "desc": "當週挖礦數量第一（每週更替）",
+        "weekly": true
+      },
+      "legend_miner": {
+        "name": "傳說礦工",
+        "emoji": "✨",
+        "category": "mining",
+        "desc": "累積挖礦 1000 次、歷史鑽石 ≥ 5 顆且週冠 ≥ 3 次",
+        "req": {
+          "mineCount": 1000,
+          "diamond": 5,
+          "weeklyChamp": 3
+        }
+      },
+      "casino_regular": {
+        "name": "賭場常客",
+        "emoji": "🎰",
+        "category": "casino",
+        "desc": "累積下注 100 局",
+        "req": {
+          "betCount": 100
+        }
+      },
+      "casino_bigwin": {
+        "name": "一夜致富",
+        "emoji": "💰",
+        "category": "casino",
+        "desc": "單局派彩 ≥ 10,000 幣",
+        "req": {
+          "payout": 10000
+        }
+      },
+      "casino_jackpot": {
+        "name": "Jackpot 得主",
+        "emoji": "🃏",
+        "category": "casino",
+        "desc": "開出一次拉霸 Jackpot"
+      },
+      "stock_retail": {
+        "name": "股海散戶",
+        "emoji": "📈",
+        "category": "stock",
+        "desc": "完成 10 筆股票交易",
+        "req": {
+          "txCount": 10
+        }
+      },
+      "stock_god": {
+        "name": "股神",
+        "emoji": "💹",
+        "category": "stock",
+        "desc": "累積賣股 + 股利收入 ≥ 50,000 幣",
+        "req": {
+          "income": 50000
+        }
+      },
+      "stock_king": {
+        "name": "最強操盤手",
+        "emoji": "📊",
+        "category": "stock",
+        "desc": "當週已實現損益第一（每週更替）",
+        "weekly": true
+      },
+      "lottery_fan": {
+        "name": "樂透愛好者",
+        "emoji": "🎟️",
+        "category": "lottery",
+        "desc": "累積購買 50 張樂透",
+        "req": {
+          "ticketCount": 50
+        }
+      },
+      "lottery_jackpot": {
+        "name": "頭獎得主",
+        "emoji": "🏆",
+        "category": "lottery",
+        "desc": "中過一次樂透頭獎"
+      },
+      "auction_merchant": {
+        "name": "拍賣商人",
+        "emoji": "🏷️",
+        "category": "auction",
+        "desc": "拍賣成交 20 件",
+        "req": {
+          "soldCount": 20
+        }
+      },
+      "dragon_slayer": {
+        "name": "屠龍者",
+        "emoji": "🗡️",
+        "category": "boss",
+        "desc": "對 BOSS 造成最後一擊"
+      },
+      "dragon_heir": {
+        "name": "龍裔",
+        "emoji": "🐲",
+        "category": "boss",
+        "desc": "累積擊殺 BOSS 達 10 次",
+        "req": {
+          "bossKills": 10
+        }
+      },
+      "boss_mvp": {
+        "name": "萬人敵",
+        "emoji": "⚔️",
+        "category": "boss",
+        "desc": "單場 BOSS 戰傷害第一（每月輪替）",
+        "monthly": true
+      },
+      "combo_starter": {
+        "name": "開團王",
+        "emoji": "🎯",
+        "category": "boss",
+        "desc": "第一個把 Combo 帶滿的人（每月輪替）",
+        "monthly": true
+      },
+      "punching_bag": {
+        "name": "被龍揍王",
+        "emoji": "🤡",
+        "category": "boss",
+        "desc": "單場 BOSS 戰被反擊次數最多且 ≥ 3 次（每月輪替）",
+        "monthly": true
+      },
+      "dungeon_conqueror": {
+        "name": "副本征服者",
+        "emoji": "🏆",
+        "category": "dungeon",
+        "desc": "當月 5F 通關次數第一（每月輪替）",
+        "monthly": true
+      },
+      "frozen_hero": {
+        "name": "冰封英雄",
+        "emoji": "❄️",
+        "category": "dungeon",
+        "desc": "冰窟 1F–5F 全部通關過 ≥ 1 次",
+        "req": {
+          "iceFloorsClearedAll": true
+        }
+      },
+      "ruins_scholar": {
+        "name": "廢墟學者",
+        "emoji": "🏛️",
+        "category": "dungeon",
+        "desc": "廢墟 1F–5F 全部通關過 ≥ 1 次",
+        "req": {
+          "ruinsFloorsClearedAll": true
+        }
+      },
+      "habitual_thief": {
+        "name": "慣竊",
+        "emoji": "🥷",
+        "category": "theft",
+        "desc": "偷竊得手累積 25 次",
+        "req": {
+          "stealSuccess": 25
+        }
+      },
+      "bounty_hunter": {
+        "name": "賞金獵人",
+        "emoji": "🕵️",
+        "category": "theft",
+        "desc": "追捕通緝犯成功累積 15 次",
+        "req": {
+          "huntSuccess": 15
+        }
+      },
+      "summer_fish_king": {
+        "name": "夏日魚王",
+        "emoji": "🎏",
+        "category": "event",
+        "desc": "夏日魚汛祭限定：用河豚王兌換的榮譽稱號"
+      },
+      "moonlight_angler": {
+        "name": "月光釣者",
+        "emoji": "🌕",
+        "category": "event",
+        "desc": "中秋月光夜釣限定：獻上傳說錦鯉換取的榮譽稱號"
+      },
+      "pioneer_vanguard": {
+        "name": "拓荒先鋒",
+        "emoji": "🔨",
+        "category": "event",
+        "desc": "礦車軌道：投入量達全服目標 1%",
+        "req": {
+          "contributionPct": 1
+        }
+      },
+      "pioneer_hero": {
+        "name": "拓荒英雄",
+        "emoji": "⛏️",
+        "category": "event",
+        "desc": "礦車軌道：投入量達全服目標 2.5%",
+        "req": {
+          "contributionPct": 2.5
+        }
+      },
+      "rail_guardian": {
+        "name": "礦道守護者",
+        "emoji": "👑",
+        "category": "event",
+        "desc": "礦車軌道：投入量達全服目標 4%",
+        "req": {
+          "contributionPct": 4
+        }
+      },
+      "deep_vein_pioneer": {
+        "name": "深層礦脈開拓者",
+        "emoji": "✨",
+        "category": "event",
+        "desc": "礦車軌道：貢獻榜前 3 名的限定頭銜",
+        "req": {
+          "contributionRank": 3
+        }
+      }
     }
   }
 }
