@@ -306,6 +306,8 @@ function buildCooldownView({
   rodKey,
   rodDurability,
   rodMaxDurability,
+  rareBaitEnabled,
+  rareBaitOwned,
 }) {
   const readyEpoch = Math.floor(readyAt / 1000);
   const reductionMin = Math.max(1, Math.round((cdTicketReductionMs || 0) / 60000));
@@ -386,6 +388,12 @@ function buildCooldownView({
       ),
     );
   }
+
+  // 冷卻中正好是決定下一竿要不要吃餌的時機，開關跟結果訊息同一顆。
+  addRareBaitSection(container, ownerId, {
+    enabled: rareBaitEnabled,
+    owned: rareBaitOwned,
+  });
 
   // 冷卻結束後可直接點此再釣一次；冷卻未到則會再次顯示這個畫面。
   container
@@ -481,6 +489,8 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           rodKey: result.rodKey,
           rodDurability: result.rodDurability,
           rodMaxDurability: result.rodMaxDurability,
+          rareBaitEnabled: result.rareBaitEnabled,
+          rareBaitOwned: result.rareBaitOwned,
         });
         return interaction.editReply({
           components: [container],

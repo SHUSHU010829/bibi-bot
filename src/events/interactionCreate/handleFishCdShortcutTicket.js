@@ -97,6 +97,8 @@ module.exports = async (client, interaction) => {
         rodKey: result.rodKey,
         rodDurability: result.rodDurability,
         rodMaxDurability: result.rodMaxDurability,
+        rareBaitEnabled: result.rareBaitEnabled,
+        rareBaitOwned: result.rareBaitOwned,
       });
       await interaction.editReply({
         components: [container],

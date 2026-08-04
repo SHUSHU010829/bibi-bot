@@ -104,6 +104,8 @@ async function fish(client, { userId, guildId, location = "stream", member, user
       rodKey: profile.fishing_rod || "bamboo",
       rodDurability: profile.rod_durability,
       rodMaxDurability: await effectiveRodMax(client, userId, guildId, profile),
+      rareBaitEnabled: rareBaitAuto,
+      rareBaitOwned,
     };
   }
 
@@ -785,6 +787,8 @@ async function useCdTicket(client, { userId, guildId }) {
     rodKey: profile.fishing_rod || "bamboo",
     rodDurability: profile.rod_durability,
     rodMaxDurability: await effectiveRodMax(client, userId, guildId, profile),
+    rareBaitEnabled: profile.rare_bait_auto === true,
+    rareBaitOwned: profile.rare_bait || 0,
   };
 }
 

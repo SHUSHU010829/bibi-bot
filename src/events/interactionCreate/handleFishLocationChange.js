@@ -127,6 +127,8 @@ module.exports = async (client, interaction) => {
         "rod",
         await equipMaxPct(client, interaction.user.id, interaction.guildId),
       ),
+      rareBaitEnabled: profile.rare_bait_auto === true,
+      rareBaitOwned: profile.rare_bait || 0,
     });
 
     await interaction.editReply({
