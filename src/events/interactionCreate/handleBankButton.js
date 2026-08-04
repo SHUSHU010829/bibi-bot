@@ -140,6 +140,14 @@ module.exports = async (client, interaction) => {
           return show("gold", `🔒 有逾期貸款未清（待還 ${fmt(res.block.outstanding)}），領回暫停。請先到貸款頁還款`);
         return show("gold", "⚠️ 此黃金存單無法領回（可能已領過）");
       }
+      if (res.overflowUnits > 0) {
+        return show(
+          "gold",
+          `✅ 黃金定存到期領回 **${fmt(res.payoutUnits)}** ${uLabel}，金庫只放得下 **${fmt(res.storedUnits)}** ${uLabel}\n` +
+            `🪙 超出容量的 **${fmt(res.overflowUnits)}** ${uLabel}已按賣出價折現 **+${fmt(res.overflowGain)}** 幣入錢包\n` +
+            `-# 金庫上限 ${fmt(res.capacity)} ${uLabel}（提升信用評等可擴充）；留在錢包的部分會計入每週財富稅`,
+        );
+      }
       return show("gold", `✅ 黃金定存到期領回 **${fmt(res.payoutUnits)}** ${uLabel}`);
     }
   } catch (error) {
