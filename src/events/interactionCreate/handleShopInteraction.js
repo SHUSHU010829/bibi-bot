@@ -14,6 +14,9 @@ const equipItem = require("../../features/shop/equipItem");
 const buyItem = require("../../features/shop/buyItem");
 const { getItem, isStackable } = require("../../features/shop/catalog");
 const { getStackInfo } = require("../../features/shop/stackInfo");
+const backpackExpansion = require("../../features/shop/backpackExpansion");
+const { buildBlockedView } = require("../../features/shop/backpackExpansionView");
+const { getOrCreate: getMiningProfile } = require("../../features/mining/miningProfile");
 const {
   buildBackpackView,
   UNIFIED_EQUIP_ID,
@@ -75,7 +78,11 @@ function buildTitleModal(inventoryId) {
 function buildQtyModal(item, info) {
   const { max, maxStack, dailyLimit, owned, boughtToday, unit, maxBuyNow } = info;
   const labelParts = ["數量"];
-  if (owned != null) {
+  if (info.capacity != null) {
+    // 背包擴充：價格隨容量遞增，label 直接標出目前容量與下一筆實價。
+    labelParts.push(`容量 ${info.capacity}/${info.capacityMax}`);
+    if (info.nextPrice != null) labelParts.push(`下一筆 ${info.nextPrice.toLocaleString()}`);
+  } else if (owned != null) {
     labelParts.push(maxStack != null ? `持有 ${owned}/${maxStack}` : `持有 ${owned}${unit}`);
   }
   if (dailyLimit != null) labelParts.push(`今日 ${boughtToday}/${dailyLimit}`);
@@ -205,6 +212,18 @@ async function handleBuyButton(client, interaction, itemId) {
       item,
     });
     if (info.maxBuyNow <= 0) {
+      // 背包擴充擋下時要說清楚是撞上限還是門檻未達成（與扣款路徑共用同一支判斷）。
+      if (item.type === "mining_backpack") {
+        const profile = await getMiningProfile(client, interaction.user.id, interaction.guildId);
+        const blocked = await backpackExpansion.describeBlock(client, {
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+          profile,
+          item,
+          chunks: 1,
+        });
+        if (blocked) return interaction.reply(buildBlockedView(blocked));
+      }
       const reason =
         info.dailyLimit != null && info.boughtToday >= info.dailyLimit
           ? `今日已達購買上限（${info.boughtToday}/${info.dailyLimit}）`
@@ -300,6 +319,15 @@ function renderPurchaseResult(item, result) {
     const ts = Math.floor(new Date(result.expiresAt).getTime() / 1000);
     lines.push(`・有效期限：<t:${ts}:f>（<t:${ts}:R>）`);
   }
+  if (result.backpack) {
+    const b = result.backpack;
+    lines.push(
+      `・三袋容量：${b.capacityBefore.toLocaleString()} → **${b.capacityAfter.toLocaleString()}** 格（上限 ${backpackExpansion.maxSlots().toLocaleString()}）`,
+    );
+    if (b.nextPrice != null) {
+      lines.push(`・下一筆擴充：${b.nextPrice.toLocaleString()} ${MONEY_EMOJI}`);
+    }
+  }
   if (item.type === "xp_boost" || item.type === "coin_boost") {
     lines.push("・效果：已自動套用（可一次買多瓶；時效內重買會累積時間）");
     lines.push("・多個藥水同時生效時，倍率取最高；目前倍率可用 `/加成` 查看");
@@ -370,7 +398,12 @@ async function handleQtyBuyModalSubmit(client, interaction, itemId) {
     itemId,
     quantity: qty,
   });
-  if (!result.ok) return interaction.editReply({ content: `❌ ${result.error}`, components: [] });
+  if (!result.ok) {
+    if (result.errorKind) {
+      return interaction.editReply(buildBlockedView(result, { ephemeral: false }));
+    }
+    return interaction.editReply({ content: `❌ ${result.error}`, components: [] });
+  }
   await interaction.editReply(renderPurchaseResult(item, result));
 }
 
@@ -393,7 +426,12 @@ async function handleConfirmButton(client, interaction, qty, itemId) {
     quantity: qty,
   });
 
-  if (!result.ok) return interaction.editReply({ content: `❌ ${result.error}`, components: [] });
+  if (!result.ok) {
+    if (result.errorKind) {
+      return interaction.editReply(buildBlockedView(result, { ephemeral: false }));
+    }
+    return interaction.editReply({ content: `❌ ${result.error}`, components: [] });
+  }
 
   await interaction.editReply(renderPurchaseResult(item, result));
 }

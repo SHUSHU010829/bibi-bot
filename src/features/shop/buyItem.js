@@ -7,6 +7,7 @@ const { addBuff } = require("./activeBuff");
 const { getOrCreate: getMiningProfile } = require("../mining/miningProfile");
 const { getOrCreate: getTheftProfile } = require("../theft/theftProfile");
 const { ROD_TIER } = require("../mining/craftService");
+const backpackExpansion = require("./backpackExpansion");
 
 const THEFT_ITEM_TYPES = ["theft_watchdog", "theft_safebox", "theft_cloak"];
 // 帶持有上限、寫進 TheftProfiles 的防身道具：type → 對應欄位
@@ -80,7 +81,26 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     if (qty > max) qty = max;
   }
 
-  const totalPrice = item.price * qty;
+  let totalPrice = item.price * qty;
+
+  // 背包擴充：價格隨目前容量遞增、有硬上限與解鎖門檻，總價與實際筆數都由 backpackExpansion 決定。
+  let backpackQuote = null;
+  if (item.type === "mining_backpack") {
+    const profile = await getMiningProfile(client, userId, guildId);
+    const blocked = await backpackExpansion.describeBlock(client, {
+      userId,
+      guildId,
+      profile,
+      item,
+      chunks: qty,
+    });
+    if (blocked) {
+      return { ok: false, error: blocked.error, errorKind: blocked.errorKind, detail: blocked.detail };
+    }
+    backpackQuote = backpackExpansion.quote(profile, qty, item);
+    qty = backpackQuote.chunks;
+    totalPrice = backpackQuote.totalPrice;
+  }
 
   // 持有上限檢查：有 payload.maxStack 且對應欄位定義的挖礦道具（在扣款前檢查）
   const stackLimitField = MINING_STACK_LIMIT_MAP[item.type];
@@ -279,7 +299,10 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     };
     const mapping = MINING_FIELD_MAP[item.type];
     const incField = mapping?.field || "luck_potion_uses";
-    const incAmount = (item.payload?.[mapping?.payloadKey] || 0) * qty;
+    // 背包擴充的最後一筆可能被硬上限截短，實際增加量以 quote 為準。
+    const incAmount = backpackQuote
+      ? backpackQuote.slotsGained
+      : (item.payload?.[mapping?.payloadKey] || 0) * qty;
     await client.miningProfilesCollection.updateOne(
       { userId, guildId },
       { $inc: { [incField]: incAmount }, $set: { updatedAt: now } },
@@ -329,7 +352,7 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
         name: item.name,
         type: item.type,
         quantity: qty,
-        unitPrice: item.price,
+        unitPrice: Math.round(totalPrice / qty),
         price: totalPrice,
         balanceAfter: grant.doc?.totalCoins || 0,
         createdAt: now,
@@ -350,6 +373,7 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
     // 加成藥水回累積後的到期時間，讓購買訊息顯示「加成生效至 …」
     expiresAt: buffExpiresAt || expiresAt,
     inventoryDoc,
+    backpack: backpackQuote,
   };
 }
 

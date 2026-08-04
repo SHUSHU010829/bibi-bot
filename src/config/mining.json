@@ -4,6 +4,36 @@
     "cooldownMs": 7200000,
     "luckCap": 0.25,
     "backpackBaseSlots": 100,
+    "backpackExpansion": {
+      "maxSlots": 20000,
+      "flatUntilSlots": 5000,
+      "bands": [
+        { "fromSlots": 5000, "bandSlots": 500, "priceMultiplier": 1.35 },
+        { "fromSlots": 10000, "bandSlots": 500, "priceMultiplier": 1.15 }
+      ],
+      "gates": [
+        { "aboveSlots": 5000, "require": { "level": 30 } },
+        { "aboveSlots": 5500, "require": { "mineCount": 800 } },
+        { "aboveSlots": 6000, "require": { "level": 45, "legendaryFragments": 3 } },
+        { "aboveSlots": 6500, "require": { "mineCount": 1500 } },
+        { "aboveSlots": 7000, "require": { "dungeonTheme": "ruins", "legendaryFragments": 5 } },
+        { "aboveSlots": 7500, "require": { "level": 60, "mineCount": 2500 } },
+        { "aboveSlots": 8000, "require": { "legendaryFragments": 10 } },
+        { "aboveSlots": 8500, "require": { "dungeonTheme": "ice", "mineCount": 4000 } },
+        { "aboveSlots": 9000, "require": { "level": 80, "legendaryFragments": 15 } },
+        { "aboveSlots": 9500, "require": { "mineCount": 6000, "legendaryFragments": 20 } },
+        { "aboveSlots": 10000, "require": { "level": 90, "legendaryFragments": 25 } },
+        { "aboveSlots": 11000, "require": { "mineCount": 8000 } },
+        { "aboveSlots": 12000, "require": { "level": 100, "legendaryFragments": 35 } },
+        { "aboveSlots": 13000, "require": { "mineCount": 12000 } },
+        { "aboveSlots": 14000, "require": { "legendaryFragments": 50 } },
+        { "aboveSlots": 15000, "require": { "level": 120, "mineCount": 18000 } },
+        { "aboveSlots": 16000, "require": { "legendaryFragments": 70 } },
+        { "aboveSlots": 17000, "require": { "mineCount": 25000 } },
+        { "aboveSlots": 18000, "require": { "level": 150, "legendaryFragments": 90 } },
+        { "aboveSlots": 19000, "require": { "mineCount": 35000, "legendaryFragments": 120 } }
+      ]
+    },
     "ores": {
       "stone": {
         "name": "石頭",

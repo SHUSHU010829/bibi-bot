@@ -242,7 +242,8 @@ async function getOrCreate(client, userId, guildId) {
   return normalize(res.value || res);
 }
 
-// 背包總容量（基礎 + 擴充）
+// 背包總容量（基礎 + 擴充）。上限只擋購買（見 shop/backpackExpansion），
+// 已超過上限的舊帳號就地保留，不縮水。
 function backpackCapacity(profile, mining) {
   const base = mining?.backpackBaseSlots ?? 100;
   return base + (profile?.backpack_bonus_slots || 0);
