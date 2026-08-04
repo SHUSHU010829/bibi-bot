@@ -83,6 +83,8 @@ async function fish(client, { userId, guildId, location = "stream", member, user
 
   const profile = await getFishingProfile(client, userId, guildId);
   const now = Date.now();
+  const rareBaitOwned = profile.rare_bait || 0;
+  const rareBaitAuto = profile.rare_bait_auto === true;
 
   // CD 檢查
   if ((profile.fish_cooldown_at || 0) > now) {
@@ -225,6 +227,8 @@ async function fish(client, { userId, guildId, location = "stream", member, user
       netActive,
       xpGained,
       xpBase,
+      rareBaitEnabled: rareBaitAuto,
+      rareBaitOwned,
       foodBuffLines: formatFoodBuffLines(profile, "fish"),
     };
   }
@@ -284,6 +288,8 @@ async function fish(client, { userId, guildId, location = "stream", member, user
     netUsesAfter: netActive ? (profile.fishing_net_uses || 0) - 1 : (profile.fishing_net_uses || 0),
     xpGained,
     xpBase,
+    rareBaitEnabled: rareBaitAuto,
+    rareBaitOwned,
     foodBuffLines: formatFoodBuffLines(profile, "fish"),
   };
 
@@ -351,9 +357,9 @@ async function fish(client, { userId, guildId, location = "stream", member, user
 
   // ── 釣到魚 ──：依稀有度偏移後的權重抽魚。
   // 限時活動：限定魚混進該釣點魚群（getEffectiveFishWeights），活動「魚汛」再給稀有偏移加成。
-  // 稀有魚餌：有庫存就自動吃掉 1 個換稀有偏移（比照幸運藥水 luck_potion_uses 的次數制）。
+  // 稀有魚餌：玩家自行開關（預設關閉），開啟且有庫存才吃掉 1 個換稀有偏移。
   // 只在真的上鉤時消耗——rareBonus 只影響「抽到哪種魚」，失敗時它沒起作用。
-  const useRareBait = (profile.rare_bait || 0) > 0;
+  const useRareBait = rareBaitAuto && rareBaitOwned > 0;
   const rareBonus =
     (rodDef.rareBonus || 0)
     + (foodFish.rare || 0)
@@ -446,7 +452,7 @@ async function fish(client, { userId, guildId, location = "stream", member, user
     bumperCatch,
     rareDrops,
     usedRareBait: useRareBait,
-    rareBaitLeft: Math.max(0, (profile.rare_bait || 0) - (useRareBait ? 1 : 0)),
+    rareBaitOwned: Math.max(0, rareBaitOwned - (useRareBait ? 1 : 0)),
     fishBagCap: fishCap,
     fishBagUsed: fishUsed + qty,
   };
@@ -531,6 +537,9 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     newCooldownAt: now,
     fishCountTotal: profile.fish_count_total || 0,
     xpGained: 0,
+    rareBaitUsed: 0,
+    rareBaitEnabled: profile.rare_bait_auto === true,
+    rareBaitOwned: profile.rare_bait || 0,
   };
 
   // 整批共用：公會 buff 預先算一次逐輪傳入；fishLog 收集後一次 insertMany；
@@ -598,6 +607,8 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     agg.newCooldownAt = r.newCooldownAt;
     agg.fishCountTotal = r.fishCountTotal;
     if (r.droppedNetFragment) agg.netFragments++;
+    if (r.usedRareBait) agg.rareBaitUsed++;
+    if (typeof r.rareBaitOwned === "number") agg.rareBaitOwned = r.rareBaitOwned;
 
     let step;
     if (!r.caught) {
@@ -687,6 +698,21 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     };
   }
   return agg;
+}
+
+// 切換「上鉤時自動吃稀有魚餌」開關（預設關閉）。存開關本身、不存加成值，
+// 加成在每次釣魚時才依當下庫存換算。
+async function toggleRareBaitAuto(client, { userId, guildId }) {
+  if (!client.miningProfilesCollection) return { ok: false, reason: "disabled" };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const enabled = profile.rare_bait_auto !== true;
+  await client.miningProfilesCollection.updateOne(
+    { userId, guildId },
+    { $set: { rare_bait_auto: enabled, updatedAt: new Date() } },
+  );
+
+  return { ok: true, enabled, owned: profile.rare_bait || 0 };
 }
 
 // 冷卻中主動使用一張 CD 縮短券：直接縮短目前的釣魚冷卻。
@@ -780,4 +806,12 @@ async function isLocationUnlocked(client, { userId, guildId, location, profile }
   return true;
 }
 
-module.exports = { fish, fishBatch, getFishingProfile, locationUnlockDesc, useCdTicket, isLocationUnlocked };
+module.exports = {
+  fish,
+  fishBatch,
+  getFishingProfile,
+  locationUnlockDesc,
+  useCdTicket,
+  toggleRareBaitAuto,
+  isLocationUnlocked,
+};

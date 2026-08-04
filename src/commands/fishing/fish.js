@@ -73,6 +73,49 @@ function fishAgainButton(ownerId, location) {
     .setStyle(ButtonStyle.Primary);
 }
 
+// 稀有魚餌「上鉤時自動吃 1 個」開關（預設關閉）。customId = fish_bait_auto_<ownerId>
+// 狀態只寫在按鈕 label / style 上，切換時處理器就地改這顆按鈕即可（見 handleFishBaitAuto.js）。
+const FISH_BAIT_AUTO_PREFIX = "fish_bait_auto_";
+
+function parseFishBaitAutoId(customId) {
+  if (!customId || !customId.startsWith(FISH_BAIT_AUTO_PREFIX)) return null;
+  const ownerId = customId.slice(FISH_BAIT_AUTO_PREFIX.length);
+  return ownerId ? { ownerId } : null;
+}
+
+function rareBaitToggleLabel(enabled) {
+  return enabled ? "自動吃魚餌：開" : "自動吃魚餌：關";
+}
+
+function rareBaitToggleButton(ownerId, enabled) {
+  return new ButtonBuilder()
+    .setCustomId(`${FISH_BAIT_AUTO_PREFIX}${ownerId}`)
+    .setLabel(rareBaitToggleLabel(enabled))
+    .setEmoji("🎏")
+    .setStyle(enabled ? ButtonStyle.Success : ButtonStyle.Secondary);
+}
+
+// 釣魚結果訊息上的稀有魚餌開關區塊：庫存與開關擺在一起，按鈕緊貼該項目。
+// 沒魚餌又沒開過開關就整塊不顯示，免得占版面。
+function addRareBaitSection(container, ownerId, { enabled, owned }) {
+  const count = owned || 0;
+  if (!enabled && count <= 0) return;
+  const bonus = fishing.rareBaitBonus ?? 1;
+  const stock =
+    count > 0
+      ? `**🎏 稀有魚餌** ×${count}`
+      : "**🎏 稀有魚餌** ×0（用完了，種黑玫瑰再收成看看）";
+  container.addSectionComponents(
+    new SectionBuilder()
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `${stock}\n-# 開啟後每次上鉤自動吃 1 個，稀有魚偏移 +${bonus}・預設關閉，按鈕可隨時切換`,
+        ),
+      )
+      .setButtonAccessory(rareBaitToggleButton(ownerId, enabled)),
+  );
+}
+
 // 連續釣魚（批次）。customId = fish_batch_<ownerId>_<location>
 const FISH_BATCH_PREFIX = "fish_batch_";
 const FISH_BATCH_MODAL_PREFIX = "fish_batch_qty_";
@@ -570,6 +613,11 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
         );
       }
 
+      addRareBaitSection(failContainer, interaction.user.id, {
+        enabled: result.rareBaitEnabled,
+        owned: result.rareBaitOwned,
+      });
+
       failContainer.addActionRowComponents(
         new ActionRowBuilder().addComponents(
           fishAgainButton(interaction.user.id, location),
@@ -658,6 +706,11 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           result.rodDurabilityWarnCrossed,
         ).catch(() => {});
       }
+
+      addRareBaitSection(lootContainer, interaction.user.id, {
+        enabled: result.rareBaitEnabled,
+        owned: result.rareBaitOwned,
+      });
 
       lootContainer.addActionRowComponents(
         new ActionRowBuilder().addComponents(
@@ -758,7 +811,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
     if (result.usedRareBait) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🎏 用掉 **稀有魚餌** ×1（稀有魚偏移 +${fishing.rareBaitBonus ?? 1}）・剩 **${result.rareBaitLeft}** 個`,
+          `🎏 用掉 **稀有魚餌** ×1（稀有魚偏移 +${fishing.rareBaitBonus ?? 1}）・剩 **${result.rareBaitOwned}** 個`,
         ),
       );
     }
@@ -854,8 +907,13 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       );
     }
 
-    // 快捷操作按鈕：再釣一次 + 查看魚袋（賣魚統一到 /背包，避免一鍵誤賣）
     const userId = interaction.user.id;
+    addRareBaitSection(container, userId, {
+      enabled: result.rareBaitEnabled,
+      owned: result.rareBaitOwned,
+    });
+
+    // 快捷操作按鈕：再釣一次 + 查看魚袋（賣魚統一到 /背包，避免一鍵誤賣）
     container.addActionRowComponents(
       new ActionRowBuilder().addComponents(
         fishAgainButton(userId, location),
@@ -1122,6 +1180,14 @@ async function runFishBatch(client, interaction, { location = "stream", count })
       );
     }
 
+    if (result.rareBaitUsed > 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `🎏 **用掉稀有魚餌 ×${result.rareBaitUsed}**（稀有魚偏移 +${fishing.rareBaitBonus ?? 1}）・剩 **${result.rareBaitOwned}** 個`,
+        ),
+      );
+    }
+
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `**消耗 CD 縮短券**\n×${result.ticketsSpent}`,
@@ -1170,6 +1236,11 @@ async function runFishBatch(client, interaction, { location = "stream", count })
         .catch(() => null);
       addRodRepairSection(container, interaction.user.id, location, preview);
     }
+
+    addRareBaitSection(container, interaction.user.id, {
+      enabled: result.rareBaitEnabled,
+      owned: result.rareBaitOwned,
+    });
 
     container.addActionRowComponents(
       new ActionRowBuilder().addComponents(
@@ -1284,4 +1355,7 @@ module.exports = {
   runFishBatch,
   FISH_BATCH_REPAIR_PREFIX,
   parseFishBatchRepairId,
+  FISH_BAIT_AUTO_PREFIX,
+  parseFishBaitAutoId,
+  rareBaitToggleLabel,
 };
