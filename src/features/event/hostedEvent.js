@@ -26,6 +26,9 @@ const { checkServerTenure } = require("../economy/eligibility");
 const { fireEventPayoutCheck } = require("../economy/suspiciousTransferDetector");
 const { hostedEvents: hostedEventsConfig } = require("../../config");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
+const itemRegistry = require("../economy/itemRegistry");
+const fundraise = require("./fundraiseService");
+const fundraiseView = require("./fundraiseView");
 
 const EVENT_CHANNEL_ID = hostedEventsConfig?.publishChannelId || "1174352640210124877";
 const MAX_RANK_COUNT = hostedEventsConfig?.maxRankCount || 5;
@@ -70,7 +73,10 @@ function buildActiveContainer(eventDoc, guild) {
     (eventDoc.createdAt ? new Date(eventDoc.createdAt).getTime() : Date.now()) / 1000,
   );
 
-  return new ContainerBuilder()
+  const itemLine = fundraiseView.formatItemPool(eventDoc.funding?.itemPool);
+  const poolLabel = eventDoc.funding ? "募資獎金池" : "獎金池";
+
+  const container = new ContainerBuilder()
     .setAccentColor(recruitmentClosed ? 0x95a5a6 : EMBED_COLOR_ACTIVE)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -81,7 +87,8 @@ function buildActiveContainer(eventDoc, guild) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `**主辦人**：${nameOf(hostId)}\n` +
-          `**獎金池**：${prizePool.toLocaleString()} credits\n` +
+          `**${poolLabel}**：${prizePool.toLocaleString()} credits\n` +
+          (itemLine ? `**物品獎池**：${itemLine.slice(0, 800)}\n` : "") +
           `**名次**：${rankCount} 名\n` +
           `**報名人數**：${capacityLabel}`,
       ),
@@ -91,12 +98,21 @@ function buildActiveContainer(eventDoc, guild) {
       new TextDisplayBuilder().setContent(
         `**${statusLabel}**\n${participantLine.slice(0, 3500)}`,
       ),
-    )
-    .addTextDisplayComponents(
+    );
+
+  if (eventDoc.funding) {
+    container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 活動 ID：${eventDoc.eventId} ・ <t:${createdEpoch}:f>`,
+        `-# 由 ${eventDoc.funding.donorCount || 0} 位贊助者募得，主辦人保留 ${eventDoc.funding.hostRetentionPct || 0}%，其餘必須全數發成獎金。`,
       ),
     );
+  }
+
+  return container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# 活動 ID：${eventDoc.eventId} ・ <t:${createdEpoch}:f>`,
+    ),
+  );
 }
 
 function buildSettledContainer(eventDoc, guild) {
@@ -111,7 +127,11 @@ function buildSettledContainer(eventDoc, guild) {
     .map((w) => {
       const received = w.prizeNet !== undefined ? w.prizeNet : w.prize;
       const feeNote = w.prizeFee > 0 ? `（已扣防洗錢 ${w.prizeFee.toLocaleString()}）` : "";
-      return `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${nameOf(w.userId)} — ${received.toLocaleString()} credits${feeNote}`;
+      const itemNote = fundraiseView.formatItemPool(w.items);
+      return (
+        `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${nameOf(w.userId)} — ${received.toLocaleString()} credits${feeNote}` +
+        (itemNote ? `\n　└ 🎁 ${itemNote}` : "")
+      );
     })
     .join("\n");
 
@@ -132,7 +152,7 @@ function buildSettledContainer(eventDoc, guild) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**主辦人**：${nameOf(hostId)}\n**原始獎金池**：${prizePool.toLocaleString()} credits`,
+        `**主辦人**：${nameOf(hostId)}\n**${eventDoc.funding ? "募資獎金池" : "原始獎金池"}**：${prizePool.toLocaleString()} credits`,
       ),
     )
     .addTextDisplayComponents(
@@ -140,6 +160,16 @@ function buildSettledContainer(eventDoc, guild) {
         `**得獎名單**\n${winnerLines || "（無）"}`,
       ),
     );
+
+  if (eventDoc.funding) {
+    const retention = eventDoc.funding.retentionAmount || 0;
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 由 ${eventDoc.funding.donorCount || 0} 位贊助者募得 ${(eventDoc.funding.raised || 0).toLocaleString()} credits，` +
+          `主辦人保留 ${retention.toLocaleString()}（${eventDoc.funding.hostRetentionPct || 0}%），其餘已全數發出。`,
+      ),
+    );
+  }
 
   if (unpaid > 0) {
     container.addTextDisplayComponents(
@@ -166,12 +196,20 @@ function buildCancelledContainer(eventDoc, guild) {
   const refundNet =
     eventDoc.refundNet !== undefined ? eventDoc.refundNet : Math.max(eventDoc.prizePool - refundFee, 0);
 
-  const lines = [
-    `**主辦人**：${plainifyUserMentions(guild, `<@${eventDoc.hostId}>`)}`,
-    `**獎金已退還**：${refundNet.toLocaleString()} credits`,
-  ];
-  if (refundFee > 0) {
-    lines.push(`**系統抽成（防洗錢）**：${refundFee.toLocaleString()} credits`);
+  const lines = [`**主辦人**：${plainifyUserMentions(guild, `<@${eventDoc.hostId}>`)}`];
+  if (eventDoc.funding) {
+    const r = eventDoc.fundRefund || {};
+    lines.push(
+      `**已退還贊助者**：${(r.refundedCoins || 0).toLocaleString()} credits（${r.donorCount || 0} 位）`,
+    );
+    const itemLine = fundraiseView.formatItemPool(eventDoc.funding.itemPool);
+    if (itemLine) lines.push(`**物品已退還**：${itemLine.slice(0, 800)}`);
+    lines.push("-# 募資款項原路退回，主辦人未取得任何分潤。");
+  } else {
+    lines.push(`**獎金已退還**：${refundNet.toLocaleString()} credits`);
+    if (refundFee > 0) {
+      lines.push(`**系統抽成（防洗錢）**：${refundFee.toLocaleString()} credits`);
+    }
   }
 
   const cancelledEpoch = Math.floor(
@@ -265,10 +303,35 @@ function buildPickSelect(eventDoc, rank, alreadyPicked, participantMembers) {
   );
 }
 
+// 募資活動的物品獎池：一次指定一種物品要整包發給第幾名（沿用名次選擇的循序 UX）。
+function buildItemAwardSelect(eventDoc, itemIndex, picks, participantMembers) {
+  const pooled = fundraise.itemPoolOf(eventDoc)[itemIndex];
+  const label = itemRegistry.labelOf(pooled.value) || "❔ 已下架物品";
+
+  const options = picks.map((userId, idx) => {
+    const member = participantMembers.get(userId);
+    const name = member?.displayName || member?.user?.username || userId;
+    return { label: `第 ${idx + 1} 名 — ${name}`.slice(0, 100), value: String(idx + 1) };
+  });
+
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`event_itemassign_${eventDoc.eventId}_${itemIndex}`)
+      .setPlaceholder(`${label} ×${pooled.qty} 要發給第幾名？`.slice(0, 150))
+      .addOptions(options)
+      .setMinValues(1)
+      .setMaxValues(1),
+  );
+}
+
 function buildAmountModal(eventDoc, picks, participantMembers) {
   const modal = new ModalBuilder()
     .setCustomId(`event_amounts_${eventDoc.eventId}`)
-    .setTitle(`填入各名次獎金（≤ ${eventDoc.prizePool}）`);
+    .setTitle(
+      eventDoc.funding
+        ? `獎金需剛好發完 ${eventDoc.prizePool}`.slice(0, 45)
+        : `填入各名次獎金（≤ ${eventDoc.prizePool}）`,
+    );
 
   picks.forEach((userId, idx) => {
     const rank = idx + 1;
@@ -280,7 +343,7 @@ function buildAmountModal(eventDoc, picks, participantMembers) {
       .setStyle(TextInputStyle.Short)
       .setRequired(true)
       .setMaxLength(10)
-      .setPlaceholder("輸入正整數金額");
+      .setPlaceholder(eventDoc.funding ? "輸入金額（只發物品可填 0）" : "輸入正整數金額");
     modal.addComponents(new ActionRowBuilder().addComponents(input));
   });
 
@@ -512,6 +575,7 @@ function buildNoticeContainer(content, kind = "ok") {
 }
 
 async function refreshEventMessage(client, eventDoc) {
+  if (!eventDoc.channelId || !eventDoc.messageId) return null;
   const channel = await client.channels.fetch(eventDoc.channelId).catch(() => null);
   if (!channel) return null;
   const msg = await channel.messages.fetch(eventDoc.messageId).catch(() => null);
@@ -522,7 +586,11 @@ async function refreshEventMessage(client, eventDoc) {
     : channel.guild || null;
 
   let container;
-  if (eventDoc.status === "RECRUITING") {
+  if (eventDoc.status === "FUNDRAISING") {
+    container = fundraiseView.buildFundraisingContainer(eventDoc, guild, {
+      open: fundraise.isFundingOpen(eventDoc),
+    });
+  } else if (eventDoc.status === "RECRUITING") {
     container = buildActiveContainer(eventDoc, guild).addActionRowComponents(
       buildActionRow(eventDoc.eventId, {
         recruitmentClosed: !!eventDoc.recruitmentClosed,
@@ -596,7 +664,62 @@ async function setRecruitmentClosed(client, eventDoc, closed) {
   return doc;
 }
 
+// 募資活動取消：錢不是主辦人出的，所以全額原路退回贊助者，主辦人不抽成也不退款。
+async function cancelFundedEvent(client, eventDoc, actor) {
+  const updated = unwrap(
+    await client.hostedEventsCollection.findOneAndUpdate(
+      { _id: eventDoc._id, status: { $in: ["FUNDRAISING", "RECRUITING"] } },
+      {
+        $set: {
+          status: "CANCELLED",
+          cancelledAt: new Date(),
+          updatedAt: new Date(),
+          cancelledBy: actor.id,
+        },
+      },
+      { returnDocument: "after" },
+    ),
+  );
+  if (!updated) {
+    throw new Error("活動已不在募資／報名階段，無法取消。");
+  }
+
+  const summary = await fundraise.refundAllDonors(client, updated);
+  const withSummary = unwrap(
+    await client.hostedEventsCollection.findOneAndUpdate(
+      { _id: eventDoc._id },
+      { $set: { fundRefund: summary, updatedAt: new Date() } },
+      { returnDocument: "after" },
+    ),
+  );
+
+  const doc = withSummary || updated;
+  const msg = await refreshEventMessage(client, doc).catch(() => null);
+
+  if (msg) {
+    const guild = doc.guildId ? client.guilds.cache.get(doc.guildId) : null;
+    const audience = [...new Set([...doc.participants, ...(await fundraise.listDonors(client, doc.eventId)).map((d) => d.userId)])];
+    const names = audience.map((id) => plainifyUserMentions(guild, `<@${id}>`)).join("、");
+    await msg
+      .reply({
+        content:
+          `🚫 募資活動「${doc.name}」已取消，${summary.refundedCoins.toLocaleString()} credits` +
+          (summary.refundedItems > 0 ? ` 與 ${summary.refundedItems.toLocaleString()} 件物品` : "") +
+          `已全數退還 ${summary.donorCount} 位贊助者。` +
+          (names ? `\n${names}` : ""),
+        allowedMentions: { parse: [] },
+      })
+      .catch(() => {});
+  }
+
+  return doc;
+}
+
 async function cancelEvent(client, eventDoc, actor, channel) {
+  if (eventDoc.funding) {
+    return cancelFundedEvent(client, eventDoc, actor);
+  }
+
   const { fee, net, rate } = computeRefundFee(eventDoc.prizePool);
 
   const updated = await client.hostedEventsCollection.findOneAndUpdate(
@@ -659,7 +782,23 @@ async function cancelEvent(client, eventDoc, actor, channel) {
   return doc;
 }
 
-async function settleEvent(client, eventDoc, picks, prizes, winnerMembers) {
+// 募資活動的物品獎池必須整包發完，每種物品指定給某個名次；回傳 rank → [{value, qty}]。
+function groupItemAwards(itemPool, itemAwards) {
+  const byRank = new Map();
+  for (const pooled of itemPool) {
+    const rank = itemAwards?.[pooled.value];
+    if (!Number.isInteger(rank)) {
+      const label = itemRegistry.labelOf(pooled.value) || "❔ 已下架物品";
+      throw new Error(`物品「${label}」還沒指定要發給第幾名。`);
+    }
+    if (!byRank.has(rank)) byRank.set(rank, []);
+    byRank.get(rank).push({ value: pooled.value, qty: pooled.qty });
+  }
+  return byRank;
+}
+
+async function settleEvent(client, eventDoc, picks, prizes, winnerMembers, itemAwards) {
+  const funded = !!eventDoc.funding;
   const effectiveRanks = Math.min(eventDoc.rankCount, eventDoc.participants.length);
   if (picks.length === 0 || picks.length !== effectiveRanks) {
     throw new Error("名次選擇不完整。");
@@ -667,16 +806,34 @@ async function settleEvent(client, eventDoc, picks, prizes, winnerMembers) {
   if (prizes.length !== effectiveRanks) {
     throw new Error("獎金數量與名次不符。");
   }
+  const minPrize = funded ? 0 : 1;
   for (const p of prizes) {
-    if (!Number.isInteger(p) || p < 1) {
-      throw new Error("每個獎金需為 ≥ 1 的整數。");
+    if (!Number.isInteger(p) || p < minPrize) {
+      throw new Error(`每個獎金需為 ≥ ${minPrize} 的整數。`);
     }
   }
   const total = prizes.reduce((a, b) => a + b, 0);
-  if (total > eventDoc.prizePool) {
+  if (funded) {
+    // 募資錢包的核心規則：募到的錢（扣掉主辦人保留額後）必須一毛不剩全部發出去。
+    if (total !== eventDoc.prizePool) {
+      const diff = eventDoc.prizePool - total;
+      throw new Error(
+        `募資活動必須把獎金池 ${eventDoc.prizePool.toLocaleString()} credits 全數發完，` +
+          `目前總和 ${total.toLocaleString()}（${diff > 0 ? `還少 ${diff.toLocaleString()}` : `多了 ${(-diff).toLocaleString()}`}）。`
+      );
+    }
+  } else if (total > eventDoc.prizePool) {
     throw new Error(
       `獎金總和 ${total.toLocaleString()} 超過鎖定獎金池 ${eventDoc.prizePool.toLocaleString()}。`
     );
+  }
+
+  const itemPool = funded ? fundraise.itemPoolOf(eventDoc) : [];
+  const itemsByRank = groupItemAwards(itemPool, itemAwards);
+  for (const rank of itemsByRank.keys()) {
+    if (rank < 1 || rank > effectiveRanks) {
+      throw new Error(`物品指定的名次 ${rank} 不在 1 ~ ${effectiveRanks} 之間。`);
+    }
   }
 
   if (winnerMembers) {
@@ -696,7 +853,8 @@ async function settleEvent(client, eventDoc, picks, prizes, winnerMembers) {
   const winners = picks.map((userId, idx) => {
     const gross = prizes[idx];
     const { fee: prizeFee, net: prizeNet } = computePrizeFee(gross, participantCount);
-    return { userId, rank: idx + 1, prize: gross, prizeNet, prizeFee };
+    const items = itemsByRank.get(idx + 1) || [];
+    return { userId, rank: idx + 1, prize: gross, prizeNet, prizeFee, items };
   });
   const prizeFeeTotal = winners.reduce((a, w) => a + w.prizeFee, 0);
 
@@ -726,15 +884,30 @@ async function settleEvent(client, eventDoc, picks, prizes, winnerMembers) {
   }
 
   for (const w of winners) {
-    await grantCoins(client, {
-      userId: w.userId,
-      guildId: eventDoc.guildId,
-      amount: w.prizeNet,
-      source: "event_prize",
-      meta: { eventId: eventDoc.eventId, rank: w.rank, hostId: eventDoc.hostId, amount: w.prizeNet, gross: w.prize, fee: w.prizeFee },
-    }).catch((e) => {
-      console.log(`[ERROR] event prize payout failed (${eventDoc.eventId} rank ${w.rank}): ${e}`.red);
-    });
+    if (w.prizeNet > 0) {
+      await grantCoins(client, {
+        userId: w.userId,
+        guildId: eventDoc.guildId,
+        amount: w.prizeNet,
+        source: "event_prize",
+        meta: { eventId: eventDoc.eventId, rank: w.rank, hostId: eventDoc.hostId, amount: w.prizeNet, gross: w.prize, fee: w.prizeFee },
+      }).catch((e) => {
+        console.log(`[ERROR] event prize payout failed (${eventDoc.eventId} rank ${w.rank}): ${e}`.red);
+      });
+    }
+    for (const item of w.items) {
+      await itemRegistry
+        .grant(client, w.userId, eventDoc.guildId, item.value, item.qty)
+        .catch((e) => {
+          console.log(
+            `[ERROR] event item payout failed (${eventDoc.eventId} rank ${w.rank} ${item.value}): ${e}`.red,
+          );
+        });
+    }
+  }
+
+  if (funded) {
+    await fundraise.payHostRetention(client, doc);
   }
 
   fireEventPayoutCheck(client, {
@@ -768,9 +941,17 @@ async function settleEvent(client, eventDoc, picks, prizes, winnerMembers) {
     const medals = ["🥇", "🥈", "🥉", "🏅", "🏅"];
     const lines = winners.map((w) => {
       const feeNote = w.prizeFee > 0 ? `（已扣防洗錢 ${w.prizeFee.toLocaleString()}）` : "";
-      return `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${plainifyUserMentions(guild, `<@${w.userId}>`)} — ${w.prizeNet.toLocaleString()} credits${feeNote}`;
+      const itemNote = fundraiseView.formatItemPool(w.items);
+      return (
+        `${medals[w.rank - 1] || "🏅"} 第 ${w.rank} 名 ${plainifyUserMentions(guild, `<@${w.userId}>`)} — ${w.prizeNet.toLocaleString()} credits${feeNote}` +
+        (itemNote ? `\n　└ 🎁 ${itemNote}` : "")
+      );
     });
     let tail = "";
+    if (funded) {
+      const retention = doc.funding?.retentionAmount || 0;
+      tail = retention > 0 ? `\n（主辦人保留 ${retention.toLocaleString()} credits，其餘已全數發出）` : "\n（募資款已全數發出）";
+    }
     if (unpaid > 0) {
       tail = `\n（剩餘 ${unpaid.toLocaleString()} 未發出`;
       if (fee > 0) {
@@ -810,5 +991,6 @@ module.exports = {
   buildActionRow,
   buildManagePanel,
   buildPickSelect,
+  buildItemAwardSelect,
   buildAmountModal,
 };

@@ -22,7 +22,7 @@ function getItemDef(type, key) {
   return null;
 }
 
-function listAllChoices() {
+function listAll() {
   const out = [];
   for (const key of Object.keys(mining?.ores || {})) {
     const def = getItemDef("ore", key);
@@ -36,7 +36,12 @@ function listAllChoices() {
     const def = getItemDef("fish", key);
     if (def) out.push({ name: `🐟 ${def.name}`, value: `fish:${key}` });
   }
-  return out.slice(0, 25);
+  return out;
+}
+
+// Discord 的 addChoices / autocomplete 上限 25，需要完整清單時改用 listAll()。
+function listAllChoices() {
+  return listAll().slice(0, 25);
 }
 
 function parseChoice(value) {
@@ -46,4 +51,4 @@ function parseChoice(value) {
   return { type, key };
 }
 
-module.exports = { getItemDef, listAllChoices, parseChoice, TYPES };
+module.exports = { getItemDef, listAll, listAllChoices, parseChoice, TYPES };

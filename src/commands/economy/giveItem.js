@@ -9,68 +9,9 @@ const {
   InteractionContextType,
 } = require("discord.js");
 
-const { craft, coinSystem } = require("../../config");
-const itemCatalog = require("../../features/barter/itemCatalog");
-const inventory = require("../../features/barter/inventoryAdapter");
+const { coinSystem } = require("../../config");
+const itemRegistry = require("../../features/economy/itemRegistry");
 const { getOrCreate } = require("../../features/mining/miningProfile");
-
-// 可發放的消耗品：profile 上的整數欄位 → 中文顯示名。
-const CONSUMABLES = [
-  { field: "cd_ticket_count", name: "🎫 CD 縮短券" },
-  { field: "luck_potion_uses", name: "🍀 幸運藥水" },
-  { field: "whetstone_inferior_count", name: "🪨 劣質磨石" },
-  { field: "fishing_net_uses", name: "🕸️ 撈網" },
-  { field: "advanced_trap_uses", name: "⚙️ 高級陷阱（必定抵擋）" },
-  { field: "basic_trap_uses", name: "🪤 簡易陷阱（70% 抵擋）" },
-  { field: "treasure_maps", name: "🗺️ 藏寶圖" },
-  { field: "stamina_potion_count", name: "🥤 體力藥水（小）" },
-  { field: "stamina_potion_medium_count", name: "🥤 體力藥水（中）" },
-  { field: "stamina_potion_large_count", name: "🥤 體力藥水（大）" },
-  { field: "hp_potion_small", name: "❤️ 生命藥水（小）" },
-  { field: "hp_potion_medium", name: "❤️ 生命藥水（中）" },
-  { field: "hp_potion_large", name: "❤️ 生命藥水（大）" },
-];
-
-// 碎片：profile 根層的複數欄位 → 名稱取自 craft.materials（單數 key）。
-const FRAGMENTS = [
-  { field: "legendary_fragments", mat: "legendary_fragment" },
-  { field: "broken_net_fragments", mat: "broken_net_fragment" },
-  { field: "broken_trap_fragments", mat: "broken_trap_fragment" },
-  { field: "treasure_map_fragments", mat: "treasure_map_fragment" },
-];
-
-// 組出「可發放物品」總表：ore/crop/fish（bag:）＋ 消耗品/維修工具/碎片（inc:<欄位>）。
-function buildRegistry() {
-  const items = [];
-  for (const c of itemCatalog.listAllChoices()) {
-    items.push({ value: `bag:${c.value}`, name: c.name });
-  }
-  for (const it of CONSUMABLES) {
-    items.push({ value: `inc:${it.field}`, name: it.name });
-  }
-  for (const [tier, def] of Object.entries(craft?.repairTools || {})) {
-    items.push({ value: `inc:repair_tools.${tier}`, name: `${def.emoji || "🔧"} ${def.name}` });
-  }
-  for (const f of FRAGMENTS) {
-    const def = (craft?.materials || {})[f.mat] || {};
-    items.push({ value: `inc:${f.field}`, name: `${def.emoji || "🧩"} ${def.name || f.mat}` });
-  }
-  return items;
-}
-
-function resolveItem(value) {
-  const entry = buildRegistry().find((r) => r.value === value);
-  if (!entry) return null;
-  if (value.startsWith("bag:")) {
-    const parsed = itemCatalog.parseChoice(value.slice("bag:".length));
-    if (!parsed) return null;
-    return { kind: "bag", type: parsed.type, key: parsed.key, label: entry.name };
-  }
-  if (value.startsWith("inc:")) {
-    return { kind: "inc", field: value.slice("inc:".length), label: entry.name };
-  }
-  return null;
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -101,7 +42,7 @@ module.exports = {
 
   autocomplete: async (client, interaction) => {
     const focused = (interaction.options.getFocused() || "").toString().toLowerCase();
-    const reg = buildRegistry();
+    const reg = itemRegistry.listAll();
     const filtered = focused
       ? reg.filter(
           (r) => r.name.toLowerCase().includes(focused) || r.value.toLowerCase().includes(focused),
@@ -133,7 +74,7 @@ module.exports = {
         return interaction.editReply("數量必須是正整數。");
       }
 
-      const item = resolveItem(itemValue);
+      const item = itemRegistry.resolve(itemValue);
       if (!item) {
         return interaction.editReply("❌ 找不到這個物品，請從自動完成清單選擇。");
       }
@@ -141,14 +82,7 @@ module.exports = {
       // 確保玩家 profile 存在且已 normalize（避免 upsert 出殘缺文件）
       await getOrCreate(client, targetUser.id, interaction.guildId);
 
-      if (item.kind === "bag") {
-        await inventory.add(client, targetUser.id, interaction.guildId, item.type, item.key, qty);
-      } else {
-        await client.miningProfilesCollection.updateOne(
-          { userId: targetUser.id, guildId: interaction.guildId },
-          { $inc: { [item.field]: qty }, $set: { updatedAt: new Date() } },
-        );
-      }
+      await itemRegistry.grant(client, targetUser.id, interaction.guildId, itemValue, qty);
 
       await interaction.editReply(
         `✅ 已給 ${targetUser} **${item.label} ×${qty.toLocaleString()}**`,

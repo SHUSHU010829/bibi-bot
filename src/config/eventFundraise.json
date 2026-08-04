@@ -1,0 +1,16 @@
+{
+  "eventFundraise": {
+    "enabled": true,
+    "reviewChannelId": "1501627333835096154",
+    "minGoal": 1000,
+    "maxGoal": 3000000,
+    "minCoinDonation": 100,
+    "maxItemKinds": 10,
+    "maxItemQtyPerDonation": 999,
+    "minFundDays": 1,
+    "maxFundDays": 14,
+    "defaultFundDays": 7,
+    "maxHostRetentionPct": 10,
+    "maxActivePerHost": 1
+  }
+}

@@ -25,6 +25,7 @@ const twitchPerks = require("./twitch_perks.json");
 const titles = require("./titles.json");
 const donation = require("./donation.json");
 const events = require("./events.json");
+const eventFundraise = require("./eventFundraise.json");
 const encounters = require("./encounters.json");
 const marketplace = require("./marketplace.json");
 const fishing = require("./fishing.json");
@@ -74,6 +75,7 @@ module.exports = {
   ...titles,
   ...donation,
   ...events,
+  ...eventFundraise,
   ...encounters,
   ...marketplace,
   ...fishing,

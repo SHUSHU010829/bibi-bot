@@ -871,7 +871,7 @@ const MARKET_GROUPS = {
   invite: ["invite_reward", "invite_welcome", "invite_clawback"],
   guild: ["guild_create", "guild_donate", "guild_create_refund", "guild_donate_refund", "guild_disband_payout", "guild_warehouse_fee", "guild_consign_buy"],
   encounter: ["encounter"],
-  event: ["event_host_lock", "event_prize", "event_refund"],
+  event: ["event_host_lock", "event_prize", "event_refund", "event_fund_donate", "event_fund_refund", "event_fund_host_share"],
 };
 
 // 所有「儀表板已知」的金流 source（市場分組 + 賭場下注 / 派彩）。

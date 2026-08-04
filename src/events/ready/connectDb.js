@@ -161,6 +161,7 @@ module.exports = async (client) => {
 
     // 成員自辦活動 collections
     const hostedEventsCollection = database.collection("HostedEvents");
+    const eventFundDonationsCollection = database.collection("EventFundDonations");
 
     // 有獎問答
     const quizGamesCollection = database.collection("QuizGames");
@@ -349,6 +350,7 @@ module.exports = async (client) => {
     client.questAssignmentsCollection = questAssignmentsCollection;
     client.economySnapshotsCollection = economySnapshotsCollection;
     client.hostedEventsCollection = hostedEventsCollection;
+    client.eventFundDonationsCollection = eventFundDonationsCollection;
     client.quizGamesCollection = quizGamesCollection;
     client.stockMarketCollection = stockMarketCollection;
     client.stockPricesCollection = stockPricesCollection;
@@ -734,6 +736,9 @@ module.exports = async (client) => {
       await ttl(quizGamesCollection, "cancelledAt", dbm.quizRetentionDays, "quiz_cancelled_ttl", { sparse: true });
       await ttl(hostedEventsCollection, "settledAt", dbm.hostedEventRetentionDays, "hosted_settled_ttl", { sparse: true });
       await ttl(hostedEventsCollection, "cancelledAt", dbm.hostedEventRetentionDays, "hosted_cancelled_ttl", { sparse: true });
+      await ttl(hostedEventsCollection, "rejectedAt", dbm.hostedEventRetentionDays, "hosted_rejected_ttl", { sparse: true });
+      // 贊助明細要活得比活動久一點（退款查核用），用募資保留天數的兩倍
+      await ttl(eventFundDonationsCollection, "createdAt", dbm.hostedEventRetentionDays * 2, "fund_donation_ttl");
       await ttl(votingProposalsCollection, "finalizedAt", dbm.votingRetentionDays, "voting_finalized_ttl", { sparse: true });
       await ttl(votingProposalsCollection, "cancelledAt", dbm.votingRetentionDays, "voting_cancelled_ttl", { sparse: true });
       await ttl(gameRoomsCollection, "closedAt", dbm.gameRoomRetentionDays, "gameroom_closed_ttl", { sparse: true });
@@ -1398,6 +1403,16 @@ module.exports = async (client) => {
       await hostedEventsCollection.createIndex(
         { hostId: 1, guildId: 1, status: 1 },
         { name: "hosted_event_host_status" }
+      );
+
+      // 活動募資錢包：贊助明細（退款、明細列表都靠 eventId 查）
+      await eventFundDonationsCollection.createIndex(
+        { eventId: 1, userId: 1 },
+        { name: "fund_donation_event_user" }
+      );
+      await eventFundDonationsCollection.createIndex(
+        { eventId: 1, refundedAt: 1 },
+        { name: "fund_donation_event_refunded" }
       );
 
       // 邀請追蹤索引
