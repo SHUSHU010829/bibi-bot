@@ -30,7 +30,8 @@ function buildBlockedView(result, { ephemeral = true } = {}) {
     );
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 已經到頂了，沒有更大的背包可以買。囤太多可以 `/賣出` 換金幣，或寄放到公會倉庫（`/公會` → 倉庫）。",
+        "-# 已經到頂了，沒有更大的背包可以買。\n"
+          + "-# 目前袋子裡超過上限的東西**不會被沒收**，只是暫時放不進新的；用 `/賣出` 換金幣降到上限以下就會恢復正常，也可以寄放到公會倉庫（`/公會` → 倉庫）。",
       ),
     );
     return { components: [container], flags };

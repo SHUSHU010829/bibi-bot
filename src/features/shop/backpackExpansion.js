@@ -16,9 +16,10 @@ function maxSlots() {
   return cfg().maxSlots ?? Infinity;
 }
 
-// 已超過上限的舊帳號不縮水，照實回報；上限只用來擋購買。
+// 與 miningProfile 的容量讀取一致：超出上限的舊帳號一律以上限計，
+// 所以他們一進商店就是「已達上限」，不會再賣給他們格數。
 function capacityOf(profile) {
-  return baseSlots() + (profile?.backpack_bonus_slots || 0);
+  return Math.min(maxSlots(), baseSlots() + (profile?.backpack_bonus_slots || 0));
 }
 
 // 目前容量下，下一筆擴充（一筆 = payload.slots 格）要多少錢。

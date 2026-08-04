@@ -242,11 +242,18 @@ async function getOrCreate(client, userId, guildId) {
   return normalize(res.value || res);
 }
 
-// 背包總容量（基礎 + 擴充）。上限只擋購買（見 shop/backpackExpansion），
-// 已超過上限的舊帳號就地保留，不縮水。
-function backpackCapacity(profile, mining) {
-  const base = mining?.backpackBaseSlots ?? 100;
-  return base + (profile?.backpack_bonus_slots || 0);
+// 三袋共用的擴充上限。已超出上限的舊帳號不動 DB、也不沒收既有物品：
+// 容量夾在上限 → used 仍大於 cap → 各 service 的 space 算出 0，只是塞不進新的，
+// 玩家自己賣掉降到上限以下就恢復正常。
+function capAtMax(total) {
+  const max = mining?.backpackExpansion?.maxSlots;
+  return max > 0 ? Math.min(total, max) : total;
+}
+
+// 背包總容量（基礎 + 擴充）
+function backpackCapacity(profile, miningCfg = mining) {
+  const base = miningCfg?.backpackBaseSlots ?? 100;
+  return capAtMax(base + (profile?.backpack_bonus_slots || 0));
 }
 
 // 背包目前使用量（只計礦石，肥料類道具不占容量）
@@ -261,7 +268,7 @@ function backpackUsed(profile) {
 const FISH_KEYS = ["small_fish", "crucian", "shark", "octopus", "lava_fish"];
 function fishBagCapacity(profile, fishingCfg = fishing) {
   const base = fishingCfg?.fishBagBaseSlots ?? 100;
-  return base + (profile?.backpack_bonus_slots || 0);
+  return capAtMax(base + (profile?.backpack_bonus_slots || 0));
 }
 function fishBagUsed(profile) {
   const bag = profile?.fish_bag || {};
@@ -272,7 +279,7 @@ function fishBagUsed(profile) {
 const VEGGIE_KEYS = ["carrot", "corn", "strawberry", "black_rose"];
 function veggieBagCapacity(profile, farmingCfg = farming) {
   const base = farmingCfg?.veggieBagBaseSlots ?? 100;
-  return base + (profile?.backpack_bonus_slots || 0);
+  return capAtMax(base + (profile?.backpack_bonus_slots || 0));
 }
 function veggieBagUsed(profile) {
   const bag = profile?.veggie_bag || {};
