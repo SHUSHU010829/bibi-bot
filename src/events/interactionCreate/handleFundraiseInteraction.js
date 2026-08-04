@@ -167,9 +167,7 @@ async function handleCoinButton(client, interaction) {
 function donateSuccessNotice(doc, bodyLine) {
   return {
     title: "🎉 贊助成功，感謝你！",
-    body:
-      `${bodyLine}\n\n**${doc.name}** 目前募得 **${doc.funding.raised.toLocaleString()} / ${doc.funding.goal.toLocaleString()}** credits\n` +
-      view.progressBar(doc.funding.raised, doc.funding.goal),
+    body: `${bodyLine}\n\n**${doc.name}** 目前募得 ${view.progressLines(doc.funding)}`,
     hint: "這筆贊助鎖在活動錢包，只能在結算時發給參加者；活動若取消會原路退還給你。",
   };
 }

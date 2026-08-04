@@ -35,6 +35,16 @@ function progressBar(raised, goal) {
   return `${"▰".repeat(filled)}${"▱".repeat(10 - filled)} ${Math.round(pct * 100)}%`;
 }
 
+// 募資目標是選填的，沒填就沒有分母可以畫進度條，只報已募得金額。
+function goalLabel(goal) {
+  return goal ? `${goal.toLocaleString()} credits` : "未設定（不設門檻，募多少算多少）";
+}
+
+function progressLines(f) {
+  if (!f.goal) return `${f.raised.toLocaleString()} credits`;
+  return `${f.raised.toLocaleString()} / ${f.goal.toLocaleString()} credits\n${progressBar(f.raised, f.goal)}`;
+}
+
 // 物品池一律轉中文；找不到定義（config 移除過的物品）就標示為已下架，不印英文 id。
 function formatItemPool(itemPool = []) {
   if (!itemPool.length) return null;
@@ -91,7 +101,7 @@ function buildReviewContainer(doc, guild) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `**申請人**：${nameOf(guild, doc.hostId)}\n` +
-          `**募資目標**：${f.goal.toLocaleString()} credits\n` +
+          `**募資目標**：${goalLabel(f.goal)}\n` +
           `**募資天數**：${f.days} 天\n` +
           `**名次**：${doc.rankCount} 名\n` +
           `**報名人數**：${capacity}`,
@@ -127,7 +137,7 @@ function buildReviewDecidedContainer(doc, guild) {
   const f = doc.funding;
   const lines = [
     `**申請人**：${nameOf(guild, doc.hostId)}`,
-    `**募資目標**：${f.goal.toLocaleString()} credits`,
+    `**募資目標**：${goalLabel(f.goal)}`,
   ];
   if (approved) {
     lines.push(`**審核**：${nameOf(guild, f.approvedBy)} 於 <t:${epoch(f.approvedAt)}:f> 通過`);
@@ -208,8 +218,7 @@ function buildFundraisingContainer(doc, guild, { open }) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**募資進度**　${f.raised.toLocaleString()} / ${f.goal.toLocaleString()} credits\n` +
-          `${progressBar(f.raised, f.goal)}\n` +
+        `**${f.goal ? "募資進度" : "已募得"}**　${progressLines(f)}\n` +
           `**贊助人數**：${f.donorCount || 0} 人`,
       ),
     );
@@ -258,7 +267,7 @@ function buildDetailContainer(doc, donors, guild) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**已募得**：${f.raised.toLocaleString()} / ${f.goal.toLocaleString()} credits\n${progressBar(f.raised, f.goal)}`,
+        `**已募得**：${progressLines(f)}`,
       ),
     );
 
@@ -449,4 +458,5 @@ module.exports = {
   buildRejectModal,
   formatItemPool,
   progressBar,
+  progressLines,
 };
