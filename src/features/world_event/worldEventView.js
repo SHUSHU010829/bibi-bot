@@ -11,6 +11,9 @@ const {
 
 const { formatBuff } = require("../buff/buffLabels");
 const { itemLabel, itemEmoji } = require("./worldEventItems");
+const { worldEvents } = require("../../config");
+
+const eventDef = (id) => (worldEvents?.events || []).find((e) => e.id === id) || null;
 
 const COLOR_OPEN = 0xf1c40f;
 const COLOR_BUFF = 0x2ecc71;
@@ -187,31 +190,42 @@ function buildDonateSuccess({ event, deposited, fromPersonal, fromGuild, itemId,
   const sourceLines = [];
   if (fromPersonal > 0) sourceLines.push(`個人背包 -${fromPersonal}`);
   if (fromGuild > 0) sourceLines.push(`公會倉庫 -${fromGuild}`);
+  const n = (v) => (v || 0).toLocaleString();
   c.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      `# ✅ 已捐 ${itemEmoji(itemId)} ${itemLabel(itemId)} ×${deposited}\n${sourceLines.join("・")}`
+      `# ✅ 已捐 ${itemEmoji(itemId)} ${itemLabel(itemId)} ×${n(deposited)}\n${sourceLines.join("・")}`
     )
   );
   c.addSeparatorComponents(new SeparatorBuilder());
   if (completed) {
-    const buffLines = Object.entries(event.rewards?.buffs || {})
-      .map(([k, v]) => `• ${formatBuff(k, v)}`)
-      .join("\n");
-    c.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `# 🎉 全服達標！\n` +
-          `全伺服器 buff 啟動：\n${buffLines}\n` +
-          (buffEndsAt
-            ? `持續至 <t:${Math.floor(new Date(buffEndsAt).getTime() / 1000)}:R>`
-            : "")
-      )
-    );
+    // 主線給的是永久解鎖、rewards.buffs 是空的，照 buff 版寫會印出空白區塊
+    const completion = eventDef(event.event_id)?.completion;
+    if (completion) {
+      c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🎉 就是你補上最後一塊！\n## ${completion.title}\n${(completion.lines || []).join("\n")}`
+        )
+      );
+    } else {
+      const buffLines = Object.entries(event.rewards?.buffs || {})
+        .map(([k, v]) => `• ${formatBuff(k, v)}`)
+        .join("\n");
+      c.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# 🎉 全服達標！\n` +
+            `全伺服器 buff 啟動：\n${buffLines}\n` +
+            (buffEndsAt
+              ? `持續至 <t:${Math.floor(new Date(buffEndsAt).getTime() / 1000)}:R>`
+              : "")
+        )
+      );
+    }
   } else {
     c.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `事件還缺：\n${Object.entries(event.requirements_remaining || {})
           .filter(([, v]) => v > 0)
-          .map(([k, v]) => `• ${itemLabel(k)}：${v}`)
+          .map(([k, v]) => `• ${itemLabel(k)}：${n(v)}`)
           .join("\n")}`
       )
     );
