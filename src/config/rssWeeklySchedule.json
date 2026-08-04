@@ -1,38 +1,14 @@
 {
   "rssWeeklySchedule": {
     "enabled": true,
-    "pollEnabled": false,
     "channelId": "1183434782005268520",
     "timezone": "Asia/Taipei",
-    "pollCron": "*/10 * * * *",
     "createThreadCron": "0 9 * * 3",
     "threadAutoArchiveMinutes": 10080,
     "threadNamePrefix": "周表",
-    "keywordPattern": "(周|週|課)表",
     "discordForward": {
       "enabled": true,
       "sourceChannelId": "1516628327899861092"
-    },
-    "maxItemAgeHours": 168,
-    "concurrency": 3,
-    "rsshubBase": "https://rsshub.app",
-    "twitterRoute": "/twitter/user/{handle}",
-    "twitterQuery": "onlyMedia=1&includeRts=0",
-    "feeds": [
-      { "id": "weekly_hiyori_teraz",   "handle": "Hiyori_TeRaz" },
-      { "id": "weekly_hitomi_teraz",   "handle": "Hitomi_TeRaz" },
-      { "id": "weekly_koyuki_teraz",   "handle": "Koyuki_TeRaz" },
-      { "id": "weekly_sachi_teraz",    "handle": "Sachi_TeRaz" },
-      { "id": "weekly_yuzumi_neon",    "handle": "Yuzumi_Neon" },
-      { "id": "weekly_reirei_neon",    "handle": "Reirei_Neon" },
-      { "id": "weekly_kirali_neon",    "handle": "Kirali_Neon" },
-      { "id": "weekly_sakuro_moonlit", "handle": "Sakuro_Moonlit" },
-      { "id": "weekly_oboro_moonlit",  "handle": "Oboro_Moonlit_" },
-      { "id": "weekly_yoruno_moonlit", "handle": "Yoruno_Moonlit" },
-      { "id": "weekly_itsuki_ianvs",   "handle": "itsuki_ianvs" },
-      { "id": "weekly_iruni_ianvs",    "handle": "iruni_ianvs" },
-      { "id": "weekly_998rrr",         "handle": "998rrr_" },
-      { "id": "weekly_xc51121",        "handle": "XC51121" }
-    ]
+    }
   }
 }

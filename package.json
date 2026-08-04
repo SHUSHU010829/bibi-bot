@@ -33,7 +33,6 @@
     "p-limit": "^3.1.0",
     "pino": "^9.5.0",
     "pino-pretty": "^11.3.0",
-    "rss-parser": "^3.13.0",
     "satori": "^0.26.0",
     "satori-html": "^0.3.2",
     "tyme4ts": "^1.4.1"

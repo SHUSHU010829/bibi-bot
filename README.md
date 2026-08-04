@@ -2,7 +2,7 @@
 
 ![Repobeats](https://repobeats.axiom.co/api/embed/07fb82330959889996315cafa478ae498f152b45.svg "Repobeats analytics image")
 
-一隻為單一 Discord 社群量身打造的多功能機器人，整合社群治理（票務 / 投票 / 動態語音 / 身份組 / 遊戲房）、外部資訊推播（Steam 特價、喜加一、Twitch 開台、RSS 週報、每日早安卡），以及一整套遊戲化經濟系統（金幣 / 等級 / 賭場 / 股市 / 挖礦 / 釣魚 / 農場 / 世界王 / 公會）。
+一隻為單一 Discord 社群量身打造的多功能機器人，整合社群治理（票務 / 投票 / 動態語音 / 身份組 / 遊戲房）、外部資訊推播（Steam 特價、喜加一、Twitch 開台、周表討論串、每日早安卡），以及一整套遊戲化經濟系統（金幣 / 等級 / 賭場 / 股市 / 挖礦 / 釣魚 / 農場 / 世界王 / 公會）。
 
 > 📖 **完整功能介紹與操作說明請見文件網站：<https://docs.bibi.shushu.tw/docs>**
 
@@ -25,7 +25,7 @@
 
 - **集中化社群治理**：以「申請 → 審核 → 投票 → 自動結算」流程規範遊戲頻道的開設與封存，避免管理員主觀決策。
 - **降低管理員負擔**：動態語音頻道、Ticket、身份組、建議蒐集、遊戲房開關等流程全部交由 bot 自動化處理。
-- **內容主動觸達**：將 Steam 特價、限時免費遊戲、Twitch 開台、RSS 週報、每日早安等資訊在固定時間推播到指定頻道，提升社群活躍度。
+- **內容主動觸達**：將 Steam 特價、限時免費遊戲、Twitch 開台、周表討論串、每日早安等資訊在固定時間推播到指定頻道，提升社群活躍度。
 - **遊戲化黏著度**：用金幣經濟、等級簽到、賭場、股市、挖礦 / 釣魚 / 農場 / 世界王 / 公會等長線玩法，把社群活躍度轉成可消費的循環。
 - **單一伺服器最佳化**：所有設定集中在 `src/config/`（透過 `src/config/index.js` 合併匯出），搭配 `.env` 即可快速複製到其他伺服器使用。
 
@@ -42,7 +42,7 @@
 | 圖片產生 | `satori` + `satori-html` + `@resvg/resvg-js`（早安卡、運勢卡、簽到卡）、`canvas` + `gif-encoder-2`（動態圖卡 / GIF） |
 | 時間處理 | `luxon`、`tyme4ts`（農民曆 / 節氣） |
 | 中文轉換 | `opencc-js`（簡繁轉換） |
-| HTTP / 抓取 | `axios`、`cheerio`（HTML 解析）、`rss-parser`（RSS）、`p-limit`（併發控制） |
+| HTTP / 抓取 | `axios`、`cheerio`（HTML 解析）、`p-limit`（併發控制） |
 | Web 服務 | `express`（健康檢查 / 對外 HTTP 端點，`src/httpServer/`） |
 | 記錄 | `pino` + `pino-pretty` |
 | 部署 | Dockerfile（`node:22-slim`） |
@@ -110,7 +110,7 @@ src/
 │   ├── guild_club/        # 公會、倉庫、建築、鐵匠鋪、宴會、聊天 thread
 │   ├── stock/ market/ marketplace/ barter/   # 股市、市集、拍賣、以物易物
 │   ├── shop/ buff/        # 商品結算、buff 倍率（統一走 buffResolver）
-│   ├── steamDeals/ freeGames/ twitch/ rssWeeklyThreads/   # 各推播管線
+│   ├── steamDeals/ freeGames/ twitch/ rssWeeklyThreads/   # 各推播 / 討論串管線
 │   ├── quests/ welfare/ donation/ invite/ survey/         # 任務、福利、抖內、邀請、問卷
 │   └── voting/ ticket/ gameRoom/ recommendation/ …
 ├── cron/                  # 排程任務
@@ -211,7 +211,7 @@ docker run -d --env-file .env --name bibi-bot discord-bot
 | Steam 特價 | `features/steamDeals`（小黑盒 RSS → Steam API → Embed） | 特價喜加一 │ 💰 |
 | 喜加一限免 | `features/freeGames`（GamerPower API） | 特價喜加一 │ 💰 |
 | Twitch 開台通知 | `features/twitch`（Helix App Token + 去重） | `twitch.json` 指定頻道 |
-| RSS 週報 thread | `features/rssWeeklyThreads`、`config/rssFeeds.js` | 每週彙整 RSS 開 thread |
+| 周表討論串 | `features/rssWeeklyThreads`、`messageCreate/weeklyScheduleForward.js` | 每週預建 thread + 轉貼來源頻道的周表圖 |
 | 每日早安卡 | `events/ready/sendMorningMessage.js`（satori 繪卡） | 含日期 / 節氣 / 農民曆 / 詩詞 / 運勢 |
 | Threads 連結修正 | `messageCreate/threadsLinkHandler.js` | 抓貼文內容後回覆完整預覽卡；支援 `/share/` 短連結 |
 | IG / X(Twitter) 連結修正 | `messageCreate/socialLinkHandler.js` | 回覆 oginstagram / fixupx / fxtwitter 版本 |
@@ -290,7 +290,6 @@ node src/tool/delete-commands.js  # 清空所有指令（謹慎使用）
 | Steam 商品資訊 | Steam Store API |
 | 喜加一限免 | [GamerPower API](https://www.gamerpower.com/api-read) |
 | Twitch 開台 | [Twitch Helix API](https://dev.twitch.tv/docs/api/)（App Access Token） |
-| RSS 週報 | 各來源 RSS（`src/config/rssFeeds.js`） |
 | Threads 連結修正 | <https://github.com/milanmdev/fixthreads> |
 
 ---
