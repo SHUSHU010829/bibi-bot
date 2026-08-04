@@ -19,6 +19,17 @@ function toInt(v) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+// 金庫容量不足（UX #2）：寫清楚上限、已佔用（含定存鎖倉）、還剩多少，以及怎麼擴充。
+function capacityNote(vault) {
+  const lock = vault.locked > 0 ? `（含定存鎖倉 ${fmt(vault.locked)}）` : "";
+  return {
+    tab: "gold",
+    note:
+      `⚠️ **金庫放不下了**：容量 **${fmt(vault.capacity)}** ${U()}，已存 **${fmt(vault.used)}** ${U()}${lock}，只剩 **${fmt(vault.free)}** ${U()} 可放\n` +
+      `-# 提升信用評等可擴充金庫；金庫外的財富只能留在錢包，每週照課財富稅`,
+  };
+}
+
 // 賣出損益文字（像股市）：本次相對平均成本賺 / 賠多少。
 function pnlText(pnl) {
   if (typeof pnl !== "number") return "損益 —";
@@ -40,9 +51,10 @@ const ACTIONS = {
       if (!res.ok) {
         if (res.reason === "range") return { tab: "gold", note: `⚠️ 需在 ${fmt(res.min)}~${fmt(res.max)} ${U()} 之間` };
         if (res.reason === "balance") return { tab: "gold", note: `⚠️ 餘額不足，買 ${fmt(units)} ${U()} 需 ${fmt(res.cost)}（有 ${fmt(res.balance)}）` };
+        if (res.reason === "capacity") return capacityNote(res.vault);
         return { tab: "gold", note: "🔧 買進失敗，請稍後再試" };
       }
-      return { tab: "gold", note: `✅ 買進 **${fmt(res.units)}** ${U()}（共 ${fmt(res.cost)} 幣），平均成本 ${fmt(res.avgCost)} 幣/${U()}，金庫 ${fmt(res.holding)} ${U()}` };
+      return { tab: "gold", note: `✅ 買進 **${fmt(res.units)}** ${U()}（共 ${fmt(res.cost)} 幣），平均成本 ${fmt(res.avgCost)} 幣/${U()}，金庫 ${fmt(res.holding)}／${fmt(res.capacity)} ${U()}` };
     },
   },
   goldsell: {
@@ -72,10 +84,11 @@ const ACTIONS = {
         if (res.reason === "ore") return { tab: "gold", note: `⚠️ 黃金礦不足：需 ${fmt(res.needOre)}，有 ${fmt(res.haveOre)}（去 /挖礦 挖黃金）` };
         if (res.reason === "coal") return { tab: "gold", note: `⚠️ 煤炭不足：需 ${fmt(res.needCoal)}，有 ${fmt(res.haveCoal)}（去 /挖礦 挖煤炭）` };
         if (res.reason === "max") return { tab: "gold", note: `⚠️ 單次最多精煉 ${fmt(res.maxBatch)} ${U()}` };
+        if (res.reason === "capacity") return capacityNote(res.vault);
         return { tab: "gold", note: "🔧 精煉失敗，請稍後再試" };
       }
       const coal = res.needCoal > 0 ? `＋${fmt(res.needCoal)} 煤炭` : "";
-      return { tab: "gold", note: `✅ 精煉 ${fmt(res.needOre)} 黃金礦${coal} → +**${fmt(res.units)}** ${U()}，金庫 ${fmt(res.holding)} ${U()}` };
+      return { tab: "gold", note: `✅ 精煉 ${fmt(res.needOre)} 黃金礦${coal} → +**${fmt(res.units)}** ${U()}，金庫 ${fmt(res.holding)}／${fmt(res.capacity)} ${U()}` };
     },
   },
   goldterm: {

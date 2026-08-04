@@ -17,7 +17,7 @@ const creditService = require("./creditService");
 const goldService = require("./goldService");
 const loanService = require("./loanService");
 const depositService = require("./depositService");
-const { COLOR, fmt, creditCard } = require("./bankView");
+const { COLOR, fmt, creditCard, progressBar } = require("./bankView");
 
 const TABS = [
   { key: "overview", label: "總覽", emoji: "🏦" },
@@ -69,12 +69,12 @@ function openBtn(userId, key, label, style, emoji) {
 // ── 各分頁 Container ─────────────────────────────────────────────────────────
 async function buildOverview(client, ctx) {
   const { userId, guildId, displayName } = ctx;
-  const [limits, wallet, goldPrices, goldHolding, activeDeposits, loans] =
+  const [limits, wallet, goldPrices, goldVault, activeDeposits, loans] =
     await Promise.all([
       creditService.getLimits(client, userId, guildId, ctx.member),
       client.userCoinsCollection.findOne({ userId, guildId }),
       bank?.gold?.enabled ? goldService.getPrices() : null,
-      bank?.gold?.enabled ? goldService.getHolding(client, userId, guildId) : 0,
+      bank?.gold?.enabled ? goldService.getVaultStatus(client, userId, guildId, ctx.member) : null,
       client.coinDepositsCollection
         ? client.coinDepositsCollection.countDocuments({ userId, guildId, status: "active" })
         : 0,
@@ -84,6 +84,7 @@ async function buildOverview(client, ctx) {
     ]);
 
   const balance = wallet?.totalCoins || 0;
+  const goldHolding = goldVault?.units || 0;
   const goldValue = goldPrices ? goldHolding * goldPrices.sell : 0;
   const loanOutstanding = (loans || []).reduce((s, l) => s + (l.dueAmount - (l.paid || 0)), 0);
   const now = Date.now();
@@ -121,8 +122,11 @@ async function buildOverview(client, ctx) {
 
   const lines = [];
   if (bank?.gold?.enabled) {
+    const cap = goldVault.limited
+      ? `　（金庫 ${fmt(goldVault.used)}／${fmt(goldVault.capacity)} ${U()}）`
+      : "";
     lines.push(
-      `🪙 黃金金庫　**${fmt(goldHolding)}** ${U()}　≈ ${fmt(goldValue)} 幣　-# 賣出價 ${fmt(goldPrices.sell)}/${U()}`,
+      `🪙 黃金金庫　**${fmt(goldHolding)}** ${U()}　≈ ${fmt(goldValue)} 幣${cap}　-# 賣出價 ${fmt(goldPrices.sell)}/${U()}`,
     );
   }
   lines.push(`📜 定期存款　**${activeDeposits}** 筆進行中`);
@@ -175,8 +179,14 @@ async function buildTransfer(client, ctx) {
 }
 
 async function buildCredit(client, ctx) {
-  const limits = await creditService.getLimits(client, ctx.userId, ctx.guildId, ctx.member);
-  return creditCard(limits, ctx.displayName);
+  const [limits, capacity] = await Promise.all([
+    creditService.getLimits(client, ctx.userId, ctx.guildId, ctx.member),
+    bank?.gold?.enabled ? goldService.getCapacity(client, ctx.userId, ctx.guildId, ctx.member) : null,
+  ]);
+  return creditCard(limits, ctx.displayName, {
+    vaultCapacity: Number.isFinite(capacity) ? capacity : null,
+    unitLabel: U(),
+  });
 }
 
 async function buildDeposit(client, ctx) {
@@ -277,9 +287,19 @@ async function buildDeposit(client, ctx) {
   return container;
 }
 
-// 金庫區塊：持有量 + 估值，若有成本資料再附上「平均成本」與「現在賣出的損益」（像股市）。
-function vaultText(holding, value, position, prices) {
+// 金庫區塊：持有量 + 估值 + 容量，若有成本資料再附上「平均成本」與「現在賣出的損益」（像股市）。
+function vaultText(holding, value, position, prices, vault) {
   let text = `**你的金庫**\n持有 **${fmt(holding)}** ${U()}　≈ **${fmt(value)}** 幣（以賣出價估）`;
+  if (vault.limited) {
+    const bar = progressBar(vault.used, 0, vault.capacity);
+    const lock = vault.locked > 0 ? `（含定存鎖倉 ${fmt(vault.locked)}）` : "";
+    const state = vault.over
+      ? "⚠️ 已超出上限，賣出前無法再存入"
+      : vault.free <= 0
+        ? "🈵 已滿"
+        : `還可存 **${fmt(vault.free)}** ${U()}`;
+    text += `\n容量 \`${bar}\` **${fmt(vault.used)} / ${fmt(vault.capacity)}** ${U()}${lock}　${state}`;
+  }
   if (holding > 0 && position.costBasis > 0) {
     const pnl = Math.round(value - position.costBasis);
     const pnlPct = position.costBasis > 0 ? (pnl / position.costBasis) * 100 : 0;
@@ -296,7 +316,7 @@ function vaultText(holding, value, position, prices) {
 
 async function buildGold(client, ctx) {
   const { userId, guildId } = ctx;
-  const [prices, position, terms, block, mineProfile] = await Promise.all([
+  const [prices, position, terms, block, mineProfile, vault] = await Promise.all([
     goldService.getPrices(),
     goldService.getPosition(client, userId, guildId),
     goldService.listTerms(client, userId, guildId),
@@ -304,6 +324,7 @@ async function buildGold(client, ctx) {
     client.miningProfilesCollection
       ? client.miningProfilesCollection.findOne({ userId, guildId }).catch(() => null)
       : null,
+    goldService.getVaultStatus(client, userId, guildId, ctx.member),
   ]);
   const holding = position.units;
   const value = holding * prices.sell;
@@ -328,8 +349,16 @@ async function buildGold(client, ctx) {
     )
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(vaultText(holding, value, position, prices)),
+      new TextDisplayBuilder().setContent(vaultText(holding, value, position, prices, vault)),
     );
+
+  if (vault.limited) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 金庫有容量上限（隨信用評等擴充），純金不能無限囤；放不下的財富只能留在錢包，每週照課財富稅",
+      ),
+    );
+  }
 
   if (block) {
     container.addTextDisplayComponents(
@@ -345,6 +374,7 @@ async function buildGold(client, ctx) {
     const refinable = Math.min(
       Math.floor(haveOre / r.orePerUnit),
       r.coalPerUnit > 0 ? Math.floor(haveCoal / r.coalPerUnit) : Infinity,
+      vault.free,
     );
     const stockLine =
       haveOre > 0 || haveCoal > 0
@@ -357,10 +387,11 @@ async function buildGold(client, ctx) {
     );
   }
 
+  const full = vault.free <= 0;
   const goldRow = new ActionRowBuilder().addComponents(
-    openBtn(userId, "goldbuy", "買進", ButtonStyle.Success, "🟢"),
+    openBtn(userId, "goldbuy", full ? "買進（金庫已滿）" : "買進", ButtonStyle.Success, "🟢").setDisabled(full),
     openBtn(userId, "goldsell", "賣出", ButtonStyle.Danger, "🔴"),
-    openBtn(userId, "goldrefine", "精煉", ButtonStyle.Primary, "🔥"),
+    openBtn(userId, "goldrefine", "精煉", ButtonStyle.Primary, "🔥").setDisabled(full),
     openBtn(userId, "goldterm", "定存", ButtonStyle.Secondary, "🔒"),
   );
   if (holding > 0) {

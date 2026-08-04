@@ -46,7 +46,7 @@ function progressBar(cur, floor, ceil, width = 12) {
 }
 
 // 信用分卡片：等級、分數、下一級進度、當前額度。
-function creditCard(limits, displayName) {
+function creditCard(limits, displayName, extra = {}) {
   const { score, tier, next } = limits;
   const c = new ContainerBuilder()
     .setAccentColor(COLOR.gold)
@@ -70,6 +70,11 @@ function creditCard(limits, displayName) {
     );
   }
 
+  const vaultLine =
+    extra.vaultCapacity != null
+      ? `\n🪙 黃金金庫容量　**${fmt(extra.vaultCapacity)}** ${extra.unitLabel || "克"}`
+      : "";
+
   c.addSeparatorComponents(new SeparatorBuilder()).addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `**目前銀行權益**\n` +
@@ -77,7 +82,8 @@ function creditCard(limits, displayName) {
         `📅 每日轉帳額度　**${fmt(tier.dailyCap)}**\n` +
         `🔁 每日轉帳次數　**${tier.dailyCount}** 次\n` +
         `🏦 定存加開額度　**+${tier.depositSlotBonus || 0}** 筆\n` +
-        `💰 貸款額度　**${tier.loanCap > 0 ? fmt(tier.loanCap) : "尚未開放"}**`,
+        `💰 貸款額度　**${tier.loanCap > 0 ? fmt(tier.loanCap) : "尚未開放"}**` +
+        vaultLine,
     ),
   );
 

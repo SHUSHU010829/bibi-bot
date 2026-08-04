@@ -116,6 +116,55 @@ async function tryDeduct(client, userId, guildId, units) {
   return { ok: true, holding: updated.units, removedCost, avgCost };
 }
 
+// ── 金庫容量 ────────────────────────────────────────────────────────────────
+// 金庫存量有上限，純金不能無限囤：放不下的財富只能留在錢包，照樣被每週財富稅課到。
+// 容量＝基礎容量＋信用評等加成，讀取時即時算（compute-on-read，不寫進 DB）。
+function vaultCfg() {
+  return cfg().vault || {};
+}
+
+async function getCapacity(client, userId, guildId, member) {
+  const v = vaultCfg();
+  if (v.enabled === false) return Infinity;
+  const base = v.baseCapacity ?? 200;
+  if (!bank?.credit?.enabled) return base;
+  const limits = await creditService.getLimits(client, userId, guildId, member);
+  return base + (limits.tier?.vaultBonus || 0);
+}
+
+// 定存鎖倉的克數也算佔用容量，否則定存會變成繞過上限的無限倉庫。
+async function getLockedUnits(client, userId, guildId) {
+  const col = client.goldDepositsCollection;
+  if (!col) return 0;
+  const rows = await col
+    .aggregate([
+      { $match: { userId, guildId, status: "active" } },
+      { $group: { _id: null, units: { $sum: "$units" } } },
+    ])
+    .toArray()
+    .catch(() => []);
+  return rows[0]?.units || 0;
+}
+
+async function getVaultStatus(client, userId, guildId, member) {
+  const [position, locked, capacity] = await Promise.all([
+    getPosition(client, userId, guildId),
+    getLockedUnits(client, userId, guildId),
+    getCapacity(client, userId, guildId, member),
+  ]);
+  const used = position.units + locked;
+  const free = Number.isFinite(capacity) ? Math.max(0, capacity - used) : Infinity;
+  return {
+    units: position.units,
+    locked,
+    used,
+    capacity,
+    free,
+    limited: Number.isFinite(capacity),
+    over: Number.isFinite(capacity) && used > capacity,
+  };
+}
+
 // 讀取黃金部位：持有量、總成本、移動平均成本。
 async function getPosition(client, userId, guildId) {
   const col = client.goldHoldingsCollection;
@@ -133,6 +182,10 @@ async function buy(client, { userId, guildId, username, member, avatarHash, unit
   const max = c.maxTradeUnits ?? 2000;
   if (units < min || units > max) {
     return { ok: false, reason: "range", min, max };
+  }
+  const vault = await getVaultStatus(client, userId, guildId, member);
+  if (units > vault.free) {
+    return { ok: false, reason: "capacity", vault };
   }
   const prices = await getPrices(client);
   const cost = units * prices.buy;
@@ -161,6 +214,7 @@ async function buy(client, { userId, guildId, username, member, avatarHash, unit
     cost,
     prices,
     holding,
+    capacity: vault.capacity,
     avgCost: position.avgCost,
     balanceAfter: debit.doc?.totalCoins ?? balance - cost,
   };
@@ -221,13 +275,16 @@ function refineRecipe() {
 
 // 精煉：用黃金礦 + 煤炭（燃料）煉出 units 克純金存進金庫（不動錢包）。
 // units = 要煉出的克數；每克消耗 orePerUnit 黃金礦 + coalPerUnit 煤炭。
-async function refine(client, { userId, guildId, units }) {
+async function refine(client, { userId, guildId, member, units }) {
   const r = refineRecipe();
   if (!r.enabled) return { ok: false, reason: "disabled" };
   if (units < 1) return { ok: false, reason: "min" };
   if (units > r.maxBatch) return { ok: false, reason: "max", maxBatch: r.maxBatch };
   const col = client.miningProfilesCollection;
   if (!col) return { ok: false, reason: "no_mining" };
+
+  const vault = await getVaultStatus(client, userId, guildId, member);
+  if (units > vault.free) return { ok: false, reason: "capacity", vault };
 
   const needOre = units * r.orePerUnit;
   const needCoal = units * r.coalPerUnit;
@@ -252,7 +309,7 @@ async function refine(client, { userId, guildId, units }) {
 
   // 精煉入庫的成本以當日現貨價計（原料換算的公允市值），使平均成本貼近市場。
   const holding = await addHolding(client, userId, guildId, units, spotPrice());
-  return { ok: true, units, needOre, needCoal, r, holding };
+  return { ok: true, units, needOre, needCoal, r, holding, capacity: vault.capacity };
 }
 
 // ── 黃金定存 ────────────────────────────────────────────────────────────────
@@ -309,7 +366,7 @@ async function listTerms(client, userId, guildId) {
     .toArray();
 }
 
-async function claimTerm(client, { userId, guildId, member, depositId }) {
+async function claimTerm(client, { userId, guildId, username, avatarHash, member, depositId }) {
   const block = await loanService.repaymentBlock(client, userId, guildId);
   if (block) return { ok: false, reason: "loan_frozen", block };
 
@@ -343,21 +400,63 @@ async function claimTerm(client, { userId, guildId, member, depositId }) {
   if (payoutUnits > 0) {
     restoreUnitCost = matured ? origCost / payoutUnits : doc.units > 0 ? origCost / doc.units : 0;
   }
-  const holding = await addHolding(client, userId, guildId, payoutUnits, restoreUnitCost);
+
+  // 鎖倉解除後才算容量（這筆的克數已不佔用）；金庫塞不下的部分按賣出價折現進錢包，
+  // 錢不會憑空消失，但會回到「會被財富稅課到」的錢包，而不是繼續囤在免稅的金庫裡。
+  const vault = await getVaultStatus(client, userId, guildId, member);
+  const storedUnits = Math.min(payoutUnits, vault.free);
+  const overflowUnits = payoutUnits - storedUnits;
+  const holding =
+    storedUnits > 0
+      ? await addHolding(client, userId, guildId, storedUnits, restoreUnitCost)
+      : vault.units;
+
+  let overflowGain = 0;
+  if (overflowUnits > 0) {
+    const prices = await getPrices();
+    overflowGain = overflowUnits * prices.sell;
+    await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      avatarHash,
+      amount: overflowGain,
+      source: "gold_overflow",
+      member,
+      meta: { depositId, units: overflowUnits, unitPrice: prices.sell, capacity: vault.capacity },
+    });
+  }
+
   if (matured) {
     creditService.award(client, userId, guildId, "deposit_matured", { member }).catch(() => {});
   }
-  return { ok: true, matured, payoutUnits, penaltyUnits, holding, units: doc.units, interestUnits: doc.interestUnits };
+  return {
+    ok: true,
+    matured,
+    payoutUnits,
+    penaltyUnits,
+    holding,
+    storedUnits,
+    overflowUnits,
+    overflowGain,
+    capacity: vault.capacity,
+    units: doc.units,
+    interestUnits: doc.interestUnits,
+  };
 }
 
 module.exports = {
   cfg,
+  vaultCfg,
   termCfg,
   findTerm,
   spotPrice,
   getPrices,
   getHolding,
   getPosition,
+  getCapacity,
+  getLockedUnits,
+  getVaultStatus,
   addHolding,
   refineRecipe,
   buy,
