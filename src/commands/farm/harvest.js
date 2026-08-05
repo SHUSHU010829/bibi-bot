@@ -17,6 +17,7 @@ const { bagStatusLine } = require("../../features/mining/bagStatus");
 const { buildHarvestAllContainer } = require("../../features/farm/farmView");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
+const farmHarvestQuestHooks = require("../../features/quests/farmQuestHooks");
 const {
   sendFarmAnnouncement,
   buildHarvestAnnouncement,
@@ -94,13 +95,7 @@ async function harvestAll(client, interaction) {
     readyAt: nextReadyAt,
   }).catch(() => {});
 
-  const hooks = [];
-  for (const r of result.results) {
-    hooks.push({ questId: "daily_farm_harvest" });
-    hooks.push({ questId: "weekly_farm_harvest" });
-    hooks.push({ questId: "weekly_cd_farm" });
-    if (r.crop === "black_rose") hooks.push({ questId: "weekly_farm_rose" });
-  }
+  const hooks = result.results.flatMap((r) => farmHarvestQuestHooks(r));
   await applyQuestHooks(
     client,
     {
@@ -297,14 +292,7 @@ module.exports = {
         readyAt: nextReadyAt,
       }).catch(() => {});
 
-      const hooks = [
-        { questId: "daily_farm_harvest" },
-        { questId: "weekly_farm_harvest" },
-        { questId: "weekly_cd_farm" },
-      ];
-      if (result.crop === "black_rose") {
-        hooks.push({ questId: "weekly_farm_rose" });
-      }
+      const hooks = farmHarvestQuestHooks(result);
       await applyQuestHooks(
         client,
         {
