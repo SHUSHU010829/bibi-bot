@@ -43,6 +43,7 @@ const {
 } = require("../../features/farm/farmView");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
+const farmHarvestQuestHooks = require("../../features/quests/farmQuestHooks");
 const grantCoins = require("../../features/economy/grantCoins");
 const orePriceEngine = require("../../features/market/orePriceEngine");
 const {
@@ -1106,12 +1107,7 @@ module.exports = async (client, interaction) => {
       const results = harvestAll.results;
       const c = buildHarvestAllContainer({ results, bagFull: harvestAll.bagFull, userId, xpGained: harvestAll.xpGained });
 
-      const hooks = [];
-      for (const r of results) {
-        hooks.push({ questId: "daily_farm_harvest" });
-        hooks.push({ questId: "weekly_farm_harvest" });
-        if (r.crop === "black_rose") hooks.push({ questId: "weekly_farm_rose" });
-      }
+      const hooks = results.flatMap((r) => farmHarvestQuestHooks(r));
       applyQuestHooks(client, ctxOf(interaction), hooks).catch(() => {});
 
       for (const r of results) {
@@ -1183,12 +1179,7 @@ module.exports = async (client, interaction) => {
       ].filter(Boolean).join("\n");
       const c = buildSuccessContainer("🌟 收成成功", body, interaction.user.id);
 
-      const hooks = [
-        { questId: "daily_farm_harvest" },
-        { questId: "weekly_farm_harvest" },
-      ];
-      if (result.crop === "black_rose") hooks.push({ questId: "weekly_farm_rose" });
-      applyQuestHooks(client, ctxOf(interaction), hooks).catch(() => {});
+      applyQuestHooks(client, ctxOf(interaction), farmHarvestQuestHooks(result)).catch(() => {});
 
       const harvestNote = buildHarvestAnnouncement({ user: interaction.user, result });
       if (harvestNote) {
