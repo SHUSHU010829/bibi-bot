@@ -29,8 +29,11 @@ function stockOption(stock) {
       ? "已下市"
       : stock.listingStatus === "warning"
         ? "⚠️ 下市整理中"
-        : `現價 ${(stock.currentPrice || 0).toFixed(1)}`;
-  return { name: `${stock.symbol} ${stock.name}｜${status}`, value: stock.symbol };
+        : null;
+  const name = status
+    ? `${stock.symbol} ${stock.name}｜${status}`
+    : `${stock.symbol} ${stock.name}`;
+  return { name, value: stock.symbol };
 }
 
 async function marketOptions(client, guildId, query, includeDelisted) {
