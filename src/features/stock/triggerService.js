@@ -16,33 +16,44 @@ async function setTriggers(client, { userId, guildId, symbol, stopLoss, takeProf
   if (!client.userPortfolioCollection || !client.stockMarketCollection) {
     return { ok: false, reason: "disabled" };
   }
-  const position = await portfolioService.getPosition(client, userId, guildId, symbol);
-  if (!position || position.shares <= 0) {
-    return { ok: false, reason: "no_position" };
-  }
   const market = await client.stockMarketCollection.findOne({ guildId, symbol });
   if (!market || market.enabled === false) {
     return { ok: false, reason: "no_symbol" };
+  }
+  const position = await portfolioService.getPosition(client, userId, guildId, symbol);
+  if (!position || position.shares <= 0) {
+    return { ok: false, reason: "no_position", name: market.name };
   }
   const price = market.currentPrice;
 
   const cleanStop = stopLoss === null || stopLoss === undefined ? null : Number(stopLoss);
   const cleanTake = takeProfit === null || takeProfit === undefined ? null : Number(takeProfit);
 
+  const maxStop = price * (1 - MIN_GAP_PCT);
+  const minTake = price * (1 + MIN_GAP_PCT);
+  const bounds = { currentPrice: price, maxStop, minTake, name: market.name };
+
   if (cleanStop != null) {
     if (!Number.isFinite(cleanStop) || cleanStop <= 0) {
-      return { ok: false, reason: "bad_stop_loss" };
+      return { ok: false, reason: "bad_stop_loss", ...bounds };
     }
-    if (cleanStop >= price * (1 - MIN_GAP_PCT)) {
-      return { ok: false, reason: "stop_too_close", currentPrice: price };
+    // 高於現價的「停損」多半是想填停利，錯誤訊息要分開講才有辦法自己修正
+    if (cleanStop >= price) {
+      return { ok: false, reason: "stop_above_price", value: cleanStop, ...bounds };
+    }
+    if (cleanStop >= maxStop) {
+      return { ok: false, reason: "stop_too_close", value: cleanStop, ...bounds };
     }
   }
   if (cleanTake != null) {
     if (!Number.isFinite(cleanTake) || cleanTake <= 0) {
-      return { ok: false, reason: "bad_take_profit" };
+      return { ok: false, reason: "bad_take_profit", ...bounds };
     }
-    if (cleanTake <= price * (1 + MIN_GAP_PCT)) {
-      return { ok: false, reason: "take_too_close", currentPrice: price };
+    if (cleanTake <= price) {
+      return { ok: false, reason: "take_below_price", value: cleanTake, ...bounds };
+    }
+    if (cleanTake <= minTake) {
+      return { ok: false, reason: "take_too_close", value: cleanTake, ...bounds };
     }
   }
 

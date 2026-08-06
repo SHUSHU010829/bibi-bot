@@ -514,6 +514,89 @@ async function runInsider(client, interaction) {
 }
 
 // ──────────────────────────── /股市 停損停利 ────────────────────────────
+// 停損 / 停利填錯的錯誤訊息：現價、你填的價、可接受區間、以及「其實該填哪一欄」都要寫出來。
+const TRIGGER_ERROR_TEXT = {
+  stop_above_price: (i) => ({
+    title: "❌ 停損價不能高於現價",
+    body: [
+      `${i.stockLabel}　現價 **${i.price}**`,
+      `你填的停損價：**${i.value}**（比現價高，一設定就會立刻全倉賣出）`,
+      `停損價要填 **${i.maxStop} 以下**（跌到才賣）`,
+    ],
+    hint: `-# 想在「漲到 ${i.value}」時賣出的話，這個數字要填在 **停利價** 欄位。`,
+  }),
+  stop_too_close: (i) => ({
+    title: "❌ 停損價太靠近現價",
+    body: [
+      `${i.stockLabel}　現價 **${i.price}**`,
+      `你填的停損價：**${i.value}**`,
+      `停損價要填 **${i.maxStop} 以下**（距現價至少 1%）`,
+    ],
+    hint: "-# 留 1% 緩衝，才不會被正常抖動立刻掃出場。",
+  }),
+  take_below_price: (i) => ({
+    title: "❌ 停利價不能低於現價",
+    body: [
+      `${i.stockLabel}　現價 **${i.price}**`,
+      `你填的停利價：**${i.value}**（比現價低，一設定就會立刻全倉賣出）`,
+      `停利價要填 **${i.minTake} 以上**（漲到才賣）`,
+    ],
+    hint: `-# 想在「跌到 ${i.value}」時停損的話，這個數字要填在 **停損價** 欄位。`,
+  }),
+  take_too_close: (i) => ({
+    title: "❌ 停利價太靠近現價",
+    body: [
+      `${i.stockLabel}　現價 **${i.price}**`,
+      `你填的停利價：**${i.value}**`,
+      `停利價要填 **${i.minTake} 以上**（距現價至少 1%）`,
+    ],
+    hint: "-# 留 1% 緩衝，才不會被正常抖動立刻掃出場。",
+  }),
+  bad_stop_loss: () => ({
+    title: "❌ 停損價格式不對",
+    body: ["停損價要填大於 0 的數字。"],
+    hint: "-# 填 `0` 代表取消原本的停損設定。",
+  }),
+  bad_take_profit: () => ({
+    title: "❌ 停利價格式不對",
+    body: ["停利價要填大於 0 的數字。"],
+    hint: "-# 填 `0` 代表取消原本的停利設定。",
+  }),
+  no_position: (i) => ({
+    title: "❌ 你沒有持有這支股票",
+    body: [`${i.stockLabel}　目前持股 **0 股**`, "沒有持股就沒有東西可以自動賣出，設定不了停損 / 停利。"],
+    hint: "-# 先用 `/股市 買` 建倉，或用 `/股市 持股` 看看自己手上有哪些股票。",
+  }),
+  no_symbol: (i) => ({
+    title: "❌ 這支股票已下市",
+    body: [`${i.stockLabel} 目前不在上市清單中，無法設定停損 / 停利。`],
+    hint: "-# 用 `/股市 報價` 看目前還在交易的股票。",
+  }),
+};
+
+function buildTriggerErrorContainer(symbol, result) {
+  const price = result.currentPrice;
+  const info = {
+    stockLabel: result.name ? `**${result.name}（${symbol}）**` : `\`${symbol}\``,
+    price: price != null ? price.toLocaleString() : "—",
+    value: result.value != null ? result.value.toLocaleString() : "—",
+    maxStop: result.maxStop != null ? (Math.floor(result.maxStop * 10) / 10).toLocaleString() : "—",
+    minTake: result.minTake != null ? (Math.ceil(result.minTake * 10) / 10).toLocaleString() : "—",
+  };
+  const text = (TRIGGER_ERROR_TEXT[result.reason] || (() => ({
+    title: "🔧 設定失敗",
+    body: ["停損 / 停利設定沒有成功，請稍後再試。"],
+    hint: "-# 一直失敗的話請呼叫舒舒。",
+  })))(info);
+
+  return new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${text.title}`))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text.body.join("\n")))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text.hint));
+}
+
 async function runSetTriggers(client, interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
@@ -531,6 +614,10 @@ async function runSetTriggers(client, interaction) {
     const rawTake = interaction.options.getNumber("停利價");
 
     if (rawStop == null && rawTake == null) {
+      const market = await client.stockMarketCollection.findOne({
+        guildId: interaction.guildId,
+        symbol,
+      });
       const position = await portfolioService.getPosition(
         client,
         interaction.user.id,
@@ -538,12 +625,13 @@ async function runSetTriggers(client, interaction) {
         symbol,
       );
       if (!position || position.shares <= 0) {
-        return interaction.editReply(`❌ 你沒有持有 \`${symbol}\`。`);
+        return interaction.editReply({
+          components: [
+            buildTriggerErrorContainer(symbol, { reason: "no_position", name: market?.name }),
+          ],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
       }
-      const market = await client.stockMarketCollection.findOne({
-        guildId: interaction.guildId,
-        symbol,
-      });
       const priceLabel = market ? market.currentPrice.toLocaleString() : "—";
       const stopLabel =
         position.stopLoss != null
@@ -574,7 +662,18 @@ async function runSetTriggers(client, interaction) {
         interaction.guildId,
         symbol,
       );
-      if (!position) return interaction.editReply(`❌ 你沒有持有 \`${symbol}\`。`);
+      if (!position) {
+        const market = await client.stockMarketCollection.findOne({
+          guildId: interaction.guildId,
+          symbol,
+        });
+        return interaction.editReply({
+          components: [
+            buildTriggerErrorContainer(symbol, { reason: "no_position", name: market?.name }),
+          ],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
+      }
       await triggerService.clearTriggers(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -591,23 +690,10 @@ async function runSetTriggers(client, interaction) {
       takeProfit,
     });
     if (!result.ok) {
-      if (result.reason === "no_position") {
-        return interaction.editReply(`❌ 你沒有持有 \`${symbol}\`，無法設定觸發。`);
-      }
-      if (result.reason === "no_symbol") {
-        return interaction.editReply(`❌ 找不到股票代號 \`${symbol}\`。`);
-      }
-      if (result.reason === "stop_too_close") {
-        return interaction.editReply(
-          `❌ 停損價太靠近現價（${result.currentPrice.toLocaleString()}），請至少留 1% 緩衝以避免抖動立刻觸發。`,
-        );
-      }
-      if (result.reason === "take_too_close") {
-        return interaction.editReply(
-          `❌ 停利價太靠近現價（${result.currentPrice.toLocaleString()}），請至少留 1% 緩衝以避免抖動立刻觸發。`,
-        );
-      }
-      return interaction.editReply("🔧 設定失敗，請稍後再試。");
+      return interaction.editReply({
+        components: [buildTriggerErrorContainer(symbol, result)],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
     }
 
     const lines = [
