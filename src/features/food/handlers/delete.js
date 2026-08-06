@@ -1,8 +1,12 @@
 require("colors");
+const { MessageFlags } = require("discord.js");
 
 const autocompleteBeverageStore = require("../../../utils/autocompleteBeverageStore");
 const autocompleteFoodName = require("../../../utils/autocompleteFoodName");
 const { CATEGORY_LABEL } = require("../../../constants/foodCategories");
+const { resolveChoice } = require("../../../utils/choiceInput");
+const { buildChoiceErrorContainer } = require("../../../utils/choiceErrorContainer");
+const { foodNameChoices, FOOD_NAME_STRIP } = require("../foodNameChoices");
 
 async function autocomplete(client, interaction) {
   const focused = interaction.options.getFocused(true);
@@ -17,7 +21,6 @@ async function autocomplete(client, interaction) {
 
 async function run(client, interaction) {
   const { options } = interaction;
-  const foodToDelete = options.getString("食物名稱")?.trim();
   const category = options.getString("類別");
   const beverageStore = options.getString("飲料店")?.trim() || null;
 
@@ -26,6 +29,20 @@ async function run(client, interaction) {
   await interaction.deferReply();
 
   try {
+    // 選單顯示「珍奶（50嵐）」但 value 只有食物名稱，玩家貼整行回來要先還原
+    const picked = resolveChoice(
+      options.getString("食物名稱"),
+      await foodNameChoices(client, interaction),
+      { strip: FOOD_NAME_STRIP },
+    );
+    if (!picked.ok) {
+      return interaction.editReply({
+        components: [buildChoiceErrorContainer(picked, { what: "食物" })],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+    const foodToDelete = picked.value;
+
     let deleteQuery = { name: foodToDelete };
 
     if (category) {

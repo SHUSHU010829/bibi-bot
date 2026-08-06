@@ -7,8 +7,32 @@ const {
 } = require("discord.js");
 
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
+const { buildChoices, respondChoices, resolveChoice } = require("../../utils/choiceInput");
+const { buildChoiceErrorContainer } = require("../../utils/choiceErrorContainer");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function titleChoices() {
+  return buildChoices(gameTitleService.order(), (id) => {
+    const d = gameTitleService.def(id) || {};
+    return {
+      name: `${d.emoji || ""} ${d.name || id} (${id})`.trim(),
+      value: id,
+      search: `${id} ${d.name || ""}`,
+    };
+  });
+}
+
+// 選單顯示「emoji 中文名 (id)」，貼整行回來也要吃得下
+async function pickTitle(interaction) {
+  const picked = resolveChoice(interaction.options.getString("稱號"), titleChoices());
+  if (picked.ok) return picked.value;
+  await interaction.reply({
+    components: [buildChoiceErrorContainer(picked, { what: "稱號" })],
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+  });
+  return null;
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -67,17 +91,7 @@ module.exports = {
     try {
       const focused = interaction.options.getFocused(true);
       if (focused.name !== "稱號") return interaction.respond([]).catch(() => {});
-      const q = (focused.value || "").toLowerCase();
-      const opts = gameTitleService
-        .order()
-        .map((id) => {
-          const d = gameTitleService.def(id) || {};
-          return { name: `${d.emoji || ""} ${d.name || id} (${id})`.trim(), value: id, _q: `${id}${d.name || ""}`.toLowerCase() };
-        })
-        .filter((o) => !q || o._q.includes(q))
-        .slice(0, 25)
-        .map(({ name, value }) => ({ name, value }));
-      await interaction.respond(opts);
+      await respondChoices(interaction, titleChoices(), focused.value);
     } catch (e) {
       await interaction.respond([]).catch(() => {});
     }
@@ -109,12 +123,9 @@ module.exports = {
 
 async function runGrant(client, interaction) {
   const target = interaction.options.getUser("玩家");
-  const titleId = interaction.options.getString("稱號");
+  const titleId = await pickTitle(interaction);
+  if (!titleId) return;
   const days = interaction.options.getInteger("天數");
-
-  if (!gameTitleService.def(titleId)) {
-    return interaction.reply({ content: `❌ 找不到稱號 \`${titleId}\``, flags: MessageFlags.Ephemeral });
-  }
 
   const expiresAt = days ? Date.now() + days * DAY_MS : null;
   await gameTitleService.grant(client, {
@@ -139,11 +150,8 @@ async function runGrant(client, interaction) {
 
 async function runRevoke(client, interaction) {
   const target = interaction.options.getUser("玩家");
-  const titleId = interaction.options.getString("稱號");
-
-  if (!gameTitleService.def(titleId)) {
-    return interaction.reply({ content: `❌ 找不到稱號 \`${titleId}\``, flags: MessageFlags.Ephemeral });
-  }
+  const titleId = await pickTitle(interaction);
+  if (!titleId) return;
 
   const unlocked = await gameTitleService.getUnlocked(client, target.id, interaction.guildId);
   if (!unlocked.has(titleId)) {

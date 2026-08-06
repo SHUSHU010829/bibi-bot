@@ -85,6 +85,10 @@ function resolveChoice(raw, options, { strip = [], preferred } = {}) {
 
   const topScore = Math.max(...scored.map((x) => x.score));
   let best = scored.filter((x) => x.score === topScore).map((x) => x.option);
+  // 同一個 value 只是顯示不同（「珍奶（50嵐）」/「珍奶（清心）」）不算模稜兩可
+  if (best.length > 1 && new Set(best.map((o) => o.value)).size === 1) {
+    best = [best[0]];
+  }
   if (best.length > 1 && preferred) {
     const picked = best.filter(preferred);
     if (picked.length === 1) best = picked;
