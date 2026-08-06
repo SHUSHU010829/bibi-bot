@@ -41,6 +41,7 @@ const shortService = require("../../features/stock/shortService");
 const leaderboardService = require("../../features/stock/leaderboardService");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const { buildChartContainer } = require("../../features/stock/chartView");
+const { respondSymbolOptions } = require("../../features/stock/symbolOptions");
 const { getDailyVolume, invalidate: invalidateVolume } = require("../../features/stock/volumeService");
 const {
   buildStockHoldingsView,
@@ -65,15 +66,18 @@ const TRADE_PERIOD_LABEL = {
 
 const QUOTE_PANEL_TIMEOUT_MS = 5 * 60 * 1000;
 
-// 為了讓 addChoices 可以用,先從 config 的 pool 取靜態股票清單;
-// 若 DB 有額外股票,報價面板仍會以 DB 為準。
-function getStaticSymbolChoices() {
-  const pool = stockSystem?.pool || [];
-  return pool.slice(0, 25).map((p) => ({
-    name: `${p.symbol} ${p.name}`,
-    value: p.symbol,
-  }));
-}
+// 股票代號選單走 autocomplete 讀 DB(見 features/stock/symbolOptions.js);
+// 各子指令要列的清單不同,這裡只做 子指令 → 清單來源 的對應。
+const SYMBOL_AUTOCOMPLETE_MODE = {
+  買: "tradable",
+  賣: "holding",
+  走勢: "all",
+  紀錄: "all",
+  融券: "tradable",
+  回補: "short",
+  停損停利: "holding",
+  內線: "tradable",
+};
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -89,7 +93,7 @@ module.exports = {
             .setName("股票代號")
             .setDescription("從下拉選單選擇上市股票")
             .setRequired(true)
-            .addChoices(...getStaticSymbolChoices())
+            .setAutocomplete(true)
         )
         .addIntegerOption((o) =>
           o
@@ -108,7 +112,7 @@ module.exports = {
             .setName("股票代號")
             .setDescription("從下拉選單選擇上市股票")
             .setRequired(true)
-            .addChoices(...getStaticSymbolChoices())
+            .setAutocomplete(true)
         )
         .addStringOption((o) =>
           o
@@ -126,7 +130,7 @@ module.exports = {
             .setName("股票代號")
             .setDescription("從下拉選單選擇上市股票")
             .setRequired(true)
-            .addChoices(...getStaticSymbolChoices())
+            .setAutocomplete(true)
         )
         .addStringOption((o) =>
           o
@@ -175,7 +179,7 @@ module.exports = {
             .setName("股票代號")
             .setDescription("只看單一股票(預設全部)")
             .setRequired(false)
-            .addChoices(...getStaticSymbolChoices())
+            .setAutocomplete(true)
         )
     )
     .addSubcommand((s) =>
@@ -192,7 +196,7 @@ module.exports = {
             .setName("股票代號")
             .setDescription("要放空的股票")
             .setRequired(true)
-            .addChoices(...getStaticSymbolChoices())
+            .setAutocomplete(true)
         )
         .addIntegerOption((o) =>
           o
@@ -211,7 +215,7 @@ module.exports = {
             .setName("股票代號")
             .setDescription("要回補的股票")
             .setRequired(true)
-            .addChoices(...getStaticSymbolChoices())
+            .setAutocomplete(true)
         )
         .addStringOption((o) =>
           o
@@ -250,7 +254,7 @@ module.exports = {
             .setName("股票代號")
             .setDescription("要設定的股票")
             .setRequired(true)
-            .addChoices(...getStaticSymbolChoices())
+            .setAutocomplete(true)
         )
         .addNumberOption((o) =>
           o
@@ -286,10 +290,16 @@ module.exports = {
             .setName("股票代號")
             .setDescription("指定探聽的股票（預設隨機）")
             .setRequired(false)
-            .addChoices(...getStaticSymbolChoices())
+            .setAutocomplete(true)
         )
     )
     .toJSON(),
+
+  autocomplete: async (client, interaction) => {
+    const mode = SYMBOL_AUTOCOMPLETE_MODE[interaction.options.getSubcommand()];
+    if (!mode) return interaction.respond([]).catch(() => {});
+    return respondSymbolOptions(client, interaction, mode);
+  },
 
   run: async (client, interaction) => {
     const sub = interaction.options.getSubcommand();
