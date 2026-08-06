@@ -13,6 +13,8 @@ const worldEventService = require("../../features/world_event/worldEventService"
 const worldEventView = require("../../features/world_event/worldEventView");
 const { itemLabel, itemEmoji } = require("../../features/world_event/worldEventItems");
 const worldEventScheduler = require("../../events/ready/worldEventScheduler");
+const { buildChoices, respondChoices, resolveChoice } = require("../../utils/choiceInput");
+const { buildChoiceErrorContainer } = require("../../utils/choiceErrorContainer");
 
 // 主線活動沒有 trigger（一般世界事件靠挖到礦 / 釣到魚隨機觸發），
 // 開跟關都得由管理員決定時機，所以另開這支指令。
@@ -20,6 +22,14 @@ function mainlineDefs() {
   return (worldEventService.allEventIds() || [])
     .map((id) => worldEventService.eventDef(id))
     .filter((d) => worldEventService.isMainline(d));
+}
+
+function mainlineChoices() {
+  return buildChoices(mainlineDefs(), (d) => ({
+    name: `${d.emoji || ""} ${d.label}`.trim(),
+    value: d.id,
+    search: `${d.id} ${d.label}`,
+  }));
 }
 
 function reqLines(event) {
@@ -72,15 +82,7 @@ module.exports = {
     try {
       const focused = interaction.options.getFocused(true);
       if (focused.name !== "活動") return interaction.respond([]).catch(() => {});
-      const q = (focused.value || "").toLowerCase();
-      return interaction
-        .respond(
-          mainlineDefs()
-            .filter((d) => !q || d.label.toLowerCase().includes(q) || d.id.includes(q))
-            .slice(0, 25)
-            .map((d) => ({ name: `${d.emoji || ""} ${d.label}`.trim(), value: d.id })),
-        )
-        .catch(() => {});
+      return respondChoices(interaction, mainlineChoices(), focused.value);
     } catch (error) {
       console.log(`[ERROR] /worldevent-admin autocomplete: ${error}`.red);
       return interaction.respond([]).catch(() => {});
@@ -97,19 +99,15 @@ module.exports = {
       );
 
       if (sub === "開啟") {
-        const eventId = interaction.options.getString("活動");
-        const def = worldEventService.eventDef(eventId);
-        if (!def || !worldEventService.isMainline(def)) {
+        const picked = resolveChoice(interaction.options.getString("活動"), mainlineChoices());
+        if (!picked.ok) {
           return interaction.editReply({
-            components: [
-              worldEventView.buildSimpleError({
-                title: "❌ 找不到這個主線活動",
-                body: "請從自動完成清單挑一個。",
-              }),
-            ],
+            components: [buildChoiceErrorContainer(picked, { what: "主線活動" })],
             flags: MessageFlags.IsComponentsV2,
           });
         }
+        const eventId = picked.value;
+        const def = worldEventService.eventDef(eventId);
         const r = await worldEventService.tryOpenEvent(client, eventId);
         if (!r.opened) {
           const body =

@@ -19,6 +19,45 @@ const warehouseSettings = require("../../features/guild_club/warehouse/warehouse
 const warehouseEligibility = require("../../features/guild_club/warehouse/warehouseEligibility");
 const guildWarehouseListingService = require("../../features/guild_club/warehouse/guildWarehouseListingService");
 const expansionView = require("../../features/guild_club/expansionView");
+const { buildChoices, respondChoices, resolveChoice } = require("../../utils/choiceInput");
+const { buildChoiceErrorContainer } = require("../../utils/choiceErrorContainer");
+
+// 「（可寄售 N）」是顯示用尾巴，玩家貼整行回來時要剝掉才對得上物品名
+const WAREHOUSE_STRIP = [/\(可寄售[^)]*\)/g];
+
+// 選單依子指令過濾（寄售只列倉庫有貨的），但解析輸入要用完整清單，
+// 沒貨才走得到 service 的「庫存不足」而不是「找不到物品」。
+function warehouseItemChoices(availableMap = null) {
+  const items = warehouseSettings
+    .allItemIds()
+    .map((id) => ({ id, def: warehouseSettings.itemDef(id) }))
+    .filter(({ def }) => !def?.craftedOnly)
+    .filter(({ id }) => !availableMap || (availableMap[id] || 0) > 0);
+  return buildChoices(items, ({ id, def }) => ({
+    name: availableMap ? `${def.name}（可寄售 ${availableMap[id]}）` : def.name,
+    value: id,
+    search: `${id} ${def.name}`,
+  }));
+}
+
+async function pickWarehouseItem(interaction) {
+  const picked = resolveChoice(
+    interaction.options.getString("物品", true),
+    warehouseItemChoices(),
+    { strip: WAREHOUSE_STRIP },
+  );
+  if (picked.ok) return picked.value;
+  await interaction.editReply({
+    components: [
+      buildChoiceErrorContainer(picked, {
+        what: "物品",
+        hint: "-# 建材 / 鋼錠這類公會打造出來的材料不能存入或領取。",
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+  return null;
+}
 
 // 公會指令類別白名單。Thread 走 parent channel 的 parentId（祖父類別）。
 // 空 / 未設定 → 不限制。
@@ -221,22 +260,9 @@ module.exports = {
       }
     }
 
-    const choices = warehouseSettings
-      .allItemIds()
-      .map((id) => ({ id, def: warehouseSettings.itemDef(id) }))
-      .filter(({ id, def }) => {
-        if (def?.craftedOnly) return false; // 建材 / 鋼錠 不能存入 / 領取 / 寄售
-        if (term && !id.includes(term) && !def.name.toLowerCase().includes(term))
-          return false;
-        if (availableMap && (availableMap[id] || 0) <= 0) return false;
-        return true;
-      })
-      .slice(0, 25)
-      .map(({ id, def }) => {
-        const avail = availableMap ? `（可寄售 ${availableMap[id]}）` : "";
-        return { name: `${def.name}${avail}`, value: id };
-      });
-    await interaction.respond(choices).catch(() => {});
+    await respondChoices(interaction, warehouseItemChoices(availableMap), term, {
+      strip: WAREHOUSE_STRIP,
+    });
   },
 
   run: async (client, interaction) => {
@@ -953,7 +979,8 @@ async function runWarehouse(client, interaction) {
 
 async function runDeposit(client, interaction) {
   await interaction.deferReply();
-  const itemId = interaction.options.getString("物品", true);
+  const itemId = await pickWarehouseItem(interaction);
+  if (!itemId) return;
   const qty = interaction.options.getInteger("數量", true);
 
   const result = await warehouseService.deposit(client, {
@@ -1003,7 +1030,8 @@ async function runDeposit(client, interaction) {
 
 async function runWithdraw(client, interaction) {
   await interaction.deferReply();
-  const itemId = interaction.options.getString("物品", true);
+  const itemId = await pickWarehouseItem(interaction);
+  if (!itemId) return;
   const qty = interaction.options.getInteger("數量", true);
 
   const result = await warehouseService.withdraw(client, {
@@ -1195,7 +1223,8 @@ function withdrawErrorView(result, itemId) {
 
 async function runConsign(client, interaction) {
   await interaction.deferReply();
-  const itemId = interaction.options.getString("物品", true);
+  const itemId = await pickWarehouseItem(interaction);
+  if (!itemId) return;
   const qty = interaction.options.getInteger("數量", true);
   const price = interaction.options.getInteger("售價", true);
 

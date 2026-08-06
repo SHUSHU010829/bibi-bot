@@ -12,6 +12,12 @@ const {
 const { coinSystem } = require("../../config");
 const itemRegistry = require("../../features/economy/itemRegistry");
 const { getOrCreate } = require("../../features/mining/miningProfile");
+const { buildChoices, respondChoices, resolveChoice } = require("../../utils/choiceInput");
+const { buildChoiceErrorContainer } = require("../../utils/choiceErrorContainer");
+
+function itemChoices() {
+  return buildChoices(itemRegistry.listAll(), (r) => ({ name: r.name, value: r.value }));
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -41,21 +47,7 @@ module.exports = {
   userPermissions: [PermissionFlagsBits.Administrator],
 
   autocomplete: async (client, interaction) => {
-    const focused = (interaction.options.getFocused() || "").toString().toLowerCase();
-    const reg = itemRegistry.listAll();
-    const filtered = focused
-      ? reg.filter(
-          (r) => r.name.toLowerCase().includes(focused) || r.value.toLowerCase().includes(focused),
-        )
-      : reg;
-    await interaction
-      .respond(
-        filtered.slice(0, 25).map((r) => ({
-          name: r.name.slice(0, 100),
-          value: r.value.slice(0, 100),
-        })),
-      )
-      .catch(() => {});
+    await respondChoices(interaction, itemChoices(), interaction.options.getFocused());
   },
 
   run: async (client, interaction) => {
@@ -74,7 +66,15 @@ module.exports = {
         return interaction.editReply("數量必須是正整數。");
       }
 
-      const item = itemRegistry.resolve(itemValue);
+      const picked = resolveChoice(itemValue, itemChoices());
+      if (!picked.ok) {
+        return interaction.editReply({
+          components: [buildChoiceErrorContainer(picked, { what: "物品" })],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+
+      const item = itemRegistry.resolve(picked.value);
       if (!item) {
         return interaction.editReply("❌ 找不到這個物品，請從自動完成清單選擇。");
       }
