@@ -42,6 +42,7 @@ const leaderboardService = require("../../features/stock/leaderboardService");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const { buildChartContainer } = require("../../features/stock/chartView");
 const { respondSymbolOptions } = require("../../features/stock/symbolOptions");
+const { resolveSymbol } = require("../../features/stock/symbolInput");
 const { getDailyVolume, invalidate: invalidateVolume } = require("../../features/stock/volumeService");
 const {
   buildStockHoldingsView,
@@ -318,6 +319,60 @@ module.exports = {
   },
 };
 
+// ─────────────────────── 股票代號輸入（含貼上整行） ───────────────────────
+// 已 defer 的互動才可呼叫；解析失敗會直接回覆錯誤 Container 並回傳 null。
+async function resolveSymbolOrReply(client, interaction, raw) {
+  const result = await resolveSymbol(client, interaction.guildId, raw);
+  if (result.ok) return result.symbol;
+  await interaction.editReply({
+    components: [buildSymbolErrorContainer(result)],
+    flags: MessageFlags.IsComponentsV2,
+  });
+  return null;
+}
+
+function buildSymbolErrorContainer(result) {
+  const container = new ContainerBuilder().setAccentColor(0xe74c3c);
+
+  if (result.reason === "ambiguous") {
+    container
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`# ❌ 股票代號不明確：${result.input}`)
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          ["符合的股票有多支，請指定其中一支的代號：", ...symbolLines(result.candidates)].join("\n")
+        )
+      );
+  } else {
+    container
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `# ❌ 找不到股票${result.input ? `：${result.input}` : ""}`
+        )
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          result.listed.length > 0
+            ? ["目前上市中的股票：", ...symbolLines(result.listed.slice(0, 12))].join("\n")
+            : "目前沒有上市中的股票。"
+        )
+      );
+  }
+
+  return container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "-# 代號、中文名、或直接貼上下拉選單那一行都可以（例：`NVPP`、`輝達丼`、`NVPP 輝達丼`）；輸入時等選單跳出來再點選最保險。"
+    )
+  );
+}
+
+function symbolLines(stocks) {
+  return stocks.map((s) => `・\`${s.symbol}\` ${s.name}`);
+}
+
 // ──────────────────────────── /股市 排行 ────────────────────────────
 async function runLeaderboard(client, interaction) {
   await interaction.deferReply();
@@ -409,7 +464,11 @@ async function runInsider(client, interaction) {
 
     const grade = interaction.options.getString("等級");
     const symbolOpt = interaction.options.getString("股票代號");
-    const symbol = symbolOpt ? symbolOpt.toUpperCase().trim() : null;
+    let symbol = null;
+    if (symbolOpt) {
+      symbol = await resolveSymbolOrReply(client, interaction, symbolOpt);
+      if (!symbol) return;
+    }
 
     const result = await insiderService.buyTip(client, {
       userId: interaction.user.id,
@@ -455,6 +514,89 @@ async function runInsider(client, interaction) {
 }
 
 // ──────────────────────────── /股市 停損停利 ────────────────────────────
+// 停損 / 停利填錯的錯誤訊息：現價、你填的價、可接受區間、以及「其實該填哪一欄」都要寫出來。
+const TRIGGER_ERROR_TEXT = {
+  stop_above_price: (i) => ({
+    title: "❌ 停損價不能高於現價",
+    body: [
+      `${i.stockLabel}　現價 **${i.price}**`,
+      `你填的停損價：**${i.value}**（比現價高，一設定就會立刻全倉賣出）`,
+      `停損價要填 **${i.maxStop} 以下**（跌到才賣）`,
+    ],
+    hint: `-# 想在「漲到 ${i.value}」時賣出的話，這個數字要填在 **停利價** 欄位。`,
+  }),
+  stop_too_close: (i) => ({
+    title: "❌ 停損價太靠近現價",
+    body: [
+      `${i.stockLabel}　現價 **${i.price}**`,
+      `你填的停損價：**${i.value}**`,
+      `停損價要填 **${i.maxStop} 以下**（距現價至少 1%）`,
+    ],
+    hint: "-# 留 1% 緩衝，才不會被正常抖動立刻掃出場。",
+  }),
+  take_below_price: (i) => ({
+    title: "❌ 停利價不能低於現價",
+    body: [
+      `${i.stockLabel}　現價 **${i.price}**`,
+      `你填的停利價：**${i.value}**（比現價低，一設定就會立刻全倉賣出）`,
+      `停利價要填 **${i.minTake} 以上**（漲到才賣）`,
+    ],
+    hint: `-# 想在「跌到 ${i.value}」時停損的話，這個數字要填在 **停損價** 欄位。`,
+  }),
+  take_too_close: (i) => ({
+    title: "❌ 停利價太靠近現價",
+    body: [
+      `${i.stockLabel}　現價 **${i.price}**`,
+      `你填的停利價：**${i.value}**`,
+      `停利價要填 **${i.minTake} 以上**（距現價至少 1%）`,
+    ],
+    hint: "-# 留 1% 緩衝，才不會被正常抖動立刻掃出場。",
+  }),
+  bad_stop_loss: () => ({
+    title: "❌ 停損價格式不對",
+    body: ["停損價要填大於 0 的數字。"],
+    hint: "-# 填 `0` 代表取消原本的停損設定。",
+  }),
+  bad_take_profit: () => ({
+    title: "❌ 停利價格式不對",
+    body: ["停利價要填大於 0 的數字。"],
+    hint: "-# 填 `0` 代表取消原本的停利設定。",
+  }),
+  no_position: (i) => ({
+    title: "❌ 你沒有持有這支股票",
+    body: [`${i.stockLabel}　目前持股 **0 股**`, "沒有持股就沒有東西可以自動賣出，設定不了停損 / 停利。"],
+    hint: "-# 先用 `/股市 買` 建倉，或用 `/股市 持股` 看看自己手上有哪些股票。",
+  }),
+  no_symbol: (i) => ({
+    title: "❌ 這支股票已下市",
+    body: [`${i.stockLabel} 目前不在上市清單中，無法設定停損 / 停利。`],
+    hint: "-# 用 `/股市 報價` 看目前還在交易的股票。",
+  }),
+};
+
+function buildTriggerErrorContainer(symbol, result) {
+  const price = result.currentPrice;
+  const info = {
+    stockLabel: result.name ? `**${result.name}（${symbol}）**` : `\`${symbol}\``,
+    price: price != null ? price.toLocaleString() : "—",
+    value: result.value != null ? result.value.toLocaleString() : "—",
+    maxStop: result.maxStop != null ? (Math.floor(result.maxStop * 10) / 10).toLocaleString() : "—",
+    minTake: result.minTake != null ? (Math.ceil(result.minTake * 10) / 10).toLocaleString() : "—",
+  };
+  const text = (TRIGGER_ERROR_TEXT[result.reason] || (() => ({
+    title: "🔧 設定失敗",
+    body: ["停損 / 停利設定沒有成功，請稍後再試。"],
+    hint: "-# 一直失敗的話請呼叫舒舒。",
+  })))(info);
+
+  return new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${text.title}`))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text.body.join("\n")))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text.hint));
+}
+
 async function runSetTriggers(client, interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
@@ -462,11 +604,20 @@ async function runSetTriggers(client, interaction) {
     const tenure = checkServerTenure(interaction.member);
     if (!tenure.ok) return interaction.editReply(tenure.message);
 
-    const symbol = interaction.options.getString("股票代號").toUpperCase().trim();
+    const symbol = await resolveSymbolOrReply(
+      client,
+      interaction,
+      interaction.options.getString("股票代號")
+    );
+    if (!symbol) return;
     const rawStop = interaction.options.getNumber("停損價");
     const rawTake = interaction.options.getNumber("停利價");
 
     if (rawStop == null && rawTake == null) {
+      const market = await client.stockMarketCollection.findOne({
+        guildId: interaction.guildId,
+        symbol,
+      });
       const position = await portfolioService.getPosition(
         client,
         interaction.user.id,
@@ -474,12 +625,13 @@ async function runSetTriggers(client, interaction) {
         symbol,
       );
       if (!position || position.shares <= 0) {
-        return interaction.editReply(`❌ 你沒有持有 \`${symbol}\`。`);
+        return interaction.editReply({
+          components: [
+            buildTriggerErrorContainer(symbol, { reason: "no_position", name: market?.name }),
+          ],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
       }
-      const market = await client.stockMarketCollection.findOne({
-        guildId: interaction.guildId,
-        symbol,
-      });
       const priceLabel = market ? market.currentPrice.toLocaleString() : "—";
       const stopLabel =
         position.stopLoss != null
@@ -510,7 +662,18 @@ async function runSetTriggers(client, interaction) {
         interaction.guildId,
         symbol,
       );
-      if (!position) return interaction.editReply(`❌ 你沒有持有 \`${symbol}\`。`);
+      if (!position) {
+        const market = await client.stockMarketCollection.findOne({
+          guildId: interaction.guildId,
+          symbol,
+        });
+        return interaction.editReply({
+          components: [
+            buildTriggerErrorContainer(symbol, { reason: "no_position", name: market?.name }),
+          ],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
+      }
       await triggerService.clearTriggers(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
@@ -527,23 +690,10 @@ async function runSetTriggers(client, interaction) {
       takeProfit,
     });
     if (!result.ok) {
-      if (result.reason === "no_position") {
-        return interaction.editReply(`❌ 你沒有持有 \`${symbol}\`，無法設定觸發。`);
-      }
-      if (result.reason === "no_symbol") {
-        return interaction.editReply(`❌ 找不到股票代號 \`${symbol}\`。`);
-      }
-      if (result.reason === "stop_too_close") {
-        return interaction.editReply(
-          `❌ 停損價太靠近現價（${result.currentPrice.toLocaleString()}），請至少留 1% 緩衝以避免抖動立刻觸發。`,
-        );
-      }
-      if (result.reason === "take_too_close") {
-        return interaction.editReply(
-          `❌ 停利價太靠近現價（${result.currentPrice.toLocaleString()}），請至少留 1% 緩衝以避免抖動立刻觸發。`,
-        );
-      }
-      return interaction.editReply("🔧 設定失敗，請稍後再試。");
+      return interaction.editReply({
+        components: [buildTriggerErrorContainer(symbol, result)],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
     }
 
     const lines = [
@@ -575,7 +725,12 @@ async function runBuy(client, interaction) {
       return interaction.editReply("🌙 目前非開盤時間(09:00–21:00 Asia/Taipei)。");
     }
 
-    const symbol = interaction.options.getString("股票代號").toUpperCase().trim();
+    const symbol = await resolveSymbolOrReply(
+      client,
+      interaction,
+      interaction.options.getString("股票代號")
+    );
+    if (!symbol) return;
     const shares = interaction.options.getInteger("數量");
 
     const result = await buyMarket(client, {
@@ -669,7 +824,12 @@ async function runSell(client, interaction) {
       return interaction.editReply("🌙 目前非開盤時間(09:00–21:00 Asia/Taipei)。");
     }
 
-    const symbol = interaction.options.getString("股票代號").toUpperCase().trim();
+    const symbol = await resolveSymbolOrReply(
+      client,
+      interaction,
+      interaction.options.getString("股票代號")
+    );
+    if (!symbol) return;
     const rawAmount = interaction.options.getString("數量").trim().toLowerCase();
     let shares;
     if (rawAmount === "all") {
@@ -785,7 +945,12 @@ async function runOpenShort(client, interaction) {
       return interaction.editReply("🌙 目前非開盤時間(09:00–21:00 Asia/Taipei)。");
     }
 
-    const symbol = interaction.options.getString("股票代號").toUpperCase().trim();
+    const symbol = await resolveSymbolOrReply(
+      client,
+      interaction,
+      interaction.options.getString("股票代號")
+    );
+    if (!symbol) return;
     const shares = interaction.options.getInteger("數量");
 
     const result = await shortService.openShort(client, {
@@ -870,7 +1035,12 @@ async function runCoverShort(client, interaction) {
       return interaction.editReply("🌙 目前非開盤時間(09:00–21:00 Asia/Taipei)。");
     }
 
-    const symbol = interaction.options.getString("股票代號").toUpperCase().trim();
+    const symbol = await resolveSymbolOrReply(
+      client,
+      interaction,
+      interaction.options.getString("股票代號")
+    );
+    if (!symbol) return;
     const rawAmount = interaction.options.getString("數量").trim().toLowerCase();
     let shares;
     if (rawAmount === "all") {
@@ -955,7 +1125,12 @@ async function runHistory(client, interaction) {
       return interaction.editReply("🔧 股市系統尚未就緒。");
     }
     const guildId = interaction.guildId;
-    const symbol = interaction.options.getString("股票代號").toUpperCase().trim();
+    const symbol = await resolveSymbolOrReply(
+      client,
+      interaction,
+      interaction.options.getString("股票代號")
+    );
+    if (!symbol) return;
     const period = interaction.options.getString("期間") || "1w";
 
     const { container, attachment } = await buildChartContainer(client, {
@@ -1107,7 +1282,12 @@ async function runTradeHistory(client, interaction) {
       side: { $in: ["buy", "sell"] },
       timestamp: { $gte: since },
     };
-    if (filterSymbol) query.symbol = filterSymbol.toUpperCase().trim();
+    let onlySymbol = null;
+    if (filterSymbol) {
+      onlySymbol = await resolveSymbolOrReply(client, interaction, filterSymbol);
+      if (!onlySymbol) return;
+      query.symbol = onlySymbol;
+    }
 
     const rows = await client.stockTransactionsCollection
       .find(query)
@@ -1116,8 +1296,8 @@ async function runTradeHistory(client, interaction) {
 
     if (rows.length === 0) {
       return interaction.editReply(
-        filterSymbol
-          ? `📭 你在所選期間內沒有 \`${filterSymbol.toUpperCase().trim()}\` 的買賣紀錄。`
+        onlySymbol
+          ? `📭 你在所選期間內沒有 \`${onlySymbol}\` 的買賣紀錄。`
           : `📭 你在所選期間內沒有買賣紀錄。`
       );
     }
@@ -1172,9 +1352,7 @@ async function runTradeHistory(client, interaction) {
     });
 
     const pnlSign = realizedPnl >= 0 ? "+" : "";
-    const titleSuffix = filterSymbol
-      ? `｜${filterSymbol.toUpperCase().trim()}`
-      : "";
+    const titleSuffix = onlySymbol ? `｜${onlySymbol}` : "";
 
     const container = new ContainerBuilder()
       .setAccentColor(realizedPnl >= 0 ? 0x2ecc71 : 0xe74c3c)

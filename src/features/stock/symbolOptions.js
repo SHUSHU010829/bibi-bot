@@ -1,4 +1,5 @@
 const { stockSystem } = require("../../config");
+const { cleanupInput } = require("./symbolInput");
 
 // /股市 的「股票代號」選項一律走 autocomplete 讀 DB。
 // 原本用 addChoices 把 config 的 pool 烤進指令定義，下市換股後從 candidatePool
@@ -13,8 +14,13 @@ function poolName(symbol) {
 
 function matches(query, symbol, name) {
   if (!query) return true;
-  const q = query.toLowerCase();
-  return symbol.toLowerCase().includes(q) || (name || "").toLowerCase().includes(q);
+  const q = cleanupInput(query).toLowerCase();
+  if (!q) return true;
+  const sym = symbol.toLowerCase();
+  const nm = (name || "").toLowerCase();
+  if (sym.includes(q) || (nm && nm.includes(q))) return true;
+  // 玩家把選單那一行整串貼回來（「UPPI 統嘩超商」）時反向比對，選單才不會變空的
+  return q.includes(sym) || (nm && q.includes(nm));
 }
 
 async function fetchStocks(client, guildId, includeDelisted) {
