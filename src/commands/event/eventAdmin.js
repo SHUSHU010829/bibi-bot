@@ -8,6 +8,8 @@ const {
 
 const eventEngine = require("../../features/event/eventEngine");
 const eventScheduler = require("../../events/ready/eventScheduler");
+const { buildChoices, respondChoices, resolveChoice } = require("../../utils/choiceInput");
+const { buildChoiceErrorContainer } = require("../../utils/choiceErrorContainer");
 
 const STATUS_TAG = {
   active: "🟢 生效中",
@@ -16,6 +18,32 @@ const STATUS_TAG = {
   disabled: "🚫 已停用",
   invalid: "⚠️ 設定錯誤",
 };
+
+function eventChoices() {
+  return buildChoices(eventEngine.allEvents(), (e) => ({
+    name: `${e.name} (${e.id}) ・ ${STATUS_TAG[eventEngine.statusOf(e)] || ""}`,
+    value: e.id,
+    search: `${e.id} ${e.name}`,
+  }));
+}
+
+// 選單顯示的是「名稱 (id) ・ 狀態」，貼整行回來也要吃得下；解析不出來就回錯誤並回傳 null
+async function pickEvent(interaction) {
+  const picked = resolveChoice(interaction.options.getString("活動"), eventChoices());
+  if (!picked.ok) {
+    await interaction.reply({
+      components: [
+        buildChoiceErrorContainer(picked, {
+          what: "活動",
+          hint: "-# 用 `/event-admin list` 看全部活動；直接貼上選單那一行也可以。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+    return null;
+  }
+  return eventEngine.getEventById(picked.value);
+}
 
 function ts(ms) {
   return ms != null ? `<t:${Math.floor(ms / 1000)}:F>` : "—";
@@ -110,18 +138,7 @@ module.exports = {
     try {
       const focused = interaction.options.getFocused(true);
       if (focused.name !== "活動") return interaction.respond([]).catch(() => {});
-      const q = (focused.value || "").toLowerCase();
-      const opts = eventEngine
-        .allEvents()
-        .map((e) => ({
-          name: `${e.name} (${e.id}) ・ ${STATUS_TAG[eventEngine.statusOf(e)] || ""}`.slice(0, 100),
-          value: e.id,
-          _q: `${e.id}${e.name}`.toLowerCase(),
-        }))
-        .filter((o) => !q || o._q.includes(q))
-        .slice(0, 25)
-        .map(({ name, value }) => ({ name, value }));
-      await interaction.respond(opts);
+      await respondChoices(interaction, eventChoices(), focused.value);
     } catch {
       await interaction.respond([]).catch(() => {});
     }
@@ -178,11 +195,8 @@ async function runList(interaction) {
 }
 
 async function runPreview(interaction) {
-  const id = interaction.options.getString("活動");
-  const event = eventEngine.getEventById(id);
-  if (!event) {
-    return interaction.reply({ content: `❌ 找不到活動 \`${id}\``, flags: MessageFlags.Ephemeral });
-  }
+  const event = await pickEvent(interaction);
+  if (!event) return;
   const status = eventEngine.statusOf(event);
   const { startMs, endMs } = eventEngine.eventWindow(event);
   const questLines = (event.quests || []).map(
@@ -203,16 +217,16 @@ async function runPreview(interaction) {
 }
 
 async function runForce(client, interaction, phase) {
-  const id = interaction.options.getString("活動");
+  const event = await pickEvent(interaction);
+  if (!event) return;
   const announce = interaction.options.getBoolean("發公告") || false;
-  const event = eventEngine.getEventById(id);
-  if (!event) {
-    return interaction.reply({ content: `❌ 找不到活動 \`${id}\``, flags: MessageFlags.Ephemeral });
-  }
   const ok =
-    phase === "start" ? eventEngine.forceStart(id) : eventEngine.forceEnd(id);
+    phase === "start" ? eventEngine.forceStart(event.id) : eventEngine.forceEnd(event.id);
   if (!ok) {
-    return interaction.reply({ content: `❌ 強制操作失敗 \`${id}\``, flags: MessageFlags.Ephemeral });
+    return interaction.reply({
+      content: `❌ 強制操作失敗 **${event.name}**（\`${event.id}\`）`,
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   let announceNote = "";
@@ -232,12 +246,9 @@ async function runForce(client, interaction, phase) {
 }
 
 async function runClear(interaction) {
-  const id = interaction.options.getString("活動");
-  const event = eventEngine.getEventById(id);
-  if (!event) {
-    return interaction.reply({ content: `❌ 找不到活動 \`${id}\``, flags: MessageFlags.Ephemeral });
-  }
-  const had = eventEngine.clearForce(id);
+  const event = await pickEvent(interaction);
+  if (!event) return;
+  const had = eventEngine.clearForce(event.id);
   return interaction.reply({
     content: had
       ? `✅ 已清除 **${event.name}** 的強制覆寫，恢復依時間判定（目前：${STATUS_TAG[eventEngine.statusOf(event)]}）。`

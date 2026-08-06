@@ -78,6 +78,18 @@ Discord bot（discord.js v14，Node 22，MongoDB）。
 - **持有量與標籤同源**：顯示「有 X / 需要 Y」時，持有量查詢（`ownedMaterial`）也要跟標籤走同一份來源；特殊材料（碎片）存在 profile 獨立欄位、不在 backpack，讀錯欄位會永遠顯示 0 而誤判為材料不足。
 - **新增材料同步網站**：bot 新增可被玩家看到的材料時，同步 `bibi-website` 的 `src/lib/dashboard/botDefs.ts`，否則網站 fallback 成 `(id)`。
 
+### 10. Autocomplete 欄位：顯示字串也要吃得下（複製貼上不能壞）
+
+- 前提：autocomplete 的 `name`（顯示）與 `value`（送出）不同時，玩家一定會複製顯示文字貼回欄位，Discord 會把整串原文原封不動送出。指令層若直接把 `getString()` 當 id 用就必然查無此項（`.trim().toUpperCase()` 不算解析）。
+- 所以任何 `setAutocomplete(true)` 的欄位，值在使用前**一律先過 `src/utils/choiceInput.js` 的 `resolveChoice()`**，把「整行顯示字串 / 中文名 / 大小寫 / 全形 / emoji」還原成 `value`。
+- **選單清單與輸入解析共用同一份選項來源**：先寫一個 `xxxChoices()` 回傳 `{name, value, search?}[]`，autocomplete 用 `respondChoices()` 過濾它、run() 用 `resolveChoice()` 解析它。兩邊各寫一份比對規則 = 其中一份一定會漏。
+- autocomplete 比對必須**雙向**（`respondChoices` 已內建）：除了「選項含輸入」還要「輸入含選項」。玩家貼整行時選單若變 0 筆，他只能硬送出 → 100% 觸發這個 bug。
+- 顯示用的尾巴（`（還剩 N 天）`、`｜持有 N 股`、`已下市`）用 `strip` 參數剝掉，讓「只貼名稱」也能完全命中。
+- 解析失敗一律用 `buildChoiceErrorContainer()`（`src/utils/choiceErrorContainer.js`）：寫出玩家**實際輸入了什麼** + 列出可選項目 + `-#` 提示。禁止只回「找不到 XXX」。
+- 只在下拉選單顯示「可用的」項目，但**解析時要用完整清單**——否則未解鎖 / 沒持有的項目會回「找不到」，而不是「你還沒解鎖 XXX」這種講得清楚的訊息。
+- **例外**：`value === name` 的欄位（例：`/天氣 城市`）貼什麼吃什麼，不需要解析器。
+- **最危險**：value 是 ObjectId 或內部 key、顯示卻是中文標題的欄位（`/倒數`、`/合成`、`/稱號`、`/event-admin`）——玩家貼上顯示文字時完全無從還原，這種欄位一定要有解析器。
+
 ---
 
 ## 架構規則

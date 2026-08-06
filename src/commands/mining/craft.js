@@ -17,6 +17,13 @@ const { materialLabel } = require("../../features/mining/craftMaterials");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
+const {
+  buildChoices,
+  filterChoices,
+  resolveChoice,
+  MAX_OPTIONS,
+} = require("../../utils/choiceInput");
+const { buildChoiceErrorContainer } = require("../../utils/choiceErrorContainer");
 
 // 配方數已超過 Discord 靜態 choices 上限（25），改走 autocomplete。
 //
@@ -42,13 +49,14 @@ function balancedSample(recipes, limit) {
   return out;
 }
 
+function recipeChoices(recipes = craft?.recipes || []) {
+  return buildChoices(recipes, (r) => ({ name: r.name, value: r.id }));
+}
+
 function recipeMatches(query) {
-  const q = (query || "").trim().toLowerCase();
-  const all = craft?.recipes || [];
-  const hits = q
-    ? all.filter((r) => r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q))
-    : balancedSample(all, 25);
-  return hits.slice(0, 25).map((r) => ({ name: r.name, value: r.id }));
+  const q = (query || "").trim();
+  if (!q) return recipeChoices(balancedSample(craft?.recipes || [], MAX_OPTIONS));
+  return filterChoices(recipeChoices(), q).slice(0, MAX_OPTIONS);
 }
 
 // 裝備標籤：依類型取鎬子 / 武器 / 釣竿 / 盾定義。
@@ -131,12 +139,25 @@ module.exports = {
     await interaction.deferReply();
 
     try {
+      const picked = resolveChoice(recipeId, recipeChoices());
+      if (!picked.ok) {
+        return interaction.editReply({
+          components: [
+            buildChoiceErrorContainer(picked, {
+              what: "配方",
+              hint: "-# 不填「裝備」直接送出可以打開工坊，用按鈕挑配方最快。",
+            }),
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+
       const confirm = interaction.options.getBoolean("確認") || false;
 
       const result = await craftService.craftItem(client, {
         userId: interaction.user.id,
         guildId: interaction.guildId,
-        recipeId,
+        recipeId: picked.value,
         confirm,
       });
 

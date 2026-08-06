@@ -9,6 +9,8 @@ const { BADGES, BADGE_BY_ID } = require("../../features/leveling/badgeDefinition
 const { getLevelProgress } = require("../../utils/levelMath");
 const { getTier } = require("../../utils/levelTier");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
+const { buildChoices, respondChoices, resolveChoice } = require("../../utils/choiceInput");
+const { buildChoiceErrorContainer } = require("../../utils/choiceErrorContainer");
 
 // /稱號 = 等級卡上的稱號與展示徽章管理（合併原 /level title + /level displaybadges）
 //   - 設定：選一個已解鎖徽章 / 等級 tier / 遊戲稱號當稱號
@@ -110,61 +112,78 @@ module.exports = {
 
 // ───────── 設定稱號（合併原 /level title 設定）─────────
 
-async function autocompleteTitle(client, interaction, focused) {
-  const doc = await client.userLevelsCollection?.findOne({
+function levelDoc(client, interaction) {
+  return client.userLevelsCollection?.findOne({
     userId: interaction.user.id,
     guildId: interaction.guildId,
   });
-  const owned = new Set(doc?.badges || []);
+}
 
+function badgeChoice(b) {
+  return { name: `${b.emoji} ${b.name}`, value: b.id, search: b.id };
+}
+
+function gameTitleChoice(id) {
+  const d = gameTitleService.def(id);
+  const category = gameTitleService.categoryLabel(d.category);
+  return {
+    name: `${category} ・ ${d.emoji || ""} ${d.name || id}`.trim(),
+    value: `${GAME_TITLE_PREFIX}${id}`,
+    search: `${d.name || ""} ${id} ${category}`,
+  };
+}
+
+function tierChoice(doc) {
   const tier = getTier(getLevelProgress(doc?.totalXp || 0).level);
-  const tierOption = {
+  return {
     name: `${tier.emoji} 等級稱號 ・ ${tier.label}`,
     value: TIER_TITLE_VALUE,
+    search: `等級 tier ${tier.key} ${tier.label}`,
   };
+}
 
-  const query = (focused.value || "").toLowerCase();
-  const tierMatchesQuery =
-    !query ||
-    tier.label.toLowerCase().includes(query) ||
-    tier.key.toLowerCase().includes(query) ||
-    "等級".includes(query) ||
-    "tier".includes(query);
+// ownedOnly：下拉選單只列已解鎖的；解析玩家輸入時要用完整清單，
+// 未解鎖的才走得到「你還沒解鎖 XXX」而不是「找不到」。
+function badgeChoices(doc, { ownedOnly }) {
+  const owned = new Set(doc?.badges || []);
+  return buildChoices(
+    BADGES.filter((b) => !ownedOnly || owned.has(b.id)),
+    badgeChoice
+  );
+}
 
-  const badgeOpts = BADGES.filter((b) => owned.has(b.id))
-    .filter(
-      (b) =>
-        !query ||
-        b.name.toLowerCase().includes(query) ||
-        b.id.toLowerCase().includes(query)
-    )
-    .map((b) => ({ name: `${b.emoji} ${b.name}`, value: b.id }));
-
-  const unlockedGameTitles = new Set(doc?.gameTitles || []);
-  const gameTitleOpts = gameTitleService
+function titleChoices(doc, { ownedOnly }) {
+  const unlocked = new Set(doc?.gameTitles || []);
+  const gameTitles = gameTitleService
     .order()
-    .filter((id) => unlockedGameTitles.has(id))
-    .map((id) => {
-      const d = gameTitleService.def(id);
-      return {
-        name: `${gameTitleService.categoryLabel(d.category)} ・ ${d.emoji || ""} ${d.name || id}`.trim(),
-        value: `${GAME_TITLE_PREFIX}${id}`,
-        _q: `${d.name || ""}${id}${gameTitleService.categoryLabel(d.category)}`.toLowerCase(),
-      };
-    })
-    .filter((o) => !query || o._q.includes(query))
-    .map(({ name, value }) => ({ name, value }));
+    .filter((id) => !ownedOnly || unlocked.has(id))
+    .map(gameTitleChoice);
+  return buildChoices([tierChoice(doc), ...badgeChoices(doc, { ownedOnly }), ...gameTitles], (o) => o);
+}
 
-  const opts = (tierMatchesQuery ? [tierOption] : [])
-    .concat(badgeOpts)
-    .concat(gameTitleOpts)
-    .slice(0, 25);
-
-  await interaction.respond(opts);
+async function autocompleteTitle(client, interaction, focused) {
+  const doc = await levelDoc(client, interaction);
+  await respondChoices(interaction, titleChoices(doc, { ownedOnly: true }), focused.value);
 }
 
 async function runSetTitle(client, interaction) {
-  const badgeId = interaction.options.getString("徽章");
+  const levelData = await levelDoc(client, interaction);
+  const picked = resolveChoice(
+    interaction.options.getString("徽章"),
+    titleChoices(levelData, { ownedOnly: false })
+  );
+  if (!picked.ok) {
+    return interaction.reply({
+      components: [
+        buildChoiceErrorContainer(picked, {
+          what: "稱號",
+          hint: "-# 下拉選單只會列出你已解鎖的稱號，直接貼上選單那一行也可以。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+  const badgeId = picked.value;
 
   if (badgeId === TIER_TITLE_VALUE) {
     const doc = await client.userLevelsCollection.findOne({
@@ -250,37 +269,45 @@ async function runSetTitle(client, interaction) {
 // ───────── 展示徽章（合併原 /level displaybadges 設定 / 重置）─────────
 
 async function autocompleteDisplayBadges(client, interaction, focused) {
-  const doc = await client.userLevelsCollection?.findOne({
-    userId: interaction.user.id,
-    guildId: interaction.guildId,
-  });
-  const owned = new Set(doc?.badges || []);
+  const doc = await levelDoc(client, interaction);
+  const all = badgeChoices(doc, { ownedOnly: false });
 
+  // 其他格填的可能是貼上的顯示字串，一樣要先還原成 id 才排除得掉
   const alreadyPicked = new Set(
     SLOT_NAMES.filter((n) => n !== focused.name)
       .map((n) => interaction.options.getString(n))
       .filter(Boolean)
+      .map((raw) => resolveChoice(raw, all).value)
+      .filter(Boolean)
   );
 
-  const query = (focused.value || "").toLowerCase();
-  const opts = BADGES.filter((b) => owned.has(b.id))
-    .filter((b) => !alreadyPicked.has(b.id))
-    .filter(
-      (b) =>
-        !query ||
-        b.name.toLowerCase().includes(query) ||
-        b.id.toLowerCase().includes(query)
-    )
-    .slice(0, 25)
-    .map((b) => ({ name: `${b.emoji} ${b.name}`, value: b.id }));
-
-  await interaction.respond(opts);
+  const options = badgeChoices(doc, { ownedOnly: true }).filter(
+    (o) => !alreadyPicked.has(o.value)
+  );
+  await respondChoices(interaction, options, focused.value);
 }
 
 async function runSetDisplayBadges(client, interaction) {
-  const picks = SLOT_NAMES.map((n) => interaction.options.getString(n)).filter(
-    Boolean
-  );
+  const levelData = await levelDoc(client, interaction);
+  const all = badgeChoices(levelData, { ownedOnly: false });
+  const picks = [];
+  for (const slot of SLOT_NAMES) {
+    const raw = interaction.options.getString(slot);
+    if (!raw) continue;
+    const picked = resolveChoice(raw, all);
+    if (!picked.ok) {
+      return interaction.reply({
+        components: [
+          buildChoiceErrorContainer(picked, {
+            what: "徽章",
+            hint: "-# 下拉選單只會列出你已解鎖的徽章，直接貼上選單那一行也可以。",
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+      });
+    }
+    picks.push(picked.value);
+  }
 
   const seen = new Set();
   for (const id of picks) {

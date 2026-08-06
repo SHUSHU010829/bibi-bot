@@ -15,6 +15,20 @@ const {
   buildRegisteredContainer,
   buildListContainer,
 } = require("../../features/countdown/countdownView");
+const { buildChoices, respondChoices, resolveChoice } = require("../../utils/choiceInput");
+const { buildChoiceErrorContainer } = require("../../utils/choiceErrorContainer");
+
+// 「還剩 N 天」是顯示用尾巴，玩家貼整行回來時要剝掉才對得上標題
+const COUNTDOWN_STRIP = [/\(還剩[^)]*\)/g];
+
+async function countdownChoices(client, guildId) {
+  const docs = await countdownService.listCountdowns(client, guildId);
+  return buildChoices(docs, (d) => ({
+    name: `${d.title}（還剩 ${countdownService.daysUntil(d.targetAt)} 天）`,
+    value: String(d._id),
+    search: d.title,
+  }));
+}
 
 function errorContainer(title, detail, hint) {
   const c = new ContainerBuilder()
@@ -101,14 +115,33 @@ async function handleList(client, interaction) {
 }
 
 async function handleDelete(client, interaction) {
-  const id = interaction.options.getString("倒數", true);
-  const doc = await countdownService.deleteCountdown(client, interaction.guildId, id);
+  const options = await countdownChoices(client, interaction.guildId);
+  const picked = resolveChoice(interaction.options.getString("倒數", true), options, {
+    strip: COUNTDOWN_STRIP,
+  });
+  if (!picked.ok) {
+    return interaction.reply({
+      components: [
+        buildChoiceErrorContainer(picked, {
+          what: "倒數",
+          hint: "-# 用 `/倒數 列表` 看目前還有哪些倒數；直接貼上選單那一行也可以。",
+        }),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+
+  const doc = await countdownService.deleteCountdown(
+    client,
+    interaction.guildId,
+    picked.value,
+  );
   if (!doc) {
     return interaction.reply({
       components: [
         errorContainer(
           "❌ 找不到這個倒數",
-          "可能已經被刪除或已結束。",
+          "可能剛剛已經被別人刪掉或已結束。",
           "用 `/倒數 列表` 看目前還有哪些倒數。",
         ),
       ],
@@ -174,16 +207,8 @@ module.exports = {
     try {
       const focused = interaction.options.getFocused(true);
       if (focused.name !== "倒數") return interaction.respond([]).catch(() => {});
-      const q = (focused.value || "").toLowerCase();
-      const docs = await countdownService.listCountdowns(client, interaction.guildId);
-      const opts = docs
-        .filter((d) => d.title.toLowerCase().includes(q))
-        .slice(0, 25)
-        .map((d) => ({
-          name: `${d.title}（還剩 ${countdownService.daysUntil(d.targetAt)} 天）`.slice(0, 100),
-          value: String(d._id),
-        }));
-      return interaction.respond(opts).catch(() => {});
+      const options = await countdownChoices(client, interaction.guildId);
+      return respondChoices(interaction, options, focused.value, { strip: COUNTDOWN_STRIP });
     } catch {
       return interaction.respond([]).catch(() => {});
     }
