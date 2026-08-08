@@ -1,6 +1,7 @@
 {
   "gift": {
     "enabled": true,
+    "itemCategories": ["ore", "crop", "fish", "seed", "fertilizer", "material"],
     "dailyMaxGives": 10,
     "offerExpiresHours": 24,
     "maxPendingPerUser": 10,

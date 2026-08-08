@@ -1,7 +1,11 @@
-// 全站唯一的「可轉移物品」名稱表：礦石／作物／魚（背包 map）＋ 消耗品／維修工具／碎片
-// （profile 上的整數欄位）。任何要顯示物品中文名、查持有量、發放或扣除的功能都走這裡，
+// 全站唯一的「可轉移物品」名稱表。涵蓋玩家背包裡的可堆疊物品：
+//   bag: 礦石／作物／魚（miningProfile 的三個 map）
+//   inc: 種子／肥料／消耗道具／維修工具／素材（profile 上的整數欄位，支援巢狀路徑）
+// 任何要顯示物品中文名、查持有量、發放或扣除的功能都走這裡，
 // 避免各處各自複製一份名稱表而印出英文 id。
-const { craft } = require("../../config");
+//
+// category 供呼叫端篩選用途（例：/贈送 只開放材料類，見 gift.json 的 itemCategories）。
+const { craft, mining, farming } = require("../../config");
 const itemCatalog = require("../barter/itemCatalog");
 const inventory = require("../barter/inventoryAdapter");
 
@@ -19,34 +23,81 @@ const CONSUMABLES = [
   { field: "hp_potion_small", name: "❤️ 生命藥水（小）" },
   { field: "hp_potion_medium", name: "❤️ 生命藥水（中）" },
   { field: "hp_potion_large", name: "❤️ 生命藥水（大）" },
+  { field: "rare_bait", name: "🎏 稀有魚餌" },
+  { field: "batch_pass_count", name: "🎟️ 連續通行證" },
 ];
 
-// 碎片：profile 根層的複數欄位 → 名稱取自 craft.materials（單數 key）。
-const FRAGMENTS = [
+// 合成素材：名稱取自 craft.materials（單數 key），持有量存在 profile 的另一個欄位／路徑。
+// emoji 用來覆寫 config 裡的自訂 emoji（<:x:id> 在 autocomplete 選單只會顯示成原始字串）。
+const MATERIALS = [
   { field: "legendary_fragments", mat: "legendary_fragment" },
   { field: "broken_net_fragments", mat: "broken_net_fragment" },
   { field: "broken_trap_fragments", mat: "broken_trap_fragment" },
   { field: "treasure_map_fragments", mat: "treasure_map_fragment" },
+  { field: "sealing_ammo_count", mat: "sealing_ammo" },
+  { field: "backpack.stone_shard", mat: "stone_shard", emoji: "🪨" },
 ];
+
+// 種子：每種作物一款，欄位固定在 seed_bag（與 miningProfile 的 schema 對齊）。
+function seedEntries() {
+  return Object.entries(farming?.crops || {}).map(([cropKey, def]) => ({
+    field: `seed_bag.seed_${cropKey}`,
+    name: `🌱 ${def.name}種子`,
+  }));
+}
+
+// 肥料：只收 source=backpack 的，且排除本身就是礦石的（煤炭灰用的是煤炭，已列在礦石）。
+function fertilizerEntries() {
+  return Object.values(farming?.fertilizers || {})
+    .filter((f) => f.source === "backpack" && f.key && !mining?.ores?.[f.key])
+    .map((f) => ({
+      field: `backpack.${f.key}`,
+      name: `${f.emoji || "💧"} ${f.name}`,
+    }));
+}
+
+// itemCatalog 的 value 是 <type>:<key>，type 同時就是分類（ore / crop / fish）。
+function bagCategory(value) {
+  return value.split(":")[0];
+}
 
 function listAll() {
   const items = [];
   for (const c of itemCatalog.listAll()) {
-    items.push({ value: `bag:${c.value}`, name: c.name });
+    items.push({ value: `bag:${c.value}`, name: c.name, category: bagCategory(c.value) });
+  }
+  for (const it of seedEntries()) {
+    items.push({ value: `inc:${it.field}`, name: it.name, category: "seed" });
+  }
+  for (const it of fertilizerEntries()) {
+    items.push({ value: `inc:${it.field}`, name: it.name, category: "fertilizer" });
   }
   for (const it of CONSUMABLES) {
-    items.push({ value: `inc:${it.field}`, name: it.name });
+    items.push({ value: `inc:${it.field}`, name: it.name, category: "consumable" });
   }
   for (const [tier, def] of Object.entries(craft?.repairTools || {})) {
     if (!def?.name) continue;
-    items.push({ value: `inc:repair_tools.${tier}`, name: `${def.emoji || "🔧"} ${def.name}` });
+    items.push({
+      value: `inc:repair_tools.${tier}`,
+      name: `${def.emoji || "🔧"} ${def.name}`,
+      category: "repair_tool",
+    });
   }
-  for (const f of FRAGMENTS) {
-    const def = (craft?.materials || {})[f.mat];
+  for (const m of MATERIALS) {
+    const def = (craft?.materials || {})[m.mat];
     if (!def?.name) continue;
-    items.push({ value: `inc:${f.field}`, name: `${def.emoji || "🧩"} ${def.name}` });
+    items.push({
+      value: `inc:${m.field}`,
+      name: `${m.emoji || def.emoji || "🧩"} ${def.name}`,
+      category: "material",
+    });
   }
   return items;
+}
+
+// 舊資料（贈送 offer 早期只存 type/key）→ 現行 registry value。
+function bagValue(type, key) {
+  return `bag:${type}:${key}`;
 }
 
 function resolve(value) {
@@ -55,9 +106,22 @@ function resolve(value) {
   if (value.startsWith("bag:")) {
     const parsed = itemCatalog.parseChoice(value.slice("bag:".length));
     if (!parsed) return null;
-    return { value, kind: "bag", type: parsed.type, key: parsed.key, label: entry.name };
+    return {
+      value,
+      kind: "bag",
+      type: parsed.type,
+      key: parsed.key,
+      label: entry.name,
+      category: entry.category,
+    };
   }
-  return { value, kind: "inc", field: value.slice("inc:".length), label: entry.name };
+  return {
+    value,
+    kind: "inc",
+    field: value.slice("inc:".length),
+    label: entry.name,
+    category: entry.category,
+  };
 }
 
 // 找不到定義時回 null，呼叫端要顯示「（已下架物品）」而不是把 id 印出來。
@@ -76,7 +140,7 @@ function ownedQty(profile, value) {
   return readField(profile, item.field);
 }
 
-// 玩家目前持有數 > 0 的所有物品，依 listAll 的順序（礦石→作物→魚→道具→碎片）。
+// 玩家目前持有數 > 0 的所有物品，依 listAll 的順序（礦石→作物→魚→種子→肥料→道具→素材）。
 function listOwned(profile) {
   return listAll()
     .map((entry) => ({ ...entry, qty: ownedQty(profile, entry.value) }))
@@ -119,4 +183,4 @@ function bagPath(item) {
   return `fish_bag.${item.key}`;
 }
 
-module.exports = { listAll, resolve, labelOf, ownedQty, listOwned, grant, take };
+module.exports = { listAll, bagValue, resolve, labelOf, ownedQty, listOwned, grant, take };
