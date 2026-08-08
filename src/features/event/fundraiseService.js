@@ -1,14 +1,28 @@
 require("colors");
 const { MessageFlags } = require("discord.js");
 
-const { eventFundraise, hostedEvents: hostedEventsConfig } = require("../../config");
+const { eventFundraise } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 const itemRegistry = require("../economy/itemRegistry");
 const { getOrCreate } = require("../mining/miningProfile");
+const split = require("./fundraiseSplit");
 const view = require("./fundraiseView");
 
 const FUNDING_STATUSES = ["PENDING_REVIEW", "FUNDRAISING"];
 const HOST_ACTIVE_STATUSES = [...FUNDING_STATUSES, "RECRUITING"];
+
+// 募資只收材料類；要開放更多類別改 eventFundraise.json 的 itemCategories。
+const DEFAULT_ITEM_CATEGORIES = ["ore", "crop", "fish", "seed", "fertilizer", "material"];
+const CATEGORY_LABELS = {
+  ore: "礦石",
+  crop: "作物",
+  fish: "魚",
+  seed: "種子",
+  fertilizer: "肥料",
+  material: "合成素材",
+  consumable: "道具",
+  repair_tool: "維修工具",
+};
 
 function cfg() {
   return eventFundraise || {};
@@ -24,7 +38,26 @@ function maxRetentionPct() {
 }
 
 function maxRankCount() {
-  return hostedEventsConfig?.maxRankCount || 5;
+  return split.maxRankCount();
+}
+
+function donatableCategories() {
+  return cfg().itemCategories || DEFAULT_ITEM_CATEGORIES;
+}
+
+function isDonatable(item) {
+  return !!item && donatableCategories().includes(item.category);
+}
+
+function donatableLabel() {
+  return donatableCategories()
+    .map((cat) => CATEGORY_LABELS[cat] || cat)
+    .join("、");
+}
+
+// 玩家持有、且可以拿來贊助的物品（選單與贊助驗證共用這份來源）。
+function listDonatable(profile) {
+  return itemRegistry.listOwned(profile).filter(isDonatable);
 }
 
 function newFundraiseId(hostId) {
@@ -377,6 +410,13 @@ async function donateItem(client, eventDoc, { user, member, value, qty }) {
   if (!item) {
     return err("❌ 找不到這個物品", "請從清單重新選擇一次。");
   }
+  if (!isDonatable(item)) {
+    return err(
+      "🚫 這個物品不能拿來募資",
+      `**${item.label}** 不屬於材料，募資獎池只收材料類物品。`,
+      `可贊助的是：${donatableLabel()}。`,
+    );
+  }
   const maxQty = c.maxItemQtyPerDonation ?? 999;
   if (!Number.isInteger(qty) || qty < 1 || qty > maxQty) {
     return err(
@@ -580,6 +620,8 @@ module.exports = {
   isEnabled,
   maxRetentionPct,
   maxRankCount,
+  donatableLabel,
+  listDonatable,
   retentionAmount,
   isFundingOpen,
   itemPoolOf,

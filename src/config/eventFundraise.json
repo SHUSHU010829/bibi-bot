@@ -11,6 +11,20 @@
     "maxFundDays": 14,
     "defaultFundDays": 7,
     "maxHostRetentionPct": 10,
-    "maxActivePerHost": 1
+    "maxActivePerHost": 1,
+    "maxRankCount": 10,
+    "itemCategories": ["ore", "crop", "fish", "seed", "fertilizer", "material"],
+    "prizeSplits": {
+      "1": [100],
+      "2": [60, 40],
+      "3": [50, 30, 20],
+      "4": [40, 28, 20, 12],
+      "5": [35, 25, 18, 12, 10],
+      "6": [30, 22, 17, 13, 10, 8],
+      "7": [28, 21, 16, 12, 9, 8, 6],
+      "8": [25, 19, 15, 12, 10, 8, 6, 5],
+      "9": [23, 18, 14, 11, 9, 8, 7, 5, 5],
+      "10": [22, 17, 13, 11, 9, 8, 7, 6, 4, 3]
+    }
   }
 }

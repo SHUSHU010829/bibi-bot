@@ -5,8 +5,9 @@ const {
   InteractionContextType,
 } = require("discord.js");
 
-const { coinSystem, eventFundraise, hostedEvents } = require("../../config");
+const { coinSystem, eventFundraise } = require("../../config");
 const fundraiseService = require("../../features/event/fundraiseService");
+const split = require("../../features/event/fundraiseSplit");
 const view = require("../../features/event/fundraiseView");
 
 const cfg = eventFundraise || {};
@@ -16,7 +17,7 @@ const MIN_DAYS = cfg.minFundDays ?? 1;
 const MAX_DAYS = cfg.maxFundDays ?? 14;
 const DEFAULT_DAYS = cfg.defaultFundDays ?? 7;
 const MAX_RETENTION_PCT = cfg.maxHostRetentionPct ?? 10;
-const MAX_RANKS = hostedEvents?.maxRankCount || 5;
+const MAX_RANKS = split.maxRankCount();
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -29,7 +30,7 @@ module.exports = {
     .addIntegerOption((opt) =>
       opt
         .setName("名次數")
-        .setDescription(`有幾個名次（1 ~ ${MAX_RANKS}）`)
+        .setDescription(`有幾個名次（1 ~ ${MAX_RANKS}，獎金與物品照固定比例分配）`)
         .setRequired(true)
         .setMinValue(1)
         .setMaxValue(MAX_RANKS),
@@ -120,6 +121,7 @@ module.exports = {
               `**${doc.name}**\n` +
               `募資目標：${doc.funding.goal ? `${doc.funding.goal.toLocaleString()} credits` : "未設定"}\n` +
               `募資天數：${doc.funding.days} 天\n` +
+              `名次分配：${doc.rankCount} 名（${split.percentLabel(doc.rankCount)}）\n` +
               `你的保留比例：${doc.funding.hostRetentionPct}%\n` +
               `活動 ID：\`${doc.eventId}\``,
             hint: "舒舒按下「通過」後就會在活動頻道開放募資，通過與否都會在這裡的審核訊息上留下紀錄。",
