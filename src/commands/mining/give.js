@@ -11,21 +11,28 @@ const {
 const pendingTransferService = require("../../features/economy/pendingTransferService");
 const { buildOfferContainer } = require("../../features/economy/pendingTransferView");
 const itemRegistry = require("../../features/economy/itemRegistry");
+const giftService = require("../../features/mining/giftService");
 const { buildChoices, respondChoices, resolveChoice } = require("../../utils/choiceInput");
 const { buildChoiceErrorContainer } = require("../../utils/choiceErrorContainer");
 
 // 選單顯示「｜持有 N」，玩家貼整行回來時要剝掉才對得上品名。
 const OWNED_TAIL = [/[|｜]?\s*持有\s*[\d,]+/g];
 
+// 選單／錯誤訊息只列可送的材料；解析用完整清單（見 run()）。
+function giftableChoices() {
+  return buildChoices(giftService.listGiftable(), (r) => ({ name: r.name, value: r.value }));
+}
+
 function allItemChoices() {
   return buildChoices(itemRegistry.listAll(), (r) => ({ name: r.name, value: r.value }));
 }
 
-function ownedItemChoices(profile) {
-  return buildChoices(itemRegistry.listOwned(profile), (r) => ({
-    name: `${r.name}｜持有 ${r.qty}`,
-    value: r.value,
-  }));
+function ownedGiftableChoices(profile) {
+  const giftable = new Set(giftService.listGiftable().map((r) => r.value));
+  return buildChoices(
+    itemRegistry.listOwned(profile).filter((r) => giftable.has(r.value)),
+    (r) => ({ name: `${r.name}｜持有 ${r.qty}`, value: r.value }),
+  );
 }
 
 module.exports = {
@@ -33,7 +40,7 @@ module.exports = {
 
   data: new SlashCommandBuilder()
     .setName("贈送")
-    .setDescription("把背包裡的任何物品送給其他玩家 🎁（對方需在 24 小時內收下，免手續費）")
+    .setDescription("把背包裡的材料送給其他玩家 🎁（對方需在 24 小時內收下，免手續費）")
     .setContexts(InteractionContextType.Guild)
     .addUserOption((o) =>
       o.setName("對象").setDescription("收禮的玩家").setRequired(true)
@@ -41,7 +48,7 @@ module.exports = {
     .addStringOption((o) =>
       o
         .setName("物品")
-        .setDescription("要送的物品：礦石／作物／魚／種子／肥料／道具／素材／食物")
+        .setDescription("要送的材料：礦石／作物／魚／種子／肥料／合成素材")
         .setRequired(true)
         .setAutocomplete(true)
     )
@@ -53,17 +60,17 @@ module.exports = {
         .setMinValue(1)
     ),
 
-  // 下拉只列「自己有的」（附持有量），沒東西可送時退回完整清單，
-  // 讓玩家至少看得到有哪些物品可以送。解析一律用完整清單（見 run()）。
+  // 下拉只列「自己有、且送得出去」的（附持有量），手上沒材料時退回完整材料清單，
+  // 讓玩家至少看得到有哪些送得出去。
   autocomplete: async (client, interaction) => {
     let options = [];
     if (client.miningProfilesCollection) {
       const profile = await client.miningProfilesCollection
         .findOne({ userId: interaction.user.id, guildId: interaction.guildId })
         .catch(() => null);
-      if (profile) options = ownedItemChoices(profile);
+      if (profile) options = ownedGiftableChoices(profile);
     }
-    if (options.length === 0) options = allItemChoices();
+    if (options.length === 0) options = giftableChoices();
     await respondChoices(interaction, options, interaction.options.getFocused(), {
       strip: OWNED_TAIL,
     });
@@ -89,15 +96,19 @@ module.exports = {
         });
       }
 
-      // 解析用完整清單：沒持有的物品要回「你沒有這個」而不是「找不到這個物品」。
+      // 解析用完整清單（含不能送的道具）：沒持有 / 不能送的要講清楚是哪一種，
+      // 不能通通回「找不到這個物品」。錯誤訊息裡列出來的則只有送得出去的材料。
       const picked = resolveChoice(itemInput, allItemChoices(), { strip: OWNED_TAIL });
       if (!picked.ok) {
         return interaction.editReply({
           components: [
-            buildChoiceErrorContainer(picked, {
-              what: "物品",
-              hint: "-# 等下拉選單跳出來再點選最保險；用 `/背包` 看看自己有什麼可以送。",
-            }),
+            buildChoiceErrorContainer(
+              { ...picked, options: giftableChoices() },
+              {
+                what: "材料",
+                hint: "-# 等下拉選單跳出來再點選最保險；用 `/背包` 看看自己有什麼可以送。",
+              }
+            ),
           ],
           flags: MessageFlags.IsComponentsV2,
         });
@@ -172,6 +183,18 @@ function renderError(result, qty) {
     return {
       components: [
         buildErrorContainer("❌ 找不到這個物品", "這個物品可能已經下架了。", "請從下拉選單重新選擇。"),
+      ],
+      flags: MessageFlags.IsComponentsV2,
+    };
+  }
+  if (result.reason === "not_giftable") {
+    return {
+      components: [
+        buildErrorContainer(
+          "🚫 這個物品不能贈送",
+          `**${result.label}** 屬於道具類，只有材料送得出去。`,
+          "可送的是：礦石、作物、魚、種子、肥料、合成素材。"
+        ),
       ],
       flags: MessageFlags.IsComponentsV2,
     };

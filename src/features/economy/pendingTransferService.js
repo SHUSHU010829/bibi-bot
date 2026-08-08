@@ -154,7 +154,7 @@ async function createItemOffer(client, { giverMember, recipientUser, recipientMe
     sender_name: giverMember.displayName || giverMember.user.username,
     recipient_id: recipientUser.id,
     recipient_name: recipientMember?.displayName || recipientUser.username,
-    item: { value, qty, instances: held.instances || null },
+    item: { value, qty },
     status: "pending",
     channel_id: null,
     message_id: null,
@@ -205,7 +205,6 @@ async function refundEscrow(client, offer, reason) {
     guildId: offer.guild_id,
     value: giftService.offerValue(offer.item),
     qty: offer.item.qty,
-    instances: offer.item.instances,
   });
 }
 
@@ -249,7 +248,6 @@ async function acceptOffer(client, { offerId, actorUser, actorMember }) {
     guildId: offer.guild_id,
     value: giftService.offerValue(offer.item),
     qty: offer.item.qty,
-    instances: offer.item.instances,
   });
   if (!delivered.ok) {
     await refundEscrow(client, offer, "deliver_failed").catch(() => {});

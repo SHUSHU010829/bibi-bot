@@ -7,6 +7,7 @@ const itemRegistry = require("../economy/itemRegistry");
 const grantCoins = require("../economy/grantCoins");
 
 const TZ = "Asia/Taipei";
+const DEFAULT_CATEGORIES = ["ore", "crop", "fish", "seed", "fertilizer", "material"];
 
 function giveCfg() {
   return gift || {};
@@ -14,6 +15,21 @@ function giveCfg() {
 
 function todayISO() {
   return DateTime.now().setZone(TZ).toISODate();
+}
+
+// 可贈送的物品分類（材料類）。要開放更多類別改 gift.json 的 itemCategories 即可。
+function giftableCategories() {
+  return giveCfg().itemCategories || DEFAULT_CATEGORIES;
+}
+
+function isGiftable(item) {
+  return !!item && giftableCategories().includes(item.category);
+}
+
+// /贈送 的完整可選清單（選單與輸入解析共用同一份來源）。
+function listGiftable() {
+  const cats = giftableCategories();
+  return itemRegistry.listAll().filter((it) => cats.includes(it.category));
 }
 
 // offer.item 早期只存 { type, key }（那時只送得出礦石／作物／魚），
@@ -36,6 +52,7 @@ async function precheckGift(client, { giverId, guildId, value, qty }) {
 
   const item = itemRegistry.resolve(value);
   if (!item) return { ok: false, reason: "no_item" };
+  if (!isGiftable(item)) return { ok: false, reason: "not_giftable", item, label: item.label };
   if (!Number.isFinite(qty) || qty <= 0) return { ok: false, reason: "bad_qty" };
 
   const giver = await getOrCreate(client, giverId, guildId);
@@ -61,32 +78,23 @@ async function precheckGift(client, { giverId, guildId, value, qty }) {
 
 // 託管：扣送禮方的物品 + 消耗當日贈送次數（尚未交付給收禮方）。
 // 收禮方按「收下」才 deliverGift；拒收 / 逾時則 refundGift 退回物品與次數。
-// 食物一併把被扣掉的份數（instances）帶回來，退回時新鮮度才不會被重置。
 async function holdGift(client, { giverId, guildId, value, qty }) {
   const pre = await precheckGift(client, { giverId, guildId, value, qty });
   if (!pre.ok) return pre;
 
-  let instances = null;
-  if (pre.item.kind === "food") {
-    const taken = await itemRegistry.takeFood(client, giverId, guildId, value, qty);
-    if (!taken.ok) return { ok: false, reason: "insufficient", have: pre.have, item: pre.item, label: pre.label };
-    instances = taken.instances;
-  } else if (!(await itemRegistry.take(client, giverId, guildId, value, qty))) {
+  if (!(await itemRegistry.take(client, giverId, guildId, value, qty))) {
     return { ok: false, reason: "insufficient", have: pre.have, item: pre.item, label: pre.label };
   }
 
   await client.miningProfilesCollection.updateOne(
     { userId: giverId, guildId },
-    {
-      $set: { gift_date: todayISO(), gift_count: pre.usedToday + 1, updatedAt: new Date() },
-    }
+    { $set: { gift_date: todayISO(), gift_count: pre.usedToday + 1, updatedAt: new Date() } }
   );
 
   return {
     ok: true,
     item: pre.item,
     label: pre.label,
-    instances,
     usedToday: pre.usedToday + 1,
     dailyMax: pre.dailyMax,
   };
@@ -95,7 +103,7 @@ async function holdGift(client, { giverId, guildId, value, qty }) {
 // 交付物品給收禮方（收下時呼叫）。礦石若對方背包放不下，溢出折系統收購價金幣
 // （只有礦石占背包格數，其餘物品沒有容量問題）。
 // 回傳 { ok, label, deliveredQty, overflowQty, overflowCoins }。
-async function deliverGift(client, { recipientId, recipientName, guildId, value, qty, instances }) {
+async function deliverGift(client, { recipientId, recipientName, guildId, value, qty }) {
   const item = itemRegistry.resolve(value);
   if (!item) return { ok: false, reason: "no_item" };
 
@@ -116,11 +124,7 @@ async function deliverGift(client, { recipientId, recipientName, guildId, value,
   const overflowCoins = overflowQty > 0 ? priceOf(item.key) * overflowQty : 0;
 
   if (deliveredQty > 0) {
-    if (item.kind === "food" && instances?.length) {
-      await itemRegistry.grantFood(client, recipientId, guildId, instances);
-    } else {
-      await itemRegistry.grant(client, recipientId, guildId, value, deliveredQty);
-    }
+    await itemRegistry.grant(client, recipientId, guildId, value, deliveredQty);
   }
   if (overflowCoins > 0) {
     await grantCoins(client, {
@@ -137,13 +141,8 @@ async function deliverGift(client, { recipientId, recipientName, guildId, value,
 }
 
 // 退回託管的物品給送禮方（拒收 / 逾時 / 交付失敗時呼叫），並退還當日贈送次數。
-async function refundGift(client, { giverId, guildId, value, qty, instances }) {
-  const item = itemRegistry.resolve(value);
-  if (item?.kind === "food" && instances?.length) {
-    await itemRegistry.grantFood(client, giverId, guildId, instances);
-  } else {
-    await itemRegistry.grant(client, giverId, guildId, value, qty);
-  }
+async function refundGift(client, { giverId, guildId, value, qty }) {
+  await itemRegistry.grant(client, giverId, guildId, value, qty);
 
   const giver = await client.miningProfilesCollection
     .findOne({ userId: giverId, guildId })
@@ -158,6 +157,7 @@ async function refundGift(client, { giverId, guildId, value, qty, instances }) {
 }
 
 module.exports = {
+  listGiftable,
   offerValue,
   offerLabel,
   precheckGift,
