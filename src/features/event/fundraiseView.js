@@ -14,6 +14,7 @@ const {
 const itemRegistry = require("../economy/itemRegistry");
 const { getPrizeFeeRate, getPrizeFeeExemptParticipants } = require("../economy/refundFee");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
+const split = require("./fundraiseSplit");
 
 const COLOR_REVIEW = 0x5865f2;
 const COLOR_FUNDING = 0xeb459e;
@@ -51,6 +52,32 @@ function formatItemPool(itemPool = []) {
   return itemPool
     .map((it) => `${itemRegistry.labelOf(it.value) || "❔ 已下架物品"} ×${it.qty.toLocaleString()}`)
     .join("・");
+}
+
+function rankSplitLine(rankCount) {
+  return `**名次**：${rankCount} 名（${split.percentLabel(rankCount)}）`;
+}
+
+// 結算預覽：名次選完後直接把「誰拿多少 credits、拿哪些物品」算給主辦人看，按下去就發。
+function settlePreviewText(doc, picks, members) {
+  const ranks = picks.length;
+  const pcts = split.splitPercents(ranks);
+  const prizes = split.distribute(doc.prizePool, ranks);
+  const itemsByRank = split.splitItems(doc.funding?.itemPool || [], ranks);
+  const medals = ["🥇", "🥈", "🥉"];
+
+  return picks
+    .map((userId, idx) => {
+      const member = members.get(userId);
+      const name = member?.displayName || member?.user?.username || userId;
+      const items = formatItemPool(itemsByRank.get(idx + 1));
+      return (
+        `${medals[idx] || "🏅"} 第 ${idx + 1} 名 ${name} — ` +
+        `${prizes[idx].toLocaleString()} credits（${split.formatPercent(pcts[idx])}）` +
+        (items ? `\n　└ 🎁 ${items}` : "")
+      );
+    })
+    .join("\n");
 }
 
 // 既有的防洗錢摩擦：參賽人數未達門檻時，每筆獎金會被抽成，得獎者實得會比帳面少。
@@ -103,7 +130,7 @@ function buildReviewContainer(doc, guild) {
         `**申請人**：${nameOf(guild, doc.hostId)}\n` +
           `**募資目標**：${goalLabel(f.goal)}\n` +
           `**募資天數**：${f.days} 天\n` +
-          `**名次**：${doc.rankCount} 名\n` +
+          `${rankSplitLine(doc.rankCount)}\n` +
           `**報名人數**：${capacity}`,
       ),
     )
@@ -172,7 +199,7 @@ function buildFundActionRows(doc, { open }) {
         .setDisabled(!open),
       new ButtonBuilder()
         .setCustomId(`fund_item_${doc.eventId}`)
-        .setLabel("募資物品")
+        .setLabel("募資材料")
         .setEmoji("🎁")
         .setStyle(ButtonStyle.Primary)
         .setDisabled(!open),
@@ -211,7 +238,7 @@ function buildFundraisingContainer(doc, guild, { open }) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `**主辦人**：${nameOf(guild, doc.hostId)}\n` +
-          `**名次**：${doc.rankCount} 名\n` +
+          `${rankSplitLine(doc.rankCount)}\n` +
           `**報名人數**：${capacity}`,
       ),
     )
@@ -238,6 +265,7 @@ function buildFundraisingContainer(doc, guild, { open }) {
           ? `-# 募資截止：<t:${epoch(f.deadline)}:f>（<t:${epoch(f.deadline)}:R>）\n` +
             "-# 募到的 credits 與物品鎖在活動錢包，主辦人領不走，只能在結算時發給參加者；活動取消則原路退還贊助者。"
           : "-# 募資已截止，等待主辦人開始報名。取消活動時所有贊助會原路退還。") +
+          "\n-# 結算時獎金與物品都照上面的名次比例自動分配，主辦人不能改分法。" +
           `\n-# ${prizeFeeHint()}`,
       ),
     );
@@ -310,7 +338,8 @@ function buildFundManagePanel(doc, { open, canStart, startBlockReason }) {
       new TextDisplayBuilder().setContent(
         `**已募得**：${f.raised.toLocaleString()} credits（${f.donorCount || 0} 位贊助者）\n` +
           `**你可保留**：${retention.toLocaleString()} credits（${f.hostRetentionPct || 0}%）\n` +
-          `**必須發成獎金**：${prizePool.toLocaleString()} credits${itemLine ? `\n**物品獎池**：${itemLine}` : ""}`,
+          `**必須發成獎金**：${prizePool.toLocaleString()} credits${itemLine ? `\n**物品獎池**：${itemLine}` : ""}\n` +
+          rankSplitLine(doc.rankCount),
       ),
     )
     .addTextDisplayComponents(
@@ -398,7 +427,7 @@ function buildOwnedItemSelect(doc, owned) {
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`fund_itemsel_${doc.eventId}`)
-      .setPlaceholder("選擇要贊助的物品")
+      .setPlaceholder("選擇要贊助的材料")
       .addOptions(
         owned.slice(0, 25).map((it) => ({
           label: `${it.name}（持有 ${it.qty.toLocaleString()}）`.slice(0, 100),
@@ -457,6 +486,8 @@ module.exports = {
   buildItemQtyModal,
   buildRejectModal,
   formatItemPool,
+  rankSplitLine,
+  settlePreviewText,
   progressBar,
   progressLines,
 };

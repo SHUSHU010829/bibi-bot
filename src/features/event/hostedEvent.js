@@ -28,6 +28,7 @@ const { hostedEvents: hostedEventsConfig } = require("../../config");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const itemRegistry = require("../economy/itemRegistry");
 const fundraise = require("./fundraiseService");
+const fundraiseSplit = require("./fundraiseSplit");
 const fundraiseView = require("./fundraiseView");
 
 const EVENT_CHANNEL_ID = hostedEventsConfig?.publishChannelId || "1174352640210124877";
@@ -89,7 +90,7 @@ function buildActiveContainer(eventDoc, guild) {
         `**主辦人**：${nameOf(hostId)}\n` +
           `**${poolLabel}**：${prizePool.toLocaleString()} credits\n` +
           (itemLine ? `**物品獎池**：${itemLine.slice(0, 800)}\n` : "") +
-          `**名次**：${rankCount} 名\n` +
+          (eventDoc.funding ? `${fundraiseView.rankSplitLine(rankCount)}\n` : `**名次**：${rankCount} 名\n`) +
           `**報名人數**：${capacityLabel}`,
       ),
     )
@@ -103,7 +104,8 @@ function buildActiveContainer(eventDoc, guild) {
   if (eventDoc.funding) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# 由 ${eventDoc.funding.donorCount || 0} 位贊助者募得，主辦人保留 ${eventDoc.funding.hostRetentionPct || 0}%，其餘必須全數發成獎金。`,
+        `-# 由 ${eventDoc.funding.donorCount || 0} 位贊助者募得，主辦人保留 ${eventDoc.funding.hostRetentionPct || 0}%，` +
+          "其餘連同物品獎池照名次比例全數發出。",
       ),
     );
   }
@@ -303,35 +305,11 @@ function buildPickSelect(eventDoc, rank, alreadyPicked, participantMembers) {
   );
 }
 
-// 募資活動的物品獎池：一次指定一種物品要整包發給第幾名（沿用名次選擇的循序 UX）。
-function buildItemAwardSelect(eventDoc, itemIndex, picks, participantMembers) {
-  const pooled = fundraise.itemPoolOf(eventDoc)[itemIndex];
-  const label = itemRegistry.labelOf(pooled.value) || "❔ 已下架物品";
-
-  const options = picks.map((userId, idx) => {
-    const member = participantMembers.get(userId);
-    const name = member?.displayName || member?.user?.username || userId;
-    return { label: `第 ${idx + 1} 名 — ${name}`.slice(0, 100), value: String(idx + 1) };
-  });
-
-  return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(`event_itemassign_${eventDoc.eventId}_${itemIndex}`)
-      .setPlaceholder(`${label} ×${pooled.qty} 要發給第幾名？`.slice(0, 150))
-      .addOptions(options)
-      .setMinValues(1)
-      .setMaxValues(1),
-  );
-}
-
+// 自辦活動（主辦人自己出獎金）才需要逐名填金額；募資活動一律照固定比例分配。
 function buildAmountModal(eventDoc, picks, participantMembers) {
   const modal = new ModalBuilder()
     .setCustomId(`event_amounts_${eventDoc.eventId}`)
-    .setTitle(
-      eventDoc.funding
-        ? `獎金需剛好發完 ${eventDoc.prizePool}`.slice(0, 45)
-        : `填入各名次獎金（≤ ${eventDoc.prizePool}）`,
-    );
+    .setTitle(`填入各名次獎金（≤ ${eventDoc.prizePool}）`.slice(0, 45));
 
   picks.forEach((userId, idx) => {
     const rank = idx + 1;
@@ -343,7 +321,7 @@ function buildAmountModal(eventDoc, picks, participantMembers) {
       .setStyle(TextInputStyle.Short)
       .setRequired(true)
       .setMaxLength(10)
-      .setPlaceholder(eventDoc.funding ? "輸入金額（只發物品可填 0）" : "輸入正整數金額");
+      .setPlaceholder("輸入正整數金額");
     modal.addComponents(new ActionRowBuilder().addComponents(input));
   });
 
@@ -782,27 +760,17 @@ async function cancelEvent(client, eventDoc, actor, channel) {
   return doc;
 }
 
-// 募資活動的物品獎池必須整包發完，每種物品指定給某個名次；回傳 rank → [{value, qty}]。
-function groupItemAwards(itemPool, itemAwards) {
-  const byRank = new Map();
-  for (const pooled of itemPool) {
-    const rank = itemAwards?.[pooled.value];
-    if (!Number.isInteger(rank)) {
-      const label = itemRegistry.labelOf(pooled.value) || "❔ 已下架物品";
-      throw new Error(`物品「${label}」還沒指定要發給第幾名。`);
-    }
-    if (!byRank.has(rank)) byRank.set(rank, []);
-    byRank.get(rank).push({ value: pooled.value, qty: pooled.qty });
-  }
-  return byRank;
-}
-
-async function settleEvent(client, eventDoc, picks, prizes, winnerMembers, itemAwards) {
+async function settleEvent(client, eventDoc, picks, inputPrizes, winnerMembers) {
   const funded = !!eventDoc.funding;
   const effectiveRanks = Math.min(eventDoc.rankCount, eventDoc.participants.length);
   if (picks.length === 0 || picks.length !== effectiveRanks) {
     throw new Error("名次選擇不完整。");
   }
+
+  // 募資活動不讓主辦人自己填金額：獎金與物品都照固定比例拆，且募資池必定全數發完。
+  const prizes = funded
+    ? fundraiseSplit.distribute(eventDoc.prizePool, effectiveRanks)
+    : inputPrizes;
   if (prizes.length !== effectiveRanks) {
     throw new Error("獎金數量與名次不符。");
   }
@@ -813,28 +781,14 @@ async function settleEvent(client, eventDoc, picks, prizes, winnerMembers, itemA
     }
   }
   const total = prizes.reduce((a, b) => a + b, 0);
-  if (funded) {
-    // 募資錢包的核心規則：募到的錢（扣掉主辦人保留額後）必須一毛不剩全部發出去。
-    if (total !== eventDoc.prizePool) {
-      const diff = eventDoc.prizePool - total;
-      throw new Error(
-        `募資活動必須把獎金池 ${eventDoc.prizePool.toLocaleString()} credits 全數發完，` +
-          `目前總和 ${total.toLocaleString()}（${diff > 0 ? `還少 ${diff.toLocaleString()}` : `多了 ${(-diff).toLocaleString()}`}）。`
-      );
-    }
-  } else if (total > eventDoc.prizePool) {
+  if (!funded && total > eventDoc.prizePool) {
     throw new Error(
       `獎金總和 ${total.toLocaleString()} 超過鎖定獎金池 ${eventDoc.prizePool.toLocaleString()}。`
     );
   }
 
   const itemPool = funded ? fundraise.itemPoolOf(eventDoc) : [];
-  const itemsByRank = groupItemAwards(itemPool, itemAwards);
-  for (const rank of itemsByRank.keys()) {
-    if (rank < 1 || rank > effectiveRanks) {
-      throw new Error(`物品指定的名次 ${rank} 不在 1 ~ ${effectiveRanks} 之間。`);
-    }
-  }
+  const itemsByRank = fundraiseSplit.splitItems(itemPool, effectiveRanks);
 
   if (winnerMembers) {
     for (const userId of picks) {
@@ -991,6 +945,5 @@ module.exports = {
   buildActionRow,
   buildManagePanel,
   buildPickSelect,
-  buildItemAwardSelect,
   buildAmountModal,
 };

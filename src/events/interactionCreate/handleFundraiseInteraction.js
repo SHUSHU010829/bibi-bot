@@ -208,12 +208,12 @@ async function handleItemButton(client, interaction) {
   }
 
   const profile = await getOrCreate(client, interaction.user.id, doc.guildId);
-  const owned = itemRegistry.listOwned(profile);
+  const owned = fundraise.listDonatable(profile);
   if (!owned.length) {
     return interaction.editReply(
       notice({
-        title: "❌ 你沒有可以贊助的物品",
-        body: "背包、魚袋、菜園與道具欄都是空的。",
+        title: "❌ 你沒有可以贊助的材料",
+        body: `募資獎池只收材料：${fundraise.donatableLabel()}，你目前一種都沒有。`,
         hint: "去 /挖礦、/釣魚、/菜園 收成一些再回來吧。",
         kind: "bad",
       }),
@@ -222,12 +222,12 @@ async function handleItemButton(client, interaction) {
 
   const container = view
     .buildNotice({
-      title: `🎁 贊助物品給「${doc.name}」`,
-      body: "選一種物品，接著填入要贊助的數量。",
+      title: `🎁 贊助材料給「${doc.name}」`,
+      body: `選一種材料，接著填入要贊助的數量。\n可贊助的是：${fundraise.donatableLabel()}（藥水、券、工具等道具不收）。`,
       hint:
         owned.length > 25
-          ? "你的物品種類超過 25 種，這裡只列出前 25 種。"
-          : "贊助的物品會鎖進活動的物品獎池，結算時由主辦人指定發給得獎者。",
+          ? "你的材料種類超過 25 種，這裡只列出前 25 種。"
+          : "贊助的材料會鎖進活動的物品獎池，結算時照名次比例發給得獎者。",
       kind: "fund",
     })
     .addActionRowComponents(view.buildOwnedItemSelect(doc, owned));
@@ -381,8 +381,9 @@ async function handleStart(client, interaction) {
         `**獎金池**：${result.prizePool.toLocaleString()} credits（必須全數發完）\n` +
         (result.retention > 0 ? `**你保留**：${result.retention.toLocaleString()} credits（結算時入帳）\n` : "") +
         (itemLine ? `**物品獎池**：${itemLine}\n` : "") +
+        `${view.rankSplitLine(result.doc.rankCount)}\n` +
         (msg ? `\n活動訊息：${msg.url}` : ""),
-      hint: "結算時獎金總和必須剛好等於獎金池，物品也要全部指定給名次，否則無法送出。",
+      hint: "結算時只要選出名次，獎金與物品就照上面的比例自動發完，你不用（也不能）自己填金額。",
     }),
   );
 }

@@ -12,11 +12,10 @@ const {
   refreshEventMessage,
   buildManagePanel,
   buildPickSelect,
-  buildItemAwardSelect,
   buildAmountModal,
 } = require("../../features/event/hostedEvent");
-const fundraise = require("../../features/event/fundraiseService");
-const itemRegistry = require("../../features/economy/itemRegistry");
+const fundraiseSplit = require("../../features/event/fundraiseSplit");
+const fundraiseView = require("../../features/event/fundraiseView");
 const { consume } = require("../../utils/rateLimiter");
 const { deferReplySafe, deferUpdateSafe, isUnknownInteraction } = require("../../utils/safeAck");
 
@@ -25,9 +24,7 @@ const pendingPicks = new Map();
 const PICK_TTL_MS = 10 * 60 * 1000;
 
 function setPicks(eventId, hostId, picks) {
-  const key = `${eventId}:${hostId}`;
-  const prev = pendingPicks.get(key);
-  pendingPicks.set(key, { picks, prizes: prev?.prizes || null, awards: prev?.awards || {}, ts: Date.now() });
+  pendingPicks.set(`${eventId}:${hostId}`, { picks, ts: Date.now() });
 }
 
 function getEntry(eventId, hostId) {
@@ -45,21 +42,6 @@ function getPicks(eventId, hostId) {
   return getEntry(eventId, hostId)?.picks || [];
 }
 
-// 募資活動結算：金額填完後還要逐種物品指定名次，全部湊齊才送出。
-function setPrizes(eventId, hostId, prizes) {
-  const entry = getEntry(eventId, hostId);
-  if (!entry) return;
-  pendingPicks.set(`${eventId}:${hostId}`, { ...entry, prizes, awards: {}, ts: Date.now() });
-}
-
-function setAward(eventId, hostId, itemValue, rank) {
-  const entry = getEntry(eventId, hostId);
-  if (!entry) return null;
-  const awards = { ...entry.awards, [itemValue]: rank };
-  pendingPicks.set(`${eventId}:${hostId}`, { ...entry, awards, ts: Date.now() });
-  return awards;
-}
-
 function clearPicks(eventId, hostId) {
   pendingPicks.delete(`${eventId}:${hostId}`);
 }
@@ -75,8 +57,7 @@ function isEventInteraction(customId) {
       customId.startsWith("event_cancel_") ||
       customId.startsWith("event_toggleopen_") ||
       customId.startsWith("event_pick_") ||
-      customId.startsWith("event_itemassign_") ||
-      customId.startsWith("event_itemconfirm_") ||
+      customId.startsWith("event_fundconfirm_") ||
       customId.startsWith("event_amounts_"))
   );
 }
@@ -327,11 +308,16 @@ async function startSettleFlow(client, interaction) {
 
   const noteShort =
     effectiveRanks < doc.rankCount
-      ? `（人數 ${doc.participants.length} < 名次 ${doc.rankCount}，將只發出 ${effectiveRanks} 名，剩餘退回主辦人）\n`
+      ? `（人數 ${doc.participants.length} < 名次 ${doc.rankCount}，將只發出 ${effectiveRanks} 名，` +
+        `${doc.funding ? `獎池改照 ${effectiveRanks} 名的比例全數發完` : "剩餘退回主辦人"}）\n`
       : "";
 
+  const splitNote = doc.funding
+    ? `獎金與物品照固定比例分配：${fundraiseSplit.percentLabel(effectiveRanks)}\n`
+    : "";
+
   await interaction.editReply({
-    content: `🏆 開始結算「${doc.name}」（共 ${effectiveRanks} 名）\n${noteShort}請依序選出第 1 名。`,
+    content: `🏆 開始結算「${doc.name}」（共 ${effectiveRanks} 名）\n${noteShort}${splitNote}請依序選出第 1 名。`,
     components: [buildPickSelect(doc, 1, [], members)],
   });
 }
@@ -389,30 +375,54 @@ async function handlePickSelect(client, interaction) {
     .join("\n");
 
   if (rank < effectiveRanks) {
-    await interaction.editReply({
+    return interaction.editReply({
       content: `✅ 已選\n${pickedLines}\n\n請選第 ${rank + 1} 名。`,
       components: [buildPickSelect(doc, rank + 1, nextPicks, members)],
     });
-  } else {
-    const confirmRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`event_amounts_${eventId}`)
-        .setLabel("輸入各名次獎金")
-        .setEmoji("💰")
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`event_settle_${eventId}`)
-        .setLabel("重新選擇")
-        .setStyle(ButtonStyle.Secondary)
-    );
-    await interaction.editReply({
+  }
+
+  // 募資活動的分法是固定的，選完名次就直接預覽 → 送出，不用再填金額或指定物品。
+  if (doc.funding) {
+    return interaction.editReply({
       content:
-        `✅ 名次選擇完成\n${pickedLines}\n\n` +
-        `獎金池：**${doc.prizePool.toLocaleString()}** credits\n` +
-        `按「輸入各名次獎金」開啟視窗填入金額。`,
-      components: [confirmRow],
+        `✅ 名次選擇完成，以下是照固定比例算出的獎勵：\n\n` +
+        `${fundraiseView.settlePreviewText(doc, nextPicks, members)}\n\n` +
+        `募資獎金池 **${doc.prizePool.toLocaleString()}** credits 會全數發完。`,
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`event_fundconfirm_${eventId}`)
+            .setLabel("送出結算")
+            .setEmoji("🏆")
+            .setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId(`event_settle_${eventId}`)
+            .setLabel("重新選擇")
+            .setStyle(ButtonStyle.Secondary),
+        ),
+      ],
     });
   }
+
+  return interaction.editReply({
+    content:
+      `✅ 名次選擇完成\n${pickedLines}\n\n` +
+      `獎金池：**${doc.prizePool.toLocaleString()}** credits\n` +
+      `按「輸入各名次獎金」開啟視窗填入金額。`,
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`event_amounts_${eventId}`)
+          .setLabel("輸入各名次獎金")
+          .setEmoji("💰")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`event_settle_${eventId}`)
+          .setLabel("重新選擇")
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  });
 }
 
 async function handleAmountsButton(client, interaction) {
@@ -420,6 +430,12 @@ async function handleAmountsButton(client, interaction) {
   const doc = await client.hostedEventsCollection.findOne({ eventId });
   if (!doc) {
     return interaction.reply({ content: "❌ 找不到活動。", flags: MessageFlags.Ephemeral });
+  }
+  if (doc.funding) {
+    return interaction.reply({
+      content: "❌ 募資活動的獎金是照固定比例分配的，請從「管理 → 結算」重新選一次名次。",
+      flags: MessageFlags.Ephemeral,
+    });
   }
   if (interaction.user.id !== doc.hostId) {
     return interaction.reply({ content: "❌ 只有主辦人能操作。", flags: MessageFlags.Ephemeral });
@@ -463,50 +479,26 @@ async function handleAmountsModal(client, interaction) {
     return interaction.editReply("❌ 名次選擇已失效，請重新結算。");
   }
 
-  const funded = !!doc.funding;
-  const minPrize = funded ? 0 : 1;
   const prizes = [];
   for (let i = 1; i <= effectiveRanks; i += 1) {
     const raw = interaction.fields.getTextInputValue(`prize_${i}`).trim().replace(/[,，\s]/g, "");
     const num = Number(raw);
-    if (!Number.isInteger(num) || num < minPrize) {
-      return interaction.editReply(
-        `❌ 第 ${i} 名的獎金「${raw}」不是有效的整數${funded ? "（可填 0）" : "（需 ≥ 1）"}。`,
-      );
+    if (!Number.isInteger(num) || num < 1) {
+      return interaction.editReply(`❌ 第 ${i} 名的獎金「${raw}」不是有效的整數（需 ≥ 1）。`);
     }
     prizes.push(num);
   }
 
-  const itemPool = funded ? fundraise.itemPoolOf(doc) : [];
-  if (itemPool.length > 0) {
-    const total = prizes.reduce((a, b) => a + b, 0);
-    if (total !== doc.prizePool) {
-      const diff = doc.prizePool - total;
-      return interaction.editReply(
-        `❌ 募資活動必須把獎金池 ${doc.prizePool.toLocaleString()} credits 全數發完，目前總和 ${total.toLocaleString()}（` +
-          `${diff > 0 ? `還少 ${diff.toLocaleString()}` : `多了 ${(-diff).toLocaleString()}`}）。請重新輸入。`,
-      );
-    }
-    setPrizes(eventId, doc.hostId, prizes);
-    const members = await fetchParticipantMembers(interaction.guild, picks);
-    return interaction.editReply({
-      content:
-        `✅ 獎金已填好（共 ${total.toLocaleString()} credits）\n` +
-        `接著指定物品獎池：共 ${itemPool.length} 種，每種整包發給一個名次。\n請選第 1 種物品的得主。`,
-      components: [buildItemAwardSelect(doc, 0, picks, members)],
-    });
-  }
-
-  return finishSettle(client, interaction, doc, picks, prizes, null);
+  return finishSettle(client, interaction, doc, picks, prizes);
 }
 
-async function finishSettle(client, interaction, doc, picks, prizes, awards) {
+async function finishSettle(client, interaction, doc, picks, prizes) {
   const eventId = doc.eventId;
   try {
     const winnerMembers = await fetchParticipantMembers(interaction.guild, picks);
-    const settled = await settleEvent(client, doc, picks, prizes, winnerMembers, awards);
+    const settled = await settleEvent(client, doc, picks, prizes, winnerMembers);
     clearPicks(eventId, doc.hostId);
-    const total = prizes.reduce((a, b) => a + b, 0);
+    const total = settled.totalPaid || 0;
     const prizeFeeTotal = settled.prizeFeeTotal || 0;
     const paidNet = total - prizeFeeTotal;
     const unpaid = doc.prizePool - total;
@@ -540,15 +532,11 @@ async function finishSettle(client, interaction, doc, picks, prizes, awards) {
   }
 }
 
-async function handleItemAssignSelect(client, interaction) {
+// 募資活動的送出結算：獎金與物品都由 settleEvent 照固定比例算，這裡只確認名次還在。
+async function handleFundSettleConfirm(client, interaction) {
   if (!(await deferUpdateSafe(interaction))) return;
 
-  // customId: event_itemassign_{eventId}_{itemIndex}
-  const rest = interaction.customId.slice("event_itemassign_".length);
-  const lastUnderscore = rest.lastIndexOf("_");
-  const eventId = rest.slice(0, lastUnderscore);
-  const itemIndex = parseInt(rest.slice(lastUnderscore + 1), 10);
-
+  const eventId = interaction.customId.slice("event_fundconfirm_".length);
   const doc = await client.hostedEventsCollection.findOne({ eventId });
   if (!doc) return interaction.editReply({ content: "❌ 找不到活動。", components: [] });
   if (interaction.user.id !== doc.hostId) {
@@ -559,8 +547,9 @@ async function handleItemAssignSelect(client, interaction) {
     return interaction.editReply({ content: "❌ 活動已結束。", components: [] });
   }
 
-  const entry = getEntry(eventId, doc.hostId);
-  if (!entry?.prizes) {
+  const effectiveRanks = Math.min(doc.rankCount, doc.participants.length);
+  const picks = getPicks(eventId, doc.hostId);
+  if (picks.length !== effectiveRanks) {
     clearPicks(eventId, doc.hostId);
     return interaction.editReply({
       content: "❌ 結算狀態已失效，請重新點「管理 → 結算」。",
@@ -568,75 +557,7 @@ async function handleItemAssignSelect(client, interaction) {
     });
   }
 
-  const itemPool = fundraise.itemPoolOf(doc);
-  const pooled = itemPool[itemIndex];
-  const rank = parseInt(interaction.values[0], 10);
-  const awards = setAward(eventId, doc.hostId, pooled.value, rank);
-
-  const members = await fetchParticipantMembers(interaction.guild, entry.picks);
-  const assignedLines = itemPool
-    .filter((it) => awards[it.value])
-    .map((it) => {
-      const r = awards[it.value];
-      const m = members.get(entry.picks[r - 1]);
-      const name = m?.displayName || m?.user?.username || `第 ${r} 名`;
-      return `${itemRegistry.labelOf(it.value) || "❔ 已下架物品"} ×${it.qty} → 第 ${r} 名 ${name}`;
-    })
-    .join("\n");
-
-  const nextIndex = itemIndex + 1;
-  if (nextIndex < itemPool.length) {
-    return interaction.editReply({
-      content: `✅ 已指定\n${assignedLines}\n\n請選第 ${nextIndex + 1} 種物品的得主。`,
-      components: [buildItemAwardSelect(doc, nextIndex, entry.picks, members)],
-    });
-  }
-
-  return interaction.editReply({
-    content:
-      `✅ 物品指定完成\n${assignedLines}\n\n` +
-      `獎金將發出 **${entry.prizes.reduce((a, b) => a + b, 0).toLocaleString()}** credits（募資池全數）。\n` +
-      "確認無誤就送出結算。",
-    components: [
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`event_itemconfirm_${eventId}`)
-          .setLabel("送出結算")
-          .setEmoji("🏆")
-          .setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-          .setCustomId(`event_settle_${eventId}`)
-          .setLabel("重新選擇")
-          .setStyle(ButtonStyle.Secondary),
-      ),
-    ],
-  });
-}
-
-async function handleItemConfirm(client, interaction) {
-  if (!(await deferUpdateSafe(interaction))) return;
-
-  const eventId = interaction.customId.slice("event_itemconfirm_".length);
-  const doc = await client.hostedEventsCollection.findOne({ eventId });
-  if (!doc) return interaction.editReply({ content: "❌ 找不到活動。", components: [] });
-  if (interaction.user.id !== doc.hostId) {
-    return interaction.editReply({ content: "❌ 只有主辦人能操作。", components: [] });
-  }
-  if (doc.status !== "RECRUITING") {
-    clearPicks(eventId, doc.hostId);
-    return interaction.editReply({ content: "❌ 活動已結束。", components: [] });
-  }
-
-  const entry = getEntry(eventId, doc.hostId);
-  if (!entry?.prizes) {
-    clearPicks(eventId, doc.hostId);
-    return interaction.editReply({
-      content: "❌ 結算狀態已失效，請重新點「管理 → 結算」。",
-      components: [],
-    });
-  }
-
-  return finishSettle(client, interaction, doc, entry.picks, entry.prizes, entry.awards);
+  return finishSettle(client, interaction, doc, picks, null);
 }
 
 module.exports = async (client, interaction) => {
@@ -671,10 +592,9 @@ module.exports = async (client, interaction) => {
       if (customId.startsWith("event_cancel_")) return handleCancelButton(client, interaction);
       if (customId.startsWith("event_toggleopen_")) return handleToggleOpenButton(client, interaction);
       if (customId.startsWith("event_amounts_")) return handleAmountsButton(client, interaction);
-      if (customId.startsWith("event_itemconfirm_")) return handleItemConfirm(client, interaction);
+      if (customId.startsWith("event_fundconfirm_")) return handleFundSettleConfirm(client, interaction);
     } else if (interaction.isStringSelectMenu()) {
       if (customId.startsWith("event_pick_")) return handlePickSelect(client, interaction);
-      if (customId.startsWith("event_itemassign_")) return handleItemAssignSelect(client, interaction);
     } else if (interaction.isModalSubmit()) {
       if (customId.startsWith("event_amounts_")) return handleAmountsModal(client, interaction);
     }
