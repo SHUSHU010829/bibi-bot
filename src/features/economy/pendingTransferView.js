@@ -7,7 +7,7 @@ const {
   ButtonStyle,
 } = require("discord.js");
 const { MONEY_EMOJI, COIN_EMOJI } = require("../../constants/coin");
-const { getItemDef } = require("../barter/itemCatalog");
+const { offerLabel } = require("../mining/giftService");
 
 const ACCEPT_PREFIX = "ptx_accept_";
 const REJECT_PREFIX = "ptx_reject_";
@@ -23,7 +23,7 @@ function expiresEpoch(offer) {
   return Math.floor(new Date(offer.expires_at).getTime() / 1000);
 }
 
-function offerLines(offer, itemDef) {
+function offerLines(offer) {
   if (offer.kind === "coin") {
     const lines = [
       `<@${offer.sender_id}> 想轉給你 **${offer.amount.toLocaleString()}** ${MONEY_EMOJI}`,
@@ -32,16 +32,15 @@ function offerLines(offer, itemDef) {
     lines.push(`-# 手續費 ${offer.fee.toLocaleString()} 已由對方預付，拒收 / 逾時會全額退回對方。`);
     return lines.join("\n");
   }
-  const def = itemDef || {};
   return (
-    `<@${offer.sender_id}> 想送你 **${def.emoji || ""} ${def.name || offer.item.key} ×${offer.item.qty}**\n` +
-    `-# 收下後若背包放不下，多的會折成 ${COIN_EMOJI} 入帳。`
+    `<@${offer.sender_id}> 想送你 **${offerLabel(offer.item)} ×${offer.item.qty}**\n` +
+    `-# 收下後若背包放不下（僅礦石占格數），多的會折成 ${COIN_EMOJI} 入帳。`
   );
 }
 
 // 待收邀請訊息。DM 給收款人時 includeCancel=false（寄件方不在場，改用 /待收 取消）；
 // 頻道退回情境 includeCancel=true 讓寄件方能就地取消。
-function buildOfferContainer(offer, { itemDef, includeCancel = false, guildName } = {}) {
+function buildOfferContainer(offer, { includeCancel = false, guildName } = {}) {
   const isCoin = offer.kind === "coin";
   const container = new ContainerBuilder()
     .setAccentColor(isCoin ? COIN_COLOR : ITEM_COLOR)
@@ -55,7 +54,7 @@ function buildOfferContainer(offer, { itemDef, includeCancel = false, guildName 
     )
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(offerLines(offer, itemDef))
+      new TextDisplayBuilder().setContent(offerLines(offer))
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -115,7 +114,6 @@ function buildAcceptedContainer(result) {
         (offer.note ? `\n📝 備註：${offer.note}` : ""),
     });
   }
-  const def = result.itemDef || {};
   const lines = [];
   if (result.overflowQty > 0) {
     lines.push(
@@ -127,7 +125,7 @@ function buildAcceptedContainer(result) {
   return buildSettledContainer({
     color: SUCCESS_COLOR,
     title: "✅ 已收下禮物",
-    body: `<@${offer.recipient_id}> 收下了 <@${offer.sender_id}> 送的 **${def.emoji || ""} ${def.name || offer.item.key} ×${offer.item.qty}**！`,
+    body: `<@${offer.recipient_id}> 收下了 <@${offer.sender_id}> 送的 **${offerLabel(offer.item)} ×${offer.item.qty}**！`,
     extraLines: lines,
   });
 }
@@ -155,8 +153,7 @@ function summaryOf(offer) {
   if (offer.kind === "coin") {
     return `${offer.amount.toLocaleString()} ${MONEY_EMOJI}（含手續費 ${offer.fee.toLocaleString()}）`;
   }
-  const def = getItemDef(offer.item.type, offer.item.key) || {};
-  return `${def.emoji || ""} ${def.name || offer.item.key} ×${offer.item.qty}`;
+  return `${offerLabel(offer.item)} ×${offer.item.qty}`;
 }
 
 const STATUS_LIST_LIMIT = 4;

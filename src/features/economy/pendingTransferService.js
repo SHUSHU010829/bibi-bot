@@ -3,7 +3,6 @@ const { MessageFlags } = require("discord.js");
 const { coinSystem, gift } = require("../../config");
 const transferService = require("./transferService");
 const giftService = require("../mining/giftService");
-const { getItemDef } = require("../barter/itemCatalog");
 const { buildOfferContainer, summaryOf } = require("./pendingTransferView");
 
 // 待收轉帳 / 贈送：寄件方送出時先「託管」（扣款 / 扣物），收件方在 24 小時內
@@ -55,12 +54,12 @@ async function guildNameOf(client, guildId) {
 
 // DM 收款人待收邀請（含收下 / 拒收按鈕）。成功回 { via:"dm" } 並記錄 DM 訊息位置；
 // 對方關閉私訊 / 抓不到使用者則回 { via:"dm_failed" }，交由呼叫端 fallback 到頻道。
-async function notifyRecipient(client, offer, { itemDef } = {}) {
+async function notifyRecipient(client, offer) {
   try {
     const user = await client.users.fetch(offer.recipient_id);
     const guildName = await guildNameOf(client, offer.guild_id);
     const msg = await user.send({
-      components: [buildOfferContainer(offer, { itemDef, includeCancel: false, guildName })],
+      components: [buildOfferContainer(offer, { includeCancel: false, guildName })],
       flags: MessageFlags.IsComponentsV2,
     });
     await setOfferMessage(client, offer.offer_id, msg.channelId, msg.id, true);
@@ -131,7 +130,7 @@ async function createCoinOffer(client, { senderMember, targetMember, amount, not
   return { ok: true, offer, held };
 }
 
-async function createItemOffer(client, { giverMember, recipientUser, recipientMember, type, key, qty }) {
+async function createItemOffer(client, { giverMember, recipientUser, recipientMember, value, qty }) {
   if (!client.pendingTransfersCollection) return { ok: false, reason: "disabled" };
 
   const guildId = giverMember.guild.id;
@@ -142,7 +141,7 @@ async function createItemOffer(client, { giverMember, recipientUser, recipientMe
   }
 
   // 託管：立即扣送禮方物品 + 消耗當日次數
-  const held = await giftService.holdGift(client, { giverId, guildId, type, key, qty });
+  const held = await giftService.holdGift(client, { giverId, guildId, value, qty });
   if (!held.ok) return held;
 
   const now = Date.now();
@@ -155,7 +154,7 @@ async function createItemOffer(client, { giverMember, recipientUser, recipientMe
     sender_name: giverMember.displayName || giverMember.user.username,
     recipient_id: recipientUser.id,
     recipient_name: recipientMember?.displayName || recipientUser.username,
-    item: { type, key, qty },
+    item: { value, qty, instances: held.instances || null },
     status: "pending",
     channel_id: null,
     message_id: null,
@@ -166,7 +165,7 @@ async function createItemOffer(client, { giverMember, recipientUser, recipientMe
     settled_at: null,
   };
   await client.pendingTransfersCollection.insertOne(offer);
-  return { ok: true, offer, itemDef: held.itemDef, usedToday: held.usedToday, dailyMax: held.dailyMax };
+  return { ok: true, offer, label: held.label, usedToday: held.usedToday, dailyMax: held.dailyMax };
 }
 
 // ── 樂觀鎖：pending → settling，搶到才處理 ─────────────────────────────────
@@ -204,9 +203,9 @@ async function refundEscrow(client, offer, reason) {
   return giftService.refundGift(client, {
     giverId: offer.sender_id,
     guildId: offer.guild_id,
-    type: offer.item.type,
-    key: offer.item.key,
+    value: giftService.offerValue(offer.item),
     qty: offer.item.qty,
+    instances: offer.item.instances,
   });
 }
 
@@ -248,9 +247,9 @@ async function acceptOffer(client, { offerId, actorUser, actorMember }) {
     recipientId: offer.recipient_id,
     recipientName: offer.recipient_name,
     guildId: offer.guild_id,
-    type: offer.item.type,
-    key: offer.item.key,
+    value: giftService.offerValue(offer.item),
     qty: offer.item.qty,
+    instances: offer.item.instances,
   });
   if (!delivered.ok) {
     await refundEscrow(client, offer, "deliver_failed").catch(() => {});
@@ -262,7 +261,7 @@ async function acceptOffer(client, { offerId, actorUser, actorMember }) {
     ok: true,
     kind: "item",
     offer,
-    itemDef: delivered.itemDef,
+    label: delivered.label,
     deliveredQty: delivered.deliveredQty,
     overflowQty: delivered.overflowQty,
     overflowCoins: delivered.overflowCoins,
