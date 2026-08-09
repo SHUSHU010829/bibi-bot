@@ -279,8 +279,10 @@ amount          = floor(baseAmount × totalMultiplier)
 | 單股持有 | 500 股 | `stockSystem.maxSharesPerUser` |
 | 同時定存單 | 5 筆 | `deposit.maxActivePerUser` |
 | 撲克每日 buy-in | 50,000 | `poker.dailyBuyInLimit` |
-| 樂透訂閱期數 | 12 期 | `lottery.subscription.maxDrawsPerSubscription` |
-| 樂透訂閱每期張數 | 10 張 | `lottery.subscription.maxTicketsPerDraw` |
+| 樂透訂閱期數 | 52 期 | `lottery.limits.maxSubscriptionDraws` |
+| 樂透訂閱每期張數 | 100 張 | `lottery.limits.maxTicketsPerDraw` |
+| 樂透單次購買（機選） | 1,000 張 | `lottery.limits.maxTicketsPerBuy`，每張各一組號碼 = 各一筆 doc |
+| 樂透單次購買（自選） | 10,000 張 | `lottery.limits.maxTicketsPerBuyFixed`，同號碼聚合成單一 doc + quantity |
 
 ---
 

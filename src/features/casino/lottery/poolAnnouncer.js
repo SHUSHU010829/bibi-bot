@@ -76,13 +76,11 @@ async function checkAndAnnouncePoolMilestones(client, drawObjectId) {
   if (milestones.length === 0) return;
 
   const announced = new Set(draw.announcedMilestones || []);
-  let toAnnounce = null;
-  for (const m of milestones) {
-    if (draw.pool >= m && !announced.has(m)) {
-      toAnnounce = m;
-    }
-  }
-  if (toAnnounce === null) return;
+  // 單筆大量購票可能一次跨過好幾個里程碑：只播報最高的那個，
+  // 但被跳過的也要一併記成已播報，否則之後每次購票都會補播一則過期的低里程碑。
+  const crossed = milestones.filter((m) => draw.pool >= m && !announced.has(m));
+  if (crossed.length === 0) return;
+  const toAnnounce = crossed[crossed.length - 1];
 
   // atomic claim:race condition 防護
   const result = await client.lotteryDrawsCollection.findOneAndUpdate(
@@ -90,7 +88,7 @@ async function checkAndAnnouncePoolMilestones(client, drawObjectId) {
       _id: drawObjectId,
       announcedMilestones: { $ne: toAnnounce },
     },
-    { $addToSet: { announcedMilestones: toAnnounce } },
+    { $addToSet: { announcedMilestones: { $each: crossed } } },
     { returnDocument: "after" }
   );
 

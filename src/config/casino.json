@@ -328,7 +328,8 @@
         "consecutiveFailureThreshold": 2
       },
       "limits": {
-        "maxTicketsPerBuy": 100,
+        "maxTicketsPerBuy": 1000,
+        "maxTicketsPerBuyFixed": 10000,
         "maxTicketsPerDraw": 100,
         "maxSubscriptionDraws": 52
       },
