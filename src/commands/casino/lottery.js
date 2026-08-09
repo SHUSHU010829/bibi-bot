@@ -11,6 +11,9 @@ const {
   ButtonStyle,
   StringSelectMenuBuilder,
   EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
   MessageFlags,
   InteractionContextType,
 } = require("discord.js");
@@ -75,9 +78,13 @@ function getTypeConfig(t) {
   return getLotteryFeatureConfig().types?.[t] || {};
 }
 
-// 購買上限：擋住「一次買到爆」造成的票券文件量失控（config 驅動）
+// 購買上限：擋住「一次買到爆」造成的票券文件量失控（config 驅動）。
+// 自選號碼會聚合成單一 doc + quantity，DB 成本與張數無關，所以上限可以開很大；
+// 隨機選號每張是獨立號碼、各自一筆 doc，另外用較低的上限擋。
 const LOTTERY_LIMITS = casino?.lottery?.limits || {};
-const MAX_TICKETS_PER_BUY = LOTTERY_LIMITS.maxTicketsPerBuy || 100;
+const MAX_TICKETS_RANDOM = LOTTERY_LIMITS.maxTicketsPerBuy || 1000;
+const MAX_TICKETS_FIXED = LOTTERY_LIMITS.maxTicketsPerBuyFixed || 10000;
+const MAX_TICKETS_PER_BUY = Math.max(MAX_TICKETS_RANDOM, MAX_TICKETS_FIXED);
 const MAX_TICKETS_PER_DRAW = LOTTERY_LIMITS.maxTicketsPerDraw || 100;
 const MAX_SUB_DRAWS = LOTTERY_LIMITS.maxSubscriptionDraws || 52;
 
@@ -100,7 +107,9 @@ module.exports = {
         .addIntegerOption((o) =>
           o
             .setName("張數")
-            .setDescription("買幾張(隨機選號模式才用)")
+            .setDescription(
+              `買幾張(自選號碼最多 ${MAX_TICKETS_FIXED}、隨機選號最多 ${MAX_TICKETS_RANDOM})`
+            )
             .setRequired(false)
             .setMinValue(1)
             .setMaxValue(MAX_TICKETS_PER_BUY)
@@ -207,6 +216,47 @@ module.exports = {
   },
 };
 
+function buildTicketLimitContainer(count, maxTickets, fixedNumbers) {
+  const mode = fixedNumbers ? "自選號碼" : "隨機選號";
+  const hint = fixedNumbers
+    ? "-# 分成幾次購買；想一次涵蓋更多組合可以改用 `/彩券 包牌`。"
+    : `-# 自選號碼(填「號碼」欄位)一次可以買到 ${MAX_TICKETS_FIXED.toLocaleString()} 張,或分成幾次購買。`;
+
+  return new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("# ❌ 一次買太多張了")
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `${mode}單次上限 **${maxTickets.toLocaleString()}** 張,你要買 **${count.toLocaleString()}** 張。\n` +
+          `超出 **${(count - maxTickets).toLocaleString()}** 張。`
+      )
+    )
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(hint));
+}
+
+function buildInsufficientContainer({ label, count, ticketPrice, totalCost, balance }) {
+  return new ContainerBuilder()
+    .setAccentColor(0xe74c3c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# ${MONEY_EMOJI} 餘額不足`)
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**${label}** ${count.toLocaleString()} 張 × ${ticketPrice.toLocaleString()} = **${totalCost.toLocaleString()}** credits\n` +
+          `目前餘額:**${balance.toLocaleString()}** ・ 還差 **${(totalCost - balance).toLocaleString()}**`
+      )
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 你現在買得起 ${Math.floor(balance / ticketPrice).toLocaleString()} 張,把「張數」改小一點再試。`
+      )
+    );
+}
+
 // ───────────────────────────── /彩券 購買 ─────────────────────────────
 async function runBuy(client, interaction) {
   await interaction.deferReply();
@@ -241,10 +291,20 @@ async function runBuy(client, interaction) {
     const ticketPrice = typeCfg.ticketPrice || 0;
     const withSpecial = hasSecondZone(lotteryType);
 
-    // entries: [{ numbers:number[], special:number|null }]
-    let entries = [];
+    const fixedNumbers = Boolean(numbersInput && numbersInput.trim());
     const count = ticketCountInput || 1;
-    if (numbersInput && numbersInput.trim()) {
+    const maxTickets = fixedNumbers ? MAX_TICKETS_FIXED : MAX_TICKETS_RANDOM;
+    if (count > maxTickets) {
+      return interaction.editReply({
+        components: [buildTicketLimitContainer(count, maxTickets, fixedNumbers)],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+
+    // entries 直接以「相同號碼聚合」的形式產生：[{ numbers, special, quantity }]，
+    // 一組號碼一筆 doc，買 N 張只是 quantity += N（見下方 insertMany）。
+    let entries;
+    if (fixedNumbers) {
       const v = validateNumbers(numbersInput, lotteryType);
       if (!v.ok) {
         return interaction.editReply(`❌ ${v.error}`);
@@ -260,19 +320,21 @@ async function runBuy(client, interaction) {
         }
         special = sv.value;
       }
-      for (let i = 0; i < count; i++) {
-        entries.push({ numbers: [...v.numbers], special });
-      }
+      entries = [{ numbers: v.numbers, special, quantity: count }];
     } else {
+      const grouped = new Map();
       for (let i = 0; i < count; i++) {
-        entries.push({
-          numbers: pickRandomNumbers(cfg.pickCount, cfg.range),
-          special: withSpecial ? pickRandomSpecial(lotteryType) : null,
-        });
+        const numbers = pickRandomNumbers(cfg.pickCount, cfg.range);
+        const special = withSpecial ? pickRandomSpecial(lotteryType) : null;
+        const key = `${numbers.join(",")}|${special ?? ""}`;
+        const g = grouped.get(key);
+        if (g) g.quantity += 1;
+        else grouped.set(key, { numbers, special, quantity: 1 });
       }
+      entries = [...grouped.values()];
     }
 
-    const totalCost = entries.length * ticketPrice;
+    const totalCost = count * ticketPrice;
 
     let draw = await getCurrentOpenDraw(client, lotteryType);
     if (!draw) draw = await ensureNextDraw(client, lotteryType);
@@ -288,9 +350,18 @@ async function runBuy(client, interaction) {
     const before = await client.userCoinsCollection.findOne({ userId, guildId });
     const balance = before?.totalCoins || 0;
     if (balance < totalCost) {
-      return interaction.editReply(
-        `${MONEY_EMOJI} 餘額不足!目前 **${balance.toLocaleString()}** credits,需要 ${totalCost.toLocaleString()}。`
-      );
+      return interaction.editReply({
+        components: [
+          buildInsufficientContainer({
+            label: cfg.label,
+            count,
+            ticketPrice,
+            totalCost,
+            balance,
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
     }
 
     const orderId = crypto.randomUUID();
@@ -308,22 +379,14 @@ async function runBuy(client, interaction) {
         lotteryType,
         drawId: draw.drawId,
         orderId,
-        ticketCount: entries.length,
+        ticketCount: count,
       },
     });
     if (!betResult) {
       return interaction.editReply("🔧 扣款失敗,請稍後再試。");
     }
 
-    // 相同號碼（含第二區）聚合成單一 doc + quantity，避免自選買 N 張產生 N 筆相同資料
-    const grouped = new Map();
-    for (const e of entries) {
-      const key = `${e.numbers.join(",")}|${e.special ?? ""}`;
-      const g = grouped.get(key);
-      if (g) g.quantity += 1;
-      else grouped.set(key, { numbers: e.numbers, special: e.special, quantity: 1 });
-    }
-    const ticketDocs = [...grouped.values()].map((g) => ({
+    const ticketDocs = entries.map((g) => ({
       ticketId: crypto.randomUUID(),
       drawId: draw.drawId,
       lotteryType,
@@ -351,7 +414,7 @@ async function runBuy(client, interaction) {
         $inc: {
           pool: totalCost,
           totalRevenue: totalCost,
-          totalTickets: entries.length,
+          totalTickets: count,
         },
         $set: { updatedAt: new Date() },
       },
@@ -397,8 +460,9 @@ async function runBuy(client, interaction) {
 
     await interaction.editReply({
       content:
-        `${cfg.emoji} **${cfg.label}** 第 ${draw.drawNumber} 期 已買 **${entries.length}** 張\n` +
-        `${previewLines}${moreLine}\n\n` +
+        `${cfg.emoji} **${cfg.label}** 第 ${draw.drawNumber} 期 已買 **${count.toLocaleString()}** 張` +
+        (entries.length > 1 ? `(${entries.length.toLocaleString()} 組號碼)` : "") +
+        `\n${previewLines}${moreLine}\n\n` +
         `花費:**${totalCost.toLocaleString()}** ・ 餘額:**${balanceAfter.toLocaleString()}**\n` +
         `當前彩池:**${(drawDoc?.pool || draw.pool + totalCost).toLocaleString()}** credits\n` +
         `開獎時間:<t:${drawAtUnix}:R>`,
