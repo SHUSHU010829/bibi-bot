@@ -454,21 +454,21 @@ module.exports = async (client, interaction) => {
 
   try {
     if (interaction.isButton()) {
-      if (prefix === "fundreview_approve_") return handleApprove(client, interaction);
-      if (prefix === "fundreview_reject_") return handleRejectButton(client, interaction);
-      if (prefix === "fund_coin_") return handleCoinButton(client, interaction);
-      if (prefix === "fund_item_") return handleItemButton(client, interaction);
-      if (prefix === "fund_detail_") return handleDetail(client, interaction);
-      if (prefix === "fund_manage_") return handleManage(client, interaction);
-      if (prefix === "fund_start_") return handleStart(client, interaction);
-      if (prefix === "fund_cancelconfirm_") return handleCancelConfirm(client, interaction);
-      if (prefix === "fund_cancel_") return handleCancelPrompt(client, interaction);
+      if (prefix === "fundreview_approve_") return await handleApprove(client, interaction);
+      if (prefix === "fundreview_reject_") return await handleRejectButton(client, interaction);
+      if (prefix === "fund_coin_") return await handleCoinButton(client, interaction);
+      if (prefix === "fund_item_") return await handleItemButton(client, interaction);
+      if (prefix === "fund_detail_") return await handleDetail(client, interaction);
+      if (prefix === "fund_manage_") return await handleManage(client, interaction);
+      if (prefix === "fund_start_") return await handleStart(client, interaction);
+      if (prefix === "fund_cancelconfirm_") return await handleCancelConfirm(client, interaction);
+      if (prefix === "fund_cancel_") return await handleCancelPrompt(client, interaction);
     } else if (interaction.isStringSelectMenu()) {
-      if (prefix === "fund_itemsel_") return handleItemSelect(client, interaction);
+      if (prefix === "fund_itemsel_") return await handleItemSelect(client, interaction);
     } else if (interaction.isModalSubmit()) {
-      if (prefix === "fundreject_modal_") return handleRejectModal(client, interaction);
-      if (prefix === "fund_coinmodal_") return handleCoinModal(client, interaction);
-      if (prefix === "fund_itemqty_") return handleItemQtyModal(client, interaction);
+      if (prefix === "fundreject_modal_") return await handleRejectModal(client, interaction);
+      if (prefix === "fund_coinmodal_") return await handleCoinModal(client, interaction);
+      if (prefix === "fund_itemqty_") return await handleItemQtyModal(client, interaction);
     }
   } catch (error) {
     console.log(`[ERROR] handleFundraiseInteraction (${customId}): ${error}\n${error.stack || ""}`.red);

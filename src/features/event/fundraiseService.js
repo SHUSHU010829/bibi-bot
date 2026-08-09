@@ -1,7 +1,7 @@
 require("colors");
 const { MessageFlags } = require("discord.js");
 
-const { eventFundraise } = require("../../config");
+const { eventFundraise, hostedEvents: hostedEventsConfig } = require("../../config");
 const grantCoins = require("../economy/grantCoins");
 const itemRegistry = require("../economy/itemRegistry");
 const { getOrCreate } = require("../mining/miningProfile");

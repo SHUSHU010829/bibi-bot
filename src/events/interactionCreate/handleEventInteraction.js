@@ -584,19 +584,19 @@ module.exports = async (client, interaction) => {
 
   try {
     if (interaction.isButton()) {
-      if (customId.startsWith("eventcreate_confirm_")) return handleCreateConfirm(client, interaction);
-      if (customId.startsWith("eventcreate_cancel_")) return handleCreateCancel(client, interaction);
-      if (customId.startsWith("event_join_")) return handleJoinButton(client, interaction);
-      if (customId.startsWith("event_manage_")) return handleManageButton(client, interaction);
-      if (customId.startsWith("event_settle_")) return startSettleFlow(client, interaction);
-      if (customId.startsWith("event_cancel_")) return handleCancelButton(client, interaction);
-      if (customId.startsWith("event_toggleopen_")) return handleToggleOpenButton(client, interaction);
-      if (customId.startsWith("event_amounts_")) return handleAmountsButton(client, interaction);
-      if (customId.startsWith("event_fundconfirm_")) return handleFundSettleConfirm(client, interaction);
+      if (customId.startsWith("eventcreate_confirm_")) return await handleCreateConfirm(client, interaction);
+      if (customId.startsWith("eventcreate_cancel_")) return await handleCreateCancel(client, interaction);
+      if (customId.startsWith("event_join_")) return await handleJoinButton(client, interaction);
+      if (customId.startsWith("event_manage_")) return await handleManageButton(client, interaction);
+      if (customId.startsWith("event_settle_")) return await startSettleFlow(client, interaction);
+      if (customId.startsWith("event_cancel_")) return await handleCancelButton(client, interaction);
+      if (customId.startsWith("event_toggleopen_")) return await handleToggleOpenButton(client, interaction);
+      if (customId.startsWith("event_amounts_")) return await handleAmountsButton(client, interaction);
+      if (customId.startsWith("event_fundconfirm_")) return await handleFundSettleConfirm(client, interaction);
     } else if (interaction.isStringSelectMenu()) {
-      if (customId.startsWith("event_pick_")) return handlePickSelect(client, interaction);
+      if (customId.startsWith("event_pick_")) return await handlePickSelect(client, interaction);
     } else if (interaction.isModalSubmit()) {
-      if (customId.startsWith("event_amounts_")) return handleAmountsModal(client, interaction);
+      if (customId.startsWith("event_amounts_")) return await handleAmountsModal(client, interaction);
     }
   } catch (error) {
     console.log(`[ERROR] handleEventInteraction (${customId}): ${error}\n${error.stack || ""}`.red);
