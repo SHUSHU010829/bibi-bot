@@ -8,18 +8,20 @@ const {
   recordSuccess,
 } = require("../../features/threads/threadsScraper");
 const { buildThreadsPreview } = require("../../features/threads/threadsPreview");
+const { maskHiddenSegments } = require("../../utils/hiddenLinks");
 
 // ============================================================
 // Threads Embed Handler - 支援 Carousel 多圖 + 影片
 // 抓取解析在 features/threads/threadsScraper.js、預覽組版在 threadsPreview.js
 // （與 /脆 指令共用）
+// 被藏起來的連結（<網址> / 防雷 / 程式碼區塊）不做預覽。
 // ============================================================
 
 // 主要 handler
 module.exports = async (client, message) => {
   if (message.author.bot) return;
 
-  const threadsUrl = extractThreadsUrl(message.content);
+  const threadsUrl = extractThreadsUrl(maskHiddenSegments(message.content));
   if (!threadsUrl) return;
 
   if (circuitOpen()) return;
