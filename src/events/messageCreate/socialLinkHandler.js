@@ -1,5 +1,7 @@
 const { MessageFlags } = require("discord.js");
 
+const { maskHiddenSegments } = require("../../utils/hiddenLinks");
+
 // ============================================================
 // 社群連結修正 — Instagram / X(Twitter)
 // Discord 對 x.com / twitter.com / instagram.com 的原生預覽常常失效
@@ -8,6 +10,7 @@ const { MessageFlags } = require("discord.js");
 //   x.com        → fixupx.com
 //   instagram.com→ oginstagram.com
 // 只針對「單篇貼文」連結（status / p / reel / tv），個人頁與首頁不動。
+// 被藏起來的連結（<網址> / 防雷 / 程式碼區塊）不修正，維持沒有預覽。
 // ============================================================
 
 const REWRITES = [
@@ -55,7 +58,7 @@ function collectFixedLinks(content) {
 module.exports = async (client, message) => {
   if (message.author.bot) return;
 
-  const links = collectFixedLinks(message.content);
+  const links = collectFixedLinks(maskHiddenSegments(message.content));
   if (links.length === 0) return;
 
   try {
