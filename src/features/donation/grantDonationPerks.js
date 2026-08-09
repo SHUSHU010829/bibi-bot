@@ -7,7 +7,7 @@ const {
 const logger = require("../../utils/logger");
 const { trackError } = require("../../utils/errorTracker");
 const grantCoins = require("../economy/grantCoins");
-const { coinsForAmount, roleName } = require("./code");
+const { coinsForAmount, roleName, platformLabel } = require("./code");
 const { donation } = require("../../config");
 
 const ITEM_NAMES = {
@@ -335,8 +335,10 @@ async function sendDonationDm(client, record, tier, extras) {
     `# ${THANKFUL_EMOJI} 你讓逼逼機器人吃上一頓飯啦！`,
     `## 十分感謝你的贊助！`,
     "",
-    `金額：**NT$${record.amountNtd}**　·　平台：${record.platform === "ecpay" ? "綠界" : "歐付寶"}`,
-    `交易編號：\`${record.tradeNo}\``,
+    `金額：**NT$${record.amountNtd}**　·　平台：${platformLabel(record.platform)}`,
+    ...(record.tradeNo && !record.tradeNo.startsWith("MANUAL-")
+      ? [`交易編號：\`${record.tradeNo}\``]
+      : []),
     "",
   ];
   if (tier) {

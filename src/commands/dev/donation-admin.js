@@ -6,6 +6,9 @@
 //   /donation-admin direct <user> <amount> [platform] [trade_no] [note]
 //                                         直接補發整套權益（公告 / DM / 加成全上）；
 //                                         免 unmatched，trade_no 留空則自動產生 MANUAL- 編號
+//   /donation-admin sku <user> <sku> [amount] [platform] [trade_no] [note] [announce]
+//                                         只發商品券（連續通行證），不含金幣 / 身分組 / 加成；
+//                                         給「透過網站以外管道付款」的人補券用
 
 require("colors");
 const {
@@ -17,7 +20,26 @@ const {
 const { DateTime } = require("luxon");
 
 const grantDonationPerks = require("../../features/donation/grantDonationPerks");
-const { tierForAmount, coinsForAmount } = require("../../features/donation/code");
+const grantSkuPerks = require("../../features/donation/grantSkuPerks");
+const {
+  tierForAmount,
+  coinsForAmount,
+  platformLabel,
+  skuById,
+  skuList,
+} = require("../../features/donation/code");
+
+// 商品下拉：直接吃 donation.json 的 skus，新增商品不必改這支指令。
+// 用 addChoices（非 autocomplete）→ Discord 保證送回 value，不會有貼上顯示字串的解析問題。
+const SKU_CHOICES = skuList()
+  .slice(0, 25)
+  .map((s) => ({ name: `${s.name}（NT$${s.minAmount} 起）`, value: s.id }));
+
+const PLATFORM_CHOICES = [
+  { name: "其他管道（街口 / 轉帳…）", value: "manual" },
+  { name: "歐付寶", value: "opay" },
+  { name: "綠界", value: "ecpay" },
+];
 
 module.exports = {
   devOnly: true,
@@ -86,6 +108,46 @@ module.exports = {
         .addStringOption((o) =>
           o.setName("note").setDescription("備註 / 原始留言（選填）"),
         ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("sku")
+        .setDescription("只發商品券給指定使用者（不含金幣 / 身分組 / 加成）")
+        .addUserOption((o) =>
+          o.setName("user").setDescription("要發給誰").setRequired(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("sku")
+            .setDescription("要發哪個商品")
+            .setRequired(true)
+            .addChoices(...SKU_CHOICES),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName("amount")
+            .setDescription("實付金額（NT$，影響 DM / 公告顯示，預設為商品定價）")
+            .setMinValue(0),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("platform")
+            .setDescription("付款管道（影響 DM 顯示，預設其他管道）")
+            .addChoices(...PLATFORM_CHOICES),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("trade_no")
+            .setDescription("平台交易編號（沒有就留空，系統自動產生 MANUAL- 編號）"),
+        )
+        .addStringOption((o) =>
+          o.setName("note").setDescription("備註 / 原始留言（選填）"),
+        )
+        .addBooleanOption((o) =>
+          o
+            .setName("announce")
+            .setDescription("是否發頻道感謝公告（預設是；補償性發券可關掉）"),
+        ),
     ),
 
   run: async (client, interaction) => {
@@ -94,6 +156,7 @@ module.exports = {
     if (sub === "grant") return runGrant(client, interaction);
     if (sub === "info") return runInfo(client, interaction);
     if (sub === "direct") return runDirect(client, interaction);
+    if (sub === "sku") return runSku(client, interaction);
   },
 };
 
@@ -340,9 +403,133 @@ async function runDirect(client, interaction) {
 
   await interaction.editReply(
     `✅ 已直接補發 NT$${amountNtd}（${tier?.name || "未達門檻"}）給 <@${user.id}>。\n` +
-      `平台：${platform === "ecpay" ? "綠界" : "歐付寶"}　成功項目：${grantSummary || "(無)"}\n` +
+      `平台：${platformLabel(platform)}　成功項目：${grantSummary || "(無)"}\n` +
       `tradeNo \`${tradeNo}\``,
   );
+}
+
+// 只發商品券：走與網站購買完全相同的 grantSkuPerks（發券 + 感謝 DM + 頻道公告），
+// 但不碰依金額換算的方案回饋（金幣 / 身分組 / luck / 卡面 / 稱號）。
+// 用途：玩家透過網站以外的管道付款（街口、轉帳、實體收款）時直接補券。
+async function runSku(client, interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const user = interaction.options.getUser("user");
+  const skuId = interaction.options.getString("sku");
+  const skuDef = skuById(skuId);
+  if (!skuDef) {
+    return interaction.editReply(
+      `找不到商品 \`${skuId}\`。目前可發：${
+        SKU_CHOICES.map((c) => c.name).join("、") || "(無，donation.json 沒有設定 skus)"
+      }`,
+    );
+  }
+
+  const amountNtd = interaction.options.getInteger("amount") ?? skuDef.minAmount;
+  const platform = interaction.options.getString("platform") || "manual";
+  const note = interaction.options.getString("note") || "";
+  const announce = interaction.options.getBoolean("announce") ?? true;
+  const inputTradeNo = interaction.options.getString("trade_no")?.trim();
+  const guildId = interaction.guildId;
+
+  const records = client.donationRecordsCollection;
+  const unmatched = client.unmatchedDonationsCollection;
+  if (!records) return interaction.editReply("DB 未連線");
+
+  const tradeNo =
+    inputTradeNo || `MANUAL-${Date.now()}-${interaction.user.id.slice(-6)}`;
+
+  const existing = await records.findOne({ tradeNo });
+  if (existing) {
+    return interaction.editReply(
+      `這筆交易 \`${tradeNo}\` 已經發放過了（user=<@${existing.userId}>）。`,
+    );
+  }
+
+  const record = {
+    tradeNo,
+    sessionId: null,
+    userId: user.id,
+    guildId,
+    amountNtd,
+    tierId: null,
+    skuId,
+    platform,
+    patronName: "",
+    patronNote: note,
+    perks: { sku: skuId, name: skuDef.name, item: skuDef.item, qty: skuDef.qty },
+    grantedAt: new Date(),
+    coinsGranted: false,
+    roleGranted: false,
+    itemsGranted: false,
+    buffGranted: false,
+    themeGranted: false,
+    titleGranted: false,
+    announced: false,
+    // 管理員選擇不公告時記下來，info 才能顯示「—（略過）」而不是看起來像發送失敗的 ❌
+    announceSkipped: !announce,
+    dmSent: false,
+    manualGrantBy: interaction.user.id,
+  };
+
+  try {
+    await records.insertOne(record);
+  } catch (err) {
+    if (err && err.code === 11000) {
+      return interaction.editReply("這筆交易剛剛被別處發放了，請重新查詢。");
+    }
+    throw err;
+  }
+
+  let updates = {};
+  try {
+    updates = await grantSkuPerks(client, { record, skuDef, announce });
+  } catch (err) {
+    console.log(`[ERROR] sku grant perks: ${err.message}`.red);
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await records.updateOne(
+      { tradeNo },
+      { $set: { ...updates, updatedAt: new Date() } },
+    );
+  }
+
+  if (inputTradeNo && unmatched) {
+    await unmatched
+      .updateOne(
+        { tradeNo, resolved: { $ne: true } },
+        {
+          $set: {
+            resolved: true,
+            resolvedAt: new Date(),
+            resolvedBy: interaction.user.id,
+            resolvedTo: user.id,
+          },
+        },
+      )
+      .catch(() => {});
+  }
+
+  const lines = [
+    `✅ 已發 **${skuDef.name}** 給 <@${user.id}>（只發券，未給金幣 / 身分組 / 加成）。`,
+    `金額：NT$${amountNtd}　管道：${platformLabel(platform)}　tradeNo \`${tradeNo}\``,
+    `入袋：${updates.itemsGranted ? "✅" : "❌"}　DM：${updates.dmSent ? "✅" : "❌（對方可能關私訊）"}　公告：${
+      announce ? (updates.announced ? "✅" : "❌") : "— 已關閉"
+    }`,
+  ];
+  if (amountNtd < skuDef.minAmount) {
+    lines.push(
+      `-# ⚠️ 實付 NT$${amountNtd} 低於此商品定價 NT$${skuDef.minAmount}，券仍已發出。`,
+    );
+  }
+  if (!updates.itemsGranted) {
+    lines.push(
+      `-# ⚠️ 券沒進背包，請確認 grantSkuPerks 的 SKU_ITEM_FIELD 有對應到這個商品。`,
+    );
+  }
+
+  await interaction.editReply(lines.join("\n"));
 }
 
 async function runInfo(client, interaction) {
@@ -359,27 +546,39 @@ async function runInfo(client, interaction) {
     const tier = record.tierId
       ? (require("../../config").donation?.tiers || []).find((t) => t.id === record.tierId)
       : null;
+    // 商品（SKU）紀錄只會發道具，方案類 perk 一律 not-applicable。
+    // 商品可能已從 config 下架，名稱與數量退回發放當下寫進 record.perks 的快照。
+    const sku = record.skuId
+      ? skuById(record.skuId) || {
+          id: record.skuId,
+          name: record.perks?.name || "（已下架商品）",
+          qty: record.perks?.qty || 0,
+        }
+      : null;
     // 欄位名對齊 grantDonationPerks 真實寫入：dmSent / announced 是無 "Granted" 尾巴的特例
     // not-applicable（這個 tier 本來就沒這項 perk）顯示 — 而不是 ❌
     const FLAGS = [
-      { key: "coins",     field: "coinsGranted",  applies: () => !!tier?.coins },
-      { key: "role",      field: "roleGranted",   applies: () => !!tier?.role },
-      { key: "items",     field: "itemsGranted",  applies: () => tier?.items && Object.values(tier.items).some(Boolean) },
-      { key: "buff",      field: "buffGranted",   applies: () => tier?.luckBonus > 0 },
-      { key: "theme",     field: "themeGranted",  applies: () => !!tier?.themeId },
-      { key: "title",     field: "titleGranted",  applies: () => !!tier?.titleId },
+      { key: "coins",     field: "coinsGranted",  applies: () => !sku && !!tier?.coins },
+      { key: "role",      field: "roleGranted",   applies: () => !sku && !!tier?.role },
+      { key: "items",     field: "itemsGranted",  applies: () => (sku ? sku.qty > 0 : tier?.items && Object.values(tier.items).some(Boolean)) },
+      { key: "buff",      field: "buffGranted",   applies: () => !sku && tier?.luckBonus > 0 },
+      { key: "theme",     field: "themeGranted",  applies: () => !sku && !!tier?.themeId },
+      { key: "title",     field: "titleGranted",  applies: () => !sku && !!tier?.titleId },
       { key: "dm",        field: "dmSent",        applies: () => true },
-      { key: "announced", field: "announced",     applies: () => true },
+      { key: "announced", field: "announced",     applies: () => !record.announceSkipped },
     ];
     const flags = FLAGS.map((f) => {
       if (!f.applies()) return `— ${f.key}`;
       return `${record[f.field] ? "✅" : "❌"} ${f.key}`;
     }).join("　");
+    const kind = sku
+      ? `商品：${sku.name}`
+      : `Tier：${record.tierId || "(未達門檻)"}`;
     return interaction.editReply(
       [
         `**Donation Record \`${tradeNo}\`**`,
         `User：<@${record.userId}>　Guild：${record.guildId}`,
-        `Amount：NT$${record.amountNtd}　Platform：${record.platform}　Tier：${record.tierId || "(未達門檻)"}`,
+        `Amount：NT$${record.amountNtd}　Platform：${platformLabel(record.platform)}　${kind}`,
         `granted at ${grantedAt}` + (record.manualGrantBy ? `（人工補發 by <@${record.manualGrantBy}>）` : ""),
         `留言：${record.patronNote || "(空)"}`,
         ``,
@@ -393,7 +592,7 @@ async function runInfo(client, interaction) {
     return interaction.editReply(
       [
         `**Unmatched \`${tradeNo}\`** ${u.resolved ? "（已處理）" : "（待處理）"}`,
-        `Amount：NT$${u.amountNtd}　Platform：${u.platform}`,
+        `Amount：NT$${u.amountNtd}　Platform：${platformLabel(u.platform)}`,
         `Patron：${u.patronName || "(匿名)"}　留言：${u.patronNote || "(空)"}`,
         `code 嘗試：${u.codeAttempt || "(無)"}`,
         u.resolvedTo ? `補發給：<@${u.resolvedTo}>` : "",

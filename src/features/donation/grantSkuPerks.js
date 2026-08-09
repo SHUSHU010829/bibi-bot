@@ -7,6 +7,7 @@ const {
 const logger = require("../../utils/logger");
 const { trackError } = require("../../utils/errorTracker");
 const { donation } = require("../../config");
+const { platformLabel } = require("./code");
 
 // SKU 的 item → MiningProfiles 欄位對照。獨立小額商品發放走這裡，不碰依金額換算的方案回饋。
 const SKU_ITEM_FIELD = {
@@ -16,9 +17,10 @@ const SKU_ITEM_FIELD = {
 /**
  * 發放獨立商品（SKU）。目前僅有「連續通行證」。
  * 呼叫端已保證：tradeNo 冪等、實付金額 ≥ skuDef.minAmount、session 已翻 completed。
+ * announce=false 可關掉頻道公告（管理員補償性發券時用），DM 收據一律照發。
  * 回傳 record updates（哪些欄位翻 true）。
  */
-module.exports = async function grantSkuPerks(client, { record, skuDef }) {
+module.exports = async function grantSkuPerks(client, { record, skuDef, announce = true }) {
   const updates = {};
   const { userId, guildId } = record;
 
@@ -50,7 +52,7 @@ module.exports = async function grantSkuPerks(client, { record, skuDef }) {
     );
   }
 
-  if (donation?.announceChannelId) {
+  if (announce && donation?.announceChannelId) {
     try {
       await announceSku(client, record, skuDef);
       updates.announced = true;
@@ -87,11 +89,13 @@ async function sendSkuDm(client, record, skuDef) {
   if (!user) throw new Error(`user ${record.userId} not fetchable`);
 
   const THANKFUL_EMOJI = "<:thankful:1509781026761736282>";
+  // MANUAL- 開頭是管理員手動核發時合成的內部編號，對玩家沒有意義，不要顯示。
+  const showTradeNo = record.tradeNo && !record.tradeNo.startsWith("MANUAL-");
   const lines = [
     `# ${THANKFUL_EMOJI} 購買成功，謝謝你的支持！`,
     "",
-    `金額：**NT$${record.amountNtd}**　·　平台：${record.platform === "ecpay" ? "綠界" : "歐付寶"}`,
-    `交易編號：\`${record.tradeNo}\``,
+    `金額：**NT$${record.amountNtd}**　·　平台：${platformLabel(record.platform)}`,
+    ...(showTradeNo ? [`交易編號：\`${record.tradeNo}\``] : []),
     "",
     `## 🎟️ ${skuDef.name}`,
     `- 已放入你的背包 ×${skuDef.qty}`,
