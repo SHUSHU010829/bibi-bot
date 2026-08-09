@@ -34,6 +34,29 @@ function roleName(tier) {
   return tier?.role === "vipDonor" ? "滿腹詩舒" : "贈舒人";
 }
 
+// 付款平台顯示名。webhook 只會寫入 ecpay / opay，manual 用於管理員手動核發
+// （街口、轉帳等不經金流的管道）。未知值一律歸到「其他管道」，不要猜成歐付寶。
+const PLATFORM_LABELS = {
+  ecpay: "綠界",
+  opay: "歐付寶",
+  manual: "其他管道",
+};
+
+function platformLabel(platform) {
+  return PLATFORM_LABELS[platform] || PLATFORM_LABELS.manual;
+}
+
+/** 商品（SKU）定義；找不到時回 null。回傳物件帶上 id 方便呼叫端直接用。 */
+function skuById(skuId) {
+  const def = donation?.skus?.[skuId];
+  return def ? { id: skuId, ...def } : null;
+}
+
+/** 全部商品（SKU），依 config 宣告順序。 */
+function skuList() {
+  return Object.entries(donation?.skus || {}).map(([id, def]) => ({ id, ...def }));
+}
+
 /** 依金額找方案；找不到時回 null（< 50 元 或設定錯誤）。 */
 function tierForAmount(amountNtd) {
   const tiers = donation?.tiers || [];
@@ -86,4 +109,13 @@ function coinsForAmount(amountNtd) {
   return 0;
 }
 
-module.exports = { generateCode, extractCode, roleName, tierForAmount, coinsForAmount };
+module.exports = {
+  generateCode,
+  extractCode,
+  roleName,
+  platformLabel,
+  skuById,
+  skuList,
+  tierForAmount,
+  coinsForAmount,
+};
