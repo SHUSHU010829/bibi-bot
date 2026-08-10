@@ -4,14 +4,14 @@
     "tiers": {
       "tier1": {
         "miningLuckBonus": 0.05,
-        "dailyFreeMines": 8,
-        "dailyFreeFishes": 5,
+        "dailyFreeMines": 10,
+        "dailyFreeFishes": 7,
         "workCdReductionMs": 1800000
       },
       "tier2": {
         "miningLuckBonus": 0.1,
-        "dailyFreeMines": 16,
-        "dailyFreeFishes": 12,
+        "dailyFreeMines": 20,
+        "dailyFreeFishes": 15,
         "workCdReductionMs": 1800000,
         "staminaBonus": 1,
         "depositSlotBonus": 2,
@@ -19,8 +19,8 @@
       },
       "tier3": {
         "miningLuckBonus": 0.15,
-        "dailyFreeMines": 30,
-        "dailyFreeFishes": 20,
+        "dailyFreeMines": 36,
+        "dailyFreeFishes": 25,
         "workCdReductionMs": 1800000,
         "staminaBonus": 2,
         "depositSlotBonus": 2,
