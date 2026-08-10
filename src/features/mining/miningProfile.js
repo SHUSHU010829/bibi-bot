@@ -1,5 +1,6 @@
 // 集中管理 MiningProfiles 的預設欄位與讀取，避免 schema 預設散落各處。
 const { mining, fishing, farming, dungeon } = require("../../config");
+const { EQUIP_SLOTS } = require("./equipDurability");
 
 function defaultProfile(userId, guildId) {
   return {
@@ -9,9 +10,11 @@ function defaultProfile(userId, guildId) {
     pickaxe: "wood",
     pickaxe_durability: null,
     pickaxe_max_durability: null,
+    pickaxe_max_durability_bonus: 0,
     weapon: "fist",
     weapon_durability: null,
     weapon_max_durability: null,
+    weapon_max_durability_bonus: 0,
     luck_potion_uses: 0,
     whetstone_inferior_count: 0,
     repair_tools: { iron: 0, steel: 0, gold: 0, mythril: 0, diamond: 0, legendary: 0 },
@@ -64,6 +67,7 @@ function defaultProfile(userId, guildId) {
     fishing_rod: "bamboo",
     rod_durability: null,
     rod_max_durability: null,
+    rod_max_durability_bonus: 0,
     active_food_buffs: [],
     food_bag: [],
     hp_max: dungeon?.hp?.baseMax ?? 100,
@@ -73,6 +77,7 @@ function defaultProfile(userId, guildId) {
     shield: null,
     shield_durability: null,
     shield_max_durability: null,
+    shield_max_durability_bonus: 0,
     hp_potion_small: 0,
     hp_potion_medium: 0,
     hp_potion_large: 0,
@@ -204,6 +209,22 @@ function normalize(doc) {
       doc.shield_max_durability = null;
     }
   }
+  // 上限欄位拆成 base + bonus 之前，*_max_durability 裡混著維修工具 maxDelta 與磨石 -10。
+  // 舊文件沒有 bonus 欄位：減掉 config 原始上限就還原出當初累積的 delta，base 復原成 config 值。
+  // 只在記憶體拆；實際落盤交給下一次寫入路徑（維修工具 / 磨石 / 打造）$set 絕對值時完成，
+  // 所以拆分結果必須是冪等的——已有 bonus 欄位的文件一律跳過，不能再減一次。
+  for (const spec of Object.values(EQUIP_SLOTS)) {
+    if (typeof doc[spec.bonusField] === "number") continue;
+    const equippedId = doc[spec.idField];
+    const configMax = equippedId ? spec.defs()[equippedId]?.durability ?? null : null;
+    if (configMax != null && typeof doc[spec.maxField] === "number") {
+      doc[spec.bonusField] = doc[spec.maxField] - configMax;
+      doc[spec.maxField] = configMax;
+    } else {
+      doc[spec.bonusField] = 0;
+    }
+  }
+
   doc.hp_potion_small ??= 0;
   doc.hp_potion_medium ??= 0;
   doc.hp_potion_large ??= 0;
