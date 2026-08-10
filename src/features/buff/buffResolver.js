@@ -27,6 +27,7 @@ const { MONEY_EMOJI } = require("../../constants/coin");
 const { donation, levelSystem, guildClub, fishing } = require("../../config");
 const buildingService = require("../guild_club/buildingService");
 const worldEventBuffs = require("../world_event/worldEventBuffs");
+const donationCdPerks = require("../donation/donationCdPerks");
 
 // ── 公會共享 buff ────────────────────────────────────
 // 讀取使用者所屬公會 + 等級對應的 buff 清單，回傳結構化資料。
@@ -145,16 +146,6 @@ function applyFishingCdReduction({ baseCdMs, fixedCdMs, cdPct }) {
   return { actualCdMs: Math.max(60000, cdMs), totalCdPct };
 }
 
-// 贊助身分組的釣魚冷卻固定減免（VIP 優先，取單一最高檔，不與一般贊助疊加）。
-function donationFishingCdMs(member) {
-  if (!member?.roles?.cache) return 0;
-  const cfg = donation?.fishingCdReductionMs || {};
-  const ids = donation?.roleIds || {};
-  if (ids.vipDonor && member.roles.cache.has(ids.vipDonor)) return cfg.vipDonor || 0;
-  if (ids.donor && member.roles.cache.has(ids.donor)) return cfg.donor || 0;
-  return 0;
-}
-
 // 釣魚冷卻各來源即時解析。供 fishService 套用、/加成 顯示。
 // opts.profile / opts.gc 省略時自行讀取；呼叫端已有就傳入避免重複查詢。
 async function getFishingResolve(client, userId, guildId, member, opts = {}) {
@@ -165,7 +156,7 @@ async function getFishingResolve(client, userId, guildId, member, opts = {}) {
 
   // Twitch 的釣魚冷卻減免已改為每日免冷卻次數（見 freeActions.js），比照挖礦。
   const rodCdMs = rod.cdReductionMs || 0;
-  const donationCdMs = donationFishingCdMs(member);
+  const donationCdMs = donationCdPerks.donationCdMs("fish", member);
 
   const guildCdPct = gc.buffsByType.fishing_cooldown_pct || 0;
   const worldCdPct = worldEventBuffs.getCachedBuffs().fishing_cooldown_pct || 0;
@@ -373,9 +364,12 @@ async function roleBuffSummary(client, userId, guildId, member) {
       luck > 0
         ? [`🍀 挖礦幸運 +${Math.round(luck * 100)}%（<t:${Math.floor(exp / 1000)}:R>）`]
         : [];
-    const donationCdMs = donationFishingCdMs(member);
-    if (donationCdMs > 0)
-      lines.push(`🎣 釣魚冷卻 -${Math.round(donationCdMs / 60000)} 分`);
+    const donationMineCdMs = donationCdPerks.donationCdMs("mine", member);
+    if (donationMineCdMs > 0)
+      lines.push(`⏱️ 挖礦冷卻 -${Math.round(donationMineCdMs / 60000)} 分`);
+    const donationFishCdMs = donationCdPerks.donationCdMs("fish", member);
+    if (donationFishCdMs > 0)
+      lines.push(`🎣 釣魚冷卻 -${Math.round(donationFishCdMs / 60000)} 分`);
     if (lines.length === 0) lines.push("・專屬身分組與外觀");
     groups.push({ header: `💖 ${hasVip ? "VIP 贊助者" : "贊助者"}`, lines });
   }

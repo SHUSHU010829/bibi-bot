@@ -11,6 +11,10 @@
       "donor": 300000,
       "vipDonor": 600000
     },
+    "miningCdReductionMs": {
+      "donor": 300000,
+      "vipDonor": 600000
+    },
     "themes": {
       "donor": "theme_donor"
     },
