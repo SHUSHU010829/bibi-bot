@@ -139,7 +139,8 @@
       "magic": {
         "name": "魔晶鎬",
         "emoji": "🔮",
-        "cdReductionMs": 4500000,
+        "cdReductionMs": 3600000,
+        "cdReductionPct": 25,
         "luckBonus": 0.15,
         "qtyBonus": 2,
         "durability": 100

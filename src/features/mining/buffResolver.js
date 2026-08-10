@@ -65,6 +65,14 @@ function resolve(profile, member) {
   const foodLuckBonus = getFoodLuckBonus(profile);
   if (foodLuckBonus > 0) luckBonus += foodLuckBonus;
 
+  // 高階鎬子的比例減免：在固定減免（鎬子 + Twitch）扣完後才乘。
+  // 固定減免全部相加會逼近 base（魔晶鎬 75 分 + Twitch 45 分 = 120 分 = base），
+  // 讓重度加成的玩家一路撞到 60 秒下限；改成比例後永遠是剩餘時間的百分比，不會歸零。
+  // 與公會 / 世界事件 / 食物那組百分比（buff/buffResolver.js 的 70% 上限池）分開乘算，
+  // 免得升級鎬子的收益被那個上限吃掉。
+  const pickaxeCdPct = pdef.cdReductionPct || 0;
+  if (pickaxeCdPct > 0) cdMs = Math.floor((cdMs * (100 - pickaxeCdPct)) / 100);
+
   // CD 下限保護（避免負數 / 零）
   const actualCdMs = Math.max(cdMs, 60 * 1000);
 
