@@ -4,7 +4,6 @@ const server = require("./server");
 const voting = require("./voting.json");
 const suggestion = require("./suggestion.json");
 const level = require("./level.json");
-const steamDeals = require("./steamDeals.json");
 const freeGames = require("./freeGames.json");
 const twitch = require("./twitch.json");
 const casino = require("./casino.json");
@@ -53,7 +52,6 @@ module.exports = {
   voting: voting,
   ...suggestion,
   ...level,
-  ...steamDeals,
   ...freeGames,
   ...twitch,
   ...casino,

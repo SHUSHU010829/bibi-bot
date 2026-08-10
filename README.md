@@ -2,7 +2,7 @@
 
 ![Repobeats](https://repobeats.axiom.co/api/embed/07fb82330959889996315cafa478ae498f152b45.svg "Repobeats analytics image")
 
-一隻為單一 Discord 社群量身打造的多功能機器人，整合社群治理（票務 / 投票 / 動態語音 / 身份組 / 遊戲房）、外部資訊推播（Steam 特價、喜加一、Twitch 開台、周表討論串、每日早安卡），以及一整套遊戲化經濟系統（金幣 / 等級 / 賭場 / 股市 / 挖礦 / 釣魚 / 農場 / 世界王 / 公會）。
+一隻為單一 Discord 社群量身打造的多功能機器人，整合社群治理（票務 / 投票 / 動態語音 / 身份組 / 遊戲房）、外部資訊推播（喜加一、Twitch 開台、周表討論串、每日早安卡），以及一整套遊戲化經濟系統（金幣 / 等級 / 賭場 / 股市 / 挖礦 / 釣魚 / 農場 / 世界王 / 公會）。
 
 > 📖 **完整功能介紹與操作說明請見文件網站：<https://docs.bibi.shushu.tw/docs>**
 
@@ -25,7 +25,7 @@
 
 - **集中化社群治理**：以「申請 → 審核 → 投票 → 自動結算」流程規範遊戲頻道的開設與封存，避免管理員主觀決策。
 - **降低管理員負擔**：動態語音頻道、Ticket、身份組、建議蒐集、遊戲房開關等流程全部交由 bot 自動化處理。
-- **內容主動觸達**：將 Steam 特價、限時免費遊戲、Twitch 開台、周表討論串、每日早安等資訊在固定時間推播到指定頻道，提升社群活躍度。
+- **內容主動觸達**：將限時免費遊戲、Twitch 開台、周表討論串、每日早安等資訊在固定時間推播到指定頻道，提升社群活躍度。
 - **遊戲化黏著度**：用金幣經濟、等級簽到、賭場、股市、挖礦 / 釣魚 / 農場 / 世界王 / 公會等長線玩法，把社群活躍度轉成可消費的循環。
 - **單一伺服器最佳化**：所有設定集中在 `src/config/`（透過 `src/config/index.js` 合併匯出），搭配 `.env` 即可快速複製到其他伺服器使用。
 
@@ -110,7 +110,7 @@ src/
 │   ├── guild_club/        # 公會、倉庫、建築、鐵匠鋪、宴會、聊天 thread
 │   ├── stock/ market/ marketplace/ barter/   # 股市、市集、拍賣、以物易物
 │   ├── shop/ buff/        # 商品結算、buff 倍率（統一走 buffResolver）
-│   ├── steamDeals/ freeGames/ twitch/ rssWeeklyThreads/   # 各推播 / 討論串管線
+│   ├── freeGames/ twitch/ rssWeeklyThreads/   # 各推播 / 討論串管線
 │   ├── quests/ welfare/ donation/ invite/ survey/         # 任務、福利、抖內、邀請、問卷
 │   └── voting/ ticket/ gameRoom/ recommendation/ …
 ├── cron/                  # 排程任務
@@ -143,8 +143,7 @@ npm install
 | --- | --- |
 | `BOT_TOKEN` | Discord Developer Portal 取得的 Bot Token |
 | `MONGO_PASSWORD` | MongoDB Atlas 密碼 |
-| `DISCORD_DEALS_CHANNEL_ID` | Steam 特價推播頻道（留空則用 `config/steamDeals.json`） |
-| `STEAM_DEALS_*` | 排程、暫停、Dry-run、首啟即跑 |
+| `DISCORD_DEALS_CHANNEL_ID` | 喜加一推播頻道的舊變數名（`DISCORD_FREE_GAMES_CHANNEL_ID` 留空時沿用） |
 | `DISCORD_FREE_GAMES_CHANNEL_ID`、`FREE_GAMES_*` | 喜加一推播控制 |
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET`、`TWITCH_*` | Twitch 開台通知（於 [Twitch Dev Console](https://dev.twitch.tv/console/apps) 取得） |
 
@@ -158,7 +157,7 @@ npm install
 - `ticket.categoryId`、`ticket.supportRoleId`（`server.json`）
 - `voting.json`：`votingChannelId`、`passThresholds`、`weights`
 - `roles[]`（`server.json`，提供身份組面板選項）
-- 各推播頻道：`steamDeals.json` / `freeGames.json` / `twitch.json` 等
+- 各推播頻道：`freeGames.json` / `twitch.json` 等
 
 ### 4. 部署 Slash Command
 
@@ -208,7 +207,6 @@ docker run -d --env-file .env --name bibi-bot discord-bot
 
 | 功能 | 模組 | 推播頻道 |
 | --- | --- | --- |
-| Steam 特價 | `features/steamDeals`（小黑盒 RSS → Steam API → Embed） | 特價喜加一 │ 💰 |
 | 喜加一限免 | `features/freeGames`（GamerPower API） | 特價喜加一 │ 💰 |
 | Twitch 開台通知 | `features/twitch`（Helix App Token + 去重） | `twitch.json` 指定頻道 |
 | 周表討論串 | `features/rssWeeklyThreads`、`messageCreate/weeklyScheduleForward.js` | 每週預建 thread + 轉貼來源頻道的周表圖 |
@@ -286,7 +284,6 @@ node src/tool/delete-commands.js  # 清空所有指令（謹慎使用）
 | 用途 | URL |
 | --- | --- |
 | 台灣行事曆 | <https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/2025.json> |
-| Steam 特價來源 | 小黑盒 RSS（`https://discord-news.zeabur.app/xiaoheihe/...`） |
 | Steam 商品資訊 | Steam Store API |
 | 喜加一限免 | [GamerPower API](https://www.gamerpower.com/api-read) |
 | Twitch 開台 | [Twitch Helix API](https://dev.twitch.tv/docs/api/)（App Access Token） |
@@ -297,7 +294,7 @@ node src/tool/delete-commands.js  # 清空所有指令（謹慎使用）
 ## 維護建議
 
 1. **定期備份 MongoDB**：投票、食物、訊息統計等資料皆存於此。
-2. **監控 cron**：投票結算、Steam 特價、喜加一、早安卡都仰賴 `node-cron`，bot 重啟後排程會重建。
+2. **監控 cron**：投票結算、喜加一、早安卡都仰賴 `node-cron`，bot 重啟後排程會重建。
 3. **依社群規模調整門檻**：`voting.passThresholds`、`voting.weights`、`activeHours` 都可在不重啟程式的情況下用 PR / 重新部署修改。
 4. **Slash Command 變更後執行 `deploy-commands`**：否則 Discord 端不會看到新指令。
 5. **動態語音頻道資料僅在記憶體**：若有計畫長時間維運，可考慮持久化到 MongoDB 以便在重啟時恢復。

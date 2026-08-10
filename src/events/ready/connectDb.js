@@ -40,9 +40,6 @@ module.exports = async (client) => {
     // Suggestion panels collection (建議系統面板設定 + 排程刪除)
     const suggestionPanelsCollection = database.collection("SuggestionPanels");
 
-    // Steam 特價推播去重
-    const steamDealsCollection = database.collection("SteamDealsPushed");
-
     // 喜加一 (限免) 推播去重
     const freeGamesCollection = database.collection("FreeGamesPushed");
 
@@ -298,7 +295,6 @@ module.exports = async (client) => {
     client.votingProposalsCollection = votingProposalsCollection;
     client.rolePanelsCollection = rolePanelsCollection;
     client.suggestionPanelsCollection = suggestionPanelsCollection;
-    client.steamDealsCollection = steamDealsCollection;
     client.freeGamesCollection = freeGamesCollection;
     client.userLevelsCollection = userLevelsCollection;
     client.levelTransactionsCollection = levelTransactionsCollection;
