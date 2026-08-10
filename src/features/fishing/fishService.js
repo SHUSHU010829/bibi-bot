@@ -192,11 +192,22 @@ async function fish(client, { userId, guildId, location = "stream", member, user
   // 世界事件「漁港補給」buff：整數百分比 → 小數
   const worldEventBuffs = require("../world_event/worldEventBuffs");
   const worldFishSuccess = (worldEventBuffs.getCachedBuffs().fishing_success_rate_pct || 0) / 100;
+  // 公會漁港 Lv3 與宴會的 fishing_success_rate_pct。整批釣魚沿用 batchCtx.gc，
+  // 單次釣魚在這裡讀一次並往下傳給 getFishingResolve，不重複查公會。
+  const buffResolver = require("../buff/buffResolver");
+  const gc = batchCtx?.gc || (await buffResolver.getGuildClubBuffs(client, userId, guildId));
+  const guildFishSuccess = (gc.buffsByType.fishing_success_rate_pct || 0) / 100;
   // 限時活動「魚汛」上鉤加成（如夏日魚汛祭 +12%）
   const eventFishSuccess = eventEngine.getFishingSuccessBonus();
   const successRate = Math.min(
     cap,
-    base + (rodDef.successBonus || 0) + (foodFish.success || 0) + netBonus + worldFishSuccess + eventFishSuccess
+    base +
+      (rodDef.successBonus || 0) +
+      (foodFish.success || 0) +
+      netBonus +
+      worldFishSuccess +
+      guildFishSuccess +
+      eventFishSuccess
   );
 
   // 釣魚計次都會消耗一次 fish_fortune（不論成功失敗），手感 buff 是「次數制」
@@ -253,8 +264,7 @@ async function fish(client, { userId, guildId, location = "stream", member, user
 
   // ── 成功上鉤 ──：先算「魚 / 非魚」共用的冷卻、耐久、漁網消耗
   // 冷卻減免（釣竿 + Twitch 訂閱 + 公會建築/等級/宴會 + 世界事件）統一走 buffResolver，與挖礦同構。
-  const buffResolver = require("../buff/buffResolver");
-  const fishingCd = await buffResolver.getFishingResolve(client, userId, guildId, member, { profile, gc: batchCtx?.gc });
+  const fishingCd = await buffResolver.getFishingResolve(client, userId, guildId, member, { profile, gc });
   const newCooldownAt = usedFreeFish ? profile.fish_cooldown_at : now + fishingCd.actualCdMs;
 
   const inc = { fish_count_total: 1 };

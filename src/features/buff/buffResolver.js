@@ -24,10 +24,10 @@ const {
   getFoodMiningCdBonus,
 } = require("../fishing/cookService");
 const { MONEY_EMOJI } = require("../../constants/coin");
-const { donation, levelSystem, guildClub, fishing } = require("../../config");
+const { donation, levelSystem, guildClub, fishing, boosterPerks } = require("../../config");
 const buildingService = require("../guild_club/buildingService");
 const worldEventBuffs = require("../world_event/worldEventBuffs");
-const donationCdPerks = require("../donation/donationCdPerks");
+const roleCdPerks = require("./roleCdPerks");
 
 // ── 公會共享 buff ────────────────────────────────────
 // 讀取使用者所屬公會 + 等級對應的 buff 清單，回傳結構化資料。
@@ -86,7 +86,7 @@ async function getEffectiveAtk(client, userId, guildId) {
 }
 
 // ── LUCK / 挖礦數量 / CD ──────────────────────────────
-// 沿用 mining/buffResolver.resolve（鎬子 + 藥水 + Twitch + 抖內，已套 luckCap）。
+// 沿用 mining/buffResolver.resolve（鎬子 + 藥水 + Twitch + 抖內 + 伺服器加成，已套 luckCap）。
 // 公會 luck / qty 加成在這層加總，與 donation / event / food 同列為「luckCap 外」追加。
 // opts.profile / opts.gc 省略時自行讀取；連續挖礦已握有玩家文件與（整批穩定的）公會 buff
 // 時傳入，避免每次迭代重複 getOrCreate（整份文件讀寫）與公會查詢。
@@ -137,7 +137,7 @@ async function getEffectiveCdMs(client, userId, guildId, member, source = "mine"
 }
 
 // ── 釣魚冷卻 ──────────────────────────────────────────
-// 固定毫秒（釣竿 + Twitch 訂閱 + 贊助身分組）先扣，再套百分比（公會建築/等級/宴會 +
+// 固定毫秒（釣竿 + 贊助身分組 + 伺服器加成）先扣，再套百分比（公會建築/等級/宴會 +
 // 世界事件 + 食物 buff），最後保底 60 秒。與挖礦同構：存來源、用時即時算，不寫死進 DB。
 function applyFishingCdReduction({ baseCdMs, fixedCdMs, cdPct }) {
   let cdMs = (baseCdMs || 0) - (fixedCdMs || 0);
@@ -156,7 +156,7 @@ async function getFishingResolve(client, userId, guildId, member, opts = {}) {
 
   // Twitch 的釣魚冷卻減免已改為每日免冷卻次數（見 freeActions.js），比照挖礦。
   const rodCdMs = rod.cdReductionMs || 0;
-  const donationCdMs = donationCdPerks.donationCdMs("fish", member);
+  const roleCdMs = roleCdPerks.roleCdMs("fish", member);
 
   const guildCdPct = gc.buffsByType.fishing_cooldown_pct || 0;
   const worldCdPct = worldEventBuffs.getCachedBuffs().fishing_cooldown_pct || 0;
@@ -164,11 +164,11 @@ async function getFishingResolve(client, userId, guildId, member, opts = {}) {
 
   const { actualCdMs, totalCdPct } = applyFishingCdReduction({
     baseCdMs: fishing?.cooldownMs || 0,
-    fixedCdMs: rodCdMs + donationCdMs,
+    fixedCdMs: rodCdMs + roleCdMs,
     cdPct: guildCdPct + worldCdPct + foodCdPct,
   });
 
-  return { actualCdMs, rodCdMs, donationCdMs, guildCdPct, worldCdPct, foodCdPct, totalCdPct };
+  return { actualCdMs, rodCdMs, roleCdMs, guildCdPct, worldCdPct, foodCdPct, totalCdPct };
 }
 
 // ── INCOME 倍率（查詢用，套用仍在 grantCoins）────────────
@@ -334,11 +334,18 @@ async function roleBuffSummary(client, userId, guildId, member) {
   // ── 伺服器加成（Booster）──
   const sbCoin = getCoinServerBoostBonus(member);
   const sbXp = xpServerBoostMultiplier(member);
-  if (sbCoin.multiplier > 1 || sbXp.multiplier > 1) {
+  const sbMineCdMs = roleCdPerks.boosterCdMs("mine", member);
+  const sbFishCdMs = roleCdPerks.boosterCdMs("fish", member);
+  if (sbCoin.multiplier > 1 || sbXp.multiplier > 1 || sbMineCdMs > 0 || sbFishCdMs > 0) {
     const lines = [];
     if (sbXp.multiplier > 1) lines.push(`📈 經驗 ×${sbXp.multiplier}`);
     if (sbCoin.multiplier > 1) lines.push(`${MONEY_EMOJI} 金幣 ×${sbCoin.multiplier}`);
-    groups.push({ header: `🚀 ${sbCoin.name || sbXp.name || "伺服器加成"}`, lines });
+    if (sbMineCdMs > 0) lines.push(`⏱️ 挖礦冷卻 -${Math.round(sbMineCdMs / 60000)} 分`);
+    if (sbFishCdMs > 0) lines.push(`🎣 釣魚冷卻 -${Math.round(sbFishCdMs / 60000)} 分`);
+    groups.push({
+      header: `🚀 ${sbCoin.name || sbXp.name || boosterPerks?.name || "伺服器加成"}`,
+      lines,
+    });
   }
 
   // ── 贊助（Donor / VIP Donor）──
@@ -364,10 +371,10 @@ async function roleBuffSummary(client, userId, guildId, member) {
       luck > 0
         ? [`🍀 挖礦幸運 +${Math.round(luck * 100)}%（<t:${Math.floor(exp / 1000)}:R>）`]
         : [];
-    const donationMineCdMs = donationCdPerks.donationCdMs("mine", member);
+    const donationMineCdMs = roleCdPerks.donationCdMs("mine", member);
     if (donationMineCdMs > 0)
       lines.push(`⏱️ 挖礦冷卻 -${Math.round(donationMineCdMs / 60000)} 分`);
-    const donationFishCdMs = donationCdPerks.donationCdMs("fish", member);
+    const donationFishCdMs = roleCdPerks.donationCdMs("fish", member);
     if (donationFishCdMs > 0)
       lines.push(`🎣 釣魚冷卻 -${Math.round(donationFishCdMs / 60000)} 分`);
     if (lines.length === 0) lines.push("・專屬身分組與外觀");

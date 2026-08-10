@@ -1,10 +1,10 @@
 const { mining } = require("../../config");
 const twitchPerks = require("./twitchPerks");
 const eventEngine = require("../event/eventEngine");
-const donationCdPerks = require("../donation/donationCdPerks");
+const roleCdPerks = require("../buff/roleCdPerks");
 const { getFoodLuckBonus, consumeMineLuckUse } = require("../fishing/cookService");
 
-// 整合鎬子 / 幸運藥水 / Twitch 訂閱者權益 / 贊助身分組。
+// 整合鎬子 / 幸運藥水 / Twitch 訂閱者權益 / 贊助身分組 / 伺服器加成。
 // CD 縮短券改為冷卻中於 /背包 主動使用（見 mineService.useCdTicket），不在挖礦時自動消耗。
 // 回傳 { luckBonus, qtyBonus, actualCdMs, consume: { usePotion } }。
 function resolve(profile, member) {
@@ -35,9 +35,9 @@ function resolve(profile, member) {
     luckBonus += perks.miningLuckBonus || 0;
   }
 
-  // 贊助身分組的挖礦冷卻固定減免（與釣魚同一份判定，VIP 優先不疊加）
-  const donationCdMs = donationCdPerks.donationCdMs("mine", member);
-  cdMs -= donationCdMs;
+  // 身分組的挖礦冷卻固定減免（贊助 + 伺服器加成，與釣魚同一份判定）
+  const roleCdMs = roleCdPerks.roleCdMs("mine", member);
+  cdMs -= roleCdMs;
 
   // luck 全域上限
   if (luckBonus > cap) luckBonus = cap;
@@ -85,7 +85,7 @@ function resolve(profile, member) {
     eventQtyBonus,
     twitchLuckBonus,
     twitchTierKey,
-    donationCdMs,
+    roleCdMs,
     foodLuckBonus,
     consume: { usePotion },
   };
