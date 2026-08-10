@@ -228,8 +228,8 @@
         "name": "魔晶礦",
         "emoji": "🔮",
         "kind": "backpack",
-        "withdrawDefault": 2,
-        "withdrawRange": [
+        "perTakeMaxDefault": 2,
+        "perTakeMaxRange": [
           1,
           5
         ],
@@ -240,8 +240,8 @@
         "name": "魔晶合金",
         "emoji": "✨",
         "kind": "guild_only",
-        "withdrawDefault": 0,
-        "withdrawRange": [
+        "perTakeMaxDefault": 0,
+        "perTakeMaxRange": [
           0,
           0
         ],

@@ -15,6 +15,7 @@ const { guildWarehouse } = require("../../../config");
 const { COIN_EMOJI } = require("../../../constants/coin");
 const {
   itemDef,
+  allItemIds,
   capacityFor,
   perTakeMaxFor,
   resolveSettings,
@@ -459,18 +460,37 @@ const buildTakeModal = ({ userId, club, itemId, maxTake }) => {
   return modal;
 };
 
-const PTM_GROUPS = {
-  mining: { label: "⛏️ 礦石", kind: "backpack" },
-  farming: { label: "🌾 作物", kind: "veggie_bag" },
-  fish: { label: "🎣 魚類", kind: "fish_bag" },
+const PTM_MODAL_MAX_ROWS = 5;
+
+const PTM_KINDS = [
+  { key: "mining", name: "礦石", emoji: "⛏️", kind: "backpack" },
+  { key: "farming", name: "作物", emoji: "🌾", kind: "veggie_bag" },
+  { key: "fish", name: "魚類", emoji: "🎣", kind: "fish_bag" },
+];
+
+// Modal 最多 5 個 ActionRow，一個分類的物品超過 5 種就自動切頁（key 補 -2、-3…），
+// 否則 Discord 會整個拒收（魔晶礦讓礦石變成 6 種時就踩過一次）。
+const buildPtmGroups = () => {
+  const groups = {};
+  for (const g of PTM_KINDS) {
+    const ids = allItemIds().filter((id) => itemDef(id).kind === g.kind);
+    const pages = Math.max(1, Math.ceil(ids.length / PTM_MODAL_MAX_ROWS));
+    for (let page = 1; page <= pages; page++) {
+      const suffix = pages > 1 ? `（${page}/${pages}）` : "";
+      groups[page === 1 ? g.key : `${g.key}-${page}`] = {
+        label: `${g.emoji} ${g.name}${suffix}`,
+        emoji: g.emoji,
+        buttonLabel: `${g.name}${pages > 1 ? ` ${page}` : ""}`,
+        items: ids.slice((page - 1) * PTM_MODAL_MAX_ROWS, page * PTM_MODAL_MAX_ROWS),
+      };
+    }
+  }
+  return groups;
 };
 
-const itemsInPtmGroup = (group) => {
-  const def = PTM_GROUPS[group];
-  if (!def) return [];
-  const { allItemIds } = require("./warehouseSettings");
-  return allItemIds().filter((id) => itemDef(id).kind === def.kind);
-};
+const PTM_GROUPS = buildPtmGroups();
+
+const itemsInPtmGroup = (group) => PTM_GROUPS[group]?.items || [];
 
 const buildPerTakeMaxPickerContainer = ({ userId, club }) => {
   const container = new ContainerBuilder()
@@ -486,24 +506,19 @@ const buildPerTakeMaxPickerContainer = ({ userId, club }) => {
           "-# 留空即恢復預設值。"
       )
     );
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`gcw_ptmopen_${userId}_mining`)
-      .setLabel("礦石")
-      .setEmoji("⛏️")
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(`gcw_ptmopen_${userId}_farming`)
-      .setLabel("作物")
-      .setEmoji("🌾")
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(`gcw_ptmopen_${userId}_fish`)
-      .setLabel("魚類")
-      .setEmoji("🎣")
-      .setStyle(ButtonStyle.Primary)
-  );
-  container.addActionRowComponents(row);
+  const entries = Object.entries(PTM_GROUPS);
+  for (let i = 0; i < entries.length; i += 5) {
+    const row = new ActionRowBuilder().addComponents(
+      ...entries.slice(i, i + 5).map(([group, def]) =>
+        new ButtonBuilder()
+          .setCustomId(`gcw_ptmopen_${userId}_${group}`)
+          .setLabel(def.buttonLabel)
+          .setEmoji(def.emoji)
+          .setStyle(ButtonStyle.Primary)
+      )
+    );
+    container.addActionRowComponents(row);
+  }
   return container;
 };
 
