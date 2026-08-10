@@ -6,7 +6,20 @@ const cfg = () => guildBanquet || {};
 
 const isEnabled = () => !!cfg().enabled;
 
-const menuDef = (menuId) => cfg().menus?.[menuId] || null;
+// buffs 統一成 [{type,value}]：resolver / view 都用 for-of 與 .map 讀它，
+// 設定寫成 { type: value } 物件時會直接炸掉面板。
+const normalizeBuffs = (buffs) =>
+  Array.isArray(buffs)
+    ? buffs
+    : Object.entries(buffs || {}).map(([type, value]) => ({ type, value }));
+
+const normalizeMenu = (menu) =>
+  menu ? { ...menu, buffs: normalizeBuffs(menu.buffs) } : null;
+
+const menuDef = (menuId) => normalizeMenu(cfg().menus?.[menuId]);
+
+const menuEntries = () =>
+  Object.entries(cfg().menus || {}).map(([menuId, menu]) => [menuId, normalizeMenu(menu)]);
 
 const allMenuIds = () => Object.keys(cfg().menus || {});
 
@@ -219,6 +232,7 @@ async function startBanquet(client, { userId, guildId, menuId }) {
 module.exports = {
   isEnabled,
   menuDef,
+  menuEntries,
   allMenuIds,
   requiredFarmKitchenLevel,
   cooldownMs,

@@ -11,7 +11,7 @@ const {
   StringSelectMenuOptionBuilder,
 } = require("discord.js");
 
-const { guildForge, guildBuildings, guildWarehouse, guildBanquet } = require("../../config");
+const { guildForge, guildBuildings, guildWarehouse } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const guildClubService = require("./guildClubService");
 const forgeService = require("./forgeService");
@@ -322,7 +322,7 @@ function buildBuildingsPanel({ viewerId, club, warehouseRows, isManager }) {
   // 農膳坊滿級 → 顯示宴會狀態 + 召集按鈕（manager only）
   const farmKitchenLv = bl.farm_kitchen || 0;
   if (
-    guildBanquet?.enabled &&
+    banquetService.isEnabled() &&
     farmKitchenLv >= banquetService.requiredFarmKitchenLevel()
   ) {
     c.addSeparatorComponents(new SeparatorBuilder());
@@ -435,8 +435,8 @@ function buildBanquetMenuPanel({ viewerId, club, warehouseRows }) {
   const wh = {};
   for (const r of warehouseRows || []) wh[r.item_id] = r.available_qty || 0;
 
-  const menus = guildBanquet?.menus || {};
-  for (const [menuId, menu] of Object.entries(menus)) {
+  const menus = banquetService.menuEntries();
+  for (const [, menu] of menus) {
     const matList = [];
     const lackList = [];
     for (const [itemId, need] of Object.entries(menu.materials || {})) {
@@ -460,7 +460,7 @@ function buildBanquetMenuPanel({ viewerId, club, warehouseRows }) {
   const sel = new StringSelectMenuBuilder()
     .setCustomId(`gcx_banquet_pick|${viewerId}|${club.guild_club_id}`)
     .setPlaceholder("選一道菜");
-  for (const [menuId, menu] of Object.entries(menus)) {
+  for (const [menuId, menu] of menus) {
     sel.addOptions(
       new StringSelectMenuOptionBuilder()
         .setLabel(menu.name)
