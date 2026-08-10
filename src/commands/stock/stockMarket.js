@@ -66,6 +66,7 @@ const TRADE_PERIOD_LABEL = {
 };
 
 const QUOTE_PANEL_TIMEOUT_MS = 5 * 60 * 1000;
+const QUOTE_SELECT_LIMIT = 25;
 
 // 股票代號選單走 autocomplete 讀 DB(見 features/stock/symbolOptions.js);
 // 各子指令要列的清單不同,這裡只做 子指令 → 清單來源 的對應。
@@ -1449,10 +1450,7 @@ async function runQuotePanel(client, interaction) {
     }
 
     const guildId = interaction.guildId;
-    const stocks = await client.stockMarketCollection
-      .find({ guildId })
-      .sort({ symbol: 1 })
-      .toArray();
+    let stocks = await fetchListedStocks(client, guildId);
     if (stocks.length === 0) {
       return interaction.editReply("📭 目前沒有任何上市股票。");
     }
@@ -1460,7 +1458,11 @@ async function runQuotePanel(client, interaction) {
     let selected = null; // 當前選中的 symbol
     let volumeBySymbol = await fetchDailyVolumeMap(client, guildId, stocks);
 
-    const refreshVolumes = async () => {
+    // 價格每分鐘 tick、下市補位隨時可能換股，面板卻活 5 分鐘：每次互動都重讀現役
+    // 股票，不然玩家看到的是開面板當下的舊價、甚至已經下市的股票。
+    const refresh = async () => {
+      stocks = await fetchListedStocks(client, guildId);
+      if (selected && !stocks.some((s) => s.symbol === selected)) selected = null;
       volumeBySymbol = await fetchDailyVolumeMap(client, guildId, stocks);
     };
 
@@ -1470,7 +1472,7 @@ async function runQuotePanel(client, interaction) {
         .setPlaceholder("選擇要操作的股票")
         .setDisabled(disabled)
         .addOptions(
-          stocks.slice(0, 25).map((s) => ({
+          stocks.slice(0, QUOTE_SELECT_LIMIT).map((s) => ({
             label: `${s.symbol} ${s.name}`,
             description: `當前 ${(s.currentPrice || 0).toFixed(1)}`,
             value: s.symbol,
@@ -1507,7 +1509,15 @@ async function runQuotePanel(client, interaction) {
           .setDisabled(disabled || noPick)
       );
 
-      return [new ActionRowBuilder().addComponents(select), buttons];
+      const utility = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("stkq_refresh")
+          .setLabel("🔄 更新報價")
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(disabled)
+      );
+
+      return [new ActionRowBuilder().addComponents(select), buttons, utility];
     };
 
     const message = await interaction.editReply({
@@ -1529,9 +1539,11 @@ async function runQuotePanel(client, interaction) {
       }
 
       try {
-        if (i.customId === "stkq_pick") {
-          selected = i.values[0];
-          await i.update({
+        if (i.customId === "stkq_pick" || i.customId === "stkq_refresh") {
+          if (i.customId === "stkq_pick") selected = i.values[0];
+          await i.deferUpdate();
+          await refresh();
+          await i.editReply({
             content: "",
             embeds: [buildPanelEmbed(stocks, selected, { volumeBySymbol })],
             components: buildComponents(),
@@ -1668,13 +1680,7 @@ async function runQuotePanel(client, interaction) {
           // 剛成交，把該股的量快取打掉再重撈，讓今日量立刻反映
           invalidateVolume({ guildId, symbol: selected });
 
-          const refreshed = await client.stockMarketCollection
-            .find({ guildId })
-            .sort({ symbol: 1 })
-            .toArray();
-          stocks.length = 0;
-          stocks.push(...refreshed);
-          await refreshVolumes();
+          await refresh();
           try {
             await interaction.editReply({
               content: "",
@@ -1737,7 +1743,7 @@ function buildPanelEmbed(stocks, selected, { expired = false, volumeBySymbol } =
     .setColor(open ? 0x2ecc71 : 0x95a5a6)
     .setDescription(`**${marketLabel}**\n\n${rows.join("\n")}`)
     .setFooter({
-      text: `手續費 1%(最低 ${stockSystem.minFee} 逼幣)・ 持股上限 ${stockSystem.maxSharesPerUser} 股 ・ 量=今日成交股數${expired ? " ・ 已逾時" : ""}`,
+      text: `手續費 1%(最低 ${stockSystem.minFee} 逼幣)・ 持股上限 ${stockSystem.maxSharesPerUser} 股 ・ 量=今日成交股數${expired ? " ・ 已逾時" : " ・ 報價時間"}`,
     })
     .setTimestamp();
 
@@ -1760,7 +1766,24 @@ function buildPanelEmbed(stocks, selected, { expired = false, volumeBySymbol } =
     });
   }
 
+  if (stocks.length > QUOTE_SELECT_LIMIT) {
+    embed.addFields({
+      name: "提示",
+      value: `目前上市 ${stocks.length} 檔,下拉選單只放得下前 ${QUOTE_SELECT_LIMIT} 檔;其餘請用 \`/股市 買\`、\`/股市 賣\` 直接輸入代號。`,
+    });
+  }
+
   return embed;
+}
+
+// 報價面板只呈現「現在還在交易」的股票:下市股（enabled:false）留在同一個
+// collection 裡當歷史資料,不過濾掉的話面板會列出買不到的殭屍股,補位上市的
+// 新股還可能被 25 檔上限擠掉。
+async function fetchListedStocks(client, guildId) {
+  return client.stockMarketCollection
+    .find({ guildId, enabled: { $ne: false } })
+    .sort({ symbol: 1 })
+    .toArray();
 }
 
 async function fetchDailyVolumeMap(client, guildId, stocks) {
