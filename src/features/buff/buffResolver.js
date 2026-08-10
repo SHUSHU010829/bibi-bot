@@ -163,8 +163,8 @@ async function getFishingResolve(client, userId, guildId, member, opts = {}) {
   const rods = fishing?.rods || {};
   const rod = rods[profile?.fishing_rod || "bamboo"] || rods.bamboo || {};
 
+  // Twitch 的釣魚冷卻減免已改為每日免冷卻次數（見 freeActions.js），比照挖礦。
   const rodCdMs = rod.cdReductionMs || 0;
-  const twitchCdMs = twitchPerks.resolvePerks(member)?.fishingCdReductionMs || 0;
   const donationCdMs = donationFishingCdMs(member);
 
   const guildCdPct = gc.buffsByType.fishing_cooldown_pct || 0;
@@ -173,11 +173,11 @@ async function getFishingResolve(client, userId, guildId, member, opts = {}) {
 
   const { actualCdMs, totalCdPct } = applyFishingCdReduction({
     baseCdMs: fishing?.cooldownMs || 0,
-    fixedCdMs: rodCdMs + twitchCdMs + donationCdMs,
+    fixedCdMs: rodCdMs + donationCdMs,
     cdPct: guildCdPct + worldCdPct + foodCdPct,
   });
 
-  return { actualCdMs, rodCdMs, twitchCdMs, donationCdMs, guildCdPct, worldCdPct, foodCdPct, totalCdPct };
+  return { actualCdMs, rodCdMs, donationCdMs, guildCdPct, worldCdPct, foodCdPct, totalCdPct };
 }
 
 // ── INCOME 倍率（查詢用，套用仍在 grantCoins）────────────
@@ -335,8 +335,8 @@ async function roleBuffSummary(client, userId, guildId, member) {
       lines.push(`🍀 挖礦幸運 +${Math.round(perks.miningLuckBonus * 100)}%`);
     if (perks?.dailyFreeMines > 0)
       lines.push(`⚡ 免冷卻挖礦 每日 ${perks.dailyFreeMines} 次`);
-    if (perks?.fishingCdReductionMs > 0)
-      lines.push(`🎣 釣魚冷卻 -${Math.round(perks.fishingCdReductionMs / 60000)} 分`);
+    if (perks?.dailyFreeFishes > 0)
+      lines.push(`🎣 免冷卻釣魚 每日 ${perks.dailyFreeFishes} 次`);
     if (lines.length) groups.push({ header: `💜 Twitch 訂閱（${tierLabel}）`, lines });
   }
 

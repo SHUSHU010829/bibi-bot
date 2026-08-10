@@ -23,6 +23,8 @@ function defaultProfile(userId, guildId) {
     cd_ticket_used_count: 0,
     free_mine_used_date: null,
     free_mine_used_count: 0,
+    free_fish_used_date: null,
+    free_fish_used_count: 0,
     batch_pass_count: 0,
     batch_pass_expires_at: 0,
     backpack_bonus_slots: 0,
@@ -157,6 +159,8 @@ function normalize(doc) {
   doc.cd_ticket_used_count ??= 0;
   if (doc.free_mine_used_date === undefined) doc.free_mine_used_date = null;
   doc.free_mine_used_count ??= 0;
+  if (doc.free_fish_used_date === undefined) doc.free_fish_used_date = null;
+  doc.free_fish_used_count ??= 0;
   doc.batch_pass_count ??= 0;
   doc.batch_pass_expires_at ??= 0;
   doc.backpack_bonus_slots ??= 0;

@@ -3,7 +3,7 @@ const { DateTime } = require("luxon");
 const { mining, craft } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed, ORE_KEYS, isBatchPassActive } = require("./miningProfile");
 const dropTable = require("./dropTable");
-const freeMines = require("./freeMines");
+const freeActions = require("./freeActions");
 const unifiedBuffResolver = require("../buff/buffResolver");
 const encounterService = require("./encounterService");
 const { consumeMineLuckUse, formatFoodBuffLines } = require("../fishing/cookService");
@@ -65,7 +65,7 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
 
   // 冷卻中：Twitch 訂閱者先吃每日免冷卻次數（免費、不動冷卻），用完才回冷卻錯誤。
   const onCooldown = (profile.mine_cooldown_at || 0) > now;
-  const free = freeMines.resolve(profile, member);
+  const free = freeActions.resolve("mine", profile, member);
   const cooldownResult = async () => {
     const today = DateTime.now().setZone("Asia/Taipei").toISODate();
     const dailyLimit = mining?.cdTicketDailyUseLimit || 0;
@@ -101,7 +101,7 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
   }
 
   // 額度真正扣在這裡：背包滿等前置檢查都過了才扣，避免白白吃掉一次。
-  const usedFreeMine = onCooldown && (await freeMines.claim(client, userId, guildId, free));
+  const usedFreeMine = onCooldown && (await freeActions.claim(client, userId, guildId, free));
   if (onCooldown && !usedFreeMine) return cooldownResult();
 
   const buff = await unifiedBuffResolver.getMiningResolve(
@@ -463,7 +463,7 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
     const remaining = (cur?.mine_cooldown_at || 0) - Date.now();
     let spentThisIter = 0;
     // 訂閱者的免冷卻次數比券便宜，還有額度就不動券——交給 mine() 自己扣。
-    if (remaining > 0 && freeMines.resolve(cur, member).left <= 0) {
+    if (remaining > 0 && freeActions.resolve("mine", cur, member).left <= 0) {
       const need = Math.ceil(remaining / reductionMs);
       if ((cur?.cd_ticket_count || 0) < need) {
         agg.stoppedNoTicket = true;
