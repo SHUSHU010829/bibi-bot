@@ -4,7 +4,7 @@ const { DateTime } = require("luxon");
 const { MessageFlags } = require("discord.js");
 
 const { fetchFreeGamesList } = require("./gamerpower");
-const { fetchAppDetails } = require("../steamDeals/steam");
+const { fetchAppDetails } = require("./steam");
 const { isAlreadyPushed, markPushed, ensureIndexes } = require("./dedupe");
 const { buildFreeGameContainer } = require("./embed");
 
