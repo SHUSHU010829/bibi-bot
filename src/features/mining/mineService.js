@@ -3,6 +3,7 @@ const { DateTime } = require("luxon");
 const { mining, craft } = require("../../config");
 const { getOrCreate, backpackCapacity, backpackUsed, ORE_KEYS, isBatchPassActive } = require("./miningProfile");
 const dropTable = require("./dropTable");
+const freeMines = require("./freeMines");
 const unifiedBuffResolver = require("../buff/buffResolver");
 const encounterService = require("./encounterService");
 const { consumeMineLuckUse, formatFoodBuffLines } = require("../fishing/cookService");
@@ -62,7 +63,10 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
   const profile = await getOrCreate(client, userId, guildId);
   const now = Date.now();
 
-  if ((profile.mine_cooldown_at || 0) > now) {
+  // 冷卻中：Twitch 訂閱者先吃每日免冷卻次數（免費、不動冷卻），用完才回冷卻錯誤。
+  const onCooldown = (profile.mine_cooldown_at || 0) > now;
+  const free = freeMines.resolve(profile, member);
+  const cooldownResult = async () => {
     const today = DateTime.now().setZone("Asia/Taipei").toISODate();
     const dailyLimit = mining?.cdTicketDailyUseLimit || 0;
     const usedToday =
@@ -78,6 +82,8 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
       cdTicketUsedToday: usedToday,
       cdTicketDailyLimit: dailyLimit,
       cdTicketReductionMs: mining?.cdTicketReductionMs || 0,
+      freeMineLimit: free.limit,
+      freeMineLeft: 0,
       pickaxe: profile.pickaxe,
       pickaxeDurability: profile.pickaxe_durability,
       pickaxeMaxDurability: await effectivePickaxeMax(client, userId, guildId, profile),
@@ -85,13 +91,18 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
       backpackUsed: cdUsed,
       backpackFree: Math.max(0, cdCap - cdUsed),
     };
-  }
+  };
+  if (onCooldown && free.left <= 0) return cooldownResult();
 
   const cap = backpackCapacity(profile, mining);
   const used = backpackUsed(profile);
   if (used >= cap && !allowOverflow) {
     return { ok: false, reason: "backpack_full", used, cap };
   }
+
+  // 額度真正扣在這裡：背包滿等前置檢查都過了才扣，避免白白吃掉一次。
+  const usedFreeMine = onCooldown && (await freeMines.claim(client, userId, guildId, free));
+  if (onCooldown && !usedFreeMine) return cooldownResult();
 
   const buff = await unifiedBuffResolver.getMiningResolve(
     client,
@@ -116,7 +127,8 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
   }
   const overflowCoins = overflowQty > 0 ? priceOf(ore) * overflowQty : 0;
 
-  const newCooldownAt = now + buff.actualCdMs;
+  // 免冷卻次數是「無視冷卻插隊挖一次」，原本的冷卻繼續跑，不被這次挖礦重設。
+  const newCooldownAt = usedFreeMine ? profile.mine_cooldown_at : now + buff.actualCdMs;
 
   const inc = {
     mine_count_total: 1,
@@ -221,6 +233,9 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     buff,
     foodBuffLines: formatFoodBuffLines(profile, "mine"),
     newCooldownAt,
+    usedFreeMine,
+    freeMineLimit: free.limit,
+    freeMineLeft: usedFreeMine ? free.left - 1 : free.left,
     pickaxeBefore: profile.pickaxe,
     durabilityBroke,
     durabilityAfter,
@@ -379,6 +394,7 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
     maxCount,
     performed: 0,
     ticketsSpent: 0,
+    freeMinesSpent: 0,
     stoppedNoTicket: false,
     lastCdMs: 0,
     ores: {},
@@ -420,6 +436,8 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
         projection: {
           mine_cooldown_at: 1,
           cd_ticket_count: 1,
+          free_mine_used_date: 1,
+          free_mine_used_count: 1,
           pickaxe: 1,
           pickaxe_durability: 1,
           repair_tools: 1,
@@ -444,7 +462,8 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
 
     const remaining = (cur?.mine_cooldown_at || 0) - Date.now();
     let spentThisIter = 0;
-    if (remaining > 0) {
+    // 訂閱者的免冷卻次數比券便宜，還有額度就不動券——交給 mine() 自己扣。
+    if (remaining > 0 && freeMines.resolve(cur, member).left <= 0) {
       const need = Math.ceil(remaining / reductionMs);
       if ((cur?.cd_ticket_count || 0) < need) {
         agg.stoppedNoTicket = true;
@@ -475,6 +494,7 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
     }
 
     agg.performed++;
+    if (r.usedFreeMine) agg.freeMinesSpent++;
     xpBaseSum += r.xpBase || 0;
     if (r.buff?.actualCdMs) agg.lastCdMs = r.buff.actualCdMs;
     agg.newCooldownAt = r.newCooldownAt;

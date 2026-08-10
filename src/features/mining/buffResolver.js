@@ -24,13 +24,14 @@ function resolve(profile, member) {
   // Twitch 加入「前」的封頂值，用來換算訂閱實際生效的幸運加成
   const cappedBeforeTwitch = Math.min(luckBonus, cap);
 
-  // Twitch 訂閱者權益：依 tier 加挖礦 luck、縮短 CD（沿用訂閱角色 ID）
+  // Twitch 訂閱者權益：依 tier 加挖礦 luck（沿用訂閱角色 ID）。
+  // 挖礦冷卻減免已改為每日免冷卻次數（見 freeMines.js）——固定分鐘數會與鎬子相加逼近
+  // base（魔晶鎬 75 + T3 45 = 120），把重度訂閱者一路壓到冷卻下限。
   const perks = twitchPerks.resolvePerks(member);
   let twitchTierKey = null;
   if (perks) {
     twitchTierKey = perks.tierKey || null;
     luckBonus += perks.miningLuckBonus || 0;
-    cdMs -= perks.miningCdReductionMs || 0;
   }
 
   // luck 全域上限
@@ -64,14 +65,6 @@ function resolve(profile, member) {
   // resolve() 本身保持同步以免影響挖礦主流程效能。
   const foodLuckBonus = getFoodLuckBonus(profile);
   if (foodLuckBonus > 0) luckBonus += foodLuckBonus;
-
-  // 高階鎬子的比例減免：在固定減免（鎬子 + Twitch）扣完後才乘。
-  // 固定減免全部相加會逼近 base（魔晶鎬 75 分 + Twitch 45 分 = 120 分 = base），
-  // 讓重度加成的玩家一路撞到 60 秒下限；改成比例後永遠是剩餘時間的百分比，不會歸零。
-  // 與公會 / 世界事件 / 食物那組百分比（buff/buffResolver.js 的 70% 上限池）分開乘算，
-  // 免得升級鎬子的收益被那個上限吃掉。
-  const pickaxeCdPct = pdef.cdReductionPct || 0;
-  if (pickaxeCdPct > 0) cdMs = Math.floor((cdMs * (100 - pickaxeCdPct)) / 100);
 
   // CD 下限保護（避免負數 / 零）
   const actualCdMs = Math.max(cdMs, 60 * 1000);

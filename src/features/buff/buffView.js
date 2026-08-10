@@ -20,6 +20,7 @@ const {
 const { dungeon, theft } = require("../../config");
 const swordBreakService = require("../dungeon/swordBreakService");
 const deepMineService = require("../mining/deepMineService");
+const freeMines = require("../mining/freeMines");
 const trapTiers = require("../farm/trapTiers");
 const theftProfile = require("../theft/theftProfile");
 const theftService = require("../theft/theftService");
@@ -88,6 +89,13 @@ async function renderOverview(container, client, { userId, guildId, member }) {
     `**⛏️ 挖礦數量**：+${s.qtyBonus}`,
   ];
   if (cdMin != null) overviewLines.push(`**⏱️ 挖礦冷卻**：${cdMin} 分鐘`);
+  const fm = freeMines.resolve(miningProfileForStamina || {}, member);
+  if (fm.limit > 0) {
+    overviewLines.push(
+      `**⚡ 免冷卻挖礦**：今日剩 ${fm.left}／${fm.limit} 次\n` +
+        "-# 冷卻中直接 `/挖礦` 就會用掉一次，原本的冷卻照跑",
+    );
+  }
   if (fishCdMin != null) overviewLines.push(`**🎣 釣魚冷卻**：${fishCdMin} 分鐘`);
   const passExpiresAt = miningProfileForStamina?.batch_pass_expires_at || 0;
   if (passExpiresAt > Date.now()) {

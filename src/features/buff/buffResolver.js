@@ -333,8 +333,8 @@ async function roleBuffSummary(client, userId, guildId, member) {
     if (twCoin.multiplier > 1) lines.push(`${MONEY_EMOJI} 金幣 ×${twCoin.multiplier}`);
     if (perks?.miningLuckBonus > 0)
       lines.push(`🍀 挖礦幸運 +${Math.round(perks.miningLuckBonus * 100)}%`);
-    if (perks?.miningCdReductionMs > 0)
-      lines.push(`⏱️ 挖礦冷卻 -${Math.round(perks.miningCdReductionMs / 60000)} 分`);
+    if (perks?.dailyFreeMines > 0)
+      lines.push(`⚡ 免冷卻挖礦 每日 ${perks.dailyFreeMines} 次`);
     if (perks?.fishingCdReductionMs > 0)
       lines.push(`🎣 釣魚冷卻 -${Math.round(perks.fishingCdReductionMs / 60000)} 分`);
     if (lines.length) groups.push({ header: `💜 Twitch 訂閱（${tierLabel}）`, lines });
