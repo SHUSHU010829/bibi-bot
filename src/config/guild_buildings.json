@@ -42,7 +42,7 @@
             "buffs": [
               {
                 "type": "mining_cooldown_pct",
-                "value": 10
+                "value": 15
               },
               {
                 "type": "mining_luck_pct",

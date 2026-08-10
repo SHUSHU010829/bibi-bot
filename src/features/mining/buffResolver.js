@@ -1,9 +1,10 @@
 const { mining } = require("../../config");
 const twitchPerks = require("./twitchPerks");
 const eventEngine = require("../event/eventEngine");
+const roleCdPerks = require("../buff/roleCdPerks");
 const { getFoodLuckBonus, consumeMineLuckUse } = require("../fishing/cookService");
 
-// 整合鎬子 / 幸運藥水 / Twitch 訂閱者權益。
+// 整合鎬子 / 幸運藥水 / Twitch 訂閱者權益 / 贊助身分組 / 伺服器加成。
 // CD 縮短券改為冷卻中於 /背包 主動使用（見 mineService.useCdTicket），不在挖礦時自動消耗。
 // 回傳 { luckBonus, qtyBonus, actualCdMs, consume: { usePotion } }。
 function resolve(profile, member) {
@@ -24,14 +25,19 @@ function resolve(profile, member) {
   // Twitch 加入「前」的封頂值，用來換算訂閱實際生效的幸運加成
   const cappedBeforeTwitch = Math.min(luckBonus, cap);
 
-  // Twitch 訂閱者權益：依 tier 加挖礦 luck、縮短 CD（沿用訂閱角色 ID）
+  // Twitch 訂閱者權益：依 tier 加挖礦 luck（沿用訂閱角色 ID）。
+  // 挖礦冷卻減免已改為每日免冷卻次數（見 freeMines.js）——固定分鐘數會與鎬子相加逼近
+  // base（魔晶鎬 75 + T3 45 = 120），把重度訂閱者一路壓到冷卻下限。
   const perks = twitchPerks.resolvePerks(member);
   let twitchTierKey = null;
   if (perks) {
     twitchTierKey = perks.tierKey || null;
     luckBonus += perks.miningLuckBonus || 0;
-    cdMs -= perks.miningCdReductionMs || 0;
   }
+
+  // 身分組的挖礦冷卻固定減免（贊助 + 伺服器加成，與釣魚同一份判定）
+  const roleCdMs = roleCdPerks.roleCdMs("mine", member);
+  cdMs -= roleCdMs;
 
   // luck 全域上限
   if (luckBonus > cap) luckBonus = cap;
@@ -79,6 +85,7 @@ function resolve(profile, member) {
     eventQtyBonus,
     twitchLuckBonus,
     twitchTierKey,
+    roleCdMs,
     foodLuckBonus,
     consume: { usePotion },
   };

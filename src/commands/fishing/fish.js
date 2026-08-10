@@ -294,6 +294,12 @@ function rodDurabilityLine(rodKey, durability, maxDurability) {
   return `🪝 **目前釣竿**\n${label}・耐久 ${durability}${maxText} 次`;
 }
 
+// 訂閱免冷卻釣魚是「插隊釣一竿」，原本的冷卻繼續跑，要講清楚免得玩家以為冷卻被重設。
+function freeFishLine({ usedFreeFish, freeFishLeft, freeFishLimit }) {
+  if (!usedFreeFish) return "";
+  return `\n-# ⚡ 已用訂閱免冷卻釣魚（冷卻照跑）・今日還剩 **${freeFishLeft}**／${freeFishLimit} 次`;
+}
+
 function buildCooldownView({
   ownerId,
   location,
@@ -302,6 +308,7 @@ function buildCooldownView({
   cdTicketUsedToday,
   cdTicketDailyLimit,
   cdTicketReductionMs,
+  freeFishLimit,
   notifyEnabled,
   rodKey,
   rodDurability,
@@ -348,6 +355,14 @@ function buildCooldownView({
           .setCustomId(`${FISH_LOC_CHANGE_PREFIX}${ownerId}`)
           .setPlaceholder("切換下一竿地點…")
           .addOptions(locOptions.slice(0, 25)),
+      ),
+    );
+  }
+
+  if (freeFishLimit > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ⚡ 訂閱免冷卻釣魚今日已用完（${freeFishLimit}/${freeFishLimit}），台灣時間 00:00 重置`,
       ),
     );
   }
@@ -485,6 +500,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           cdTicketUsedToday: result.cdTicketUsedToday,
           cdTicketDailyLimit: result.cdTicketDailyLimit,
           cdTicketReductionMs: result.cdTicketReductionMs,
+          freeFishLimit: result.freeFishLimit,
           notifyEnabled: !!notifyState?.enabled,
           rodKey: result.rodKey,
           rodDurability: result.rodDurability,
@@ -598,7 +614,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `⏱️ 下次可釣：<t:${failEpoch}:R>（<t:${failEpoch}:t>）`
+            `⏱️ 下次可釣：<t:${failEpoch}:R>（<t:${failEpoch}:t>）${freeFishLine(result)}`
           )
         )
         .addTextDisplayComponents(
@@ -697,7 +713,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
         .addSeparatorComponents(new SeparatorBuilder())
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `⏱️ 下次可釣：<t:${lootEpoch}:R>（<t:${lootEpoch}:t>）`
+            `⏱️ 下次可釣：<t:${lootEpoch}:R>（<t:${lootEpoch}:t>）${freeFishLine(result)}`
           )
         );
 
@@ -806,7 +822,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `⏱️ 下次可釣：<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）`
+          `⏱️ 下次可釣：<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）${freeFishLine(result)}`
         )
       );
 
@@ -1203,6 +1219,14 @@ async function runFishBatch(client, interaction, { location = "stream", count })
         `**消耗 CD 縮短券**\n×${result.ticketsSpent}`,
       ),
     );
+
+    if (result.freeFishesSpent > 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# ⚡ 其中 ${result.freeFishesSpent} 竿用訂閱免冷卻次數，沒花到券`,
+        ),
+      );
+    }
 
     if (result.stoppedNoTicket) {
       container.addTextDisplayComponents(

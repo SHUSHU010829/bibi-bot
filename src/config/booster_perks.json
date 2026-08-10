@@ -1,0 +1,9 @@
+{
+  "boosterPerks": {
+    "enabled": true,
+    "roleId": "1181220255733907599",
+    "name": "伺服器加成",
+    "miningCdReductionMs": 300000,
+    "fishingCdReductionMs": 300000
+  }
+}

@@ -21,6 +21,7 @@ const craft = require("./craft.json");
 const dungeon = require("./dungeon.json");
 const gift = require("./gift.json");
 const twitchPerks = require("./twitch_perks.json");
+const boosterPerks = require("./booster_perks.json");
 const titles = require("./titles.json");
 const donation = require("./donation.json");
 const events = require("./events.json");
@@ -70,6 +71,7 @@ module.exports = {
   ...dungeon,
   ...gift,
   ...twitchPerks,
+  ...boosterPerks,
   ...titles,
   ...donation,
   ...events,

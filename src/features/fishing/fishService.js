@@ -5,6 +5,7 @@ const { getOrCreate, fishBagCapacity, fishBagUsed, isBatchPassActive } = require
 const { isBagLimitEnforced } = require("../mining/bagStatus");
 const { effectiveMaxOf, equipMaxPct } = require("../mining/equipDurability");
 const { weightedRandom } = require("../mining/weightedRandom");
+const freeActions = require("../mining/freeActions");
 const {
   getFoodFishBonus,
   consumeFishFortuneUse,
@@ -86,8 +87,10 @@ async function fish(client, { userId, guildId, location = "stream", member, user
   const rareBaitOwned = profile.rare_bait || 0;
   const rareBaitAuto = profile.rare_bait_auto === true;
 
-  // CD 檢查
-  if ((profile.fish_cooldown_at || 0) > now) {
+  // CD 檢查：冷卻中的訂閱者先吃每日免冷卻次數（免費、不動冷卻），用完才擋。
+  const onCooldown = (profile.fish_cooldown_at || 0) > now;
+  const free = freeActions.resolve("fish", profile, member);
+  const cooldownResult = async () => {
     const today = DateTime.now().setZone("Asia/Taipei").toISODate();
     const dailyLimit = fishing?.cdTicketDailyUseLimit || 0;
     const usedToday =
@@ -101,13 +104,16 @@ async function fish(client, { userId, guildId, location = "stream", member, user
       cdTicketUsedToday: usedToday,
       cdTicketDailyLimit: dailyLimit,
       cdTicketReductionMs: fishing?.cdTicketReductionMs || 0,
+      freeFishLimit: free.limit,
+      freeFishLeft: 0,
       rodKey: profile.fishing_rod || "bamboo",
       rodDurability: profile.rod_durability,
       rodMaxDurability: await effectiveRodMax(client, userId, guildId, profile),
       rareBaitEnabled: rareBaitAuto,
       rareBaitOwned,
     };
-  }
+  };
+  if (onCooldown && free.left <= 0) return cooldownResult();
 
   // 等級解鎖：查 UserLevels。連續釣魚整批期間等級固定（經驗延後到批次結束才授予），
   // 由批次一次讀好傳入，省去每竿重查。
@@ -153,6 +159,10 @@ async function fish(client, { userId, guildId, location = "stream", member, user
     return { ok: false, reason: "fish_bag_full", used: fishUsed, cap: fishCap };
   }
 
+  // 額度真正扣在這裡：解鎖、魚袋滿等前置檢查都過了才扣，避免白白吃掉一次。
+  const usedFreeFish = onCooldown && (await freeActions.claim(client, userId, guildId, free));
+  if (onCooldown && !usedFreeFish) return cooldownResult();
+
   // 通過所有前置檢查 → 這一竿必定會下（不論成敗），發放釣魚經驗。
   // 連續釣魚：只 roll 出基礎經驗，批次匯總後一次授予；單次釣魚：照常即時授予。
   let xpGained = 0;
@@ -182,11 +192,22 @@ async function fish(client, { userId, guildId, location = "stream", member, user
   // 世界事件「漁港補給」buff：整數百分比 → 小數
   const worldEventBuffs = require("../world_event/worldEventBuffs");
   const worldFishSuccess = (worldEventBuffs.getCachedBuffs().fishing_success_rate_pct || 0) / 100;
+  // 公會漁港 Lv3 與宴會的 fishing_success_rate_pct。整批釣魚沿用 batchCtx.gc，
+  // 單次釣魚在這裡讀一次並往下傳給 getFishingResolve，不重複查公會。
+  const buffResolver = require("../buff/buffResolver");
+  const gc = batchCtx?.gc || (await buffResolver.getGuildClubBuffs(client, userId, guildId));
+  const guildFishSuccess = (gc.buffsByType.fishing_success_rate_pct || 0) / 100;
   // 限時活動「魚汛」上鉤加成（如夏日魚汛祭 +12%）
   const eventFishSuccess = eventEngine.getFishingSuccessBonus();
   const successRate = Math.min(
     cap,
-    base + (rodDef.successBonus || 0) + (foodFish.success || 0) + netBonus + worldFishSuccess + eventFishSuccess
+    base +
+      (rodDef.successBonus || 0) +
+      (foodFish.success || 0) +
+      netBonus +
+      worldFishSuccess +
+      guildFishSuccess +
+      eventFishSuccess
   );
 
   // 釣魚計次都會消耗一次 fish_fortune（不論成功失敗），手感 buff 是「次數制」
@@ -200,7 +221,10 @@ async function fish(client, { userId, guildId, location = "stream", member, user
   // 成功判定
   if (Math.random() >= successRate) {
     // 失敗：魚跑了，套用較短的失敗冷卻，不扣釣竿耐久；撈網不扣使用次數
-    const failCdAt = now + (fishing.failCooldownMs || 1800000);
+    // 免冷卻次數是「無視冷卻插隊釣一竿」，原本的冷卻繼續跑，失敗也不覆寫成較短的失敗冷卻。
+    const failCdAt = usedFreeFish
+      ? profile.fish_cooldown_at
+      : now + (fishing.failCooldownMs || 1800000);
     const failSet = { fish_cooldown_at: failCdAt, last_fish_location: location, updatedAt: new Date() };
     const failInc = {};
     if (droppedNetFragment) failInc.broken_net_fragments = 1;
@@ -224,6 +248,9 @@ async function fish(client, { userId, guildId, location = "stream", member, user
       rodDef,
       successRate,
       newCooldownAt: failCdAt,
+      usedFreeFish,
+      freeFishLimit: free.limit,
+      freeFishLeft: usedFreeFish ? free.left - 1 : free.left,
       fishCountTotal: profile.fish_count_total || 0,
       droppedNetFragment,
       netActive,
@@ -237,9 +264,8 @@ async function fish(client, { userId, guildId, location = "stream", member, user
 
   // ── 成功上鉤 ──：先算「魚 / 非魚」共用的冷卻、耐久、漁網消耗
   // 冷卻減免（釣竿 + Twitch 訂閱 + 公會建築/等級/宴會 + 世界事件）統一走 buffResolver，與挖礦同構。
-  const buffResolver = require("../buff/buffResolver");
-  const fishingCd = await buffResolver.getFishingResolve(client, userId, guildId, member, { profile, gc: batchCtx?.gc });
-  const newCooldownAt = now + fishingCd.actualCdMs;
+  const fishingCd = await buffResolver.getFishingResolve(client, userId, guildId, member, { profile, gc });
+  const newCooldownAt = usedFreeFish ? profile.fish_cooldown_at : now + fishingCd.actualCdMs;
 
   const inc = { fish_count_total: 1 };
   if (droppedNetFragment) inc.broken_net_fragments = 1;
@@ -284,6 +310,9 @@ async function fish(client, { userId, guildId, location = "stream", member, user
     rodDurabilityAfter,
     rodDurabilityWarnCrossed,
     newCooldownAt,
+    usedFreeFish,
+    freeFishLimit: free.limit,
+    freeFishLeft: usedFreeFish ? free.left - 1 : free.left,
     fishCountTotal: (profile.fish_count_total || 0) + 1,
     droppedNetFragment,
     netActive,
@@ -521,6 +550,7 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     maxCount,
     performed: 0,
     ticketsSpent: 0,
+    freeFishesSpent: 0,
     stoppedNoTicket: false,
     caught: 0,
     failed: 0,
@@ -556,7 +586,16 @@ async function fishBatch(client, { userId, guildId, member, username, location =
   for (let i = 0; i < requested; i++) {
     const cur = await client.miningProfilesCollection.findOne(
       { userId, guildId },
-      { projection: { fish_cooldown_at: 1, cd_ticket_count: 1, fishing_rod: 1, rod_durability: 1 } },
+      {
+        projection: {
+          fish_cooldown_at: 1,
+          cd_ticket_count: 1,
+          free_fish_used_date: 1,
+          free_fish_used_count: 1,
+          fishing_rod: 1,
+          rod_durability: 1,
+        },
+      },
     );
 
     // 保護性中止：若釣竿再成功釣一次就會斷（耐久 ≤ 1），在斷掉前先停、不下這一竿，
@@ -575,7 +614,8 @@ async function fishBatch(client, { userId, guildId, member, username, location =
 
     const remaining = (cur?.fish_cooldown_at || 0) - Date.now();
     let spentThisIter = 0;
-    if (remaining > 0) {
+    // 訂閱者的免冷卻次數比券便宜，還有額度就不動券——交給 fish() 自己扣。
+    if (remaining > 0 && freeActions.resolve("fish", cur, member).left <= 0) {
       const need = Math.ceil(remaining / reductionMs);
       if ((cur?.cd_ticket_count || 0) < need) {
         agg.stoppedNoTicket = true;
@@ -605,6 +645,7 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     }
 
     agg.performed++;
+    if (r.usedFreeFish) agg.freeFishesSpent++;
     xpBaseSum += r.xpBase || 0;
     agg.newCooldownAt = r.newCooldownAt;
     agg.fishCountTotal = r.fishCountTotal;

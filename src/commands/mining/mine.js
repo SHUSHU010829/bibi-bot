@@ -60,6 +60,12 @@ function backpackSpaceLine({ backpackFree, backpackUsed: used, backpackCap: cap 
   return line;
 }
 
+// 訂閱免冷卻挖礦是「插隊挖一次」，原本的冷卻繼續跑，要講清楚免得玩家以為冷卻被重設。
+function freeMineLine({ usedFreeMine, freeMineLeft, freeMineLimit }) {
+  if (!usedFreeMine) return "";
+  return `\n-# ⚡ 已用訂閱免冷卻挖礦（冷卻照跑）・今日還剩 **${freeMineLeft}**／${freeMineLimit} 次`;
+}
+
 // 「找鑑定師賭石」按鈕 customId 格式：mining_appraise_<ownerId>_<mineTs>
 // mineTs 用來對上 DB 的 pending_appraisal.ts，確保只認最新一次挖礦、且單次有效。
 const APPRAISE_PREFIX = "mining_appraise_";
@@ -157,6 +163,7 @@ function buildCooldownView({
   cdTicketUsedToday,
   cdTicketDailyLimit,
   cdTicketReductionMs,
+  freeMineLimit,
   notifyEnabled,
   pickaxe,
   pickaxeDurability,
@@ -188,6 +195,14 @@ function buildCooldownView({
   if (bpLine) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(bpLine),
+    );
+  }
+
+  if (freeMineLimit > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ⚡ 訂閱免冷卻挖礦今日已用完（${freeMineLimit}/${freeMineLimit}），台灣時間 00:00 重置`,
+      ),
     );
   }
 
@@ -293,6 +308,7 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
           cdTicketUsedToday: result.cdTicketUsedToday,
           cdTicketDailyLimit: result.cdTicketDailyLimit,
           cdTicketReductionMs: result.cdTicketReductionMs,
+          freeMineLimit: result.freeMineLimit,
           notifyEnabled: !!notifyState?.enabled,
           pickaxe: result.pickaxe,
           pickaxeDurability: result.pickaxeDurability,
@@ -367,7 +383,7 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**下次可挖礦**\n<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）`,
+          `**下次可挖礦**\n<t:${readyEpoch}:R>（<t:${readyEpoch}:t>）${freeMineLine(result)}`,
         ),
       )
       .addTextDisplayComponents(
@@ -894,6 +910,14 @@ async function runMineBatch(client, interaction, { count }) {
             : ""),
       ),
     );
+
+    if (result.freeMinesSpent > 0) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `-# ⚡ 其中 ${result.freeMinesSpent} 次用訂閱免冷卻次數，沒花到券`,
+        ),
+      );
+    }
 
     if (result.stoppedNoTicket) {
       container.addTextDisplayComponents(

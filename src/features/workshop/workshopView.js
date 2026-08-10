@@ -74,6 +74,12 @@ function pickaxeLabel(key) {
   const def = mining?.pickaxes?.[key] || {};
   return `${def.emoji || "⛏️"} ${def.name || key}`;
 }
+// 鎬子的 CD 減免有固定分鐘與比例兩段（比例是在固定扣完後才乘），兩段都要寫給玩家看
+function pickaxeCdText(def) {
+  const min = Math.round((def.cdReductionMs || 0) / 60000);
+  const pct = def.cdReductionPct || 0;
+  return pct > 0 ? `CD -${min} 分後再 -${pct}%` : `CD -${min} 分`;
+}
 function weaponLabel(key) {
   const def = (dungeon?.weapons || {})[key] || {};
   return `${def.emoji || "👊"} ${def.name || key}`;
@@ -232,12 +238,11 @@ function buildEquipmentTab(container, { userId, displayName, profile, equipMaxPc
       ? "永久"
       : `${profile.pickaxe_durability}/${effMaxOf("pickaxe") ?? "?"} 次${bonusSuffix(profile, "pickaxe")}`;
   const luckPct = Math.round((pdef.luckBonus || 0) * 100);
-  const cdReduceMin = Math.round((pdef.cdReductionMs || 0) / 60000);
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `⛏️ **鎬子**：${pickaxeLabel(profile.pickaxe)}（耐久 ${pickDurability}）\n` +
-        `-# luck +${luckPct}% ・ CD -${cdReduceMin} 分 ・ 數量 +${pdef.qtyBonus || 0}`,
+        `-# luck +${luckPct}% ・ ${pickaxeCdText(pdef)} ・ 數量 +${pdef.qtyBonus || 0}`,
     ),
   );
 
@@ -384,7 +389,7 @@ function recipeBodyText(recipe, profile, type) {
       const pdef = (mining?.pickaxes || {})[resultId] || {};
       propLine =
         `屬性：luck +${Math.round((pdef.luckBonus || 0) * 100)}% ・ ` +
-        `CD -${Math.round((pdef.cdReductionMs || 0) / 60000)} 分 ・ ` +
+        `${pickaxeCdText(pdef)} ・ ` +
         `數量 +${pdef.qtyBonus || 0} ・ 耐久 ${pdef.durability ?? "永久"}`;
     }
 
