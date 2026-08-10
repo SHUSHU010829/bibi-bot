@@ -134,7 +134,6 @@ async function holdTransfer(client, { senderMember, targetMember, amount, note }
     usedToday,
     dailyCap,
     dailyCount,
-    creditEnabled,
   } = pre;
 
   const transferId = `xfer-${DateTime.now().toMillis()}-${senderId}-${target.id}`;
@@ -176,11 +175,6 @@ async function holdTransfer(client, { senderMember, targetMember, amount, note }
     }
   }
 
-  fireSuspiciousTransferCheck(client, { guildId, senderId, recipientId: target.id });
-  if (creditEnabled) {
-    creditService.award(client, senderId, guildId, "transfer_complete", { member: senderMember }).catch(() => {});
-  }
-
   return {
     ok: true,
     transferId,
@@ -201,6 +195,8 @@ async function holdTransfer(client, { senderMember, targetMember, amount, note }
 }
 
 // 撥款給收款人（收下時呼叫）。回傳 { ok, recipientAfter }。
+// 洗幣偵測與轉帳信用分都掛在這裡而不是託管時：託管只是把錢凍住，收款人拒收 / 逾時就會整筆退回，
+// 那種金流從未成立，在託管時就告警會讓拒收方無辜被扣信用分。
 async function deliverTransfer(client, { targetUser, targetMember, guildId, senderId, amount, note, transferId }) {
   const credit = await grantCoins(client, {
     userId: targetUser.id,
@@ -213,6 +209,21 @@ async function deliverTransfer(client, { targetUser, targetMember, guildId, send
     meta: { transferId, counterparty: senderId, amount, note: note || null },
   });
   if (!credit) return { ok: false };
+
+  if (transferId && client.coinTransactionsCollection) {
+    await client.coinTransactionsCollection
+      .updateMany(
+        { userId: senderId, guildId, "meta.transferId": transferId, source: { $in: ["transfer_out", "transfer_fee"] } },
+        { $unset: { "meta.held": "" } }
+      )
+      .catch(() => {});
+  }
+
+  fireSuspiciousTransferCheck(client, { guildId, senderId, recipientId: targetUser.id });
+  if (bank?.credit?.enabled) {
+    creditService.award(client, senderId, guildId, "transfer_complete").catch(() => {});
+  }
+
   return { ok: true, recipientAfter: credit.doc?.totalCoins };
 }
 

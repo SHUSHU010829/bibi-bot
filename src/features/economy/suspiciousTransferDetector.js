@@ -14,6 +14,15 @@ const { raiseSuspicion } = require("./suspiciousAlert");
 const TRANSFER_OUT = "transfer_out";
 const EVENT_PRIZE = "event_prize";
 
+// 只採計「錢真的到對方手上」的紀錄：
+// - meta.held：託管中，收款人還沒按收下，金流尚未成立
+// - meta.refunded：已退回（拒收 / 逾時 / 取消），金流從未成立
+// 少了這層過濾，收款人一拒收就會被判定為對敲而扣信用分。
+const SETTLED_ONLY = {
+  "meta.held": { $ne: true },
+  "meta.refunded": { $ne: true },
+};
+
 const getThreshold = () =>
   coinSystem?.transfer?.suspiciousThreshold ?? 5000;
 
@@ -45,6 +54,7 @@ async function detectPair(client, { guildId, userA, userB, hours, threshold } = 
       guildId,
       source: TRANSFER_OUT,
       createdAt: { $gte: since },
+      ...SETTLED_ONLY,
       $or: [
         { userId: userA, "meta.counterparty": userB },
         { userId: userB, "meta.counterparty": userA },
@@ -101,7 +111,7 @@ async function scanAllPairs(client, { guildId, hours, threshold } = {}) {
   const min = threshold ?? getThreshold();
   const since = lookbackDate(lookback);
 
-  const filter = { source: TRANSFER_OUT, createdAt: { $gte: since } };
+  const filter = { source: TRANSFER_OUT, createdAt: { $gte: since }, ...SETTLED_ONLY };
   if (guildId) filter.guildId = guildId;
 
   const docs = await client.coinTransactionsCollection
@@ -167,7 +177,11 @@ function edgeEndpointsOf(d) {
 async function buildDirectedEdges(client, { guildId, hours } = {}) {
   if (!client?.coinTransactionsCollection) return new Map();
   const since = lookbackDate(hours ?? getLookbackHours());
-  const filter = { source: { $in: [TRANSFER_OUT, EVENT_PRIZE] }, createdAt: { $gte: since } };
+  const filter = {
+    source: { $in: [TRANSFER_OUT, EVENT_PRIZE] },
+    createdAt: { $gte: since },
+    ...SETTLED_ONLY,
+  };
   if (guildId) filter.guildId = guildId;
   const docs = await client.coinTransactionsCollection.find(filter).toArray();
   const edges = new Map();
