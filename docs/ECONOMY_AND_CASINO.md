@@ -1472,7 +1472,7 @@ floor 至兩位小數，最低 1.01
 | 開台聊天 XP / 金幣單場上限 | `twitchSync.perSessionXpCap` / `coinPayout.perSessionCap`（各 1,000，sessionId 冪等） |
 | 轉帳冷卻 30 分鐘 | `transfer.cooldownSeconds` |
 | 轉帳每日上限 20,000 | `transfer.dailyCapPerSender` |
-| 雙向轉帳偵測（24h 兩向各自 ≥ 5,000） | `suspiciousTransferDetector` |
+| 雙向轉帳偵測（24h 兩向各自 ≥ 5,000） | `suspiciousTransferDetector`；只採計已到帳的轉帳，託管中（待收）與已退回（拒收 / 逾時 / 取消）不計，偵測時機在收款人收下時 |
 | 管理員每日 500,000 上限 | `adminGrant.dailyCapPerAdmin` |
 | 財富稅每週累進課稅（2%~70%） | `wealthTax.brackets`（免稅額 50k） |
 | 股市手續費 / 持股上限 | `feeRate` 1%（買賣皆收）、`maxSharesPerUser` 500、僅開盤可下單 |
