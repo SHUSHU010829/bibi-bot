@@ -93,7 +93,6 @@
         "description": "黑玫瑰熬煮的高湯與熔岩魚的烈焰精華，全公會今晚天時地利人和"
       },
       "magic_crystal_feast": {
-        "menuId": "magic_crystal_feast",
         "name": "魔晶熬煮宴",
         "emoji": "🔮",
         "materials": {
@@ -101,11 +100,18 @@
           "lava_fish": 12,
           "steel_ingot": 8
         },
-        "buffs": {
-          "deep_mining_luck_pct": 10,
-          "dungeon_damage_pct": 10
-        },
-        "durationMs": 5400000
+        "buffs": [
+          {
+            "type": "deep_mining_luck_pct",
+            "value": 10
+          },
+          {
+            "type": "dungeon_damage_pct",
+            "value": 10
+          }
+        ],
+        "durationMs": 5400000,
+        "description": "魔晶粉熬進湯底，深層礦脈的稀有礦今晚特別捧場"
       }
     }
   }

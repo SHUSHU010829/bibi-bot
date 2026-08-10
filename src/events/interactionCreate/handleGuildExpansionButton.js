@@ -639,22 +639,24 @@ module.exports = async (client, interaction) => {
   const prefix = id.split("|")[0];
 
   try {
+    // 一律 await：直接 return promise 的話 rejection 會跳過下面的 catch，
+    // 玩家看到的就是「按了完全沒反應」而不是錯誤訊息。
     if (interaction.isStringSelectMenu?.()) {
-      if (prefix === "gcx_forge_pick") return handleForgePick(client, interaction);
-      if (prefix === "gcx_bld_pick") return handleBldPick(client, interaction);
-      if (prefix === "gcx_banquet_pick") return handleBanquetPick(client, interaction);
+      if (prefix === "gcx_forge_pick") return await handleForgePick(client, interaction);
+      if (prefix === "gcx_bld_pick") return await handleBldPick(client, interaction);
+      if (prefix === "gcx_banquet_pick") return await handleBanquetPick(client, interaction);
     }
     if (!interaction.isButton()) return;
 
-    if (prefix === "gcx_forge_make") return handleForgeMake(client, interaction);
-    if (prefix === "gcx_forge_up") return handleForgeUpgrade(client, interaction);
-    if (prefix === "gcx_refinery_up") return handleRefineryUpgrade(client, interaction);
-    if (prefix === "gcx_forge_back") return handleForgeBack(client, interaction);
-    if (prefix === "gcx_bld_confirm") return handleBldConfirm(client, interaction);
-    if (prefix === "gcx_bld_cancel") return handleBldCancel(client, interaction);
-    if (prefix === "gcx_bld_back") return handleBldBack(client, interaction);
-    if (prefix === "gcx_banquet_open") return handleBanquetOpen(client, interaction);
-    if (prefix === "gcx_banquet_confirm") return handleBanquetConfirm(client, interaction);
+    if (prefix === "gcx_forge_make") return await handleForgeMake(client, interaction);
+    if (prefix === "gcx_forge_up") return await handleForgeUpgrade(client, interaction);
+    if (prefix === "gcx_refinery_up") return await handleRefineryUpgrade(client, interaction);
+    if (prefix === "gcx_forge_back") return await handleForgeBack(client, interaction);
+    if (prefix === "gcx_bld_confirm") return await handleBldConfirm(client, interaction);
+    if (prefix === "gcx_bld_cancel") return await handleBldCancel(client, interaction);
+    if (prefix === "gcx_bld_back") return await handleBldBack(client, interaction);
+    if (prefix === "gcx_banquet_open") return await handleBanquetOpen(client, interaction);
+    if (prefix === "gcx_banquet_confirm") return await handleBanquetConfirm(client, interaction);
   } catch (e) {
     console.log(`[GUILD_EXPANSION] ${id} 失敗：${e.stack || e.message}`.red);
     try {
