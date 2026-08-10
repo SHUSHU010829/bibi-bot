@@ -64,8 +64,7 @@ function errorView(r) {
 }
 
 module.exports = {
-  channelBuckets: ["general", "mining"],
-
+  // 頻道限制比照 /挖礦（mining 桶 + 個人遊戲房豁免），不開放一般聊天頻道
   data: new SlashCommandBuilder()
     .setName("深挖")
     .setDescription("深入魔王居所底層的深層礦脈開採魔晶礦 🔮")
@@ -86,7 +85,7 @@ module.exports = {
   execute,
 };
 
-// 已 defer 的互動共用這段（指令走 deferReply、「再挖一次」按鈕走 deferUpdate）
+// 已 deferReply 的互動共用這段（指令與「再挖一次」按鈕都各自產生一則新訊息）
 async function execute(client, interaction) {
   const result = await deepMineService.deepMine(client, {
     userId: interaction.user.id,
