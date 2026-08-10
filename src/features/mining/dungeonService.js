@@ -7,7 +7,7 @@ const grantActivityXp = require("../leveling/grantActivityXp");
 const twitchPerks = require("./twitchPerks");
 const encounterService = require("./encounterService");
 const { getFoodAtkBonus, formatFoodBuffLines } = require("../fishing/cookService");
-const buildingService = require("../guild_club/buildingService");
+const { effectiveMaxOf } = require("./equipDurability");
 const bus = require("../eventBus");
 
 // 公會鐵匠鋪 Lv.5：戰鬥扣武器/盾耐久時，每次有機率不消耗。
@@ -1347,14 +1347,16 @@ async function getDungeonStatus(client, { userId, guildId, member }) {
     },
     weapon: profile.weapon,
     weaponDurability: profile.weapon_durability,
-    weaponMaxDurability: buildingService.effectiveMaxDurability(
-      profile.weapon_max_durability,
+    weaponMaxDurability: effectiveMaxOf(
+      profile,
+      "weapon",
       clubBuildingPct(club, "equipment_max_durability_pct")
     ),
     shield: profile.shield,
     shieldDurability: profile.shield_durability,
-    shieldMaxDurability: buildingService.effectiveMaxDurability(
-      profile.shield_max_durability,
+    shieldMaxDurability: effectiveMaxOf(
+      profile,
+      "shield",
       clubBuildingPct(club, "equipment_max_durability_pct")
     ),
     autoPotion: profile.dungeon_auto_potion !== false,

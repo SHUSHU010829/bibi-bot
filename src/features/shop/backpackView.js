@@ -26,6 +26,7 @@ const {
 } = require("../donation/customCardNumber");
 const { getPickaxeRepairCost, applyRepairDiscount } = require("../mining/mineService");
 const buildingService = require("../guild_club/buildingService");
+const { effectiveMaxOf, baseWithBonus, bonusSuffix } = require("../mining/equipDurability");
 const dungeonService = require("../mining/dungeonService");
 const orePriceEngine = require("../market/orePriceEngine");
 const eventEngine = require("../event/eventEngine");
@@ -603,14 +604,14 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       .catch(() => ({}));
     const repairDiscountPct = guildBuildingBuffs.equipment_repair_discount_pct || 0;
     const equipMaxPct = guildBuildingBuffs.equipment_max_durability_pct || 0;
-    const effMaxOf = (v) => buildingService.effectiveMaxDurability(v, equipMaxPct);
+    const effMaxOf = (slot) => effectiveMaxOf(profile, slot, equipMaxPct);
 
     const pdef = mining.pickaxes[profile.pickaxe] || mining.pickaxes.wood;
     const durabilityText =
       profile.pickaxe === "wood" || profile.pickaxe_durability == null
         ? "永久"
         : typeof profile.pickaxe_max_durability === "number"
-          ? `耐久 ${profile.pickaxe_durability} / ${effMaxOf(profile.pickaxe_max_durability)}`
+          ? `耐久 ${profile.pickaxe_durability} / ${effMaxOf("pickaxe")}${bonusSuffix(profile, "pickaxe")}`
           : `耐久 ${profile.pickaxe_durability}`;
 
     const now = Date.now();
@@ -635,7 +636,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       profile.pickaxe !== "wood" &&
       typeof profile.pickaxe_durability === "number" &&
       typeof profile.pickaxe_max_durability === "number" &&
-      profile.pickaxe_durability < effMaxOf(profile.pickaxe_max_durability);
+      profile.pickaxe_durability < effMaxOf("pickaxe");
 
     const formatCost = (cost) => {
       if (!cost) return "";
@@ -698,19 +699,20 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       // 連續通行證已獨立成「🎟️ 通行證」分類；探險道具（藏寶圖等）獨立成「🗺️ 探險道具」分類，避免本頁元件爆量
       // 體力藥水已移到「⚔️ 地下城」分類顯示，這裡不再重複
       {
-        const pickaxeMax = profile.pickaxe_max_durability;
-        const weaponMax = profile.weapon_max_durability;
-        const shieldMax = profile.shield_max_durability;
-        // 磨石 -10 的門檻看「原始上限」；顯示則看「有效上限」(含鐵匠鋪加成)，跟 /裝備 同一個數字。
-        const pickaxeEffMax = effMaxOf(pickaxeMax);
-        const weaponEffMax = effMaxOf(weaponMax);
-        const shieldEffMax = effMaxOf(shieldMax);
+        // 磨石 -10 的門檻看「未吃鐵匠鋪加成的上限」(base + 維修工具 bonus)；
+        // 顯示則看「有效上限」(再乘鐵匠鋪加成)，跟 /裝備 同一個數字。
+        const pickaxeMax = baseWithBonus(profile, "pickaxe");
+        const weaponMax = baseWithBonus(profile, "weapon");
+        const shieldMax = baseWithBonus(profile, "shield");
+        const pickaxeEffMax = effMaxOf("pickaxe");
+        const weaponEffMax = effMaxOf("weapon");
+        const shieldEffMax = effMaxOf("shield");
         const canPickaxe = inferiorCount > 0 && profile.pickaxe !== "wood" && typeof pickaxeMax === "number" && pickaxeMax >= 20;
         const canWeapon = inferiorCount > 0 && profile.weapon !== "fist" && typeof weaponMax === "number" && weaponMax >= 20;
         const canShield = inferiorCount > 0 && !!profile.shield && typeof shieldMax === "number" && shieldMax >= 20;
 
         const hintLines = [`🪨 **劣質磨石** ×${inferiorCount}`];
-        hintLines.push("-# 通用修復 — 補滿耐久，該裝備最大耐久 -10（原始上限 < 20 時無法使用）");
+        hintLines.push("-# 通用修復 — 補滿耐久，該裝備最大耐久 -10（上限剩 < 20 時無法使用）");
         const slots = [];
         if (profile.pickaxe !== "wood") slots.push(`鎬 max ${pickaxeEffMax ?? "—"}`);
         if (profile.weapon !== "fist") slots.push(`武 max ${weaponEffMax ?? "—"}`);
@@ -754,7 +756,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
                 ? "需要非木鎬才能修復"
                 : !canRepair && typeof profile.pickaxe_durability === "number" &&
                   typeof profile.pickaxe_max_durability === "number" &&
-                  profile.pickaxe_durability >= effMaxOf(profile.pickaxe_max_durability)
+                  profile.pickaxe_durability >= effMaxOf("pickaxe")
                 ? "耐久已滿，不需要修復"
                 : "裝備鎬子後可使用"
             }`;
@@ -909,15 +911,16 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
 
     const rodKey = fishProfile.fishing_rod || "bamboo";
     const rodDef = (fishing.rods || {})[rodKey] || (fishing.rods || {}).bamboo || {};
-    const rodEffMaxDura = buildingService.effectiveMaxDurability(
-      fishProfile.rod_max_durability,
+    const rodEffMaxDura = effectiveMaxOf(
+      fishProfile,
+      "rod",
       await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId),
     );
     const rodDuraText =
       rodKey === "bamboo" || fishProfile.rod_durability == null
         ? "永久"
         : typeof rodEffMaxDura === "number"
-          ? `耐久 ${fishProfile.rod_durability} / ${rodEffMaxDura}`
+          ? `耐久 ${fishProfile.rod_durability} / ${rodEffMaxDura}${bonusSuffix(fishProfile, "rod")}`
           : `耐久 ${fishProfile.rod_durability}`;
     const rodLine = `🪝 釣竿：**${rodDef.emoji || "🎣"} ${rodDef.name || "竹釣竿"}**（${rodDuraText}）`;
 

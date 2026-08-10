@@ -34,6 +34,10 @@ const {
 const mineService = require("../../features/mining/mineService");
 const buildingService = require("../../features/guild_club/buildingService");
 const { getOrCreate } = require("../../features/mining/miningProfile");
+const {
+  baseWithBonus,
+  effectiveMaxOf,
+} = require("../../features/mining/equipDurability");
 const { mining, fishing, dungeon } = require("../../config");
 const { deferReplySafe, deferUpdateSafe } = require("../../utils/safeAck");
 
@@ -99,7 +103,7 @@ module.exports = async (client, interaction) => {
         // ── 預覽：用 ephemeral 純文字提示後果 + 確認鈕 ──
         if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
         const profile = await getOrCreate(client, interaction.user.id, interaction.guildId);
-        const maxDur = profile.pickaxe_max_durability;
+        const maxDur = baseWithBonus(profile, "pickaxe");
         if ((profile.whetstone_inferior_count || 0) <= 0) {
           await replyEphemeral(interaction, "🪨 你沒有劣質磨石，可到 /商店 購買。");
           return;
@@ -111,14 +115,14 @@ module.exports = async (client, interaction) => {
         if (typeof maxDur !== "number" || maxDur < 20) {
           await replyEphemeral(
             interaction,
-            `⛏️ 鎬子的原始耐久上限只剩 ${maxDur ?? "—"}（不含鐵匠鋪加成），不足 20 無法使用劣質磨石。`
+            `⛏️ 鎬子的耐久上限只剩 ${maxDur ?? "—"}（不含鐵匠鋪加成），不足 20 無法使用劣質磨石。`
           );
           return;
         }
-        // -10 作用在原始上限；顯示補滿目標與上限用「有效上限」（含鐵匠鋪加成）。
+        // -10 累加到 bonus（不動 base）；顯示補滿目標與上限用「有效上限」（含鐵匠鋪加成 + bonus）。
         const pickPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
-        const pickEffMaxNow = buildingService.effectiveMaxDurability(maxDur, pickPct);
-        const pickEffMaxAfter = buildingService.effectiveMaxDurability(maxDur - 10, pickPct);
+        const pickEffMaxNow = effectiveMaxOf(profile, "pickaxe", pickPct);
+        const pickEffMaxAfter = pickEffMaxNow - 10;
         const pickDef = mining?.pickaxes?.[profile.pickaxe] || {};
         const confirmBtn = new ButtonBuilder()
           .setCustomId(`${USE_WHETSTONE_INFERIOR_CONFIRM_PREFIX}${interaction.user.id}`)
@@ -129,7 +133,7 @@ module.exports = async (client, interaction) => {
           content:
             `🪨 確認要對 **${pickDef.name || profile.pickaxe}** 使用劣質磨石？\n` +
             `・耐久：${profile.pickaxe_durability} → ${pickEffMaxAfter}（補滿）\n` +
-            `・最大耐久上限：${pickEffMaxNow} → **${pickEffMaxAfter}**（原始 -10）\n\n` +
+            `・最大耐久上限：${pickEffMaxNow} → **${pickEffMaxAfter}**（上限 -10）\n\n` +
             `-# 此操作無法撤回，最大耐久下降後無法回復。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
         });
@@ -150,7 +154,7 @@ module.exports = async (client, interaction) => {
           disabled: "🔧 挖礦系統尚未啟動！",
           no_whetstone: "🪨 你沒有劣質磨石，可到 /商店 購買。",
           no_pickaxe: "⛏️ 你目前沒有可修復的鎬子（木鎬不需修復）。",
-          max_too_low: `⛏️ 鎬子的原始耐久上限只剩 ${result.maxDurability}（不含鐵匠鋪加成），不足 20 無法再使用劣質磨石。快去 /合成 一把新的吧！`,
+          max_too_low: `⛏️ 鎬子的耐久上限只剩 ${result.maxDurability}（不含鐵匠鋪加成），不足 20 無法再使用劣質磨石。快去 /合成 一把新的吧！`,
           retry: "⏳ 操作衝突，請再試一次。",
         };
         await interaction.editReply({
@@ -192,15 +196,15 @@ module.exports = async (client, interaction) => {
           await replyEphemeral(interaction, "⚔️ 你目前沒有可修復的武器（赤手空拳不需修復）。");
           return;
         }
-        const maxDur = profile.weapon_max_durability;
+        const maxDur = baseWithBonus(profile, "weapon");
         if (typeof maxDur !== "number" || maxDur < 20) {
-          await replyEphemeral(interaction, `⚔️ 武器的原始耐久上限只剩 ${maxDur ?? "—"}（不含鐵匠鋪加成），不足 20 無法使用劣質磨石。`);
+          await replyEphemeral(interaction, `⚔️ 武器的耐久上限只剩 ${maxDur ?? "—"}（不含鐵匠鋪加成），不足 20 無法使用劣質磨石。`);
           return;
         }
-        // -10 作用在原始上限；顯示補滿目標與上限用「有效上限」（含鐵匠鋪加成）。
+        // -10 累加到 bonus（不動 base）；顯示補滿目標與上限用「有效上限」（含鐵匠鋪加成 + bonus）。
         const weaponPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
-        const effMaxNow = buildingService.effectiveMaxDurability(maxDur, weaponPct);
-        const effMaxAfter = buildingService.effectiveMaxDurability(maxDur - 10, weaponPct);
+        const effMaxNow = effectiveMaxOf(profile, "weapon", weaponPct);
+        const effMaxAfter = effMaxNow - 10;
         const wdef = dungeon?.weapons?.[profile.weapon] || {};
         const confirmBtn = new ButtonBuilder()
           .setCustomId(`${USE_WHETSTONE_WEAPON_CONFIRM_PREFIX}${interaction.user.id}`)
@@ -210,7 +214,7 @@ module.exports = async (client, interaction) => {
           content:
             `🪨 確認要對 **${wdef.name || profile.weapon}** 使用劣質磨石？\n` +
             `・耐久：${profile.weapon_durability} → ${effMaxAfter}（補滿）\n` +
-            `・最大耐久上限：${effMaxNow} → **${effMaxAfter}**（原始 -10）\n\n` +
+            `・最大耐久上限：${effMaxNow} → **${effMaxAfter}**（上限 -10）\n\n` +
             `-# 此操作無法撤回，最大耐久下降後無法回復。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
         });
@@ -225,7 +229,7 @@ module.exports = async (client, interaction) => {
           disabled: "🔧 挖礦系統尚未啟動！",
           no_whetstone: "🪨 你沒有劣質磨石，可到 /商店 購買。",
           no_weapon: "⚔️ 你目前沒有可修復的武器。",
-          max_too_low: `⚔️ 武器的原始耐久上限只剩 ${result.maxDurability}（不含鐵匠鋪加成），不足 20 無法再使用劣質磨石。快去 /合成 一把新的吧！`,
+          max_too_low: `⚔️ 武器的耐久上限只剩 ${result.maxDurability}（不含鐵匠鋪加成），不足 20 無法再使用劣質磨石。快去 /合成 一把新的吧！`,
           retry: "⏳ 操作衝突，請再試一次。",
         };
         await interaction.editReply({ content: messages[result.reason] || "🔧 使用失敗，請稍後再試。", components: [] });
@@ -264,15 +268,15 @@ module.exports = async (client, interaction) => {
           await replyEphemeral(interaction, "🛡️ 你目前沒有裝備盾牌。先 /合成 一面盾。");
           return;
         }
-        const maxDur = profile.shield_max_durability;
+        const maxDur = baseWithBonus(profile, "shield");
         if (typeof maxDur !== "number" || maxDur < 20) {
-          await replyEphemeral(interaction, `🛡️ 盾的原始耐久上限只剩 ${maxDur ?? "—"}（不含鐵匠鋪加成），不足 20 無法使用劣質磨石。`);
+          await replyEphemeral(interaction, `🛡️ 盾的耐久上限只剩 ${maxDur ?? "—"}（不含鐵匠鋪加成），不足 20 無法使用劣質磨石。`);
           return;
         }
-        // -10 作用在原始上限；顯示補滿目標與上限用「有效上限」（含鐵匠鋪加成）。
+        // -10 累加到 bonus（不動 base）；顯示補滿目標與上限用「有效上限」（含鐵匠鋪加成 + bonus）。
         const shieldPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
-        const shieldEffMaxNow = buildingService.effectiveMaxDurability(maxDur, shieldPct);
-        const shieldEffMaxAfter = buildingService.effectiveMaxDurability(maxDur - 10, shieldPct);
+        const shieldEffMaxNow = effectiveMaxOf(profile, "shield", shieldPct);
+        const shieldEffMaxAfter = shieldEffMaxNow - 10;
         const sdef = dungeon?.shields?.[profile.shield] || {};
         const confirmBtn = new ButtonBuilder()
           .setCustomId(`${USE_WHETSTONE_SHIELD_CONFIRM_PREFIX}${interaction.user.id}`)
@@ -282,7 +286,7 @@ module.exports = async (client, interaction) => {
           content:
             `🪨 確認要對 **${sdef.name || profile.shield}** 使用劣質磨石？\n` +
             `・耐久：${profile.shield_durability} → ${shieldEffMaxAfter}（補滿）\n` +
-            `・最大耐久上限：${shieldEffMaxNow} → **${shieldEffMaxAfter}**（原始 -10）\n\n` +
+            `・最大耐久上限：${shieldEffMaxNow} → **${shieldEffMaxAfter}**（上限 -10）\n\n` +
             `-# 此操作無法撤回，最大耐久下降後無法回復。`,
           components: [new ActionRowBuilder().addComponents(confirmBtn)],
         });
@@ -297,7 +301,7 @@ module.exports = async (client, interaction) => {
           disabled: "🔧 挖礦系統尚未啟動！",
           no_whetstone: "🪨 你沒有劣質磨石，可到 /商店 購買。",
           no_shield: "🛡️ 你目前沒有裝備盾牌。",
-          max_too_low: `🛡️ 盾的原始耐久上限只剩 ${result.maxDurability}（不含鐵匠鋪加成），不足 20 無法再使用劣質磨石。快去 /合成 一面新盾吧！`,
+          max_too_low: `🛡️ 盾的耐久上限只剩 ${result.maxDurability}（不含鐵匠鋪加成），不足 20 無法再使用劣質磨石。快去 /合成 一面新盾吧！`,
           retry: "⏳ 操作衝突，請再試一次。",
         };
         await interaction.editReply({ content: messages[result.reason] || "🔧 使用失敗，請稍後再試。", components: [] });
@@ -342,7 +346,7 @@ module.exports = async (client, interaction) => {
           return;
         }
         const weaponPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
-        const effMax = buildingService.effectiveMaxDurability(profile.weapon_max_durability, weaponPct);
+        const effMax = effectiveMaxOf(profile, "weapon", weaponPct);
         if (
           typeof profile.weapon_durability === "number" &&
           typeof effMax === "number" &&
@@ -425,7 +429,7 @@ module.exports = async (client, interaction) => {
           return;
         }
         const rodPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
-        const rodEffMax = buildingService.effectiveMaxDurability(profile.rod_max_durability, rodPct);
+        const rodEffMax = effectiveMaxOf(profile, "rod", rodPct);
         if (
           typeof profile.rod_durability === "number" &&
           typeof rodEffMax === "number" &&
@@ -508,7 +512,7 @@ module.exports = async (client, interaction) => {
           return;
         }
         const shieldPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
-        const shieldEffMax = buildingService.effectiveMaxDurability(profile.shield_max_durability, shieldPct);
+        const shieldEffMax = effectiveMaxOf(profile, "shield", shieldPct);
         if (
           typeof profile.shield_durability === "number" &&
           typeof shieldEffMax === "number" &&
@@ -596,7 +600,7 @@ module.exports = async (client, interaction) => {
         return;
       }
       const pickPct = await buildingService.getEquipmentMaxDurabilityPct(client, interaction.user.id, interaction.guildId);
-      const pickEffMax = buildingService.effectiveMaxDurability(profile.pickaxe_max_durability, pickPct);
+      const pickEffMax = effectiveMaxOf(profile, "pickaxe", pickPct);
       if (
         typeof profile.pickaxe_durability === "number" &&
         typeof pickEffMax === "number" &&

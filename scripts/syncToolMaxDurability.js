@@ -12,7 +12,10 @@ const fishing = require("../src/config/fishing.json");
  *
  * 用途：調整 config 中工具的 durability 後，把舊有玩家的工具一次補成新值。
  *
- * 注意：劣質磨鎬石對 pickaxe_max_durability 的 -10 懲罰會被本次同步抹除。
+ * 注意：*_max_durability 現在只存 config 原始上限，維修工具 / 磨石的累積放在
+ *       *_max_durability_bonus，本腳本不動它——同步後玩家的 +2 或 -10 都會保留。
+ *       前提是該文件已經拆分過；未拆分的文件會讓「config 改動」與「玩家累積」混在一起
+ *       而分不出來，所以下面會先擋下來，要求先跑 scripts/splitEquipDurabilityBonus.js。
  *
  * 執行：
  *   node scripts/syncToolMaxDurability.js          # dry-run，列出將被更動的玩家
@@ -25,6 +28,7 @@ const TOOLS = [
     equippedField: "pickaxe",
     durabilityField: "pickaxe_durability",
     maxDurabilityField: "pickaxe_max_durability",
+    bonusField: "pickaxe_max_durability_bonus",
     defs: mining.mining?.pickaxes || mining.pickaxes || {},
     defaultId: "wood",
   },
@@ -33,6 +37,7 @@ const TOOLS = [
     equippedField: "weapon",
     durabilityField: "weapon_durability",
     maxDurabilityField: "weapon_max_durability",
+    bonusField: "weapon_max_durability_bonus",
     defs: dungeon.dungeon?.weapons || dungeon.weapons || {},
     defaultId: "fist",
   },
@@ -41,6 +46,7 @@ const TOOLS = [
     equippedField: "fishing_rod",
     durabilityField: "rod_durability",
     maxDurabilityField: "rod_max_durability",
+    bonusField: "rod_max_durability_bonus",
     defs: fishing.fishing?.rods || fishing.rods || {},
     defaultId: "bamboo",
   },
@@ -92,6 +98,19 @@ async function main() {
       .toArray();
 
     console.log(`[INFO] 掃描 ${profiles.length} 筆 MiningProfiles…`.cyan);
+
+    // 未拆分的文件其 *_max_durability 仍是「原始上限 + 維修工具/磨石累積」的混合值，
+    // 這時覆寫成 config 值會把玩家累積的 ±值一起抹掉且無法還原，所以直接中止。
+    const unsplit = await collection.countDocuments({
+      $or: TOOLS.map((t) => ({ [t.bonusField]: { $exists: false } })),
+    });
+    if (unsplit > 0) {
+      console.log(
+        `[ERROR] 還有 ${unsplit} 筆文件尚未拆分 base / bonus，直接同步會抹掉維修工具與磨石的累積。`.red,
+      );
+      console.log("        請先執行：node scripts/splitEquipDurabilityBonus.js apply".red);
+      process.exit(1);
+    }
 
     const ops = [];
     const samplePreview = [];

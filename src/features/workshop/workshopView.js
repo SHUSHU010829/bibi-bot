@@ -38,7 +38,7 @@ const {
 } = require("../mining/mineService");
 const buildingService = require("../guild_club/buildingService");
 const trapTiers = require("../farm/trapTiers");
-const { effectiveMaxDurability } = buildingService;
+const { effectiveMaxOf, bonusSuffix } = require("../mining/equipDurability");
 const {
   REPAIR_MATERIAL_PREFIX,
   REPAIR_WEAPON_PREFIX,
@@ -219,7 +219,7 @@ function formatCostInline(profile, cost) {
 
 // ─── 裝備分頁 ────────────────────────────────────────────────────────────────
 function buildEquipmentTab(container, { userId, displayName, profile, equipMaxPct = 0 }) {
-  const effMaxOf = (field) => effectiveMaxDurability(profile[field], equipMaxPct);
+  const effMaxOf = (slot) => effectiveMaxOf(profile, slot, equipMaxPct);
   container
     .setAccentColor(0x95a5a6)
     .addTextDisplayComponents(
@@ -230,7 +230,7 @@ function buildEquipmentTab(container, { userId, displayName, profile, equipMaxPc
   const pickDurability =
     profile.pickaxe === "wood" || profile.pickaxe_durability == null
       ? "永久"
-      : `${profile.pickaxe_durability}/${effMaxOf("pickaxe_max_durability") ?? "?"} 次`;
+      : `${profile.pickaxe_durability}/${effMaxOf("pickaxe") ?? "?"} 次${bonusSuffix(profile, "pickaxe")}`;
   const luckPct = Math.round((pdef.luckBonus || 0) * 100);
   const cdReduceMin = Math.round((pdef.cdReductionMs || 0) / 60000);
 
@@ -243,11 +243,11 @@ function buildEquipmentTab(container, { userId, displayName, profile, equipMaxPc
 
   const wKey = profile.weapon || "fist";
   const wdef = (dungeon?.weapons || {})[wKey] || {};
-  const weaponEffMax = effectiveMaxDurability(profile.weapon_max_durability, equipMaxPct);
+  const weaponEffMax = effMaxOf("weapon");
   const weaponDurability =
     wKey === "fist" || profile.weapon_durability == null
       ? "永久"
-      : `${profile.weapon_durability}/${weaponEffMax ?? "?"} 次`;
+      : `${profile.weapon_durability}/${weaponEffMax ?? "?"} 次${bonusSuffix(profile, "weapon")}`;
   const critPct = Math.round((wdef.critRate || 0) * 100);
   const atk = playerAtk(profile);
   const weaponNote = wKey === "fist" ? "（赤手戰勝率極低，先合成一把劍！）" : "";
@@ -267,7 +267,7 @@ function buildEquipmentTab(container, { userId, displayName, profile, equipMaxPc
     const shieldDurability =
       profile.shield_durability == null
         ? "—"
-        : `${profile.shield_durability}/${effMaxOf("shield_max_durability") ?? "?"} 次`;
+        : `${profile.shield_durability}/${effMaxOf("shield") ?? "?"} 次${bonusSuffix(profile, "shield")}`;
     const blockPct = Math.round((sdef.blockRate || 0) * 100);
     const refPct = Math.round((sdef.reflectRate || 0) * 100);
     container.addTextDisplayComponents(
@@ -290,7 +290,7 @@ function buildEquipmentTab(container, { userId, displayName, profile, equipMaxPc
   const rodDurability =
     rodKey === "bamboo" || profile.rod_durability == null
       ? "永久"
-      : `${profile.rod_durability}/${effMaxOf("rod_max_durability") ?? "?"} 次`;
+      : `${profile.rod_durability}/${effMaxOf("rod") ?? "?"} 次${bonusSuffix(profile, "rod")}`;
   const rodSuccessPct = Math.round((rdef.successBonus || 0) * 100);
   const rodCdReduceMin = Math.round((rdef.cdReductionMs || 0) / 60000);
   container.addTextDisplayComponents(
@@ -611,7 +611,7 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
 
 // ─── 修復分頁 ────────────────────────────────────────────────────────────────
 function buildRepairTab(container, { userId, displayName, profile, repairDiscountPct = 0, equipMaxPct = 0 }) {
-  const effMaxOf = (field) => effectiveMaxDurability(profile[field], equipMaxPct);
+  const effMaxOf = (slot) => effectiveMaxOf(profile, slot, equipMaxPct);
   container
     .setAccentColor(0x16a085)
     .addTextDisplayComponents(
@@ -631,11 +631,11 @@ function buildRepairTab(container, { userId, displayName, profile, repairDiscoun
       profile.pickaxe !== "wood" &&
       typeof profile.pickaxe_durability === "number" &&
       typeof profile.pickaxe_max_durability === "number" &&
-      profile.pickaxe_durability < effMaxOf("pickaxe_max_durability");
+      profile.pickaxe_durability < effMaxOf("pickaxe");
     const dura =
       profile.pickaxe === "wood" || profile.pickaxe_durability == null
         ? "永久"
-        : `${profile.pickaxe_durability}/${effMaxOf("pickaxe_max_durability") ?? "?"} 次`;
+        : `${profile.pickaxe_durability}/${effMaxOf("pickaxe") ?? "?"} 次`;
     const body = profile.pickaxe === "wood"
       ? `⛏️ **鎬子**：木鎬（不需修復）`
       : cost
@@ -663,7 +663,7 @@ function buildRepairTab(container, { userId, displayName, profile, repairDiscoun
   {
     const cost = applyRepairDiscount(getWeaponRepairCost(profile), repairDiscountPct);
     const wKey = profile.weapon || "fist";
-    const weaponEffMax = effectiveMaxDurability(profile.weapon_max_durability, equipMaxPct);
+    const weaponEffMax = effMaxOf("weapon");
     const can =
       cost !== null &&
       wKey !== "fist" &&
@@ -713,11 +713,11 @@ function buildRepairTab(container, { userId, displayName, profile, repairDiscoun
         cost !== null &&
         typeof profile.shield_durability === "number" &&
         typeof profile.shield_max_durability === "number" &&
-        profile.shield_durability < effMaxOf("shield_max_durability");
+        profile.shield_durability < effMaxOf("shield");
       const dura =
         profile.shield_durability == null
           ? "—"
-          : `${profile.shield_durability}/${effMaxOf("shield_max_durability") ?? "?"} 次`;
+          : `${profile.shield_durability}/${effMaxOf("shield") ?? "?"} 次`;
       const label = `${sdef.emoji || "🛡️"} ${sdef.name || sKey}`;
       const body = cost
         ? `🛡️ **盾**：${label}（耐久 ${dura}）\n🛠️ 消耗：${formatCostInline(profile, cost)}`
@@ -750,11 +750,11 @@ function buildRepairTab(container, { userId, displayName, profile, repairDiscoun
       rKey !== "bamboo" &&
       typeof profile.rod_durability === "number" &&
       typeof profile.rod_max_durability === "number" &&
-      profile.rod_durability < effMaxOf("rod_max_durability");
+      profile.rod_durability < effMaxOf("rod");
     const dura =
       rKey === "bamboo" || profile.rod_durability == null
         ? "永久"
-        : `${profile.rod_durability}/${effMaxOf("rod_max_durability") ?? "?"} 次`;
+        : `${profile.rod_durability}/${effMaxOf("rod") ?? "?"} 次`;
     const body = rKey === "bamboo"
       ? `🪝 **釣竿**：竹竿（不需修復）`
       : cost
@@ -790,7 +790,7 @@ function buildRepairTab(container, { userId, displayName, profile, repairDiscoun
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `### 🛠️ 維修工具（消耗品）\n-# 鎬子・武器・盾牌・釣竿都能用，不吃背包材料；每張會依階級調整該裝備的耐久上限`,
+          `### 🛠️ 維修工具（消耗品）\n-# 鎬子・武器・盾牌・釣竿都能用，不吃背包材料；每張會依階級調整該裝備的耐久上限\n-# 調整量會累積下來，升級或更換裝備時一併帶走（傳說 +2 疊幾張就留幾點）`,
         ),
       );
     container.addTextDisplayComponents(
@@ -805,7 +805,7 @@ function buildRepairTab(container, { userId, displayName, profile, repairDiscoun
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "-# 還沒有維修工具？切到「合成」分頁打造，鐵製便宜、傳說 max +2",
+      "-# 還沒有維修工具？切到「合成」分頁打造，鐵製便宜、傳說 max +2（升級裝備後仍保留）",
     ),
   );
 }

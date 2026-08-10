@@ -266,17 +266,29 @@ async function buyItem(client, { userId, guildId, username, member, itemId, quan
       { upsert: true, returnDocument: "after" },
     );
   } else if (item.type === "fishing_rod") {
-    // 釣竿：直接裝備到 MiningProfiles（含耐久），不進 UserInventory
-    await getMiningProfile(client, userId, guildId);
+    // 釣竿：直接裝備到 MiningProfiles（含耐久），不進 UserInventory。
+    // 比照 craftService：rod_max_durability 只存 config 原始上限，維修工具 / 磨石累積的
+    // rod_max_durability_bonus 不重設（跟著新竿走），現值補到含加成的有效上限。
+    const prof = await getMiningProfile(client, userId, guildId);
     const rodId = item.payload.rodId;
     const dura = (fishing.rods[rodId]?.durability) ?? null;
+    let rodBonus = null;
+    let rodDura = dura;
+    if (typeof dura === "number") {
+      const buildingService = require("../guild_club/buildingService");
+      const { bonusOf, MIN_BASE_WITH_BONUS } = require("../mining/equipDurability");
+      const pct = await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId);
+      rodBonus = Math.max(bonusOf(prof, "rod"), MIN_BASE_WITH_BONUS - dura);
+      rodDura = buildingService.effectiveMaxDurability(dura, pct) + rodBonus;
+    }
     await client.miningProfilesCollection.updateOne(
       { userId, guildId },
       {
         $set: {
           fishing_rod: rodId,
-          rod_durability: dura,
+          rod_durability: rodDura,
           rod_max_durability: dura,
+          ...(rodBonus !== null ? { rod_max_durability_bonus: rodBonus } : {}),
           updatedAt: now,
         },
       },

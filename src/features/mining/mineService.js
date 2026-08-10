@@ -10,7 +10,14 @@ const grantCoins = require("../economy/grantCoins");
 const grantActivityXp = require("../leveling/grantActivityXp");
 const { priceOf } = require("./overflowConfirm");
 const buildingService = require("../guild_club/buildingService");
-const { EQUIP_SLOTS, effectiveMaxOf, slotEquipped } = require("./equipDurability");
+const {
+  EQUIP_SLOTS,
+  MIN_BASE_WITH_BONUS,
+  baseWithBonus,
+  bonusOf,
+  effectiveMaxOf,
+  slotEquipped,
+} = require("./equipDurability");
 const bus = require("../eventBus");
 
 // 鎬子有效耐久上限：DB 只存原始 base，鐵匠鋪加成讀取時才換算。
@@ -739,184 +746,71 @@ function getShieldRepairCost(profile) {
   return cost;
 }
 
-// 使用一個劣質磨石：補滿鎬子耐久到目前 pickaxe_max_durability，然後 max -10。
-// max < 20 時拒用（避免降至 10 以下，讓玩家知道是最終次數）。
-async function useInferiorWhetstone(client, { userId, guildId }) {
+// 劣質磨石：補滿耐久、上限 -10、扣一顆。四種裝備規則一致，差別只在欄位名（EQUIP_SLOTS），
+// 所以只留一份實作。-10 累加到 bonus 欄位而不是 base，跟維修工具走同一套帳：
+// base 永遠是 config 原始上限，升級換裝備時 bonus 不重設，磨損與補強都一路帶著走。
+// base+bonus < 20 時拒用（避免降到 10 以下，讓玩家知道是最終次數）。
+const WHETSTONE_MAX_DELTA = -10;
+const WHETSTONE_MIN_BASE = 20;
+
+async function useInferiorWhetstoneOn(client, { userId, guildId, target }) {
   if (!mining?.enabled || !client.miningProfilesCollection) {
     return { ok: false, reason: "disabled" };
   }
+  const spec = EQUIP_SLOTS[target];
+  if (!spec) return { ok: false, reason: "no_target" };
 
-  const profile = await getOrCreate(client, userId, guildId);
-
-  if ((profile.whetstone_inferior_count || 0) <= 0) {
-    return { ok: false, reason: "no_whetstone" };
-  }
-  if (!profile.pickaxe || profile.pickaxe === "wood") {
-    return { ok: false, reason: "no_pickaxe" };
-  }
-  if (typeof profile.pickaxe_max_durability !== "number") {
-    return { ok: false, reason: "no_pickaxe" };
-  }
-  const guildBuffs = await buildingService
-    .getMemberBuildingBuffs(client, userId, guildId)
-    .catch(() => ({}));
-  if (profile.pickaxe_max_durability < 20) {
-    return { ok: false, reason: "max_too_low", maxDurability: profile.pickaxe_max_durability };
-  }
-
-  // 原子更新：補滿耐久到新 max（舊 max - 10），扣一顆劣質磨石
-  // pipeline $set 內所有運算式都參照「更新前」的文件值。
-  //
-  // 舊存檔玩家 DB 文件可能沒有 pickaxe_max_durability 欄位（miningProfile.normalize
-  // 只在記憶體裡用 config 補回，沒寫回 DB），所以這裡：
-  //   1) filter 不再要求 pickaxe_max_durability >= 20——前面 JS 已用 normalize 後
-  //      的值預檢過，否則舊文件會卡在「操作衝突」。
-  //   2) pipeline 內用 $ifNull 把可能 missing 的欄位 fallback 成 normalize 出來
-  //      的 max（profile.pickaxe_max_durability），避免 $add(null,-10) → null
-  //      把鎬子上限算成空值。
-  const fallbackMax = profile.pickaxe_max_durability;
-  // 上限 -10 作用在原始 base；耐久補到「有效上限」（吃鐵匠鋪 %），比照武器版
-  const effMaxAfter = buildingService.effectiveMaxDurability(
-    fallbackMax - 10,
-    guildBuffs.equipment_max_durability_pct || 0,
-  );
-  const res = await client.miningProfilesCollection.updateOne(
-    {
-      userId,
-      guildId,
-      whetstone_inferior_count: { $gte: 1 },
-      pickaxe: { $ne: "wood" },
-    },
-    [
-      {
-        $set: {
-          pickaxe_max_durability: {
-            $add: [{ $ifNull: ["$pickaxe_max_durability", fallbackMax] }, -10],
-          },
-          pickaxe_durability: effMaxAfter,
-          whetstone_inferior_count: { $add: ["$whetstone_inferior_count", -1] },
-          updatedAt: "$$NOW",
-        },
-      },
-    ]
-  );
-
-  if (res.modifiedCount === 0) {
-    return { ok: false, reason: "retry" };
-  }
-
-  return {
-    ok: true,
-    durabilityAfter: effMaxAfter,
-    maxAfter: effMaxAfter,
-    inferiorLeft: (profile.whetstone_inferior_count || 0) - 1,
-  };
-}
-
-// Phase H+ 劣質磨石對武器：補滿武器耐久、武器 max -10、扣一顆劣質磨石。
-// max < 20 時拒用（同鎬子規則，避免上限掉到負值）。
-async function useInferiorWhetstoneOnWeapon(client, { userId, guildId }) {
-  if (!mining?.enabled || !client.miningProfilesCollection) {
-    return { ok: false, reason: "disabled" };
-  }
   const profile = await getOrCreate(client, userId, guildId);
   if ((profile.whetstone_inferior_count || 0) <= 0) return { ok: false, reason: "no_whetstone" };
-  if (!profile.weapon || profile.weapon === "fist") return { ok: false, reason: "no_weapon" };
-  if (typeof profile.weapon_max_durability !== "number") return { ok: false, reason: "no_weapon" };
-  if (profile.weapon_max_durability < 20) {
-    return { ok: false, reason: "max_too_low", maxDurability: profile.weapon_max_durability };
+  if (!slotEquipped(profile, target)) return { ok: false, reason: spec.reason };
+
+  const curBaseWithBonus = baseWithBonus(profile, target);
+  if (curBaseWithBonus < WHETSTONE_MIN_BASE) {
+    return { ok: false, reason: "max_too_low", maxDurability: curBaseWithBonus, target };
   }
 
-  const fallbackMax = profile.weapon_max_durability;
-  // 磨石 -10 作用在「原始上限」；補滿的當前耐久則補到「有效上限」（原始 × 鐵匠鋪加成）。
   const pct = await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId);
+  const newBonus = bonusOf(profile, target) + WHETSTONE_MAX_DELTA;
+  const effMaxAfter =
+    buildingService.effectiveMaxDurability(profile[spec.maxField], pct) + newBonus;
+
   const res = await client.miningProfilesCollection.updateOne(
     {
       userId,
       guildId,
       whetstone_inferior_count: { $gte: 1 },
-      weapon: { $ne: "fist" },
+      [spec.idField]: profile[spec.idField],
     },
-    [
-      {
-        $set: {
-          weapon_max_durability: {
-            $add: [{ $ifNull: ["$weapon_max_durability", fallbackMax] }, -10],
-          },
-          weapon_durability: {
-            $floor: {
-              $multiply: [
-                { $add: [{ $ifNull: ["$weapon_max_durability", fallbackMax] }, -10] },
-                1 + pct / 100,
-              ],
-            },
-          },
-          whetstone_inferior_count: { $add: ["$whetstone_inferior_count", -1] },
-          updatedAt: "$$NOW",
-        },
-      },
-    ],
-  );
-
-  if (res.modifiedCount === 0) return { ok: false, reason: "retry" };
-  const newBase = profile.weapon_max_durability - 10;
-  const newEffMax = buildingService.effectiveMaxDurability(newBase, pct);
-  return {
-    ok: true,
-    durabilityAfter: newEffMax,
-    maxAfter: newEffMax,
-    inferiorLeft: (profile.whetstone_inferior_count || 0) - 1,
-    weaponKey: profile.weapon,
-  };
-}
-
-// Phase H+ 劣質磨石對盾：補滿盾耐久、盾 max -10、扣一顆劣質磨石。
-async function useInferiorWhetstoneOnShield(client, { userId, guildId }) {
-  if (!mining?.enabled || !client.miningProfilesCollection) {
-    return { ok: false, reason: "disabled" };
-  }
-  const profile = await getOrCreate(client, userId, guildId);
-  if ((profile.whetstone_inferior_count || 0) <= 0) return { ok: false, reason: "no_whetstone" };
-  if (!profile.shield) return { ok: false, reason: "no_shield" };
-  if (typeof profile.shield_max_durability !== "number") return { ok: false, reason: "no_shield" };
-  if (profile.shield_max_durability < 20) {
-    return { ok: false, reason: "max_too_low", maxDurability: profile.shield_max_durability };
-  }
-
-  const fallbackMax = profile.shield_max_durability;
-  // 磨石 -10 作用在「原始上限」；補滿的當前耐久補到「有效上限」（比照武器 / 鎬子）。
-  const pct = await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId);
-  const effMaxAfter = buildingService.effectiveMaxDurability(fallbackMax - 10, pct);
-  const res = await client.miningProfilesCollection.updateOne(
     {
-      userId,
-      guildId,
-      whetstone_inferior_count: { $gte: 1 },
-      shield: { $ne: null },
-    },
-    [
-      {
-        $set: {
-          shield_max_durability: {
-            $add: [{ $ifNull: ["$shield_max_durability", fallbackMax] }, -10],
-          },
-          shield_durability: effMaxAfter,
-          whetstone_inferior_count: { $add: ["$whetstone_inferior_count", -1] },
-          updatedAt: "$$NOW",
-        },
+      $set: {
+        [spec.maxField]: profile[spec.maxField],
+        [spec.bonusField]: newBonus,
+        [spec.duraField]: effMaxAfter,
+        updatedAt: new Date(),
       },
-    ],
+      $inc: { whetstone_inferior_count: -1 },
+    },
   );
-
   if (res.modifiedCount === 0) return { ok: false, reason: "retry" };
+
   return {
     ok: true,
+    target,
     durabilityAfter: effMaxAfter,
     maxAfter: effMaxAfter,
+    bonusAfter: newBonus,
     inferiorLeft: (profile.whetstone_inferior_count || 0) - 1,
-    shieldKey: profile.shield,
+    ...(target === "weapon" ? { weaponKey: profile.weapon } : {}),
+    ...(target === "shield" ? { shieldKey: profile.shield } : {}),
   };
 }
+
+const useInferiorWhetstone = (client, opts) =>
+  useInferiorWhetstoneOn(client, { ...opts, target: "pickaxe" });
+const useInferiorWhetstoneOnWeapon = (client, opts) =>
+  useInferiorWhetstoneOn(client, { ...opts, target: "weapon" });
+const useInferiorWhetstoneOnShield = (client, opts) =>
+  useInferiorWhetstoneOn(client, { ...opts, target: "shield" });
 
 // 使用維修工具修復鎬子：依工具階級補 % 耐久、調整 max。
 // 例：鋼製 +75% 當前 max、max -3；傳說 +100% 且 max +2。
@@ -941,22 +835,23 @@ async function useRepairTool(client, { userId, guildId, tier, target = "pickaxe"
     return { ok: false, reason: spec.reason, target };
   }
 
-  // maxField 一律存原始 base；鐵匠鋪 % 加成四種裝備共用，補耐久時要補到「有效上限」，
-  // 否則裝了加成反而補不滿（畫面顯示 base×加成，實際只補到 base）。
-  // 對玩家報的數字一律走有效上限，跟 /裝備 看到的一致；「不得低於 10」的門檻仍看原始 base。
-  const curMax = profile[spec.maxField];
+  // maxDelta 一律累加到 bonus 欄位，不動 maxField（maxField 永遠是該裝備 config 的原始上限）。
+  // 這樣升級 / 打造覆蓋 maxField 時，維修工具累積的 ±值不會被沖掉，能一路帶到下一階裝備。
+  // 補耐久時要補到「有效上限」，否則裝了鐵匠鋪加成反而補不滿；「不得低於 10」的門檻看 base+bonus。
   const maxDelta = def.maxDelta || 0;
   const pct = await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId);
-  if (maxDelta < 0 && curMax + maxDelta < 10) {
+  const curBonus = bonusOf(profile, target);
+  const curBaseWithBonus = baseWithBonus(profile, target);
+  if (maxDelta < 0 && curBaseWithBonus + maxDelta < MIN_BASE_WITH_BONUS) {
     return {
       ok: false, reason: "max_too_low", target,
-      maxDurability: buildingService.effectiveMaxDurability(curMax, pct),
-      after: buildingService.effectiveMaxDurability(curMax + maxDelta, pct),
+      maxDurability: effectiveMaxOf(profile, target, pct),
+      after: effectiveMaxOf(profile, target, pct) + maxDelta,
     };
   }
 
-  const newMax = Math.max(1, curMax + maxDelta);
-  const fillMax = buildingService.effectiveMaxDurability(newMax, pct);
+  const newBonus = curBonus + maxDelta;
+  const fillMax = buildingService.effectiveMaxDurability(profile[spec.maxField], pct) + newBonus;
   const newDura = Math.min(fillMax, Math.ceil(fillMax * (def.duraPct ?? 1)));
 
   const res = await client.miningProfilesCollection.updateOne(
@@ -968,7 +863,8 @@ async function useRepairTool(client, { userId, guildId, tier, target = "pickaxe"
     },
     {
       $set: {
-        [spec.maxField]: newMax,
+        [spec.maxField]: profile[spec.maxField],
+        [spec.bonusField]: newBonus,
         [spec.duraField]: newDura,
         updatedAt: new Date(),
       },
@@ -985,7 +881,8 @@ async function useRepairTool(client, { userId, guildId, tier, target = "pickaxe"
     targetEmoji: spec.emoji,
     durabilityAfter: newDura,
     maxAfter: fillMax,
-    baseMaxAfter: newMax,
+    baseMaxAfter: profile[spec.maxField] + newBonus,
+    bonusAfter: newBonus,
     toolsLeft: owned - 1,
     def,
   };
@@ -1077,10 +974,7 @@ async function repairWeaponWithMaterials(client, { userId, guildId }) {
   const guildBuffs = await buildingService
     .getMemberBuildingBuffs(client, userId, guildId)
     .catch(() => ({}));
-  const effMax = buildingService.effectiveMaxDurability(
-    profile.weapon_max_durability,
-    guildBuffs.equipment_max_durability_pct || 0
-  );
+  const effMax = effectiveMaxOf(profile, "weapon", guildBuffs.equipment_max_durability_pct || 0);
   if (
     typeof profile.weapon_durability === "number" &&
     profile.weapon_durability >= effMax

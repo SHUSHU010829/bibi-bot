@@ -259,6 +259,15 @@ async function runRepairTool(client, interaction, tier, target = "pickaxe") {
             `${result.def.emoji || "🔧"} ${result.def.name} 剩餘 **${result.toolsLeft}** 張`,
         ),
       );
+    if (result.bonusAfter) {
+      okC.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          result.bonusAfter > 0
+            ? `-# 目前累積上限加成 **+${result.bonusAfter}**，升級 / 更換${result.targetLabel}後仍會保留`
+            : `-# 目前累積上限磨損 **${result.bonusAfter}**，升級 / 更換${result.targetLabel}後仍會帶著`,
+        ),
+      );
+    }
     await interaction.followUp({
       components: [okC],
       flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
