@@ -24,6 +24,7 @@ const mineService = require("../../features/mining/mineService");
 const appraisalService = require("../../features/mining/stoneAppraisalService");
 const diamondAnnouncer = require("../../features/mining/diamondAnnouncer");
 const { getOrCreate } = require("../../features/mining/miningProfile");
+const freeActions = require("../../features/mining/freeActions");
 const { buildAppraisalResultContainer } = require("./handleStoneAppraisal");
 const { COIN_EMOJI } = require("../../constants/coin");
 
@@ -177,10 +178,12 @@ async function openBatchCountModal(client, interaction, { ownerId }) {
     }
   }
 
-  // 需要至少一張券才有「連續」意義；實際能挖幾次依冷卻換算的券數由 mineBatch 逐次夾住。
+  // 需要「至少一種能跨過冷卻的資源」才有連續的意義：CD 縮短券，或訂閱者今日剩餘的免冷卻次數。
+  // 實際能挖幾次由 mineBatch 逐次夾住（優先吃免冷卻次數，用完才扣券）。
   const tickets = profile.cd_ticket_count || 0;
-  if (tickets < 1) {
-    return replyEphemeralView(interaction, mineCmd.buildBatchNoTicketView());
+  const free = freeActions.resolve("mine", profile, interaction.member);
+  if (tickets < 1 && free.left < 1) {
+    return replyEphemeralView(interaction, mineCmd.buildBatchNoTicketView(free));
   }
 
   const maxCount = mining?.batch?.maxCount || 1;

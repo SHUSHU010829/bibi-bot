@@ -552,6 +552,7 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     ticketsSpent: 0,
     freeFishesSpent: 0,
     stoppedNoTicket: false,
+    freeExhausted: false,
     caught: 0,
     failed: 0,
     fishByType: {},
@@ -615,10 +616,12 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     const remaining = (cur?.fish_cooldown_at || 0) - Date.now();
     let spentThisIter = 0;
     // 訂閱者的免冷卻次數比券便宜，還有額度就不動券——交給 fish() 自己扣。
-    if (remaining > 0 && freeActions.resolve("fish", cur, member).left <= 0) {
+    const freeNow = remaining > 0 ? freeActions.resolve("fish", cur, member) : null;
+    if (remaining > 0 && freeNow.left <= 0) {
       const need = Math.ceil(remaining / reductionMs);
       if ((cur?.cd_ticket_count || 0) < need) {
         agg.stoppedNoTicket = true;
+        agg.freeExhausted = freeNow.limit > 0;
         break;
       }
       const res = await client.miningProfilesCollection.updateOne(
@@ -627,6 +630,7 @@ async function fishBatch(client, { userId, guildId, member, username, location =
       );
       if (res.modifiedCount === 0) {
         agg.stoppedNoTicket = true;
+        agg.freeExhausted = freeNow.limit > 0;
         break;
       }
       spentThisIter = need;
@@ -738,6 +742,7 @@ async function fishBatch(client, { userId, guildId, member, username, location =
       ok: false,
       reason: initiallyOnCooldown ? "cooldown_no_ticket" : "nothing",
       readyAt: profile.fish_cooldown_at,
+      free: freeActions.resolve("fish", profile, member),
     };
   }
   return agg;

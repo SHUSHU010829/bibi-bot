@@ -19,6 +19,7 @@ const logger = require("../../utils/logger");
 const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const fishCmd = require("../../commands/fishing/fish");
 const { getOrCreate, isBatchPassActive } = require("../../features/mining/miningProfile");
+const freeActions = require("../../features/mining/freeActions");
 const { repairRodWithMaterials } = require("../../features/mining/mineService");
 const { materialLabel } = require("../../features/mining/craftMaterials");
 
@@ -173,10 +174,12 @@ async function openBatchCountModal(client, interaction, { ownerId, location }) {
     }
   }
 
-  // 需要至少一張券才有「連續」意義；實際能釣幾竿依冷卻換算的券數由 fishBatch 逐竿夾住。
+  // 需要「至少一種能跨過冷卻的資源」才有連續的意義：CD 縮短券，或訂閱者今日剩餘的免冷卻次數。
+  // 實際能釣幾竿由 fishBatch 逐竿夾住（優先吃免冷卻次數，用完才扣券）。
   const tickets = profile.cd_ticket_count || 0;
-  if (tickets < 1) {
-    return replyEphemeralView(interaction, fishCmd.buildBatchNoTicketView());
+  const free = freeActions.resolve("fish", profile, interaction.member);
+  if (tickets < 1 && free.left < 1) {
+    return replyEphemeralView(interaction, fishCmd.buildBatchNoTicketView(free));
   }
 
   const maxCount = fishing?.batch?.maxCount || 1;
