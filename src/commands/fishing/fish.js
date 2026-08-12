@@ -247,8 +247,8 @@ function buildBatchLockedView(required, current, passCount = 0) {
     );
 }
 
-function buildBatchNoTicketView() {
-  return new ContainerBuilder()
+function buildBatchNoTicketView(free = null) {
+  const container = new ContainerBuilder()
     .setAccentColor(0xe74c3c)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent("# 🎫 沒有 CD 縮短券"),
@@ -258,12 +258,19 @@ function buildBatchNoTicketView() {
       new TextDisplayBuilder().setContent(
         "連續釣魚會照冷卻時間扣 **CD 縮短券**（一張少 30 分，冷卻越長扣越多），你目前的券不足以連續釣魚。",
       ),
-    )
-    .addTextDisplayComponents(
+    );
+  if ((free?.limit || 0) > 0) {
+    container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 到 `/商店` 買 CD 縮短券，再回來一次釣很多竿！",
+        `-# ⚡ 訂閱免冷卻釣魚今日也用完了（${free.limit}/${free.limit}），台灣時間 00:00 重置`,
       ),
     );
+  }
+  return container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "-# 到 `/商店` 買 CD 縮短券，再回來一次釣很多竿！",
+    ),
+  );
 }
 
 function locationChoices() {
@@ -1096,7 +1103,7 @@ async function runFishBatch(client, interaction, { location = "stream", count })
       }
       if (result.reason === "cooldown_no_ticket") {
         return interaction.editReply({
-          components: [buildBatchNoTicketView()],
+          components: [buildBatchNoTicketView(result.free)],
           flags: MessageFlags.IsComponentsV2,
         });
       }
@@ -1231,7 +1238,9 @@ async function runFishBatch(client, interaction, { location = "stream", count })
     if (result.stoppedNoTicket) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `-# 🎫 券不夠了，連續釣魚在第 ${result.performed} 竿後停止。到 \`/商店\` 補券再來。`,
+          (result.freeExhausted
+            ? `-# 🎫 訂閱免冷卻次數用完、券也不夠了，連續釣魚在第 ${result.performed} 竿後停止。到 \`/商店\` 補券再來。`
+            : `-# 🎫 券不夠了，連續釣魚在第 ${result.performed} 竿後停止。到 \`/商店\` 補券再來。`),
         ),
       );
     }

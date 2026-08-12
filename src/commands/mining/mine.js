@@ -724,8 +724,8 @@ function buildBatchLockedView(required, current, passCount = 0) {
     );
 }
 
-function buildBatchNoTicketView() {
-  return new ContainerBuilder()
+function buildBatchNoTicketView(free = null) {
+  const container = new ContainerBuilder()
     .setAccentColor(0xe74c3c)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent("# 🎫 沒有 CD 縮短券"),
@@ -735,12 +735,19 @@ function buildBatchNoTicketView() {
       new TextDisplayBuilder().setContent(
         "連續挖礦會照冷卻時間扣 **CD 縮短券**（一張少 30 分，冷卻 2 小時要 4 張），你目前的券不足以連續挖礦。",
       ),
-    )
-    .addTextDisplayComponents(
+    );
+  if ((free?.limit || 0) > 0) {
+    container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 到 `/商店` 買 CD 縮短券，再回來一次挖很多次！",
+        `-# ⚡ 訂閱免冷卻挖礦今日也用完了（${free.limit}/${free.limit}），台灣時間 00:00 重置`,
       ),
     );
+  }
+  return container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      "-# 到 `/商店` 買 CD 縮短券，再回來一次挖很多次！",
+    ),
+  );
 }
 
 // 連續挖礦「進行中」畫面：每跑幾次刷新一次，讓玩家即時看到過程（節流由呼叫端控制）。
@@ -814,7 +821,7 @@ async function runMineBatch(client, interaction, { count }) {
       }
       if (result.reason === "cooldown_no_ticket") {
         return interaction.editReply({
-          components: [buildBatchNoTicketView()],
+          components: [buildBatchNoTicketView(result.free)],
           flags: MessageFlags.IsComponentsV2,
         });
       }
@@ -922,7 +929,9 @@ async function runMineBatch(client, interaction, { count }) {
     if (result.stoppedNoTicket) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `-# 🎫 券不夠了，連續挖礦在第 ${result.performed} 次後停止。到 \`/商店\` 補券再來。`,
+          (result.freeExhausted
+            ? `-# 🎫 訂閱免冷卻次數用完、券也不夠了，連續挖礦在第 ${result.performed} 次後停止。到 \`/商店\` 補券再來。`
+            : `-# 🎫 券不夠了，連續挖礦在第 ${result.performed} 次後停止。到 \`/商店\` 補券再來。`),
         ),
       );
     }

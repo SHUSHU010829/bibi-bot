@@ -403,6 +403,7 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
     ticketsSpent: 0,
     freeMinesSpent: 0,
     stoppedNoTicket: false,
+    freeExhausted: false,
     lastCdMs: 0,
     ores: {},
     overflowOres: {},
@@ -470,10 +471,12 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
     const remaining = (cur?.mine_cooldown_at || 0) - Date.now();
     let spentThisIter = 0;
     // 訂閱者的免冷卻次數比券便宜，還有額度就不動券——交給 mine() 自己扣。
-    if (remaining > 0 && freeActions.resolve("mine", cur, member).left <= 0) {
+    const freeNow = remaining > 0 ? freeActions.resolve("mine", cur, member) : null;
+    if (remaining > 0 && freeNow.left <= 0) {
       const need = Math.ceil(remaining / reductionMs);
       if ((cur?.cd_ticket_count || 0) < need) {
         agg.stoppedNoTicket = true;
+        agg.freeExhausted = freeNow.limit > 0;
         break;
       }
       const res = await client.miningProfilesCollection.updateOne(
@@ -482,6 +485,7 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
       );
       if (res.modifiedCount === 0) {
         agg.stoppedNoTicket = true;
+        agg.freeExhausted = freeNow.limit > 0;
         break;
       }
       spentThisIter = need;
@@ -599,6 +603,7 @@ async function mineBatch(client, { userId, guildId, member, username, count, onP
       ok: false,
       reason: initiallyOnCooldown ? "cooldown_no_ticket" : "nothing",
       readyAt: profile.mine_cooldown_at,
+      free: freeActions.resolve("mine", profile, member),
     };
   }
   return agg;
