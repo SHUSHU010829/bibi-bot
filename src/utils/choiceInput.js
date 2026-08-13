@@ -36,8 +36,20 @@ function scoreChoice(option, input, strip) {
   if (q === o.name) return 95;
   if (q.split(" ").includes(o.value)) return 90;
   if (o.search && q === o.search) return 88;
-  if (o.name && q.includes(o.name)) return 75;
-  if (o.name && q.length >= 2 && o.name.includes(q)) return 70;
+  // 「選項名含輸入」必須贏過「輸入含選項名」：玩家只打片段（「升級鑽石鎬」）時，輸入裡多出來的
+  // 「升級」二字是短選項（「鑽石鎬」）解釋不掉的，真正對應的長選項（「魔晶鎬（升級鑽石鎬）」）才是答案。
+  // 貼整行時輸入才會多出尾巴，那時只剩下面這條可比，以「涵蓋輸入的比例」取解釋最多的那個。
+  if (o.name && q.length >= 2 && o.name.includes(q)) return 78;
+  if (o.name) {
+    // 名稱的括號在 cleanup 後變成空白，所以「魔晶鎬（升級鑽石鎬）」= 兩段。輸入命中愈多段
+    // （＝解釋掉愈多輸入）分數愈高，「升級鑽石鎬到魔晶鎬」才不會被只命中「鑽石鎬」的配方搶走。
+    const parts = o.name.split(" ").filter(Boolean);
+    const covered = parts.reduce(
+      (sum, part) => (part.length >= 2 && q.includes(part) ? sum + part.length : sum),
+      0,
+    );
+    if (covered > 0) return 70 + 8 * Math.min(1, covered / q.length);
+  }
   if (o.value.length >= 2 && q.includes(o.value)) return 60;
   if (o.search && q.length >= 2 && o.search.includes(q)) return 50;
   if (q.length >= 2 && o.value.startsWith(q)) return 40;

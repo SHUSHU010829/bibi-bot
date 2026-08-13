@@ -51,35 +51,66 @@ function parseOwnerAndPayload(customId, prefix) {
   };
 }
 
-function buildConfirmContainer(userId, recipeId, recipeName, currentLabel, currentDurability, relation) {
+function buildConfirmContainer(
+  userId,
+  recipeId,
+  recipeName,
+  currentLabel,
+  currentDurability,
+  relation,
+  upgradeRecipe,
+) {
   const relationHint =
     relation === "upgrade"
       ? "（升級，但舊裝備剩餘耐久不會保留）"
       : relation === "downgrade"
         ? "（降級替換，請再三確認）"
         : "（同級替換）";
-  return new ContainerBuilder()
+  const container = new ContainerBuilder()
     .setAccentColor(0xf39c12)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# ⚠️ 確認替換？\n你目前的 **${currentLabel}** 還有 **${currentDurability}** 次耐久，` +
           `合成 **${recipeName}** 會直接覆蓋它${relationHint}。`,
       ),
-    )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`${CONFIRM_PREFIX}${userId}_${recipeId}`)
-          .setLabel("確認替換並合成")
-          .setEmoji("✅")
-          .setStyle(ButtonStyle.Danger),
-        new ButtonBuilder()
-          .setCustomId(`${CANCEL_PREFIX}${userId}`)
-          .setLabel("取消")
-          .setStyle(ButtonStyle.Secondary),
-      ),
     );
+
+  if (upgradeRecipe) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### 🔮 你想升級的話，這個配方不對\n` +
+            `**${recipeName}** 只會重打一把同階的 **${currentLabel}**（耐久補滿），身上的裝備階級不會變。\n` +
+            `要升級請改用 **${upgradeRecipe.name}**。`,
+        ),
+      );
+  }
+
+  container.addSeparatorComponents(new SeparatorBuilder()).addActionRowComponents(
+    new ActionRowBuilder().addComponents(
+      ...(upgradeRecipe
+        ? [
+            new ButtonBuilder()
+              .setCustomId(`${CRAFT_PREFIX}${userId}_${upgradeRecipe.id}`)
+              .setLabel(`改成升級：${upgradeRecipe.name}`.slice(0, 80))
+              .setEmoji("🔮")
+              .setStyle(ButtonStyle.Primary),
+          ]
+        : []),
+      new ButtonBuilder()
+        .setCustomId(`${CONFIRM_PREFIX}${userId}_${recipeId}`)
+        .setLabel(upgradeRecipe ? "還是要重打一把" : "確認替換並合成")
+        .setEmoji("✅")
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId(`${CANCEL_PREFIX}${userId}`)
+        .setLabel("取消")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+
+  return container;
 }
 
 function buildSuccessContainer(result, userId) {
@@ -483,6 +514,7 @@ module.exports = async (client, interaction) => {
               gearLabel(result.type, result.current.id),
               result.current.durability,
               result.relation,
+              result.upgradeRecipe,
             ),
           ],
           flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
