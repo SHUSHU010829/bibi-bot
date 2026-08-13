@@ -185,10 +185,14 @@ module.exports = {
               : result.relation === "downgrade"
                 ? "（這是降級替換，請再三確認）"
                 : "（這是同級替換）";
+          const upgradeHint = result.upgradeRecipe
+            ? `\n\n🔮 **想升級的話這個配方不對**：**${result.recipe.name}** 只會重打一把同階的 ${curLabel}（耐久補滿），階級不會變。\n` +
+              `要升級請改用 **${result.upgradeRecipe.name}**。`
+            : "";
           return interaction.editReply(
             `⚠️ 你目前的 **${curLabel}** 還有 ${result.current.durability} 次耐久，` +
               `合成 **${result.recipe.name}** 會直接替換掉它${relationHint}。\n` +
-              `確定要換，請再執行一次並把 \`確認\` 設為 \`true\`。`
+              `確定要換，請再執行一次並把 \`確認\` 設為 \`true\`。${upgradeHint}`
           );
         }
         return interaction.editReply("🔧 合成失敗，請稍後再試。");

@@ -39,6 +39,19 @@ function getRecipe(recipeId) {
   return (craft?.recipes || []).find((r) => r.id === recipeId) || null;
 }
 
+// 同級 / 降級替換時，若身上這件裝備本身有升級配方，玩家多半是想升級卻挑到同階配方
+// （「鑽石鎬」vs「魔晶鎬（升級鑽石鎬）」），把正確配方一起回給呈現層當提示。
+function upgradeRecipeFor(slot, curId, curTier, pickedId) {
+  return (
+    (craft?.recipes || []).find(
+      (r) =>
+        r.id !== pickedId &&
+        r.requires?.equipped === curId &&
+        (slot.tiers[r.result?.id] ?? 0) > curTier,
+    ) || null
+  );
+}
+
 // 依手上材料算這個配方最多能合成幾次（取各材料 floor(have/need) 的最小值）。
 function maxCraftTimes(profile, recipe) {
   let times = Infinity;
@@ -201,6 +214,8 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
       type,
       current: { id: curId, durability: curDurability },
       relation,
+      upgradeRecipe:
+        relation === "upgrade" ? null : upgradeRecipeFor(slot, curId, curTier, recipe.id),
     };
   }
 
