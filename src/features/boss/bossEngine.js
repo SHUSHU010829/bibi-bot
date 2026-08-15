@@ -297,7 +297,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   // 封魔彈藥：本場已啟用的話，攻擊次數與傷害都吃加成。
   // 標記存在 BossEvents doc 上，戰鬥結束整份 doc 失效，不需要另外清欄位。
   const ammoCfg = cfg().sealingAmmo || {};
-  const ammoActive = !!(bossDoc.ammo_users || {})[userId];
+  const ammo = ammoStateOf(profile, bossDoc, userId);
+  const ammoActive = ammo.active;
   const ammoLimitBonus = ammoActive ? (ammoCfg.attackLimitBonus || 0) : 0;
 
   const baseLimit = (cfg().attackLimitPerPlayer ?? 5) + guildAttackLimitBonus + ammoLimitBonus;
@@ -308,7 +309,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   const allowedExtra = Math.min(chargeCap, charges + extraUsed);
   const attackLimit = baseLimit + allowedExtra;
   if (used >= attackLimit) {
-    return { ok: false, reason: "attack_limit", used, limit: attackLimit };
+    return { ok: false, reason: "attack_limit", used, limit: attackLimit, ammo };
   }
   const st = resolveStamina(profile, max);
   if (st.stamina <= 0) {
@@ -552,6 +553,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     myDamage: afterDoc.damage_by_user?.[userId] || 0,
     attackCount,
     attackLimit,
+    ammo,
     bonusAttacks: allowedExtra,
     rageStacks: rageState({ hits_taken: afterDoc.hits_taken }).stacks,
     counterRate,
@@ -563,6 +565,7 @@ async function applyAttack(client, { userId, guildId, username, member }) {
       bossAtkPct: guildBossAtkPct,
       bossDmgPct: guildBossDmgPct,
       comboActive: now < comboActiveUntil,
+      ammoActive,
     },
   };
 }
@@ -796,6 +799,22 @@ async function applyComboAttack(client, params, count) {
   };
 }
 
+// 封魔彈藥狀態：庫存存在 profile（跨場保留、無期限），本場是否已投入看 BossEvents 的 ammo_users。
+function ammoStateOf(profile, bossDoc, userId) {
+  return {
+    enabled: !!(cfg().sealingAmmo || {}).enabled,
+    count: profile?.sealing_ammo_count || 0,
+    active: !!(bossDoc?.ammo_users || {})[userId],
+  };
+}
+
+// 不經過攻擊流程時（戰況面板、按鈕失敗訊息）取得彈藥狀態。
+async function sealingAmmoState(client, { userId, guildId }) {
+  const bossDoc = await getActiveBoss(client, guildId);
+  const profile = await getOrCreate(client, userId, guildId);
+  return ammoStateOf(profile, bossDoc, userId);
+}
+
 // 對本場魔王啟用封魔彈藥：扣 1 個庫存並在 BossEvents doc 上標記。
 // 單場限用 1 個 —— 用 ammo_users.<userId> 不存在當條件，兩邊都原子。
 async function useSealingAmmo(client, { userId, guildId }) {
@@ -806,11 +825,13 @@ async function useSealingAmmo(client, { userId, guildId }) {
   if (!bossDoc) return { ok: false, reason: "no_boss" };
   if ((bossDoc.ammo_users || {})[userId]) return { ok: false, reason: "already_used" };
 
-  const dec = await client.miningProfilesCollection.updateOne(
+  const dec = await client.miningProfilesCollection.findOneAndUpdate(
     { userId, guildId, sealing_ammo_count: { $gte: 1 } },
     { $inc: { sealing_ammo_count: -1 }, $set: { updatedAt: new Date() } },
+    { returnDocument: "after" },
   );
-  if (dec.modifiedCount === 0) return { ok: false, reason: "no_ammo" };
+  const decDoc = dec?.value || dec;
+  if (!decDoc) return { ok: false, reason: "no_ammo" };
 
   const upd = await client.bossEventsCollection.findOneAndUpdate(
     { boss_id: bossDoc.boss_id, [`ammo_users.${userId}`]: { $exists: false } },
@@ -828,11 +849,14 @@ async function useSealingAmmo(client, { userId, guildId }) {
     ok: true,
     bossDamagePct: acfg.bossDamagePct || 0,
     attackLimitBonus: acfg.attackLimitBonus || 0,
+    boss: bossDoc,
+    countAfter: Math.max(0, decDoc.sealing_ammo_count || 0),
   };
 }
 
 module.exports = {
   useSealingAmmo,
+  sealingAmmoState,
   cfg,
   spawnBoss,
   markBossEnded,

@@ -34,6 +34,10 @@ async function runInfo(client, interaction) {
       flags: MessageFlags.IsComponentsV2,
     });
   }
+  const ammo = await bossEngine.sealingAmmoState(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
   const container = bossView.buildInfoContainer({
     userId: interaction.user.id,
     displayName: interaction.member?.displayName || interaction.user.username,
@@ -42,6 +46,7 @@ async function runInfo(client, interaction) {
     totalDamage: info.totalDamage,
     comboActive: info.comboActive,
     guild: interaction.guild,
+    ammo,
   });
   return interaction.editReply({
     components: [container],

@@ -24,6 +24,7 @@ const { getOrCreate } = require("../../features/mining/miningProfile");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
+const bossView = require("../../features/boss/bossView");
 const { deferUpdateSafe } = require("../../utils/safeAck");
 
 const { TAB_PREFIX, CRAFT_SUB_PREFIX, REPAIR_TOOL_APPLY_PREFIX, CRAFT_PREFIX, CRAFT_ALL_PREFIX, CONFIRM_PREFIX, CANCEL_PREFIX, REPAIR_TOOL_PREFIX, TABS, CRAFT_SUBS, CRAFT_SUB_IDS } = workshopView;
@@ -124,7 +125,8 @@ function buildSuccessContainer(result, userId) {
   const isAdvancedTrap = result.type === "advanced_trap";
   const isTreasureMap = result.type === "treasure_map";
   const isOre = result.type === "ore";
-  const accent = isRepairTool || isFishingNet || isAppraisalTrigger || isAdvancedTrap || isTreasureMap || isOre
+  const isSealingAmmo = result.type === "sealing_ammo";
+  const accent = isRepairTool || isFishingNet || isAppraisalTrigger || isAdvancedTrap || isTreasureMap || isOre || isSealingAmmo
     ? 0x3498db
     : result.type === "weapon"
       ? 0xe67e22
@@ -147,6 +149,10 @@ function buildSuccessContainer(result, userId) {
     tail = `**目前藏寶圖**　${result.mapsAfter} 張\n-# 到 \`/背包\` 「探險道具」區按「使用 1 張」撕開觸發隨機事件`;
   } else if (isOre) {
     tail = `**產出**　${result.oreEmoji || ""} ${result.oreName} ×${result.oreQty}\n-# 已放進背包，可用 \`/賣出\` 換錢或留著打造裝備`;
+  } else if (isSealingAmmo) {
+    tail = `**額外消耗**　${(result.coinCost || 0).toLocaleString()} 逼幣\n`
+      + `**目前持有**　${result.ammoAfter} 個\n`
+      + `-# ${bossView.ammoUsageHint()}`;
   } else {
     tail = `**耐久**　${result.durability == null ? "永久" : `${result.durability} 次`}\n**累積合成**　${result.craftCountTotal} 件`;
   }
@@ -500,6 +506,13 @@ module.exports = async (client, interaction) => {
           );
         await interaction.followUp({
           components: [bagC],
+          flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!result.ok && ["weekly_limit", "insufficient_coins", "already_owned"].includes(result.reason)) {
+        await interaction.followUp({
+          components: [workshopView.buildCraftLimitContainer(result)],
           flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
         });
         return;

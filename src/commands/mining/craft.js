@@ -17,6 +17,7 @@ const { materialLabel } = require("../../features/mining/craftMaterials");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
+const bossView = require("../../features/boss/bossView");
 const {
   buildChoices,
   filterChoices,
@@ -177,6 +178,12 @@ module.exports = {
             `❌ 材料不足，無法合成 **${result.recipe.name}**：\n${lines.join("\n")}`
           );
         }
+        if (["weekly_limit", "insufficient_coins", "already_owned"].includes(result.reason)) {
+          return interaction.editReply({
+            components: [workshopView.buildCraftLimitContainer(result)],
+            flags: MessageFlags.IsComponentsV2,
+          });
+        }
         if (result.reason === "confirm_needed") {
           const curLabel = gearLabel(result.type, result.current.id);
           const relationHint =
@@ -206,6 +213,7 @@ module.exports = {
       const isRod = result.type === "rod";
       const isShield = result.type === "shield";
       const isAppraisalTrigger = result.type === "stone_appraisal_trigger";
+      const isSealingAmmo = result.type === "sealing_ammo";
       const tail = isWeapon
         ? "-# 帶著武器去 /地下城 打怪吧！用 /裝備 查看裝備"
         : isRod
@@ -214,7 +222,18 @@ module.exports = {
             ? "-# 帶著盾去 /地下城 地下城面板挑樓層！盾在戰鬥中觸發格擋才扣耐久"
             : isAppraisalTrigger
               ? "-# 10 分鐘內按下方「立刻賭石」開出，過期就失效"
-              : "-# 用 /裝備 查看裝備，/挖礦 開挖！";
+              : isSealingAmmo
+                ? `-# ${bossView.ammoUsageHint()}`
+                : "-# 用 /裝備 查看裝備，/挖礦 開挖！";
+      const statLines = isSealingAmmo
+        ? [
+            `**額外消耗**\n${(result.coinCost || 0).toLocaleString()} 逼幣`,
+            `**目前持有**\n${result.ammoAfter} 個`,
+          ]
+        : [
+            `**耐久**\n${result.durability == null ? "永久" : `${result.durability} 次`}`,
+            `**累積合成**\n${result.craftCountTotal} 件`,
+          ];
       const accent = isWeapon ? 0xe67e22 : isRod ? 0x16a085 : isShield ? 0x95a5a6 : 0x9b59b6;
 
       const container = new ContainerBuilder()
@@ -231,14 +250,7 @@ module.exports = {
           ),
         )
         .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `**耐久**\n${result.durability == null ? "永久" : `${result.durability} 次`}`,
-          ),
-        )
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `**累積合成**\n${result.craftCountTotal} 件`,
-          ),
+          ...statLines.map((line) => new TextDisplayBuilder().setContent(line)),
         )
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(tail));
 

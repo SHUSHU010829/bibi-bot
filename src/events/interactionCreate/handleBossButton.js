@@ -4,6 +4,7 @@
 //   boss_attack_<ownerId>  — 再次攻擊
 //   boss_info_<ownerId>    — 查看戰況
 //   boss_potion_<ownerId>  — 開體力藥水選瓶面板
+//   boss_ammo_<ownerId>    — 對本場魔王投入封魔彈藥
 //
 // owner 驗證：customId 含 userId，只有本人能按。
 require("colors");
@@ -11,6 +12,7 @@ const { MessageFlags } = require("discord.js");
 const attackCmd = require("../../commands/boss/attack");
 const infoCmd = require("../../commands/boss/boss");
 const bossView = require("../../features/boss/bossView");
+const bossEngine = require("../../features/boss/bossEngine");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const dungeonService = require("../../features/mining/dungeonService");
 const { deferReplySafe } = require("../../utils/safeAck");
@@ -18,6 +20,7 @@ const { deferReplySafe } = require("../../utils/safeAck");
 const PREFIX_ATTACK = "boss_attack_";
 const PREFIX_INFO = "boss_info_";
 const PREFIX_POTION = "boss_potion_";
+const PREFIX_AMMO = "boss_ammo_";
 
 function parseOwner(customId) {
   if (customId.startsWith(PREFIX_ATTACK)) {
@@ -28,6 +31,9 @@ function parseOwner(customId) {
   }
   if (customId.startsWith(PREFIX_POTION)) {
     return { action: "potion", ownerId: customId.slice(PREFIX_POTION.length) };
+  }
+  if (customId.startsWith(PREFIX_AMMO)) {
+    return { action: "ammo", ownerId: customId.slice(PREFIX_AMMO.length) };
   }
   return null;
 }
@@ -76,6 +82,28 @@ module.exports = async (client, interaction) => {
     if (parsed.action === "info") {
       if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
       return await infoCmd.runInfo(client, interaction);
+    }
+    if (parsed.action === "ammo") {
+      if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+      const params = { userId: interaction.user.id, guildId: interaction.guildId };
+      const result = await bossEngine.useSealingAmmo(client, params);
+      if (!result.ok) {
+        const ammo = await bossEngine.sealingAmmoState(client, params);
+        return interaction.editReply({
+          components: [bossView.buildSealingAmmoErrorContainer(result.reason, ammo)],
+          flags: MessageFlags.IsComponentsV2,
+        });
+      }
+      return interaction.editReply({
+        components: [
+          bossView.buildSealingAmmoUsedContainer({
+            userId: interaction.user.id,
+            displayName: interaction.member?.displayName || interaction.user.username,
+            result,
+          }),
+        ],
+        flags: MessageFlags.IsComponentsV2,
+      });
     }
     if (parsed.action === "potion") {
       if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;

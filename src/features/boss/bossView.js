@@ -6,11 +6,12 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
-const { boss } = require("../../config");
+const { boss, craft } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const bossEngine = require("./bossEngine");
 const dungeonService = require("../mining/dungeonService");
+const { materialLabel } = require("../mining/craftMaterials");
 
 function nameOf(guild, userId) {
   return plainifyUserMentions(guild, `<@${userId}>`);
@@ -22,6 +23,7 @@ const COLOR_ENRAGED = 0xc0392b;
 const COLOR_VICTORY = 0x2ecc71;
 const COLOR_EXPIRED = 0x7f8c8d;
 const COLOR_ERROR = 0xe74c3c;
+const COLOR_AMMO = 0x9b59b6;
 
 function phaseColor(phase) {
   if (phase === "enraged") return COLOR_ENRAGED;
@@ -60,6 +62,45 @@ function infoButton(userId) {
     .setStyle(ButtonStyle.Secondary);
 }
 
+// 封魔彈藥：庫存可事先囤，但只能投入「正在場上的這隻魔王」，所以按鈕只長在戰鬥訊息上。
+function sealingAmmoButton(userId, ammo) {
+  return new ButtonBuilder()
+    .setCustomId(`boss_ammo_${userId}`)
+    .setLabel(`封魔彈藥 ×${ammo.count}`)
+    .setEmoji("💥")
+    .setStyle(ButtonStyle.Primary);
+}
+
+function ammoEffectText() {
+  const acfg = boss?.sealingAmmo || {};
+  return `攻擊次數 +${acfg.attackLimitBonus || 0}・傷害 +${acfg.bossDamagePct || 0}%`;
+}
+
+// 打造指引：材料清單取自合成配方（唯一真實來源），避免與 boss.json 的複本分岔。
+function ammoCraftHint() {
+  const acfg = boss?.sealingAmmo || {};
+  const recipe = (craft?.recipes || []).find((r) => r.result?.type === "sealing_ammo");
+  const mats = Object.entries(recipe?.materials || {})
+    .map(([mat, qty]) => materialLabel(mat, qty))
+    .join("・");
+  return `到 \`/裝備 分頁:合成\` →「🛤️ 活動」打造：${mats}＋${(acfg.coinCost || 0).toLocaleString()} 逼幣，每週限 1 個`;
+}
+
+// 投彈入口說明：合成成功訊息、背包、戰況都指向這一段，避免各自寫一份而分岔。
+function ammoUsageHint() {
+  return `魔王在場時到 \`/魔王 戰況\` 按「💥 封魔彈藥」投入，該場${ammoEffectText()}（不會過期，單場限用 1 個）`;
+}
+
+// 戰況面板的彈藥狀態行：已投入 / 手上有幾個 / 一個都沒有各講清楚，不要只在有貨時才提。
+function ammoStatusLine(ammo) {
+  if (!ammo?.enabled) return null;
+  if (ammo.active) return `-# 💥 封魔彈藥已投入本場：${ammoEffectText()}（單場限用 1 個）`;
+  if (ammo.count > 0) {
+    return `-# 💥 持有封魔彈藥 **${ammo.count}** 個 — 按下方按鈕投入，本場${ammoEffectText()}`;
+  }
+  return `-# 💥 沒有封魔彈藥（投入後該場${ammoEffectText()}）——${ammoCraftHint()}`;
+}
+
 // 先開藥水選擇面板（boss_potion_<ownerId>），由玩家挑小 / 中 / 大，不直接灌下最大的一瓶。
 function staminaPotionButton(userId) {
   return new ButtonBuilder()
@@ -82,6 +123,7 @@ function buffBlockContent(buffInfo, displayName) {
   if (buffInfo.bossAtkPct > 0) gbits.push(`攻擊力 +${Math.round(buffInfo.bossAtkPct * 100)}%`);
   if (buffInfo.bossDmgPct > 0) gbits.push(`傷害 +${buffInfo.bossDmgPct}%`);
   if (gbits.length) lines.push(`🏰 公會世界王加成：${gbits.join("・")}`);
+  if (buffInfo.ammoActive) lines.push(`💥 **封魔彈藥生效中**：本場${ammoEffectText()}`);
   if (buffInfo.comboActive) lines.push(`⚡ Combo 加成生效中（×${boss?.combo?.bonusMult ?? 1.3}）`);
   if (!(buffInfo.foodBuffs || []).length) {
     lines.push("-# 沒有食物 buff — 用 /烹飪 煮「地下城 ATK / 全屬性」料理，打魔王更痛");
@@ -119,12 +161,16 @@ function addBuffBlock(container, buffInfo, displayName) {
 }
 
 // 攻擊結果 / 戰況共用的操作按鈕列：能攻擊時放「再次攻擊」，一律附喝藥水 + 查戰況。
-function actionRow(userId, { canAttack, staminaEmpty } = {}) {
+// 手上有沒投入的封魔彈藥時多一顆投彈鈕（本場已投入或庫存為 0 就不占版面）。
+function actionRow(userId, { canAttack, staminaEmpty, ammo } = {}) {
   const row = new ActionRowBuilder();
   if (canAttack) {
     const btn = attackButton(userId);
     if (staminaEmpty) btn.setDisabled(true);
     row.addComponents(btn);
+  }
+  if (ammo?.enabled && !ammo.active && ammo.count > 0) {
+    row.addComponents(sealingAmmoButton(userId, ammo));
   }
   row.addComponents(staminaPotionButton(userId), infoButton(userId));
   return row;
@@ -223,6 +269,7 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       actionRow(userId, {
         canAttack: result.attackCount < result.attackLimit,
         staminaEmpty: result.stamina <= 0,
+        ammo: result.ammo,
       }),
     );
   }
@@ -314,6 +361,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
       actionRow(userId, {
         canAttack: last.attackCount < last.attackLimit,
         staminaEmpty: last.stamina <= 0,
+        ammo: last.ammo,
       }),
     );
   }
@@ -321,7 +369,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   return { container, killed, phaseChange, comboTriggered };
 }
 
-function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage, comboActive, guild }) {
+function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage, comboActive, guild, ammo }) {
   const phase = b.phase || "normal";
   // ends_at 為 null＝招喚場無時間限制，待到被擊殺為止。
   const noLimit = b.ends_at == null;
@@ -376,10 +424,14 @@ function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage
       );
   }
 
+  const ammoLine = ammoStatusLine(ammo);
+  if (ammoLine) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(ammoLine));
+  }
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(`-# 📋 ${displayName} 的戰況面板 — 按鈕只有你能按`),
   );
-  container.addActionRowComponents(actionRow(userId, { canAttack: true }));
+  container.addActionRowComponents(actionRow(userId, { canAttack: true, ammo }));
   return container;
 }
 
@@ -444,6 +496,79 @@ function buildStaminaPotionPickerContainer({ userId, displayName, profile, stami
     );
   }
   return container;
+}
+
+// 手上還有沒投入的彈藥時，把「投彈」直接掛在錯誤訊息上（最常見的情境：攻擊次數用完）。
+function addSealingAmmoOffer(container, userId, ammo) {
+  if (!ammo?.enabled || ammo.active || !(ammo.count > 0)) return container;
+  return container
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# 💥 你還有 **${ammo.count}** 個封魔彈藥沒投入——投進去這場就${ammoEffectText()}`,
+      ),
+    )
+    .addActionRowComponents(new ActionRowBuilder().addComponents(sealingAmmoButton(userId, ammo)));
+}
+
+function buildSealingAmmoUsedContainer({ userId, displayName, result }) {
+  const b = result.boss;
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_AMMO)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 💥 封魔彈藥投入！\n**${displayName}** 把封魔彈藥灌進武器，準備轟 **${b.emoji} ${b.name}**。`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `⚔️ 本場攻擊次數 **+${result.attackLimitBonus}**\n`
+          + `💥 世界王傷害 **+${result.bossDamagePct}%**\n`
+          + `🎒 剩餘持有：**${result.countAfter}** 個`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 只對這一場有效，單場限用 1 個；剩下的會留到下一場魔王。",
+      ),
+    )
+    .addActionRowComponents(actionRow(userId, { canAttack: true }));
+}
+
+// 投彈失敗：每種原因都要講清楚「為什麼不行」＋「現在該做什麼」。
+function buildSealingAmmoErrorContainer(reason, ammo) {
+  const count = ammo?.count || 0;
+  if (reason === "no_boss") {
+    return buildErrorContainer({
+      title: "🌙 現在沒有魔王在場",
+      body: `封魔彈藥只能投進「正在場上的魔王」，沒辦法先開好等下一場。\n🎒 目前持有：**${count}** 個（不會過期，會留到下一場）`,
+      hint: "下一場固定魔王在 **週六 21:00**；也可以多打 /地下城 累積討伐能量提前召喚。",
+    });
+  }
+  if (reason === "no_ammo") {
+    return buildErrorContainer({
+      title: "💥 沒有封魔彈藥",
+      body: `你手上有 **0** 個封魔彈藥，需要 **1** 個才能投入本場。\n投入後該場${ammoEffectText()}。`,
+      hint: ammoCraftHint(),
+    });
+  }
+  if (reason === "already_used") {
+    return buildErrorContainer({
+      title: "💥 本場已經投過封魔彈藥",
+      body: `這場魔王你已經投入過 1 個，效果生效中：${ammoEffectText()}。\n🎒 剩餘持有：**${count}** 個`,
+      hint: "單場限用 1 個，剩下的留到下一場魔王再用。",
+    });
+  }
+  if (reason === "disabled") {
+    return buildErrorContainer({
+      title: "🔧 封魔彈藥未啟用",
+      body: "這個伺服器目前沒有開放封魔彈藥。",
+    });
+  }
+  return buildErrorContainer({
+    title: "❌ 投入失敗",
+    body: "出了點狀況，請稍後再試。",
+  });
 }
 
 function buildErrorContainer({ title, body, hint }) {
@@ -668,7 +793,12 @@ module.exports = {
   buildComboResultContainer,
   buildInfoContainer,
   buildStaminaPotionPickerContainer,
+  buildSealingAmmoUsedContainer,
+  buildSealingAmmoErrorContainer,
+  addSealingAmmoOffer,
   buildErrorContainer,
+  ammoStatusLine,
+  ammoUsageHint,
   buildSettlementContainer,
   buildSummonProgressContainer,
   phaseLabel,
