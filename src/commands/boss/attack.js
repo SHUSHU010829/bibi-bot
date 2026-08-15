@@ -37,7 +37,7 @@ async function runAttack(client, interaction, forcedCount) {
     const result = await bossEngine.applyAttack(client, params);
     if (!result.ok) {
       return interaction.editReply({
-        components: [buildAttackErrorContainer(result)],
+        components: [buildAttackErrorContainer(result, interaction.user.id)],
         flags: MessageFlags.IsComponentsV2,
       });
     }
@@ -72,7 +72,7 @@ async function runAttack(client, interaction, forcedCount) {
   const combo = await bossEngine.applyComboAttack(client, params, count);
   if (!combo.ok) {
     return interaction.editReply({
-      components: [buildAttackErrorContainer(combo.errorResult || { reason: combo.reason })],
+      components: [buildAttackErrorContainer(combo.errorResult || { reason: combo.reason }, interaction.user.id)],
       flags: MessageFlags.IsComponentsV2,
     });
   }
@@ -118,7 +118,7 @@ async function settleAndAnnounce(client, guild, bossId) {
   await bossAnnouncer.announceSettlement(client, settlement);
 }
 
-function buildAttackErrorContainer(result) {
+function buildAttackErrorContainer(result, userId) {
   if (result.reason === "disabled") {
     return bossView.buildErrorContainer({
       title: "🔧 BOSS 系統未啟用",
@@ -139,11 +139,12 @@ function buildAttackErrorContainer(result) {
     });
   }
   if (result.reason === "attack_limit") {
-    return bossView.buildErrorContainer({
+    const container = bossView.buildErrorContainer({
       title: "⚔️ 你已用完本場攻擊次數",
       body: `每位玩家每場 BOSS 最多攻擊 **${result.limit}** 次，已用 **${result.used}** 次。`,
       hint: "看看 /boss 查戰況、為隊友加油！",
     });
+    return bossView.addSealingAmmoOffer(container, userId, result.ammo);
   }
   if (result.reason === "no_stamina") {
     const tail = result.nextRegenAt

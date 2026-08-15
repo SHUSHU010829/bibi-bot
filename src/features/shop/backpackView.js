@@ -30,6 +30,7 @@ const { effectiveMaxOf, baseWithBonus, bonusSuffix } = require("../mining/equipD
 const dungeonService = require("../mining/dungeonService");
 const orePriceEngine = require("../market/orePriceEngine");
 const eventEngine = require("../event/eventEngine");
+const bossView = require("../boss/bossView");
 
 // 魚袋顯示用的魚定義表：基礎魚 + 魚袋內持有、但不在基礎圖鑑的限定活動魚
 // （resolveFishDef 含已結束活動，讓限定魚活動後仍顯示得出名稱、賣得掉）。
@@ -812,6 +813,7 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     const netFrags = profile.broken_net_fragments || 0;
     const trapFrags = profile.broken_trap_fragments || 0;
     const fragments = profile.legendary_fragments || 0;
+    const sealingAmmo = profile.sealing_ammo_count || 0;
 
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
@@ -848,6 +850,9 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     else explorerZero.push("🪛 陷阱碎片");
     if (fragments > 0) explorerLines.push(`✨ **傳說素材碎片** ×${fragments}\n-# 合成傳說裝備材料`);
     else explorerZero.push("✨ 傳說素材碎片");
+    if (sealingAmmo > 0) {
+      explorerLines.push(`💥 **封魔彈藥** ×${sealingAmmo}\n-# ${bossView.ammoUsageHint()}`);
+    } else explorerZero.push("💥 封魔彈藥");
 
     for (const line of explorerLines) {
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(line));

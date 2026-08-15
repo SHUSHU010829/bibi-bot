@@ -599,8 +599,9 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `### 💥 封魔彈藥（持有 **${profile.sealing_ammo_count || 0}**）\n`
-              + `-# 以魔制魔的消耗品，週六魔王戰用。每週限做 1 個，另需 ${(acfg.coinCost || 0).toLocaleString()} 逼幣\n`
-              + `-# 效果：該場魔王戰攻擊次數 +${acfg.attackLimitBonus || 0}、世界王傷害 +${acfg.bossDamagePct || 0}%（單場限用 1 個）`,
+              + `-# 以魔制魔的消耗品，魔王戰用。每週限做 1 個，另需 ${(acfg.coinCost || 0).toLocaleString()} 逼幣\n`
+              + `-# 效果：該場魔王戰攻擊次數 +${acfg.attackLimitBonus || 0}、世界王傷害 +${acfg.bossDamagePct || 0}%（單場限用 1 個）\n`
+              + `-# 用法：魔王在場時到 \`/魔王 戰況\` 按「💥 封魔彈藥」投入；做好的不會過期，可以先囤著`,
           ),
         );
       craftableSection(container, bossAmmo, profile, "sealing_ammo", userId);
@@ -839,8 +840,52 @@ async function buildView(client, { userId, guildId, displayName, tab = "equipmen
   };
 }
 
+// 封魔彈藥 / 拓荒錘 的專屬失敗：每週限量、逼幣不足、已持有。
+function buildCraftLimitContainer(result) {
+  if (result.reason === "weekly_limit") {
+    return new ContainerBuilder()
+      .setAccentColor(0xe67e22)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`# ⏳ 本週已經做過 ${result.recipe.name}`),
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**${result.recipe.name}** 每週限做 **${result.limit}** 個，這週的額度已經用掉了。`,
+        ),
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          "-# 週一（台北時間）重置；手上做好的不會過期，可以留到下一場魔王再用",
+        ),
+      );
+  }
+  if (result.reason === "insufficient_coins") {
+    return new ContainerBuilder()
+      .setAccentColor(0xe74c3c)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 💸 逼幣不足`))
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `打造 **${result.recipe.name}** 除了材料還要 **${result.need.toLocaleString()}** 逼幣\n你目前有 **${result.have.toLocaleString()}** 逼幣，還缺 **${(result.need - result.have).toLocaleString()}**`,
+        ),
+      )
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent("-# 材料沒有被扣掉；先去 `/打工`、`/賣出` 補錢再回來"),
+      );
+  }
+  return new ContainerBuilder()
+    .setAccentColor(0xe67e22)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ✅ 你已經有 ${result.recipe.name} 了`))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**${result.recipe.name}** 是非消耗品，持有一把就夠了。`),
+    );
+}
+
 module.exports = {
   buildView,
+  buildCraftLimitContainer,
   TAB_PREFIX,
   CRAFT_SUB_PREFIX,
   CRAFT_PREFIX,
