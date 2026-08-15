@@ -28,14 +28,14 @@ module.exports = {
     .addIntegerOption((o) =>
       o
         .setName("血量")
-        .setDescription("自訂血量（不填會依線上人數計算）")
+        .setDescription("自訂血量（不填會依預估參戰人數 × 社群平均戰力計算）")
         .setMinValue(1)
         .setRequired(false),
     )
     .addIntegerOption((o) =>
       o
         .setName("持續分鐘")
-        .setDescription("戰鬥持續分鐘數（預設 30）")
+        .setDescription(`戰鬥持續分鐘數（預設 ${boss?.durationMinutes ?? 30}）`)
         .setMinValue(1)
         .setMaxValue(720)
         .setRequired(false),

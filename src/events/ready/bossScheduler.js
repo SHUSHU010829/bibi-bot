@@ -12,6 +12,8 @@ const bossEngine = require("../../features/boss/bossEngine");
 const bossRewards = require("../../features/boss/bossRewards");
 const bossAnnouncer = require("../../features/boss/bossAnnouncer");
 const bossTreasure = require("../../features/boss/bossTreasure");
+const bossSkills = require("../../features/boss/bossSkills");
+const bossBoard = require("../../features/boss/bossBoard");
 
 async function spawnSaturday(client) {
   const guildId = serverId;
@@ -57,10 +59,25 @@ async function expirySweep(client) {
     }
   }
 
-  // 3. 亂入寶箱：對進行中的 BOSS 收過期寶箱 / 機率生成新寶箱
+  // 3. 魔王技能：收過期技能 / 脫戰回血 / 到點施放新技能
+  await skillTick(client, guildId).catch((e) =>
+    console.log(`[BOSS] skill tick failed: ${e.message}`.red),
+  );
+
+  // 4. 亂入寶箱：對進行中的 BOSS 收過期寶箱 / 機率生成新寶箱
   await bossTreasure.tick(client, guild).catch((e) =>
     console.log(`[BOSS] treasure tick failed: ${e.message}`.red),
   );
+}
+
+async function skillTick(client, guildId) {
+  if (!guildId) return;
+  const bossDoc = await bossEngine.getActiveBoss(client, guildId);
+  if (!bossDoc) return;
+  const { events } = await bossSkills.tick(client, bossDoc);
+  if (!events.length) return;
+  await bossAnnouncer.announceSkillEvents(client, events);
+  bossBoard.scheduleRefresh(client, guildId, true);
 }
 
 module.exports = (client) => {

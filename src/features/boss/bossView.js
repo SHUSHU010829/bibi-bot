@@ -10,6 +10,7 @@ const { boss, craft } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const bossEngine = require("./bossEngine");
+const bossSkills = require("./bossSkills");
 const dungeonService = require("../mining/dungeonService");
 const { materialLabel } = require("../mining/craftMaterials");
 
@@ -38,6 +39,15 @@ function rageLine(stacks, counterRate) {
 
 function phaseLabel(phase) {
   return boss?.phases?.[phase]?.label || phase;
+}
+
+// 場上生效中的魔王技能。攻擊結果 / 戰況 / 看板共用同一份文字。
+function addSkillLines(container, bossDoc) {
+  const lines = bossSkills.statusLines(bossDoc);
+  if (!lines.length) return;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`**🎲 魔王狀態**\n${lines.join("\n")}`),
+  );
 }
 
 function hpBar(current, max, len = 16) {
@@ -145,6 +155,16 @@ function participationProgressLine(myDamage) {
     ? `　再 ${(next.minDamage - myDamage).toLocaleString()} 傷害升到 ${next.emoji} ${next.name}`
     : "　已是最高檔";
   return `-# 🎖️ 參加獎 ${current.emoji} **${current.name}**（本場傷害 ${myDamage.toLocaleString()}）：${gains.join("・")}${tail}`;
+}
+
+// 出刀冷卻：打完就要立刻告訴玩家「下一刀什麼時候能砍」，不要等他再點一次才吃閉門羹。
+function addCooldownLine(container, cooldownUntil) {
+  if (!cooldownUntil || cooldownUntil <= Date.now()) return;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# ⏱️ 下一刀 <t:${Math.floor(cooldownUntil / 1000)}:R> 可以再砍（每刀間隔 ${boss?.attackCooldownSec ?? 0} 秒）`,
+    ),
+  );
 }
 
 function addParticipationLine(container, myDamage) {
@@ -263,6 +283,13 @@ function buildAttackResultContainer({ userId, displayName, result }) {
   }
 
   if (!result.killed) {
+    if (result.skillBroken?.text) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(result.skillBroken.text),
+      );
+    }
+    addSkillLines(container, result.boss);
+    addCooldownLine(container, result.cooldownUntil);
     addParticipationLine(container, result.myDamage);
     addBuffBlock(container, result.buffInfo, displayName);
     container.addActionRowComponents(
@@ -355,6 +382,12 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   }
 
   if (!killed) {
+    const broken = hits.map((h) => h.skillBroken).filter((s) => s?.text);
+    for (const s of broken) {
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(s.text));
+    }
+    addSkillLines(container, last.boss);
+    addCooldownLine(container, last.cooldownUntil);
     addParticipationLine(container, last.myDamage);
     addBuffBlock(container, last.buffInfo, displayName);
     container.addActionRowComponents(
@@ -399,6 +432,8 @@ function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage
   if (infoRage) {
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(infoRage));
   }
+  addSkillLines(container, b);
+  addCooldownLine(container, (b.cooldown_until || {})[userId]);
 
   if (ranking?.length) {
     const top = ranking.slice(0, 5);
