@@ -214,7 +214,7 @@ async function bossCooldown(client, guildId, cooldownMs) {
 async function computeScaledHp(client, guildId, hpMult = 1) {
   const stats = await activePlayerStats(client, guildId);
   const participants = await expectedParticipants(client, guildId, stats.activeCount);
-  const base = Math.max(cfg().minHp ?? 3000, participants.count * (cfg().hpPerPlayer ?? 500));
+  const base = participants.count * (cfg().hpPerPlayer ?? 500);
   let gearMult = 1;
   let scaling = null;
   if (cfg().scaling?.enabled) {
@@ -228,11 +228,14 @@ async function computeScaledHp(client, guildId, hpMult = 1) {
       history_avg: Number(participants.history.toFixed(1)),
     };
   }
+  // minHp 是「最終血量」的下限，不是基數的下限——人少的場次就維持原本的保底血量，
+  // 不會再被裝備倍率乘上去而變得比以前硬。
+  const scaled = Math.max(cfg().minHp ?? 3000, base * gearMult);
   return {
     onlineCount: participants.online,
     participantBasis: participants.count,
     scaling,
-    finalHp: Math.round(base * gearMult * hpMult),
+    finalHp: Math.round(scaled * hpMult),
   };
 }
 

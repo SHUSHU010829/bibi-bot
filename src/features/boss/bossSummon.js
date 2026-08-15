@@ -84,6 +84,14 @@ async function trySummon(client, guildId) {
     return null;
   }
 
+  // 人數門檻：世界王是社群事件，不接受「一小撮人刷出來」。能量滿了但人不夠就先掛著等，
+  // 不歸零、不消耗週次，之後有新的人加入貢獻時會再跑一次這裡。
+  const minContributors = cfg().minContributors ?? 0;
+  if (Object.keys(state.contributors || {}).length < minContributors) {
+    await capEnergy(client, guildId, threshold);
+    return null;
+  }
+
   const claim = await client.bossSummonStateCollection.findOneAndUpdate(
     { guild_id: guildId, energy: { $gte: threshold } },
     {
@@ -121,10 +129,22 @@ async function addEnergy(client, { userId, guildId, amount }) {
   if (!cfg().enabled || amount <= 0) return;
   if (!client.bossSummonStateCollection) return;
   const threshold = cfg().energyThreshold ?? 120;
+
+  // 每人單輪貢獻上限：一個人狂刷地下城不能把整條進度條灌滿，一定要湊到夠多人。
+  // 上限扣完之後他的通關只剩「攻擊庫存」的回饋（那個另外算，不受此限）。
+  const perCap = cfg().maxEnergyPerContributor ?? 0;
+  let grant = amount;
+  if (perCap > 0) {
+    const state = await getState(client, guildId);
+    const mine = (state?.contributors || {})[userId] || 0;
+    grant = Math.min(amount, Math.max(0, perCap - mine));
+    if (grant <= 0) return;
+  }
+
   const res = await client.bossSummonStateCollection.findOneAndUpdate(
     { guild_id: guildId },
     {
-      $inc: { energy: amount, [`contributors.${userId}`]: amount },
+      $inc: { energy: grant, [`contributors.${userId}`]: grant },
       $set: { updated_at: new Date() },
       $setOnInsert: { summoned_count: 0, week_key: null },
     },
@@ -167,13 +187,17 @@ async function progress(client, guildId, userId) {
       .catch(() => null);
     myCharges = Math.min(chargeCap, Math.max(0, profile?.boss_attack_charges || 0));
   }
+  const contributors = state?.contributors || {};
   return {
     enabled: !!cfg().enabled,
     energy: Math.min(threshold, state?.energy || 0),
     threshold,
     summonedThisWeek,
     maxPerWeek: cfg().maxPerWeek ?? 3,
-    contributorCount: Object.keys(state?.contributors || {}).length,
+    contributorCount: Object.keys(contributors).length,
+    minContributors: cfg().minContributors ?? 0,
+    myEnergy: userId ? (contributors[userId] || 0) : 0,
+    perContributorCap: cfg().maxEnergyPerContributor ?? 0,
     activeBoss: active,
     cooldownUntil: cd.onCooldown ? cd.until : 0,
     myCharges,
