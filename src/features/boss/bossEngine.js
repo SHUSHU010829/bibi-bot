@@ -5,6 +5,7 @@ const cook = require("../fishing/cookService");
 const { getOrCreate } = require("../mining/miningProfile");
 const { resolveStamina, staminaMax, getMemberClub, playerAtk } = require("../mining/dungeonService");
 const grantActivityXp = require("../leveling/grantActivityXp");
+const bossSkills = require("./bossSkills");
 const bus = require("../eventBus");
 
 function cfg() {
@@ -99,17 +100,23 @@ function rageState(bossDoc) {
   return { stacks, counterBonus };
 }
 
-// 反擊率 = 階段基礎 + 怒氣加成 + 額外加成（嘲諷），上限 maxCounterRate。engine 與 view 共用。
+// 反擊率 = 階段基礎 + 怒氣加成 + 技能加成（暴風亂舞）+ 額外加成（嘲諷），上限 maxCounterRate。
+// engine 與 view 共用。
 function effectiveCounterRate(bossDoc, extraBonus = 0) {
   const phaseName = bossDoc.phase || phaseOf(bossDoc.current_hp, bossDoc.max_hp);
   const phase = phaseDef(phaseName);
   return Math.min(
     rageCfg().maxCounterRate ?? 0.5,
-    (phase.counterRate ?? 0.1) + rageState(bossDoc).counterBonus + (extraBonus || 0),
+    (phase.counterRate ?? 0.1)
+      + rageState(bossDoc).counterBonus
+      + bossSkills.combinedEffects(bossDoc).counterBonus
+      + (extraBonus || 0),
   );
 }
 
-async function countOnlineMembers(client) {
+// 線上人數只在有開 GuildPresences（privileged intent）時才拿得到；沒開的話 presence 恆為
+// undefined，這裡會回 0。血量因此不能只靠它，見 expectedParticipants()。
+function countOnlineMembers(client) {
   const guild = client.guilds.cache.get(serverId);
   if (!guild) return 0;
   let online = 0;
@@ -119,6 +126,36 @@ async function countOnlineMembers(client) {
     if (status && status !== "offline") online++;
   }
   return online;
+}
+
+function participantsCfg() {
+  return cfg().participants || {};
+}
+
+// 過去幾場真的有多少人出手（settleBoss 寫下的 participant_count）——這是「會來打」的地面真相，
+// 比線上人數 / 近期活躍人數都準，而且每打一場就自動校正一次。
+async function recentParticipantAvg(client, guildId) {
+  if (!client.bossEventsCollection) return 0;
+  const n = participantsCfg().historySpawns ?? 5;
+  const docs = await client.bossEventsCollection
+    .find({ guild_id: guildId, participant_count: { $gt: 0 } })
+    .sort({ started_at: -1 })
+    .limit(n)
+    .toArray()
+    .catch(() => []);
+  if (!docs.length) return 0;
+  return docs.reduce((s, d) => s + (d.participant_count || 0), 0) / docs.length;
+}
+
+// 血量基準人數：優先用歷史參戰人數，還沒有戰績時才退回「近期活躍玩家 × 參戰率」與線上人數。
+async function expectedParticipants(client, guildId, activeCount) {
+  const p = participantsCfg();
+  const online = countOnlineMembers(client);
+  const history = await recentParticipantAvg(client, guildId);
+  const fromActive = (activeCount || 0) * (p.activeParticipationRatio ?? 0.45);
+  const raw = history > 0 ? history : Math.max(fromActive, online);
+  const count = Math.min(p.max ?? 45, Math.max(p.min ?? 6, Math.round(raw)));
+  return { count, history, fromActive, online, source: history > 0 ? "history" : "active" };
 }
 
 // 近期活躍玩家的裝備戰力（用來讓魔王隨玩家資源成長）。
@@ -173,22 +210,33 @@ async function bossCooldown(client, guildId, cooldownMs) {
   return { onCooldown: Date.now() < until, until };
 }
 
-// 依線上人數 + 社群平均戰力即時算出魔王血量。hpMult 給招喚場調整血量倍率用。
+// 依預估參戰人數 + 社群平均戰力即時算出魔王血量。hpMult 給招喚場調整血量倍率用。
 async function computeScaledHp(client, guildId, hpMult = 1) {
-  const onlineCount = await countOnlineMembers(client);
-  const base = Math.max(cfg().minHp ?? 3000, onlineCount * (cfg().hpPerPlayer ?? 500));
+  const stats = await activePlayerStats(client, guildId);
+  const participants = await expectedParticipants(client, guildId, stats.activeCount);
+  const base = participants.count * (cfg().hpPerPlayer ?? 500);
   let gearMult = 1;
   let scaling = null;
   if (cfg().scaling?.enabled) {
-    const stats = await activePlayerStats(client, guildId);
     gearMult = gearMultiplier(stats.avgAtk);
     scaling = {
       active_count: stats.activeCount,
       avg_atk: Math.round(stats.avgAtk),
       gear_mult: Number(gearMult.toFixed(2)),
+      participant_basis: participants.count,
+      participant_source: participants.source,
+      history_avg: Number(participants.history.toFixed(1)),
     };
   }
-  return { onlineCount, scaling, finalHp: Math.round(base * gearMult * hpMult) };
+  // minHp 是「最終血量」的下限，不是基數的下限——人少的場次就維持原本的保底血量，
+  // 不會再被裝備倍率乘上去而變得比以前硬。
+  const scaled = Math.max(cfg().minHp ?? 3000, base * gearMult);
+  return {
+    onlineCount: participants.online,
+    participantBasis: participants.count,
+    scaling,
+    finalHp: Math.round(scaled * hpMult),
+  };
 }
 
 function freshCombatFields() {
@@ -216,12 +264,13 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSo
   if (existing) return { ok: false, reason: "already_active", boss: existing };
 
   let onlineCount = null;
+  let participantBasis = null;
   let scaling = null;
   let finalHp;
   if (hp != null) {
     finalHp = hp;
   } else {
-    ({ onlineCount, scaling, finalHp } = await computeScaledHp(client, guildId, hpMult ?? 1));
+    ({ onlineCount, participantBasis, scaling, finalHp } = await computeScaledHp(client, guildId, hpMult ?? 1));
   }
   const duration = durationMs ?? (cfg().durationMinutes ?? 30) * 60 * 1000;
   const bossId = `boss_${guildId}_${now}`;
@@ -240,8 +289,11 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSo
     started_at: now,
     ends_at: noExpiry ? null : now + duration,
     online_count: onlineCount ?? null,
+    participant_basis: participantBasis ?? null,
+    last_hit_at: now,
     spawn_source: spawnSource || "scheduled",
     scaling,
+    ...bossSkills.initialState(now),
     ...freshCombatFields(),
   };
   await client.bossEventsCollection.insertOne(doc);
@@ -271,7 +323,9 @@ async function getBossInfo(client, guildId) {
   };
 }
 
-async function applyAttack(client, { userId, guildId, username, member }) {
+// opts.skipCooldown：連擊（/魔王 攻擊 次數:N）的第 2 刀起沿用同一次開打，冷卻改成一次累計 N 刀，
+// 不在刀與刀之間攔截。
+async function applyAttack(client, { userId, guildId, username, member }, opts = {}) {
   if (!cfg().enabled) return { ok: false, reason: "disabled" };
 
   const bossDoc = await getActiveBoss(client, guildId);
@@ -311,6 +365,23 @@ async function applyAttack(client, { userId, guildId, username, member }) {
   if (used >= attackLimit) {
     return { ok: false, reason: "attack_limit", used, limit: attackLimit, ammo };
   }
+
+  // 出刀冷卻：一場魔王不再是「開場三分鐘全員梭哈」，每個人的刀被攤到整場戰鬥裡。
+  // 累加式（前一次到期時間 + 冷卻）讓連擊 N 刀 = 一次扣掉 N 份冷卻。
+  const cdMs = (cfg().attackCooldownSec ?? 0) * 1000;
+  const cooldownUntil = (bossDoc.cooldown_until || {})[userId] || 0;
+  if (cdMs > 0 && !opts.skipCooldown && now < cooldownUntil) {
+    return {
+      ok: false,
+      reason: "attack_cooldown",
+      nextAt: cooldownUntil,
+      cooldownSec: cfg().attackCooldownSec,
+      used,
+      limit: attackLimit,
+      ammo,
+    };
+  }
+
   const st = resolveStamina(profile, max);
   if (st.stamina <= 0) {
     return {
@@ -339,6 +410,8 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     && participants >= (aggro.minParticipants ?? 2)
   );
   const aggroBonus = isTargeted ? (aggro.counterBonus ?? 0) : 0;
+  const skillFx = bossSkills.combinedEffects(bossDoc, now);
+  const finalStandMult = bossSkills.finalStandMult(bossDoc, now);
   const counterRate = effectiveCounterRate(bossDoc, aggroBonus);
   const isCounter = Math.random() < counterRate;
 
@@ -394,9 +467,9 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     const comboMult = comboActive ? (comboCfgVal.bonusMult ?? 1.3) : 1;
     const guildMult = 1 + guildBossAtkPct;
     const buildingMult = 1 + (guildBossDmgPct + (ammoActive ? ammoCfg.bossDamagePct || 0 : 0)) / 100;
-    // 會心一擊：幸運越高機率越高，命中則傷害倍增。
+    // 會心一擊：幸運越高機率越高，命中則傷害倍增（厄運詛咒期間整場禁會心）。
     const crit = critCfg();
-    if (crit.enabled) {
+    if (crit.enabled && !skillFx.disableCrit) {
       const critRate = Math.min(
         crit.maxRate ?? 0.5,
         (crit.baseRate ?? 0.1) + luck * (crit.luckRateMult ?? 0),
@@ -404,7 +477,12 @@ async function applyAttack(client, { userId, guildId, username, member }) {
       isCrit = Math.random() < critRate;
     }
     const critMult = isCrit ? (crit.damageMult ?? 2) : 1;
-    damage = Math.max(1, Math.floor(base * (phase.damageMult ?? 1) * streakMult * comboMult * guildMult * buildingMult * critMult));
+    // 技能倍率與決戰倍率放最後：岩甲 ×0.45 / 詛咒 ×0.8 / 核心外露 ×2 / 決戰 ×1.4～×2
+    // 都吃在最終傷害上。
+    damage = Math.max(1, Math.floor(
+      base * (phase.damageMult ?? 1) * streakMult * comboMult * guildMult * buildingMult * critMult
+        * skillFx.damageTakenMult * finalStandMult,
+    ));
   }
 
   // 體力扣除
@@ -442,9 +520,13 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     "combo.same_user_streak": sameUserStreak,
     "combo.active_until": comboActiveUntil,
     "combo.combo_mvp": comboMvp,
+    last_hit_at: now,
     updatedAt: new Date(),
   };
   if (!isCounter) setFields[`attack_counts.${userId}`] = attackCount;
+  // 被反擊的空刀不佔次數，但一樣要進冷卻（否則被反擊就能無限重試）。
+  const nextCooldownAt = cdMs > 0 ? Math.max(now, cooldownUntil) + cdMs : 0;
+  if (cdMs > 0) setFields[`cooldown_until.${userId}`] = nextCooldownAt;
   const afterRes = await client.bossEventsCollection.findOneAndUpdate(
     { boss_id: bossDoc.boss_id, status: "active" },
     {
@@ -466,6 +548,13 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     );
     firstStrike = res.modifiedCount === 1;
   }
+
+  // 岩甲類技能：全場合力累積到 breakHits 就提前打碎，由打出那一刀的人拿到公告。
+  const breakable = bossSkills.pendingBreak(afterDoc, now);
+  const skillBroken = breakable ? await bossSkills.breakSkill(client, afterDoc, breakable) : null;
+  const skillsAfter = skillBroken
+    ? (afterDoc.active_skills || []).filter((s) => s.started_at !== breakable.started_at)
+    : (afterDoc.active_skills || []);
 
   const rawHp = afterDoc.current_hp ?? 0;
   const newHp = Math.max(0, rawHp);
@@ -547,7 +636,16 @@ async function applyAttack(client, { userId, guildId, username, member }) {
     killed,
     killerUserId: killed ? userId : null,
     xpGained,
-    boss: { ...bossDoc, current_hp: newHp, phase: newPhase, hits_taken: afterDoc.hits_taken },
+    boss: {
+      ...bossDoc,
+      current_hp: newHp,
+      phase: newPhase,
+      hits_taken: afterDoc.hits_taken,
+      active_skills: skillsAfter,
+    },
+    skillBroken,
+    skillLabels: bossSkills.statusLines({ active_skills: skillsAfter }, now),
+    cooldownUntil: nextCooldownAt,
     stamina: newStamina,
     staminaMax: max,
     myDamage: afterDoc.damage_by_user?.[userId] || 0,
@@ -751,9 +849,11 @@ async function applyComboAttack(client, params, count) {
   let killed = false;
   let phaseChanged = false;
   let comboTriggered = false;
+  const skillsBroken = [];
 
   for (let i = 0; i < count; i++) {
-    const r = await applyAttack(client, params);
+    // 冷卻只在第一刀擋；之後的刀屬於同一次連擊，冷卻在結束時一次累計 N 份。
+    const r = await applyAttack(client, params, { skipCooldown: i > 0 });
     if (!r.ok) {
       stopReason = r.reason;
       if (hits.length === 0) {
@@ -767,12 +867,14 @@ async function applyComboAttack(client, params, count) {
         killed,
         phaseChanged,
         comboTriggered,
+        skillsBroken,
       };
     }
     hits.push(r);
     lastOkResult = r;
     if (r.phaseChanged) phaseChanged = true;
     if (r.comboTriggered) comboTriggered = true;
+    if (r.skillBroken) skillsBroken.push(r.skillBroken);
     if (r.killed) {
       killed = true;
       stopReason = "killed";
@@ -796,6 +898,7 @@ async function applyComboAttack(client, params, count) {
     killed,
     phaseChanged,
     comboTriggered,
+    skillsBroken,
   };
 }
 
@@ -869,6 +972,8 @@ module.exports = {
   findExpiredActiveBosses,
   findFreshlyDefeatedBosses,
   countOnlineMembers,
+  expectedParticipants,
+  computeScaledHp,
   phaseOf,
   phaseDef,
   participationTier,

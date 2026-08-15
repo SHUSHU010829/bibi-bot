@@ -25,7 +25,8 @@ async function runAttack(client, interaction, forcedCount) {
     });
   }
 
-  const count = forcedCount ?? Math.max(1, Math.min(5, interaction.options?.getInteger?.("次數") ?? 1));
+  const maxHits = boss?.maxHitsPerCommand ?? 3;
+  const count = Math.max(1, Math.min(maxHits, forcedCount ?? interaction.options?.getInteger?.("次數") ?? 1));
   const params = {
     userId: interaction.user.id,
     guildId: interaction.guildId,
@@ -60,6 +61,9 @@ async function runAttack(client, interaction, forcedCount) {
     }
     if (result.comboTriggered) {
       bossAnnouncer.announceCombo(client, result.boss, interaction.user.id).catch(() => {});
+    }
+    if (result.skillBroken && !result.killed) {
+      bossAnnouncer.announceSkillEvents(client, [result.skillBroken]).catch(() => {});
     }
     if (result.killed) {
       settleAndAnnounce(client, interaction.guild, result.boss.boss_id).catch((e) =>
@@ -100,6 +104,9 @@ async function runAttack(client, interaction, forcedCount) {
   }
   if (combo.comboTriggered) {
     bossAnnouncer.announceCombo(client, combo.lastResult.boss, interaction.user.id).catch(() => {});
+  }
+  if (combo.skillsBroken?.length && !combo.killed) {
+    bossAnnouncer.announceSkillEvents(client, combo.skillsBroken).catch(() => {});
   }
   if (combo.killed) {
     settleAndAnnounce(client, interaction.guild, combo.lastResult.boss.boss_id).catch((e) =>
@@ -146,6 +153,14 @@ function buildAttackErrorContainer(result, userId) {
     });
     return bossView.addSealingAmmoOffer(container, userId, result.ammo);
   }
+  if (result.reason === "attack_cooldown") {
+    const container = bossView.buildErrorContainer({
+      title: "⏱️ 出刀冷卻中",
+      body: `每刀之間要間隔 **${result.cooldownSec}** 秒，下一刀 <t:${Math.floor(result.nextAt / 1000)}:R> 可以砍。\n⚔️ 本場已出手：**${result.used}/${result.limit}** 次`,
+      hint: "冷卻是為了讓整場戰鬥撐得久一點——趁空檔 /烹飪 補 buff、看 /魔王 戰況 等破綻窗口。",
+    });
+    return bossView.addSealingAmmoOffer(container, userId, result.ammo);
+  }
   if (result.reason === "no_stamina") {
     const tail = result.nextRegenAt
       ? `\n下一點體力：<t:${Math.floor(result.nextRegenAt / 1000)}:R>`
@@ -170,9 +185,11 @@ module.exports = {
     .addIntegerOption((o) =>
       o
         .setName("次數")
-        .setDescription("連擊幾刀（1-5，預設 1）。Combo 需要多人接力，旺場時建議一刀一刀打。")
+        .setDescription(
+          `連擊幾刀（1-${boss?.maxHitsPerCommand ?? 3}，預設 1）。連擊會一次扣掉同樣份數的出刀冷卻。`,
+        )
         .setMinValue(1)
-        .setMaxValue(5),
+        .setMaxValue(boss?.maxHitsPerCommand ?? 3),
     ),
 
   subcommandOnly: true,

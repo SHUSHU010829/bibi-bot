@@ -9,6 +9,7 @@
 // owner 驗證：customId 含 userId，只有本人能按。
 require("colors");
 const { MessageFlags } = require("discord.js");
+const { boss } = require("../../config");
 const attackCmd = require("../../commands/boss/attack");
 const infoCmd = require("../../commands/boss/boss");
 const bossView = require("../../features/boss/bossView");
@@ -54,7 +55,7 @@ module.exports = async (client, interaction) => {
 
   // 置頂看板的共用攻擊鈕（無 owner 鎖，任何人都能點）
   if (interaction.customId === "boss_board_attack" || interaction.customId === "boss_board_combo") {
-    const count = interaction.customId === "boss_board_combo" ? 5 : 1;
+    const count = interaction.customId === "boss_board_combo" ? (boss?.maxHitsPerCommand ?? 3) : 1;
     try {
       if (!(await deferReplySafe(interaction, {}))) return;
       return await attackCmd.runAttack(client, interaction, count);

@@ -14,6 +14,7 @@ const {
 const { boss } = require("../../config");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const bossEngine = require("./bossEngine");
+const bossSkills = require("./bossSkills");
 const { phaseColor, phaseLabel, hpBar } = require("./bossView");
 
 const MIN_INTERVAL_MS = 3000;
@@ -62,6 +63,13 @@ function render(info, guild) {
     );
   }
 
+  const skillLines = bossSkills.statusLines(b);
+  if (skillLines.length) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`**🎲 魔王狀態**\n${skillLines.join("\n")}`),
+    );
+  }
+
   container.addSeparatorComponents(new SeparatorBuilder());
   if (info.ranking?.length) {
     const aggroOn = boss?.aggro?.enabled && info.ranking.length >= (boss?.aggro?.minParticipants ?? 2);
@@ -104,7 +112,7 @@ function render(info, guild) {
           .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
           .setCustomId("boss_board_combo")
-          .setLabel("連擊 5 刀")
+          .setLabel(`連擊 ${boss?.maxHitsPerCommand ?? 3} 刀`)
           .setEmoji("🔥")
           .setStyle(ButtonStyle.Secondary),
       ),

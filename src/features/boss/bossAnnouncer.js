@@ -20,10 +20,24 @@ async function announceSpawn(client, bossDoc, opts = {}) {
   const endField = bossDoc.ends_at != null
     ? { name: "⏳ 戰鬥結束", value: `<t:${Math.floor(bossDoc.ends_at / 1000)}:R>`, inline: true }
     : { name: "⏳ 討伐期限", value: "無時限，待到被擊殺", inline: true };
-  const onlineSuffix = bossDoc.online_count != null
-    ? `\n-# 依當前 ${bossDoc.online_count} 名線上玩家決定`
+  const basisSuffix = bossDoc.participant_basis != null
+    ? `\n-# 依預估 ${bossDoc.participant_basis} 名參戰者 × 社群平均戰力換算（打得越多人、裝備越好，牠越硬）`
     : "";
   const limit = boss?.attackLimitPerPlayer ?? 5;
+  const cdSec = boss?.attackCooldownSec ?? 0;
+  const cdText = cdSec > 0
+    ? `每人 ${limit} 次\n-# 每刀間隔 ${cdSec} 秒`
+    : `每人 ${limit} 次`;
+  const skillNames = (boss?.skills?.enabled ? boss.skills.list || [] : [])
+    .map((s) => `${s.emoji} ${s.name}`)
+    .join("・");
+  const skillField = skillNames
+    ? {
+      name: "🎲 魔王技能（戰鬥中不定時發動）",
+      value: `${skillNames}\n-# 減傷、回血、禁會心都可能出現；也有讓全場傷害翻倍的破綻窗口，看到公告就衝。`,
+      inline: false,
+    }
+    : null;
   const intro = opts.summon
     ? (boss?.summon?.summonIntro || "討伐能量集滿，魔王被喚醒了！")
     : (pickFrom(boss?.spawnIntros) || "傳說中的存在現身了！");
@@ -54,11 +68,12 @@ async function announceSpawn(client, bossDoc, opts = {}) {
     .addFields(
       {
         name: "💖 血量",
-        value: `${bossDoc.max_hp.toLocaleString()}${onlineSuffix}`,
+        value: `${bossDoc.max_hp.toLocaleString()}${basisSuffix}`,
         inline: false,
       },
       endField,
-      { name: "⚔️ 攻擊上限", value: `每人 ${limit} 次`, inline: true },
+      { name: "⚔️ 攻擊上限", value: cdText, inline: true },
+      ...(skillField ? [skillField] : []),
       ...(participationField ? [participationField] : []),
     )
     .setFooter({
@@ -87,6 +102,18 @@ async function announcePhase(client, bossDoc, newPhase) {
   if (!tpl) return;
   const text = tpl.replace(/\{name\}/g, bossDoc.name);
   await ch.send({ content: text, allowedMentions: { parse: [] } }).catch(() => {});
+}
+
+// 魔王技能 / 脫戰回血的即時播報。events 由 bossSkills.tick 或攻擊結果（破甲）帶出來。
+async function announceSkillEvents(client, events) {
+  const list = (events || []).filter((e) => e?.text);
+  if (!list.length) return;
+  const ch = await resolveChannel(client, boss?.announceChannelId);
+  if (!ch) return;
+  for (const e of list) {
+    const content = e.hint ? `${e.text}\n${e.hint}` : e.text;
+    await ch.send({ content, allowedMentions: { parse: [] } }).catch(() => {});
+  }
 }
 
 async function announceCombo(client, bossDoc, userId) {
@@ -124,5 +151,6 @@ module.exports = {
   announceSpawn,
   announcePhase,
   announceCombo,
+  announceSkillEvents,
   announceSettlement,
 };

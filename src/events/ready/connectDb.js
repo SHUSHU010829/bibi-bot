@@ -1474,6 +1474,11 @@ module.exports = async (client) => {
         { status: 1, ends_at: 1 },
         { name: "boss_status_ends" }
       ).catch((e) => console.log(`[WARN] BossEvents status_ends: ${e.message}`.yellow));
+      // 血量換算要撈「最近幾場的參戰人數」
+      await bossEventsCollection.createIndex(
+        { guild_id: 1, started_at: -1 },
+        { name: "boss_guild_started" }
+      ).catch((e) => console.log(`[WARN] BossEvents guild_started: ${e.message}`.yellow));
       await bossDamageLogsCollection.createIndex(
         { boss_id: 1, user_id: 1 },
         { name: "boss_dmg_boss_user" }

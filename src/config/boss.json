@@ -3,35 +3,45 @@
     "enabled": true,
     "announceChannelId": "1511617684532367440",
     "chronicleChannelId": "1511610220856475701",
-    "hpPerPlayer": 3200,
+    "hpPerPlayer": 2200,
     "minHp": 26000,
-    "durationMinutes": 30,
-    "attackLimitPerPlayer": 5,
+    "durationMinutes": 75,
+    "attackLimitPerPlayer": 8,
+    "attackCooldownSec": 60,
+    "maxHitsPerCommand": 3,
+    "participants": {
+      "historySpawns": 5,
+      "activeParticipationRatio": 0.45,
+      "min": 6,
+      "max": 45
+    },
     "scaling": {
       "enabled": true,
       "activeWithinDays": 14,
       "baseAtk": 20,
-      "atkPerGearStep": 60,
-      "hpBonusPerStep": 0.12,
-      "maxGearMultiplier": 2
+      "atkPerGearStep": 50,
+      "hpBonusPerStep": 0.15,
+      "maxGearMultiplier": 2.6
     },
     "rage": {
       "enabled": true,
-      "hitsPerStack": 20,
+      "hitsPerStack": 25,
       "counterRatePerStack": 0.02,
       "maxCounterRate": 0.35
     },
     "rareMaterial": "legendary_fragment",
     "summon": {
       "enabled": true,
-      "energyThreshold": 120,
-      "energyPerDungeonClear": 3,
-      "energyPerMiniBoss": 12,
-      "maxPerWeek": 3,
+      "energyThreshold": 300,
+      "energyPerDungeonClear": 2,
+      "energyPerMiniBoss": 8,
+      "maxEnergyPerContributor": 60,
+      "minContributors": 6,
+      "maxPerWeek": 2,
       "bonusAttackPerDungeonClear": 1,
       "maxBonusAttacksPerPlayer": 5,
       "summonHpMult": 1,
-      "spawnCooldownMinutes": 540,
+      "spawnCooldownMinutes": 1080,
       "summonIntro": "討伐能量集滿了！社群連日的地下城探索驚醒了沉睡的魔王——"
     },
     "saturdaySpawn": {
@@ -81,6 +91,97 @@
       "broken":  "💥 **{name}** 護甲破損！全員傷害提升 ×1.5！",
       "enraged": "🔥 **{name}** 進入狂暴狀態！傷害再提升，但小心被反擊！"
     },
+    "skills": {
+      "enabled": true,
+      "firstCastAfterMin": 4,
+      "intervalMinutes": 6,
+      "intervalJitterMinutes": 2,
+      "list": [
+        {
+          "key": "harden",
+          "name": "岩甲護體",
+          "emoji": "🛡️",
+          "weight": 26,
+          "durationSec": 240,
+          "damageTakenMult": 0.45,
+          "breakHits": 12,
+          "castMessage": "🛡️ **{name}** 全身覆上岩甲！受到的傷害只剩 **45%**，持續 {min} 分鐘。",
+          "castHint": "-# 全場再累積 **{breakHits}** 次出手就能打碎岩甲——別停手！",
+          "breakMessage": "🔨 岩甲碎了！**{name}** 的防禦被全場合力打穿，傷害恢復正常！",
+          "expireMessage": "🛡️ **{name}** 的岩甲自然剝落，傷害恢復正常。",
+          "statusLabel": "🛡️ 岩甲護體（傷害 ×0.45）"
+        },
+        {
+          "key": "frenzy",
+          "name": "暴風亂舞",
+          "emoji": "🌪️",
+          "weight": 22,
+          "durationSec": 180,
+          "counterBonus": 0.18,
+          "castMessage": "🌪️ **{name}** 陷入暴風亂舞！反擊率大幅提高，持續 {min} 分鐘。",
+          "castHint": "-# 這段時間出手很容易被打回來——想穩一點就先等它結束。",
+          "expireMessage": "🌪️ **{name}** 的亂舞停下了，反擊率回到正常。",
+          "statusLabel": "🌪️ 暴風亂舞（反擊率 +18%）"
+        },
+        {
+          "key": "curse",
+          "name": "厄運詛咒",
+          "emoji": "🌑",
+          "weight": 16,
+          "durationSec": 180,
+          "damageTakenMult": 0.8,
+          "disableCrit": true,
+          "castMessage": "🌑 **{name}** 撒下厄運詛咒：全場**無法會心一擊**、傷害降為 80%，持續 {min} 分鐘。",
+          "expireMessage": "🌑 厄運詛咒散去，會心一擊恢復了。",
+          "statusLabel": "🌑 厄運詛咒（無法會心・傷害 ×0.8）"
+        },
+        {
+          "key": "devour",
+          "name": "深淵吸食",
+          "emoji": "🩸",
+          "weight": 20,
+          "healPct": 6,
+          "castMessage": "🩸 **{name}** 大口吸取地脈之力，回復了 **{heal}** 點血量！",
+          "castHint": "-# 拖越久牠回得越多，集中火力才是最快的解法。"
+        },
+        {
+          "key": "weakspot",
+          "name": "核心外露",
+          "emoji": "💠",
+          "weight": 16,
+          "durationSec": 90,
+          "damageTakenMult": 2,
+          "castMessage": "💠 **{name}** 的能量核心外露！全場傷害 **×2**，只有 {sec} 秒——全員集火！",
+          "castHint": "-# 這是本場最好的輸出窗口，手上有刀就現在砍。",
+          "expireMessage": "💠 核心縮回體內了，傷害恢復正常。",
+          "statusLabel": "💠 核心外露（傷害 ×2）"
+        }
+      ]
+    },
+    "finalStand": {
+      "enabled": true,
+      "stages": [
+        {
+          "remainingMinutes": 20,
+          "damageMult": 1.4,
+          "label": "⚡ 決戰前段（全場傷害 ×1.4）",
+          "announcement": "⏳ **剩下 20 分鐘！** 全員腎上腺素上來了——全場傷害 **×1.4**，還沒出手的快進來！"
+        },
+        {
+          "remainingMinutes": 8,
+          "damageMult": 2,
+          "label": "🔥 背水一戰（全場傷害 ×2）",
+          "announcement": "🔥 **最後 8 分鐘！背水一戰——全場傷害 ×2！** 手上還有刀的全部砍下去！"
+        }
+      ]
+    },
+    "idleRegen": {
+      "enabled": true,
+      "idleMinutes": 3,
+      "healPctPerMinute": 1.5,
+      "message": "💤 太久沒人出手，**{name}** 趁機舔傷口回復了 **{heal}** 點血量！",
+      "hint": "-# 放著不打牠會一直回血——保持輸出才壓得住。"
+    },
     "combo": {
       "windowSec": 10,
       "triggerCount": 5,
@@ -91,7 +192,7 @@
     },
     "comboAnnouncement": "⚡ Combo 滿格！全場傷害 ×1.3 持續 120 秒！（由 <@{user}> 接力觸發）",
     "rewards": {
-      "poolRatio": 1,
+      "poolRatio": 0.5,
       "participation": {
         "tiers": [
           { "minDamage": 0,    "emoji": "🔰", "name": "到場應援",   "coins": 200,  "xp": 25,  "rare": 0, "diamond": 0 },
@@ -103,7 +204,7 @@
       },
       "killBonus": 450,
       "firstStrikeBonus": 450,
-      "killerBonusRatio": 0.09,
+      "killerBonusRatio": 0.05,
       "killerRareReward": 2,
       "killXpBonus": 240,
       "topRareRewardTiers": [6, 5, 4, 3, 2, 1, 1, 1],
@@ -200,8 +301,8 @@
     },
     "guildSync": {
       "enabled": true,
-      "damageContributionRatio": 0.1,
-      "damageTreasuryRatio": 0.05,
+      "damageContributionRatio": 0.06,
+      "damageTreasuryRatio": 0.03,
       "killerTreasuryRatio": 0.1,
       "mvpTreasuryRatio": 0.1,
       "treasuryLockHours": 168

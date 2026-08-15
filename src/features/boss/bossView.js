@@ -10,6 +10,7 @@ const { boss, craft } = require("../../config");
 const { COIN_EMOJI } = require("../../constants/coin");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const bossEngine = require("./bossEngine");
+const bossSkills = require("./bossSkills");
 const dungeonService = require("../mining/dungeonService");
 const { materialLabel } = require("../mining/craftMaterials");
 
@@ -38,6 +39,15 @@ function rageLine(stacks, counterRate) {
 
 function phaseLabel(phase) {
   return boss?.phases?.[phase]?.label || phase;
+}
+
+// 場上生效中的魔王技能。攻擊結果 / 戰況 / 看板共用同一份文字。
+function addSkillLines(container, bossDoc) {
+  const lines = bossSkills.statusLines(bossDoc);
+  if (!lines.length) return;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`**🎲 魔王狀態**\n${lines.join("\n")}`),
+  );
 }
 
 function hpBar(current, max, len = 16) {
@@ -145,6 +155,16 @@ function participationProgressLine(myDamage) {
     ? `　再 ${(next.minDamage - myDamage).toLocaleString()} 傷害升到 ${next.emoji} ${next.name}`
     : "　已是最高檔";
   return `-# 🎖️ 參加獎 ${current.emoji} **${current.name}**（本場傷害 ${myDamage.toLocaleString()}）：${gains.join("・")}${tail}`;
+}
+
+// 出刀冷卻：打完就要立刻告訴玩家「下一刀什麼時候能砍」，不要等他再點一次才吃閉門羹。
+function addCooldownLine(container, cooldownUntil) {
+  if (!cooldownUntil || cooldownUntil <= Date.now()) return;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `-# ⏱️ 下一刀 <t:${Math.floor(cooldownUntil / 1000)}:R> 可以再砍（每刀間隔 ${boss?.attackCooldownSec ?? 0} 秒）`,
+    ),
+  );
 }
 
 function addParticipationLine(container, myDamage) {
@@ -263,6 +283,13 @@ function buildAttackResultContainer({ userId, displayName, result }) {
   }
 
   if (!result.killed) {
+    if (result.skillBroken?.text) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(result.skillBroken.text),
+      );
+    }
+    addSkillLines(container, result.boss);
+    addCooldownLine(container, result.cooldownUntil);
     addParticipationLine(container, result.myDamage);
     addBuffBlock(container, result.buffInfo, displayName);
     container.addActionRowComponents(
@@ -355,6 +382,12 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   }
 
   if (!killed) {
+    const broken = hits.map((h) => h.skillBroken).filter((s) => s?.text);
+    for (const s of broken) {
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(s.text));
+    }
+    addSkillLines(container, last.boss);
+    addCooldownLine(container, last.cooldownUntil);
     addParticipationLine(container, last.myDamage);
     addBuffBlock(container, last.buffInfo, displayName);
     container.addActionRowComponents(
@@ -399,6 +432,8 @@ function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage
   if (infoRage) {
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(infoRage));
   }
+  addSkillLines(container, b);
+  addCooldownLine(container, (b.cooldown_until || {})[userId]);
 
   if (ranking?.length) {
     const top = ranking.slice(0, 5);
@@ -733,6 +768,27 @@ function energyBar(current, max, len = 16) {
   return "🟪".repeat(filled) + "⬜".repeat(len - filled);
 }
 
+// 召喚條件不只有能量條：人數不夠 / 個人貢獻上限吃滿都會卡住，兩者都要寫在面板上，
+// 否則玩家只會看到「能量滿了卻沒出王」而不知道還差什麼。
+function summonGateLines(p, full) {
+  const lines = [];
+  // 能量滿了的情況由底下的狀態行統一說明，這裡不重複講一次人數。
+  if (!full && p.minContributors > 0 && p.contributorCount < p.minContributors) {
+    lines.push(
+      `-# 👥 還需要 **${p.minContributors - p.contributorCount}** 位不同的冒險者貢獻——世界王要全社群一起才叫得動。`,
+    );
+  }
+  if (p.perContributorCap > 0) {
+    const capped = p.myEnergy >= p.perContributorCap;
+    lines.push(
+      capped
+        ? `-# 🚫 你本輪的貢獻已達上限（${p.perContributorCap}）——再刷地下城只會累積攻擊庫存，能量要靠其他人補。`
+        : `-# 🎯 你本輪貢獻 **${p.myEnergy} / ${p.perContributorCap}**（每人有上限，一個人灌不滿整條）`,
+    );
+  }
+  return lines;
+}
+
 function buildSummonProgressContainer(p) {
   const full = p.energy >= p.threshold;
   const container = new ContainerBuilder().setAccentColor(full ? COLOR_VICTORY : 0x9b59b6);
@@ -746,7 +802,8 @@ function buildSummonProgressContainer(p) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `📅 本週已召喚：**${p.summonedThisWeek} / ${p.maxPerWeek}** 場　👥 本輪貢獻者：${p.contributorCount} 人`,
+        `📅 本週已召喚：**${p.summonedThisWeek} / ${p.maxPerWeek}** 場`
+          + `　👥 本輪貢獻者：**${p.contributorCount}${p.minContributors > 0 ? ` / ${p.minContributors}` : ""}** 人`,
       ),
     )
     .addSeparatorComponents(new SeparatorBuilder())
@@ -755,6 +812,10 @@ function buildSummonProgressContainer(p) {
         `⚔️ **你的攻擊庫存：${p.myCharges} / ${p.chargeCap}**\n-# 打地下城累積，任何一場魔王（含週六固定場）都能多打這麼多刀。`,
       ),
     );
+
+  for (const line of summonGateLines(p, full)) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(line));
+  }
 
   if (p.activeBoss) {
     container.addTextDisplayComponents(
@@ -772,6 +833,12 @@ function buildSummonProgressContainer(p) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         "-# 🈵 能量已滿，但本週召喚次數已用完——下週能量會再度喚醒魔王。",
+      ),
+    );
+  } else if (full && p.minContributors > 0 && p.contributorCount < p.minContributors) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `-# ⏸️ 能量已滿，但貢獻人數還不夠（${p.contributorCount} / ${p.minContributors}）——能量會掛著等，不會歸零。找人一起打地下城！`,
       ),
     );
   } else if (full) {
