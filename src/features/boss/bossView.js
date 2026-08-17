@@ -780,12 +780,19 @@ function summonConditionLines(p) {
   );
   if (p.minContributors > 0) {
     const short = Math.max(0, p.minContributors - p.contributorCount);
-    const who = p.requiresMiniBoss ? "位擊敗過 mini-BOSS 的冒險者" : "位不同的冒險者";
+    const who = p.requiresMiniBoss ? "位夠格的冒險者" : "位不同的冒險者";
     lines.push(
       short > 0
         ? `⏳ 討伐人數　**${p.contributorCount} / ${p.minContributors}** 人（還差 **${short}** ${who}）`
         : `✅ 討伐人數　**${p.contributorCount} / ${p.minContributors}** 人（已達標）`,
     );
+    if (p.requiresMiniBoss) {
+      lines.push(
+        p.contributorMinClears > 0
+          ? `-# 　　夠格條件：打贏一隻 mini-BOSS，或本輪累積通關 ${p.contributorMinClears} 次（任一達成）`
+          : "-# 　　夠格條件：打贏一隻 mini-BOSS",
+      );
+    }
   }
   const weekLeft = Math.max(0, p.maxPerWeek - p.summonedThisWeek);
   lines.push(
@@ -829,10 +836,16 @@ function energyEtaLine(p) {
 function myProgressLines(p) {
   const lines = [];
   if (p.requiresMiniBoss && p.minContributors > 0) {
+    const clearsText = p.contributorMinClears > 0
+      ? `・通關 **${p.myClears} / ${p.contributorMinClears}** 次`
+      : "";
     lines.push(
-      p.myMiniBossKills > 0
-        ? `✅ 討伐資格　本輪已擊敗 **${p.myMiniBossKills}** 隻 mini-BOSS，你算在討伐人數裡`
-        : "⏳ 討伐資格　本輪還沒擊敗 mini-BOSS——純通關只累積能量，打贏一隻才算你一位",
+      p.meQualified
+        ? `✅ 討伐資格　你算在討伐人數裡（mini-BOSS **${p.myMiniBossKills}** 隻${clearsText}）`
+        : `⏳ 討伐資格　mini-BOSS **${p.myMiniBossKills}** 隻${clearsText}——`
+          + (p.contributorMinClears > 0
+            ? `打贏一隻 mini-BOSS 或通關滿 ${p.contributorMinClears} 次，任一達成就算你一位`
+            : "打贏一隻 mini-BOSS 才算你一位"),
     );
   }
   if (p.perContributorCap > 0) {
@@ -904,7 +917,9 @@ function buildSummonProgressContainer(p) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `-# ⏸️ 能量已滿，但討伐人數還不夠（${p.contributorCount} / ${p.minContributors}）——能量會掛著等，不會歸零。`
-          + (p.requiresMiniBoss ? "找人一起去打 mini-BOSS！" : "找人一起打地下城！"),
+          + (p.requiresMiniBoss && p.contributorMinClears > 0
+            ? `找人一起打 mini-BOSS，或讓更多人把本輪通關數刷到 ${p.contributorMinClears} 次！`
+            : "找人一起打地下城！"),
       ),
     );
   } else if (full) {

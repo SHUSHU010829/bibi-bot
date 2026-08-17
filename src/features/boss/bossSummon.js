@@ -46,16 +46,24 @@ function contributorEnergy(contributors, perCap) {
   return Object.values(contributors || {}).reduce((sum, v) => sum + clampContribution(v, perCap), 0);
 }
 
-// 算進人數門檻的名單：contributorRequiresMiniBoss 打開時，只有本輪擊敗過 mini-BOSS 的人才算
-// 一位（純通關照樣給能量，只是不算人頭），關掉就退回「有貢獻能量就算一位」。
-function qualifiedMap(state) {
-  return cfg().contributorRequiresMiniBoss
-    ? (state?.mini_boss_contributors || {})
-    : (state?.contributors || {});
+// 算進人數門檻的資格（雙軌，任一達成就算一位）：
+//   A. 本輪擊敗過 mini-BOSS（Lv.75 才碰得到，給老手的快速通道）
+//   B. 本輪累積通關 contributorMinClears 次（低等玩家也有路走）
+// contributorRequiresMiniBoss 關掉就退回「有貢獻能量就算一位」。
+function isQualified(state, userId) {
+  if (!cfg().contributorRequiresMiniBoss) return ((state?.contributors || {})[userId] || 0) > 0;
+  if (((state?.mini_boss_contributors || {})[userId] || 0) > 0) return true;
+  const need = cfg().contributorMinClears ?? 0;
+  return need > 0 && ((state?.clear_counts || {})[userId] || 0) >= need;
 }
 
 function qualifiedContributors(state) {
-  return Object.values(qualifiedMap(state)).filter((v) => (v || 0) > 0).length;
+  const ids = new Set([
+    ...Object.keys(state?.contributors || {}),
+    ...Object.keys(state?.mini_boss_contributors || {}),
+    ...Object.keys(state?.clear_counts || {}),
+  ]);
+  return [...ids].filter((id) => isQualified(state, id)).length;
 }
 
 // 把 DB 的 energy 欄位對回貢獻明細（trySummon 的原子搶結算條件要讀這個欄位）。
@@ -123,6 +131,7 @@ async function trySummon(client, guildId) {
         energy: 0,
         contributors: {},
         mini_boss_contributors: {},
+        clear_counts: {},
         week_key: wk,
         summoned_count: summonedThisWeek + 1,
         updated_at: new Date(),
@@ -150,7 +159,7 @@ async function trySummon(client, guildId) {
   return res.boss;
 }
 
-async function addEnergy(client, { userId, guildId, amount, miniBoss = false }) {
+async function addEnergy(client, { userId, guildId, amount, miniBoss = false, clear = false }) {
   if (!cfg().enabled || amount <= 0) return;
   if (!client.bossSummonStateCollection) return;
   const threshold = cfg().energyThreshold ?? 120;
@@ -162,10 +171,12 @@ async function addEnergy(client, { userId, guildId, amount, miniBoss = false }) 
   const mine = (state?.contributors || {})[userId] || 0;
   const grant = perCap > 0 ? Math.min(amount, Math.max(0, perCap - mine)) : amount;
 
-  // mini-BOSS 擊殺要記在能量上限之外：滿額的人打 mini-BOSS 一樣得算他一位人頭。
+  // 人頭資格的兩份計數都記在能量上限之外：滿額的人再打 mini-BOSS / 再通關，
+  // 能量不會增加，但資格照算。
   const inc = {};
   if (grant > 0) inc[`contributors.${userId}`] = grant;
   if (miniBoss) inc[`mini_boss_contributors.${userId}`] = 1;
+  if (clear) inc[`clear_counts.${userId}`] = 1;
 
   // 貢獻上限扣完的人也要繼續走到 trySummon：否則「能量已滿、就等冷卻結束」時，
   // 只剩滿貢獻的老手在打地下城 → 沒有任何事件會再去檢查一次條件，魔王永遠不出場。
@@ -194,7 +205,12 @@ async function addEnergy(client, { userId, guildId, amount, miniBoss = false }) 
 async function onDungeonCleared(client, { userId, guildId, won }) {
   if (!cfg().enabled || !won) return;
   if (guildId && serverId && guildId !== serverId) return;
-  await addEnergy(client, { userId, guildId, amount: cfg().energyPerDungeonClear ?? 3 });
+  await addEnergy(client, {
+    userId,
+    guildId,
+    amount: cfg().energyPerDungeonClear ?? 3,
+    clear: true,
+  });
   await grantAttackCharge(client, { userId, guildId });
 }
 
@@ -241,7 +257,10 @@ async function progress(client, guildId, userId) {
     contributorCount: qualifiedContributors(state),
     energyContributorCount: values.length,
     requiresMiniBoss: !!cfg().contributorRequiresMiniBoss,
+    contributorMinClears: cfg().contributorMinClears ?? 0,
     myMiniBossKills: userId ? ((state?.mini_boss_contributors || {})[userId] || 0) : 0,
+    myClears: userId ? ((state?.clear_counts || {})[userId] || 0) : 0,
+    meQualified: userId ? isQualified(state, userId) : false,
     cappedContributors: perCap > 0 ? values.filter((v) => (v || 0) >= perCap).length : 0,
     contributorHeadroom: headroom,
     minContributors: cfg().minContributors ?? 0,

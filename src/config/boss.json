@@ -38,6 +38,7 @@
       "maxEnergyPerContributor": 60,
       "minContributors": 6,
       "contributorRequiresMiniBoss": true,
+      "contributorMinClears": 10,
       "maxPerWeek": 2,
       "bonusAttackPerDungeonClear": 1,
       "maxBonusAttacksPerPlayer": 5,
