@@ -768,24 +768,70 @@ function energyBar(current, max, len = 16) {
   return "🟪".repeat(filled) + "⬜".repeat(len - filled);
 }
 
-// 召喚條件不只有能量條：人數不夠 / 個人貢獻上限吃滿都會卡住，兩者都要寫在面板上，
-// 否則玩家只會看到「能量滿了卻沒出王」而不知道還差什麼。
-function summonGateLines(p, full) {
+// 召喚條件不只有能量條：人數不夠 / 本週場次用完 / 冷卻中 / 場上已有魔王都會卡住。
+// 每個條件都要各自寫出「達成沒、目前多少、還差多少」，否則玩家只看到能量條不動就以為壞了。
+function summonConditionLines(p) {
   const lines = [];
-  // 能量滿了的情況由底下的狀態行統一說明，這裡不重複講一次人數。
-  if (!full && p.minContributors > 0 && p.contributorCount < p.minContributors) {
+  const energyLeft = Math.max(0, p.threshold - p.energy);
+  lines.push(
+    energyLeft > 0
+      ? `⏳ 討伐能量　**${p.energy.toLocaleString()} / ${p.threshold.toLocaleString()}**（還差 **${energyLeft.toLocaleString()}**）`
+      : `✅ 討伐能量　**${p.threshold.toLocaleString()} / ${p.threshold.toLocaleString()}**（已集滿）`,
+  );
+  if (p.minContributors > 0) {
+    const short = Math.max(0, p.minContributors - p.contributorCount);
     lines.push(
-      `-# 👥 還需要 **${p.minContributors - p.contributorCount}** 位不同的冒險者貢獻——世界王要全社群一起才叫得動。`,
+      short > 0
+        ? `⏳ 貢獻人數　**${p.contributorCount} / ${p.minContributors}** 人（還差 **${short}** 位不同的冒險者）`
+        : `✅ 貢獻人數　**${p.contributorCount} / ${p.minContributors}** 人（已達標）`,
     );
   }
+  const weekLeft = Math.max(0, p.maxPerWeek - p.summonedThisWeek);
+  lines.push(
+    weekLeft > 0
+      ? `✅ 本週場次　已召喚 **${p.summonedThisWeek} / ${p.maxPerWeek}** 場（還可召喚 **${weekLeft}** 場）`
+      : `🈵 本週場次　已召喚 **${p.summonedThisWeek} / ${p.maxPerWeek}** 場（本週用完，下週重置）`,
+  );
+  if (p.cooldownMinutes > 0) {
+    lines.push(
+      p.cooldownUntil
+        ? `⏳ 討伐冷卻　<t:${Math.floor(p.cooldownUntil / 1000)}:R> 解除（避免魔王連續出場）`
+        : "✅ 討伐冷卻　已結束",
+    );
+  }
+  lines.push(
+    p.activeBoss
+      ? `⏳ 場上狀態　**${p.activeBoss.emoji} ${p.activeBoss.name}** 還在場上（先打倒牠）`
+      : "✅ 場上狀態　目前沒有魔王在場",
+  );
+  return lines;
+}
+
+// 「還差多少」換算成實際要打幾場，讓卡在中間的進度看得出來還有多遠、不是壞掉。
+function energyEtaLine(p) {
+  const left = Math.max(0, p.threshold - p.energy);
+  if (left <= 0) return null;
+  const parts = [];
+  if (p.energyPerClear > 0) parts.push(`**${Math.ceil(left / p.energyPerClear)}** 場地下城通關`);
+  if (p.energyPerMiniBoss > 0) parts.push(`**${Math.ceil(left / p.energyPerMiniBoss)}** 隻 mini-BOSS`);
+  if (!parts.length) return null;
+  return `-# 📐 還差 **${left.toLocaleString()}** 能量 ≈ 全社群再打 ${parts.join("，或 ")}。`;
+}
+
+function myProgressLines(p) {
+  const lines = [];
   if (p.perContributorCap > 0) {
     const capped = p.myEnergy >= p.perContributorCap;
     lines.push(
       capped
-        ? `-# 🚫 你本輪的貢獻已達上限（${p.perContributorCap}）——再刷地下城只會累積攻擊庫存，能量要靠其他人補。`
-        : `-# 🎯 你本輪貢獻 **${p.myEnergy} / ${p.perContributorCap}**（每人有上限，一個人灌不滿整條）`,
+        ? `🚫 本輪貢獻　**${p.myEnergy} / ${p.perContributorCap}**（已達上限，剩下的能量要靠其他人補）`
+        : `🎯 本輪貢獻　**${p.myEnergy} / ${p.perContributorCap}**（每人有上限，一個人灌不滿整條）`,
     );
   }
+  lines.push(
+    `⚔️ 攻擊庫存　**${p.myCharges} / ${p.chargeCap}**`
+      + (p.myCharges >= p.chargeCap ? "（已滿）" : ""),
+  );
   return lines;
 }
 
@@ -800,22 +846,26 @@ function buildSummonProgressContainer(p) {
         `${energyBar(p.energy, p.threshold)}\n**${p.energy.toLocaleString()} / ${p.threshold.toLocaleString()}**`,
       ),
     )
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `📅 本週已召喚：**${p.summonedThisWeek} / ${p.maxPerWeek}** 場`
-          + `　👥 本輪貢獻者：**${p.contributorCount}${p.minContributors > 0 ? ` / ${p.minContributors}` : ""}** 人`,
-      ),
-    )
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `⚔️ **你的攻擊庫存：${p.myCharges} / ${p.chargeCap}**\n-# 打地下城累積，任何一場魔王（含週六固定場）都能多打這麼多刀。`,
+        `**📋 召喚條件**（全部達成才會自動召喚）\n${summonConditionLines(p).join("\n")}`,
       ),
     );
 
-  for (const line of summonGateLines(p, full)) {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(line));
-  }
+  const eta = energyEtaLine(p);
+  if (eta) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(eta));
+
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**🙋 你的進度**\n${myProgressLines(p).join("\n")}`
+          + "\n-# 攻擊庫存打地下城累積，任何一場魔王（含週六固定場）都能多打這麼多刀。",
+      ),
+    );
+
+  container.addSeparatorComponents(new SeparatorBuilder());
 
   if (p.activeBoss) {
     container.addTextDisplayComponents(
@@ -848,7 +898,7 @@ function buildSummonProgressContainer(p) {
   } else {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 多去 /地下城 探索、擊敗 mini-BOSS 累積能量，集滿就會自動召喚一隻額外魔王。",
+        "-# 多去 /地下城 探索、擊敗 mini-BOSS 累積能量；能量會一直累積不歸零，集滿就會自動召喚一隻額外魔王。",
       ),
     );
   }
