@@ -33,11 +33,30 @@ async function getState(client, guildId) {
   return doc || { guild_id: guildId, energy: 0, contributors: {}, summoned_count: 0, week_key: null };
 }
 
-async function capEnergy(client, guildId, threshold) {
-  await client.bossSummonStateCollection.updateOne(
-    { guild_id: guildId, energy: { $gt: threshold } },
-    { $set: { energy: threshold, updated_at: new Date() } },
-  ).catch(() => {});
+// energy 是 contributors 的換算結果，不是獨立的帳：任何時候都由貢獻明細即時算出來
+// （每人先套 maxEnergyPerContributor 上限）。
+// 以前 energy 會被單獨改寫（滿了就砍到門檻），contributors 卻照舊累積，
+// 一旦門檻或每人上限改動，兩邊就永久對不上：貢獻明細顯示三個人各 60，能量卻卡在舊門檻。
+function clampContribution(value, perCap) {
+  const n = Math.max(0, value || 0);
+  return perCap > 0 ? Math.min(perCap, n) : n;
+}
+
+function contributorEnergy(contributors, perCap) {
+  return Object.values(contributors || {}).reduce((sum, v) => sum + clampContribution(v, perCap), 0);
+}
+
+// 把 DB 的 energy 欄位對回貢獻明細（trySummon 的原子搶結算條件要讀這個欄位）。
+async function syncEnergy(client, guildId, doc) {
+  const energy = contributorEnergy(doc?.contributors, cfg().maxEnergyPerContributor ?? 0);
+  if ((doc?.energy || 0) !== energy) {
+    await client.bossSummonStateCollection.updateOne(
+      { guild_id: guildId },
+      { $set: { energy, updated_at: new Date() } },
+      { upsert: true },
+    ).catch(() => {});
+  }
+  return energy;
 }
 
 // 個人「攻擊庫存」：打地下城累積（存 profile），可事先備戰、任何一場魔王都能用。
@@ -63,34 +82,27 @@ function cooldownMs() {
 
 // 集滿時嘗試召喚（原子搶結算權，只有一個 dungeon clear 會真的召出魔王）
 // 招喚場立即登場、無時間限制、血量與固定場同級；並有「防連續出場」冷卻。
+// 任何一項條件沒過都只是「掛著等」：能量不歸零、也不砍掉超出門檻的部分，
+// 等待期間累積的貢獻不會白花。
 async function trySummon(client, guildId) {
+  if (!client.bossSummonStateCollection) return null;
   const threshold = cfg().energyThreshold ?? 120;
-  const active = await bossEngine.getActiveBoss(client, guildId);
-  if (active) {
-    await capEnergy(client, guildId, threshold);
-    return null;
-  }
-  // 防連續出場：距離上一隻魔王結束還沒過冷卻 → 能量先滿著等，冷卻過了下次通關再召。
-  const cd = await bossEngine.bossCooldown(client, guildId, cooldownMs());
-  if (cd.onCooldown) {
-    await capEnergy(client, guildId, threshold);
-    return null;
-  }
-  const wk = weekKey();
   const state = await getState(client, guildId);
+  const energy = await syncEnergy(client, guildId, state);
+  if (energy < threshold) return null;
+  const active = await bossEngine.getActiveBoss(client, guildId);
+  if (active) return null;
+  // 防連續出場：距離上一隻魔王結束還沒過冷卻 → 冷卻過了下次通關（或每分鐘的掃描）再召。
+  const cd = await bossEngine.bossCooldown(client, guildId, cooldownMs());
+  if (cd.onCooldown) return null;
+  const wk = weekKey();
   const summonedThisWeek = state.week_key === wk ? (state.summoned_count || 0) : 0;
-  if (summonedThisWeek >= (cfg().maxPerWeek ?? 3)) {
-    await capEnergy(client, guildId, threshold);
-    return null;
-  }
+  if (summonedThisWeek >= (cfg().maxPerWeek ?? 3)) return null;
 
   // 人數門檻：世界王是社群事件，不接受「一小撮人刷出來」。能量滿了但人不夠就先掛著等，
   // 不歸零、不消耗週次，之後有新的人加入貢獻時會再跑一次這裡。
   const minContributors = cfg().minContributors ?? 0;
-  if (Object.keys(state.contributors || {}).length < minContributors) {
-    await capEnergy(client, guildId, threshold);
-    return null;
-  }
+  if (Object.keys(state.contributors || {}).length < minContributors) return null;
 
   const claim = await client.bossSummonStateCollection.findOneAndUpdate(
     { guild_id: guildId, energy: { $gte: threshold } },
@@ -133,25 +145,27 @@ async function addEnergy(client, { userId, guildId, amount }) {
   // 每人單輪貢獻上限：一個人狂刷地下城不能把整條進度條灌滿，一定要湊到夠多人。
   // 上限扣完之後他的通關只剩「攻擊庫存」的回饋（那個另外算，不受此限）。
   const perCap = cfg().maxEnergyPerContributor ?? 0;
-  let grant = amount;
-  if (perCap > 0) {
-    const state = await getState(client, guildId);
-    const mine = (state?.contributors || {})[userId] || 0;
-    grant = Math.min(amount, Math.max(0, perCap - mine));
-    if (grant <= 0) return;
-  }
+  const state = await getState(client, guildId);
+  const mine = (state?.contributors || {})[userId] || 0;
+  const grant = perCap > 0 ? Math.min(amount, Math.max(0, perCap - mine)) : amount;
 
-  const res = await client.bossSummonStateCollection.findOneAndUpdate(
-    { guild_id: guildId },
-    {
-      $inc: { energy: grant, [`contributors.${userId}`]: grant },
-      $set: { updated_at: new Date() },
-      $setOnInsert: { summoned_count: 0, week_key: null },
-    },
-    { upsert: true, returnDocument: "after" },
-  );
-  const doc = res?.value || res;
-  if ((doc?.energy || 0) >= threshold) {
+  // 貢獻上限扣完的人也要繼續走到 trySummon：否則「能量已滿、就等冷卻結束」時，
+  // 只剩滿貢獻的老手在打地下城 → 沒有任何事件會再去檢查一次條件，魔王永遠不出場。
+  let doc = state;
+  if (grant > 0) {
+    const res = await client.bossSummonStateCollection.findOneAndUpdate(
+      { guild_id: guildId },
+      {
+        $inc: { [`contributors.${userId}`]: grant },
+        $set: { updated_at: new Date() },
+        $setOnInsert: { summoned_count: 0, week_key: null },
+      },
+      { upsert: true, returnDocument: "after" },
+    );
+    doc = res?.value || res || state;
+  }
+  const energy = await syncEnergy(client, guildId, doc);
+  if (energy >= threshold) {
     await trySummon(client, guildId).catch((e) =>
       console.log(`[BOSS] trySummon failed: ${e.message}`.red),
     );
@@ -188,16 +202,25 @@ async function progress(client, guildId, userId) {
     myCharges = Math.min(chargeCap, Math.max(0, profile?.boss_attack_charges || 0));
   }
   const contributors = state?.contributors || {};
+  const perCap = cfg().maxEnergyPerContributor ?? 0;
+  const values = Object.values(contributors);
+  // 現有貢獻者「還能貢獻多少」：全員貢獻上限扣完時能量條就再也不會動，
+  // 這時要講清楚缺的是新的人，而不是再多打幾場地下城。
+  const headroom = perCap > 0
+    ? values.reduce((sum, v) => sum + Math.max(0, perCap - clampContribution(v, perCap)), 0)
+    : Infinity;
   return {
     enabled: !!cfg().enabled,
-    energy: Math.min(threshold, state?.energy || 0),
+    energy: Math.min(threshold, contributorEnergy(contributors, perCap)),
     threshold,
     summonedThisWeek,
     maxPerWeek: cfg().maxPerWeek ?? 3,
-    contributorCount: Object.keys(contributors).length,
+    contributorCount: values.length,
+    cappedContributors: perCap > 0 ? values.filter((v) => (v || 0) >= perCap).length : 0,
+    contributorHeadroom: headroom,
     minContributors: cfg().minContributors ?? 0,
-    myEnergy: userId ? (contributors[userId] || 0) : 0,
-    perContributorCap: cfg().maxEnergyPerContributor ?? 0,
+    myEnergy: userId ? clampContribution(contributors[userId], perCap) : 0,
+    perContributorCap: perCap,
     activeBoss: active,
     cooldownUntil: cd.onCooldown ? cd.until : 0,
     cooldownMinutes: cfg().spawnCooldownMinutes ?? 0,

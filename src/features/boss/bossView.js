@@ -811,6 +811,13 @@ function summonConditionLines(p) {
 function energyEtaLine(p) {
   const left = Math.max(0, p.threshold - p.energy);
   if (left <= 0) return null;
+  // 現有貢獻者的額度加起來已經補不完剩下的能量 → 再多打幾場也不會動，缺的是新的人。
+  if (p.perContributorCap > 0 && p.contributorHeadroom < left) {
+    const newcomers = Math.ceil((left - p.contributorHeadroom) / p.perContributorCap);
+    return `-# 🚫 還差 **${left.toLocaleString()}** 能量，但目前 **${p.contributorCount}** 位貢獻者的額度只剩 **${p.contributorHeadroom.toLocaleString()}**`
+      + `（其中 **${p.cappedContributors}** 位已達每人上限 ${p.perContributorCap}）`
+      + `——至少要再 **${newcomers}** 位還沒貢獻過的冒險者一起打地下城，能量條才會繼續動。`;
+  }
   const parts = [];
   if (p.energyPerClear > 0) parts.push(`**${Math.ceil(left / p.energyPerClear)}** 場地下城通關`);
   if (p.energyPerMiniBoss > 0) parts.push(`**${Math.ceil(left / p.energyPerMiniBoss)}** 隻 mini-BOSS`);
@@ -893,7 +900,7 @@ function buildSummonProgressContainer(p) {
     );
   } else if (full) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# ✅ 能量已滿，下一次地下城通關就會召喚魔王！"),
+      new TextDisplayBuilder().setContent("-# ✅ 條件全部達成，魔王最慢一分鐘內就會登場！"),
     );
   } else {
     container.addTextDisplayComponents(
