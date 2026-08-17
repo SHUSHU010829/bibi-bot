@@ -14,6 +14,7 @@ const bossAnnouncer = require("../../features/boss/bossAnnouncer");
 const bossTreasure = require("../../features/boss/bossTreasure");
 const bossSkills = require("../../features/boss/bossSkills");
 const bossBoard = require("../../features/boss/bossBoard");
+const bossSummon = require("../../features/boss/bossSummon");
 
 async function spawnSaturday(client) {
   const guildId = serverId;
@@ -68,6 +69,14 @@ async function expirySweep(client) {
   await bossTreasure.tick(client, guild).catch((e) =>
     console.log(`[BOSS] treasure tick failed: ${e.message}`.red),
   );
+
+  // 5. 討伐能量已滿但當時卡在冷卻 / 週次 / 場上有王：這些條件是時間到自己解除的，
+  //    不能只靠下一次地下城通關來觸發（貢獻上限扣完的社群可能等不到），每分鐘重試一次。
+  if (guildId && boss?.summon?.enabled) {
+    await bossSummon.trySummon(client, guildId).catch((e) =>
+      console.log(`[BOSS] summon retry failed: ${e.message}`.red),
+    );
+  }
 }
 
 async function skillTick(client, guildId) {
