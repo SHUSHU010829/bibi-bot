@@ -200,6 +200,9 @@ async function progress(client, guildId, userId) {
     perContributorCap: cfg().maxEnergyPerContributor ?? 0,
     activeBoss: active,
     cooldownUntil: cd.onCooldown ? cd.until : 0,
+    cooldownMinutes: cfg().spawnCooldownMinutes ?? 0,
+    energyPerClear: cfg().energyPerDungeonClear ?? 0,
+    energyPerMiniBoss: cfg().energyPerMiniBoss ?? 0,
     myCharges,
     chargeCap,
   };
