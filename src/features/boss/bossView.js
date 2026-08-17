@@ -780,10 +780,11 @@ function summonConditionLines(p) {
   );
   if (p.minContributors > 0) {
     const short = Math.max(0, p.minContributors - p.contributorCount);
+    const who = p.requiresMiniBoss ? "位擊敗過 mini-BOSS 的冒險者" : "位不同的冒險者";
     lines.push(
       short > 0
-        ? `⏳ 貢獻人數　**${p.contributorCount} / ${p.minContributors}** 人（還差 **${short}** 位不同的冒險者）`
-        : `✅ 貢獻人數　**${p.contributorCount} / ${p.minContributors}** 人（已達標）`,
+        ? `⏳ 討伐人數　**${p.contributorCount} / ${p.minContributors}** 人（還差 **${short}** ${who}）`
+        : `✅ 討伐人數　**${p.contributorCount} / ${p.minContributors}** 人（已達標）`,
     );
   }
   const weekLeft = Math.max(0, p.maxPerWeek - p.summonedThisWeek);
@@ -814,7 +815,7 @@ function energyEtaLine(p) {
   // 現有貢獻者的額度加起來已經補不完剩下的能量 → 再多打幾場也不會動，缺的是新的人。
   if (p.perContributorCap > 0 && p.contributorHeadroom < left) {
     const newcomers = Math.ceil((left - p.contributorHeadroom) / p.perContributorCap);
-    return `-# 🚫 還差 **${left.toLocaleString()}** 能量，但目前 **${p.contributorCount}** 位貢獻者的額度只剩 **${p.contributorHeadroom.toLocaleString()}**`
+    return `-# 🚫 還差 **${left.toLocaleString()}** 能量，但目前 **${p.energyContributorCount}** 位貢獻者的額度只剩 **${p.contributorHeadroom.toLocaleString()}**`
       + `（其中 **${p.cappedContributors}** 位已達每人上限 ${p.perContributorCap}）`
       + `——至少要再 **${newcomers}** 位還沒貢獻過的冒險者一起打地下城，能量條才會繼續動。`;
   }
@@ -827,6 +828,13 @@ function energyEtaLine(p) {
 
 function myProgressLines(p) {
   const lines = [];
+  if (p.requiresMiniBoss && p.minContributors > 0) {
+    lines.push(
+      p.myMiniBossKills > 0
+        ? `✅ 討伐資格　本輪已擊敗 **${p.myMiniBossKills}** 隻 mini-BOSS，你算在討伐人數裡`
+        : "⏳ 討伐資格　本輪還沒擊敗 mini-BOSS——純通關只累積能量，打贏一隻才算你一位",
+    );
+  }
   if (p.perContributorCap > 0) {
     const capped = p.myEnergy >= p.perContributorCap;
     lines.push(
@@ -895,7 +903,8 @@ function buildSummonProgressContainer(p) {
   } else if (full && p.minContributors > 0 && p.contributorCount < p.minContributors) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# ⏸️ 能量已滿，但貢獻人數還不夠（${p.contributorCount} / ${p.minContributors}）——能量會掛著等，不會歸零。找人一起打地下城！`,
+        `-# ⏸️ 能量已滿，但討伐人數還不夠（${p.contributorCount} / ${p.minContributors}）——能量會掛著等，不會歸零。`
+          + (p.requiresMiniBoss ? "找人一起去打 mini-BOSS！" : "找人一起打地下城！"),
       ),
     );
   } else if (full) {
