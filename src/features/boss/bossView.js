@@ -780,11 +780,19 @@ function summonConditionLines(p) {
   );
   if (p.minContributors > 0) {
     const short = Math.max(0, p.minContributors - p.contributorCount);
+    const who = p.requiresMiniBoss ? "位夠格的冒險者" : "位不同的冒險者";
     lines.push(
       short > 0
-        ? `⏳ 貢獻人數　**${p.contributorCount} / ${p.minContributors}** 人（還差 **${short}** 位不同的冒險者）`
-        : `✅ 貢獻人數　**${p.contributorCount} / ${p.minContributors}** 人（已達標）`,
+        ? `⏳ 討伐人數　**${p.contributorCount} / ${p.minContributors}** 人（還差 **${short}** ${who}）`
+        : `✅ 討伐人數　**${p.contributorCount} / ${p.minContributors}** 人（已達標）`,
     );
+    if (p.requiresMiniBoss) {
+      lines.push(
+        p.contributorMinClears > 0
+          ? `-# 　　夠格條件：打贏一隻 mini-BOSS，或本輪累積通關 ${p.contributorMinClears} 次（任一達成）`
+          : "-# 　　夠格條件：打贏一隻 mini-BOSS",
+      );
+    }
   }
   const weekLeft = Math.max(0, p.maxPerWeek - p.summonedThisWeek);
   lines.push(
@@ -814,7 +822,7 @@ function energyEtaLine(p) {
   // 現有貢獻者的額度加起來已經補不完剩下的能量 → 再多打幾場也不會動，缺的是新的人。
   if (p.perContributorCap > 0 && p.contributorHeadroom < left) {
     const newcomers = Math.ceil((left - p.contributorHeadroom) / p.perContributorCap);
-    return `-# 🚫 還差 **${left.toLocaleString()}** 能量，但目前 **${p.contributorCount}** 位貢獻者的額度只剩 **${p.contributorHeadroom.toLocaleString()}**`
+    return `-# 🚫 還差 **${left.toLocaleString()}** 能量，但目前 **${p.energyContributorCount}** 位貢獻者的額度只剩 **${p.contributorHeadroom.toLocaleString()}**`
       + `（其中 **${p.cappedContributors}** 位已達每人上限 ${p.perContributorCap}）`
       + `——至少要再 **${newcomers}** 位還沒貢獻過的冒險者一起打地下城，能量條才會繼續動。`;
   }
@@ -827,6 +835,19 @@ function energyEtaLine(p) {
 
 function myProgressLines(p) {
   const lines = [];
+  if (p.requiresMiniBoss && p.minContributors > 0) {
+    const clearsText = p.contributorMinClears > 0
+      ? `・通關 **${p.myClears} / ${p.contributorMinClears}** 次`
+      : "";
+    lines.push(
+      p.meQualified
+        ? `✅ 討伐資格　你算在討伐人數裡（mini-BOSS **${p.myMiniBossKills}** 隻${clearsText}）`
+        : `⏳ 討伐資格　mini-BOSS **${p.myMiniBossKills}** 隻${clearsText}——`
+          + (p.contributorMinClears > 0
+            ? `打贏一隻 mini-BOSS 或通關滿 ${p.contributorMinClears} 次，任一達成就算你一位`
+            : "打贏一隻 mini-BOSS 才算你一位"),
+    );
+  }
   if (p.perContributorCap > 0) {
     const capped = p.myEnergy >= p.perContributorCap;
     lines.push(
@@ -895,7 +916,10 @@ function buildSummonProgressContainer(p) {
   } else if (full && p.minContributors > 0 && p.contributorCount < p.minContributors) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `-# ⏸️ 能量已滿，但貢獻人數還不夠（${p.contributorCount} / ${p.minContributors}）——能量會掛著等，不會歸零。找人一起打地下城！`,
+        `-# ⏸️ 能量已滿，但討伐人數還不夠（${p.contributorCount} / ${p.minContributors}）——能量會掛著等，不會歸零。`
+          + (p.requiresMiniBoss && p.contributorMinClears > 0
+            ? `找人一起打 mini-BOSS，或讓更多人把本輪通關數刷到 ${p.contributorMinClears} 次！`
+            : "找人一起打地下城！"),
       ),
     );
   } else if (full) {
