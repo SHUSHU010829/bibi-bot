@@ -3,6 +3,7 @@ const { EmbedBuilder, MessageFlags } = require("discord.js");
 const { boss } = require("../../config");
 const { buildSettlementContainer } = require("./bossView");
 const bossBoard = require("./bossBoard");
+const bossEngine = require("./bossEngine");
 
 function pickFrom(arr) {
   if (!Array.isArray(arr) || arr.length === 0) return null;
@@ -23,7 +24,7 @@ async function announceSpawn(client, bossDoc, opts = {}) {
   const basisSuffix = bossDoc.participant_basis != null
     ? `\n-# 依預估 ${bossDoc.participant_basis} 名參戰者 × 社群平均戰力換算（打得越多人、裝備越好，牠越硬）`
     : "";
-  const limit = boss?.attackLimitPerPlayer ?? 5;
+  const limit = bossEngine.baseAttackLimitFor(bossDoc);
   const cdSec = boss?.attackCooldownSec ?? 0;
   const cdText = cdSec > 0
     ? `每人 ${limit} 次\n-# 每刀間隔 ${cdSec} 秒`
