@@ -25,10 +25,12 @@ async function spawnSaturday(client) {
     return;
   }
   const spec = boss?.saturdaySpawn || {};
+  // 週六場是全社群集合的主場，血量另外吃 saturdaySpawn.hpMult（跟召喚場的 summonHpMult 分開調）。
   const res = await bossEngine.spawnBoss(client, {
     guildId,
     name: spec.name,
     emoji: spec.emoji,
+    hpMult: spec.hpMult ?? 1,
   });
   if (res.ok) {
     console.log(`[BOSS] spawned ${res.boss.boss_id} hp=${res.boss.max_hp}`.cyan);

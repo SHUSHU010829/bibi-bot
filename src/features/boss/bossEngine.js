@@ -184,6 +184,13 @@ function gearMultiplier(avgAtk) {
   return Math.min(maxMult, 1 + steps * bonusPerStep);
 }
 
+// 每人本場基礎出刀數。週六固定場血量另外吃 saturdaySpawn.hpMult，出刀數就得跟著獨立調，
+// 否則血量翻倍、可用刀數沒變 = 一定打不完；招喚場（血量倍率 1）維持全域值。
+function baseAttackLimitFor(bossDoc) {
+  if (bossDoc?.spawn_source === "summon") return cfg().attackLimitPerPlayer ?? 5;
+  return cfg().saturdaySpawn?.attackLimitPerPlayer ?? cfg().attackLimitPerPlayer ?? 5;
+}
+
 async function getActiveBoss(client, guildId) {
   if (!client.bossEventsCollection) return null;
   return client.bossEventsCollection.findOne({ guild_id: guildId, status: "active" });
@@ -355,7 +362,7 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
   const ammoActive = ammo.active;
   const ammoLimitBonus = ammoActive ? (ammoCfg.attackLimitBonus || 0) : 0;
 
-  const baseLimit = (cfg().attackLimitPerPlayer ?? 5) + guildAttackLimitBonus + ammoLimitBonus;
+  const baseLimit = baseAttackLimitFor(bossDoc) + guildAttackLimitBonus + ammoLimitBonus;
   const chargeCap = cfg().summon?.maxBonusAttacksPerPlayer ?? 5;
   const used = (bossDoc.attack_counts || {})[userId] || 0;
   const extraUsed = Math.max(0, used - baseLimit);
@@ -979,4 +986,5 @@ module.exports = {
   participationTier,
   rageState,
   effectiveCounterRate,
+  baseAttackLimitFor,
 };
