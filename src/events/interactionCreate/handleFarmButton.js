@@ -56,7 +56,7 @@ const { resolveStamina, staminaMax, getMemberClub } = require("../../features/mi
 const {
   weaponLabel,
   weaponDurabilityWarnLine,
-} = require("../../features/dungeon/weaponDurabilityView");
+} = require("../../features/dungeon/equipDurabilityView");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const { deferReplySafe } = require("../../utils/safeAck");
 

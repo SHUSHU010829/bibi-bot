@@ -142,6 +142,8 @@ function buildFarmContainer({ plots, userId, plotCount, maxPlots, stamina, trapB
       lines.push(`-# 剩餘保護：${trapHoldings.join("・")}`);
     } else if (trapBlocksRemaining > 0) {
       lines.push(`-# 陷阱剩餘 ${trapBlocksRemaining} 次保護`);
+    } else {
+      lines.push("🪤 **陷阱已全部用完**，之後的來犯要自己防禦\n-# 到 /工坊 用損壞的陷阱碎片再合成幾個。");
     }
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
   }

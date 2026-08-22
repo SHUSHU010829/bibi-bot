@@ -140,10 +140,9 @@ function mineAgainRow(ownerId, { includeBatch = false } = {}) {
   return row;
 }
 
-function pickaxeDurabilityLine(pickaxe, durability, maxDurability) {
-  if (!pickaxe || pickaxe === "wood" || durability === null || durability === undefined) {
-    return `🪓 **目前鎬子**\n${pickaxeLabel("wood")}（無耐久消耗）`;
-  }
+// 鎬子耐久警告文案的單一來源（單次挖礦 / 連續挖礦 / 冷卻畫面共用）。
+// 健康時回 null，由呼叫端印自己的中性行。
+function pickaxeDurabilityWarnLine(pickaxe, durability, maxDurability) {
   const warn = mining?.durabilityWarn || {};
   const label = pickaxeLabel(pickaxe);
   const maxText = typeof maxDurability === "number" ? `/${maxDurability}` : "";
@@ -153,7 +152,18 @@ function pickaxeDurabilityLine(pickaxe, durability, maxDurability) {
   if (typeof warn.low === "number" && durability <= warn.low) {
     return `⚠️ **鎬子耐久偏低**\n${label} 剩 **${durability}**${maxText} 次\n-# 建議先去 \`/合成\` 備一把、或到 \`/背包\` 用劣質磨石補耐久。`;
   }
-  return `🪓 **目前鎬子**\n${label}・耐久 ${durability}${maxText} 次`;
+  return null;
+}
+
+function pickaxeDurabilityLine(pickaxe, durability, maxDurability) {
+  if (!pickaxe || pickaxe === "wood" || durability === null || durability === undefined) {
+    return `🪓 **目前鎬子**\n${pickaxeLabel("wood")}（無耐久消耗）`;
+  }
+  const maxText = typeof maxDurability === "number" ? `/${maxDurability}` : "";
+  return (
+    pickaxeDurabilityWarnLine(pickaxe, durability, maxDurability) ||
+    `🪓 **目前鎬子**\n${pickaxeLabel(pickaxe)}・耐久 ${durability}${maxText} 次`
+  );
 }
 
 function buildCooldownView({
@@ -413,7 +423,13 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
     );
 
     const buffNotes = [];
-    if (result.buff.consume.usePotion) buffNotes.push("🍀 幸運藥水加成");
+    if (result.buff.consume.usePotion) {
+      buffNotes.push(
+        result.luckPotionLeft > 0
+          ? `🍀 幸運藥水加成（剩 ${result.luckPotionLeft} 次）`
+          : "🍀 幸運藥水加成（**這是最後一次，藥水用完了**）",
+      );
+    }
     if (result.buff.twitchLuckBonus > 0) {
       const tierLabel = { tier1: "T1", tier2: "T2", tier3: "T3" };
       const tierName = tierLabel[result.buff.twitchTierKey] || "";
@@ -455,17 +471,10 @@ async function executeMine(client, interaction, { allowOverflow = false } = {}) 
       );
       await dmPickaxeBroke(interaction, result.pickaxeBefore).catch(() => {});
     } else if (result.durabilityAfter !== null) {
-      const warn = mining?.durabilityWarn || {};
       const after = result.durabilityAfter;
-      const label = pickaxeLabel(result.pickaxeBefore);
-      let line;
-      if (typeof warn.critical === "number" && after <= warn.critical) {
-        line = `🚨 **鎬子快斷了！**\n${label} 只剩 **${after}** 次，再挖就會斷裂退回木鎬。快去 \`/合成\` 一把新的、或到 \`/背包\` 用劣質磨石補耐久！`;
-      } else if (typeof warn.low === "number" && after <= warn.low) {
-        line = `⚠️ **鎬子耐久偏低**\n${label} 剩 **${after}** 次，建議先去 \`/合成\` 備一把、或到 \`/背包\` 用劣質磨石補耐久。`;
-      } else {
-        line = `**鎬子耐久**\n${label} 剩 ${after} 次`;
-      }
+      const line =
+        pickaxeDurabilityWarnLine(result.pickaxeBefore, after) ||
+        `**鎬子耐久**\n${pickaxeLabel(result.pickaxeBefore)} 剩 ${after} 次`;
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(line));
       if (result.durabilityWarnCrossed) {
         dmPickaxeLowDurability(
@@ -969,7 +978,8 @@ async function runMineBatch(client, interaction, { count }) {
     } else if (typeof result.durabilityAfter === "number") {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**鎬子耐久**\n${pickaxeLabel(result.pickaxe)} 剩 ${result.durabilityAfter} 次`,
+          pickaxeDurabilityWarnLine(result.pickaxe, result.durabilityAfter) ||
+            `**鎬子耐久**\n${pickaxeLabel(result.pickaxe)} 剩 ${result.durabilityAfter} 次`,
         ),
       );
     }

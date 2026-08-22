@@ -285,10 +285,9 @@ function rodLabel(key) {
   return `${def.emoji || "🎣"} ${def.name || key}`;
 }
 
-function rodDurabilityLine(rodKey, durability, maxDurability) {
-  if (!rodKey || rodKey === "bamboo" || durability === null || durability === undefined) {
-    return `🪝 **目前釣竿**\n${rodLabel("bamboo")}（無耐久消耗）`;
-  }
+// 釣竿耐久警告文案的單一來源（單竿 / 連續釣魚 / 冷卻畫面共用）。
+// 健康時回 null，由呼叫端印自己的中性行。
+function rodDurabilityWarnLine(rodKey, durability, maxDurability) {
   const warn = fishing?.durabilityWarn || {};
   const label = rodLabel(rodKey);
   const maxText = typeof maxDurability === "number" ? `/${maxDurability}` : "";
@@ -298,7 +297,18 @@ function rodDurabilityLine(rodKey, durability, maxDurability) {
   if (typeof warn.low === "number" && durability <= warn.low) {
     return `⚠️ **釣竿耐久偏低**\n${label} 剩 **${durability}**${maxText} 次\n-# 建議先去 \`/合成\` 備一支。`;
   }
-  return `🪝 **目前釣竿**\n${label}・耐久 ${durability}${maxText} 次`;
+  return null;
+}
+
+function rodDurabilityLine(rodKey, durability, maxDurability) {
+  if (!rodKey || rodKey === "bamboo" || durability === null || durability === undefined) {
+    return `🪝 **目前釣竿**\n${rodLabel("bamboo")}（無耐久消耗）`;
+  }
+  const maxText = typeof maxDurability === "number" ? `/${maxDurability}` : "";
+  return (
+    rodDurabilityWarnLine(rodKey, durability, maxDurability) ||
+    `🪝 **目前釣竿**\n${rodLabel(rodKey)}・耐久 ${durability}${maxText} 次`
+  );
 }
 
 // 訂閱免冷卻釣魚是「插隊釣一竿」，原本的冷卻繼續跑，要講清楚免得玩家以為冷卻被重設。
@@ -863,16 +873,10 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
           "-# 🪝 你的釣竿斷了，已換回竹釣竿，快去 /合成 打造新的！"
         )
       );
-    } else if (rodWarnLevel === "critical") {
+    } else if (rodWarnLevel) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `🚨 **釣竿快斷了！**\n${rodLabelText} 只剩 **${result.rodDurabilityAfter}** 次，再釣就會斷裂退回竹釣竿。快去 \`/合成\` 一支新的！`
-        )
-      );
-    } else if (rodWarnLevel === "low") {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `⚠️ **釣竿耐久偏低**\n${rodLabelText} 剩 **${result.rodDurabilityAfter}** 次，建議先去 \`/合成\` 備一支。`
+          rodDurabilityWarnLine(result.rodKey, result.rodDurabilityAfter),
         )
       );
     }
@@ -909,7 +913,9 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
     if (result.netActive) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `-# 🕸️ 撈網生效中，剩餘 **${result.netUsesAfter}** 次`,
+          result.netUsesAfter > 0
+            ? `-# 🕸️ 撈網生效中，剩餘 **${result.netUsesAfter}** 次`
+            : "🕸️ **撈網用完了！** 這是最後一次，下一竿起沒有 +10% 成功率。\n-# 集 5 個損壞的漁網碎片可在工坊再合成一個。",
         ),
       );
     }
@@ -1257,6 +1263,13 @@ async function runFishBatch(client, interaction, { location = "stream", count })
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `-# 💔 第 ${result.performed} 竿時，你的 ${brokeDef.name || result.rodBrokeFrom} 斷了、已換回竹釣竿，連續釣魚提前結束。`,
+        ),
+      );
+    } else if (result.rod && result.rod !== "bamboo" && typeof result.rodDurabilityAfter === "number") {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          rodDurabilityWarnLine(result.rod, result.rodDurabilityAfter) ||
+            `**釣竿耐久**\n${rodLabel(result.rod)} 剩 ${result.rodDurabilityAfter} 次`,
         ),
       );
     }

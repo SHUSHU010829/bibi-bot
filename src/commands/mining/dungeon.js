@@ -28,8 +28,10 @@ const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const {
   weaponLabel,
   weaponDurabilityWarnLine,
+  shieldLabel,
+  shieldDurabilityWarnLine,
   warnThresholds,
-} = require("../../features/dungeon/weaponDurabilityView");
+} = require("../../features/dungeon/equipDurabilityView");
 
 const DRAGON_HEIR_THRESHOLD = gameTitleService.def("dragon_heir")?.req?.bossKills ?? 10;
 
@@ -252,11 +254,6 @@ function parseContinueId(customId) {
 // Phase H+ 入口面板 / 戰鬥結算 builders
 // ────────────────────────────────────────────────────────────────────────────
 
-function shieldLabel(key) {
-  if (!key) return "—";
-  const def = (dungeon?.shields || {})[key] || {};
-  return `${def.emoji || "🛡️"} ${def.name || key}`;
-}
 function themeLabel(t) {
   return `${t.emoji || ""} ${t.name}`.trim();
 }
@@ -284,6 +281,10 @@ function statusLines(status) {
   }
   if (typeof status.weaponDurability === "number") {
     const warnLine = weaponDurabilityWarnLine(status.weapon, status.weaponDurability);
+    if (warnLine) lines.push(warnLine);
+  }
+  if (status.shield && typeof status.shieldDurability === "number") {
+    const warnLine = shieldDurabilityWarnLine(status.shield, status.shieldDurability);
     if (warnLine) lines.push(warnLine);
   }
   if (status.hpCritical) {
@@ -615,7 +616,12 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
 
   const stateLines = [];
   stateLines.push(`❤️ HP：${result.hpBefore} → **${result.hpAfter}/${result.hpMax}** \`${hpBar(result.hpAfter, result.hpMax)}\``);
-  if (result.shieldBefore != null) stateLines.push(`🛡️ 盾耐久：${result.shieldBefore} → ${result.shieldAfter}`);
+  if (result.shieldBefore != null) {
+    stateLines.push(
+      shieldDurabilityWarnLine(result.shield, result.shieldAfter, result.isMiniBoss) ||
+        `🛡️ 盾耐久：${result.shieldBefore} → ${result.shieldAfter}`,
+    );
+  }
   stateLines.push(`🔋 體力：${result.staminaBefore} → ${result.staminaAfter}/${result.staminaMax}`);
   if (result.autoStamina?.drank > 0) {
     const TIER_NAME = { small: "小", medium: "中", large: "大" };

@@ -8,7 +8,7 @@ const twitchPerks = require("./twitchPerks");
 const encounterService = require("./encounterService");
 const { getFoodAtkBonus, formatFoodBuffLines } = require("../fishing/cookService");
 const { effectiveMaxOf } = require("./equipDurability");
-const { warnThresholds } = require("../dungeon/weaponDurabilityView");
+const { warnThresholds } = require("../dungeon/equipDurabilityView");
 const bus = require("../eventBus");
 
 // 公會鐵匠鋪 Lv.5：戰鬥扣武器/盾耐久時，每次有機率不消耗。
@@ -1184,6 +1184,7 @@ async function enterDungeonHp(client, {
     damageTaken: battle.damageTaken,
     critCount: battle.critCount,
     blockCount: battle.blockCount,
+    shield: profile.shield,
     shieldBefore: profile.shield_durability,
     shieldAfter: battle.playerEnd.shield_durability,
     potionsAfter: battle.playerEnd.potions,
