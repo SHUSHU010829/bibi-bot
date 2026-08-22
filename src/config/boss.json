@@ -48,7 +48,8 @@
     },
     "saturdaySpawn": {
       "schedule": "0 21 * * 6",
-      "timezone": "Asia/Taipei"
+      "timezone": "Asia/Taipei",
+      "hpMult": 3
     },
     "nameGenerator": {
       "prefixes": [
