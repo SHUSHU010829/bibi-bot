@@ -1,4 +1,4 @@
-// 斷劍王每週結算：每週一 00:05 統計「上週」把傳說之劍砍斷最多次的人，
+// 斷劍王每週結算：每週一 00:05 統計「上週」把傳說級以上的劍砍斷最多次的人，
 // 封為斷劍王並烙上「亡靈制」詛咒（效期到下次結算＝下週一）；同 guild 舊持有者自動卸任。
 // 上週若沒人斷劍（guildsWithBreaks 為空 / 榜為空）就整個跳過，不產生斷劍王、不施加詛咒。
 //
@@ -53,7 +53,7 @@ async function announceChampion(client, guildId, winnerId, ranking, window, expi
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `${nameOf(winnerId)} 本期把 ${swordBreakService.swordLabel()} 砍斷了 **${ranking[0].breaks}** 次，慘遭封為 **☠️ 斷劍王**！\n` +
+        `${nameOf(winnerId)} 本期把傳說級以上的劍砍斷了 **${ranking[0].breaks}** 次，慘遭封為 **☠️ 斷劍王**！\n` +
           `無數斷劍的怨靈反噬其身——即刻起被烙上「**亡靈制**」詛咒，效期至 <t:${Math.floor(expiresAt / 1000)}:R>。`,
       ),
     )
@@ -65,7 +65,7 @@ async function announceChampion(client, guildId, winnerId, ranking, window, expi
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 下一期重新統計——愛惜你的 🔥 傳說之劍，別讓自己再戴上這頂亡靈王冠！",
+        `-# 下一期重新統計——愛惜你的 ${swordBreakService.trackedSwordsLabel()}，別讓自己再戴上這頂亡靈王冠！`,
       ),
     );
 
@@ -99,7 +99,7 @@ async function processGuild(client, guildId, window, expiresAt) {
     if (winner) {
       await winner
         .send(
-          `☠️ 你被封為 **${window.label} 斷劍王**！本期把傳說之劍砍斷 ${ranking[0].breaks} 次（最多）。\n` +
+          `☠️ 你被封為 **${window.label} 斷劍王**！本期把傳說級以上的劍砍斷 ${ranking[0].breaks} 次（最多）。\n` +
             `斷劍怨靈纏上了你——「亡靈制」詛咒生效：地下城傷害 −${dungeon?.undead?.atkPenaltyPct || 0}%、武器每場多扣耐久、亡靈軍團作祟（奪金幣 / 吸 HP），效期至 <t:${Math.floor(expiresAt / 1000)}:R>。\n` +
             `-# 詛咒狀態可在 /加成 → 時效狀態 查看。少砍斷幾把劍就能擺脫它。`,
         )

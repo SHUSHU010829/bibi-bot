@@ -85,7 +85,8 @@
         "atk": 180,
         "def": 40,
         "critRate": 0.2,
-        "durability": 120
+        "durability": 120,
+        "legendaryTier": true
       },
       "magic_sword": {
         "name": "傳說·魔晶劍",
@@ -93,7 +94,8 @@
         "atk": 220,
         "def": 50,
         "critRate": 0.25,
-        "durability": 145
+        "durability": 145,
+        "legendaryTier": true
       }
     },
     "shields": {
@@ -202,7 +204,8 @@
     },
     "durabilityWarn": {
       "low": 5,
-      "critical": 1
+      "critical": 1,
+      "lowBattles": 3
     },
     "monsters": [
       {

@@ -8,6 +8,7 @@ const twitchPerks = require("./twitchPerks");
 const encounterService = require("./encounterService");
 const { getFoodAtkBonus, formatFoodBuffLines } = require("../fishing/cookService");
 const { effectiveMaxOf } = require("./equipDurability");
+const { warnThresholds } = require("../dungeon/weaponDurabilityView");
 const bus = require("../eventBus");
 
 // 公會鐵匠鋪 Lv.5：戰鬥扣武器/盾耐久時，每次有機率不消耗。
@@ -398,10 +399,10 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
         set.weapon_durability = null;
       } else {
         inc.weapon_durability = -durCost;
-        const warn = dungeon?.durabilityWarn || {};
-        if (typeof warn.critical === "number" && before > warn.critical && weaponDurabilityAfter <= warn.critical) {
+        const th = warnThresholds(durCost);
+        if (before > th.critical && weaponDurabilityAfter <= th.critical) {
           weaponDurabilityWarnCrossed = "critical";
-        } else if (typeof warn.low === "number" && before > warn.low && weaponDurabilityAfter <= warn.low) {
+        } else if (before > th.low && weaponDurabilityAfter <= th.low) {
           weaponDurabilityWarnCrossed = "low";
         }
       }
@@ -524,14 +525,14 @@ async function enterDungeon(client, { userId, guildId, member, username, allowOv
     weaponBroke,
     weaponDurabilityAfter,
     weaponDurabilityWarnCrossed,
-    legendarySwordBroke: weaponBroke && weaponBefore === swordBreakService.LEGENDARY_SWORD,
+    legendarySwordBroke: weaponBroke && swordBreakService.isTrackedSword(weaponBefore),
     foodBuffLines: formatFoodBuffLines(profile, "dungeon"),
   };
 
-  // 傳說之劍斷裂：記錄斷劍榜 + 公開播報（fire-and-forget，自帶錯誤吞掉）
+  // 傳說級以上的劍斷裂：記錄斷劍榜 + 公開播報（fire-and-forget，自帶錯誤吞掉）
   if (result.legendarySwordBroke) {
     swordBreakService
-      .handleLegendaryBreak(client, { userId, guildId })
+      .handleLegendaryBreak(client, { userId, guildId, weapon: weaponBefore })
       .catch(() => {});
   }
 
@@ -977,10 +978,10 @@ async function enterDungeonHp(client, {
         set.weapon_durability = null;
       } else {
         inc.weapon_durability = -effWdurCost;
-        const warn = dungeon?.durabilityWarn || {};
-        if (typeof warn.critical === "number" && before > warn.critical && weaponDurabilityAfter <= warn.critical) {
+        const th = warnThresholds(effWdurCost);
+        if (before > th.critical && weaponDurabilityAfter <= th.critical) {
           weaponDurabilityWarnCrossed = "critical";
-        } else if (typeof warn.low === "number" && before > warn.low && weaponDurabilityAfter <= warn.low) {
+        } else if (before > th.low && weaponDurabilityAfter <= th.low) {
           weaponDurabilityWarnCrossed = "low";
         }
       }
@@ -1197,7 +1198,7 @@ async function enterDungeonHp(client, {
     weaponDurabilityAfter,
     weaponDurabilityWarnCrossed,
     weaponDurabilityCost: wdurCost,
-    legendarySwordBroke: weaponBroke && weaponBefore === swordBreakService.LEGENDARY_SWORD,
+    legendarySwordBroke: weaponBroke && swordBreakService.isTrackedSword(weaponBefore),
     undeadCurse,
     loot,
     coinsGained: coinsGrantedTotal,
@@ -1217,10 +1218,10 @@ async function enterDungeonHp(client, {
     foodBuffLines: formatFoodBuffLines(profile, "dungeon"),
   };
 
-  // 傳說之劍斷裂：記錄斷劍榜 + 公開播報（fire-and-forget，自帶錯誤吞掉）
+  // 傳說級以上的劍斷裂：記錄斷劍榜 + 公開播報（fire-and-forget，自帶錯誤吞掉）
   if (result.legendarySwordBroke) {
     swordBreakService
-      .handleLegendaryBreak(client, { userId, guildId })
+      .handleLegendaryBreak(client, { userId, guildId, weapon: weaponBefore })
       .catch(() => {});
   }
 

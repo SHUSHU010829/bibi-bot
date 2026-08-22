@@ -1,7 +1,9 @@
-// 傳說之劍斷裂：紀錄、公告、每週排行榜、亡靈制詛咒的單一入口。
+// 傳說級以上的劍斷裂：紀錄、公告、每週排行榜、亡靈制詛咒的單一入口。
 //
 // 設計：
-// - 每斷一次傳說之劍寫一筆 SwordBreaks（週榜資料源，TTL 由 connectDb 設）；
+// - 哪些劍算「傳說級以上」由 config 的 weapons.<key>.legendaryTier 決定，
+//   新增更高階的劍時只要在 dungeon.json 標記即可自動納入斷劍榜。
+// - 每斷一次這類劍寫一筆 SwordBreaks（週榜資料源，TTL 由 connectDb 設）；
 //   同時 $inc profile.legendary_sword_breaks 作為永久累積（全時榜 / 公告顯示）。
 // - 週榜以「每週一」為切點結算（見 cronSchedule），當週斷最多者被烙上「亡靈制」詛咒。
 // - 亡靈制一律 compute-on-read：只存 profile.active_undead_buff.expires_at，
@@ -32,9 +34,27 @@ function tz() {
   return cfg().timezone || "Asia/Taipei";
 }
 
-function swordLabel() {
-  const w = dungeon?.weapons?.[LEGENDARY_SWORD] || {};
+function swordLabel(weaponKey = LEGENDARY_SWORD) {
+  const w = dungeon?.weapons?.[weaponKey] || {};
   return `${w.emoji || "🔥"} ${w.name || "傳說之劍"}`;
+}
+
+// 傳說級以上的劍（config 標記 legendaryTier），斷了才計入斷劍榜。
+function trackedSwords() {
+  return Object.entries(dungeon?.weapons || {})
+    .filter(([, w]) => w?.legendaryTier)
+    .map(([key]) => key);
+}
+
+function isTrackedSword(weaponKey) {
+  return !!dungeon?.weapons?.[weaponKey]?.legendaryTier;
+}
+
+// 文案用：列出所有會被計入斷劍榜的劍（「🔥 傳說之劍 / 🔮 傳說·魔晶劍」）。
+function trackedSwordsLabel() {
+  const keys = trackedSwords();
+  if (!keys.length) return swordLabel();
+  return keys.map((k) => swordLabel(k)).join(" / ");
 }
 
 // ── 亡靈制 debuff（斷劍王的詛咒，compute-on-read）─────────
@@ -92,11 +112,11 @@ function previousWindow(now = DateTime.now().setZone(tz())) {
 }
 
 // ── 紀錄斷劍 ─────────────────────────────────────────────
-async function recordBreak(client, { userId, guildId }) {
+async function recordBreak(client, { userId, guildId, weapon = LEGENDARY_SWORD }) {
   const now = new Date();
   if (client.swordBreaksCollection) {
     await client.swordBreaksCollection
-      .insertOne({ user_id: userId, guild_id: guildId, weapon: LEGENDARY_SWORD, broken_at: now })
+      .insertOne({ user_id: userId, guild_id: guildId, weapon, broken_at: now })
       .catch((e) => console.log(`[WARN] SwordBreaks insert: ${e.message}`.yellow));
   }
   let lifetime = 0;
@@ -125,7 +145,7 @@ async function breakCountInWindow(client, guildId, userId, win) {
 }
 
 // ── 斷劍即時公告 ─────────────────────────────────────────
-async function announceBreak(client, { userId, guildId, weekly, lifetime }) {
+async function announceBreak(client, { userId, guildId, weapon, where, weekly, lifetime }) {
   const channelId = cfg().announceChannelId;
   if (!channelId) return;
   const channel = await client.channels.fetch(channelId).catch(() => null);
@@ -138,13 +158,13 @@ async function announceBreak(client, { userId, guildId, weekly, lifetime }) {
     .setAccentColor(0x992d22)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `## 💥 ${swordLabel()} 應聲斷裂！`,
+        `## 💥 ${swordLabel(weapon)} 應聲斷裂！`,
       ),
     )
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `${who} 在地下城硬生生把 ${swordLabel()} 砍斷了！\n` +
+        `${who} 在${where || "地下城"}硬生生把 ${swordLabel(weapon)} 砍斷了！\n` +
           `本週已斷 **${weekly}** 次 ・ 生涯累計 **${lifetime}** 次`,
       ),
     )
@@ -163,13 +183,13 @@ async function announceBreak(client, { userId, guildId, weekly, lifetime }) {
     .catch(() => {});
 }
 
-// dungeonService 在偵測到傳說之劍斷裂時 fire-and-forget 呼叫（自帶錯誤吞掉）。
-async function handleLegendaryBreak(client, { userId, guildId }) {
+// dungeonService 在偵測到傳說級以上的劍斷裂時 fire-and-forget 呼叫（自帶錯誤吞掉）。
+async function handleLegendaryBreak(client, { userId, guildId, weapon = LEGENDARY_SWORD, where }) {
   if (!cfg().enabled) return;
   try {
-    const { lifetime } = await recordBreak(client, { userId, guildId });
+    const { lifetime } = await recordBreak(client, { userId, guildId, weapon });
     const weekly = await breakCountInWindow(client, guildId, userId, currentWindow());
-    await announceBreak(client, { userId, guildId, weekly, lifetime });
+    await announceBreak(client, { userId, guildId, weapon, where, weekly, lifetime });
   } catch (e) {
     console.log(`[WARN] handleLegendaryBreak: ${e.message}`.yellow);
   }
@@ -244,6 +264,9 @@ module.exports = {
   LEGENDARY_SWORD,
   MEDALS,
   swordLabel,
+  trackedSwords,
+  isTrackedSword,
+  trackedSwordsLabel,
   isUndeadActive,
   undeadAtkPenaltyPct,
   undeadExtraDurabilityCost,

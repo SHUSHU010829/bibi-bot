@@ -11,6 +11,7 @@ const {
   consumeFarmYieldUses,
 } = require("../fishing/cookService");
 const buildingService = require("../guild_club/buildingService");
+const swordBreakService = require("../dungeon/swordBreakService");
 const bus = require("../eventBus");
 
 const LOW_TIER_CROPS = new Set(["carrot", "corn"]);
@@ -1144,6 +1145,7 @@ async function defendRaid(client, { userId, guildId, username, member, plotIndex
     updatedAt: new Date(),
   };
   const inc = {};
+  const weaponBefore = profile.weapon;
   let weaponBroke = false;
   let weaponDurabilityAfter = null;
   if (profile.weapon !== "fist" && typeof profile.weapon_durability === "number") {
@@ -1208,6 +1210,15 @@ async function defendRaid(client, { userId, guildId, username, member, plotIndex
     await coll(client).deleteOne({ userId, guildId, plotIndex });
   }
 
+  const legendarySwordBroke =
+    weaponBroke && swordBreakService.isTrackedSword(weaponBefore);
+  // 傳說級以上的劍不論在哪斷都要計入斷劍榜（fire-and-forget，自帶錯誤吞掉）
+  if (legendarySwordBroke) {
+    swordBreakService
+      .handleLegendaryBreak(client, { userId, guildId, weapon: weaponBefore, where: "農地防禦戰" })
+      .catch(() => {});
+  }
+
   return {
     ok: true,
     won,
@@ -1216,8 +1227,10 @@ async function defendRaid(client, { userId, guildId, username, member, plotIndex
     coinsGained,
     slimeGained,
     droppedTrapFragment,
+    weaponBefore,
     weaponBroke,
     weaponDurabilityAfter,
+    legendarySwordBroke,
     stamina: newStamina,
     staminaMax: max,
   };
