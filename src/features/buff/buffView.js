@@ -306,7 +306,7 @@ async function renderTimed(container, client, { userId, guildId }) {
       `• ⚔️ 地下城傷害 −${u.atkPenaltyPct || 0}%`,
       `• 🗡️ 武器每場多扣耐久 −${u.extraDurabilityCost || 0}（兵刃更快崩壞）`,
       `• 👻 亡靈軍團作祟（地下城勝利時有機率被奪走金幣、吸走 ${c.hpLossPct || 0}% HP）`,
-      "-# 把 🔥 傳說之劍 砍斷最多次的人，會在每週結算被烙上此詛咒——少砍斷幾把吧",
+      "-# 把傳說級以上的劍砍斷最多次的人，會在每週結算被烙上此詛咒——少砍斷幾把吧",
     ];
     addBlock(container, lines.join("\n"));
     shown = true;

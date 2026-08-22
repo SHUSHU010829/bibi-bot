@@ -562,6 +562,8 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     materials: {},
     rareDrops: {},
     netFragments: 0,
+    rod: profile.fishing_rod,
+    rodDurabilityAfter: null,
     rodBroke: false,
     rodBrokeFrom: null,
     stoppedLowDurability: false,
@@ -653,6 +655,9 @@ async function fishBatch(client, { userId, guildId, member, username, location =
     xpBaseSum += r.xpBase || 0;
     agg.newCooldownAt = r.newCooldownAt;
     agg.fishCountTotal = r.fishCountTotal;
+    agg.rod = r.rodKey;
+    // 失敗（魚跑了）那竿不扣耐久也不回報耐久，別把上一竿的值蓋成 undefined
+    if (typeof r.rodDurabilityAfter === "number") agg.rodDurabilityAfter = r.rodDurabilityAfter;
     if (r.droppedNetFragment) agg.netFragments++;
     if (r.usedRareBait) agg.rareBaitUsed++;
     if (typeof r.rareBaitOwned === "number") agg.rareBaitOwned = r.rareBaitOwned;

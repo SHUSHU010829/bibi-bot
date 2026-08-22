@@ -25,6 +25,13 @@ const reminder = require("../../features/reminders/cooldownReminderService");
 const { buildOverflowConfirmView } = require("../../features/mining/overflowConfirm");
 const { COIN_EMOJI } = require("../../constants/coin");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
+const {
+  weaponLabel,
+  weaponDurabilityWarnLine,
+  shieldLabel,
+  shieldDurabilityWarnLine,
+  warnThresholds,
+} = require("../../features/dungeon/equipDurabilityView");
 
 const DRAGON_HEIR_THRESHOLD = gameTitleService.def("dragon_heir")?.req?.bossKills ?? 10;
 
@@ -55,11 +62,6 @@ const MAX_LABEL_LEN = 80;
 function oreLabel(oreKey) {
   const def = mining?.ores?.[oreKey] || {};
   return `${def.emoji || "⛏️"} ${def.name || oreKey}`;
-}
-
-function weaponLabel(key) {
-  const def = (dungeon?.weapons || {})[key] || {};
-  return `${def.emoji || "👊"} ${def.name || key}`;
 }
 
 // 武器快壞 / 已斷時的捷徑：Discord 按鈕無法直接觸發 slash command，
@@ -129,17 +131,11 @@ function appendCombatExtras(container, result, interaction) {
       ),
     );
   } else if (result.weaponDurabilityAfter !== null) {
-    const warn = dungeon?.durabilityWarn || {};
     const after = result.weaponDurabilityAfter;
     const label = weaponLabel(result.weaponBefore);
-    let line;
-    if (typeof warn.critical === "number" && after <= warn.critical) {
-      line = `🚨 **武器快斷了！**\n${label} 只剩 **${after}** 次，再戰就會斷裂退回赤手空拳。快去 \`/合成\` 一把新的、或到 \`/裝備\` 用礦石修復耐久！`;
-    } else if (typeof warn.low === "number" && after <= warn.low) {
-      line = `⚠️ **武器耐久偏低**\n${label} 剩 **${after}** 次，建議先去 \`/合成\` 備一把、或到 \`/裝備\` 用礦石修復耐久。`;
-    } else {
-      line = `**武器耐久**\n${label} 剩 ${after} 次`;
-    }
+    const line =
+      weaponDurabilityWarnLine(result.weaponBefore, after) ||
+      `**武器耐久**\n${label} 剩 ${after} 次`;
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(line));
     if (result.weaponDurabilityWarnCrossed && interaction) {
       dmWeaponLowDurability(
@@ -152,12 +148,10 @@ function appendCombatExtras(container, result, interaction) {
   }
 
   // 武器已斷 / 耐久偏低 → 附一顆「去合成」捷徑按鈕，玩家不用自己找頻道。
-  const warnCfg = dungeon?.durabilityWarn || {};
   const weaponNeedsCraft =
     result.weaponBroke ||
     (result.weaponDurabilityAfter != null &&
-      typeof warnCfg.low === "number" &&
-      result.weaponDurabilityAfter <= warnCfg.low);
+      result.weaponDurabilityAfter <= warnThresholds().low);
   if (weaponNeedsCraft && interaction) {
     const btn = craftLinkButton(interaction.guildId);
     if (btn) container.addActionRowComponents(new ActionRowBuilder().addComponents(btn));
@@ -260,11 +254,6 @@ function parseContinueId(customId) {
 // Phase H+ 入口面板 / 戰鬥結算 builders
 // ────────────────────────────────────────────────────────────────────────────
 
-function shieldLabel(key) {
-  if (!key) return "—";
-  const def = (dungeon?.shields || {})[key] || {};
-  return `${def.emoji || "🛡️"} ${def.name || key}`;
-}
 function themeLabel(t) {
   return `${t.emoji || ""} ${t.name}`.trim();
 }
@@ -289,6 +278,14 @@ function statusLines(status) {
       `🛡️ 盾：${shieldLabel(status.shield)} ・ DEF ${sd.def || 0} ・ 格擋 ${Math.round((sd.blockRate || 0) * 100)}%` +
         ` ・ 耐久 ${status.shieldDurability}/${status.shieldMaxDurability || sd.durability || "?"}`,
     );
+  }
+  if (typeof status.weaponDurability === "number") {
+    const warnLine = weaponDurabilityWarnLine(status.weapon, status.weaponDurability);
+    if (warnLine) lines.push(warnLine);
+  }
+  if (status.shield && typeof status.shieldDurability === "number") {
+    const warnLine = shieldDurabilityWarnLine(status.shield, status.shieldDurability);
+    if (warnLine) lines.push(warnLine);
   }
   if (status.hpCritical) {
     lines.push("-# 💔 重傷狀態：ATK ×0.8、暴擊率 ×0.5（HP 回到 20% 即解除）");
@@ -509,12 +506,10 @@ async function buildEntryPanel(client, interaction, { themeId = "mine" } = {}) {
   container.addActionRowComponents(buildActionsRow(interaction.user.id, status, themeId));
 
   // 武器快斷 / 已退回赤手 → 面板直接附「去合成」捷徑。
-  const warnCfg = dungeon?.durabilityWarn || {};
   const weaponNeedsCraft =
     status.weapon === "fist" ||
     (typeof status.weaponDurability === "number" &&
-      typeof warnCfg.low === "number" &&
-      status.weaponDurability <= warnCfg.low);
+      status.weaponDurability <= warnThresholds().low);
   if (weaponNeedsCraft) {
     const btn = craftLinkButton(interaction.guildId, status.weapon === "fist" ? "🛠️ 去合成武器" : "🛠️ 武器快斷了，去合成");
     if (btn) container.addActionRowComponents(new ActionRowBuilder().addComponents(btn));
@@ -621,7 +616,12 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
 
   const stateLines = [];
   stateLines.push(`❤️ HP：${result.hpBefore} → **${result.hpAfter}/${result.hpMax}** \`${hpBar(result.hpAfter, result.hpMax)}\``);
-  if (result.shieldBefore != null) stateLines.push(`🛡️ 盾耐久：${result.shieldBefore} → ${result.shieldAfter}`);
+  if (result.shieldBefore != null) {
+    stateLines.push(
+      shieldDurabilityWarnLine(result.shield, result.shieldAfter, result.isMiniBoss) ||
+        `🛡️ 盾耐久：${result.shieldBefore} → ${result.shieldAfter}`,
+    );
+  }
   stateLines.push(`🔋 體力：${result.staminaBefore} → ${result.staminaAfter}/${result.staminaMax}`);
   if (result.autoStamina?.drank > 0) {
     const TIER_NAME = { small: "小", medium: "中", large: "大" };
@@ -629,7 +629,15 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
     stateLines.push(`-# 🥤 自動喝了體力藥水（${summary}）補足體力進場`);
   }
   if (result.weaponDurabilityAfter != null) {
-    stateLines.push(`⚔️ 武器耐久：${weaponLabel(result.weaponBefore)} 剩 ${result.weaponDurabilityAfter}（-${result.weaponDurabilityCost}）`);
+    const warnLine = weaponDurabilityWarnLine(
+      result.weaponBefore,
+      result.weaponDurabilityAfter,
+      result.weaponDurabilityCost,
+    );
+    stateLines.push(
+      warnLine ||
+        `⚔️ 武器耐久：${weaponLabel(result.weaponBefore)} 剩 ${result.weaponDurabilityAfter}（-${result.weaponDurabilityCost}）`,
+    );
   } else if (result.weaponBroke) {
     stateLines.push(`⚔️ ${weaponLabel(result.weaponBefore)} 耐久耗盡，已退回赤手空拳！`);
   }
@@ -689,7 +697,7 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
       if (uc.hpDrained > 0) parts.push(`吸走 ${uc.hpDrained} HP`);
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `👻 **亡靈軍團作祟！** 斷劍怨靈纏上了你${parts.length ? `，${parts.join("、")}` : ""}\n-# 亡靈制詛咒生效中——把傳說之劍砍斷太多次的報應。`,
+          `👻 **亡靈軍團作祟！** 斷劍怨靈纏上了你${parts.length ? `，${parts.join("、")}` : ""}\n-# 亡靈制詛咒生效中——把傳說級以上的劍砍斷太多次的報應。`,
         ),
       );
     }
@@ -797,7 +805,7 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
   if (result.legendarySwordBroke) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "💥 **傳說之劍應聲斷裂！** 你的斷劍紀錄 +1，已公開播報。\n-# 斷劍榜每週一結算，本週斷最多的人封為 ☠️ 斷劍王、遭亡靈制詛咒纏身（`/排行榜` → 斷劍王）。到 /合成 再打一把。",
+        `💥 **${weaponLabel(result.weaponBefore)} 應聲斷裂！** 你的斷劍紀錄 +1，已公開播報。\n-# 斷劍榜每週一結算，本週斷最多的人封為 ☠️ 斷劍王、遭亡靈制詛咒纏身（\`/排行榜\` → 斷劍王）。到 /合成 再打一把。`,
       ),
     );
   } else if (result.weaponBroke) {
@@ -807,12 +815,10 @@ function buildBattleResultPanel(ownerId, result, { bossPending = false, bossName
   }
 
   // 武器已斷 / 耐久偏低 → 附「去合成」捷徑按鈕。
-  const warnCfg = dungeon?.durabilityWarn || {};
   const weaponNeedsCraft =
     result.weaponBroke ||
     (result.weaponDurabilityAfter != null &&
-      typeof warnCfg.low === "number" &&
-      result.weaponDurabilityAfter <= warnCfg.low);
+      result.weaponDurabilityAfter <= warnThresholds(result.weaponDurabilityCost).low);
   if (weaponNeedsCraft) {
     const btn = craftLinkButton(guildId);
     if (btn) container.addActionRowComponents(new ActionRowBuilder().addComponents(btn));
@@ -894,7 +900,7 @@ function publicBroadcastContent(displayName, result) {
   const f = `${result.floorEmoji || ""} ${result.floor}F ${result.floorName || ""}`.trim();
   let encLine = encounterBroadcastLine(result);
   const specials = [];
-  if (result.legendarySwordBroke) specials.push("💥 傳說之劍斷裂！");
+  if (result.legendarySwordBroke) specials.push(`💥 ${weaponLabel(result.weaponBefore)}斷裂！`);
   if (result.undeadCurse) specials.push("👻 亡靈軍團作祟");
   if (specials.length) encLine += `\n　　${specials.join(" ・ ")}`;
   if (result.isMiniBoss) {

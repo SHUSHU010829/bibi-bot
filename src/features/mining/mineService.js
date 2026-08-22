@@ -247,6 +247,10 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
     durabilityBroke,
     durabilityAfter,
     durabilityWarnCrossed,
+    luckPotionLeft: Math.max(
+      0,
+      (profile.luck_potion_uses || 0) - (buff.consume.usePotion ? 1 : 0),
+    ),
     mineCountTotal: (profile.mine_count_total || 0) + 1,
     backpackCap: cap,
     backpackUsed: backpackUsedAfter,

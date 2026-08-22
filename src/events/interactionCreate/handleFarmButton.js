@@ -53,6 +53,10 @@ const {
   buildTrapAnnouncement,
 } = require("../../features/farm/farmAnnouncer");
 const { resolveStamina, staminaMax, getMemberClub } = require("../../features/mining/dungeonService");
+const {
+  weaponLabel,
+  weaponDurabilityWarnLine,
+} = require("../../features/dungeon/equipDurabilityView");
 const reminder = require("../../features/reminders/cooldownReminderService");
 const { deferReplySafe } = require("../../utils/safeAck");
 
@@ -1243,9 +1247,16 @@ module.exports = async (client, interaction) => {
       if (result.won && result.droppedTrapFragment) {
         lines.push(`-# 集 5 個損壞的陷阱碎片可在工坊合成「高級陷阱」，被動抵擋 4 次來犯`);
       }
-      if (result.weaponBroke) lines.push(`💥 武器斷裂，已換回赤手！`);
-      else if (typeof result.weaponDurabilityAfter === "number") {
-        lines.push(`-# 武器耐久剩 ${result.weaponDurabilityAfter}`);
+      if (result.weaponBroke) {
+        lines.push(`💥 ${weaponLabel(result.weaponBefore)} 耐久耗盡斷裂，已換回赤手！`);
+        if (result.legendarySwordBroke) {
+          lines.push("-# 斷劍紀錄 +1，已公開播報（`/排行榜` → 斷劍王）。");
+        }
+      } else if (typeof result.weaponDurabilityAfter === "number") {
+        lines.push(
+          weaponDurabilityWarnLine(result.weaponBefore, result.weaponDurabilityAfter) ||
+            `-# 武器耐久剩 ${result.weaponDurabilityAfter}`,
+        );
       }
       const c = buildSuccessContainer(
         result.won ? "🛡️ 防禦成功" : "💀 防禦失敗",
