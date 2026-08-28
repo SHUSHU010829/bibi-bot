@@ -1,6 +1,8 @@
-// 連續釣魚（批次）互動處理器。涵蓋兩種互動：
-//   1. 按鈕 fish_batch_<owner>_<location>     → 驗證解鎖/券/冷卻後跳「釣幾竿」彈窗
-//   2. 彈窗 fish_batch_qty_<owner>_<location> → 解析竿數 → runFishBatch 匯總結果
+// 連續釣魚（批次）互動處理器。涵蓋四種互動：
+//   1. 按鈕 fish_batch_<owner>_<location>       → 驗證解鎖/券/冷卻後跳「釣幾竿」彈窗
+//   2. 彈窗 fish_batch_qty_<owner>_<location>   → 解析竿數 → runFishBatch 匯總結果
+//   3. 按鈕 fish_batch_fix_<owner>_<location>   → 低耐久停止時，用背包材料修釣竿
+//   4. 按鈕 fish_toolfix_<owner>_<tier>_<loc>   → 低耐久停止時，用維修工具修釣竿
 
 const {
   MessageFlags,
@@ -12,7 +14,7 @@ const {
   ButtonStyle,
 } = require("discord.js");
 
-const { fishing } = require("../../config");
+const { fishing, craft } = require("../../config");
 const { consume } = require("../../utils/rateLimiter");
 const { deferReplySafe } = require("../../utils/safeAck");
 const logger = require("../../utils/logger");
@@ -20,7 +22,7 @@ const { trackError, trackSuccess } = require("../../utils/errorTracker");
 const fishCmd = require("../../commands/fishing/fish");
 const { getOrCreate, isBatchPassActive } = require("../../features/mining/miningProfile");
 const freeActions = require("../../features/mining/freeActions");
-const { repairRodWithMaterials } = require("../../features/mining/mineService");
+const { repairRodWithMaterials, useRepairTool } = require("../../features/mining/mineService");
 const { materialLabel } = require("../../features/mining/craftMaterials");
 
 async function replyEphemeral(interaction, content) {
@@ -58,6 +60,8 @@ module.exports = async (client, interaction) => {
       if (batch) return openBatchCountModal(client, interaction, batch);
       const fix = fishCmd.parseFishBatchRepairId?.(interaction.customId);
       if (fix) return doRodRepair(client, interaction, fix);
+      const toolFix = fishCmd.parseFishBatchToolRepairId?.(interaction.customId);
+      if (toolFix) return doRodToolRepair(client, interaction, toolFix);
       return;
     }
     if (interaction.isModalSubmit()) {
@@ -116,7 +120,6 @@ async function doRodRepair(client, interaction, { ownerId, location }) {
     return replyEphemeral(interaction, messages[result.reason] || "🔧 修理失敗，請稍後再試。");
   }
 
-  const loc = fishing?.locations?.[location] ? location : "stream";
   const container = new ContainerBuilder()
     .setAccentColor(0x2ecc71)
     .addTextDisplayComponents(
@@ -131,20 +134,101 @@ async function doRodRepair(client, interaction, { ownerId, location }) {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent("-# 修好了！點下方繼續連續釣魚。"),
     )
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`${fishCmd.FISH_BATCH_PREFIX}${interaction.user.id}_${loc}`)
-          .setLabel("連續釣魚")
-          .setEmoji("🔁")
-          .setStyle(ButtonStyle.Primary),
-      ),
-    );
+    .addActionRowComponents(continueFishingRow(interaction.user.id, location));
 
   await interaction
     .editReply({ components: [container], flags: MessageFlags.IsComponentsV2 })
     .catch(() => {});
   trackSuccess("fish-batch-repair");
+}
+
+function continueFishingRow(userId, location) {
+  const loc = fishing?.locations?.[location] ? location : "stream";
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${fishCmd.FISH_BATCH_PREFIX}${userId}_${loc}`)
+      .setLabel("連續釣魚")
+      .setEmoji("🔁")
+      .setStyle(ButtonStyle.Primary),
+  );
+}
+
+// 用維修工具原地修釣竿（跟鎬子共用同一批工具，只是 target 換成 rod）。
+async function doRodToolRepair(client, interaction, { ownerId, tier, location }) {
+  if (interaction.user.id !== ownerId) {
+    return replyEphemeral(interaction, "🚫 這不是你的釣竿。");
+  }
+  if (!(await deferReplySafe(interaction, { flags: MessageFlags.Ephemeral }))) return;
+
+  const result = await useRepairTool(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+    tier,
+    target: "rod",
+  });
+
+  if (!result.ok) {
+    const toolName = (craft?.repairTools || {})[tier]?.name || "維修工具";
+    const err = {
+      no_tool: {
+        title: "❌ 沒有維修工具",
+        body: `你手上已經沒有 **${toolName}** 了。`,
+        hint: "改用背包材料修理，或到 `/合成` 打一張新的維修工具。",
+      },
+      no_rod: {
+        title: "❌ 沒有可修的釣竿",
+        body: "竹釣竿不需要修復。",
+        hint: "先到 `/合成` 打一支碳纖釣竿以上。",
+      },
+      max_too_low: {
+        title: "❌ 釣竿耐久上限過低",
+        body: `目前上限 **${result.maxDurability}**，用這張會降到 **${result.after}**。`,
+        hint: "改用上限不降的密銀以上工具，或走材料修理。",
+      },
+      retry: { title: "⚠️ 操作衝突", body: "剛剛有另一筆操作卡到，請再按一次。", hint: "" },
+    }[result.reason] || {
+      title: "🔧 修理失敗",
+      body: "請再試一次，若持續發生請呼叫舒舒。",
+      hint: "",
+    };
+    const errC = new ContainerBuilder()
+      .setAccentColor(0xe74c3c)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ${err.title}`))
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(err.body));
+    if (err.hint) {
+      errC.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${err.hint}`));
+    }
+    return interaction
+      .editReply({ components: [errC], flags: MessageFlags.IsComponentsV2 })
+      .catch(() => {});
+  }
+
+  const maxDelta = result.def.maxDelta || 0;
+  const deltaLine = maxDelta
+    ? `\n-# 這張工具讓耐久上限 ${maxDelta > 0 ? `+${maxDelta}` : maxDelta}`
+    : "";
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# 🛠️ 已用 ${result.def.name} 修好釣竿`),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `釣竿耐久：**${result.durabilityAfter} / ${result.maxAfter}**${deltaLine}\n` +
+          `${result.def.emoji || "🔧"} ${result.def.name} 剩餘 **${result.toolsLeft}** 個`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# 修好了！點下方繼續連續釣魚。"),
+    )
+    .addActionRowComponents(continueFishingRow(interaction.user.id, location));
+
+  await interaction
+    .editReply({ components: [container], flags: MessageFlags.IsComponentsV2 })
+    .catch(() => {});
+  trackSuccess("fish-batch-tool-repair");
 }
 
 async function openBatchCountModal(client, interaction, { ownerId, location }) {
