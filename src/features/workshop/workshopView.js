@@ -36,6 +36,7 @@ const {
   REPAIR_TOOL_TARGETS,
   repairToolTargetEquipped,
 } = require("../mining/mineService");
+const { toolEffectText } = require("../mining/repairTools");
 const buildingService = require("../guild_club/buildingService");
 const trapTiers = require("../farm/trapTiers");
 const { effectiveMaxOf, bonusSuffix } = require("../mining/equipDurability");
@@ -87,15 +88,6 @@ function weaponLabel(key) {
 function rodLabel(key) {
   const def = (fishing?.rods || {})[key] || {};
   return `${def.emoji || "🎣"} ${def.name || key}`;
-}
-
-function toolEffectText(def) {
-  const deltaTxt = def.maxDelta === 0
-    ? "上限不變"
-    : def.maxDelta > 0
-      ? `上限 +${def.maxDelta}`
-      : `上限 ${def.maxDelta}`;
-  return `修復 ${Math.round((def.duraPct || 0) * 100)}% 耐久 ・ ${deltaTxt}`;
 }
 
 // 維修工具用 Select 而非每階一個 Section+按鈕：6 階原本要 20 個元件，

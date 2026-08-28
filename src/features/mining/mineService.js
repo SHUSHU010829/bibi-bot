@@ -19,6 +19,7 @@ const {
   effectiveMaxOf,
   slotEquipped,
 } = require("./equipDurability");
+const { bestRepairTool } = require("./repairTools");
 const bus = require("../eventBus");
 
 // 鎬子有效耐久上限：DB 只存原始 base，鐵匠鋪加成讀取時才換算。
@@ -335,27 +336,6 @@ async function mine(client, { userId, guildId, member, username, allowOverflow =
   }
 
   return result;
-}
-
-// 從玩家持有的維修工具中挑一把「最划算」的：優先 max 不降（甚至 +）、其次補得多。
-// 回傳 { tier, name, emoji, count } 或 null（沒有維修工具）。
-function bestRepairTool(repairToolsOwned) {
-  const tools = craft?.repairTools || {};
-  const owned = Object.entries(tools)
-    .map(([tier, def]) => ({
-      tier,
-      name: def.name,
-      emoji: def.emoji,
-      count: (repairToolsOwned || {})[tier] || 0,
-    }))
-    .filter((o) => o.count > 0);
-  if (!owned.length) return null;
-  owned.sort(
-    (a, b) =>
-      (tools[b.tier].maxDelta || 0) - (tools[a.tier].maxDelta || 0) ||
-      (tools[b.tier].duraPct || 0) - (tools[a.tier].duraPct || 0),
-  );
-  return owned[0];
 }
 
 // 連續挖礦（批次）：一次挖 count 次，省去逐次點按。
@@ -1054,8 +1034,19 @@ async function repairWeaponWithMaterials(client, { userId, guildId }) {
   };
 }
 
-// 釣竿材料修復的「成本預覽」（唯讀，不扣材料）：供連續釣魚的修理按鈕介面顯示要花多少材料。
-// 回傳 { ok, cost, items:[{mat,need,have,isFish}], affordable } 或 { ok:false, reason }。
+// 玩家手上最划算的那張維修工具能不能修這件裝備：低階工具會扣上限，扣到 10 以下就不給用。
+// 回傳 { tier, name, emoji, count, maxDelta, duraPct, blocked, maxAfter } 或 null。
+function repairToolOptionFor(profile, target) {
+  const tool = bestRepairTool(profile.repair_tools);
+  if (!tool) return null;
+  const base = baseWithBonus(profile, target);
+  if (typeof base !== "number") return null;
+  const after = base + tool.maxDelta;
+  return { ...tool, blocked: tool.maxDelta < 0 && after < MIN_BASE_WITH_BONUS, maxAfter: after };
+}
+
+// 釣竿修復的「選項預覽」（唯讀，不扣材料 / 不扣工具）：供連續釣魚的修理介面顯示成本與可用工具。
+// 回傳 { ok, cost, items:[{mat,need,have,isFish}], affordable, tool } 或 { ok:false, reason, tool }。
 async function getRodRepairPreview(client, { userId, guildId }) {
   if (!mining?.enabled || !client.miningProfilesCollection) {
     return { ok: false, reason: "disabled" };
@@ -1065,8 +1056,9 @@ async function getRodRepairPreview(client, { userId, guildId }) {
   if (!profile.fishing_rod || profile.fishing_rod === "bamboo") {
     return { ok: false, reason: "no_rod" };
   }
+  const tool = repairToolOptionFor(profile, "rod");
   const baseCost = getRodRepairCost(profile);
-  if (!baseCost) return { ok: false, reason: "no_recipe" };
+  if (!baseCost) return { ok: false, reason: "no_recipe", tool };
   const guildBuffs = await buildingService
     .getMemberBuildingBuffs(client, userId, guildId)
     .catch(() => ({}));
@@ -1083,7 +1075,7 @@ async function getRodRepairPreview(client, { userId, guildId }) {
     if (have < need) affordable = false;
     items.push({ mat, need, have, isFish: isFish(mat) });
   }
-  return { ok: true, cost, items, affordable };
+  return { ok: true, cost, items, affordable, tool };
 }
 
 // 釣竿材料修復：補滿耐久至 rod_max_durability，無懲罰。

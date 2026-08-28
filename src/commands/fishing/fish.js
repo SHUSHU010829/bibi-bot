@@ -20,6 +20,7 @@ const { fishing, commandChannels, normalChannelId } = require("../../config");
 const fishService = require("../../features/fishing/fishService");
 const mineService = require("../../features/mining/mineService");
 const { materialLabel } = require("../../features/mining/craftMaterials");
+const { toolEffectText } = require("../../features/mining/repairTools");
 const { bagStatusLine } = require("../../features/mining/bagStatus");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const eventEngine = require("../../features/event/eventEngine");
@@ -148,8 +149,9 @@ function batchUnlockLevel() {
   return fishing?.batch?.unlockLevel || 0;
 }
 
-// 低耐久停止時的「用材料修理釣竿」按鈕（釣竿沒有維修工具，只能材料修）。
+// 低耐久停止時的兩種原地修理：背包材料，或手上的維修工具（跟鎬子共用同一批工具）。
 const FISH_BATCH_REPAIR_PREFIX = "fish_batch_fix_";
+const FISH_BATCH_TOOL_REPAIR_PREFIX = "fish_toolfix_";
 
 function parseFishBatchRepairId(customId) {
   if (!customId || !customId.startsWith(FISH_BATCH_REPAIR_PREFIX)) return null;
@@ -162,18 +164,42 @@ function parseFishBatchRepairId(customId) {
   return { ownerId, location };
 }
 
-function fishBatchRepairRow(ownerId, location) {
-  return new ActionRowBuilder().addComponents(
+// fish_toolfix_<ownerId>_<tier>_<location>
+function parseFishBatchToolRepairId(customId) {
+  if (!customId || !customId.startsWith(FISH_BATCH_TOOL_REPAIR_PREFIX)) return null;
+  const parts = customId.slice(FISH_BATCH_TOOL_REPAIR_PREFIX.length).split("_");
+  if (parts.length < 3) return null;
+  const [ownerId, tier, ...loc] = parts;
+  const location = loc.join("_");
+  if (!ownerId || !tier || !location) return null;
+  return { ownerId, tier, location };
+}
+
+// 兩顆修理按鈕併在同一個 ActionRow：低耐久畫面已經很滿，能省一排就省一排。
+function fishBatchRepairRow(ownerId, location, tool) {
+  const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${FISH_BATCH_REPAIR_PREFIX}${ownerId}_${location || "stream"}`)
       .setLabel("用材料修理釣竿")
       .setEmoji("🔧")
       .setStyle(ButtonStyle.Success),
   );
+  if (tool && !tool.blocked) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(
+          `${FISH_BATCH_TOOL_REPAIR_PREFIX}${ownerId}_${tool.tier}_${location || "stream"}`,
+        )
+        .setLabel(`用${tool.name}修理（剩 ${tool.count}）`.slice(0, 80))
+        .setEmoji(tool.emoji || "🔧")
+        .setStyle(ButtonStyle.Primary),
+    );
+  }
+  return row;
 }
 
-// 在低耐久畫面加上「材料修理」的成本清單（含持有量）＋修理按鈕。
-// preview 來自 mineService.getRodRepairPreview（唯讀成本）。
+// 在低耐久畫面加上兩種修理方式的說明（材料成本含持有量、維修工具效果）＋按鈕。
+// preview 來自 mineService.getRodRepairPreview（唯讀，不扣材料也不扣工具）。
 function addRodRepairSection(container, ownerId, location, preview) {
   if (preview?.ok) {
     const costLine = preview.items
@@ -186,7 +212,18 @@ function addRodRepairSection(container, ownerId, location, preview) {
       ),
     );
   }
-  container.addActionRowComponents(fishBatchRepairRow(ownerId, location));
+  const tool = preview?.tool;
+  if (tool) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**🛠️ 維修工具修理釣竿**\n${tool.emoji || "🔧"} ${tool.name} ×${tool.count}（${toolEffectText(tool)}）` +
+          (tool.blocked
+            ? `\n-# ⚠️ 這張會把耐久上限降到 ${tool.maxAfter}，低於 10 不可用，改走材料修理。`
+            : ""),
+      ),
+    );
+  }
+  container.addActionRowComponents(fishBatchRepairRow(ownerId, location, tool));
 }
 
 function fishBatchButton(ownerId, location) {
@@ -1134,7 +1171,9 @@ async function runFishBatch(client, interaction, { location = "stream", count })
           )
           .addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              "-# 用背包材料直接修，或手動釣最後一竿再合成新的。",
+              preview?.tool && !preview.tool.blocked
+                ? "-# 用背包材料或手上的維修工具直接修，或手動釣最後一竿再合成新的。"
+                : "-# 用背包材料直接修，或手動釣最後一竿再合成新的。",
             ),
           );
         addRodRepairSection(c, interaction.user.id, location, preview);
@@ -1255,7 +1294,7 @@ async function runFishBatch(client, interaction, { location = "stream", count })
       const rd = fishing?.rods?.[result.lowDurabilityRod] || {};
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `-# 🛡️ **${rd.name || result.lowDurabilityRod}** 只剩 1 次耐久，為避免斷裂退回竹釣竿，連續釣魚已在斷掉前停止。去 \`/合成\` 材料修理，或手動釣最後一竿。`,
+          `-# 🛡️ **${rd.name || result.lowDurabilityRod}** 只剩 1 次耐久，為避免斷裂退回竹釣竿，連續釣魚已在斷掉前停止。用下面的按鈕直接修，或手動釣最後一竿。`,
         ),
       );
     } else if (result.rodBroke) {
@@ -1411,6 +1450,8 @@ module.exports = {
   runFishBatch,
   FISH_BATCH_REPAIR_PREFIX,
   parseFishBatchRepairId,
+  FISH_BATCH_TOOL_REPAIR_PREFIX,
+  parseFishBatchToolRepairId,
   FISH_BAIT_AUTO_PREFIX,
   parseFishBaitAutoId,
   rareBaitToggleLabel,
