@@ -19,6 +19,7 @@ const {
 const { mining, craft, dungeon, fishing } = require("../../config");
 const craftService = require("../../features/mining/craftService");
 const { materialLabel } = require("../../features/mining/craftMaterials");
+const { bonusTransferNote } = require("../../features/mining/equipDurability");
 const { useRepairTool, REPAIR_TOOL_TARGETS } = require("../../features/mining/mineService");
 const { getOrCreate } = require("../../features/mining/miningProfile");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
@@ -52,15 +53,11 @@ function parseOwnerAndPayload(customId, prefix) {
   };
 }
 
-function buildConfirmContainer(
-  userId,
-  recipeId,
-  recipeName,
-  currentLabel,
-  currentDurability,
-  relation,
-  upgradeRecipe,
-) {
+function buildConfirmContainer(userId, recipeId, result) {
+  const recipeName = result.recipe.name;
+  const currentLabel = gearLabel(result.type, result.current.id);
+  const currentDurability = result.current.durability;
+  const { relation, upgradeRecipe } = result;
   const relationHint =
     relation === "upgrade"
       ? "（升級，但舊裝備剩餘耐久不會保留）"
@@ -86,6 +83,15 @@ function buildConfirmContainer(
             `要升級請改用 **${upgradeRecipe.name}**。`,
         ),
       );
+  }
+
+  const bonusHint = bonusTransferNote({
+    isUpgrade: result.isUpgrade,
+    bonusBefore: result.current.bonus,
+    pending: true,
+  });
+  if (bonusHint) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bonusHint));
   }
 
   container.addSeparatorComponents(new SeparatorBuilder()).addActionRowComponents(
@@ -168,6 +174,11 @@ function buildSuccessContainer(result, userId) {
       new TextDisplayBuilder().setContent(`**消耗材料**\n${matLines.join("\n")}`),
     )
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(tail));
+
+  const bonusNote = bonusTransferNote(result);
+  if (bonusNote) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bonusNote));
+  }
 
   if (isAppraisalTrigger && userId && result.appraiseTs) {
     const fee = (mining?.stoneAppraisal?.feePerStone || 0) * (result.appraiseQty || 1);
@@ -300,8 +311,8 @@ async function runRepairTool(client, interaction, tier, target = "pickaxe") {
       okC.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           result.bonusAfter > 0
-            ? `-# 目前累積上限加成 **+${result.bonusAfter}**，升級 / 更換${result.targetLabel}後仍會保留`
-            : `-# 目前累積上限磨損 **${result.bonusAfter}**，升級 / 更換${result.targetLabel}後仍會帶著`,
+            ? `-# 目前累積上限加成 **+${result.bonusAfter}**，走升級配方換${result.targetLabel}會保留；重新打造一把則歸零`
+            : `-# 目前累積上限磨損 **${result.bonusAfter}**，走升級配方換${result.targetLabel}會跟著走；重新打造一把就洗掉`,
         ),
       );
     }
@@ -520,15 +531,7 @@ module.exports = async (client, interaction) => {
       if (!result.ok && result.reason === "confirm_needed") {
         await interaction.followUp({
           components: [
-            buildConfirmContainer(
-              interaction.user.id,
-              recipeId,
-              result.recipe.name,
-              gearLabel(result.type, result.current.id),
-              result.current.durability,
-              result.relation,
-              result.upgradeRecipe,
-            ),
+            buildConfirmContainer(interaction.user.id, recipeId, result),
           ],
           flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
         });

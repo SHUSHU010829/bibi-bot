@@ -14,6 +14,7 @@ const {
 const { mining, craft, dungeon, fishing } = require("../../config");
 const craftService = require("../../features/mining/craftService");
 const { materialLabel } = require("../../features/mining/craftMaterials");
+const { bonusTransferNote } = require("../../features/mining/equipDurability");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
@@ -196,10 +197,16 @@ module.exports = {
             ? `\n\n🔮 **想升級的話這個配方不對**：**${result.recipe.name}** 只會重打一把同階的 ${curLabel}（耐久補滿），階級不會變。\n` +
               `要升級請改用 **${result.upgradeRecipe.name}**。`
             : "";
+          const bonusHint = bonusTransferNote({
+            isUpgrade: result.isUpgrade,
+            bonusBefore: result.current.bonus,
+            pending: true,
+          });
           return interaction.editReply(
             `⚠️ 你目前的 **${curLabel}** 還有 ${result.current.durability} 次耐久，` +
               `合成 **${result.recipe.name}** 會直接替換掉它${relationHint}。\n` +
-              `確定要換，請再執行一次並把 \`確認\` 設為 \`true\`。${upgradeHint}`
+              `確定要換，請再執行一次並把 \`確認\` 設為 \`true\`。${upgradeHint}` +
+              (bonusHint ? `\n\n${bonusHint}` : "")
           );
         }
         return interaction.editReply("🔧 合成失敗，請稍後再試。");
@@ -253,6 +260,11 @@ module.exports = {
           ...statLines.map((line) => new TextDisplayBuilder().setContent(line)),
         )
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(tail));
+
+      const bonusNote = bonusTransferNote(result);
+      if (bonusNote) {
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bonusNote));
+      }
 
       if (isAppraisalTrigger && result.appraiseTs) {
         const fee = (mining?.stoneAppraisal?.feePerStone || 0) * (result.appraiseQty || 1);

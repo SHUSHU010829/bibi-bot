@@ -811,7 +811,7 @@ function buildRepairTab(container, { userId, displayName, profile, repairDiscoun
 
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
-      "-# 還沒有維修工具？切到「合成」分頁打造，鐵製便宜、傳說 max +2（升級裝備後仍保留）",
+      "-# 還沒有維修工具？切到「合成」分頁打造，鐵製便宜、傳說 max +2（走升級配方保留，重新打造歸零）",
     ),
   );
 }
