@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start:dev": "nodemon ./src/index.js",
+    "reset-equip-wear": "node ./src/scripts/resetEquipWear.js",
     "update-calendar": "node ./src/scripts/updateCalendar.js",
     "verify-calendar": "node ./src/scripts/verifyCalendar.js"
   },
