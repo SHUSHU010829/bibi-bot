@@ -777,7 +777,8 @@ function getShieldRepairCost(profile) {
 
 // 劣質磨石：補滿耐久、上限 -10、扣一顆。四種裝備規則一致，差別只在欄位名（EQUIP_SLOTS），
 // 所以只留一份實作。-10 累加到 bonus 欄位而不是 base，跟維修工具走同一套帳：
-// base 永遠是 config 原始上限，升級換裝備時 bonus 不重設，磨損與補強都一路帶著走。
+// base 永遠是 config 原始上限，走升級配方換裝備時 bonus 不重設（磨損與補強都跟著走），
+// 重新打造一把則歸零。
 // base+bonus < 20 時拒用（避免降到 10 以下，讓玩家知道是最終次數）。
 const WHETSTONE_MAX_DELTA = -10;
 const WHETSTONE_MIN_BASE = 20;
@@ -865,7 +866,8 @@ async function useRepairTool(client, { userId, guildId, tier, target = "pickaxe"
   }
 
   // maxDelta 一律累加到 bonus 欄位，不動 maxField（maxField 永遠是該裝備 config 的原始上限）。
-  // 這樣升級 / 打造覆蓋 maxField 時，維修工具累積的 ±值不會被沖掉，能一路帶到下一階裝備。
+  // 這樣升級配方覆蓋 maxField 時，維修工具累積的 ±值不會被沖掉，能一路帶到下一階裝備
+  // （重新打造出來的是全新裝備，由 craftService 歸零）。
   // 補耐久時要補到「有效上限」，否則裝了鐵匠鋪加成反而補不滿；「不得低於 10」的門檻看 base+bonus。
   const maxDelta = def.maxDelta || 0;
   const pct = await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId);

@@ -7,7 +7,7 @@ const {
   ORE_KEYS,
 } = require("./miningProfile");
 const { SPECIAL_MAT_FIELDS, isFishMaterial, ownedMaterial } = require("./craftMaterials");
-const { EQUIP_SLOTS } = require("./equipDurability");
+const { EQUIP_SLOTS, MIN_BASE_WITH_BONUS, bonusOf } = require("./equipDurability");
 const { trapTier, totalTrapUses } = require("../farm/trapTiers");
 
 // 鎬子 / 武器 / 釣竿階級（用於判定升級 / 同級 / 降級）
@@ -212,7 +212,8 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
       reason: "confirm_needed",
       recipe,
       type,
-      current: { id: curId, durability: curDurability },
+      current: { id: curId, durability: curDurability, bonus: bonusOf(profile, type) },
+      isUpgrade: Boolean(needEquipped),
       relation,
       upgradeRecipe:
         relation === "upgrade" ? null : upgradeRecipeFor(slot, curId, curTier, recipe.id),
@@ -234,20 +235,23 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
   // 儲存的最大耐久一律是「原始上限」（config durability）；公會鐵匠鋪加成不寫死進 DB，
   // 由讀取端動態換算。新裝備現值直接補到「有效上限」，讓剛打造的裝備吃滿當前加成。
   //
-  // *_max_durability_bonus（維修工具 maxDelta / 磨石 -10 的累計）刻意不在這裡重設：
-  // 換裝備只覆蓋 base，玩家用傳說維修工具養出來的 +N 才能跟著升級後的裝備走（磨損同理）。
-  // 帶著大負值 bonus 去打造低階裝備會把上限壓到 0 甚至負數（磨石只保證「相對舊 base」不低於 10），
-  // 所以換裝備時把 bonus 夾到「base + bonus >= 10」為止。
+  // *_max_durability_bonus（維修工具 maxDelta / 磨石 -10 的累計）只有「升級型配方」
+  // （recipe.requires.equipped：拿身上那件去換下一階）才沿用——升級是同一把裝備的延續，
+  // 傳說維修工具養出來的 +N 與磨石磨出來的 -N 都該跟著走。
+  // 重新打造（非升級配方）產出的是全新一把，bonus 一律歸零。
+  // 沿用時帶著大負值 bonus 去換低階裝備會把上限壓到 0 甚至負數（磨石只保證「相對舊 base」
+  // 不低於 10），所以夾到「base + bonus >= 10」為止。
+  const isUpgrade = Boolean(needEquipped);
   const baseDurability = targetDef.durability ?? null;
   let currentDurability = baseDurability;
-  let carriedBonus = null;
+  let newBonus = null;
+  const prevBonus = bonusOf(profile, type);
   if (typeof baseDurability === "number") {
     const buildingService = require("../guild_club/buildingService");
-    const { bonusOf, MIN_BASE_WITH_BONUS } = require("./equipDurability");
     const pct = await buildingService.getEquipmentMaxDurabilityPct(client, userId, guildId);
-    carriedBonus = Math.max(bonusOf(profile, type), MIN_BASE_WITH_BONUS - baseDurability);
+    newBonus = isUpgrade ? Math.max(prevBonus, MIN_BASE_WITH_BONUS - baseDurability) : 0;
     currentDurability =
-      buildingService.effectiveMaxDurability(baseDurability, pct) + carriedBonus;
+      buildingService.effectiveMaxDurability(baseDurability, pct) + newBonus;
   }
 
   await client.miningProfilesCollection.updateOne(
@@ -259,9 +263,7 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
         [slot.durabilityField]: currentDurability,
         // 鎬子 / 釣竿 / 武器同步設定原始最大耐久上限
         ...(slot.maxDurabilityField ? { [slot.maxDurabilityField]: baseDurability } : {}),
-        ...(slot.bonusField && carriedBonus !== null
-          ? { [slot.bonusField]: carriedBonus }
-          : {}),
+        ...(slot.bonusField && newBonus !== null ? { [slot.bonusField]: newBonus } : {}),
         updatedAt: new Date(),
       },
     }
@@ -275,6 +277,10 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
     resultName: targetDef.name || resultId,
     resultEmoji: targetDef.emoji || "",
     durability: currentDurability,
+    isUpgrade,
+    // 給呈現層說明「上限加成／磨損」的去向：升級沿用、重新打造歸零。
+    bonusBefore: prevBonus,
+    bonusAfter: newBonus ?? 0,
     craftCountTotal: (profile.craft_count_total || 0) + 1,
   };
 }

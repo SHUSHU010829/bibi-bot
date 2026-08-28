@@ -35,7 +35,8 @@ const EQUIP_SLOTS = {
 // 上限拆成兩個欄位，兩者的意義與生命週期完全不同：
 //   *_max_durability       = 該裝備 config 的原始上限，打造 / 購買時覆蓋，之後不再變動。
 //   *_max_durability_bonus = 維修工具 maxDelta 與劣質磨石 -10 的累計值，可正可負，
-//                            升級換裝備時「不」重設，所以傳說維修工具的 +2 能一路帶著走。
+//                            升級配方換裝備時「不」重設，所以傳說維修工具的 +2 能一路帶著走；
+//                            重新打造一把（非升級配方 / 商店買新竿）則是全新裝備，歸零。
 // 有效上限 = floor(base ×(1+鐵匠鋪%)) + bonus：鐵匠鋪只加成裝備本身的原始耐久，
 // 不對維修工具補上來的部分再乘一次。
 const MIN_BASE_WITH_BONUS = 10;
@@ -97,12 +98,34 @@ const bonusSuffix = (profile, slot) => {
   return bonus > 0 ? `（含維修工具 +${bonus}）` : `（含磨損 ${bonus}）`;
 };
 
+// 說明 bonus 去向的一行小字（沒有 bonus 可講就回空字串）。四個合成畫面
+//（/合成 與工坊的確認框 + 成功訊息）共用同一份文案，避免其中一份漏更新。
+// pending=true 用在還沒送出的確認框，講「會怎樣」；否則講「已經怎樣」。
+const bonusTransferNote = ({ isUpgrade, bonusBefore = 0, bonusAfter = 0, pending = false }) => {
+  if (isUpgrade) {
+    const carried = pending ? bonusBefore : bonusAfter;
+    if (!carried) return "";
+    const kind = carried > 0 ? `上限加成 **+${carried}**` : `上限磨損 **${carried}**`;
+    return pending ? `-# 升級會沿用目前的${kind}` : `-# 升級沿用了先前累積的${kind}`;
+  }
+  if (!bonusBefore) return "";
+  if (bonusBefore > 0) {
+    return pending
+      ? `-# 重打一把是全新裝備，維修工具累積的上限加成 **+${bonusBefore}** 不會跟過來（要沿用請走升級配方）`
+      : `-# 這是全新一把，先前維修工具累積的上限加成 **+${bonusBefore}** 沒有跟過來（要沿用請走升級配方）`;
+  }
+  return pending
+    ? `-# 重打一把是全新裝備，累積的上限磨損 **${bonusBefore}** 會一起洗掉`
+    : `-# 這是全新一把，先前累積的上限磨損 **${bonusBefore}** 已歸零`;
+};
+
 module.exports = {
   EQUIP_SLOTS,
   MIN_BASE_WITH_BONUS,
   bonusOf,
   baseWithBonus,
   bonusSuffix,
+  bonusTransferNote,
   effectiveMaxOf,
   effectiveMaxWithBonusDelta,
   effectiveMaxes,
