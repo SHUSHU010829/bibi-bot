@@ -1,12 +1,12 @@
 // 訂閱買票:每期前 30 分鐘逐期扣款。
 
 require("colors");
-const crypto = require("crypto");
 
 const { casino } = require("../../../config");
 const grantCoins = require("../../economy/grantCoins");
 const { getCurrentOpenDraw } = require("./runDraw");
 const { checkAndAnnouncePoolMilestones } = require("./poolAnnouncer");
+const { addTickets } = require("./ticketStore");
 
 function getTypeConfig(lotteryType) {
   return casino?.lottery?.types?.[lotteryType] || {};
@@ -86,25 +86,16 @@ async function processSubscription(client, sub) {
   if (!result) return { status: "charge_failed" };
 
   // 寫票券：訂閱每期同一組號碼，聚合成單一 doc + quantity（原本每張一筆）
-  const ticketId = crypto.randomUUID();
-  const ticketIds = [ticketId];
-  await client.lotteryTicketsCollection.insertOne({
-    ticketId,
+  const { ticketIds } = await addTickets(client, {
     drawId: draw.drawId,
     lotteryType: sub.lotteryType,
     userId: sub.userId,
     guildId: sub.guildId,
     username: sub.username,
-    numbers: [...sub.numbers],
-    quantity: sub.ticketsPerDraw,
+    entries: [{ numbers: sub.numbers, quantity: sub.ticketsPerDraw }],
     pricePaid: ticketPrice,
     source: "subscription",
     subscriptionId: sub.subscriptionId,
-    wheelingId: null,
-    matched: 0,
-    prize: null,
-    payoutAmount: 0,
-    createdAt: new Date(),
   });
 
   // 更新 draw 統計

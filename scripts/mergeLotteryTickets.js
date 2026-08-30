@@ -2,6 +2,7 @@ require("colors");
 require("dotenv").config();
 
 const { MongoClient } = require("mongodb");
+const { buildComboKey } = require("../src/features/casino/lottery/ticketStore");
 
 /**
  * 一次性合併「已堆積的舊樂透票券」：把同一期、同一人、號碼與派彩結果完全相同的
@@ -14,6 +15,9 @@ const { MongoClient } = require("mongodb");
  *     本來就一樣），所以不會把不同結果的票混在一起。
  *   - 包牌（wheeling）各組合號碼不同 → 天然不會被合併。
  *   - idempotent：合併完每組只剩 1 筆，再跑一次不會有動作。
+ *
+ * 另外會補上 comboKey（買票時「同期同人同號碼就合併」的查找鍵），讓尚未結算那幾期的
+ * 舊票券也能被新買的票合併進去。
  *
  * 執行方式：
  *   node scripts/mergeLotteryTickets.js          # DRY RUN，只報告會省下多少（不動資料）
@@ -34,6 +38,7 @@ function groupKeyFields() {
     source: "$source",
     subscriptionId: "$subscriptionId",
     wheelingId: "$wheelingId",
+    pricePaid: "$pricePaid",
     matched: "$matched",
     prize: "$prize",
     payoutAmount: "$payoutAmount",
@@ -76,6 +81,36 @@ async function main() {
     // ignore
   }
 
+  // 尚未結算的期補上 comboKey：買票時的「同號碼就合併」靠這個純量鍵查找，
+  // 舊資料沒有這個欄位就合併不到，會一直另開新文件。
+  const openDrawIds = (
+    await db
+      .collection("LotteryDraws")
+      .find({ status: { $ne: "settled" } }, { projection: { _id: 0, drawId: 1 } })
+      .toArray()
+  ).map((d) => d.drawId);
+  if (openDrawIds.length > 0) {
+    const missing = await tickets
+      .find(
+        { drawId: { $in: openDrawIds }, comboKey: { $exists: false } },
+        { projection: { _id: 1, numbers: 1, special: 1 } },
+      )
+      .toArray();
+    console.log(`未結算期缺 comboKey 的票券：${missing.length} 筆`);
+    if (APPLY && missing.length > 0) {
+      await tickets.bulkWrite(
+        missing.map((t) => ({
+          updateOne: {
+            filter: { _id: t._id },
+            update: { $set: { comboKey: buildComboKey(t.numbers || [], t.special ?? null) } },
+          },
+        })),
+        { ordered: false },
+      );
+      console.log(`  已補上 comboKey`.gray);
+    }
+  }
+
   // 逐期處理以控制記憶體（drawId 數量 = 期數，遠小於票券數）
   const drawIds = await tickets.distinct("drawId");
   console.log(`共 ${drawIds.length} 期要掃描。\n`);
@@ -113,7 +148,12 @@ async function main() {
       ops.push({
         updateOne: {
           filter: { ticketId: g.keepId },
-          update: { $set: { quantity: g.qty } },
+          update: {
+            $set: {
+              quantity: g.qty,
+              comboKey: buildComboKey(g._id.numbers || [], g._id.special ?? null),
+            },
+          },
         },
       });
       ops.push({

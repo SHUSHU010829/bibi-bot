@@ -5,6 +5,7 @@
 
 require("colors");
 const { DateTime } = require("luxon");
+const pLimit = require("p-limit");
 
 const { casino } = require("../../../config");
 const {
@@ -14,7 +15,6 @@ const {
   buildDrawId,
 } = require("./draw");
 const {
-  countMatches,
   hasConsecutiveRun,
   hasSecondZone,
   getLotteryConfig: getNumberConfig,
@@ -150,6 +150,86 @@ async function ensureNextDraw(client, lotteryType, options = {}) {
   }
 }
 
+// 一次 $in 塞太多 ticketId 會讓單筆指令膨脹到 BSON 上限附近，切塊送。
+const TICKET_UPDATE_CHUNK = 5000;
+// 派彩並行度：同一位玩家的入帳必須序列化（同一個 grantCoins 呼叫內完成），
+// 不同玩家之間才並行，避免上百位得主變成上百次序列化 round-trip。
+const PAYOUT_CONCURRENCY = 4;
+
+/**
+ * 回寫票券結果。resultGroups 已依「結果完全相同」分群，故是數十筆 updateMany 而非每張票一筆。
+ */
+async function writeTicketResults(client, resultGroups) {
+  const ops = [];
+  for (const group of resultGroups.values()) {
+    for (let i = 0; i < group.ids.length; i += TICKET_UPDATE_CHUNK) {
+      ops.push({
+        updateMany: {
+          filter: { ticketId: { $in: group.ids.slice(i, i + TICKET_UPDATE_CHUNK) } },
+          update: { $set: group.set },
+        },
+      });
+    }
+  }
+  if (ops.length > 0) {
+    await client.lotteryTicketsCollection.bulkWrite(ops, { ordered: false });
+  }
+}
+
+/**
+ * 派彩：一位玩家該期最多兩筆入帳（主獎合計 + 側獎合計），不再逐張票發。
+ * meta 記錄各獎項的中獎張數，帳目仍可完整還原。
+ */
+async function payoutWinners(client, { users, lotteryType, drawId }) {
+  const limit = pLimit(PAYOUT_CONCURRENCY);
+  await Promise.all(
+    users.map((u) =>
+      limit(async () => {
+        if (u.main > 0) {
+          await grantCoins(client, {
+            userId: u.userId,
+            guildId: u.guildId,
+            username: u.username,
+            amount: u.main,
+            source: "payout",
+            meta: {
+              game: "lottery",
+              lotteryType,
+              drawId,
+              prizeTiers: u.tiers,
+              quantity: Object.values(u.tiers).reduce((s, n) => s + n, 0),
+              aggregated: true,
+            },
+          });
+        }
+        if (u.bonus > 0) {
+          await grantCoins(client, {
+            userId: u.userId,
+            guildId: u.guildId,
+            username: u.username,
+            amount: u.bonus,
+            source: "payout",
+            meta: {
+              game: "lottery",
+              lotteryType,
+              drawId,
+              prize: "bonus",
+              bonusFlags: {
+                bonusBall: u.bonusBallTickets > 0,
+                consecutive: u.consecutiveTickets > 0,
+              },
+              bonusBallTickets: u.bonusBallTickets,
+              consecutiveTickets: u.consecutiveTickets,
+              quantity: Math.max(u.bonusBallTickets, u.consecutiveTickets),
+              aggregated: true,
+            },
+          });
+        }
+      })
+    )
+  );
+}
+
 /**
  * 執行開獎(冪等,只會處理 status=open 的期)。
  */
@@ -177,18 +257,26 @@ async function runDraw(client, lotteryType) {
   const winningSpecial = hasSecondZone(lotteryType)
     ? generateSpecialNumber(lotteryType)
     : null;
+  // 只取結算用得到的欄位：票券 3 萬張時完整 doc 會多吃好幾倍記憶體。
   const tickets = await client.lotteryTicketsCollection
-    .find({ drawId: draw.drawId })
+    .find(
+      { drawId: draw.drawId },
+      {
+        projection: {
+          _id: 0,
+          ticketId: 1,
+          userId: 1,
+          guildId: 1,
+          username: 1,
+          numbers: 1,
+          special: 1,
+          quantity: 1,
+          subscriptionId: 1,
+          wheelingId: 1,
+        },
+      }
+    )
     .toArray();
-
-  // 比對每張票（第一區命中數 + 第二區是否命中）
-  // quantity：一個 doc 可代表多張相同號碼的票，派彩分母與實得金額都要吃這個數量
-  const ticketMatched = tickets.map((t) => ({
-    ticketId: t.ticketId,
-    quantity: t.quantity || 1,
-    matched: countMatches(t.numbers, winningNumbers),
-    specialMatched: winningSpecial != null && t.special === winningSpecial,
-  }));
 
   const typeCfg = getTypeConfig(lotteryType);
 
@@ -201,34 +289,73 @@ async function runDraw(client, lotteryType) {
       ? generateBonusBall(lotteryType, winningNumbers)
       : null;
   const consecMinRun = consecutiveCfg.minRun ?? 3;
-  // 每張票的側獎：bonusBall 命中 + 中獎號碼中含連號
-  // amount 為「每張」側獎金額；實際派彩與統計時再乘 quantity
-  const ticketBonus = new Map();
+  const consecutiveEnabled = !!(consecutiveCfg.enabled && consecutiveCfg.prize > 0);
+
+  // 單次掃描把「命中數・第二區・側獎」標注回票券物件本身。
+  // （分成多個平行 array 再用 .find() 互查會變 O(N²)，3 萬張票就會卡住整個 bot。）
   for (const t of tickets) {
-    let amount = 0;
-    const flags = { bonusBall: false, consecutive: false };
+    t.quantity = t.quantity || 1;
+    const matchedNumbers = [];
+    for (const n of t.numbers) if (winSet.has(n)) matchedNumbers.push(n);
+    t.matched = matchedNumbers.length;
+    t.specialMatched = winningSpecial != null && t.special === winningSpecial;
+
+    let bonusAmount = 0;
+    const bonusFlags = { bonusBall: false, consecutive: false };
     if (bonusBall != null && t.numbers.includes(bonusBall)) {
-      amount += bonusBallCfg.prize;
-      flags.bonusBall = true;
+      bonusAmount += bonusBallCfg.prize;
+      bonusFlags.bonusBall = true;
     }
-    if (consecutiveCfg.enabled && consecutiveCfg.prize > 0) {
-      const matchedNums = t.numbers.filter((n) => winSet.has(n));
-      if (hasConsecutiveRun(matchedNums, consecMinRun)) {
-        amount += consecutiveCfg.prize;
-        flags.consecutive = true;
-      }
+    if (consecutiveEnabled && hasConsecutiveRun(matchedNumbers, consecMinRun)) {
+      bonusAmount += consecutiveCfg.prize;
+      bonusFlags.consecutive = true;
     }
-    if (amount > 0) ticketBonus.set(t.ticketId, { amount, flags });
+    t.bonusPayout = bonusAmount;
+    t.bonusFlags = bonusFlags;
   }
+
   const { prizes, ticketAssignments } = calculatePayout({
     lotteryType,
     pool: draw.pool,
-    tickets: ticketMatched,
+    tickets,
     config: typeCfg,
   });
+  const assignmentById = new Map(ticketAssignments.map((a) => [a.ticketId, a]));
 
-  // bulkWrite 票券更新
-  const ticketsById = new Map(tickets.map((t) => [t.ticketId, t]));
+  // 票券結果完全由（命中數・第二區・獎項・每張金額・側獎旗標）決定，相同結果的票共用
+  // 同一份 $set → 不論幾萬張票，回寫都只會是數十筆 updateMany。
+  const settledAt = new Date();
+  const resultGroups = new Map();
+  for (const t of tickets) {
+    const a = assignmentById.get(t.ticketId);
+    const prize = a?.prize ?? null;
+    const payoutAmount = a?.payoutAmount || 0;
+    const key =
+      `${t.matched}|${t.specialMatched ? 1 : 0}|${prize ?? ""}|${payoutAmount}|` +
+      `${t.bonusPayout}|${t.bonusFlags.bonusBall ? 1 : 0}${t.bonusFlags.consecutive ? 1 : 0}`;
+    let group = resultGroups.get(key);
+    if (!group) {
+      group = {
+        ids: [],
+        set: {
+          matched: t.matched,
+          specialMatched: t.specialMatched,
+          prize,
+          payoutAmount,
+          bonusPayout: t.bonusPayout,
+          bonusFlags: t.bonusFlags,
+          settledAt,
+        },
+      };
+      resultGroups.set(key, group);
+    }
+    group.ids.push(t.ticketId);
+  }
+  // 先落地票券結果再派彩：中途中斷時 settleStuckDrawInPlace 一定能直接從票券還原，
+  // 不必再回頭去解交易紀錄。
+  await writeTicketResults(client, resultGroups);
+
+  // 彙總：派彩以「玩家」為單位、包牌以 wheelingId、訂閱以 subscriptionId，同一次掃描完成。
   const bonusSummary = {
     bonusBall,
     bonusBallPrize: bonusBallCfg.prize || 0,
@@ -238,118 +365,89 @@ async function runDraw(client, lotteryType) {
     consecutiveWinners: 0,
     totalBonusPaid: 0,
   };
-  if (ticketAssignments.length > 0) {
-    const ops = [];
-    for (const a of ticketAssignments) {
-      const tk = ticketsById.get(a.ticketId);
-      const quantity = tk?.quantity || 1;
-      const mInfo = ticketMatched.find((m) => m.ticketId === a.ticketId);
-      const matched = mInfo?.matched || 0;
-      const bonus = ticketBonus.get(a.ticketId);
-      const bonusAmount = bonus?.amount || 0;
-      // 存「每張」金額（payoutAmount / bonusPayout），實得由讀取端 × quantity 換算
-      ops.push({
-        updateOne: {
-          filter: { ticketId: a.ticketId },
-          update: {
-            $set: {
-              matched,
-              specialMatched: !!mInfo?.specialMatched,
-              prize: a.prize,
-              payoutAmount: a.payoutAmount,
-              bonusPayout: bonusAmount,
-              bonusFlags: bonus?.flags || { bonusBall: false, consecutive: false },
-            },
-          },
-        },
-      });
-      // 派彩(只發中獎的)：整個 doc 一次發 perWinner × quantity
-      if (a.prize && a.payoutAmount > 0 && tk) {
-        await grantCoins(client, {
-          userId: tk.userId,
-          guildId: tk.guildId,
-          username: tk.username,
-          amount: a.payoutAmount * quantity,
-          source: "payout",
-          meta: {
-            game: "lottery",
-            lotteryType,
-            drawId: draw.drawId,
-            ticketId: a.ticketId,
-            prize: a.prize,
-            matched,
-            quantity,
-          },
-        });
-      }
-      // 側獎派彩（加碼球 / 連號），系統固定額，獨立發放（同樣 × quantity）
-      if (bonusAmount > 0 && tk) {
-        if (bonus.flags.bonusBall) bonusSummary.bonusBallWinners += quantity;
-        if (bonus.flags.consecutive) bonusSummary.consecutiveWinners += quantity;
-        bonusSummary.totalBonusPaid += bonusAmount * quantity;
-        await grantCoins(client, {
-          userId: tk.userId,
-          guildId: tk.guildId,
-          username: tk.username,
-          amount: bonusAmount * quantity,
-          source: "payout",
-          meta: {
-            game: "lottery",
-            lotteryType,
-            drawId: draw.drawId,
-            ticketId: a.ticketId,
-            prize: "bonus",
-            bonusFlags: bonus.flags,
-            quantity,
-          },
-        });
-      }
-    }
-    if (ops.length > 0) {
-      await client.lotteryTicketsCollection.bulkWrite(ops, { ordered: false });
-    }
-  }
+  const payoutByUser = new Map();
+  const wheelTotals = new Map();
+  const subscriptionTotals = new Map();
+  const prizeRank = { jackpot: 4, second: 3, third: 2, fourth: 1 };
 
-  // 包牌彙總
-  const wheelingIds = new Set(
-    tickets.map((t) => t.wheelingId).filter(Boolean)
-  );
-  for (const wid of wheelingIds) {
-    const wheelTickets = tickets.filter((t) => t.wheelingId === wid);
-    let totalWon = 0;
-    let bestPrize = null;
-    const prizeRank = { jackpot: 4, second: 3, third: 2, fourth: 1 };
-    for (const t of wheelTickets) {
-      const a = ticketAssignments.find((x) => x.ticketId === t.ticketId);
-      if (!a) continue;
-      totalWon += (a.payoutAmount || 0) * (t.quantity || 1);
-      if (a.prize && (!bestPrize || prizeRank[a.prize] > prizeRank[bestPrize])) {
-        bestPrize = a.prize;
+  for (const t of tickets) {
+    const a = assignmentById.get(t.ticketId);
+    const mainWon = a?.prize && a.payoutAmount > 0 ? a.payoutAmount * t.quantity : 0;
+    const bonusWon = t.bonusPayout * t.quantity;
+
+    if (t.bonusFlags.bonusBall) bonusSummary.bonusBallWinners += t.quantity;
+    if (t.bonusFlags.consecutive) bonusSummary.consecutiveWinners += t.quantity;
+    bonusSummary.totalBonusPaid += bonusWon;
+
+    if (mainWon > 0 || bonusWon > 0) {
+      const key = `${t.userId} ${t.guildId}`;
+      let acc = payoutByUser.get(key);
+      if (!acc) {
+        acc = {
+          userId: t.userId,
+          guildId: t.guildId,
+          username: t.username,
+          main: 0,
+          bonus: 0,
+          tiers: {},
+          bonusBallTickets: 0,
+          consecutiveTickets: 0,
+        };
+        payoutByUser.set(key, acc);
+      }
+      acc.main += mainWon;
+      acc.bonus += bonusWon;
+      if (mainWon > 0) acc.tiers[a.prize] = (acc.tiers[a.prize] || 0) + t.quantity;
+      if (t.bonusFlags.bonusBall) acc.bonusBallTickets += t.quantity;
+      if (t.bonusFlags.consecutive) acc.consecutiveTickets += t.quantity;
+    }
+
+    if (t.wheelingId) {
+      let w = wheelTotals.get(t.wheelingId);
+      if (!w) {
+        w = { totalWon: 0, bestPrize: null };
+        wheelTotals.set(t.wheelingId, w);
+      }
+      w.totalWon += (a?.payoutAmount || 0) * t.quantity;
+      if (a?.prize && (!w.bestPrize || prizeRank[a.prize] > prizeRank[w.bestPrize])) {
+        w.bestPrize = a.prize;
       }
     }
-    await client.lotteryWheelsCollection?.updateOne(
-      { wheelingId: wid },
-      { $set: { totalWon, bestPrize } }
-    );
-  }
-
-  // 更新訂閱統計(該期被買的票對應的 subscriptionId)
-  const subIds = new Set(
-    tickets.map((t) => t.subscriptionId).filter(Boolean)
-  );
-  for (const sid of subIds) {
-    const subTickets = tickets.filter((t) => t.subscriptionId === sid);
-    let won = 0;
-    for (const t of subTickets) {
-      const a = ticketAssignments.find((x) => x.ticketId === t.ticketId);
-      if (a) won += (a.payoutAmount || 0) * (t.quantity || 1);
-    }
-    if (won > 0) {
-      await client.lotterySubscriptionsCollection?.updateOne(
-        { subscriptionId: sid },
-        { $inc: { totalWon: won } }
+    if (t.subscriptionId && mainWon > 0) {
+      subscriptionTotals.set(
+        t.subscriptionId,
+        (subscriptionTotals.get(t.subscriptionId) || 0) + mainWon
       );
     }
+  }
+
+  await payoutWinners(client, {
+    users: [...payoutByUser.values()],
+    lotteryType,
+    drawId: draw.drawId,
+  });
+
+  if (wheelTotals.size > 0 && client.lotteryWheelsCollection) {
+    await client.lotteryWheelsCollection.bulkWrite(
+      [...wheelTotals].map(([wheelingId, w]) => ({
+        updateOne: {
+          filter: { wheelingId },
+          update: { $set: { totalWon: w.totalWon, bestPrize: w.bestPrize } },
+        },
+      })),
+      { ordered: false }
+    );
+  }
+  if (subscriptionTotals.size > 0 && client.lotterySubscriptionsCollection) {
+    await client.lotterySubscriptionsCollection.bulkWrite(
+      [...subscriptionTotals].map(([subscriptionId, won]) => ({
+        updateOne: {
+          filter: { subscriptionId },
+          update: { $inc: { totalWon: won } },
+        },
+      })),
+      { ordered: false }
+    );
   }
 
   // 結算 draw doc
@@ -624,7 +722,11 @@ async function settleStuckDrawInPlace(client, lotteryType, { allowMissingNumbers
   const range = numCfg.range;
   const pickCount = numCfg.pickCount;
 
-  const resultsWritten = tickets.some((t) => (t.matched || 0) > 0 || t.prize != null);
+  // runDraw 一律先回寫票券結果再派彩，所以有 settledAt 就代表結果已落地（即使全部落選、
+  // matched 都是 0）。舊資料沒有 settledAt，退回用 matched / prize 判斷。
+  const resultsWritten = tickets.some(
+    (t) => t.settledAt || (t.matched || 0) > 0 || t.prize != null
+  );
 
   let winningNumbers = null;
   const matchedByTicket = new Map();
