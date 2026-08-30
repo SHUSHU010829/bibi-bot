@@ -1224,6 +1224,16 @@ module.exports = async (client) => {
         { userId: 1, guildId: 1, createdAt: -1 },
         { name: "lottery_tickets_user" }
       );
+      // 買票時「同期同人同號碼就合併」的查找鍵，兼供 /彩券 資訊、網站 dashboard 算個人持票數
+      await lotteryTicketsCollection.createIndex(
+        { drawId: 1, userId: 1, comboKey: 1 },
+        { name: "lottery_tickets_draw_user_combo" }
+      );
+      // 遊戲稱號「中過頭獎」在每次 bet / payout 都會查一次；沒有這個索引就會掃完該玩家所有票券
+      await lotteryTicketsCollection.createIndex(
+        { userId: 1, guildId: 1, matched: -1 },
+        { name: "lottery_tickets_user_matched" }
+      );
       await lotteryTicketsCollection.createIndex(
         { subscriptionId: 1 },
         { name: "lottery_tickets_subscription" }

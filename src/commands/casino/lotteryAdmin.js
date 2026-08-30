@@ -295,8 +295,12 @@ module.exports = {
             `該期尚未結算(status=${draw.status}),無法重發。`
           );
         }
+        // 重發只需要頭獎得主名字（張數用 draw.totalTickets），不必把整期票券撈回來
         const tickets = await client.lotteryTicketsCollection
-          .find({ drawId: draw.drawId })
+          .find({
+            drawId: draw.drawId,
+            ticketId: { $in: draw.payout?.jackpot?.ticketIds || [] },
+          })
           .toArray();
         await announceDrawResult(client, { draw, tickets }, { skipWinnerDm: true });
         return interaction.editReply(`✅ 已重發 \`${draw.drawId}\` 的開獎結果圖卡。`);

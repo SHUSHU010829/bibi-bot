@@ -7,6 +7,11 @@
 const qty = (t) => t.quantity || 1;
 const sumQty = (arr) => arr.reduce((s, t) => s + qty(t), 0);
 
+// draw doc 只留一份中獎票 id 樣本：中獎張數以 winnerCount 為準，
+// 全部塞進去會讓 draw 文件隨票量無上限膨脹（3 萬張票的小樂透二獎就有上千筆）。
+const TICKET_ID_SAMPLE_CAP = 200;
+const sampleTicketIds = (arr) => arr.slice(0, TICKET_ID_SAMPLE_CAP).map((t) => t.ticketId);
+
 // 6/49: 頭獎 70%、二獎 15%、三獎 10%、四獎固定 100/張、剩 5% 滾下期。
 //        頭獎沒人中 → 頭獎 share 滾下期,二/三獎照常按 share 分配。
 // 3/20: 頭獎 80%、二獎固定 50/張、剩 20% 滾下期。
@@ -82,19 +87,19 @@ function calculatePayout649({ pool, fourthPrizeFixed, tickets }) {
         amount: jackpotPayout,
         winnerCount: jackpotWinners,
         perWinner: jackpotPerWinner,
-        ticketIds: jackpotTickets.map((t) => t.ticketId),
+        ticketIds: sampleTicketIds(jackpotTickets),
       },
       second: {
         amount: secondPayout,
         winnerCount: secondWinners,
         perWinner: secondPerWinner,
-        ticketIds: secondTickets.map((t) => t.ticketId),
+        ticketIds: sampleTicketIds(secondTickets),
       },
       third: {
         amount: thirdPayout,
         winnerCount: thirdWinners,
         perWinner: thirdPerWinner,
-        ticketIds: thirdTickets.map((t) => t.ticketId),
+        ticketIds: sampleTicketIds(thirdTickets),
       },
       fourth: {
         amount: fourthPayout,
@@ -148,7 +153,7 @@ function calculatePayout320({ pool, secondPrizeFixed, tickets }) {
         amount: jackpotPayout,
         winnerCount: jackpotWinners,
         perWinner: jackpotPerWinner,
-        ticketIds: jackpotTickets.map((t) => t.ticketId),
+        ticketIds: sampleTicketIds(jackpotTickets),
       },
       second: {
         amount: secondPayout,
@@ -247,7 +252,7 @@ function calculatePayoutPower({ pool, parimutuel, fixedPrizes, tickets }) {
         tier === "jackpot" ? jackpotPayout : tier === "second" ? secondPayout : thirdPayout,
       winnerCount: winners[tier],
       perWinner: perWinner[tier],
-      ticketIds: buckets[tier].map((t) => t.ticketId),
+      ticketIds: sampleTicketIds(buckets[tier]),
     };
   }
   for (const tier of ["fourth", "fifth", "sixth", "seventh", "eighth", "ninth"]) {

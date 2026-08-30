@@ -42,6 +42,10 @@ const {
 const {
   checkAndAnnouncePoolMilestones,
 } = require("../../features/casino/lottery/poolAnnouncer");
+const {
+  addTickets,
+  buildComboKey,
+} = require("../../features/casino/lottery/ticketStore");
 const { saveLastBet, buildReplayRow } = require("../../features/casino/replay");
 
 const TYPE_CHOICES = [
@@ -79,7 +83,8 @@ function getTypeConfig(t) {
 }
 
 // 購買上限：擋住「一次買到爆」造成的票券文件量失控（config 驅動）。
-// 自選號碼會聚合成單一 doc + quantity，DB 成本與張數無關，所以上限可以開很大；
+// 自選號碼會聚合成單一 doc + quantity（跨多次購買也會合併，見 ticketStore），
+// DB 成本與張數無關，所以上限可以開很大；
 // 隨機選號每張是獨立號碼、各自一筆 doc，另外用較低的上限擋。
 const LOTTERY_LIMITS = casino?.lottery?.limits || {};
 const MAX_TICKETS_RANDOM = LOTTERY_LIMITS.maxTicketsPerBuy || 1000;
@@ -386,27 +391,17 @@ async function runBuy(client, interaction) {
       return interaction.editReply("🔧 扣款失敗,請稍後再試。");
     }
 
-    const ticketDocs = entries.map((g) => ({
-      ticketId: crypto.randomUUID(),
+    // 與同期同號碼的既有票券合併（再買一次只是 quantity += N，不會多一筆文件）
+    await addTickets(client, {
       drawId: draw.drawId,
       lotteryType,
       userId,
       guildId,
       username,
-      numbers: g.numbers,
-      special: g.special,
-      quantity: g.quantity,
+      entries,
       pricePaid: ticketPrice,
       source: "manual",
-      subscriptionId: null,
-      wheelingId: null,
-      matched: 0,
-      specialMatched: false,
-      prize: null,
-      payoutAmount: 0,
-      createdAt: new Date(),
-    }));
-    await client.lotteryTicketsCollection.insertMany(ticketDocs);
+    });
 
     const updated = await client.lotteryDrawsCollection.findOneAndUpdate(
       { _id: draw._id },
@@ -431,7 +426,7 @@ async function runBuy(client, interaction) {
     const balanceAfter = betResult.doc?.totalCoins ?? balance - totalCost;
     const drawAtUnix = Math.floor(new Date(draw.scheduledAt).getTime() / 1000);
 
-    const previewLines = ticketDocs
+    const previewLines = entries
       .slice(0, 10)
       .map(
         (t, i) =>
@@ -440,8 +435,7 @@ async function runBuy(client, interaction) {
           (t.quantity > 1 ? ` ×${t.quantity}` : "")
       )
       .join("\n");
-    const moreLine =
-      ticketDocs.length > 10 ? `\n…再 ${ticketDocs.length - 10} 組` : "";
+    const moreLine = entries.length > 10 ? `\n…再 ${entries.length - 10} 組` : "";
 
     await saveLastBet(client, {
       userId,
@@ -577,6 +571,8 @@ async function runWheel(client, interaction) {
       return interaction.editReply("🔧 扣款失敗。");
     }
 
+    // 包牌每組號碼都不同、且掛同一個新的 wheelingId，天然不會與既有票券合併 → 直接 insertMany。
+    // wheel doc 不再存 ticketIds（上萬組時等於複製一份 id 清單）；票券上的 wheelingId 就是關聯鍵。
     const combos = expandWheel(baseNumbers, lotteryType);
     const ticketDocs = combos.map((nums) => ({
       ticketId: crypto.randomUUID(),
@@ -586,6 +582,8 @@ async function runWheel(client, interaction) {
       guildId,
       username,
       numbers: nums,
+      special: null,
+      comboKey: buildComboKey(nums, null),
       quantity: 1,
       pricePaid: ticketPrice,
       source: "wheeling",
@@ -608,7 +606,6 @@ async function runWheel(client, interaction) {
       baseNumbers,
       combinationCount: combinations,
       pricePaid: totalCost,
-      ticketIds: ticketDocs.map((t) => t.ticketId),
       totalWon: 0,
       bestPrize: null,
       createdAt: new Date(),
@@ -724,33 +721,22 @@ async function runHistory(client, interaction) {
       if (filters.result === "won") {
         f.prize = { $ne: null };
       } else if (filters.result === "lost" || filters.result === "pending") {
-        const prelim = { ...baseFilter };
-        if (filters.lotteryType) prelim.lotteryType = filters.lotteryType;
-
-        const drawIds = await client.lotteryTicketsCollection.distinct(
-          "drawId",
-          prelim
-        );
-        const draws = await client.lotteryDrawsCollection
-          .find(
-            { drawId: { $in: drawIds } },
-            { projection: { drawId: 1, status: 1 } }
-          )
-          .toArray();
+        // 只列出「尚未結算」的期（每個玩法最多一期），用它反推未中/等開獎。
+        // 先 distinct 玩家所有票券的 drawId 會整份掃過去，持有幾萬張時就是這裡卡住。
+        const pendingIds = (
+          await client.lotteryDrawsCollection
+            .find(
+              { status: { $ne: "settled" } },
+              { projection: { _id: 0, drawId: 1 } }
+            )
+            .toArray()
+        ).map((d) => d.drawId);
 
         if (filters.result === "lost") {
-          f.drawId = {
-            $in: draws
-              .filter((d) => d.status === "settled")
-              .map((d) => d.drawId),
-          };
+          f.drawId = { $nin: pendingIds };
           f.prize = null;
         } else {
-          f.drawId = {
-            $in: draws
-              .filter((d) => d.status !== "settled")
-              .map((d) => d.drawId),
-          };
+          f.drawId = { $in: pendingIds };
         }
       }
       return f;

@@ -41,12 +41,14 @@ async function announceDrawResult(client, drawResult, options = {}) {
     .toFormat("yyyy/MM/dd HH:mm");
 
   const jackpotIds = draw.payout?.jackpot?.ticketIds || [];
+  // tickets 可能上萬筆，用 Map 查表（逐筆 .find() 是 O(票數 × 中獎數)）
+  const ticketById = new Map(tickets.map((t) => [t.ticketId, t]));
+  const jackpotTickets = jackpotIds.map((tid) => ticketById.get(tid)).filter(Boolean);
   const jackpotWinners = [
     ...new Set(
-      jackpotIds
-        .map((tid) => tickets.find((t) => t.ticketId === tid))
-        .filter(Boolean)
-        .map((t) => t.username || `User-${String(t.userId || "").slice(-4)}`)
+      jackpotTickets.map(
+        (t) => t.username || `User-${String(t.userId || "").slice(-4)}`
+      )
     ),
   ];
 
@@ -109,22 +111,35 @@ async function announceDrawResult(client, drawResult, options = {}) {
     console.log(`[LOTTERY] 開獎公告已重發 ${draw.drawId}(略過得主 DM)`.cyan);
     return;
   }
-  for (const tid of jackpotIds) {
-    const t = tickets.find((x) => x.ticketId === tid);
-    if (!t) continue;
+  // 同一位玩家可能有多張頭獎票（不同號碼各一筆 doc），合併成一封 DM
+  const dmByUser = new Map();
+  for (const t of jackpotTickets) {
+    let d = dmByUser.get(t.userId);
+    if (!d) {
+      d = { userId: t.userId, tickets: 0, comboCount: 0, combos: [] };
+      dmByUser.set(t.userId, d);
+    }
+    d.tickets += t.quantity || 1;
+    d.comboCount += 1;
+    if (d.combos.length < 5) d.combos.push(t.numbers.join(" ・ "));
+  }
+  const perWinner = draw.payout?.jackpot?.perWinner || 0;
+  for (const d of dmByUser.values()) {
     try {
-      const user = await client.users.fetch(t.userId).catch(() => null);
+      const user = await client.users.fetch(d.userId).catch(() => null);
       if (!user) continue;
-      const qtyN = t.quantity || 1;
-      const perWinner = draw.payout.jackpot.perWinner || 0;
-      const totalWon = perWinner * qtyN;
-      const qtyNote = qtyN > 1 ? `（${qtyN} 張 × ${perWinner.toLocaleString()}）` : "";
+      const totalWon = perWinner * d.tickets;
+      const qtyNote =
+        d.tickets > 1 ? `（${d.tickets} 張 × ${perWinner.toLocaleString()}）` : "";
+      const comboLine =
+        d.combos.map((c) => `**${c}**`).join("、") +
+        (d.comboCount > d.combos.length ? `…等 ${d.comboCount} 組` : "");
       await user.send(
-        `🎉 ${label} 第 ${draw.drawNumber} 期 你的票 **${t.numbers.join(" ・ ")}** 中了頭獎!\n` +
+        `🎉 ${label} 第 ${draw.drawNumber} 期 你的票 ${comboLine} 中了頭獎!\n` +
         `獎金:**${totalWon.toLocaleString()}** credits${qtyNote} 已入帳。`
       ).catch(() => {});
     } catch (err) {
-      console.log(`[LOTTERY] 頭獎 DM 失敗 ${t.userId}:${err.message}`.yellow);
+      console.log(`[LOTTERY] 頭獎 DM 失敗 ${d.userId}:${err.message}`.yellow);
     }
   }
 
