@@ -11,6 +11,8 @@ const {
 const { stockSystem } = require("../../config");
 const leaderboardService = require("../../features/stock/leaderboardService");
 const gameTitleService = require("../../features/gameTitles/gameTitleService");
+const stockKingService = require("../../features/stock/stockKingService");
+const { hallButtonRow } = require("../../features/stock/stockKingView");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 
 const MEDALS = ["🥇", "🥈", "🥉"];
@@ -61,7 +63,7 @@ async function dethronePrevious(client, guildId, winnerId, winnerLabel) {
   return dethroned;
 }
 
-async function announceKing(client, guildId, ranking, dethroned = []) {
+async function announceKing(client, guildId, ranking, dethroned = [], reigns = 0) {
   const titleId = kingTitleId();
   const channelId = stockSystem?.reportChannelId || gameTitleService.announceChannelId();
   if (!channelId) return;
@@ -83,13 +85,14 @@ async function announceKing(client, guildId, ranking, dethroned = []) {
   const handoverNote = dethroned.length
     ? `\n王座由 ${dethroned.map((id) => nameOf(id)).join("、")} 移交 📊`
     : "";
+  const reignNote = reigns > 1 ? `\n這是第 **${reigns}** 次封王 👑` : "";
 
   const container = new ContainerBuilder()
     .setAccentColor(0xffd700)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `# 📊 上週最強操盤手出爐！\n` +
-          `恭喜 ${nameOf(winnerId)} 拿下上週已實現損益冠軍，獲得稱號 **${gameTitleService.label(titleId)}**！${handoverNote}`,
+          `恭喜 ${nameOf(winnerId)} 拿下上週已實現損益冠軍，獲得稱號 **${gameTitleService.label(titleId)}**！${reignNote}${handoverNote}`,
       ),
     )
     .addSeparatorComponents(new SeparatorBuilder())
@@ -98,9 +101,10 @@ async function announceKing(client, guildId, ranking, dethroned = []) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 新的一週開始了，用 `/股市` 操盤角逐本週王座！",
+        "-# 新的一週開始了，用 `/股市` 操盤角逐本週王座；歷屆名單看 `/股市 名人堂`",
       ),
-    );
+    )
+    .addActionRowComponents(hallButtonRow());
 
   await channel
     .send({
@@ -129,8 +133,14 @@ async function processGuild(client, guildId) {
   const winnerLabel = plainifyUserMentions(guild, `<@${winnerId}>`);
   const dethroned = await dethronePrevious(client, guildId, winnerId, winnerLabel);
 
+  await stockKingService
+    .recordAward(client, { guildId, window, ranking, dethroned, source: "weekly_cron" })
+    .catch((e) => console.log(`[STOCK] 週冠紀錄寫入失敗 guild=${guildId}: ${e?.message || e}`.yellow));
+  // 紀錄寫入失敗時 count 會是 0，公告 / 私訊至少要算這次
+  const reigns = Math.max(1, (await stockKingService.myReigns(client, guildId, winnerId)).reigns);
+
   if (stockSystem?.leaderboard?.announce !== false) {
-    await announceKing(client, guildId, ranking, dethroned).catch((e) =>
+    await announceKing(client, guildId, ranking, dethroned, reigns).catch((e) =>
       console.log(`[STOCK] 週冠公告失敗 guild=${guildId}: ${e?.message || e}`.yellow),
     );
   }
@@ -140,7 +150,7 @@ async function processGuild(client, guildId) {
     if (winner) {
       await winner
         .send(
-          `📊 恭喜你成為 **${gameTitleService.label(kingTitleId())}**！上週已實現損益 +${ranking[0].pnl.toLocaleString()}，繼續用 /股市 守住王座 📈`,
+          `📊 恭喜你成為 **${gameTitleService.label(kingTitleId())}**！上週已實現損益 +${ranking[0].pnl.toLocaleString()}，這是你第 ${reigns} 次封王，歷屆名單可用 /股市 名人堂 查看 📈`,
         )
         .catch(() => {});
     }
