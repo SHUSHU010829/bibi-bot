@@ -78,7 +78,9 @@ async function backfill(client, guildId, { limit, known }) {
     ?.findOne({ guildId }, { projection: { _id: 1 } })
     .catch(() => null);
   if (!hasTrades) return added;
-  for (let weeksAgo = 1; weeksAgo <= BACKFILL_WEEKS; weeksAgo += 1) {
+  // weeksAgo = 1 是週結算負責的那一週：留給排程（含補跑）去頒稱號 + 公告，
+  // 這裡先補寫的話會讓結算誤判成「已經結算過」而不再頒發。
+  for (let weeksAgo = 2; weeksAgo <= BACKFILL_WEEKS; weeksAgo += 1) {
     if (known.size + added.length >= limit) break;
     const window = weekWindow(weeksAgo);
     if (known.has(window.start.getTime())) continue;

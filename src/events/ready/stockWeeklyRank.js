@@ -67,8 +67,15 @@ async function announceKing(client, guildId, ranking, dethroned = [], reigns = 0
   const titleId = kingTitleId();
   const channelId = stockSystem?.reportChannelId || gameTitleService.announceChannelId();
   if (!channelId) return;
-  const channel = await client.channels.fetch(channelId).catch(() => null);
-  if (!channel?.isTextBased?.()) return;
+  const channel = await client.channels.fetch(channelId).catch((e) => {
+    console.log(`[STOCK] 週冠公告頻道 ${channelId} 取不到（頻道不存在或無權限）：${e?.message || e}`.yellow);
+    return null;
+  });
+  if (!channel) return;
+  if (!channel.isTextBased?.()) {
+    console.log(`[STOCK] 週冠公告頻道 ${channelId} 不是文字頻道，公告未發出`.yellow);
+    return;
+  }
 
   const guild = client.guilds.cache.get(guildId);
   const nameOf = (id) => plainifyUserMentions(guild, `<@${id}>`);
@@ -106,13 +113,19 @@ async function announceKing(client, guildId, ranking, dethroned = [], reigns = 0
     )
     .addActionRowComponents(hallButtonRow());
 
-  await channel
-    .send({
-      components: [container],
-      flags: MessageFlags.IsComponentsV2,
-      allowedMentions: { parse: [] },
-    })
-    .catch(() => {});
+  await channel.send({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] },
+  });
+  console.log(`[STOCK] 週冠公告已送出 guild=${guildId} channel=${channelId}`.cyan);
+}
+
+// 舊版沒有 StockKingHistory，補跑時只能靠稱號 meta 的授予時間判斷這一輪是否已頒過。
+async function grantedThisCycle(client, guildId, userId, since) {
+  const meta = await gameTitleService.getTitleMeta(client, userId, guildId);
+  const m = meta.find((x) => x.titleId === kingTitleId() && x.status === "active");
+  return !!m && (m.grantedAt || 0) >= since;
 }
 
 async function processGuild(client, guildId) {
@@ -125,6 +138,20 @@ async function processGuild(client, guildId) {
   if (!ranking.length || ranking[0].pnl <= 0) return null;
 
   const winnerId = ranking[0].userId;
+
+  // 同一週只結算一次：排程準時跑完後，補跑排程再進來就會停在這裡。
+  const settled = await client.stockKingHistoryCollection
+    ?.findOne({ guildId, weekStart: window.start })
+    .catch(() => null);
+  if (settled) return null;
+  if (await grantedThisCycle(client, guildId, winnerId, window.end.getTime())) {
+    // 稱號已經頒過（舊版排程跑的），只把紀錄補起來，不重複公告
+    await stockKingService
+      .recordAward(client, { guildId, window, ranking, source: "weekly_cron" })
+      .catch(() => {});
+    return null;
+  }
+
   await gameTitleService
     .grant(client, { userId: winnerId, guildId, titleId: kingTitleId(), announce: false, source: "weekly_stock_king" })
     .catch(() => {});
@@ -185,14 +212,32 @@ module.exports = async (client) => {
   if (!stockSystem?.enabled) return;
   const cfg = stockSystem?.leaderboard || {};
   if (cfg.enabled === false) return;
+  const timezone = cfg.timezone || stockSystem?.timezone || "Asia/Taipei";
 
   registerCron(client, {
     name: "stock.weeklyRank",
     label: "股市操盤週冠結算",
     schedule: cfg.cronSchedule || "1 0 * * 1",
-    timezone: cfg.timezone || stockSystem?.timezone || "Asia/Taipei",
+    timezone,
     runner: () => runWeeklyRank(client),
   });
+
+  // node-cron 不補跑錯過的排程：週一 00:01 剛好在重啟 / 部署 / 斷線中，那一週就
+  // 永遠不會結算也不會公告。runWeeklyRank 已是冪等（看 StockKingHistory），所以
+  // 開機後與每隔幾小時各補跑一次，錯過的那次會自己補回來。
+  registerCron(client, {
+    name: "stock.weeklyRankCatchup",
+    label: "股市操盤週冠補跑",
+    schedule: cfg.catchupCronSchedule || "7 */4 * * *",
+    timezone,
+    runner: () => runWeeklyRank(client),
+  });
+
+  setTimeout(() => {
+    runWeeklyRank(client).catch((e) =>
+      console.log(`[STOCK] 開機補跑週冠結算失敗：${e?.message || e}`.yellow),
+    );
+  }, cfg.catchupBootDelayMs || 2 * 60 * 1000).unref?.();
 };
 
 module.exports.runWeeklyRank = runWeeklyRank;

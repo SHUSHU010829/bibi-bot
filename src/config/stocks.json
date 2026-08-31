@@ -118,7 +118,8 @@
       "timezone": "Asia/Taipei",
       "titleId": "stock_king",
       "topN": 10,
-      "announce": true
+      "announce": true,
+      "catchupCronSchedule": "7 */4 * * *"
     },
     "sectors": {
       "SEMI":     { "name": "半導體族群", "symbols": ["TSPP", "MTKP", "FHPP", "DLPP"] },
