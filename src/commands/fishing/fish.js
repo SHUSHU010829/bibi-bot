@@ -337,6 +337,23 @@ function rodDurabilityWarnLine(rodKey, durability, maxDurability) {
   return null;
 }
 
+// 「使用釣竿」那行後面的耐久尾巴：釣到魚、釣到非魚（垃圾 / 寶物）共用同一份，
+// 兩邊各寫一份就會像先前那樣只有其中一邊看得到剩餘次數。
+function rodDurabilityStatus(result) {
+  const after = result.rodDurabilityAfter;
+  if (result.rodKey === "bamboo" || typeof after !== "number") {
+    return { text: "", warnLevel: null };
+  }
+  const warn = fishing?.durabilityWarn || {};
+  if (typeof warn.critical === "number" && after <= warn.critical) {
+    return { text: `（🚨 耐久剩 ${after}）`, warnLevel: "critical" };
+  }
+  if (typeof warn.low === "number" && after <= warn.low) {
+    return { text: `（⚠️ 耐久剩 ${after}）`, warnLevel: "low" };
+  }
+  return { text: `（耐久剩 ${after}）`, warnLevel: null };
+}
+
 function rodDurabilityLine(rodKey, durability, maxDurability) {
   if (!rodKey || rodKey === "bamboo" || durability === null || durability === undefined) {
     return `🪝 **目前釣竿**\n${rodLabel("bamboo")}（無耐久消耗）`;
@@ -724,6 +741,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
       const item = result.catchItem || {};
       const isTreasure = item.category === "treasure";
       const lootEpoch = Math.floor(result.newCooldownAt / 1000);
+      const lootDura = rodDurabilityStatus(result);
       const lootContainer = new ContainerBuilder()
         .setAccentColor(isTreasure ? 0xf1c40f : 0xa9744f)
         .addTextDisplayComponents(
@@ -743,7 +761,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `${result.locDef?.emoji || "🎣"} 釣魚地點：**${result.locDef?.name || location}**\n` +
-              `🪝 使用釣竿：**${rodLabelText}**\n` +
+              `🪝 使用釣竿：**${rodLabelText}**${lootDura.text}\n` +
               `🎯 本次成功率：**${successPct}%**` +
               (result.xpGained > 0 ? `\n⭐ 經驗值：**+${result.xpGained}**` : "")
           )
@@ -775,6 +793,12 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
         lootContainer.addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             "-# 🪝 你的釣竿斷了，已換回竹釣竿，快去 /合成 打造新的！"
+          )
+        );
+      } else if (lootDura.warnLevel) {
+        lootContainer.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            rodDurabilityWarnLine(result.rodKey, result.rodDurabilityAfter),
           )
         );
       }
@@ -835,23 +859,7 @@ async function executeFish(client, interaction, { location = "stream" } = {}) {
         }[fishDef.rarity || "普通"] ?? 0x7fb2d8;
 
     const qty = result.qty || 1;
-    const warn = fishing.durabilityWarn || {};
-    const showDura =
-      result.rodKey !== "bamboo" && typeof result.rodDurabilityAfter === "number";
-    let rodDuraText = "";
-    let rodWarnLevel = null;
-    if (showDura) {
-      const after = result.rodDurabilityAfter;
-      if (typeof warn.critical === "number" && after <= warn.critical) {
-        rodDuraText = `（🚨 耐久剩 ${after}）`;
-        rodWarnLevel = "critical";
-      } else if (typeof warn.low === "number" && after <= warn.low) {
-        rodDuraText = `（⚠️ 耐久剩 ${after}）`;
-        rodWarnLevel = "low";
-      } else {
-        rodDuraText = `（耐久剩 ${after}）`;
-      }
-    }
+    const { text: rodDuraText, warnLevel: rodWarnLevel } = rodDurabilityStatus(result);
 
     const container = new ContainerBuilder()
       .setAccentColor(rarityColor)
