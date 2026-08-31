@@ -261,6 +261,7 @@ function freshCombatFields() {
       combo_mvp: null,
     },
     attack_counts: {},
+    charge_counts: {},
   };
 }
 
@@ -362,13 +363,24 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
   const ammoActive = ammo.active;
   const ammoLimitBonus = ammoActive ? (ammoCfg.attackLimitBonus || 0) : 0;
 
-  const baseLimit = baseAttackLimitFor(bossDoc) + guildAttackLimitBonus + ammoLimitBonus;
+  // 出刀額度分三段，順序固定為 base → 攻擊庫存 → 封魔彈藥，彈藥的 +N 刀掛在最外層。
+  // 「本場已花掉的庫存」必須實際記在 charge_counts，不能用 used - baseLimit 回推：
+  // 回推的話彈藥 +N 一旦併進 baseLimit，已花掉的庫存就憑空少 N、額度被自己抵消，
+  // 「原本次數打完才投彈」等於完全沒效果。
+  const baseLimit = baseAttackLimitFor(bossDoc) + guildAttackLimitBonus;
   const chargeCap = cfg().summon?.maxBonusAttacksPerPlayer ?? 5;
   const used = (bossDoc.attack_counts || {})[userId] || 0;
-  const extraUsed = Math.max(0, used - baseLimit);
+  // 舊場次沒有 charge_counts 欄位時才回推（此時 base+彈藥 先用完才輪到庫存，與舊算法一致）。
+  const recordedSpent = (bossDoc.charge_counts || {})[userId];
+  const extraUsed = Math.min(
+    chargeCap,
+    Math.max(0, recordedSpent ?? (used - baseLimit - ammoLimitBonus)),
+  );
   const charges = Math.max(0, profile.boss_attack_charges || 0);
   const allowedExtra = Math.min(chargeCap, charges + extraUsed);
-  const attackLimit = baseLimit + allowedExtra;
+  const attackLimit = baseLimit + allowedExtra + ammoLimitBonus;
+  // 這一刀算庫存還是彈藥額度：base 用完後先吃庫存，庫存額度也用完才吃彈藥的 +N。
+  const usesCharge = used - extraUsed >= baseLimit && extraUsed < allowedExtra;
   if (used >= attackLimit) {
     return { ok: false, reason: "attack_limit", used, limit: attackLimit, ammo };
   }
@@ -508,7 +520,7 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
     { upsert: true },
   ).catch(() => {});
   // 被反擊＝空刀，只扣體力：不佔本場攻擊次數，也不吃攻擊庫存。
-  if (!isCounter && used >= baseLimit) {
+  if (!isCounter && usesCharge) {
     await client.miningProfilesCollection.updateOne(
       { userId, guildId, boss_attack_charges: { $gt: 0 } },
       { $inc: { boss_attack_charges: -1 } },
@@ -530,7 +542,10 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
     last_hit_at: now,
     updatedAt: new Date(),
   };
-  if (!isCounter) setFields[`attack_counts.${userId}`] = attackCount;
+  if (!isCounter) {
+    setFields[`attack_counts.${userId}`] = attackCount;
+    setFields[`charge_counts.${userId}`] = extraUsed + (usesCharge ? 1 : 0);
+  }
   // 被反擊的空刀不佔次數，但一樣要進冷卻（否則被反擊就能無限重試）。
   const nextCooldownAt = cdMs > 0 ? Math.max(now, cooldownUntil) + cdMs : 0;
   if (cdMs > 0) setFields[`cooldown_until.${userId}`] = nextCooldownAt;
@@ -660,6 +675,7 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
     attackLimit,
     ammo,
     bonusAttacks: allowedExtra,
+    ammoAttacks: ammoLimitBonus,
     rageStacks: rageState({ hits_taken: afterDoc.hits_taken }).stacks,
     counterRate,
     firstStrike,
@@ -942,6 +958,22 @@ async function useSealingAmmo(client, { userId, guildId }) {
   );
   const decDoc = dec?.value || dec;
   if (!decDoc) return { ok: false, reason: "no_ammo" };
+
+  // 投彈前先把「本場已花掉的攻擊庫存」落成實數（只補沒有欄位的舊場次）：
+  // 少了這一步，投彈當下的額度會用 used - baseLimit 回推，彈藥的 +N 會被自己抵消掉。
+  if (!(bossDoc.charge_counts || {})[userId]) {
+    const sum = await buffResolver.summary(client, userId, guildId).catch(() => null);
+    const guildAttackLimitBonus = sum?.guildClub?.bossAttackLimitBonus || 0;
+    const usedNow = (bossDoc.attack_counts || {})[userId] || 0;
+    const spent = Math.min(
+      cfg().summon?.maxBonusAttacksPerPlayer ?? 5,
+      Math.max(0, usedNow - baseAttackLimitFor(bossDoc) - guildAttackLimitBonus),
+    );
+    await client.bossEventsCollection.updateOne(
+      { boss_id: bossDoc.boss_id, [`charge_counts.${userId}`]: { $exists: false } },
+      { $set: { [`charge_counts.${userId}`]: spent } },
+    ).catch(() => {});
+  }
 
   const upd = await client.bossEventsCollection.findOneAndUpdate(
     { boss_id: bossDoc.boss_id, [`ammo_users.${userId}`]: { $exists: false } },

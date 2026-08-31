@@ -86,6 +86,14 @@ function ammoEffectText() {
   return `攻擊次數 +${acfg.attackLimitBonus || 0}・傷害 +${acfg.bossDamagePct || 0}%`;
 }
 
+// 出刀上限的來源拆解：庫存與彈藥各加了幾刀寫清楚，玩家才看得出投彈真的有效。
+function limitBreakdown(result) {
+  const bits = [];
+  if (result?.bonusAttacks > 0) bits.push(`庫存 +${result.bonusAttacks}`);
+  if (result?.ammoAttacks > 0) bits.push(`彈藥 +${result.ammoAttacks}`);
+  return bits.length ? `（含${bits.join("・")}）` : "";
+}
+
 // 打造指引：材料清單取自合成配方（唯一真實來源），避免與 boss.json 的複本分岔。
 function ammoCraftHint() {
   const acfg = boss?.sealingAmmo || {};
@@ -221,7 +229,7 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**${displayName}** 的狀態\n🔋 體力：${result.stamina}/${result.staminaMax}（被反擊額外 -1）\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}`,
+          `**${displayName}** 的狀態\n🔋 體力：${result.stamina}/${result.staminaMax}（被反擊額外 -1）\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${limitBreakdown(result)}`,
         ),
       );
     const rl = rageLine(result.rageStacks, result.counterRate);
@@ -268,7 +276,7 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**${displayName}** 的狀態\n🔋 體力：${result.stamina}/${result.staminaMax}\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${result.bonusAttacks > 0 ? `（含庫存 +${result.bonusAttacks}）` : ""}${result.xpGained > 0 ? `\n✨ 經驗 +${result.xpGained}` : ""}`,
+          `**${displayName}** 的狀態\n🔋 體力：${result.stamina}/${result.staminaMax}\n⚔️ 本場攻擊次數：${result.attackCount}/${result.attackLimit}${limitBreakdown(result)}${result.xpGained > 0 ? `\n✨ 經驗 +${result.xpGained}` : ""}`,
         ),
       );
     if (result.sameUserStreak > 1) {
@@ -356,7 +364,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**${displayName}** 的狀態\n🔋 體力：${last.stamina}/${last.staminaMax}${counters > 0 ? `（${counters} 次被反擊）` : ""}\n⚔️ 本場攻擊次數：${last.attackCount}/${last.attackLimit}${last.bonusAttacks > 0 ? `（含庫存 +${last.bonusAttacks}）` : ""}`,
+          `**${displayName}** 的狀態\n🔋 體力：${last.stamina}/${last.staminaMax}${counters > 0 ? `（${counters} 次被反擊）` : ""}\n⚔️ 本場攻擊次數：${last.attackCount}/${last.attackLimit}${limitBreakdown(last)}`,
         ),
       );
     const rl = rageLine(last.rageStacks, last.counterRate);
