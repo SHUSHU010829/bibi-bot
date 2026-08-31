@@ -135,11 +135,11 @@ async function open(client, { userId, guildId, username, member, avatarHash, amo
   };
 }
 
+// 不截筆數：筆數上限由 maxActive() 在開戶時把關，這裡截斷會讓額度 > 20 的玩家看不到後面的定存
 async function list(client, userId, guildId) {
   return client.coinDepositsCollection
     .find({ userId, guildId, status: "active" })
     .sort({ maturesAt: 1 })
-    .limit(20)
     .toArray();
 }
 

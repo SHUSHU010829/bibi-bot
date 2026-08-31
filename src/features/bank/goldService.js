@@ -412,7 +412,6 @@ async function listTerms(client, userId, guildId) {
   return client.goldDepositsCollection
     .find({ userId, guildId, status: "active" })
     .sort({ maturesAt: 1 })
-    .limit(20)
     .toArray();
 }
 
