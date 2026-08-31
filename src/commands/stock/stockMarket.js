@@ -39,6 +39,10 @@ const insiderService = require("../../features/stock/insiderService");
 const portfolioService = require("../../features/stock/portfolioService");
 const shortService = require("../../features/stock/shortService");
 const leaderboardService = require("../../features/stock/leaderboardService");
+const {
+  buildHallContainer,
+  hallButtonRow,
+} = require("../../features/stock/stockKingView");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const { buildChartContainer } = require("../../features/stock/chartView");
 const { respondSymbolOptions } = require("../../features/stock/symbolOptions");
@@ -249,6 +253,11 @@ module.exports = {
     )
     .addSubcommand((s) =>
       s
+        .setName("名人堂")
+        .setDescription("歷屆 📊 最強操盤手頒發紀錄 🏛️")
+    )
+    .addSubcommand((s) =>
+      s
         .setName("停損停利")
         .setDescription("設定股票自動停損 / 停利價（命中時開盤掃描會全倉自動賣出）🔔")
         .addStringOption((o) =>
@@ -316,6 +325,7 @@ module.exports = {
     if (sub === "融券") return runOpenShort(client, interaction);
     if (sub === "回補") return runCoverShort(client, interaction);
     if (sub === "排行") return runLeaderboard(client, interaction);
+    if (sub === "名人堂") return runHallOfFame(client, interaction);
     if (sub === "內線") return runInsider(client, interaction);
   },
 };
@@ -440,7 +450,8 @@ async function runLeaderboard(client, interaction) {
         new TextDisplayBuilder().setContent(
           "-# 已實現損益只計賣出與融券回補；本週冠軍每週一頒發 📊 最強操盤手稱號"
         )
-      );
+      )
+      .addActionRowComponents(hallButtonRow());
 
     await interaction.editReply({
       components: [container],
@@ -448,6 +459,29 @@ async function runLeaderboard(client, interaction) {
     });
   } catch (err) {
     console.log(`[STOCK] /股市 排行 失敗:${err?.stack || err}`.red);
+    await interaction.editReply("❌ 查詢失敗,請稍後再試。").catch(() => {});
+  }
+}
+
+// ─────────────────────────── /股市 名人堂 ───────────────────────────
+async function runHallOfFame(client, interaction) {
+  await interaction.deferReply();
+  try {
+    if (!stockSystem?.enabled) return interaction.editReply("🔧 股市系統未啟用。");
+    if (!client.stockKingHistoryCollection) {
+      return interaction.editReply("🔧 股市系統尚未就緒。");
+    }
+    const container = await buildHallContainer(client, {
+      guildId: interaction.guildId,
+      viewerId: interaction.user.id,
+    });
+    await interaction.editReply({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { parse: [] },
+    });
+  } catch (err) {
+    console.log(`[STOCK] /股市 名人堂 失敗:${err?.stack || err}`.red);
     await interaction.editReply("❌ 查詢失敗,請稍後再試。").catch(() => {});
   }
 }

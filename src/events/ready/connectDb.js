@@ -181,6 +181,7 @@ module.exports = async (client) => {
     const stockShortsCollection = database.collection("StockShorts");
     const stockTreasuryCollection = database.collection("StockTreasury");
     const stockInsiderTipsCollection = database.collection("StockInsiderTips");
+    const stockKingHistoryCollection = database.collection("StockKingHistory");
 
     // 挖礦系統 collections
     const miningProfilesCollection = database.collection("MiningProfiles");
@@ -358,6 +359,7 @@ module.exports = async (client) => {
     client.stockShortsCollection = stockShortsCollection;
     client.stockTreasuryCollection = stockTreasuryCollection;
     client.stockInsiderTipsCollection = stockInsiderTipsCollection;
+    client.stockKingHistoryCollection = stockKingHistoryCollection;
     client.recommendationsCollection = recommendationsCollection;
     client.inviteCacheCollection = inviteCacheCollection;
     client.inviteRecordsCollection = inviteRecordsCollection;
@@ -1373,6 +1375,15 @@ module.exports = async (client) => {
       await stockInsiderTipsCollection.createIndex(
         { createdAt: 1 },
         { expireAfterSeconds: 30 * 24 * 60 * 60, name: "insider_ttl_30d" }
+      );
+      // 最強操盤手歷屆紀錄：一個 guild 一週一筆，名人堂要長期查得到，不設 TTL
+      await stockKingHistoryCollection.createIndex(
+        { guildId: 1, weekStart: -1 },
+        { unique: true, name: "uniq_stock_king_guild_week" }
+      );
+      await stockKingHistoryCollection.createIndex(
+        { guildId: 1, userId: 1 },
+        { name: "stock_king_guild_user" }
       );
 
       // 推薦頻道索引（type 過濾 + 全文搜尋）
