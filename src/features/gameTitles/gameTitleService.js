@@ -153,6 +153,15 @@ async function revoke(client, { userId, guildId, titleId, status = "revoked" }) 
     .catch(() => {});
 }
 
+// 這一輪（since 之後）有沒有頒過這個稱號 —— 不看目前狀態，被撤銷 / 過期也算頒過。
+// 週冠 / 月冠排程漏跑後要補跑，得先判斷「這一輪是不是已經頒過了」，否則會重複公告
+// 與重複累計次數；grant() 每次都會刷新 meta 的 grantedAt，剛好能當這個判斷依據。
+// 看 status 的話，admin 撤銷後補跑排程會把稱號自己頒回去，所以這裡只看時間。
+async function grantedSince(client, { userId, guildId, titleId, since }) {
+  const meta = await getTitleMeta(client, userId, guildId);
+  return meta.some((x) => x.titleId === titleId && (x.grantedAt || 0) >= since);
+}
+
 // 掃出所有「已過期但仍 active」的稱號 meta（給 titleExpiryChecker cron 用）。
 // 回傳 [{ userId, guildId, titleId }]。
 async function findExpiredActive(client, now = Date.now()) {
@@ -555,6 +564,7 @@ module.exports = {
   getUnlocked,
   getTitleMeta,
   writeTitleMeta,
+  grantedSince,
   findExpiredActive,
   grant,
   setActive,
