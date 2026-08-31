@@ -90,10 +90,16 @@ async function dethronePrevious(client, guildId, winnerId) {
 
 async function announceConqueror(client, guildId, winnerId, ranking, window, dethroned) {
   const announceChannelId = gameTitleService.announceChannelId();
-  const channel = announceChannelId
-    ? await client.channels.fetch(announceChannelId).catch(() => null)
-    : null;
-  if (!channel?.isTextBased?.()) return;
+  if (!announceChannelId) return;
+  const channel = await client.channels.fetch(announceChannelId).catch((e) => {
+    console.log(`[DUNGEON] 月榜公告頻道 ${announceChannelId} 取不到（頻道不存在或無權限）：${e?.message || e}`.yellow);
+    return null;
+  });
+  if (!channel) return;
+  if (!channel.isTextBased?.()) {
+    console.log(`[DUNGEON] 月榜公告頻道 ${announceChannelId} 不是文字頻道，公告未發出`.yellow);
+    return;
+  }
 
   const guild = client.guilds.cache.get(guildId);
   const lines = ranking.slice(0, 3).map((r, i) => {
@@ -124,13 +130,11 @@ async function announceConqueror(client, guildId, winnerId, ranking, window, det
       new TextDisplayBuilder().setContent(`-# ${dethroneLine}`),
     );
 
-  await channel
-    .send({
-      components: [container],
-      flags: MessageFlags.IsComponentsV2,
-      allowedMentions: { parse: [] },
-    })
-    .catch(() => {});
+  await channel.send({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] },
+  });
 }
 
 async function processGuild(client, guildId, window) {
@@ -138,6 +142,19 @@ async function processGuild(client, guildId, window) {
   if (!ranking.length) return null;
 
   const winnerId = ranking[0].userId;
+
+  // 同一個月只結算一次：補跑排程再進來時，靠稱號授予時間判斷這一輪是否已頒過。
+  if (
+    await gameTitleService.grantedSince(client, {
+      userId: winnerId,
+      guildId,
+      titleId: TITLE_ID,
+      since: window.end.getTime(),
+    })
+  ) {
+    return null;
+  }
+
   await gameTitleService
     .grant(client, {
       userId: winnerId,
@@ -149,7 +166,9 @@ async function processGuild(client, guildId, window) {
     .catch(() => {});
 
   const dethroned = await dethronePrevious(client, guildId, winnerId);
-  await announceConqueror(client, guildId, winnerId, ranking, window, dethroned);
+  await announceConqueror(client, guildId, winnerId, ranking, window, dethroned).catch((e) =>
+    console.log(`[DUNGEON] 月榜公告失敗 guild=${guildId}: ${e?.message || e}`.yellow),
+  );
 
   try {
     const winner = await client.users.fetch(winnerId).catch(() => null);
@@ -201,4 +220,22 @@ module.exports = async (client) => {
     timezone: TZ,
     runner: () => runMonthlyRank(client),
   });
+
+  // node-cron 不補跑錯過的排程：1 號 00:01 卡在重啟 / 部署 / 斷線，那個月就不會
+  // 頒稱號也不會公告，還要等一整個月。runMonthlyRank 已是冪等，定期補跑即可自癒。
+  registerCron(client, {
+    name: "dungeon.monthlyRankCatchup",
+    label: "副本征服者月榜補跑",
+    schedule: "11 */6 * * *",
+    timezone: TZ,
+    runner: () => runMonthlyRank(client),
+  });
+
+  setTimeout(() => {
+    runMonthlyRank(client).catch((e) =>
+      console.log(`[DUNGEON] 開機補跑月榜結算失敗：${e?.message || e}`.yellow),
+    );
+  }, 2 * 60 * 1000).unref?.();
 };
+
+module.exports.runMonthlyRank = runMonthlyRank;

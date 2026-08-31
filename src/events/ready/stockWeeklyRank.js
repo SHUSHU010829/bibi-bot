@@ -121,13 +121,6 @@ async function announceKing(client, guildId, ranking, dethroned = [], reigns = 0
   console.log(`[STOCK] 週冠公告已送出 guild=${guildId} channel=${channelId}`.cyan);
 }
 
-// 舊版沒有 StockKingHistory，補跑時只能靠稱號 meta 的授予時間判斷這一輪是否已頒過。
-async function grantedThisCycle(client, guildId, userId, since) {
-  const meta = await gameTitleService.getTitleMeta(client, userId, guildId);
-  const m = meta.find((x) => x.titleId === kingTitleId() && x.status === "active");
-  return !!m && (m.grantedAt || 0) >= since;
-}
-
 async function processGuild(client, guildId) {
   const window = leaderboardService.previousWeekWindow();
   const ranking = await leaderboardService.rankByWindow(client, guildId, {
@@ -144,7 +137,15 @@ async function processGuild(client, guildId) {
     ?.findOne({ guildId, weekStart: window.start })
     .catch(() => null);
   if (settled) return null;
-  if (await grantedThisCycle(client, guildId, winnerId, window.end.getTime())) {
+  // 舊版沒有 StockKingHistory，補跑時只能靠稱號授予時間判斷這一輪是否已頒過
+  if (
+    await gameTitleService.grantedSince(client, {
+      userId: winnerId,
+      guildId,
+      titleId: kingTitleId(),
+      since: window.end.getTime(),
+    })
+  ) {
     // 稱號已經頒過（舊版排程跑的），只把紀錄補起來，不重複公告
     await stockKingService
       .recordAward(client, { guildId, window, ranking, source: "weekly_cron" })

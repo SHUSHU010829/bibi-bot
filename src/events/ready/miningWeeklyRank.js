@@ -59,8 +59,15 @@ async function dethronePrevious(client, guildId, winnerId, winnerLabel) {
 async function announceKing(client, guildId, winnerId, ranking, championCount, dethroned = []) {
   const channelId = gameTitleService.announceChannelId();
   if (!channelId) return;
-  const channel = await client.channels.fetch(channelId).catch(() => null);
-  if (!channel?.isTextBased?.()) return;
+  const channel = await client.channels.fetch(channelId).catch((e) => {
+    console.log(`[MINING] 週冠公告頻道 ${channelId} 取不到（頻道不存在或無權限）：${e?.message || e}`.yellow);
+    return null;
+  });
+  if (!channel) return;
+  if (!channel.isTextBased?.()) {
+    console.log(`[MINING] 週冠公告頻道 ${channelId} 不是文字頻道，公告未發出`.yellow);
+    return;
+  }
 
   const guild = client.guilds.cache.get(guildId);
   const nameOf = (id) => plainifyUserMentions(guild, `<@${id}>`);
@@ -95,13 +102,11 @@ async function announceKing(client, guildId, winnerId, ranking, championCount, d
       ),
     );
 
-  await channel
-    .send({
-      components: [container],
-      flags: MessageFlags.IsComponentsV2,
-      allowedMentions: { parse: [] },
-    })
-    .catch(() => {});
+  await channel.send({
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] },
+  });
 }
 
 async function processGuild(client, guildId) {
@@ -110,6 +115,19 @@ async function processGuild(client, guildId) {
   if (!ranking.length) return null;
 
   const winnerId = ranking[0].userId;
+
+  // 同一週只結算一次：補跑排程再進來時，靠稱號授予時間判斷這一輪是否已頒過，
+  // 否則 weekly_champion_count 會被重複累加、公告也會重發。
+  if (
+    await gameTitleService.grantedSince(client, {
+      userId: winnerId,
+      guildId,
+      titleId: KING_TITLE,
+      since: window.end.getTime(),
+    })
+  ) {
+    return null;
+  }
 
   // 先頒給新王（idempotent，自行做專屬公告所以關掉預設公告），再卸下舊王
   await gameTitleService
@@ -134,7 +152,9 @@ async function processGuild(client, guildId) {
   const guild = client.guilds.cache.get(guildId);
   const winnerLabel = plainifyUserMentions(guild, `<@${winnerId}>`);
   const dethroned = await dethronePrevious(client, guildId, winnerId, winnerLabel);
-  await announceKing(client, guildId, winnerId, ranking, championCount, dethroned);
+  await announceKing(client, guildId, winnerId, ranking, championCount, dethroned).catch((e) =>
+    console.log(`[MINING] 週冠公告失敗 guild=${guildId}: ${e?.message || e}`.yellow),
+  );
 
   // 新王 DM 通知
   try {
@@ -182,11 +202,30 @@ module.exports = async (client) => {
   if (!mining?.enabled) return;
 
   const cfg = mining?.weeklyRank || {};
+  const timezone = cfg.timezone || "Asia/Taipei";
   registerCron(client, {
     name: "mining.weeklyRank",
     label: "挖礦週冠結算",
     schedule: cfg.cronSchedule || "1 0 * * 1",
-    timezone: cfg.timezone || "Asia/Taipei",
+    timezone,
     runner: () => runWeeklyRank(client),
   });
+
+  // node-cron 不補跑錯過的排程：週一 00:01 卡在重啟 / 部署 / 斷線，那一週就不會
+  // 頒王也不會公告。runWeeklyRank 已是冪等，開機後與每隔幾小時補跑一次即可自癒。
+  registerCron(client, {
+    name: "mining.weeklyRankCatchup",
+    label: "挖礦週冠補跑",
+    schedule: cfg.catchupCronSchedule || "9 */4 * * *",
+    timezone,
+    runner: () => runWeeklyRank(client),
+  });
+
+  setTimeout(() => {
+    runWeeklyRank(client).catch((e) =>
+      console.log(`[MINING] 開機補跑週冠結算失敗：${e?.message || e}`.yellow),
+    );
+  }, cfg.catchupBootDelayMs || 2 * 60 * 1000).unref?.();
 };
+
+module.exports.runWeeklyRank = runWeeklyRank;
