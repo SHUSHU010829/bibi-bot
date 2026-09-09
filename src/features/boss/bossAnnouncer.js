@@ -16,8 +16,50 @@ async function resolveChannel(client, id) {
   return ch?.isTextBased?.() ? ch : null;
 }
 
+function noticeCfg() {
+  return boss?.preNotice || {};
+}
+
+function fillNotice(tpl, { spawnAt, minutes, contributorCount }) {
+  const sec = Math.floor(spawnAt / 1000);
+  return tpl
+    .replace(/\{time\}/g, `<t:${sec}:t>`)
+    .replace(/\{relative\}/g, `<t:${sec}:R>`)
+    .replace(/\{minutes\}/g, String(minutes ?? 0))
+    .replace(/\{contributors\}/g, String(contributorCount ?? 0));
+}
+
+// 出沒預告專用頻道（跟戰鬥頻道分開，只放「幾點會出現」這種小通知）。
+async function sendNotice(client, content) {
+  const nc = noticeCfg();
+  if (!nc.enabled || !content) return;
+  const ch = await resolveChannel(client, nc.channelId || boss?.announceChannelId);
+  if (!ch) return;
+  await ch.send({ content, allowedMentions: { parse: [] } }).catch(() => {});
+}
+
+// 能量集滿的當下：先講「魔王被喚醒了，幾點會來」，不然玩家只看到能量條歸零會以為壞掉。
+async function announceSummonReserved(client, { spawnAt, contributorCount }) {
+  const tpl = pickFrom(noticeCfg().reserveMessages);
+  if (!tpl) return;
+  await sendNotice(client, fillNotice(tpl, {
+    spawnAt,
+    minutes: noticeCfg().minutesBefore ?? 0,
+    contributorCount,
+  }));
+}
+
+// 出沒前 minutesBefore 分鐘的小通知（召喚場與週六固定場共用）。
+async function announcePreNotice(client, { spawnAt, source, contributorCount }) {
+  const nc = noticeCfg();
+  const tpl = pickFrom(source === "saturday" ? nc.saturdayMessages : nc.summonMessages);
+  if (!tpl) return;
+  const minutes = Math.max(1, Math.round((spawnAt - Date.now()) / 60000));
+  await sendNotice(client, fillNotice(tpl, { spawnAt, minutes, contributorCount }));
+}
+
 async function announceSpawn(client, bossDoc, opts = {}) {
-  // ends_at 為 null＝招喚場無時間限制，待到被擊殺為止。
+  // ends_at 為 null＝無時限場（招喚場 durationMinutes 設 0 時），待到被擊殺為止。
   const endField = bossDoc.ends_at != null
     ? { name: "⏳ 戰鬥結束", value: `<t:${Math.floor(bossDoc.ends_at / 1000)}:R>`, inline: true }
     : { name: "⏳ 討伐期限", value: "無時限，待到被擊殺", inline: true };
@@ -150,6 +192,8 @@ async function announceSettlement(client, settlement) {
 
 module.exports = {
   announceSpawn,
+  announceSummonReserved,
+  announcePreNotice,
   announcePhase,
   announceCombo,
   announceSkillEvents,

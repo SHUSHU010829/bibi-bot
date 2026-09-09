@@ -11,8 +11,21 @@ const { COIN_EMOJI } = require("../../constants/coin");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const bossEngine = require("./bossEngine");
 const bossSkills = require("./bossSkills");
+const bossSpawnWindow = require("./bossSpawnWindow");
 const dungeonService = require("../mining/dungeonService");
 const { materialLabel } = require("../mining/craftMaterials");
+
+// 「召喚場什麼時候會出現」的統一說法：出沒時段與預告都從 config 讀，各處共用一份，
+// 免得改了時段之後某個角落還印著舊時間。
+function summonWindowHint() {
+  if (!bossSpawnWindow.enabled()) {
+    return "多打 /地下城 累積討伐能量就能提前召喚一隻額外魔王。";
+  }
+  const mins = bossSpawnWindow.noticeMinutes();
+  const noticeText = mins > 0 ? `，出沒前 ${mins} 分鐘會在通知頻道預告` : "";
+  return `社群召喚的魔王固定在台灣時間 ${bossSpawnWindow.windowLabel()} 之間隨機出沒${noticeText}；`
+    + "多打 /地下城 累積討伐能量就能召喚。";
+}
 
 function nameOf(guild, userId) {
   return plainifyUserMentions(guild, `<@${userId}>`);
@@ -412,7 +425,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
 
 function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage, comboActive, guild, ammo }) {
   const phase = b.phase || "normal";
-  // ends_at 為 null＝招喚場無時間限制，待到被擊殺為止。
+  // ends_at 為 null＝無時限場（招喚場 durationMinutes 設 0 時），待到被擊殺為止。
   const noLimit = b.ends_at == null;
   const remainMs = noLimit ? 0 : Math.max(0, b.ends_at - Date.now());
   const remainMin = Math.floor(remainMs / 60000);
@@ -585,7 +598,7 @@ function buildSealingAmmoErrorContainer(reason, ammo) {
     return buildErrorContainer({
       title: "🌙 現在沒有魔王在場",
       body: `封魔彈藥只能投進「正在場上的魔王」，沒辦法先開好等下一場。\n🎒 目前持有：**${count}** 個（不會過期，會留到下一場）`,
-      hint: "下一場固定魔王在 **週六 21:00**；也可以多打 /地下城 累積討伐能量提前召喚。",
+      hint: `下一場固定魔王在 **週六 21:00**。${summonWindowHint()}`,
     });
   }
   if (reason === "no_ammo") {
@@ -815,11 +828,15 @@ function summonConditionLines(p) {
         : "✅ 討伐冷卻　已結束",
     );
   }
-  lines.push(
-    p.activeBoss
-      ? `⏳ 場上狀態　**${p.activeBoss.emoji} ${p.activeBoss.name}** 還在場上（先打倒牠）`
-      : "✅ 場上狀態　目前沒有魔王在場",
-  );
+  if (p.pendingSpawnAt) {
+    lines.push(`🔮 場上狀態　已預約一隻魔王，<t:${Math.floor(p.pendingSpawnAt / 1000)}:R> 現身`);
+  } else {
+    lines.push(
+      p.activeBoss
+        ? `⏳ 場上狀態　**${p.activeBoss.emoji} ${p.activeBoss.name}** 還在場上（先打倒牠）`
+        : "✅ 場上狀態　目前沒有魔王在場",
+    );
+  }
   return lines;
 }
 
@@ -871,6 +888,23 @@ function myProgressLines(p) {
   return lines;
 }
 
+// 已預約出沒的召喚場：能量條會歸零，這裡要把「魔王什麼時候來」講清楚，
+// 否則玩家看到條子被清空會以為召喚失敗。
+function pendingSpawnLines(p) {
+  const sec = Math.floor(p.pendingSpawnAt / 1000);
+  const lines = [
+    "**🔮 魔王已被喚醒！**",
+    `🕘 出沒時間　<t:${sec}:t>（<t:${sec}:R>）`,
+  ];
+  if (p.preNoticeMinutes > 0) {
+    lines.push(`-# 出沒前 ${p.preNoticeMinutes} 分鐘會在通知頻道再提醒一次，先把體力補滿、武器修好。`);
+  }
+  if (p.spawnWindowLabel) {
+    lines.push(`-# 召喚出來的魔王固定在台灣時間 ${p.spawnWindowLabel} 之間隨機出沒。`);
+  }
+  return lines;
+}
+
 function buildSummonProgressContainer(p) {
   const full = p.energy >= p.threshold;
   const container = new ContainerBuilder().setAccentColor(full ? COLOR_VICTORY : 0x9b59b6);
@@ -892,6 +926,12 @@ function buildSummonProgressContainer(p) {
   const eta = energyEtaLine(p);
   if (eta) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(eta));
 
+  if (p.pendingSpawnAt) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(pendingSpawnLines(p).join("\n")));
+  }
+
   container
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
@@ -903,7 +943,13 @@ function buildSummonProgressContainer(p) {
 
   container.addSeparatorComponents(new SeparatorBuilder());
 
-  if (p.activeBoss) {
+  if (p.pendingSpawnAt) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# ⏳ 等牠現身就用 /魔王 攻擊 出手，庫存會自動用在超過基礎次數的攻擊上。",
+      ),
+    );
+  } else if (p.activeBoss) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `-# ⚔️ **${p.activeBoss.emoji} ${p.activeBoss.name}** 正在場上！用 /魔王 攻擊 出手，庫存會自動用在超過基礎次數的攻擊上。`,
@@ -932,12 +978,17 @@ function buildSummonProgressContainer(p) {
     );
   } else if (full) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("-# ✅ 條件全部達成，魔王最慢一分鐘內就會登場！"),
+      new TextDisplayBuilder().setContent(
+        p.spawnWindowLabel
+          ? `-# ✅ 條件全部達成，魔王馬上會被預約到今晚 ${p.spawnWindowLabel} 之間的隨機時刻登場！`
+          : "-# ✅ 條件全部達成，魔王最慢一分鐘內就會登場！",
+      ),
     );
   } else {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 多去 /地下城 探索、擊敗 mini-BOSS 累積能量；能量會一直累積不歸零，集滿就會自動召喚一隻額外魔王。",
+        "-# 多去 /地下城 探索、擊敗 mini-BOSS 累積能量；能量會一直累積不歸零，集滿就會自動召喚一隻額外魔王"
+          + (p.spawnWindowLabel ? `（出沒時間隨機落在台灣時間 ${p.spawnWindowLabel}）。` : "。"),
       ),
     );
   }
@@ -945,6 +996,7 @@ function buildSummonProgressContainer(p) {
 }
 
 module.exports = {
+  summonWindowHint,
   buildAttackResultContainer,
   buildComboResultContainer,
   buildInfoContainer,

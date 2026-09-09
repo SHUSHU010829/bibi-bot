@@ -265,7 +265,7 @@ function freshCombatFields() {
   };
 }
 
-// hpMult：招喚場血量倍率；noExpiry：招喚場無時間限制（ends_at=null，待到被擊殺為止）。
+// hpMult：招喚場血量倍率；noExpiry：不設到期時間（ends_at=null，待到被擊殺為止）。
 async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSource, hpMult, noExpiry }) {
   const now = Date.now();
   const existing = await getActiveBoss(client, guildId);
@@ -339,7 +339,7 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
   const bossDoc = await getActiveBoss(client, guildId);
   if (!bossDoc) return { ok: false, reason: "no_active" };
   const now = Date.now();
-  // ends_at 為 null＝招喚場無時間限制，待到被擊殺為止；只有設了到期時間的場才會過期。
+  // ends_at 為 null＝無時限場，待到被擊殺為止；只有設了到期時間的場才會過期。
   if (bossDoc.ends_at != null && now >= bossDoc.ends_at) return { ok: false, reason: "expired" };
 
   const profile = await getOrCreate(client, userId, guildId);
@@ -852,7 +852,7 @@ async function settleBoss(client, bossDoc) {
 
 async function findExpiredActiveBosses(client, now = Date.now()) {
   if (!client.bossEventsCollection) return [];
-  // 只掃有設到期時間的場（ends_at 為數字）；招喚場 ends_at=null（無時限）不會被掃到。
+  // 只掃有設到期時間的場（ends_at 為數字）；ends_at=null 的無時限場不會被掃到。
   return client.bossEventsCollection
     .find({ status: "active", ends_at: { $type: "number", $lte: now } })
     .toArray();
