@@ -6,7 +6,7 @@
     "hpPerPlayer": 2200,
     "minHp": 26000,
     "durationMinutes": 75,
-    "attackLimitPerPlayer": 18,
+    "attackLimitPerPlayer": 8,
     "attackCooldownSec": 15,
     "maxHitsPerCommand": 3,
     "participants": {
@@ -77,7 +77,7 @@
       "schedule": "0 21 * * 6",
       "timezone": "Asia/Taipei",
       "hpMult": 8,
-      "attackLimitPerPlayer": 36
+      "attackLimitPerPlayer": 20
     },
     "nameGenerator": {
       "prefixes": [
