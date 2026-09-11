@@ -140,7 +140,7 @@ async function tick(client, guild) {
     }
   }
 
-  // ends_at 為 null＝招喚場無時間限制，隨時都還有時間，跳過「剩餘時間不足」的攔截。
+  // ends_at 為 null＝無時限場，隨時都還有時間，跳過「剩餘時間不足」的攔截。
   if (bossDoc.ends_at != null) {
     const remainMin = (bossDoc.ends_at - now) / 60000;
     if (remainMin < (cfg.minRemainingMinutes ?? 3)) return;

@@ -42,14 +42,41 @@
       "maxPerWeek": 2,
       "bonusAttackPerDungeonClear": 1,
       "maxBonusAttacksPerPlayer": 5,
-      "summonHpMult": 1,
+      "summonHpMult": 5,
+      "durationMinutes": 180,
       "spawnCooldownMinutes": 1080,
+      "spawnWindow": {
+        "enabled": true,
+        "timezone": "Asia/Taipei",
+        "startHour": 19,
+        "startMinute": 10,
+        "endHour": 22,
+        "endMinute": 50,
+        "minLeadMinutes": 3
+      },
       "summonIntro": "討伐能量集滿了！社群連日的地下城探索驚醒了沉睡的魔王——"
+    },
+    "preNotice": {
+      "enabled": true,
+      "channelId": "1511655301953228800",
+      "minutesBefore": 10,
+      "reserveMessages": [
+        "🔮 討伐能量集滿了！魔王被喚醒，預計 {time} 現身（{relative}）——先把體力養滿、武器修好。",
+        "🔮 魔王已經被地下城的騷動吵醒，牠說 {time} 會來（{relative}）。準備好再出手。"
+      ],
+      "summonMessages": [
+        "⏰ **還有 {minutes} 分鐘**，社群召喚的魔王就要現身了（{relative}）！體力補一補，等等全員集火。",
+        "⏰ {minutes} 分鐘後開打（{relative}）——召喚出來的魔王正在熱身，先把 buff 吃好。"
+      ],
+      "saturdayMessages": [
+        "⏰ **週六魔王還有 {minutes} 分鐘登場**（{relative}）！這場最硬，記得先補體力、吃 buff、備好封魔彈藥。",
+        "⏰ {minutes} 分鐘後週六固定場開打（{relative}）——全員集合，這隻血超厚。"
+      ]
     },
     "saturdaySpawn": {
       "schedule": "0 21 * * 6",
       "timezone": "Asia/Taipei",
-      "hpMult": 3,
+      "hpMult": 8,
       "attackLimitPerPlayer": 20
     },
     "nameGenerator": {

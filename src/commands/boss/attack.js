@@ -135,7 +135,7 @@ function buildAttackErrorContainer(result, userId) {
   if (result.reason === "no_active") {
     return bossView.buildErrorContainer({
       title: "🌙 沒有正在進行的 BOSS 戰",
-      body: "下一場 BOSS 預計在 **週六 21:00** 出現，準備好你的武器吧！",
+      body: `下一場固定 BOSS 在 **週六 21:00** 出現，準備好你的武器吧！\n${bossView.summonWindowHint()}`,
       hint: "可以先 /合成 強化武器、/烹飪 製作 buff，迎接挑戰。",
     });
   }

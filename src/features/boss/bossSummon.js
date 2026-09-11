@@ -2,10 +2,13 @@ require("colors");
 const { boss, serverId } = require("../../config");
 const bossEngine = require("./bossEngine");
 const bossAnnouncer = require("./bossAnnouncer");
+const bossSpawnWindow = require("./bossSpawnWindow");
 
 // 「討伐能量」召喚機制：
 // - 玩家打地下城（通關 / 擊敗 mini-BOSS）累積公會共用的討伐能量。
-// - 能量集滿 threshold 且當下沒有魔王在場 → 立刻召喚一隻額外魔王，能量歸零。
+// - 能量集滿 threshold 且當下沒有魔王在場 → 預約一隻額外魔王，能量歸零。
+//   出沒時刻不是「當場登場」，而是隨機排進 spawnWindow（台灣時間晚上時段），
+//   出沒前 preNotice.minutesBefore 分鐘先在通知頻道預告，避免半夜沒人時開場。
 // - 每週召喚場次有上限（maxPerWeek），避免無限刷。
 // - 同時：地下城通關會給個人「攻擊庫存」（存 profile，可事先備戰、跨場使用），
 //   任何一場魔王（含週六固定場）都能拿出來多打幾刀，每場最多 maxBonusAttacksPerPlayer 次。
@@ -100,14 +103,29 @@ function cooldownMs() {
   return (cfg().spawnCooldownMinutes ?? 0) * 60 * 1000;
 }
 
+// 招喚場的登場參數：血量倍率吃 summonHpMult；durationMinutes 設 0 才是「無時限，待到被擊殺」。
+// 血量拉高之後不能再無時限——脫戰回血（idleRegen）會把沒打完的魔王補回滿血，
+// 牠會永遠賴在場上，連週六固定場都被卡住不能出。
+function spawnParams(guildId) {
+  const minutes = cfg().durationMinutes ?? 0;
+  return {
+    guildId,
+    spawnSource: "summon",
+    hpMult: cfg().summonHpMult ?? 1,
+    durationMs: minutes > 0 ? minutes * 60 * 1000 : undefined,
+    noExpiry: minutes <= 0,
+  };
+}
+
 // 集滿時嘗試召喚（原子搶結算權，只有一個 dungeon clear 會真的召出魔王）
-// 招喚場立即登場、無時間限制、血量與固定場同級；並有「防連續出場」冷卻。
+// 招喚場排進晚上的出沒時段、血量吃 summonHpMult、時限吃 summon.durationMinutes；並有「防連續出場」冷卻。
 // 任何一項條件沒過都只是「掛著等」：能量不歸零、也不砍掉超出門檻的部分，
 // 等待期間累積的貢獻不會白花。
 async function trySummon(client, guildId) {
   if (!client.bossSummonStateCollection) return null;
   const threshold = cfg().energyThreshold ?? 120;
   const state = await getState(client, guildId);
+  if (state?.pending_spawn?.spawn_at) return null; // 已經有一隻預約中的魔王
   const energy = await syncEnergy(client, guildId, state);
   if (energy < threshold) return null;
   const active = await bossEngine.getActiveBoss(client, guildId);
@@ -124,8 +142,9 @@ async function trySummon(client, guildId) {
   const minContributors = cfg().minContributors ?? 0;
   if (qualifiedContributors(state) < minContributors) return null;
 
+  const spawnAt = bossSpawnWindow.enabled() ? bossSpawnWindow.pickSpawnAt() : null;
   const claim = await client.bossSummonStateCollection.findOneAndUpdate(
-    { guild_id: guildId, energy: { $gte: threshold } },
+    { guild_id: guildId, energy: { $gte: threshold }, pending_spawn: null },
     {
       $set: {
         energy: 0,
@@ -134,6 +153,9 @@ async function trySummon(client, guildId) {
         clear_counts: {},
         week_key: wk,
         summoned_count: summonedThisWeek + 1,
+        pending_spawn: spawnAt
+          ? { spawn_at: spawnAt, notice_at: bossSpawnWindow.noticeAt(spawnAt), notified: false }
+          : null,
         updated_at: new Date(),
       },
     },
@@ -143,18 +165,115 @@ async function trySummon(client, guildId) {
   if (!claimed) return null; // 別的 dungeon clear 已搶先召喚
 
   const contributorCount = Object.keys(claimed.contributors || {}).length;
-  // 立即登場：血量倍率（summonHpMult）、無時間限制（noExpiry），待到被擊殺為止。
-  const res = await bossEngine.spawnBoss(client, {
-    guildId,
-    spawnSource: "summon",
-    hpMult: cfg().summonHpMult ?? 1,
-    noExpiry: true,
-  });
+
+  // 排程出沒：先把貢獻人數補進預約，再發「魔王已被喚醒，X 點現身」的預告。
+  if (spawnAt) {
+    await client.bossSummonStateCollection.updateOne(
+      { guild_id: guildId },
+      { $set: { "pending_spawn.contributor_count": contributorCount } },
+    ).catch(() => {});
+    console.log(`[BOSS] summon reserved at ${new Date(spawnAt).toISOString()} by ${contributorCount} contributors`.cyan);
+    await bossAnnouncer
+      .announceSummonReserved(client, { spawnAt, contributorCount })
+      .catch((e) => console.log(`[BOSS] summon reserve announce failed: ${e.message}`.red));
+    return null;
+  }
+
+  const res = await bossEngine.spawnBoss(client, spawnParams(guildId));
   if (!res.ok) return null; // 極端情況：期間已有 boss，能量已消耗，下週再來
 
   console.log(`[BOSS] summon spawned ${res.boss.boss_id} hp=${res.boss.max_hp} by ${contributorCount} contributors`.cyan);
   await bossAnnouncer
     .announceSpawn(client, res.boss, { summon: true, contributorCount })
+    .catch((e) => console.log(`[BOSS] summon announce failed: ${e.message}`.red));
+  return res.boss;
+}
+
+// 已預約但還沒登場的召喚場（給指令層顯示「下一場什麼時候來」）。
+async function pendingSpawn(client, guildId) {
+  const state = await getState(client, guildId);
+  return state?.pending_spawn?.spawn_at ? state.pending_spawn : null;
+}
+
+// 每分鐘掃描：預約中的魔王到了預告時間就先通知，到了出沒時刻就真的登場。
+// 出沒當下場上還有魔王 / 還在冷卻 → 順延到下一個出沒時段，預告重跑一次。
+async function tickPending(client, guildId) {
+  if (!client.bossSummonStateCollection || !guildId) return null;
+  const state = await getState(client, guildId);
+  const pending = state?.pending_spawn;
+  if (!pending?.spawn_at) return null;
+  const now = Date.now();
+
+  if (!pending.notified && now >= (pending.notice_at ?? pending.spawn_at)) {
+    await client.bossSummonStateCollection.updateOne(
+      { guild_id: guildId, "pending_spawn.spawn_at": pending.spawn_at, "pending_spawn.notified": false },
+      { $set: { "pending_spawn.notified": true } },
+    ).catch(() => {});
+    await bossAnnouncer
+      .announcePreNotice(client, {
+        spawnAt: pending.spawn_at,
+        source: "summon",
+        contributorCount: pending.contributor_count || 0,
+      })
+      .catch((e) => console.log(`[BOSS] pre-notice failed: ${e.message}`.red));
+  }
+
+  if (now < pending.spawn_at) return null;
+
+  const active = await bossEngine.getActiveBoss(client, guildId);
+  const cd = await bossEngine.bossCooldown(client, guildId, cooldownMs());
+  if (active || cd.onCooldown) {
+    const next = bossSpawnWindow.pickSpawnAt(Math.max(now, cd.until || 0));
+    if (!next) return null;
+    await client.bossSummonStateCollection.updateOne(
+      { guild_id: guildId, "pending_spawn.spawn_at": pending.spawn_at },
+      {
+        $set: {
+          "pending_spawn.spawn_at": next,
+          "pending_spawn.notice_at": bossSpawnWindow.noticeAt(next),
+          "pending_spawn.notified": false,
+          updated_at: new Date(),
+        },
+      },
+    ).catch(() => {});
+    console.log(`[BOSS] summon postponed to ${new Date(next).toISOString()}`.gray);
+    return null;
+  }
+
+  // 原子拿走預約：多個 instance 同時掃描時只有一個會真的召喚。
+  const taken = await client.bossSummonStateCollection.findOneAndUpdate(
+    { guild_id: guildId, "pending_spawn.spawn_at": pending.spawn_at },
+    { $set: { pending_spawn: null, updated_at: new Date() } },
+    { returnDocument: "before" },
+  );
+  if (!(taken?.value || taken)) return null;
+
+  const res = await bossEngine.spawnBoss(client, spawnParams(guildId));
+  if (!res.ok) {
+    // 這一瞬間剛好有別的魔王登場：把預約放回去排到下一個時段，不能讓這場憑空消失。
+    const retryAt = bossSpawnWindow.pickSpawnAt();
+    if (retryAt) {
+      await client.bossSummonStateCollection.updateOne(
+        { guild_id: guildId },
+        {
+          $set: {
+            pending_spawn: {
+              spawn_at: retryAt,
+              notice_at: bossSpawnWindow.noticeAt(retryAt),
+              notified: false,
+              contributor_count: pending.contributor_count || 0,
+            },
+            updated_at: new Date(),
+          },
+        },
+      ).catch(() => {});
+    }
+    return null;
+  }
+
+  console.log(`[BOSS] summon spawned ${res.boss.boss_id} hp=${res.boss.max_hp}`.cyan);
+  await bossAnnouncer
+    .announceSpawn(client, res.boss, { summon: true, contributorCount: pending.contributor_count || 0 })
     .catch((e) => console.log(`[BOSS] summon announce failed: ${e.message}`.red));
   return res.boss;
 }
@@ -273,6 +392,9 @@ async function progress(client, guildId, userId) {
     energyPerMiniBoss: cfg().energyPerMiniBoss ?? 0,
     myCharges,
     chargeCap,
+    pendingSpawnAt: state?.pending_spawn?.spawn_at || 0,
+    spawnWindowLabel: bossSpawnWindow.enabled() ? bossSpawnWindow.windowLabel() : null,
+    preNoticeMinutes: bossSpawnWindow.noticeMinutes(),
   };
 }
 
@@ -282,6 +404,8 @@ module.exports = {
   addEnergy,
   grantAttackCharge,
   trySummon,
+  tickPending,
+  pendingSpawn,
   onDungeonCleared,
   onMiniBossDefeated,
   progress,

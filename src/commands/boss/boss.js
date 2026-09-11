@@ -24,11 +24,16 @@ async function runInfo(client, interaction) {
   }
   const info = await bossEngine.getBossInfo(client, interaction.guildId);
   if (!info.ok) {
+    const pending = await bossSummon.pendingSpawn(client, interaction.guildId);
+    const sec = pending ? Math.floor(pending.spawn_at / 1000) : 0;
     return interaction.editReply({
       components: [
         bossView.buildErrorContainer({
           title: "🌙 沒有正在進行的 BOSS 戰",
-          body: "下一場 BOSS 預計在 **週六 21:00** 出現。",
+          body: pending
+            ? `社群召喚的魔王已經被喚醒，將於 <t:${sec}:t>（<t:${sec}:R>）現身。`
+            : "下一場固定 BOSS 在 **週六 21:00** 出現。",
+          hint: bossView.summonWindowHint(),
         }),
       ],
       flags: MessageFlags.IsComponentsV2,
