@@ -170,7 +170,7 @@
           "key": "devour",
           "name": "深淵吸食",
           "emoji": "🩸",
-          "weight": 20,
+          "weight": 9,
           "healPct": 6,
           "castMessage": "🩸 **{name}** 大口吸取地脈之力，回復了 **{heal}** 點血量！",
           "castHint": "-# 拖越久牠回得越多，集中火力才是最快的解法。"
