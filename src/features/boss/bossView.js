@@ -11,6 +11,7 @@ const { COIN_EMOJI } = require("../../constants/coin");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const bossEngine = require("./bossEngine");
 const bossSkills = require("./bossSkills");
+const bossPlayerEvents = require("./bossPlayerEvents");
 const bossSpawnWindow = require("./bossSpawnWindow");
 const dungeonService = require("../mining/dungeonService");
 const { materialLabel } = require("../mining/craftMaterials");
@@ -114,7 +115,7 @@ function ammoCraftHint() {
   const mats = Object.entries(recipe?.materials || {})
     .map(([mat, qty]) => materialLabel(mat, qty))
     .join("・");
-  return `到 \`/裝備 分頁:合成\` →「🛤️ 活動」打造：${mats}＋${(acfg.coinCost || 0).toLocaleString()} 逼幣，每週限 1 個`;
+  return `到 \`/裝備 分頁:合成\` →「🛤️ 活動」打造：${mats}＋${(acfg.coinCost || 0).toLocaleString()} 逼幣，庫存上限 ${acfg.maxStock ?? 1} 個（用掉才能再做）`;
 }
 
 // 投彈入口說明：合成成功訊息、背包、戰況都指向這一段，避免各自寫一份而分岔。
@@ -185,6 +186,43 @@ function addCooldownLine(container, cooldownUntil) {
     new TextDisplayBuilder().setContent(
       `-# ⏱️ 下一刀 <t:${Math.floor(cooldownUntil / 1000)}:R> 可以再砍（每刀間隔 ${boss?.attackCooldownSec ?? 0} 秒）`,
     ),
+  );
+}
+
+// 這一刀觸發的隨機事件（戰吼 / 隕石 / 錢袋…）：文字由 config 模板即時套用，
+// 玩家名字與實際數值在這裡才填，engine 只負責算。
+function playerEventLine(result, displayName) {
+  const pe = result?.playerEvent;
+  if (!pe?.def) return null;
+  return bossPlayerEvents.describe(pe.def, {
+    displayName,
+    damage: result.damage,
+    stamina: pe.stamina,
+    coins: pe.coins,
+  });
+}
+
+function addPlayerEventBlock(container, result, displayName) {
+  const line = playerEventLine(result, displayName);
+  if (!line) return;
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**🎲 攻擊事件！**\n${line}`));
+}
+
+// 玩家自己身上還生效的事件效果（只有自己吃得到，跟魔王狀態分開列）。
+function addPlayerFxLines(container, labels, displayName) {
+  if (!labels?.length) return;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`**✨ ${displayName} 的狀態**\n${labels.join("\n")}`),
+  );
+}
+
+// 反攻號角：出刀次數被全場一起回復，訊息要跟著出現在打出那一刀的結果裡。
+function addRallyLine(container, rally) {
+  if (!rally?.text) return;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(rally.hint ? `${rally.text}\n${rally.hint}` : rally.text),
   );
 }
 
@@ -304,12 +342,15 @@ function buildAttackResultContainer({ userId, displayName, result }) {
   }
 
   if (!result.killed) {
+    addPlayerEventBlock(container, result, displayName);
+    addRallyLine(container, result.rally);
     if (result.skillBroken?.text) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(result.skillBroken.text),
       );
     }
     addSkillLines(container, result.boss);
+    addPlayerFxLines(container, result.playerFxLabels, displayName);
     addCooldownLine(container, result.cooldownUntil);
     addParticipationLine(container, result.myDamage);
     addBuffBlock(container, result.buffInfo, displayName);
@@ -403,11 +444,23 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   }
 
   if (!killed) {
+    const eventLines = hits
+      .map((h) => playerEventLine(h, displayName))
+      .filter(Boolean);
+    if (eventLines.length) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`**🎲 攻擊事件！**\n${eventLines.join("\n")}`),
+        );
+    }
+    for (const h of hits) addRallyLine(container, h.rally);
     const broken = hits.map((h) => h.skillBroken).filter((s) => s?.text);
     for (const s of broken) {
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(s.text));
     }
     addSkillLines(container, last.boss);
+    addPlayerFxLines(container, last.playerFxLabels, displayName);
     addCooldownLine(container, last.cooldownUntil);
     addParticipationLine(container, last.myDamage);
     addBuffBlock(container, last.buffInfo, displayName);
@@ -454,6 +507,7 @@ function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(infoRage));
   }
   addSkillLines(container, b);
+  addPlayerFxLines(container, bossPlayerEvents.statusLines(b, userId), displayName);
   addCooldownLine(container, (b.cooldown_until || {})[userId]);
 
   if (ranking?.length) {
@@ -585,7 +639,7 @@ function buildSealingAmmoUsedContainer({ userId, displayName, result }) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 只對這一場有效，單場限用 1 個；剩下的會留到下一場魔王。",
+        "-# 只對這一場有效，單場限用 1 個；用掉之後就能再打造下一個。",
       ),
     )
     .addActionRowComponents(actionRow(userId, { canAttack: true }));
@@ -612,7 +666,7 @@ function buildSealingAmmoErrorContainer(reason, ammo) {
     return buildErrorContainer({
       title: "💥 本場已經投過封魔彈藥",
       body: `這場魔王你已經投入過 1 個，效果生效中：${ammoEffectText()}。\n🎒 剩餘持有：**${count}** 個`,
-      hint: "單場限用 1 個，剩下的留到下一場魔王再用。",
+      hint: "單場限用 1 個。已經用掉的可以回 `/裝備 分頁:合成` 再打造一個，留給下一隻魔王。",
     });
   }
   if (reason === "disabled") {
@@ -637,8 +691,9 @@ function buildErrorContainer({ title, body, hint }) {
   return c;
 }
 
-// 參加獎摘要：本場有人拿到的檔位各列一行（門檻 + 內容 + 人數），沒人達到的檔位不占版面。
-function participationSummaryLines(payouts) {
+// 參加獎摘要：本場有人拿到的檔位壓成一行（檔位 ×人數），檔位內容只寫最高檔那一份。
+// 每檔各列一行等於把出場公告的表格再貼一次，戰報的重點是「誰打了多少」，不是獎勵表。
+function participationSummary(payouts) {
   const byTier = new Map();
   for (const p of payouts) {
     if (!p.participation) continue;
@@ -646,137 +701,138 @@ function participationSummaryLines(payouts) {
     if (!byTier.has(key)) byTier.set(key, { tier: p.participation, count: 0 });
     byTier.get(key).count += 1;
   }
-  return [...byTier.values()]
-    .sort((a, b) => (b.tier.minDamage ?? 0) - (a.tier.minDamage ?? 0))
-    .map(({ tier, count }) => {
-      const gains = [`＋${(tier.coins || 0).toLocaleString()} ${COIN_EMOJI}`, `＋${tier.xp || 0} 經驗`];
-      if (tier.rare > 0) gains.push(`✨ 傳說碎片 ×${tier.rare}`);
-      if (tier.diamond > 0) gains.push(`💎 鑽石 ×${tier.diamond}`);
-      const threshold = (tier.minDamage ?? 0) > 0
-        ? `傷害 ≥ ${tier.minDamage.toLocaleString()}`
-        : "有出手";
-      return `${tier.emoji} **${tier.name}**（${threshold}）：${gains.join("・")} — ${count} 人`;
-    });
+  const rows = [...byTier.values()].sort((a, b) => (b.tier.minDamage ?? 0) - (a.tier.minDamage ?? 0));
+  if (!rows.length) return null;
+  const top = rows[0].tier;
+  const gains = [`${(top.coins || 0).toLocaleString()} ${COIN_EMOJI}`, `${top.xp || 0} 經驗`];
+  if (top.rare > 0) gains.push(`✨ ×${top.rare}`);
+  if (top.diamond > 0) gains.push(`💎 ×${top.diamond}`);
+  return {
+    line: `🎖️ **參加獎**（出手就有）　${rows.map(({ tier, count }) => `${tier.emoji} ${tier.name} ×${count}`).join("・")}`,
+    detail: `-# 依本場傷害分檔，本場最高檔 ${top.emoji} **${top.name}**：${gains.join("・")}`,
+  };
 }
 
-function buildSettlementContainer(settlement) {
-  const { bossDoc, killed, payouts, totalDamage, totalPool, killerUserId, killerBonus, killerRare, mvpUserId, comboMvpUserId, punchingBagUserId, firstStrikerUserId, firstStrikeBonus, guild } = settlement;
-  const color = killed ? COLOR_VICTORY : COLOR_EXPIRED;
-  const container = new ContainerBuilder().setAccentColor(color);
-  const headline = killed
-    ? `# 🏆 ${bossDoc.emoji} ${bossDoc.name} 已被擊敗！`
-    : `# ⏳ ${bossDoc.emoji} ${bossDoc.name} 逃離了戰場`;
-  const statusLine = killed
-    ? `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：${totalPool.toLocaleString()} ${COIN_EMOJI}`
-    : `**戰況**\n總傷害：${totalDamage.toLocaleString()}　參戰人數：${payouts.length}　獎勵池：—（未擊敗，只發參加獎）`;
-  container
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(headline))
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(statusLine));
-
-  const participationLines = participationSummaryLines(payouts);
-  if (participationLines.length) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `🎖️ **參加獎（依本場傷害發放，出手就有）**\n${participationLines.join("\n")}`,
-      ),
-    );
-  }
-
-  const killXpBonus = boss?.rewards?.killXpBonus ?? 0;
-  if (killed && killXpBonus > 0) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`✨ **擊殺加碼**：全體參戰者各 +${killXpBonus} 經驗`),
-    );
-  }
-
+// 本場榮譽：尾刀 / MVP / 首刀 / 開團王 / 被龍揍王 併成一個區塊，一人一行。
+// 拆成五個獨立區塊時每則都要自己的標題，戰報會被標題灌爆。
+function honorLines({ guild, payouts, killed, killerUserId, killerBonus, killerRare, mvpUserId, firstStrikerUserId, firstStrikeBonus, comboMvpUserId, punchingBagUserId }) {
+  const lines = [];
   if (killed && killerUserId) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `🗡️ **最後一擊**：${nameOf(guild, killerUserId)}　＋${killerBonus.toLocaleString()} ${COIN_EMOJI}　＋✨ 傳說碎片 ×${killerRare}`,
-      ),
+    lines.push(
+      `🗡️ **最後一擊**　${nameOf(guild, killerUserId)}　＋${killerBonus.toLocaleString()} ${COIN_EMOJI}・✨ ×${killerRare}`,
     );
   }
   if (mvpUserId) {
     const mvp = payouts.find((p) => p.userId === mvpUserId);
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `⚔️ **本場 MVP**：${nameOf(guild, mvpUserId)}　傷害 ${mvp?.damage.toLocaleString() || 0}（${mvp?.attacks || 0} 次出手）`,
-      ),
+    lines.push(
+      `⚔️ **MVP**　${nameOf(guild, mvpUserId)}　${(mvp?.damage || 0).toLocaleString()} 傷害（${mvp?.attacks || 0} 刀）`,
     );
   }
   if (firstStrikerUserId && firstStrikeBonus > 0) {
-    container.addTextDisplayComponents(
+    lines.push(`🥇 **首刀**　${nameOf(guild, firstStrikerUserId)}　＋${firstStrikeBonus.toLocaleString()} ${COIN_EMOJI}`);
+  }
+  if (comboMvpUserId) lines.push(`🎯 **開團王**　${nameOf(guild, comboMvpUserId)}`);
+  if (punchingBagUserId) lines.push(`🤡 **被龍揍王**　${nameOf(guild, punchingBagUserId)}`);
+  return lines;
+}
+
+// Top 5 每行只留「傷害 → 分得多少 + 稀有掉落 + 公會」。
+// 擊殺紅利每個人都一樣，掛在每一行只是同一句話抄五遍，改成獨立一行講一次。
+function topReportLines(payouts, killed, guild) {
+  return payouts.slice(0, 5).map((p, i) => {
+    const who = `**#${i + 1}** ${nameOf(guild, p.userId)}　${p.damage.toLocaleString()} 傷害`;
+    if (!killed) return who;
+    const extras = [];
+    if (p.rareReward) extras.push(`✨ ×${p.rareReward}`);
+    if (p.diamondReward) extras.push(`💎 ×${p.diamondReward}`);
+    if (p.guildClubName) extras.push(`🏰 ${p.guildClubName}`);
+    return `${who} → ${p.share.toLocaleString()} ${COIN_EMOJI}${extras.length ? `　${extras.join("・")}` : ""}`;
+  });
+}
+
+function buildSettlementContainer(settlement) {
+  const { bossDoc, killed, payouts, totalDamage, totalPool, guild } = settlement;
+  const container = new ContainerBuilder().setAccentColor(killed ? COLOR_VICTORY : COLOR_EXPIRED);
+
+  container
+    .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `🥇 **首刀**：${nameOf(guild, firstStrikerUserId)}　＋${firstStrikeBonus.toLocaleString()} ${COIN_EMOJI}`,
+        killed
+          ? `# 🏆 ${bossDoc.emoji} ${bossDoc.name} 已被擊敗！`
+          : `# ⏳ ${bossDoc.emoji} ${bossDoc.name} 逃離了戰場`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**戰況**　總傷害 **${totalDamage.toLocaleString()}**　參戰 **${payouts.length}** 人　`
+          + (killed ? `獎勵池 **${totalPool.toLocaleString()}** ${COIN_EMOJI}` : "獎勵池 —（未擊敗）"),
       ),
     );
-  }
-  if (comboMvpUserId) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`🎯 **開團王**：${nameOf(guild, comboMvpUserId)}`),
-    );
-  }
-  if (punchingBagUserId) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`🤡 **被龍揍王**：${nameOf(guild, punchingBagUserId)}`),
-    );
+
+  const honors = honorLines(settlement);
+  if (honors.length) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`**🏅 本場榮譽**\n${honors.join("\n")}`),
+      );
   }
 
-  const top = payouts.slice(0, 5);
+  const top = topReportLines(payouts, killed, guild);
   if (top.length) {
-    const lines = top.map((p, i) => {
-      const tierTag = p.participation ? `　${p.participation.emoji} ${p.participation.name}` : "";
-      if (!killed) {
-        return `**#${i + 1}** ${nameOf(guild, p.userId)} — ${p.damage.toLocaleString()} 傷害${tierTag}`;
-      }
-      const extras = [];
-      if (p.rareReward) extras.push(`✨ 傳說碎片 ×${p.rareReward}`);
-      if (p.diamondReward) extras.push(`💎 鑽石 ×${p.diamondReward}`);
-      if (p.killBonus) extras.push(`擊殺 +${p.killBonus}`);
-      if (p.guildClubName) extras.push(`🏰 ${p.guildClubName}`);
-      return `**#${i + 1}** ${nameOf(guild, p.userId)} — ${p.damage.toLocaleString()} 傷害　→ ${p.share.toLocaleString()} ${COIN_EMOJI}${extras.length ? "（" + extras.join("、") + "）" : ""}${tierTag}`;
-    });
-    const topSuffix = killed ? "" : "（未擊敗，只有參加獎）";
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**Top 5 戰報**${topSuffix}\n${lines.join("\n")}`,
+          `**📊 Top 5 戰報**${killed ? "" : "（未擊敗，只有參加獎）"}\n${top.join("\n")}`,
         ),
       );
+  }
+
+  const participation = participationSummary(payouts);
+  const killBonus = killed ? (boss?.rewards?.killBonus ?? 0) : 0;
+  const killXpBonus = killed ? (boss?.rewards?.killXpBonus ?? 0) : 0;
+  if (participation || killBonus > 0 || killXpBonus > 0) {
+    const lines = [];
+    if (participation) lines.push(participation.line, participation.detail);
+    if (killBonus > 0 || killXpBonus > 0) {
+      const gains = [];
+      if (killBonus > 0) gains.push(`＋${killBonus.toLocaleString()} ${COIN_EMOJI}`);
+      if (killXpBonus > 0) gains.push(`＋${killXpBonus} 經驗`);
+      lines.push(`✨ **擊殺加碼**（全體參戰者）　${gains.join("・")}`);
+    }
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
   }
 
   // 公會傷害榜 + 公庫入帳（Module B/C 連動結果）
   const gAgg = (settlement.guildAggregates || []).filter((g) => g.damage > 0);
   if (gAgg.length > 0) {
-    const top3 = gAgg.slice(0, 3);
     const medals = ["🥇", "🥈", "🥉"];
+    const top3 = gAgg.slice(0, 3);
     const lines = top3.map((g, i) => {
       const treasury = g.treasuryAdded > 0
-        ? `　→ 公庫 +${g.treasuryAdded.toLocaleString()} ${COIN_EMOJI}${g.treasuryLocked > 0 ? `（含鎖定 ${g.treasuryLocked.toLocaleString()}）` : ""}`
+        ? `　→ 公庫 ＋${g.treasuryAdded.toLocaleString()} ${COIN_EMOJI}${g.treasuryLocked > 0 ? `（含鎖定 ${g.treasuryLocked.toLocaleString()}）` : ""}`
         : "";
-      return `${medals[i]} **${g.name}**　Lv.${g.level}　${g.damage.toLocaleString()} 傷害（${g.contributors} 人）${treasury}`;
+      return `${medals[i]} **${g.name}** Lv.${g.level}　${g.damage.toLocaleString()} 傷害（${g.contributors} 人）${treasury}`;
     });
+    const lockHours = settlement.guildSync?.treasuryLockHours || 0;
+    if (lockHours > 0 && top3.some((g) => g.treasuryLocked > 0)) {
+      lines.push(`-# 鎖定金（擊殺者 / MVP 分潤）${lockHours} 小時後解鎖到可分配餘額`);
+    }
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(`**🏰 公會戰績**\n${lines.join("\n")}`),
       );
-    const lockHours = settlement.guildSync?.treasuryLockHours || 0;
-    if (lockHours > 0 && top3.some((g) => g.treasuryLocked > 0)) {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `-# 含擊殺者 / MVP 分潤的鎖定金將於 ${lockHours} 小時後解鎖到可分配餘額。`,
-        ),
-      );
-    }
   }
 
   if (!killed) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 💨 沒能在時限內擊敗牠，BOSS 帶著寶藏逃走了——參戰者仍拿到參加獎，但傷害分潤與稀有掉落都沒了。下次要在時間內解決牠！",
+        "-# 💨 沒能在時限內擊敗牠——參戰者仍拿到參加獎，但傷害分潤與稀有掉落都沒了。下次要在時間內解決牠！",
       ),
     );
   }

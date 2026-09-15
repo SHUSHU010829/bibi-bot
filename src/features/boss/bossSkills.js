@@ -63,6 +63,8 @@ function statusLines(bossDoc, now = Date.now()) {
     .map((e) => `${e.def.statusLabel} · <t:${Math.floor(e.expires_at / 1000)}:R> 結束`);
   const stage = finalStandStage(bossDoc, now);
   if (stage?.label) lines.push(stage.label);
+  const rally = rallyLabel(bossDoc);
+  if (rally) lines.push(rally);
   return lines;
 }
 
@@ -84,6 +86,75 @@ function finalStandStage(bossDoc, now = Date.now()) {
 
 function finalStandMult(bossDoc, now = Date.now()) {
   return finalStandStage(bossDoc, now)?.damageMult ?? 1;
+}
+
+// 反攻號角：召喚場（非週六固定場）打到一半打不完時的救場機制——
+// 全場累積揮出 hitsPerRally 刀而魔王還活著，就把所有人的出刀次數往上加一輪。
+// 存來源不存結果：doc 只存 rally_count，出刀上限由 bossEngine 在讀取端即時換算。
+function rallyCfg() {
+  return boss?.rally || {};
+}
+
+function rallyEnabled(bossDoc) {
+  const cfg = rallyCfg();
+  if (!cfg.enabled) return false;
+  const sources = Array.isArray(cfg.spawnSources) ? cfg.spawnSources : ["summon"];
+  return sources.includes(bossDoc?.spawn_source || "scheduled");
+}
+
+function rallyCount(bossDoc) {
+  return rallyEnabled(bossDoc) ? (bossDoc?.rally_count || 0) : 0;
+}
+
+function rallyBonus(bossDoc) {
+  return rallyCount(bossDoc) * (rallyCfg().attackBonus ?? 0);
+}
+
+function rallyLabel(bossDoc) {
+  const round = rallyCount(bossDoc);
+  if (round <= 0) return null;
+  return fmt(rallyCfg().statusLabel, { round, bonus: rallyBonus(bossDoc) });
+}
+
+// 每一刀打完後判定一次。原子換 rally_count（舊場次沒有這個欄位，所以 0 要連 null 一起比），
+// 只有真的改到的那一刀會拿到公告，避免同時出手的人各報一次。
+async function maybeRally(client, bossDoc, now = Date.now()) {
+  const cfg = rallyCfg();
+  if (!rallyEnabled(bossDoc)) return null;
+  if ((bossDoc.current_hp ?? 0) <= 0) return null;
+  const per = cfg.hitsPerRally ?? 0;
+  const cur = bossDoc.rally_count || 0;
+  if (per <= 0 || cur >= (cfg.maxRallies ?? 0)) return null;
+  if ((bossDoc.hits_taken || 0) < (cur + 1) * per) return null;
+
+  const res = await client.bossEventsCollection.findOneAndUpdate(
+    {
+      boss_id: bossDoc.boss_id,
+      status: "active",
+      rally_count: { $in: cur === 0 ? [0, null] : [cur] },
+    },
+    { $set: { rally_count: cur + 1, last_rally_at: now } },
+    { returnDocument: "after" },
+  );
+  const after = res?.value || res;
+  if (!after) return null;
+
+  const vars = {
+    name: bossDoc.name,
+    hits: (bossDoc.hits_taken || 0).toLocaleString(),
+    round: cur + 1,
+    bonus: cfg.attackBonus ?? 0,
+  };
+  return {
+    event: {
+      type: "rally",
+      text: fmt(cfg.announcement, vars),
+      hint: cfg.hint || null,
+      round: cur + 1,
+      bonus: cfg.attackBonus ?? 0,
+    },
+    boss: after,
+  };
 }
 
 function fmt(tpl, vars) {
@@ -197,7 +268,9 @@ async function expireSkills(client, bossDoc, now = Date.now()) {
   return events;
 }
 
-// 脫戰回血：太久沒人出手就一直回，逼玩家維持輸出而不是放著慢慢磨。
+// 脫戰回血：太久沒人出手就回血，逼玩家維持輸出而不是放著慢慢磨。
+// 但整場最多回 maxTriggers 次——沒人打的場次（人湊不齊、深夜的召喚場）不該無限回血，
+// 那只會把一場打不完的戰鬥變成永遠打不完。次數存在 doc 的 idle_regen_count。
 async function idleRegen(client, bossDoc, now = Date.now()) {
   const cfg = boss?.idleRegen || {};
   if (!cfg.enabled) return null;
@@ -206,16 +279,34 @@ async function idleRegen(client, bossDoc, now = Date.now()) {
   if (now - last < idleMs) return null;
   if ((bossDoc.current_hp ?? 0) >= (bossDoc.max_hp ?? 0)) return null;
 
+  const max = cfg.maxTriggers ?? 0;
+  const count = bossDoc.idle_regen_count || 0;
+  if (max > 0 && count >= max) return null;
+
+  // 先原子搶下這一次的回血額度，再真的加血：兩個 tick 同時跑也只有一個算數。
+  if (max > 0) {
+    const claim = await client.bossEventsCollection.findOneAndUpdate(
+      {
+        boss_id: bossDoc.boss_id,
+        status: "active",
+        idle_regen_count: { $in: count === 0 ? [0, null] : [count] },
+      },
+      { $set: { idle_regen_count: count + 1 } },
+    );
+    if (!(claim?.value || claim)) return null;
+  }
+
   const before = bossDoc.current_hp ?? 0;
   const amount = Math.round((bossDoc.max_hp || 0) * ((cfg.healPctPerMinute ?? 1) / 100));
   const after = await healBoss(client, bossDoc.boss_id, amount);
   const healed = after ? Math.max(0, (after.current_hp ?? before) - before) : 0;
   if (healed <= 0) return null;
+  const used = count + 1;
   return {
     events: [{
       type: "regen",
-      text: fmt(cfg.message, { name: bossDoc.name, heal: healed.toLocaleString() }),
-      hint: cfg.hint || null,
+      text: fmt(cfg.message, { name: bossDoc.name, heal: healed.toLocaleString(), count: used, max }),
+      hint: (max > 0 && used >= max ? cfg.lastHint : cfg.hint) || null,
     }],
     boss: after,
   };
@@ -293,6 +384,10 @@ module.exports = {
   statusLines,
   initialState,
   tick,
+  rallyEnabled,
+  rallyCount,
+  rallyBonus,
+  maybeRally,
   pendingBreak,
   breakSkill,
 };

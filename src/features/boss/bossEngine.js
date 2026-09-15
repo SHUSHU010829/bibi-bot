@@ -6,6 +6,8 @@ const { getOrCreate } = require("../mining/miningProfile");
 const { resolveStamina, staminaMax, getMemberClub, playerAtk } = require("../mining/dungeonService");
 const grantActivityXp = require("../leveling/grantActivityXp");
 const bossSkills = require("./bossSkills");
+const bossPlayerEvents = require("./bossPlayerEvents");
+const grantCoins = require("../economy/grantCoins");
 const bus = require("../eventBus");
 
 function cfg() {
@@ -191,6 +193,12 @@ function baseAttackLimitFor(bossDoc) {
   return cfg().saturdaySpawn?.attackLimitPerPlayer ?? cfg().attackLimitPerPlayer ?? 5;
 }
 
+// 本場基礎額度＝出刀上限 + 公會 buff + 反攻號角回復的次數。攻擊與投彈都走這一份，
+// 兩邊算法一分岔，回推「已花掉的攻擊庫存」就會多退少補。
+function baseLimitFor(bossDoc, guildAttackLimitBonus = 0) {
+  return baseAttackLimitFor(bossDoc) + guildAttackLimitBonus + bossSkills.rallyBonus(bossDoc);
+}
+
 async function getActiveBoss(client, guildId) {
   if (!client.bossEventsCollection) return null;
   return client.bossEventsCollection.findOne({ guild_id: guildId, status: "active" });
@@ -367,7 +375,7 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
   // 「本場已花掉的庫存」必須實際記在 charge_counts，不能用 used - baseLimit 回推：
   // 回推的話彈藥 +N 一旦併進 baseLimit，已花掉的庫存就憑空少 N、額度被自己抵消，
   // 「原本次數打完才投彈」等於完全沒效果。
-  const baseLimit = baseAttackLimitFor(bossDoc) + guildAttackLimitBonus;
+  const baseLimit = baseLimitFor(bossDoc, guildAttackLimitBonus);
   const chargeCap = cfg().summon?.maxBonusAttacksPerPlayer ?? 5;
   const used = (bossDoc.attack_counts || {})[userId] || 0;
   // 舊場次沒有 charge_counts 欄位時才回推（此時 base+彈藥 先用完才輪到庫存，與舊算法一致）。
@@ -431,8 +439,10 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
   const aggroBonus = isTargeted ? (aggro.counterBonus ?? 0) : 0;
   const skillFx = bossSkills.combinedEffects(bossDoc, now);
   const finalStandMult = bossSkills.finalStandMult(bossDoc, now);
+  // 這名玩家身上還生效的攻擊事件效果（鐵壁架勢免疫反擊、戰吼增傷、專注必定會心）。
+  const playerFx = bossPlayerEvents.effectsOf(bossDoc, userId, now);
   const counterRate = effectiveCounterRate(bossDoc, aggroBonus);
-  const isCounter = Math.random() < counterRate;
+  const isCounter = !playerFx.counterImmune && Math.random() < counterRate;
 
   let sameUserStreak = 1;
   if (combo.last_user === userId) {
@@ -493,20 +503,30 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
         crit.maxRate ?? 0.5,
         (crit.baseRate ?? 0.1) + luck * (crit.luckRateMult ?? 0),
       );
-      isCrit = Math.random() < critRate;
+      isCrit = playerFx.forceCrit || Math.random() < critRate;
     }
     const critMult = isCrit ? (crit.damageMult ?? 2) : 1;
     // 技能倍率與決戰倍率放最後：岩甲 ×0.45 / 詛咒 ×0.8 / 核心外露 ×2 / 決戰 ×1.4～×2
     // 都吃在最終傷害上。
     damage = Math.max(1, Math.floor(
       base * (phase.damageMult ?? 1) * streakMult * comboMult * guildMult * buildingMult * critMult
-        * skillFx.damageTakenMult * finalStandMult,
+        * skillFx.damageTakenMult * finalStandMult * playerFx.damageMult,
     ));
   }
 
+  // 玩家攻擊事件：命中才擲。天降隕石這種一次性加傷要在扣血前併進這一刀，
+  // 否則多打的傷害不算進擊殺判定。
+  const eventDef = isCounter ? null : bossPlayerEvents.roll(bossDoc, userId, now);
+  if (eventDef?.bonusDamageMult > 0) {
+    damage = Math.max(1, Math.floor(damage * eventDef.bonusDamageMult));
+  }
+  const eventCoins = eventDef?.coinMax > 0 ? rand(eventDef.coinMin || 0, eventDef.coinMax) : 0;
+  const eventStamina = eventDef?.staminaRestore || 0;
+  const refundAttack = !!eventDef?.attackRefund;
+
   // 體力扣除
   const wasFull = st.stamina >= max;
-  const newStamina = Math.max(0, st.stamina - (isCounter ? 2 : 1));
+  const newStamina = Math.max(0, Math.min(max, st.stamina - (isCounter ? 2 : 1) + eventStamina));
   const newUpdatedAt = wasFull ? now : st.updatedAt;
   await client.miningProfilesCollection.updateOne(
     { userId, guildId },
@@ -520,7 +540,7 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
     { upsert: true },
   ).catch(() => {});
   // 被反擊＝空刀，只扣體力：不佔本場攻擊次數，也不吃攻擊庫存。
-  if (!isCounter && usesCharge) {
+  if (!isCounter && usesCharge && !refundAttack) {
     await client.miningProfilesCollection.updateOne(
       { userId, guildId, boss_attack_charges: { $gt: 0 } },
       { $inc: { boss_attack_charges: -1 } },
@@ -531,7 +551,8 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
   // 原子扣血：只在 boss 仍存活時生效，避免兩人同時讀到舊血量、各自算出「最後一擊」。
   const incFields = { current_hp: -damage, hits_taken: 1 };
   if (damage > 0) incFields[`damage_by_user.${userId}`] = damage;
-  const attackCount = isCounter ? used : used + 1;
+  // 「再來一刀」事件：這刀不計入本場次數，也不吃攻擊庫存。
+  const attackCount = isCounter || refundAttack ? used : used + 1;
   const setFields = {
     "combo.count": comboCount,
     "combo.last_user": comboLastUser,
@@ -544,17 +565,19 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
   };
   if (!isCounter) {
     setFields[`attack_counts.${userId}`] = attackCount;
-    setFields[`charge_counts.${userId}`] = extraUsed + (usesCharge ? 1 : 0);
+    setFields[`charge_counts.${userId}`] = extraUsed + (usesCharge && !refundAttack ? 1 : 0);
   }
   // 被反擊的空刀不佔次數，但一樣要進冷卻（否則被反擊就能無限重試）。
   const nextCooldownAt = cdMs > 0 ? Math.max(now, cooldownUntil) + cdMs : 0;
   if (cdMs > 0) setFields[`cooldown_until.${userId}`] = nextCooldownAt;
+  // 事件的持續效果與個人冷卻跟著同一次原子更新寫進去，不另外打一次 DB。
+  const fxEntry = eventDef ? bossPlayerEvents.fxEntry(eventDef, now) : null;
+  if (eventDef) setFields[`event_cd.${userId}`] = now + bossPlayerEvents.cooldownMs();
+  const updateOps = { $inc: incFields, $set: setFields };
+  if (fxEntry) updateOps.$push = { [`player_fx.${userId}`]: fxEntry };
   const afterRes = await client.bossEventsCollection.findOneAndUpdate(
     { boss_id: bossDoc.boss_id, status: "active" },
-    {
-      $inc: incFields,
-      $set: setFields,
-    },
+    updateOps,
     { returnDocument: "after" },
   );
   const afterDoc = afterRes?.value || afterRes;
@@ -599,6 +622,17 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
     );
   }
 
+  // 反攻號角：召喚場全場砍滿一輪刀數、魔王還活著 → 所有人的出刀次數再開一輪。
+  let rally = null;
+  let rallyCountAfter = afterDoc.rally_count || 0;
+  if (!killed) {
+    const r = await bossSkills.maybeRally(client, afterDoc, now);
+    if (r) {
+      rally = r.event;
+      rallyCountAfter = r.boss.rally_count || rallyCountAfter;
+    }
+  }
+
   // 傷害紀錄
   await client.bossDamageLogsCollection.insertOne({
     boss_id: bossDoc.boss_id,
@@ -622,6 +656,17 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
       member,
       meta: { boss_id: bossDoc.boss_id },
     });
+  }
+
+  if (eventCoins > 0) {
+    await grantCoins(client, {
+      userId,
+      guildId,
+      username,
+      member,
+      amount: eventCoins,
+      source: "boss_event",
+    }).catch(() => {});
   }
 
   bus.emit("boss.attacked", {
@@ -664,15 +709,21 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
       phase: newPhase,
       hits_taken: afterDoc.hits_taken,
       active_skills: skillsAfter,
+      rally_count: rallyCountAfter,
     },
     skillBroken,
     skillLabels: bossSkills.statusLines({ active_skills: skillsAfter }, now),
+    rally,
+    playerEvent: eventDef
+      ? { def: eventDef, coins: eventCoins, stamina: eventStamina, refunded: refundAttack }
+      : null,
+    playerFxLabels: bossPlayerEvents.statusLines(afterDoc, userId, now),
     cooldownUntil: nextCooldownAt,
     stamina: newStamina,
     staminaMax: max,
     myDamage: afterDoc.damage_by_user?.[userId] || 0,
     attackCount,
-    attackLimit,
+    attackLimit: attackLimit + (rally ? rally.bonus : 0),
     ammo,
     bonusAttacks: allowedExtra,
     ammoAttacks: ammoLimitBonus,
@@ -967,7 +1018,7 @@ async function useSealingAmmo(client, { userId, guildId }) {
     const usedNow = (bossDoc.attack_counts || {})[userId] || 0;
     const spent = Math.min(
       cfg().summon?.maxBonusAttacksPerPlayer ?? 5,
-      Math.max(0, usedNow - baseAttackLimitFor(bossDoc) - guildAttackLimitBonus),
+      Math.max(0, usedNow - baseLimitFor(bossDoc, guildAttackLimitBonus)),
     );
     await client.bossEventsCollection.updateOne(
       { boss_id: bossDoc.boss_id, [`charge_counts.${userId}`]: { $exists: false } },
@@ -1019,4 +1070,5 @@ module.exports = {
   rageState,
   effectiveCounterRate,
   baseAttackLimitFor,
+  baseLimitFor,
 };

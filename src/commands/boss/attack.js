@@ -65,6 +65,10 @@ async function runAttack(client, interaction, forcedCount) {
     if (result.skillBroken && !result.killed) {
       bossAnnouncer.announceSkillEvents(client, [result.skillBroken]).catch(() => {});
     }
+    // 反攻號角是全場的事：戰鬥頻道也要看到，次數用完的人才知道可以回來。
+    if (result.rally) {
+      bossAnnouncer.announceSkillEvents(client, [result.rally]).catch(() => {});
+    }
     if (result.killed) {
       settleAndAnnounce(client, interaction.guild, result.boss.boss_id).catch((e) =>
         console.log(`[BOSS] settle on kill failed: ${e.message}`.red),
@@ -108,11 +112,23 @@ async function runAttack(client, interaction, forcedCount) {
   if (combo.skillsBroken?.length && !combo.killed) {
     bossAnnouncer.announceSkillEvents(client, combo.skillsBroken).catch(() => {});
   }
+  const rallies = combo.hits.map((h) => h.rally).filter(Boolean);
+  if (rallies.length) {
+    bossAnnouncer.announceSkillEvents(client, rallies).catch(() => {});
+  }
   if (combo.killed) {
     settleAndAnnounce(client, interaction.guild, combo.lastResult.boss.boss_id).catch((e) =>
       console.log(`[BOSS] settle on kill failed: ${e.message}`.red),
     );
   }
+}
+
+// 次數用完不代表出局：召喚場全場砍滿一輪刀數就會吹反攻號角，所有人再開一輪。
+function rallyHint() {
+  const r = boss?.rally || {};
+  if (!r.enabled) return "看看 /boss 查戰況、為隊友加油！";
+  return `召喚出來的魔王在全場累積 ${r.hitsPerRally ?? 0} 刀還沒倒下時會吹「反攻號角」，`
+    + `所有人的出刀次數 +${r.attackBonus ?? 0}（最多 ${r.maxRallies ?? 0} 次）——先 /魔王 戰況 盯著，號角一響就回來。`;
 }
 
 async function settleAndAnnounce(client, guild, bossId) {
@@ -149,7 +165,7 @@ function buildAttackErrorContainer(result, userId) {
     const container = bossView.buildErrorContainer({
       title: "⚔️ 你已用完本場攻擊次數",
       body: `每位玩家每場 BOSS 最多攻擊 **${result.limit}** 次，已用 **${result.used}** 次。`,
-      hint: "看看 /boss 查戰況、為隊友加油！",
+      hint: rallyHint(),
     });
     return bossView.addSealingAmmoOffer(container, userId, result.ammo);
   }

@@ -521,7 +521,7 @@ module.exports = async (client, interaction) => {
         });
         return;
       }
-      if (!result.ok && ["weekly_limit", "insufficient_coins", "already_owned"].includes(result.reason)) {
+      if (!result.ok && ["stock_limit", "insufficient_coins", "already_owned"].includes(result.reason)) {
         await interaction.followUp({
           components: [workshopView.buildCraftLimitContainer(result)],
           flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,

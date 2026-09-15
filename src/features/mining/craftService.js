@@ -154,7 +154,7 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
     return craftOre(client, { userId, guildId, recipe });
   }
 
-  // 封魔彈藥：週六魔王戰專用消耗品，每週限做 1 個
+  // 封魔彈藥：魔王戰專用消耗品，庫存上限 1（一隻魔王用得掉一個）
   if (type === "sealing_ammo") {
     return craftSealingAmmo(client, { userId, guildId, recipe });
   }
@@ -593,22 +593,16 @@ async function craftOre(client, { userId, guildId, recipe }) {
   };
 }
 
-// 週鍵（台北時區、週一為週首）。封魔彈藥每週限做 1 個。
-function weekKeyTaipei() {
-  const { DateTime } = require("luxon");
-  const t = DateTime.now().setZone("Asia/Taipei");
-  return `${t.weekYear}-W${String(t.weekNumber).padStart(2, "0")}`;
-}
-
+// 封魔彈藥改成「庫存上限」而非週限：單場魔王本來就只能投 1 個，庫存壓在 1
+// 等於「一隻王剛好用得掉一個」——用掉才能再打造，但不會被週次卡住而整週沒得用。
 async function craftSealingAmmo(client, { userId, guildId, recipe }) {
   const { boss } = require("../../config");
   const acfg = boss?.sealingAmmo || {};
   const profile = await getOrCreate(client, userId, guildId);
 
-  const week = weekKeyTaipei();
-  const limit = acfg.weeklyCraftLimit ?? 1;
-  if (profile.sealing_ammo_week === week && limit > 0) {
-    return { ok: false, reason: "weekly_limit", limit, recipe };
+  const maxStock = acfg.maxStock ?? 1;
+  if (maxStock > 0 && (profile.sealing_ammo_count || 0) >= maxStock) {
+    return { ok: false, reason: "stock_limit", maxStock, have: profile.sealing_ammo_count || 0, recipe };
   }
 
   const missing = [];
@@ -637,9 +631,15 @@ async function craftSealingAmmo(client, { userId, guildId, recipe }) {
     else if (isFishMaterial(mat)) inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
     else inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
   }
+  // 庫存上限的檢查也走條件式原子更新，兩個請求同時進來只有一個會成功。
+  // $lt 比不到「欄位不存在」的舊文件，所以要連 $exists: false 一起收。
   const res = await client.miningProfilesCollection.updateOne(
-    { userId, guildId, sealing_ammo_week: { $ne: week } },
-    { $inc: inc, $set: { sealing_ammo_week: week, updatedAt: new Date() } },
+    {
+      userId,
+      guildId,
+      $or: [{ sealing_ammo_count: { $lt: maxStock } }, { sealing_ammo_count: { $exists: false } }],
+    },
+    { $inc: inc, $set: { updatedAt: new Date() } },
   );
   if (res.modifiedCount === 0) {
     if (coinCost > 0) {
@@ -648,7 +648,7 @@ async function craftSealingAmmo(client, { userId, guildId, recipe }) {
         { $inc: { totalCoins: coinCost, lifetimeSpent: -coinCost } },
       ).catch(() => {});
     }
-    return { ok: false, reason: "weekly_limit", limit, recipe };
+    return { ok: false, reason: "stock_limit", maxStock, have: profile.sealing_ammo_count || 0, recipe };
   }
 
   return {

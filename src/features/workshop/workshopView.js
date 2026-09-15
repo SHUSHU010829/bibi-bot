@@ -591,9 +591,9 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
             `### 💥 封魔彈藥（持有 **${profile.sealing_ammo_count || 0}**）\n`
-              + `-# 以魔制魔的消耗品，魔王戰用。每週限做 1 個，另需 ${(acfg.coinCost || 0).toLocaleString()} 逼幣\n`
+              + `-# 以魔制魔的消耗品，魔王戰用。庫存上限 ${acfg.maxStock ?? 1} 個（一隻魔王用得掉一個），另需 ${(acfg.coinCost || 0).toLocaleString()} 逼幣\n`
               + `-# 效果：該場魔王戰攻擊次數 +${acfg.attackLimitBonus || 0}、世界王傷害 +${acfg.bossDamagePct || 0}%（單場限用 1 個）\n`
-              + `-# 用法：魔王在場時到 \`/魔王 戰況\` 按「💥 封魔彈藥」投入；做好的不會過期，可以先囤著`,
+              + `-# 用法：魔王在場時到 \`/魔王 戰況\` 按「💥 封魔彈藥」投入；做好的不會過期，用掉才能再做下一個`,
           ),
         );
       craftableSection(container, bossAmmo, profile, "sealing_ammo", userId);
@@ -832,23 +832,23 @@ async function buildView(client, { userId, guildId, displayName, tab = "equipmen
   };
 }
 
-// 封魔彈藥 / 拓荒錘 的專屬失敗：每週限量、逼幣不足、已持有。
+// 封魔彈藥 / 拓荒錘 的專屬失敗：庫存已滿、逼幣不足、已持有。
 function buildCraftLimitContainer(result) {
-  if (result.reason === "weekly_limit") {
+  if (result.reason === "stock_limit") {
     return new ContainerBuilder()
       .setAccentColor(0xe67e22)
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`# ⏳ 本週已經做過 ${result.recipe.name}`),
+        new TextDisplayBuilder().setContent(`# 🎒 ${result.recipe.name} 庫存已滿`),
       )
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**${result.recipe.name}** 每週限做 **${result.limit}** 個，這週的額度已經用掉了。`,
+          `**${result.recipe.name}** 最多同時持有 **${result.maxStock}** 個，你手上已經有 **${result.have}** 個。`,
         ),
       )
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          "-# 週一（台北時間）重置；手上做好的不會過期，可以留到下一場魔王再用",
+          "-# 一隻魔王只能投 1 個——投進場上的魔王用掉後就能再打造一個",
         ),
       );
   }
