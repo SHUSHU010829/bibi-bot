@@ -11,6 +11,7 @@ const { COIN_EMOJI } = require("../../constants/coin");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const bossEngine = require("./bossEngine");
 const bossSkills = require("./bossSkills");
+const bossPlayerEvents = require("./bossPlayerEvents");
 const bossSpawnWindow = require("./bossSpawnWindow");
 const dungeonService = require("../mining/dungeonService");
 const { materialLabel } = require("../mining/craftMaterials");
@@ -114,7 +115,7 @@ function ammoCraftHint() {
   const mats = Object.entries(recipe?.materials || {})
     .map(([mat, qty]) => materialLabel(mat, qty))
     .join("・");
-  return `到 \`/裝備 分頁:合成\` →「🛤️ 活動」打造：${mats}＋${(acfg.coinCost || 0).toLocaleString()} 逼幣，每週限 1 個`;
+  return `到 \`/裝備 分頁:合成\` →「🛤️ 活動」打造：${mats}＋${(acfg.coinCost || 0).toLocaleString()} 逼幣，庫存上限 ${acfg.maxStock ?? 1} 個（用掉才能再做）`;
 }
 
 // 投彈入口說明：合成成功訊息、背包、戰況都指向這一段，避免各自寫一份而分岔。
@@ -185,6 +186,43 @@ function addCooldownLine(container, cooldownUntil) {
     new TextDisplayBuilder().setContent(
       `-# ⏱️ 下一刀 <t:${Math.floor(cooldownUntil / 1000)}:R> 可以再砍（每刀間隔 ${boss?.attackCooldownSec ?? 0} 秒）`,
     ),
+  );
+}
+
+// 這一刀觸發的隨機事件（戰吼 / 隕石 / 錢袋…）：文字由 config 模板即時套用，
+// 玩家名字與實際數值在這裡才填，engine 只負責算。
+function playerEventLine(result, displayName) {
+  const pe = result?.playerEvent;
+  if (!pe?.def) return null;
+  return bossPlayerEvents.describe(pe.def, {
+    displayName,
+    damage: result.damage,
+    stamina: pe.stamina,
+    coins: pe.coins,
+  });
+}
+
+function addPlayerEventBlock(container, result, displayName) {
+  const line = playerEventLine(result, displayName);
+  if (!line) return;
+  container
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**🎲 攻擊事件！**\n${line}`));
+}
+
+// 玩家自己身上還生效的事件效果（只有自己吃得到，跟魔王狀態分開列）。
+function addPlayerFxLines(container, labels, displayName) {
+  if (!labels?.length) return;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`**✨ ${displayName} 的狀態**\n${labels.join("\n")}`),
+  );
+}
+
+// 反攻號角：出刀次數被全場一起回復，訊息要跟著出現在打出那一刀的結果裡。
+function addRallyLine(container, rally) {
+  if (!rally?.text) return;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(rally.hint ? `${rally.text}\n${rally.hint}` : rally.text),
   );
 }
 
@@ -304,12 +342,15 @@ function buildAttackResultContainer({ userId, displayName, result }) {
   }
 
   if (!result.killed) {
+    addPlayerEventBlock(container, result, displayName);
+    addRallyLine(container, result.rally);
     if (result.skillBroken?.text) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(result.skillBroken.text),
       );
     }
     addSkillLines(container, result.boss);
+    addPlayerFxLines(container, result.playerFxLabels, displayName);
     addCooldownLine(container, result.cooldownUntil);
     addParticipationLine(container, result.myDamage);
     addBuffBlock(container, result.buffInfo, displayName);
@@ -403,11 +444,23 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   }
 
   if (!killed) {
+    const eventLines = hits
+      .map((h) => playerEventLine(h, displayName))
+      .filter(Boolean);
+    if (eventLines.length) {
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`**🎲 攻擊事件！**\n${eventLines.join("\n")}`),
+        );
+    }
+    for (const h of hits) addRallyLine(container, h.rally);
     const broken = hits.map((h) => h.skillBroken).filter((s) => s?.text);
     for (const s of broken) {
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(s.text));
     }
     addSkillLines(container, last.boss);
+    addPlayerFxLines(container, last.playerFxLabels, displayName);
     addCooldownLine(container, last.cooldownUntil);
     addParticipationLine(container, last.myDamage);
     addBuffBlock(container, last.buffInfo, displayName);
@@ -454,6 +507,7 @@ function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(infoRage));
   }
   addSkillLines(container, b);
+  addPlayerFxLines(container, bossPlayerEvents.statusLines(b, userId), displayName);
   addCooldownLine(container, (b.cooldown_until || {})[userId]);
 
   if (ranking?.length) {
@@ -585,7 +639,7 @@ function buildSealingAmmoUsedContainer({ userId, displayName, result }) {
     )
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 只對這一場有效，單場限用 1 個；剩下的會留到下一場魔王。",
+        "-# 只對這一場有效，單場限用 1 個；用掉之後就能再打造下一個。",
       ),
     )
     .addActionRowComponents(actionRow(userId, { canAttack: true }));
@@ -612,7 +666,7 @@ function buildSealingAmmoErrorContainer(reason, ammo) {
     return buildErrorContainer({
       title: "💥 本場已經投過封魔彈藥",
       body: `這場魔王你已經投入過 1 個，效果生效中：${ammoEffectText()}。\n🎒 剩餘持有：**${count}** 個`,
-      hint: "單場限用 1 個，剩下的留到下一場魔王再用。",
+      hint: "單場限用 1 個。已經用掉的可以回 `/裝備 分頁:合成` 再打造一個，留給下一隻魔王。",
     });
   }
   if (reason === "disabled") {

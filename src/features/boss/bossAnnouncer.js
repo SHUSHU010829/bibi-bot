@@ -81,6 +81,28 @@ async function announceSpawn(client, bossDoc, opts = {}) {
       inline: false,
     }
     : null;
+  // 反攻號角只有召喚場會吹，寫進出場公告，玩家才知道「次數用完也別走」。
+  const rcfg = boss?.rally || {};
+  const rallySources = Array.isArray(rcfg.spawnSources) ? rcfg.spawnSources : ["summon"];
+  const rallyField = rcfg.enabled && rallySources.includes(bossDoc.spawn_source)
+    ? {
+      name: "📣 反攻號角",
+      value: `全場累積 **${rcfg.hitsPerRally ?? 0}** 刀而牠還沒倒下 → 所有人出刀次數 **+${rcfg.attackBonus ?? 0}**（最多 ${rcfg.maxRallies ?? 0} 次）\n`
+        + "-# 次數用完也別急著走，號角一響就能再上。",
+      inline: false,
+    }
+    : null;
+  const ecfg = boss?.playerEvents || {};
+  const eventNames = (ecfg.enabled ? ecfg.list || [] : [])
+    .map((e) => `${e.emoji} ${e.name}`)
+    .join("・");
+  const eventField = eventNames
+    ? {
+      name: "🎲 攻擊事件（每刀都有機會觸發）",
+      value: `${eventNames}\n-# 砍下去才知道是戰吼、隕石、錢袋還是踩到香蕉皮。`,
+      inline: false,
+    }
+    : null;
   const intro = opts.summon
     ? (boss?.summon?.summonIntro || "討伐能量集滿，魔王被喚醒了！")
     : (pickFrom(boss?.spawnIntros) || "傳說中的存在現身了！");
@@ -117,6 +139,8 @@ async function announceSpawn(client, bossDoc, opts = {}) {
       endField,
       { name: "⚔️ 攻擊上限", value: cdText, inline: true },
       ...(skillField ? [skillField] : []),
+      ...(eventField ? [eventField] : []),
+      ...(rallyField ? [rallyField] : []),
       ...(participationField ? [participationField] : []),
     )
     .setFooter({

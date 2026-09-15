@@ -344,13 +344,103 @@
       "{name} 用尾巴掃過來，**{user}** 連武器都差點沒抓住。",
       "**{user}** 的劍卡在 {name} 的鱗片上，這次傷害無效。"
     ],
+    "rally": {
+      "enabled": true,
+      "spawnSources": ["summon"],
+      "hitsPerRally": 200,
+      "maxRallies": 3,
+      "attackBonus": 3,
+      "announcement": "📣 **反攻號角響起！** 全場已經對 **{name}** 揮出 **{hits}** 刀，牠還站著——所有人的本場出刀次數 **+{bonus}**！（第 {round} 次號角）",
+      "hint": "-# 次數用完的人現在可以再上，回 `/魔王 攻擊` 繼續輸出。",
+      "statusLabel": "📣 反攻號角 ×{round}（全場出刀上限 +{bonus}）"
+    },
+    "playerEvents": {
+      "enabled": true,
+      "chancePerHit": 0.12,
+      "cooldownSec": 90,
+      "list": [
+        {
+          "key": "warcry",
+          "name": "戰吼",
+          "emoji": "📣",
+          "weight": 18,
+          "durationSec": 120,
+          "damageMult": 1.5,
+          "message": "📣 **{user}** 吼到魔王耳鳴！接下來 {min} 分鐘自己的傷害 **×1.5**。",
+          "statusLabel": "📣 戰吼（自己傷害 ×1.5）"
+        },
+        {
+          "key": "focus",
+          "name": "專注凝神",
+          "emoji": "🎯",
+          "weight": 14,
+          "durationSec": 90,
+          "forceCrit": true,
+          "message": "🎯 **{user}** 看穿了魔王的破綻！{sec} 秒內出手**必定會心一擊**。",
+          "statusLabel": "🎯 專注凝神（必定會心）"
+        },
+        {
+          "key": "guard",
+          "name": "鐵壁架勢",
+          "emoji": "🛡️",
+          "weight": 14,
+          "durationSec": 120,
+          "counterImmune": true,
+          "message": "🛡️ **{user}** 擺出鐵壁架勢，{min} 分鐘內**不會被反擊**。",
+          "statusLabel": "🛡️ 鐵壁架勢（免疫反擊）"
+        },
+        {
+          "key": "meteor",
+          "name": "天降隕石",
+          "emoji": "☄️",
+          "weight": 12,
+          "bonusDamageMult": 3,
+          "message": "☄️ 一顆隕石正好砸在魔王頭上！**{user}** 這一刀打成了 **{damage}** 傷害！"
+        },
+        {
+          "key": "second_wind",
+          "name": "二度呼吸",
+          "emoji": "💨",
+          "weight": 14,
+          "staminaRestore": 2,
+          "message": "💨 **{user}** 喘過氣來，體力回復 **{stamina}** 點！"
+        },
+        {
+          "key": "pouch",
+          "name": "掉落錢袋",
+          "emoji": "💰",
+          "weight": 12,
+          "coinMin": 300,
+          "coinMax": 900,
+          "message": "💰 魔王身上掉出一個錢袋，**{user}** 順手撿走 **{coins}** 逼幣！"
+        },
+        {
+          "key": "encore",
+          "name": "再來一刀",
+          "emoji": "⚔️",
+          "weight": 10,
+          "attackRefund": 1,
+          "message": "⚔️ 這刀砍得太漂亮，完全沒耗到刀——**{user}** 的本場出刀次數退還 1 次！"
+        },
+        {
+          "key": "slip",
+          "name": "腳滑",
+          "emoji": "🍌",
+          "weight": 6,
+          "durationSec": 60,
+          "damageMult": 0.7,
+          "message": "🍌 **{user}** 踩到不知道誰亂丟的香蕉皮……{sec} 秒內自己的傷害只剩 **70%**。",
+          "statusLabel": "🍌 腳滑（自己傷害 ×0.7）"
+        }
+      ]
+    },
     "sealingAmmo": {
       "enabled": true,
       "label": "封魔彈藥",
       "emoji": "💥",
       "materials": { "magic_crystal": 8, "diamond": 2 },
       "coinCost": 10000,
-      "weeklyCraftLimit": 1,
+      "maxStock": 1,
       "bossDamagePct": 5,
       "attackLimitBonus": 2
     }

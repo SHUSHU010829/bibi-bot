@@ -179,7 +179,7 @@ module.exports = {
             `❌ 材料不足，無法合成 **${result.recipe.name}**：\n${lines.join("\n")}`
           );
         }
-        if (["weekly_limit", "insufficient_coins", "already_owned"].includes(result.reason)) {
+        if (["stock_limit", "insufficient_coins", "already_owned"].includes(result.reason)) {
           return interaction.editReply({
             components: [workshopView.buildCraftLimitContainer(result)],
             flags: MessageFlags.IsComponentsV2,
