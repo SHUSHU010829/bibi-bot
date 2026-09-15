@@ -7,7 +7,7 @@
     "minHp": 26000,
     "durationMinutes": 75,
     "attackLimitPerPlayer": 8,
-    "attackCooldownSec": 15,
+    "attackCooldownSec": 10,
     "maxHitsPerCommand": 3,
     "participants": {
       "historySpawns": 5,
