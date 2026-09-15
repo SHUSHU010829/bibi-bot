@@ -210,8 +210,10 @@
       "enabled": true,
       "idleMinutes": 3,
       "healPctPerMinute": 1.5,
-      "message": "💤 太久沒人出手，**{name}** 趁機舔傷口回復了 **{heal}** 點血量！",
-      "hint": "-# 放著不打牠會一直回血——保持輸出才壓得住。"
+      "maxTriggers": 5,
+      "message": "💤 太久沒人出手，**{name}** 趁機舔傷口回復了 **{heal}** 點血量！（本場第 {count}/{max} 次）",
+      "hint": "-# 放著不打牠會回血——保持輸出才壓得住。",
+      "lastHint": "-# 這是本場最後一次自動回血，之後放著也不會再回了。"
     },
     "combo": {
       "windowSec": 10,

@@ -268,7 +268,9 @@ async function expireSkills(client, bossDoc, now = Date.now()) {
   return events;
 }
 
-// 脫戰回血：太久沒人出手就一直回，逼玩家維持輸出而不是放著慢慢磨。
+// 脫戰回血：太久沒人出手就回血，逼玩家維持輸出而不是放著慢慢磨。
+// 但整場最多回 maxTriggers 次——沒人打的場次（人湊不齊、深夜的召喚場）不該無限回血，
+// 那只會把一場打不完的戰鬥變成永遠打不完。次數存在 doc 的 idle_regen_count。
 async function idleRegen(client, bossDoc, now = Date.now()) {
   const cfg = boss?.idleRegen || {};
   if (!cfg.enabled) return null;
@@ -277,16 +279,34 @@ async function idleRegen(client, bossDoc, now = Date.now()) {
   if (now - last < idleMs) return null;
   if ((bossDoc.current_hp ?? 0) >= (bossDoc.max_hp ?? 0)) return null;
 
+  const max = cfg.maxTriggers ?? 0;
+  const count = bossDoc.idle_regen_count || 0;
+  if (max > 0 && count >= max) return null;
+
+  // 先原子搶下這一次的回血額度，再真的加血：兩個 tick 同時跑也只有一個算數。
+  if (max > 0) {
+    const claim = await client.bossEventsCollection.findOneAndUpdate(
+      {
+        boss_id: bossDoc.boss_id,
+        status: "active",
+        idle_regen_count: { $in: count === 0 ? [0, null] : [count] },
+      },
+      { $set: { idle_regen_count: count + 1 } },
+    );
+    if (!(claim?.value || claim)) return null;
+  }
+
   const before = bossDoc.current_hp ?? 0;
   const amount = Math.round((bossDoc.max_hp || 0) * ((cfg.healPctPerMinute ?? 1) / 100));
   const after = await healBoss(client, bossDoc.boss_id, amount);
   const healed = after ? Math.max(0, (after.current_hp ?? before) - before) : 0;
   if (healed <= 0) return null;
+  const used = count + 1;
   return {
     events: [{
       type: "regen",
-      text: fmt(cfg.message, { name: bossDoc.name, heal: healed.toLocaleString() }),
-      hint: cfg.hint || null,
+      text: fmt(cfg.message, { name: bossDoc.name, heal: healed.toLocaleString(), count: used, max }),
+      hint: (max > 0 && used >= max ? cfg.lastHint : cfg.hint) || null,
     }],
     boss: after,
   };
