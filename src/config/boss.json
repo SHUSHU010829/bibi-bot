@@ -25,7 +25,7 @@
     },
     "rage": {
       "enabled": true,
-      "hitsPerStack": 25,
+      "hitsPerStack": 40,
       "counterRatePerStack": 0.02,
       "maxCounterRate": 0.35
     },
