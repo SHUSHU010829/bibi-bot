@@ -358,18 +358,18 @@
     },
     "playerEvents": {
       "enabled": true,
-      "chancePerHit": 0.12,
-      "cooldownSec": 90,
+      "chancePerHit": 0.2,
+      "cooldownSec": 60,
       "list": [
         {
           "key": "warcry",
           "name": "戰吼",
           "emoji": "📣",
-          "weight": 18,
-          "durationSec": 120,
-          "damageMult": 1.5,
-          "message": "📣 **{user}** 吼到魔王耳鳴！接下來 {min} 分鐘自己的傷害 **×1.5**。",
-          "statusLabel": "📣 戰吼（自己傷害 ×1.5）"
+          "weight": 20,
+          "durationSec": 180,
+          "damageMult": 1.8,
+          "message": "📣 **{user}** 吼到魔王耳鳴！接下來 {min} 分鐘自己的傷害 **×1.8**。",
+          "statusLabel": "📣 戰吼（自己傷害 ×1.8）"
         },
         {
           "key": "focus",
@@ -395,15 +395,15 @@
           "key": "meteor",
           "name": "天降隕石",
           "emoji": "☄️",
-          "weight": 12,
-          "bonusDamageMult": 3,
+          "weight": 14,
+          "bonusDamageMult": 4,
           "message": "☄️ 一顆隕石正好砸在魔王頭上！**{user}** 這一刀打成了 **{damage}** 傷害！"
         },
         {
           "key": "second_wind",
           "name": "二度呼吸",
           "emoji": "💨",
-          "weight": 14,
+          "weight": 12,
           "staminaRestore": 2,
           "message": "💨 **{user}** 喘過氣來，體力回復 **{stamina}** 點！"
         },
@@ -411,7 +411,7 @@
           "key": "pouch",
           "name": "掉落錢袋",
           "emoji": "💰",
-          "weight": 12,
+          "weight": 10,
           "coinMin": 300,
           "coinMax": 900,
           "message": "💰 魔王身上掉出一個錢袋，**{user}** 順手撿走 **{coins}** 逼幣！"
@@ -425,10 +425,31 @@
           "message": "⚔️ 這刀砍得太漂亮，完全沒耗到刀——**{user}** 的本場出刀次數退還 1 次！"
         },
         {
+          "key": "overdrive",
+          "name": "爆氣全開",
+          "emoji": "💢",
+          "weight": 12,
+          "durationSec": 60,
+          "damageMult": 2.5,
+          "message": "💢 **{user}** 全身青筋暴起！{sec} 秒內自己的傷害 **×2.5**——這段時間刀刀致命。",
+          "statusLabel": "💢 爆氣全開（自己傷害 ×2.5）"
+        },
+        {
+          "key": "warlord",
+          "name": "戰神附體",
+          "emoji": "🗡️",
+          "weight": 8,
+          "durationSec": 120,
+          "damageMult": 1.6,
+          "forceCrit": true,
+          "message": "🗡️ 戰神的殘影附在 **{user}** 身上！{min} 分鐘內傷害 **×1.6** 且**必定會心一擊**。",
+          "statusLabel": "🗡️ 戰神附體（傷害 ×1.6・必定會心）"
+        },
+        {
           "key": "slip",
           "name": "腳滑",
           "emoji": "🍌",
-          "weight": 6,
+          "weight": 4,
           "durationSec": 60,
           "damageMult": 0.7,
           "message": "🍌 **{user}** 踩到不知道誰亂丟的香蕉皮……{sec} 秒內自己的傷害只剩 **70%**。",
