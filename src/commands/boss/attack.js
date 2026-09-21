@@ -9,7 +9,7 @@ const { boss } = require("../../config");
 const bossEngine = require("../../features/boss/bossEngine");
 const bossView = require("../../features/boss/bossView");
 const bossAnnouncer = require("../../features/boss/bossAnnouncer");
-const bossRewards = require("../../features/boss/bossRewards");
+const { settleAndAnnounce } = require("../../features/boss/bossSettlement");
 const bossBoard = require("../../features/boss/bossBoard");
 
 async function runAttack(client, interaction, forcedCount) {
@@ -131,16 +131,6 @@ function rallyHint() {
     + `所有人的出刀次數 +${r.attackBonus ?? 0}（最多 ${r.maxRallies ?? 0} 次）——先 /魔王 戰況 盯著，號角一響就回來。`;
 }
 
-async function settleAndAnnounce(client, guild, bossId) {
-  const bossDoc = await client.bossEventsCollection.findOne({ boss_id: bossId });
-  if (!bossDoc) return;
-  if (bossDoc.settled_at) return;
-  const settlement = await bossEngine.settleBoss(client, bossDoc);
-  if (!settlement) return;
-  await bossRewards.distribute(client, guild, settlement);
-  await bossAnnouncer.announceSettlement(client, settlement);
-}
-
 function buildAttackErrorContainer(result, userId) {
   if (result.reason === "disabled") {
     return bossView.buildErrorContainer({
@@ -229,6 +219,5 @@ module.exports = {
   },
 
   runAttack,
-  settleAndAnnounce,
   buildAttackErrorContainer,
 };
