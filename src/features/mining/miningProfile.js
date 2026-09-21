@@ -47,6 +47,7 @@ function defaultProfile(userId, guildId) {
     deep_stamina_updated_at: 0,
     deep_mine_count_total: 0,
     sealing_ammo_count: 0,
+    boss_items: {},
     advanced_trap_uses: 0,
     basic_trap_uses: 0,
     treasure_map_fragments: 0,
@@ -115,6 +116,7 @@ function normalize(doc) {
   doc.deep_stamina_updated_at ??= 0;
   doc.deep_mine_count_total ??= 0;
   doc.sealing_ammo_count ??= 0;
+  doc.boss_items ??= {};
   doc.advanced_trap_uses ??= 0;
   doc.basic_trap_uses ??= 0;
   doc.treasure_map_fragments ??= 0;

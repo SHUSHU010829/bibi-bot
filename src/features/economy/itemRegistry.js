@@ -5,7 +5,7 @@
 // 避免各處各自複製一份名稱表而印出英文 id。
 //
 // category 供呼叫端篩選用途（例：/贈送 只開放材料類，見 gift.json 的 itemCategories）。
-const { craft, mining, farming } = require("../../config");
+const { craft, mining, farming, boss } = require("../../config");
 const itemCatalog = require("../barter/itemCatalog");
 const inventory = require("../barter/inventoryAdapter");
 
@@ -37,6 +37,12 @@ const MATERIALS = [
   { field: "sealing_ammo_count", mat: "sealing_ammo" },
   { field: "backpack.stone_shard", mat: "stone_shard", emoji: "🪨" },
 ];
+
+// 討伐道具：種類由 boss.combatItems 決定，中文名一律查 craft.materials，
+// 不在這裡再抄一份清單（抄了就一定有一份會漏更新而印出英文 key）。
+function bossItemMaterials() {
+  return (boss?.combatItems?.items || []).map((i) => ({ field: `boss_items.${i.key}`, mat: i.key }));
+}
 
 // 種子：每種作物一款，欄位固定在 seed_bag（與 miningProfile 的 schema 對齊）。
 function seedEntries() {
@@ -83,7 +89,7 @@ function listAll() {
       category: "repair_tool",
     });
   }
-  for (const m of MATERIALS) {
+  for (const m of [...MATERIALS, ...bossItemMaterials()]) {
     const def = (craft?.materials || {})[m.mat];
     if (!def?.name) continue;
     items.push({

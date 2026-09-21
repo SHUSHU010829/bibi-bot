@@ -457,6 +457,46 @@
         }
       ]
     },
+    "combatItems": {
+      "enabled": true,
+      "items": [
+        {
+          "key": "blast_charge",
+          "name": "粗製炸藥包",
+          "emoji": "💣",
+          "coinCost": 2000,
+          "maxStock": 3,
+          "perBossUses": 3,
+          "hpPctDamage": 1.5,
+          "flavor": "礦坑裡用剩的煤炭與碎石隨便捆一捆，威力普通但便宜到可以整場亂丟。",
+          "announcement": "💣 **{user}** 往 **{name}** 腳邊扔了一包粗製炸藥——轟！**{damage}** 傷害！"
+        },
+        {
+          "key": "lava_bomb",
+          "name": "熔岩燃燒彈",
+          "emoji": "🛢️",
+          "coinCost": 5000,
+          "maxStock": 2,
+          "perBossUses": 2,
+          "hpPctDamage": 3,
+          "flavor": "把熔岩魚的油脂灌進鐵桶做成的燃燒彈，火焰會直接燒穿岩甲。",
+          "announcement": "🛢️🔥 **{user}** 砸出熔岩燃燒彈，**{name}** 全身著火——**{damage}** 傷害！"
+        },
+        {
+          "key": "thunder_talisman",
+          "name": "封魔雷符",
+          "emoji": "⚡",
+          "coinCost": 8000,
+          "maxStock": 1,
+          "perBossUses": 1,
+          "hpPctDamage": 5,
+          "grantsPlayerEvent": "warcry",
+          "flavor": "傳說素材碎片寫成的符咒，落雷之後自己也會進入戰吼狀態。",
+          "announcement": "⚡🌩️ **{user}** 撕開封魔雷符，落雷直劈 **{name}**——**{damage}** 傷害！"
+        }
+      ],
+      "usageHint": "魔王在場時到 `/魔王 道具` 或戰況面板按「🎒 討伐道具」使用；造成的傷害算進你的傷害排行，不消耗出刀次數與體力。"
+    },
     "sealingAmmo": {
       "enabled": true,
       "label": "封魔彈藥",

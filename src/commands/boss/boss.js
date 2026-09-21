@@ -9,6 +9,7 @@ const { boss } = require("../../config");
 const bossEngine = require("../../features/boss/bossEngine");
 const bossSummon = require("../../features/boss/bossSummon");
 const bossView = require("../../features/boss/bossView");
+const bossItems = require("../../features/boss/bossItems");
 
 async function runInfo(client, interaction) {
   if (!boss?.enabled) {
@@ -43,6 +44,10 @@ async function runInfo(client, interaction) {
     userId: interaction.user.id,
     guildId: interaction.guildId,
   });
+  const items = await bossItems.inventory(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
   const container = bossView.buildInfoContainer({
     userId: interaction.user.id,
     displayName: interaction.member?.displayName || interaction.user.username,
@@ -52,9 +57,40 @@ async function runInfo(client, interaction) {
     comboActive: info.comboActive,
     guild: interaction.guild,
     ammo,
+    items,
   });
   return interaction.editReply({
     components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
+// 討伐道具面板：哪個道具、丟幾個由玩家在面板上決定，指令層只負責取庫存 → 呈現。
+async function runItems(client, interaction) {
+  const inv = await bossItems.inventory(client, {
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
+  if (!inv.enabled) {
+    return interaction.editReply({
+      components: [bossView.buildBossItemErrorContainer("disabled")],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  if (!inv.boss) {
+    return interaction.editReply({
+      components: [bossView.buildBossItemErrorContainer("no_boss", { inv })],
+      flags: MessageFlags.IsComponentsV2,
+    });
+  }
+  return interaction.editReply({
+    components: [
+      bossView.buildBossItemsContainer({
+        userId: interaction.user.id,
+        displayName: interaction.member?.displayName || interaction.user.username,
+        inv,
+      }),
+    ],
     flags: MessageFlags.IsComponentsV2,
   });
 }
@@ -106,6 +142,12 @@ module.exports = {
       },
       {
         type: ApplicationCommandOptionType.Subcommand,
+        name: "道具",
+        description: "丟出討伐道具，直接扣魔王血量 🎒",
+        options: [],
+      },
+      {
+        type: ApplicationCommandOptionType.Subcommand,
         name: "召喚進度",
         description: "查看討伐能量：打地下城累積，集滿自動召喚魔王 🔮",
         options: [],
@@ -124,6 +166,9 @@ module.exports = {
       if (sub === "召喚進度") {
         return await runSummonProgress(client, interaction);
       }
+      if (sub === "道具") {
+        return await runItems(client, interaction);
+      }
       return await runInfo(client, interaction);
     } catch (e) {
       console.log(`[BOSS] /魔王 戰況 失敗：${e.stack || e.message}`.red);
@@ -140,4 +185,5 @@ module.exports = {
   },
 
   runInfo,
+  runItems,
 };
