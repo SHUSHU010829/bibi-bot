@@ -1047,6 +1047,78 @@ async function useSealingAmmo(client, { userId, guildId }) {
   };
 }
 
+// 管理員手動改血量：開場算太硬想收尾、或現場調節節奏時用。
+// 扣血走 $inc（與玩家出刀同一種原子更新，不會蓋掉同時間打進來的傷害），
+// 指定剩餘血量才用 $set。砍到 0 一樣要原子搶下 defeated，但沒有擊殺者＝不發擊殺獎。
+async function adminAdjustHp(client, { guildId, cut = null, cutPct = null, setHp = null, adminId }) {
+  if (!cfg().enabled) return { ok: false, reason: "disabled" };
+
+  const bossDoc = await getActiveBoss(client, guildId);
+  if (!bossDoc) return { ok: false, reason: "no_active" };
+
+  const now = Date.now();
+  const before = bossDoc.current_hp ?? 0;
+  const maxHp = bossDoc.max_hp ?? 0;
+  const cutAmount = cutPct != null ? Math.round(maxHp * cutPct / 100) : (cut != null ? Math.round(cut) : null);
+  const targetHp = setHp != null ? Math.max(0, Math.min(maxHp, Math.round(setHp))) : null;
+
+  const update = {
+    $set: { updatedAt: new Date() },
+    $push: { admin_hp_edits: { by: adminId, cut: cutAmount, set_hp: targetHp, before, at: now } },
+  };
+  if (targetHp != null) update.$set.current_hp = targetHp;
+  else update.$inc = { current_hp: -cutAmount };
+
+  const res = await client.bossEventsCollection.findOneAndUpdate(
+    { boss_id: bossDoc.boss_id, status: "active" },
+    update,
+    { returnDocument: "after" },
+  );
+  const afterDoc = res?.value || res;
+  if (!afterDoc) return { ok: false, reason: "expired" };
+
+  const rawHp = afterDoc.current_hp ?? 0;
+  const newHp = Math.max(0, Math.min(maxHp, rawHp));
+  const newPhase = phaseOf(newHp, maxHp);
+  const phaseChanged = newPhase !== bossDoc.phase;
+
+  let killed = false;
+  if (rawHp <= 0) {
+    const claim = await client.bossEventsCollection.findOneAndUpdate(
+      { boss_id: bossDoc.boss_id, status: "active" },
+      {
+        $set: {
+          status: "defeated",
+          killed_at: now,
+          current_hp: 0,
+          phase: newPhase,
+          killed_by_admin: adminId,
+        },
+      },
+      { returnDocument: "after" },
+    );
+    killed = !!(claim?.value || claim);
+  } else if (phaseChanged) {
+    await client.bossEventsCollection.updateOne(
+      { boss_id: bossDoc.boss_id, status: "active" },
+      { $set: { phase: newPhase } },
+    );
+  }
+
+  return {
+    ok: true,
+    before,
+    after: newHp,
+    delta: before - newHp,
+    maxHp,
+    killed,
+    phaseBefore: bossDoc.phase,
+    phaseAfter: newPhase,
+    phaseChanged,
+    boss: { ...afterDoc, current_hp: newHp, phase: newPhase },
+  };
+}
+
 module.exports = {
   useSealingAmmo,
   sealingAmmoState,
@@ -1056,6 +1128,7 @@ module.exports = {
   bossCooldown,
   applyAttack,
   applyComboAttack,
+  adminAdjustHp,
   settleBoss,
   getActiveBoss,
   getBossInfo,
