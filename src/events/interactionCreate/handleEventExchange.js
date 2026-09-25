@@ -52,7 +52,7 @@ module.exports = async (client, interaction) => {
   const parsed = parseExchangeButtonId(interaction.customId || "");
   if (!parsed) return;
 
-  const { ownerId, exchangeId } = parsed;
+  const { ownerId, exchangeId, all } = parsed;
 
   if (interaction.user.id !== ownerId) {
     return interaction.reply({
@@ -76,6 +76,7 @@ module.exports = async (client, interaction) => {
       username: interaction.user.username,
       member: interaction.member,
       exchangeId,
+      all,
     });
 
     if (!result.ok) {
@@ -113,7 +114,8 @@ module.exports = async (client, interaction) => {
 
     // 成功：刷新面板並置頂成功橫幅
     const banner =
-      `✅ **兌換成功！** 花費 ${fishLabel(result.fishDef, result.exchange.cost.fish)} ×${result.costQty}` +
+      `✅ **兌換成功${result.times > 1 ? `（一鍵換 ${result.times} 份）` : ""}！** ` +
+      `花費 ${fishLabel(result.fishDef, result.exchange.cost.fish)} ×${result.costQty}` +
       `，獲得 ${result.rewardText}。`;
     const { active, items } = await eventExchangeService.listExchanges(client, {
       userId: interaction.user.id,

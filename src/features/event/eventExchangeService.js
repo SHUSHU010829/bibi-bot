@@ -34,7 +34,15 @@ function decorate(x, bag, counts) {
     limit,
     soldOut,
     affordable: owned >= x.cost.qty && !soldOut,
+    maxTimes: maxTimes(x, owned, used),
   };
+}
+
+// 目前最多可連續兌換幾次（受持有魚量與每人上限雙重限制）。
+function maxTimes(x, owned, used) {
+  const byFish = Math.floor(owned / x.cost.qty);
+  const limit = x.limitPerUser || 0;
+  return limit > 0 ? Math.max(0, Math.min(byFish, limit - used)) : byFish;
 }
 
 async function listExchanges(client, { userId, guildId }) {
@@ -48,9 +56,10 @@ async function listExchanges(client, { userId, guildId }) {
 
 // 發放獎勵，回傳 { text, titleAward? }。text 為可讀獎勵文字（供成功橫幅）；
 // titleAward 僅在獎勵為稱號時附上 { titleId, newlyAdded }，供上層決定是否公告限定稱號。
-// 魚已於外層原子扣除。
-async function grantReward(client, { userId, guildId, username, member, exchange }) {
-  const rw = exchange.reward || {};
+// 魚已於外層原子扣除；times 為一次兌換的份數（一鍵換完時 > 1）。
+async function grantReward(client, { userId, guildId, username, member, exchange, times = 1 }) {
+  const base = exchange.reward || {};
+  const rw = { ...base, qty: (base.qty || 0) * times };
   if (rw.type === "coins") {
     const g = await grantCoins(client, {
       userId,
@@ -59,7 +68,7 @@ async function grantReward(client, { userId, guildId, username, member, exchange
       member,
       amount: rw.qty,
       source: "event_prize",
-      meta: { exchange: exchange.id, event: exchange.eventId },
+      meta: { exchange: exchange.id, event: exchange.eventId, times },
     }).catch(() => null);
     return { text: `🪙 ${(g?.granted ?? rw.qty).toLocaleString()} 幣` };
   }
@@ -112,7 +121,8 @@ async function grantReward(client, { userId, guildId, username, member, exchange
   return { text: "獎勵" };
 }
 
-async function redeem(client, { userId, guildId, username, member, exchangeId }) {
+// all=true：一鍵換完，依持有魚量與剩餘上限一次換到最多份。
+async function redeem(client, { userId, guildId, username, member, exchangeId, all = false }) {
   const x = eventEngine.getEventExchangeById(exchangeId);
   if (!x) return { ok: false, reason: "not_found" };
 
@@ -131,36 +141,41 @@ async function redeem(client, { userId, guildId, username, member, exchangeId })
     return { ok: false, reason: "insufficient", need: x.cost.qty, have: owned, exchange: x, fishDef };
   }
 
-  // 原子：扣魚 + 計次，兩者同時受守衛（魚量足夠、未達上限）
+  // 稱號重複兌換沒有意義，一鍵換完也只換一份。
+  const times = all && x.reward?.type !== "title" ? maxTimes(x, owned, used) : 1;
+  const costQty = x.cost.qty * times;
+
+  // 原子：扣魚 + 計次，兩者同時受守衛（魚量足夠、剩餘上限夠換 times 份）
   const filter = {
     userId,
     guildId,
-    [`fish_bag.${x.cost.fish}`]: { $gte: x.cost.qty },
+    [`fish_bag.${x.cost.fish}`]: { $gte: costQty },
   };
   if (limit > 0) {
     filter.$or = [
-      { [`event_exchange_counts.${x.id}`]: { $lt: limit } },
+      { [`event_exchange_counts.${x.id}`]: { $lte: limit - times } },
       { [`event_exchange_counts.${x.id}`]: { $exists: false } },
     ];
   }
   const res = await client.miningProfilesCollection.updateOne(filter, {
-    $inc: { [`fish_bag.${x.cost.fish}`]: -x.cost.qty, [`event_exchange_counts.${x.id}`]: 1 },
+    $inc: { [`fish_bag.${x.cost.fish}`]: -costQty, [`event_exchange_counts.${x.id}`]: times },
     $set: { updatedAt: new Date() },
   });
   if (res.modifiedCount === 0) {
     return { ok: false, reason: "retry", exchange: x, fishDef };
   }
 
-  const reward = await grantReward(client, { userId, guildId, username, member, exchange: x });
+  const reward = await grantReward(client, { userId, guildId, username, member, exchange: x, times });
   return {
     ok: true,
     exchange: x,
     fishDef,
-    costQty: x.cost.qty,
+    times,
+    costQty,
     rewardText: reward.text,
     titleAward: reward.titleAward || null,
-    usedAfter: used + 1,
-    ownedAfter: owned - x.cost.qty,
+    usedAfter: used + times,
+    ownedAfter: owned - costQty,
   };
 }
 

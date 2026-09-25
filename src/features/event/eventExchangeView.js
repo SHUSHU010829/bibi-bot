@@ -2,7 +2,6 @@ require("colors");
 const {
   ContainerBuilder,
   TextDisplayBuilder,
-  SectionBuilder,
   SeparatorBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -15,9 +14,10 @@ const eventExchangeService = require("./eventExchangeService");
 const eventEngine = require("./eventEngine");
 
 const EXCHANGE_BTN_PREFIX = "evt_exch_";
+const EXCHANGE_ALL_BTN_PREFIX = "evt_exchall_";
 const FISH_SELECT_PREFIX = "evtxfish_";
 const ALL_FISH = "all";
-const MAX_ITEMS = 8; // 元件上限保護：每項 3 元件 + 下拉與標題約 9，8 項約 33 < 40
+const MAX_ITEMS = 6; // 元件上限保護：每項 4 元件（文字 + 列 + 2 鈕）+ 標題/下拉/提示約 10，6 項約 34 < 40
 
 function rewardLabel(reward) {
   switch (reward?.type) {
@@ -65,10 +65,27 @@ function itemButton(ownerId, x) {
     return btn.setLabel("已達上限").setStyle(ButtonStyle.Secondary).setDisabled(true);
   }
   return btn
-    .setLabel(x.affordable ? "兌換" : `需要 ×${x.cost.qty}`)
+    .setLabel(x.affordable ? "兌換 ×1" : `需要 ×${x.cost.qty}`)
     .setEmoji(x.affordable ? "✅" : "🎣")
     .setStyle(x.affordable ? ButtonStyle.Success : ButtonStyle.Secondary)
     .setDisabled(!x.affordable);
+}
+
+// 可換 2 份以上才給「全部換」，稱號只能換一份不給。
+function itemAllButton(ownerId, x) {
+  if (x.maxTimes < 2 || x.reward?.type === "title") return null;
+  return new ButtonBuilder()
+    .setCustomId(`${EXCHANGE_ALL_BTN_PREFIX}${ownerId}_${x.id}`)
+    .setLabel(`全部換 ×${x.maxTimes}（花 ${x.maxTimes * x.cost.qty} 條）`)
+    .setEmoji("⚡")
+    .setStyle(ButtonStyle.Primary);
+}
+
+function itemActionRow(ownerId, x) {
+  const row = new ActionRowBuilder().addComponents(itemButton(ownerId, x));
+  const allBtn = itemAllButton(ownerId, x);
+  if (allBtn) row.addComponents(allBtn);
+  return row;
 }
 
 // 從兌換項目中抓出「不同的成本魚種」，供下拉選單切換顯示。
@@ -155,11 +172,9 @@ function buildExchangeView({ ownerId, active, items, banner = null, selectedFish
 
   const shown = filtered.slice(0, MAX_ITEMS);
   for (const x of shown) {
-    container.addSectionComponents(
-      new SectionBuilder()
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(itemLine(x)))
-        .setButtonAccessory(itemButton(ownerId, x)),
-    );
+    container
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(itemLine(x)))
+      .addActionRowComponents(itemActionRow(ownerId, x));
   }
   if (filtered.length > shown.length) {
     container.addTextDisplayComponents(
@@ -168,16 +183,24 @@ function buildExchangeView({ ownerId, active, items, banner = null, selectedFish
       ),
     );
   }
+  if (shown.some((x) => itemAllButton(ownerId, x))) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# ⚡ 全部換＝用手上的魚一次換到上限；同一種魚能換多項獎勵時，想留魚換別的就先按「兌換 ×1」。",
+      ),
+    );
+  }
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 function parseExchangeButtonId(customId) {
-  if (!customId.startsWith(EXCHANGE_BTN_PREFIX)) return null;
-  const rest = customId.slice(EXCHANGE_BTN_PREFIX.length);
+  const all = customId.startsWith(EXCHANGE_ALL_BTN_PREFIX);
+  if (!all && !customId.startsWith(EXCHANGE_BTN_PREFIX)) return null;
+  const rest = customId.slice((all ? EXCHANGE_ALL_BTN_PREFIX : EXCHANGE_BTN_PREFIX).length);
   const idx = rest.indexOf("_");
   if (idx < 0) return null;
-  return { ownerId: rest.slice(0, idx), exchangeId: rest.slice(idx + 1) };
+  return { ownerId: rest.slice(0, idx), exchangeId: rest.slice(idx + 1), all };
 }
 
 function parseFishSelectId(customId) {
@@ -193,6 +216,7 @@ module.exports = {
   parseFishSelectId,
   rewardLabel,
   EXCHANGE_BTN_PREFIX,
+  EXCHANGE_ALL_BTN_PREFIX,
   FISH_SELECT_PREFIX,
   ALL_FISH,
 };
