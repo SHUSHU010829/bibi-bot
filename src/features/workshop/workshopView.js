@@ -2,7 +2,7 @@
 //
 // customId 規約：
 //   wsTab_<userId>_<tab>            — 切換分頁（tab: equipment / craft / repair）
-//   wsCraftSub_<userId>            — 合成分頁的子分類 Select（值為 pickaxe / repair / weapon / shield / fish / misc / farm）
+//   wsCraftSub_<userId>            — 合成分頁的子分類 Select（值為 pickaxe / repair / weapon / shield / fish / misc / farm / boss / event）
 //   wsCraft_<userId>_<recipeId>     — 在合成分頁點某配方的「合成」按鈕
 //   wsConfirm_<userId>_<recipeId>   — confirm_needed 時的「確認替換」
 //   wsCancel_<userId>               — confirm_needed 時的「取消」
@@ -67,7 +67,8 @@ const CRAFT_SUBS = [
   { id: "fish", label: "釣魚", emoji: "🎣", types: ["rod", "fishing_net"] },
   { id: "misc", label: "賭石/藏寶", emoji: "🪨", types: ["stone_appraisal_trigger", "treasure_map"] },
   { id: "farm", label: "農場", emoji: "🪤", types: ["advanced_trap", "ore"] },
-  { id: "event", label: "活動", emoji: "🛤️", types: ["pioneer_hammer", "sealing_ammo"] },
+  { id: "boss", label: "討伐", emoji: "💥", types: ["sealing_ammo", "boss_item"] },
+  { id: "event", label: "活動", emoji: "🛤️", types: ["pioneer_hammer"] },
 ];
 const CRAFT_SUB_IDS = CRAFT_SUBS.map((s) => s.id);
 
@@ -348,6 +349,16 @@ function recipeBodyText(recipe, profile, type) {
     } else if (type === "sealing_ammo") {
       const acfg = require("../../config").boss?.sealingAmmo || {};
       propLine = `效果：魔王戰攻擊次數 +${acfg.attackLimitBonus || 0}・世界王傷害 +${acfg.bossDamagePct || 0}%（另需 ${(acfg.coinCost || 0).toLocaleString()} 逼幣）`;
+    } else if (type === "boss_item") {
+      const bossItems = require("../boss/bossItems");
+      const idef = bossItems.itemDef(recipe.result?.id) || {};
+      const extra = idef.grantsPlayerEvent
+        ? `・使用後自己獲得「${(require("../../config").boss?.playerEvents?.list || []).find((e) => e.key === idef.grantsPlayerEvent)?.name || ""}」效果`
+        : "";
+      propLine =
+        `效果：魔王戰使用，立刻造成魔王 **最大血量 ${idef.hpPctDamage || 0}%** 的傷害${extra}`
+        + `・單場最多 ${idef.perBossUses ?? 1} 個・庫存上限 ${idef.maxStock ?? 1} 個`
+        + `（另需 ${(idef.coinCost || 0).toLocaleString()} 逼幣）`;
     } else if (type === "pioneer_hammer") {
       propLine = `效果：解鎖全服共建活動的投入資格（非消耗品，持有一把即可）`;
     } else if (type === "ore") {
@@ -465,6 +476,7 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
   const oreRecycles = recipes.filter((r) => r.result?.type === "ore");
   const eventTools = recipes.filter((r) => r.result?.type === "pioneer_hammer");
   const bossAmmo = recipes.filter((r) => r.result?.type === "sealing_ammo");
+  const bossCombatItems = recipes.filter((r) => r.result?.type === "boss_item");
 
   if (craftSub === "pickaxe") {
     if (pickaxes.length) {
@@ -584,6 +596,7 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
         );
       craftableSection(container, eventTools, profile, "pioneer_hammer", userId);
     }
+  } else if (craftSub === "boss") {
     if (bossAmmo.length) {
       const acfg = require("../../config").boss?.sealingAmmo || {};
       container
@@ -597,6 +610,23 @@ function buildCraftTab(container, { userId, displayName, profile, craftSub }) {
           ),
         );
       craftableSection(container, bossAmmo, profile, "sealing_ammo", userId);
+    }
+    if (bossCombatItems.length) {
+      const bossItems = require("../boss/bossItems");
+      const owned = bossItems
+        .itemList()
+        .map((d) => `${d.emoji} ${d.name} **${bossItems.stockOf(profile, d.key)}**`)
+        .join("・");
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `### 🎒 討伐道具（${owned}）\n`
+              + `-# 直接砸在魔王臉上的消耗品：傷害算進你的傷害排行，不消耗出刀次數與體力\n`
+              + `-# 用法：魔王在場時 \`/魔王 道具\`（或戰況面板的「🎒 討伐道具」）選一個丟出去`,
+          ),
+        );
+      craftableSection(container, bossCombatItems, profile, "boss_item", userId);
     }
   }
 
@@ -833,6 +863,16 @@ async function buildView(client, { userId, guildId, displayName, tab = "equipmen
 }
 
 // 封魔彈藥 / 拓荒錘 的專屬失敗：庫存已滿、逼幣不足、已持有。
+// 庫存滿了的下一步：彈藥與討伐道具的「用掉才能再做」講法不同，各講各的。
+function stockLimitHint(result) {
+  if (result.recipe?.result?.type === "boss_item") {
+    const bossItems = require("../boss/bossItems");
+    const def = bossItems.itemDef(result.recipe.result.id);
+    return `魔王在場時到 \`/魔王 道具\` 丟出去（單場最多 ${def?.perBossUses ?? 1} 個），用掉才能再補庫存`;
+  }
+  return "一隻魔王只能投 1 個——投進場上的魔王用掉後就能再打造一個";
+}
+
 function buildCraftLimitContainer(result) {
   if (result.reason === "stock_limit") {
     return new ContainerBuilder()
@@ -847,9 +887,7 @@ function buildCraftLimitContainer(result) {
         ),
       )
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          "-# 一隻魔王只能投 1 個——投進場上的魔王用掉後就能再打造一個",
-        ),
+        new TextDisplayBuilder().setContent(`-# ${stockLimitHint(result)}`),
       );
   }
   if (result.reason === "insufficient_coins") {

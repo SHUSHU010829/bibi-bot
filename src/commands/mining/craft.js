@@ -221,6 +221,7 @@ module.exports = {
       const isShield = result.type === "shield";
       const isAppraisalTrigger = result.type === "stone_appraisal_trigger";
       const isSealingAmmo = result.type === "sealing_ammo";
+      const isBossItem = result.type === "boss_item";
       const tail = isWeapon
         ? "-# 帶著武器去 /地下城 打怪吧！用 /裝備 查看裝備"
         : isRod
@@ -231,12 +232,19 @@ module.exports = {
               ? "-# 10 分鐘內按下方「立刻賭石」開出，過期就失效"
               : isSealingAmmo
                 ? `-# ${bossView.ammoUsageHint()}`
-                : "-# 用 /裝備 查看裝備，/挖礦 開挖！";
+                : isBossItem
+                  ? `-# ${bossView.bossItemUsageHint(result.resultId)}`
+                  : "-# 用 /裝備 查看裝備，/挖礦 開挖！";
       const statLines = isSealingAmmo
         ? [
             `**額外消耗**\n${(result.coinCost || 0).toLocaleString()} 逼幣`,
             `**目前持有**\n${result.ammoAfter} 個`,
           ]
+        : isBossItem
+          ? [
+              `**額外消耗**\n${(result.coinCost || 0).toLocaleString()} 逼幣`,
+              `**目前持有**\n${result.stockAfter} / ${result.maxStock} 個`,
+            ]
         : [
             `**耐久**\n${result.durability == null ? "永久" : `${result.durability} 次`}`,
             `**累積合成**\n${result.craftCountTotal} 件`,

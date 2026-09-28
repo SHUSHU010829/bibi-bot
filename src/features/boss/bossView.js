@@ -2,6 +2,7 @@ const {
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
+  SectionBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -12,6 +13,7 @@ const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const bossEngine = require("./bossEngine");
 const bossSkills = require("./bossSkills");
 const bossPlayerEvents = require("./bossPlayerEvents");
+const bossItems = require("./bossItems");
 const bossSpawnWindow = require("./bossSpawnWindow");
 const dungeonService = require("../mining/dungeonService");
 const { materialLabel } = require("../mining/craftMaterials");
@@ -133,6 +135,48 @@ function ammoStatusLine(ammo) {
   return `-# 💥 沒有封魔彈藥（投入後該場${ammoEffectText()}）——${ammoCraftHint()}`;
 }
 
+// 討伐道具：先開道具面板（boss_items_<ownerId>），由玩家挑要丟哪一個，不直接丟最貴的。
+function bossItemsButton(userId, inv) {
+  return new ButtonBuilder()
+    .setCustomId(`boss_items_${userId}`)
+    .setLabel(`討伐道具 ×${inv.totalCount}`)
+    .setEmoji("🎒")
+    .setStyle(ButtonStyle.Primary);
+}
+
+// 打造指引：材料取自合成配方（唯一真實來源），與工坊顯示的不會分岔。
+function bossItemCraftHint(def) {
+  const recipe = bossItems.recipeOf(def.key);
+  const mats = Object.entries(recipe?.materials || {})
+    .map(([mat, qty]) => materialLabel(mat, qty))
+    .join("・");
+  return `${mats}＋${(def.coinCost || 0).toLocaleString()} 逼幣`;
+}
+
+// 討伐道具的使用說明只寫一份：合成成功訊息（指令 / 工坊）、背包、戰況都指向這裡。
+function bossItemUsageHint(key) {
+  const def = bossItems.itemDef(key);
+  if (!def) return "魔王在場時到 `/魔王 道具` 丟出去";
+  return `魔王在場時到 \`/魔王 道具\` 丟出去：立刻造成最大血量 ${def.hpPctDamage}% 的傷害`
+    + `（單場最多 ${def.perBossUses ?? 1} 個，不消耗出刀次數與體力）`;
+}
+
+// 戰況面板的討伐道具狀態行：手上有幾個、本場還能丟幾個，沒有的時候也要講怎麼做。
+function bossItemsStatusLine(inv) {
+  if (!inv?.enabled) return null;
+  if (inv.totalCount > 0) {
+    const bits = inv.items
+      .filter((i) => i.count > 0)
+      .map((i) => `${i.def.emoji} ${i.def.name} ×${i.count}（本場還能丟 ${i.remaining}）`);
+    return `-# 🎒 討伐道具：${bits.join("・")} — 按下方按鈕丟出去`;
+  }
+  const first = bossItems.itemList()[0];
+  return first
+    ? `-# 🎒 沒有討伐道具（丟出去立刻扣魔王血量，不佔出刀次數）——`
+      + `到 \`/裝備 分頁:合成\` →「💥 討伐」打造 ${first.emoji} ${first.name}：${bossItemCraftHint(first)}`
+    : null;
+}
+
 // 先開藥水選擇面板（boss_potion_<ownerId>），由玩家挑小 / 中 / 大，不直接灌下最大的一瓶。
 function staminaPotionButton(userId) {
   return new ButtonBuilder()
@@ -241,7 +285,9 @@ function addBuffBlock(container, buffInfo, displayName) {
 
 // 攻擊結果 / 戰況共用的操作按鈕列：能攻擊時放「再次攻擊」，一律附喝藥水 + 查戰況。
 // 手上有沒投入的封魔彈藥時多一顆投彈鈕（本場已投入或庫存為 0 就不占版面）。
-function actionRow(userId, { canAttack, staminaEmpty, ammo } = {}) {
+// ActionRow 最多 5 顆按鈕：攻擊 / 封魔彈藥 / 討伐道具 / 體力藥水 / 戰況，剛好塞滿，
+// 再加東西就得拆第二排。
+function actionRow(userId, { canAttack, staminaEmpty, ammo, items } = {}) {
   const row = new ActionRowBuilder();
   if (canAttack) {
     const btn = attackButton(userId);
@@ -250,6 +296,9 @@ function actionRow(userId, { canAttack, staminaEmpty, ammo } = {}) {
   }
   if (ammo?.enabled && !ammo.active && ammo.count > 0) {
     row.addComponents(sealingAmmoButton(userId, ammo));
+  }
+  if (items?.enabled && items.totalCount > 0) {
+    row.addComponents(bossItemsButton(userId, items));
   }
   row.addComponents(staminaPotionButton(userId), infoButton(userId));
   return row;
@@ -476,7 +525,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
   return { container, killed, phaseChange, comboTriggered };
 }
 
-function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage, comboActive, guild, ammo }) {
+function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage, comboActive, guild, ammo, items }) {
   const phase = b.phase || "normal";
   // ends_at 為 null＝無時限場（招喚場 durationMinutes 設 0 時），待到被擊殺為止。
   const noLimit = b.ends_at == null;
@@ -538,10 +587,14 @@ function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage
   if (ammoLine) {
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(ammoLine));
   }
+  const itemsLine = bossItemsStatusLine(items);
+  if (itemsLine) {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(itemsLine));
+  }
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(`-# 📋 ${displayName} 的戰況面板 — 按鈕只有你能按`),
   );
-  container.addActionRowComponents(actionRow(userId, { canAttack: true, ammo }));
+  container.addActionRowComponents(actionRow(userId, { canAttack: true, ammo, items }));
   return container;
 }
 
@@ -606,6 +659,139 @@ function buildStaminaPotionPickerContainer({ userId, displayName, profile, stami
     );
   }
   return container;
+}
+
+// 討伐道具面板：每個道具一段文字 + 緊接著自己的「丟出去」按鈕（不要把按鈕全堆在最底下）。
+// 持有 0 的道具不佔版面，統一收到底部一行。
+function buildBossItemsContainer({ userId, displayName, inv }) {
+  const b = inv.boss;
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_AMMO)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# 🎒 ${displayName} 的討伐道具\n丟出去立刻扣 **${b.emoji} ${b.name}** 的血，不消耗出刀次數與體力。`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  const empty = [];
+  for (const item of inv.items) {
+    if (item.count <= 0) {
+      empty.push(`${item.def.emoji} ${item.def.name}`);
+      continue;
+    }
+    const usable = item.remaining > 0;
+    const lines = [
+      `### ${item.def.emoji} ${item.def.name} ×${item.count}`,
+      `💥 傷害：**${item.damage.toLocaleString()}**（最大血量 ${item.def.hpPctDamage}%）`,
+      usable
+        ? `-# 本場還能丟 **${item.remaining}/${item.def.perBossUses ?? 1}** 個`
+        : `-# 本場的 ${item.def.perBossUses ?? 1} 個已經丟完了，留到下一隻魔王`,
+    ];
+    if (item.def.flavor) lines.push(`-# ${item.def.flavor}`);
+    container.addSectionComponents(
+      new SectionBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
+        .setButtonAccessory(
+          new ButtonBuilder()
+            .setCustomId(`boss_item_${userId}_${item.def.key}`)
+            .setLabel(usable ? `丟出去（-${item.damage.toLocaleString()}）` : "本場已用完")
+            .setEmoji("💥")
+            .setStyle(usable ? ButtonStyle.Danger : ButtonStyle.Secondary)
+            .setDisabled(!usable),
+        ),
+    );
+  }
+
+  if (empty.length) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# 尚無：${empty.join("・")}（到 \`/裝備 分頁:合成\` →「💥 討伐」打造）`),
+    );
+  }
+  return container;
+}
+
+// 丟出道具的結果：傷害、魔王剩餘血量、附帶效果、剩餘庫存，再附上「繼續砍」的快捷。
+function buildBossItemUsedContainer({ userId, displayName, result }) {
+  const b = result.boss;
+  const container = new ContainerBuilder()
+    .setAccentColor(result.killed ? COLOR_VICTORY : COLOR_AMMO)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `# ${result.def.emoji} ${result.def.name} 命中！\n`
+          + `**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 傷害。`,
+      ),
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `**血量**\n${hpBar(b.current_hp, b.max_hp)}`,
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `📊 你的累積傷害：**${(result.myDamage || 0).toLocaleString()}**\n`
+          + `🎒 剩餘持有：**${result.countAfter}** 個（本場還能丟 ${Math.max(0, (result.limit ?? 1) - result.usedAfter)} 個）`,
+      ),
+    );
+
+  if (result.playerFx) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`✨ 附帶效果：**${result.playerFx.name}** 已生效`),
+    );
+  }
+  if (result.killed) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("🏆 **最後一擊！** 結算公告馬上就來。"),
+    );
+  } else {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("-# 道具傷害算進你的傷害排行，但不會回復出刀次數——記得繼續砍。"),
+    );
+    container.addActionRowComponents(actionRow(userId, { canAttack: true }));
+  }
+  return container;
+}
+
+// 使用失敗：每種原因都要寫清楚「為什麼不行」＋「現在能做什麼」。
+function buildBossItemErrorContainer(reason, { def, inv } = {}) {
+  if (reason === "no_boss") {
+    return buildErrorContainer({
+      title: "🌙 現在沒有魔王在場",
+      body: `討伐道具只能砸在「正在場上的魔王」身上。\n🎒 目前持有：**${inv?.totalCount || 0}** 個（不會過期，留到下一場）`,
+      hint: `下一場固定魔王在 **週六 21:00**。${summonWindowHint()}`,
+    });
+  }
+  if (reason === "no_stock") {
+    return buildErrorContainer({
+      title: `${def?.emoji || "🎒"} 沒有${def?.name || "討伐道具"}`,
+      body: `你手上有 **0** 個${def?.name || "討伐道具"}，需要 **1** 個才能丟出去。`,
+      hint: def ? `到 \`/裝備 分頁:合成\` →「💥 討伐」打造：${bossItemCraftHint(def)}（庫存上限 ${def.maxStock ?? 1} 個）` : undefined,
+    });
+  }
+  if (reason === "used_up") {
+    return buildErrorContainer({
+      title: `${def?.emoji || "🎒"} 這場已經丟完了`,
+      body: `**${def?.name || "討伐道具"}** 每場最多丟 **${def?.perBossUses ?? 1}** 個，你已經用完本場額度。`,
+      hint: "手上剩下的留到下一隻魔王，或改丟其他種類的討伐道具。",
+    });
+  }
+  if (reason === "expired") {
+    return buildErrorContainer({
+      title: "⏳ 魔王已經離場",
+      body: "這場魔王剛剛結束了，道具沒有被消耗。",
+    });
+  }
+  if (reason === "disabled") {
+    return buildErrorContainer({
+      title: "🔧 討伐道具未啟用",
+      body: "這個伺服器目前沒有開放討伐道具。",
+    });
+  }
+  return buildErrorContainer({
+    title: "❌ 使用失敗",
+    body: "出了點狀況，請稍後再試。",
+  });
 }
 
 // 手上還有沒投入的彈藥時，把「投彈」直接掛在錯誤訊息上（最常見的情境：攻擊次數用完）。
@@ -1057,12 +1243,16 @@ module.exports = {
   buildComboResultContainer,
   buildInfoContainer,
   buildStaminaPotionPickerContainer,
+  buildBossItemsContainer,
+  buildBossItemUsedContainer,
+  buildBossItemErrorContainer,
   buildSealingAmmoUsedContainer,
   buildSealingAmmoErrorContainer,
   addSealingAmmoOffer,
   buildErrorContainer,
   ammoStatusLine,
   ammoUsageHint,
+  bossItemUsageHint,
   buildSettlementContainer,
   buildSummonProgressContainer,
   phaseLabel,

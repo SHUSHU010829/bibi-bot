@@ -26,6 +26,7 @@ const gameTitleService = require("../../features/gameTitles/gameTitleService");
 const applyQuestHooks = require("../../features/quests/applyQuestHooks");
 const workshopView = require("../../features/workshop/workshopView");
 const bossView = require("../../features/boss/bossView");
+
 const { deferUpdateSafe } = require("../../utils/safeAck");
 
 const { TAB_PREFIX, CRAFT_SUB_PREFIX, REPAIR_TOOL_APPLY_PREFIX, CRAFT_PREFIX, CRAFT_ALL_PREFIX, CONFIRM_PREFIX, CANCEL_PREFIX, REPAIR_TOOL_PREFIX, TABS, CRAFT_SUBS, CRAFT_SUB_IDS } = workshopView;
@@ -132,7 +133,8 @@ function buildSuccessContainer(result, userId) {
   const isTreasureMap = result.type === "treasure_map";
   const isOre = result.type === "ore";
   const isSealingAmmo = result.type === "sealing_ammo";
-  const accent = isRepairTool || isFishingNet || isAppraisalTrigger || isAdvancedTrap || isTreasureMap || isOre || isSealingAmmo
+  const isBossItem = result.type === "boss_item";
+  const accent = isRepairTool || isFishingNet || isAppraisalTrigger || isAdvancedTrap || isTreasureMap || isOre || isSealingAmmo || isBossItem
     ? 0x3498db
     : result.type === "weapon"
       ? 0xe67e22
@@ -159,6 +161,10 @@ function buildSuccessContainer(result, userId) {
     tail = `**額外消耗**　${(result.coinCost || 0).toLocaleString()} 逼幣\n`
       + `**目前持有**　${result.ammoAfter} 個\n`
       + `-# ${bossView.ammoUsageHint()}`;
+  } else if (isBossItem) {
+    tail = `**額外消耗**　${(result.coinCost || 0).toLocaleString()} 逼幣\n`
+      + `**目前持有**　${result.stockAfter} / ${result.maxStock} 個\n`
+      + `-# ${bossView.bossItemUsageHint(result.resultId)}`;
   } else {
     tail = `**耐久**　${result.durability == null ? "永久" : `${result.durability} 次`}\n**累積合成**　${result.craftCountTotal} 件`;
   }

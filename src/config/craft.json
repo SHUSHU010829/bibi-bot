@@ -545,6 +545,48 @@
         "result": {
           "type": "sealing_ammo"
         }
+      },
+      {
+        "id": "blast_charge",
+        "name": "粗製炸藥包",
+        "emoji": "💣",
+        "materials": {
+          "coal": 25,
+          "stone": 30,
+          "iron": 10
+        },
+        "result": {
+          "type": "boss_item",
+          "id": "blast_charge"
+        }
+      },
+      {
+        "id": "lava_bomb",
+        "name": "熔岩燃燒彈",
+        "emoji": "🛢️",
+        "materials": {
+          "lava_fish": 2,
+          "coal": 20,
+          "iron": 15
+        },
+        "result": {
+          "type": "boss_item",
+          "id": "lava_bomb"
+        }
+      },
+      {
+        "id": "thunder_talisman",
+        "name": "封魔雷符",
+        "emoji": "⚡",
+        "materials": {
+          "legendary_fragment": 4,
+          "magic_crystal": 3,
+          "gold": 10
+        },
+        "result": {
+          "type": "boss_item",
+          "id": "thunder_talisman"
+        }
       }
     ],
     "materials": {
@@ -571,6 +613,18 @@
       "sealing_ammo": {
         "name": "封魔彈藥",
         "emoji": "💥"
+      },
+      "blast_charge": {
+        "name": "粗製炸藥包",
+        "emoji": "💣"
+      },
+      "lava_bomb": {
+        "name": "熔岩燃燒彈",
+        "emoji": "🛢️"
+      },
+      "thunder_talisman": {
+        "name": "封魔雷符",
+        "emoji": "⚡"
       }
     },
     "advancedTrap": {

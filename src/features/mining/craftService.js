@@ -159,6 +159,11 @@ async function craftItem(client, { userId, guildId, recipeId, confirm = false, c
     return craftSealingAmmo(client, { userId, guildId, recipe });
   }
 
+  // 討伐道具（炸藥包 / 燃燒彈 / 雷符）：與封魔彈藥同屬「魔王戰消耗品」，只是可以囤好幾個
+  if (type === "boss_item") {
+    return craftBossItem(client, { userId, guildId, recipe });
+  }
+
   // 拓荒錘：主線活動的參與門檻，非消耗品，持有一把即可
   if (type === "pioneer_hammer") {
     return craftPioneerHammer(client, { userId, guildId, recipe });
@@ -661,6 +666,79 @@ async function craftSealingAmmo(client, { userId, guildId, recipe }) {
     durability: null,
     coinCost,
     ammoAfter: (profile.sealing_ammo_count || 0) + 1,
+    craftCountTotal: (profile.craft_count_total || 0) + 1,
+  };
+}
+
+// 討伐道具：效果與價錢寫在 boss.combatItems，材料寫在配方（與封魔彈藥同一套分工）。
+// 庫存上限是「每種道具各自算」，用掉才能補，避免一次囤一整箱把魔王直接炸穿。
+async function craftBossItem(client, { userId, guildId, recipe }) {
+  const bossItems = require("../boss/bossItems");
+  const def = bossItems.itemDef(recipe.result?.id);
+  if (!def) return { ok: false, reason: "no_recipe" };
+
+  const profile = await getOrCreate(client, userId, guildId);
+  const field = `boss_items.${def.key}`;
+  const maxStock = def.maxStock ?? 1;
+  const have = bossItems.stockOf(profile, def.key);
+  if (maxStock > 0 && have >= maxStock) {
+    return { ok: false, reason: "stock_limit", maxStock, have, recipe };
+  }
+
+  const missing = [];
+  for (const [mat, need] of Object.entries(recipe.materials || {})) {
+    const owned = ownedMaterial(profile, mat);
+    if (owned < need) missing.push({ mat, need, have: owned });
+  }
+  if (missing.length > 0) return { ok: false, reason: "insufficient", missing, recipe };
+
+  const coinCost = def.coinCost || 0;
+  if (coinCost > 0) {
+    const dec = await client.userCoinsCollection.updateOne(
+      { userId, guildId, totalCoins: { $gte: coinCost } },
+      { $inc: { totalCoins: -coinCost, lifetimeSpent: coinCost }, $set: { updatedAt: new Date() } },
+    );
+    if (dec.modifiedCount === 0) {
+      const doc = await client.userCoinsCollection.findOne({ userId, guildId }).catch(() => null);
+      return { ok: false, reason: "insufficient_coins", need: coinCost, have: doc?.totalCoins || 0, recipe };
+    }
+  }
+
+  const inc = { craft_count_total: 1, [field]: 1 };
+  for (const [mat, need] of Object.entries(recipe.materials)) {
+    if (SPECIAL_MAT_FIELDS[mat]) inc[SPECIAL_MAT_FIELDS[mat]] = (inc[SPECIAL_MAT_FIELDS[mat]] || 0) - need;
+    else if (isFishMaterial(mat)) inc[`fish_bag.${mat}`] = (inc[`fish_bag.${mat}`] || 0) - need;
+    else inc[`backpack.${mat}`] = (inc[`backpack.${mat}`] || 0) - need;
+  }
+  const res = await client.miningProfilesCollection.updateOne(
+    {
+      userId,
+      guildId,
+      $or: [{ [field]: { $lt: maxStock } }, { [field]: { $exists: false } }],
+    },
+    { $inc: inc, $set: { updatedAt: new Date() } },
+  );
+  if (res.modifiedCount === 0) {
+    if (coinCost > 0) {
+      await client.userCoinsCollection.updateOne(
+        { userId, guildId },
+        { $inc: { totalCoins: coinCost, lifetimeSpent: -coinCost } },
+      ).catch(() => {});
+    }
+    return { ok: false, reason: "stock_limit", maxStock, have, recipe };
+  }
+
+  return {
+    ok: true,
+    recipe,
+    type: "boss_item",
+    resultId: def.key,
+    resultName: def.name,
+    resultEmoji: def.emoji,
+    durability: null,
+    coinCost,
+    maxStock,
+    stockAfter: have + 1,
     craftCountTotal: (profile.craft_count_total || 0) + 1,
   };
 }

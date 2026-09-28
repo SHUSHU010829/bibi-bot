@@ -1047,6 +1047,108 @@ async function useSealingAmmo(client, { userId, guildId }) {
   };
 }
 
+// 討伐道具（炸藥包 / 燃燒彈 / 雷符）造成的固定傷害：不是揮刀，所以不吃出刀次數、體力、
+// 冷卻與魔王減傷，也不累積怒氣；但算進個人傷害與排行（獎勵照傷害佔比分）。
+// 單場使用次數存在 boss doc 的 item_uses.<userId>.<key>，條件式原子更新＝兩個請求同時進來只有一個會過。
+async function applyItemDamage(client, { userId, guildId, username, itemKey, damage, perBossUses, playerEventKey }) {
+  if (!cfg().enabled) return { ok: false, reason: "disabled" };
+
+  const bossDoc = await getActiveBoss(client, guildId);
+  if (!bossDoc) return { ok: false, reason: "no_boss" };
+  const now = Date.now();
+  if (bossDoc.ends_at != null && now >= bossDoc.ends_at) return { ok: false, reason: "expired" };
+
+  const usedField = `item_uses.${userId}.${itemKey}`;
+  const used = ((bossDoc.item_uses || {})[userId] || {})[itemKey] || 0;
+  if (perBossUses > 0 && used >= perBossUses) {
+    return { ok: false, reason: "used_up", used, limit: perBossUses };
+  }
+
+  const dmg = Math.max(1, Math.round(damage));
+  const eventDef = playerEventKey ? bossPlayerEvents.eventDef(playerEventKey) : null;
+  const fxEntry = eventDef ? bossPlayerEvents.fxEntry(eventDef, now) : null;
+
+  const update = {
+    $inc: { current_hp: -dmg, [`damage_by_user.${userId}`]: dmg, [usedField]: 1 },
+    $set: { last_hit_at: now, updatedAt: new Date() },
+  };
+  if (fxEntry) update.$push = { [`player_fx.${userId}`]: fxEntry };
+
+  const res = await client.bossEventsCollection.findOneAndUpdate(
+    {
+      boss_id: bossDoc.boss_id,
+      status: "active",
+      ...(perBossUses > 0
+        ? { $or: [{ [usedField]: { $lt: perBossUses } }, { [usedField]: { $exists: false } }] }
+        : {}),
+    },
+    update,
+    { returnDocument: "after" },
+  );
+  const afterDoc = res?.value || res;
+  if (!afterDoc) return { ok: false, reason: "used_up", used, limit: perBossUses };
+
+  let firstStrike = false;
+  if (!afterDoc.first_striker) {
+    const claim = await client.bossEventsCollection.updateOne(
+      { boss_id: bossDoc.boss_id, first_striker: null },
+      { $set: { first_striker: userId } },
+    );
+    firstStrike = claim.modifiedCount === 1;
+  }
+
+  const rawHp = afterDoc.current_hp ?? 0;
+  const newHp = Math.max(0, rawHp);
+  const newPhase = phaseOf(newHp, bossDoc.max_hp);
+  const phaseChanged = newPhase !== bossDoc.phase;
+
+  let killed = false;
+  if (rawHp <= 0) {
+    const claim = await client.bossEventsCollection.findOneAndUpdate(
+      { boss_id: bossDoc.boss_id, status: "active" },
+      { $set: { status: "defeated", killer_user_id: userId, killed_at: now, current_hp: 0, phase: newPhase } },
+      { returnDocument: "after" },
+    );
+    killed = !!(claim?.value || claim);
+  } else if (phaseChanged) {
+    await client.bossEventsCollection.updateOne(
+      { boss_id: bossDoc.boss_id, status: "active" },
+      { $set: { phase: newPhase } },
+    );
+  }
+
+  await client.bossDamageLogsCollection.insertOne({
+    boss_id: bossDoc.boss_id,
+    guild_id: guildId,
+    user_id: userId,
+    username,
+    damage: dmg,
+    is_counter: false,
+    via_item: itemKey,
+    phase: newPhase,
+    ts: now,
+  });
+
+  bus.emit("boss.attacked", { userId, guildId, bossId: bossDoc.boss_id, damage: dmg, isCounter: false, phaseAfter: newPhase });
+  if (killed) bus.emit("boss.killed", { userId, guildId, bossId: bossDoc.boss_id });
+
+  return {
+    ok: true,
+    damage: dmg,
+    killed,
+    firstStrike,
+    phaseBefore: bossDoc.phase,
+    phaseAfter: newPhase,
+    phaseChanged,
+    usedAfter: used + 1,
+    limit: perBossUses,
+    myDamage: (afterDoc.damage_by_user || {})[userId] || 0,
+    playerFx: eventDef,
+    playerFxLabels: bossPlayerEvents.statusLines(afterDoc, userId, now),
+    boss: { ...bossDoc, current_hp: newHp, phase: newPhase },
+  };
+}
+
 // 管理員手動改血量：開場算太硬想收尾、或現場調節節奏時用。
 // 扣血走 $inc（與玩家出刀同一種原子更新，不會蓋掉同時間打進來的傷害），
 // 指定剩餘血量才用 $set。砍到 0 一樣要原子搶下 defeated，但沒有擊殺者＝不發擊殺獎。
@@ -1128,6 +1230,7 @@ module.exports = {
   bossCooldown,
   applyAttack,
   applyComboAttack,
+  applyItemDamage,
   adminAdjustHp,
   settleBoss,
   getActiveBoss,

@@ -31,6 +31,7 @@ const dungeonService = require("../mining/dungeonService");
 const orePriceEngine = require("../market/orePriceEngine");
 const eventEngine = require("../event/eventEngine");
 const bossView = require("../boss/bossView");
+const bossItems = require("../boss/bossItems");
 
 // 魚袋顯示用的魚定義表：基礎魚 + 魚袋內持有、但不在基礎圖鑑的限定活動魚
 // （resolveFishDef 含已結束活動，讓限定魚活動後仍顯示得出名稱、賣得掉）。
@@ -853,6 +854,16 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     if (sealingAmmo > 0) {
       explorerLines.push(`💥 **封魔彈藥** ×${sealingAmmo}\n-# ${bossView.ammoUsageHint()}`);
     } else explorerZero.push("💥 封魔彈藥");
+    for (const def of bossItems.itemList()) {
+      const owned = bossItems.stockOf(profile, def.key);
+      if (owned > 0) {
+        explorerLines.push(
+          `${def.emoji} **${def.name}** ×${owned}\n`
+            + `-# 魔王戰用：立刻造成最大血量 ${def.hpPctDamage}% 的傷害，`
+            + `到 \`/魔王 道具\` 丟出去（單場最多 ${def.perBossUses ?? 1} 個）`,
+        );
+      } else explorerZero.push(`${def.emoji} ${def.name}`);
+    }
 
     for (const line of explorerLines) {
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(line));
