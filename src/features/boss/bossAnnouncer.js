@@ -3,6 +3,7 @@ const { EmbedBuilder, MessageFlags } = require("discord.js");
 const { boss } = require("../../config");
 const { buildSettlementContainer } = require("./bossView");
 const bossBoard = require("./bossBoard");
+const bossSkills = require("./bossSkills");
 const bossEngine = require("./bossEngine");
 
 function pickFrom(arr) {
@@ -92,7 +93,7 @@ function attackField(bossDoc) {
 // 戰場變數＝戰鬥中會突然改寫規則的三件事，各一行講完就好。
 function battlefieldField(bossDoc) {
   const lines = [];
-  const skills = (boss?.skills?.enabled ? boss.skills.list || [] : [])
+  const skills = (boss?.skills?.enabled ? bossSkills.castableSkills() : [])
     .map((s) => `${s.emoji} ${s.name}`)
     .join("・");
   if (skills) lines.push(`**魔王技能**　${skills}`);

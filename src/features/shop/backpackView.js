@@ -859,7 +859,8 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
       if (owned > 0) {
         explorerLines.push(
           `${def.emoji} **${def.name}** ×${owned}\n`
-            + `-# 魔王戰用：立刻造成最大血量 ${def.hpPctDamage}% 的傷害，`
+            + `-# 魔王戰用：立刻造成${bossItems.damageLabel(def)}`
+            + `${bossItems.effectLabel(def) ? `＋${bossItems.effectLabel(def)}` : ""}，`
             + `到 \`/魔王 道具\` 丟出去（單場最多 ${def.perBossUses ?? 1} 個）`,
         );
       } else explorerZero.push(`${def.emoji} ${def.name}`);

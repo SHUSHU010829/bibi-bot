@@ -21,8 +21,13 @@ function skillDef(key) {
   return skillList().find((s) => s.key === key) || null;
 }
 
+// itemOnly 的 debuff（燃燒 / 感電）只有討伐道具能掛上去，魔王自己不會施放。
+function castableSkills() {
+  return skillList().filter((s) => !s.itemOnly);
+}
+
 function pickSkill() {
-  const list = skillList();
+  const list = castableSkills();
   const total = list.reduce((s, d) => s + (d.weight || 0), 0);
   if (total <= 0) return null;
   let r = Math.random() * total;
@@ -375,6 +380,7 @@ async function breakSkill(client, bossDoc, entry) {
 }
 
 module.exports = {
+  castableSkills,
   scfg,
   skillDef,
   activeSkills,
