@@ -157,7 +157,9 @@ function bossItemCraftHint(def) {
 function bossItemUsageHint(key) {
   const def = bossItems.itemDef(key);
   if (!def) return "魔王在場時到 `/魔王 道具` 丟出去";
-  return `魔王在場時到 \`/魔王 道具\` 丟出去：立刻造成最大血量 ${def.hpPctDamage}% 的傷害`
+  const effect = bossItems.effectLabel(def);
+  return `魔王在場時到 \`/魔王 道具\` 丟出去：立刻造成${bossItems.damageLabel(def)}`
+    + (effect ? `，並讓魔王陷入 ${effect}` : "")
     + `（單場最多 ${def.perBossUses ?? 1} 個，不消耗出刀次數與體力）`;
 }
 
@@ -683,11 +685,13 @@ function buildBossItemsContainer({ userId, displayName, inv }) {
     const usable = item.remaining > 0;
     const lines = [
       `### ${item.def.emoji} ${item.def.name} ×${item.count}`,
-      `💥 傷害：**${item.damage.toLocaleString()}**（最大血量 ${item.def.hpPctDamage}%）`,
+      `💥 傷害：**${item.damage.toLocaleString()}**（${bossItems.damageBasis(item.def)}）`,
       usable
         ? `-# 本場還能丟 **${item.remaining}/${item.def.perBossUses ?? 1}** 個`
         : `-# 本場的 ${item.def.perBossUses ?? 1} 個已經丟完了，留到下一隻魔王`,
     ];
+    const effect = bossItems.effectLabel(item.def);
+    if (effect) lines.splice(2, 0, `✨ 附帶：魔王陷入 ${effect}`);
     if (item.def.flavor) lines.push(`-# ${item.def.flavor}`);
     container.addSectionComponents(
       new SectionBuilder()
@@ -735,6 +739,14 @@ function buildBossItemUsedContainer({ userId, displayName, result }) {
       ),
     );
 
+  if (result.debuff) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `✨ **${result.debuff.def.emoji} ${result.debuff.def.name}** 已掛上魔王：`
+          + `全場傷害 **×${result.debuff.def.damageTakenMult}**，<t:${Math.floor(result.debuff.expiresAt / 1000)}:R> 結束`,
+      ),
+    );
+  }
   if (result.playerFx) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`✨ 附帶效果：**${result.playerFx.name}** 已生效`),

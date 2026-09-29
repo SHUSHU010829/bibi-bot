@@ -1050,7 +1050,7 @@ async function useSealingAmmo(client, { userId, guildId }) {
 // 討伐道具（炸藥包 / 燃燒彈 / 雷符）造成的固定傷害：不是揮刀，所以不吃出刀次數、體力、
 // 冷卻與魔王減傷，也不累積怒氣；但算進個人傷害與排行（獎勵照傷害佔比分）。
 // 單場使用次數存在 boss doc 的 item_uses.<userId>.<key>，條件式原子更新＝兩個請求同時進來只有一個會過。
-async function applyItemDamage(client, { userId, guildId, username, itemKey, damage, perBossUses, playerEventKey }) {
+async function applyItemDamage(client, { userId, guildId, username, itemKey, damage, perBossUses, playerEventKey, debuffKey }) {
   if (!cfg().enabled) return { ok: false, reason: "disabled" };
 
   const bossDoc = await getActiveBoss(client, guildId);
@@ -1067,12 +1067,26 @@ async function applyItemDamage(client, { userId, guildId, username, itemKey, dam
   const dmg = Math.max(1, Math.round(damage));
   const eventDef = playerEventKey ? bossPlayerEvents.eventDef(playerEventKey) : null;
   const fxEntry = eventDef ? bossPlayerEvents.fxEntry(eventDef, now) : null;
+  // 道具掛的魔王 debuff 走既有的 active_skills：過期清理與狀態列都沿用魔王技能那一套。
+  const debuffDef = debuffKey ? bossSkills.skillDef(debuffKey) : null;
+  const debuffEntry = debuffDef
+    ? {
+      key: debuffDef.key,
+      started_at: now,
+      expires_at: now + (debuffDef.durationSec ?? 60) * 1000,
+      hits_at_cast: bossDoc.hits_taken || 0,
+    }
+    : null;
 
   const update = {
     $inc: { current_hp: -dmg, [`damage_by_user.${userId}`]: dmg, [usedField]: 1 },
     $set: { last_hit_at: now, updatedAt: new Date() },
   };
-  if (fxEntry) update.$push = { [`player_fx.${userId}`]: fxEntry };
+  if (fxEntry || debuffEntry) {
+    update.$push = {};
+    if (fxEntry) update.$push[`player_fx.${userId}`] = fxEntry;
+    if (debuffEntry) update.$push.active_skills = debuffEntry;
+  }
 
   const res = await client.bossEventsCollection.findOneAndUpdate(
     {
@@ -1144,6 +1158,7 @@ async function applyItemDamage(client, { userId, guildId, username, itemKey, dam
     limit: perBossUses,
     myDamage: (afterDoc.damage_by_user || {})[userId] || 0,
     playerFx: eventDef,
+    debuff: debuffEntry ? { def: debuffDef, expiresAt: debuffEntry.expires_at } : null,
     playerFxLabels: bossPlayerEvents.statusLines(afterDoc, userId, now),
     boss: { ...bossDoc, current_hp: newHp, phase: newPhase },
   };

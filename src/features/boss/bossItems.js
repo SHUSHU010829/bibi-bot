@@ -1,10 +1,11 @@
 // 討伐道具：平時用礦石 / 魚合成囤起來，魔王在場時丟出去造成固定傷害。
 //
 // 存來源不存結果：庫存存在 profile.boss_items.<key>，單場使用次數存在 BossEvents doc 的
-// item_uses.<userId>.<key>，傷害在使用當下依「當場最大血量 × hpPctDamage%」即時換算，
-// 不把算好的數字寫進任何欄位（同一個道具在週六場本來就該比平日場痛）。
+// item_uses.<userId>.<key>，傷害在使用當下換算：flatDamage 是固定值，hpPctDamage 則依
+// 「當場最大血量 × %」計算，不把算好的數字寫進任何欄位（百分比型在週六場本來就該比平日場痛）。
 const { boss, craft } = require("../../config");
 const bossEngine = require("./bossEngine");
+const bossSkills = require("./bossSkills");
 const { getOrCreate } = require("../mining/miningProfile");
 
 function icfg() {
@@ -41,9 +42,35 @@ function remainingUses(bossDoc, userId, key) {
   return Math.max(0, (def.perBossUses ?? 1) - used);
 }
 
-// 道具傷害＝該場最大血量的固定百分比，讓同一個道具在血厚的週六場一樣有存在感。
+// 固定傷害型（炸藥包）數字不隨場次變動；百分比型（燃燒彈 / 雷符）跟著該場最大血量走，
+// 在血厚的週六場一樣有存在感。
 function damageOf(def, bossDoc) {
+  if (def.flatDamage > 0) return def.flatDamage;
   return Math.max(1, Math.round((bossDoc?.max_hp || 0) * (def.hpPctDamage || 0) / 100));
+}
+
+// 道具附帶的魔王 debuff 定義（寫在 boss.skills.list，標 itemOnly＝魔王自己不會施放）。
+function debuffDefOf(def) {
+  return def?.debuff ? bossSkills.skillDef(def.debuff) : null;
+}
+
+// 附帶效果的說明也只有這一份：合成頁、背包、道具面板、使用結果共用。
+function effectLabel(def) {
+  const d = debuffDefOf(def);
+  if (!d) return null;
+  return `${d.emoji} ${d.name}（全場傷害 ×${d.damageTakenMult}・${d.durationSec} 秒）`;
+}
+
+// 傷害寫法只有這一份：合成頁、背包、道具面板、使用說明共用，免得固定型被寫成「0%」。
+function damageLabel(def) {
+  return def.flatDamage > 0
+    ? `固定 ${def.flatDamage.toLocaleString()} 傷害`
+    : `最大血量 ${def.hpPctDamage}% 的傷害`;
+}
+
+// 面板上數字已經寫出來了，括號裡只要交代「這個數字怎麼來的」。
+function damageBasis(def) {
+  return def.flatDamage > 0 ? "固定傷害" : `最大血量 ${def.hpPctDamage}%`;
 }
 
 // 戰況面板 / 道具面板用：每個道具的持有量、本場剩餘次數、傷害預估。
@@ -95,6 +122,7 @@ async function useItem(client, { userId, guildId, username, itemKey }) {
     damage: damageOf(def, bossDoc),
     perBossUses: def.perBossUses ?? 1,
     playerEventKey: def.grantsPlayerEvent || null,
+    debuffKey: def.debuff || null,
   });
 
   if (!res.ok) {
@@ -121,6 +149,10 @@ module.exports = {
   stockOf,
   remainingUses,
   damageOf,
+  damageLabel,
+  damageBasis,
+  debuffDefOf,
+  effectLabel,
   inventory,
   useItem,
 };

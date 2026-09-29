@@ -352,11 +352,10 @@ function recipeBodyText(recipe, profile, type) {
     } else if (type === "boss_item") {
       const bossItems = require("../boss/bossItems");
       const idef = bossItems.itemDef(recipe.result?.id) || {};
-      const extra = idef.grantsPlayerEvent
-        ? `・使用後自己獲得「${(require("../../config").boss?.playerEvents?.list || []).find((e) => e.key === idef.grantsPlayerEvent)?.name || ""}」效果`
-        : "";
+      const effect = bossItems.effectLabel(idef);
+      const extra = effect ? `・並讓魔王陷入 ${effect}` : "";
       propLine =
-        `效果：魔王戰使用，立刻造成魔王 **最大血量 ${idef.hpPctDamage || 0}%** 的傷害${extra}`
+        `效果：魔王戰使用，立刻造成魔王 **${bossItems.damageLabel(idef)}**${extra}`
         + `・單場最多 ${idef.perBossUses ?? 1} 個・庫存上限 ${idef.maxStock ?? 1} 個`
         + `（另需 ${(idef.coinCost || 0).toLocaleString()} 逼幣）`;
     } else if (type === "pioneer_hammer") {

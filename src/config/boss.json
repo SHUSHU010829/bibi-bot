@@ -42,7 +42,7 @@
       "maxPerWeek": 2,
       "bonusAttackPerDungeonClear": 1,
       "maxBonusAttacksPerPlayer": 5,
-      "summonHpMult": 3,
+      "summonHpMult": 3.5,
       "durationMinutes": 180,
       "spawnCooldownMinutes": 1080,
       "spawnWindow": {
@@ -76,7 +76,7 @@
     "saturdaySpawn": {
       "schedule": "0 21 * * 6",
       "timezone": "Asia/Taipei",
-      "hpMult": 5,
+      "hpMult": 6,
       "attackLimitPerPlayer": 20
     },
     "nameGenerator": {
@@ -174,6 +174,28 @@
           "healPct": 6,
           "castMessage": "🩸 **{name}** 大口吸取地脈之力，回復了 **{heal}** 點血量！",
           "castHint": "-# 拖越久牠回得越多，集中火力才是最快的解法。"
+        },
+        {
+          "key": "burning",
+          "name": "燃燒",
+          "emoji": "🔥",
+          "itemOnly": true,
+          "weight": 0,
+          "durationSec": 60,
+          "damageTakenMult": 1.2,
+          "expireMessage": "🔥 **{name}** 身上的火終於熄了，傷害倍率恢復正常。",
+          "statusLabel": "🔥 燃燒（全場傷害 ×1.2）"
+        },
+        {
+          "key": "shocked",
+          "name": "感電",
+          "emoji": "⚡",
+          "itemOnly": true,
+          "weight": 0,
+          "durationSec": 45,
+          "damageTakenMult": 1.3,
+          "expireMessage": "⚡ **{name}** 抖掉了身上的電流，傷害倍率恢復正常。",
+          "statusLabel": "⚡ 感電（全場傷害 ×1.3）"
         },
         {
           "key": "weakspot",
@@ -465,9 +487,9 @@
           "name": "粗製炸藥包",
           "emoji": "💣",
           "coinCost": 2000,
-          "maxStock": 3,
-          "perBossUses": 3,
-          "hpPctDamage": 1.5,
+          "maxStock": 6,
+          "perBossUses": 6,
+          "flatDamage": 2500,
           "flavor": "礦坑裡用剩的煤炭與碎石隨便捆一捆，威力普通但便宜到可以整場亂丟。",
           "announcement": "💣 **{user}** 往 **{name}** 腳邊扔了一包粗製炸藥——轟！**{damage}** 傷害！"
         },
@@ -478,9 +500,10 @@
           "coinCost": 5000,
           "maxStock": 2,
           "perBossUses": 2,
-          "hpPctDamage": 3,
-          "flavor": "把熔岩魚的油脂灌進鐵桶做成的燃燒彈，火焰會直接燒穿岩甲。",
-          "announcement": "🛢️🔥 **{user}** 砸出熔岩燃燒彈，**{name}** 全身著火——**{damage}** 傷害！"
+          "hpPctDamage": 1.5,
+          "debuff": "burning",
+          "flavor": "把熔岩魚的油脂灌進鐵桶做成的燃燒彈，燒起來全場打牠都更痛。",
+          "announcement": "🛢️🔥 **{user}** 砸出熔岩燃燒彈，**{name}** 全身著火——**{damage}** 傷害，接下來 60 秒全場傷害 **×1.2**！"
         },
         {
           "key": "thunder_talisman",
@@ -489,10 +512,10 @@
           "coinCost": 8000,
           "maxStock": 1,
           "perBossUses": 1,
-          "hpPctDamage": 5,
-          "grantsPlayerEvent": "warcry",
-          "flavor": "傳說素材碎片寫成的符咒，落雷之後自己也會進入戰吼狀態。",
-          "announcement": "⚡🌩️ **{user}** 撕開封魔雷符，落雷直劈 **{name}**——**{damage}** 傷害！"
+          "hpPctDamage": 3,
+          "debuff": "shocked",
+          "flavor": "傳說素材碎片寫成的符咒，落雷之後魔王會麻痺一陣子，全場輸出都更痛。",
+          "announcement": "⚡🌩️ **{user}** 撕開封魔雷符，落雷直劈 **{name}**——**{damage}** 傷害，接下來 45 秒全場傷害 **×1.3**！"
         }
       ],
       "usageHint": "魔王在場時到 `/魔王 道具` 或戰況面板按「🎒 討伐道具」使用；造成的傷害算進你的傷害排行，不消耗出刀次數與體力。"
