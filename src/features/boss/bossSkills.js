@@ -47,31 +47,26 @@ function activeSkills(bossDoc, now = Date.now()) {
     .filter((e) => e.def);
 }
 
-// 討伐道具掛上去的 debuff（燃燒 / 感電）彼此不疊加：同時只有最強的一個生效。
-// 否則一人一顆丟下去就能疊出 ×1.5 以上的全場增傷，等於用道具跳過整場輸出。
-// 魔王自己的技能不受影響（岩甲 ×0.45 疊核心外露 ×2 仍然相乘）。
-function dominantItemDebuff(entries) {
-  let best = null;
+// 討伐道具掛的 debuff（燃燒 / 感電）：**同一種不疊加**——同時丟兩顆燃燒彈只算一次
+// （時間以最晚那筆為準），否則一個人囤幾顆就能把同一個效果疊到爆。
+// 不同種類（燃燒 × 感電）照常相乘，魔王自己的技能也不受影響。
+function itemDebuffEntries(entries) {
+  const byKey = new Map();
   for (const e of entries) {
-    if (!e.def.itemOnly || e.def.damageTakenMult == null) continue;
-    if (!best
-      || e.def.damageTakenMult > best.def.damageTakenMult
-      || (e.def.damageTakenMult === best.def.damageTakenMult && e.expires_at > best.expires_at)) {
-      best = e;
-    }
+    if (!e.def.itemOnly) continue;
+    const cur = byKey.get(e.key);
+    if (!cur || e.expires_at > cur.expires_at) byKey.set(e.key, e);
   }
-  return best;
+  return [...byKey.values()];
 }
 
-// 多個技能同時在場時：減傷相乘、反擊相加、禁會心取聯集；道具 debuff 只取最強的一個。
+// 多個技能同時在場時：減傷相乘、反擊相加、禁會心取聯集；同一種道具 debuff 只算一次。
 function combinedEffects(bossDoc, now = Date.now()) {
   const entries = activeSkills(bossDoc, now);
-  const itemDebuff = dominantItemDebuff(entries);
-  let damageTakenMult = itemDebuff ? itemDebuff.def.damageTakenMult : 1;
+  let damageTakenMult = 1;
   let counterBonus = 0;
   let disableCrit = false;
-  for (const e of entries) {
-    if (e.def.itemOnly) continue;
+  for (const e of [...entries.filter((x) => !x.def.itemOnly), ...itemDebuffEntries(entries)]) {
     if (e.def.damageTakenMult != null) damageTakenMult *= e.def.damageTakenMult;
     counterBonus += e.def.counterBonus || 0;
     if (e.def.disableCrit) disableCrit = true;
@@ -82,27 +77,11 @@ function combinedEffects(bossDoc, now = Date.now()) {
 // 戰況面板 / 看板 / 攻擊結果共用的狀態行（技能 + 決戰階段）。
 function statusLines(bossDoc, now = Date.now()) {
   const entries = activeSkills(bossDoc, now);
-  const dominant = dominantItemDebuff(entries);
-  const seenItemKeys = new Set();
-  const lines = [];
-  for (const e of entries) {
-    if (!e.def.statusLabel) continue;
-    // 同一種道具 debuff 被丟第二次只列一行（時間以最晚的那筆為準）。
-    if (e.def.itemOnly) {
-      if (seenItemKeys.has(e.key)) continue;
-      seenItemKeys.add(e.key);
-      const latest = entries
-        .filter((x) => x.key === e.key)
-        .reduce((a, b) => (b.expires_at > a.expires_at ? b : a), e);
-      const overridden = dominant && dominant.def.key !== e.key;
-      lines.push(
-        `${e.def.statusLabel} · <t:${Math.floor(latest.expires_at / 1000)}:R> 結束`
-        + (overridden ? `（被 ${dominant.def.emoji} ${dominant.def.name} 蓋過，道具 debuff 不疊加）` : ""),
-      );
-      continue;
-    }
-    lines.push(`${e.def.statusLabel} · <t:${Math.floor(e.expires_at / 1000)}:R> 結束`);
-  }
+  // 同一種道具 debuff 丟第二次不另列一行，時間以最晚的那筆為準（與計算端同一份去重）。
+  const shown = [...entries.filter((x) => !x.def.itemOnly), ...itemDebuffEntries(entries)];
+  const lines = shown
+    .filter((e) => e.def.statusLabel)
+    .map((e) => `${e.def.statusLabel} · <t:${Math.floor(e.expires_at / 1000)}:R> 結束`);
   const stage = finalStandStage(bossDoc, now);
   if (stage?.label) lines.push(stage.label);
   const rally = rallyLabel(bossDoc);
@@ -418,7 +397,7 @@ async function breakSkill(client, bossDoc, entry) {
 
 module.exports = {
   castableSkills,
-  dominantItemDebuff,
+  itemDebuffEntries,
   scfg,
   skillDef,
   activeSkills,
