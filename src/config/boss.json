@@ -42,7 +42,7 @@
       "maxPerWeek": 2,
       "bonusAttackPerDungeonClear": 1,
       "maxBonusAttacksPerPlayer": 5,
-      "summonHpMult": 3.5,
+      "summonHpMult": 4,
       "durationMinutes": 180,
       "spawnCooldownMinutes": 1080,
       "spawnWindow": {
@@ -76,7 +76,7 @@
     "saturdaySpawn": {
       "schedule": "0 21 * * 6",
       "timezone": "Asia/Taipei",
-      "hpMult": 6,
+      "hpMult": 7,
       "attackLimitPerPlayer": 20
     },
     "nameGenerator": {

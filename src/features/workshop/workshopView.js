@@ -353,7 +353,7 @@ function recipeBodyText(recipe, profile, type) {
       const bossItems = require("../boss/bossItems");
       const idef = bossItems.itemDef(recipe.result?.id) || {};
       const effect = bossItems.effectLabel(idef);
-      const extra = effect ? `・並讓魔王陷入 ${effect}` : "";
+      const extra = effect ? `・並讓魔王陷入 ${effect}，${bossItems.NO_STACK_HINT}` : "";
       propLine =
         `效果：魔王戰使用，立刻造成魔王 **${bossItems.damageLabel(idef)}**${extra}`
         + `・單場最多 ${idef.perBossUses ?? 1} 個・庫存上限 ${idef.maxStock ?? 1} 個`
