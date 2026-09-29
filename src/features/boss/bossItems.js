@@ -61,6 +61,9 @@ function effectLabel(def) {
   return `${d.emoji} ${d.name}（全場傷害 ×${d.damageTakenMult}・${d.durationSec} 秒）`;
 }
 
+// 疊加規則在合成頁 / 道具面板 / 使用結果都要講一次，別讓人以為同一種丟兩顆會更痛。
+const NO_STACK_HINT = "同一種 debuff 不疊加（再丟一顆只會刷新時間），不同種類可以同時生效並相乘";
+
 // 傷害寫法只有這一份：合成頁、背包、道具面板、使用說明共用，免得固定型被寫成「0%」。
 function damageLabel(def) {
   return def.flatDamage > 0
@@ -153,6 +156,7 @@ module.exports = {
   damageBasis,
   debuffDefOf,
   effectLabel,
+  NO_STACK_HINT,
   inventory,
   useItem,
 };

@@ -712,6 +712,11 @@ function buildBossItemsContainer({ userId, displayName, inv }) {
       new TextDisplayBuilder().setContent(`-# 尚無：${empty.join("・")}（到 \`/裝備 分頁:合成\` →「💥 討伐」打造）`),
     );
   }
+  if (inv.items.some((i) => bossItems.debuffDefOf(i.def))) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`-# ${bossItems.NO_STACK_HINT}`),
+    );
+  }
   return container;
 }
 
@@ -743,7 +748,8 @@ function buildBossItemUsedContainer({ userId, displayName, result }) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `✨ **${result.debuff.def.emoji} ${result.debuff.def.name}** 已掛上魔王：`
-          + `全場傷害 **×${result.debuff.def.damageTakenMult}**，<t:${Math.floor(result.debuff.expiresAt / 1000)}:R> 結束`,
+          + `全場傷害 **×${result.debuff.def.damageTakenMult}**，<t:${Math.floor(result.debuff.expiresAt / 1000)}:R> 結束\n`
+          + `-# ${bossItems.NO_STACK_HINT}`,
       ),
     );
   }

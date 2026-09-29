@@ -47,13 +47,26 @@ function activeSkills(bossDoc, now = Date.now()) {
     .filter((e) => e.def);
 }
 
-// 多個技能同時在場時：減傷相乘、反擊相加、禁會心取聯集。
+// 討伐道具掛的 debuff（燃燒 / 感電）：**同一種不疊加**——同時丟兩顆燃燒彈只算一次
+// （時間以最晚那筆為準），否則一個人囤幾顆就能把同一個效果疊到爆。
+// 不同種類（燃燒 × 感電）照常相乘，魔王自己的技能也不受影響。
+function itemDebuffEntries(entries) {
+  const byKey = new Map();
+  for (const e of entries) {
+    if (!e.def.itemOnly) continue;
+    const cur = byKey.get(e.key);
+    if (!cur || e.expires_at > cur.expires_at) byKey.set(e.key, e);
+  }
+  return [...byKey.values()];
+}
+
+// 多個技能同時在場時：減傷相乘、反擊相加、禁會心取聯集；同一種道具 debuff 只算一次。
 function combinedEffects(bossDoc, now = Date.now()) {
   const entries = activeSkills(bossDoc, now);
   let damageTakenMult = 1;
   let counterBonus = 0;
   let disableCrit = false;
-  for (const e of entries) {
+  for (const e of [...entries.filter((x) => !x.def.itemOnly), ...itemDebuffEntries(entries)]) {
     if (e.def.damageTakenMult != null) damageTakenMult *= e.def.damageTakenMult;
     counterBonus += e.def.counterBonus || 0;
     if (e.def.disableCrit) disableCrit = true;
@@ -63,7 +76,10 @@ function combinedEffects(bossDoc, now = Date.now()) {
 
 // 戰況面板 / 看板 / 攻擊結果共用的狀態行（技能 + 決戰階段）。
 function statusLines(bossDoc, now = Date.now()) {
-  const lines = activeSkills(bossDoc, now)
+  const entries = activeSkills(bossDoc, now);
+  // 同一種道具 debuff 丟第二次不另列一行，時間以最晚的那筆為準（與計算端同一份去重）。
+  const shown = [...entries.filter((x) => !x.def.itemOnly), ...itemDebuffEntries(entries)];
+  const lines = shown
     .filter((e) => e.def.statusLabel)
     .map((e) => `${e.def.statusLabel} · <t:${Math.floor(e.expires_at / 1000)}:R> 結束`);
   const stage = finalStandStage(bossDoc, now);
@@ -381,6 +397,7 @@ async function breakSkill(client, bossDoc, entry) {
 
 module.exports = {
   castableSkills,
+  itemDebuffEntries,
   scfg,
   skillDef,
   activeSkills,
