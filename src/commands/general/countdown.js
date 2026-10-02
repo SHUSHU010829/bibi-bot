@@ -14,6 +14,7 @@ const countdownService = require("../../features/countdown/countdownService");
 const {
   buildRegisteredContainer,
   buildListContainer,
+  buildIntervalRegisteredContainer,
 } = require("../../features/countdown/countdownView");
 const { buildChoices, respondChoices, resolveChoice } = require("../../utils/choiceInput");
 const { buildChoiceErrorContainer } = require("../../utils/choiceErrorContainer");
@@ -106,6 +107,102 @@ async function handleCreate(client, interaction) {
   });
 }
 
+function intervalPlanError(plan, input) {
+  const icfg = cfg?.interval || {};
+  const t = (at) => `<t:${Math.floor(at.getTime() / 1000)}:f>`;
+  switch (plan.reason) {
+    case "bad_start":
+    case "bad_end": {
+      const which = plan.reason === "bad_start" ? "開始" : "結束";
+      const date = plan.reason === "bad_start" ? input.startDate : input.endDate;
+      const time = plan.reason === "bad_start" ? input.startTime : input.endTime;
+      return errorContainer(
+        `❌ ${which}時間看不懂`,
+        `我沒辦法解析${which}時間「${date}${time ? ` ${time}` : ""}」。`,
+        `日期格式：\`2026-08-15\` 或 \`08-15\`；時間（選填）：\`20:00\`。未填時間時開始預設 ${icfg.defaultStartTime || "09:00"}、結束預設 ${icfg.defaultEndTime || "23:59"}。`,
+      );
+    }
+    case "end_before_start":
+      return errorContainer(
+        "❌ 結束時間早於開始時間",
+        `開始：${t(plan.startAt)}\n結束：${t(plan.endAt)}`,
+        "同一天的話記得把「結束時間」填得比「開始時間」晚。",
+      );
+    case "ended":
+      return errorContainer(
+        "❌ 這段期間已經結束",
+        `結束時間 ${t(plan.endAt)} 已經過了。`,
+        "請填一個還沒結束的期間。",
+      );
+    case "no_slot":
+      return errorContainer(
+        "❌ 剩下的期間排不進任何一次提醒",
+        `期間：${t(plan.startAt)} ～ ${t(plan.endAt)}\n間隔：${countdownService.intervalLabel(input.intervalMinutes)}`,
+        "把結束時間往後延，或選短一點的間隔。",
+      );
+    case "too_many":
+      return errorContainer(
+        "❌ 提醒次數太多",
+        `這樣設定會提醒 **${plan.remaining}** 次（上限 ${plan.max} 次）。`,
+        "選長一點的間隔，或縮短期間。",
+      );
+    default:
+      return errorContainer("❌ 無法建立期間提醒", "設定有誤，請再確認一次。");
+  }
+}
+
+async function handleInterval(client, interaction) {
+  const title = interaction.options.getString("標題", true).trim();
+  const input = {
+    startDate: interaction.options.getString("開始日期", true),
+    endDate: interaction.options.getString("結束日期", true),
+    intervalMinutes: interaction.options.getInteger("間隔", true),
+    startTime: interaction.options.getString("開始時間") || "",
+    endTime: interaction.options.getString("結束時間") || "",
+  };
+  const description = interaction.options.getString("說明") || "";
+
+  const plan = countdownService.planInterval(input);
+  if (!plan.ok) {
+    return interaction.reply({
+      components: [intervalPlanError(plan, input)],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+
+  const count = (await countdownService.listCountdowns(client, interaction.guildId)).length;
+  const max = cfg?.maxPerGuild || 25;
+  if (count >= max) {
+    return interaction.reply({
+      components: [
+        errorContainer(
+          "❌ 倒數數量已達上限",
+          `本伺服器進行中的倒數 / 期間提醒已有 ${count} 個（上限 ${max}）。`,
+          "先用 `/倒數 刪除` 移除不需要的項目，再新增。",
+        ),
+      ],
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
+  }
+
+  const doc = await countdownService.createIntervalReminder(client, {
+    guildId: interaction.guildId,
+    channelId: interaction.channelId,
+    createdBy: interaction.user.id,
+    title,
+    description,
+    startAt: plan.startAt,
+    endAt: plan.endAt,
+    nextAt: plan.nextAt,
+    intervalMinutes: input.intervalMinutes,
+  });
+
+  return interaction.reply({
+    components: [buildIntervalRegisteredContainer(doc, plan)],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
 async function handleList(client, interaction) {
   const docs = await countdownService.listCountdowns(client, interaction.guildId);
   return interaction.reply({
@@ -163,7 +260,7 @@ async function handleDelete(client, interaction) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("倒數")
-    .setDescription("[ADMIN] 日期倒數提醒（里程碑天數自動播報）")
+    .setDescription("[ADMIN] 日期倒數提醒 / 期間定時提醒")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild)
     .addSubcommand((sub) =>
@@ -187,16 +284,58 @@ module.exports = {
         ),
     )
     .addSubcommand((sub) =>
+      sub
+        .setName("期間提醒")
+        .setDescription("在一段期間內每隔固定時間，於本頻道發送提醒")
+        .addStringOption((o) =>
+          o.setName("標題").setDescription("提醒標題").setRequired(true).setMaxLength(80),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("開始日期")
+            .setDescription("開始日期，格式 2026-08-15 或 08-15")
+            .setRequired(true),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("結束日期")
+            .setDescription("結束日期（可與開始同一天），格式 2026-08-15 或 08-15")
+            .setRequired(true),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName("間隔")
+            .setDescription("多久提醒一次")
+            .setRequired(true)
+            .addChoices(
+              ...(cfg?.interval?.choices || []).map((c) => ({ name: c.name, value: c.minutes })),
+            ),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("開始時間")
+            .setDescription(`第一次提醒時間 HH:mm（選填，預設 ${cfg?.interval?.defaultStartTime || "09:00"}）`),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("結束時間")
+            .setDescription(`結束日期的截止時間 HH:mm（選填，預設 ${cfg?.interval?.defaultEndTime || "23:59"}）`),
+        )
+        .addStringOption((o) =>
+          o.setName("說明").setDescription("每次提醒附帶的說明（選填）").setMaxLength(500),
+        ),
+    )
+    .addSubcommand((sub) =>
       sub.setName("列表").setDescription("查看本伺服器進行中的倒數"),
     )
     .addSubcommand((sub) =>
       sub
         .setName("刪除")
-        .setDescription("刪除一個倒數")
+        .setDescription("刪除一個倒數 / 期間提醒")
         .addStringOption((o) =>
           o
             .setName("倒數")
-            .setDescription("要刪除的倒數")
+            .setDescription("要刪除的倒數或期間提醒")
             .setRequired(true)
             .setAutocomplete(true),
         ),
@@ -218,6 +357,7 @@ module.exports = {
     try {
       const sub = interaction.options.getSubcommand();
       if (sub === "新增") return await handleCreate(client, interaction);
+      if (sub === "期間提醒") return await handleInterval(client, interaction);
       if (sub === "列表") return await handleList(client, interaction);
       if (sub === "刪除") return await handleDelete(client, interaction);
     } catch (err) {

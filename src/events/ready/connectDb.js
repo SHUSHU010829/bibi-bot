@@ -423,6 +423,15 @@ module.exports = async (client) => {
     await countdownsCollection
       .createIndex({ guildId: 1, createdAt: -1 }, { name: "countdown_guild_recent" })
       .catch(() => {});
+    // 期間提醒：每分鐘掃「未結束且 nextAt 已到」的 doc
+    await countdownsCollection
+      .createIndex(
+        { mode: 1, finished: 1, nextAt: 1 },
+        { name: "countdown_interval_next" },
+      )
+      .catch((e) =>
+        console.log(`[WARN] Countdowns 期間提醒索引建立失敗：${e.message}`.yellow),
+      );
     await serverFlagsCollection
       .createIndex({ guildId: 1, key: 1 }, { unique: true, name: "server_flag_unique" })
       .catch((e) =>
