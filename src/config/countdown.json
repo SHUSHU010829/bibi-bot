@@ -10,7 +10,30 @@
       "create": 3447003,
       "milestone": 15844367,
       "urgent": 15158332,
-      "arrival": 5763719
+      "arrival": 5763719,
+      "interval": 10181046
+    },
+    "interval": {
+      "tickCron": "* * * * *",
+      "defaultStartTime": "09:00",
+      "defaultEndTime": "22:00",
+      "dailyStart": "09:00",
+      "dailyEnd": "22:00",
+      "maxReminders": 200,
+      "choices": [
+        { "name": "每 15 分鐘", "minutes": 15 },
+        { "name": "每 30 分鐘", "minutes": 30 },
+        { "name": "每 1 小時", "minutes": 60 },
+        { "name": "每 2 小時", "minutes": 120 },
+        { "name": "每 3 小時", "minutes": 180 },
+        { "name": "每 4 小時", "minutes": 240 },
+        { "name": "每 6 小時", "minutes": 360 },
+        { "name": "每 8 小時", "minutes": 480 },
+        { "name": "每 12 小時", "minutes": 720 },
+        { "name": "每天", "minutes": 1440 },
+        { "name": "每 2 天", "minutes": 2880 },
+        { "name": "每週", "minutes": 10080 }
+      ]
     }
   }
 }

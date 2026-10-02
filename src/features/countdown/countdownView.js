@@ -5,7 +5,7 @@ const {
 } = require("discord.js");
 
 const { countdown: cfg } = require("../../config");
-const { daysUntil } = require("./countdownService");
+const { daysUntil, isIntervalMode, intervalLabel, hmLabel } = require("./countdownService");
 
 const COLORS = () => cfg?.colors || {};
 
@@ -16,6 +16,78 @@ function epoch(targetAt) {
 function whenLine(targetAt) {
   const e = epoch(targetAt);
   return `📅 <t:${e}:F>（<t:${e}:R>）`;
+}
+
+function ts(at, style = "f") {
+  return `<t:${epoch(at)}:${style}>`;
+}
+
+function periodLine(doc) {
+  return `📅 ${ts(doc.startAt)} ～ ${ts(doc.endAt)}`;
+}
+
+function scheduleLabel(doc) {
+  const every = intervalLabel(doc.intervalMinutes);
+  if (doc.dailyStartMin == null || doc.dailyEndMin == null) return every;
+  return `${every}（每天 ${hmLabel(doc.dailyStartMin)}～${hmLabel(doc.dailyEndMin)}）`;
+}
+
+// 期間提醒建立成功的確認卡。
+function buildIntervalRegisteredContainer(doc, plan) {
+  const container = new ContainerBuilder()
+    .setAccentColor(COLORS().interval ?? 0x9b59b6)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# 🔔 已建立期間提醒：${doc.title}`),
+    )
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  if (doc.description) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(doc.description),
+    );
+  }
+  container
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        [
+          periodLine(doc),
+          `⏱️ ${scheduleLabel(doc)}提醒一次，共 **${plan.remaining}** 次`,
+          `下一次：${ts(doc.nextAt)}（${ts(doc.nextAt, "R")}）`,
+        ].join("\n"),
+      ),
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        "-# 時間到我會在這個頻道發送提醒；用 `/倒數 刪除` 可以提前停止。",
+      ),
+    );
+  return container;
+}
+
+// 期間提醒每次到點的播報卡。
+function buildIntervalAnnouncementContainer(doc, claim) {
+  const container = new ContainerBuilder()
+    .setAccentColor(
+      claim.isLast ? COLORS().arrival ?? 0x57f287 : COLORS().interval ?? 0x9b59b6,
+    )
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`# 🔔 ${doc.title}`),
+    )
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  if (doc.description) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(doc.description),
+    );
+  }
+  const progress = `第 ${Math.min(claim.index, claim.total)}／${claim.total} 次提醒`;
+  const tail = claim.isLast
+    ? "這是最後一次提醒，期間提醒已結束。"
+    : `下一次：${ts(claim.nextAt)}（${ts(claim.nextAt, "R")}）`;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`${periodLine(doc)}\n-# ${progress}・${tail}`),
+  );
+  return container;
 }
 
 // 建立成功後回給管理員的確認卡。
@@ -82,7 +154,7 @@ function buildListContainer(docs) {
   const container = new ContainerBuilder()
     .setAccentColor(COLORS().create ?? 0x3498db)
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("# ⏳ 進行中的倒數"),
+      new TextDisplayBuilder().setContent("# ⏳ 進行中的倒數 / 期間提醒"),
     )
     .addSeparatorComponents(new SeparatorBuilder());
 
@@ -96,6 +168,14 @@ function buildListContainer(docs) {
   }
 
   for (const doc of docs) {
+    if (isIntervalMode(doc)) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `**${doc.title}** — 🔔 期間提醒・${scheduleLabel(doc)}\n${periodLine(doc)}　<#${doc.channelId}>\n下一次：${ts(doc.nextAt, "R")}\n-# ID：\`${doc._id}\``,
+        ),
+      );
+      continue;
+    }
     const left = daysUntil(doc.targetAt);
     const leftLabel = left <= 0 ? "今天到期" : `還剩 ${left} 天`;
     container.addTextDisplayComponents(
@@ -114,4 +194,6 @@ module.exports = {
   buildRegisteredContainer,
   buildAnnouncementContainer,
   buildListContainer,
+  buildIntervalRegisteredContainer,
+  buildIntervalAnnouncementContainer,
 };

@@ -5,7 +5,10 @@ const { MessageFlags } = require("discord.js");
 const { registerCron } = require("../../utils/cronRegistry");
 const { countdown: cfg } = require("../../config");
 const countdownService = require("../../features/countdown/countdownService");
-const { buildAnnouncementContainer } = require("../../features/countdown/countdownView");
+const {
+  buildAnnouncementContainer,
+  buildIntervalAnnouncementContainer,
+} = require("../../features/countdown/countdownView");
 
 async function markDone(client, doc, due) {
   if (due.kind === "arrival") {
@@ -25,7 +28,9 @@ async function runCheck(client) {
   const col = client.countdownsCollection;
   if (!col) return { skipped: "no_db" };
 
-  const docs = await col.find({ finished: false }).sort({ targetAt: 1 }).toArray();
+  const docs = await col
+    .find({ finished: false, mode: { $ne: countdownService.MODE_INTERVAL } })
+    .sort({ targetAt: 1 }).toArray();
   let posted = 0;
 
   for (const doc of docs) {
@@ -53,6 +58,34 @@ async function runCheck(client) {
   return { posted, scanned: docs.length };
 }
 
+async function runIntervalTick(client) {
+  if (!client.countdownsCollection) return { skipped: "no_db" };
+
+  const now = new Date();
+  const docs = await countdownService.listDueIntervalReminders(client, now);
+  let posted = 0;
+
+  for (const doc of docs) {
+    // 先領取再發送：頻道失效也會推進 nextAt，不會每分鐘對死頻道重試。
+    const claim = await countdownService.claimIntervalReminder(client, doc, now);
+    if (!claim || claim.skipped) continue;
+
+    const channel = await client.channels.fetch(doc.channelId).catch(() => null);
+    if (!channel?.isTextBased?.()) continue;
+    await channel
+      .send({
+        components: [buildIntervalAnnouncementContainer(doc, claim)],
+        flags: MessageFlags.IsComponentsV2,
+      })
+      .then(() => (posted += 1))
+      .catch((e) =>
+        console.log(`[COUNTDOWN] 期間提醒發送失敗 ${doc._id}：${e?.message || e}`.yellow),
+      );
+  }
+
+  return { posted, scanned: docs.length };
+}
+
 module.exports = async (client) => {
   if (!cfg?.enabled) {
     console.log(`[COUNTDOWN] 倒數提醒未啟用，跳過排程`.gray);
@@ -65,6 +98,15 @@ module.exports = async (client) => {
     timezone: countdownService.TZ(),
     runner: () => runCheck(client),
   });
+  registerCron(client, {
+    name: "countdown.intervalTick",
+    label: "期間定時提醒",
+    schedule: cfg.interval?.tickCron || "* * * * *",
+    timezone: countdownService.TZ(),
+    runner: () => runIntervalTick(client),
+    maxConsecutiveErrors: Infinity,
+  });
 };
 
 module.exports.runCheck = runCheck;
+module.exports.runIntervalTick = runIntervalTick;
