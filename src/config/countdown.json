@@ -16,7 +16,9 @@
     "interval": {
       "tickCron": "* * * * *",
       "defaultStartTime": "09:00",
-      "defaultEndTime": "23:59",
+      "defaultEndTime": "22:00",
+      "dailyStart": "09:00",
+      "dailyEnd": "22:00",
       "maxReminders": 200,
       "choices": [
         { "name": "每 15 分鐘", "minutes": 15 },

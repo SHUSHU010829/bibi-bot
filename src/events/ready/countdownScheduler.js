@@ -68,7 +68,7 @@ async function runIntervalTick(client) {
   for (const doc of docs) {
     // 先領取再發送：頻道失效也會推進 nextAt，不會每分鐘對死頻道重試。
     const claim = await countdownService.claimIntervalReminder(client, doc, now);
-    if (!claim) continue;
+    if (!claim || claim.skipped) continue;
 
     const channel = await client.channels.fetch(doc.channelId).catch(() => null);
     if (!channel?.isTextBased?.()) continue;

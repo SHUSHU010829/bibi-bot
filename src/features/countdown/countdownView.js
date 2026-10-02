@@ -5,7 +5,7 @@ const {
 } = require("discord.js");
 
 const { countdown: cfg } = require("../../config");
-const { daysUntil, isIntervalMode, intervalLabel } = require("./countdownService");
+const { daysUntil, isIntervalMode, intervalLabel, hmLabel } = require("./countdownService");
 
 const COLORS = () => cfg?.colors || {};
 
@@ -24,6 +24,12 @@ function ts(at, style = "f") {
 
 function periodLine(doc) {
   return `📅 ${ts(doc.startAt)} ～ ${ts(doc.endAt)}`;
+}
+
+function scheduleLabel(doc) {
+  const every = intervalLabel(doc.intervalMinutes);
+  if (doc.dailyStartMin == null || doc.dailyEndMin == null) return every;
+  return `${every}（每天 ${hmLabel(doc.dailyStartMin)}～${hmLabel(doc.dailyEndMin)}）`;
 }
 
 // 期間提醒建立成功的確認卡。
@@ -45,7 +51,7 @@ function buildIntervalRegisteredContainer(doc, plan) {
       new TextDisplayBuilder().setContent(
         [
           periodLine(doc),
-          `⏱️ ${intervalLabel(doc.intervalMinutes)}提醒一次，共 **${plan.remaining}** 次`,
+          `⏱️ ${scheduleLabel(doc)}提醒一次，共 **${plan.remaining}** 次`,
           `下一次：${ts(doc.nextAt)}（${ts(doc.nextAt, "R")}）`,
         ].join("\n"),
       ),
@@ -165,7 +171,7 @@ function buildListContainer(docs) {
     if (isIntervalMode(doc)) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**${doc.title}** — 🔔 期間提醒・${intervalLabel(doc.intervalMinutes)}\n${periodLine(doc)}　<#${doc.channelId}>\n下一次：${ts(doc.nextAt, "R")}\n-# ID：\`${doc._id}\``,
+          `**${doc.title}** — 🔔 期間提醒・${scheduleLabel(doc)}\n${periodLine(doc)}　<#${doc.channelId}>\n下一次：${ts(doc.nextAt, "R")}\n-# ID：\`${doc._id}\``,
         ),
       );
       continue;

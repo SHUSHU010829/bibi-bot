@@ -89,54 +89,101 @@ function intervalLabel(minutes) {
   return `每 ${minutes} 分鐘`;
 }
 
-// 提醒時間點固定對齊 startAt + k × 間隔；回傳嚴格晚於 now 的第一個時間點（now 早於開始時即為 startAt）。
-function nextSlotAfter(startAt, intervalMinutes, now) {
-  const step = intervalMinutes * 60_000;
-  const start = new Date(startAt).getTime();
-  const t = now.getTime();
-  if (t < start) return new Date(start);
-  return new Date(start + (Math.floor((t - start) / step) + 1) * step);
+function parseHm(str) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((str || "").trim());
+  if (!m || +m[1] > 23 || +m[2] > 59) return null;
+  return +m[1] * 60 + +m[2];
 }
 
-function slotIndex(startAt, intervalMinutes, at) {
-  const step = intervalMinutes * 60_000;
-  return Math.round((new Date(at).getTime() - new Date(startAt).getTime()) / step) + 1;
+function hmLabel(min) {
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 }
 
-function totalSlots(startAt, endAt, intervalMinutes) {
-  const step = intervalMinutes * 60_000;
-  return Math.floor((new Date(endAt).getTime() - new Date(startAt).getTime()) / step) + 1;
+// 每日時段：dailyStartMin > dailyEndMin 視為跨午夜（例 22:00～02:00）。沒設定則全天。
+function inDailyWindow(s, ms) {
+  if (s.dailyStartMin == null || s.dailyEndMin == null) return true;
+  const dt = DateTime.fromMillis(ms, { zone: TZ() });
+  const m = dt.hour * 60 + dt.minute;
+  return s.dailyStartMin <= s.dailyEndMin
+    ? m >= s.dailyStartMin && m <= s.dailyEndMin
+    : m >= s.dailyStartMin || m <= s.dailyEndMin;
 }
 
-// 期間提醒的建立前檢查。回傳 { ok: true, startAt, endAt, nextAt, total, remaining }
+// 提醒時間點固定對齊 startAt + k × 間隔，且落在每日時段內。
+// 回傳 ≥ t 的第一個時間點；期間內已沒有則回 null。
+function firstSlotAtOrAfter(s, t) {
+  const step = s.intervalMinutes * 60_000;
+  const start = new Date(s.startAt).getTime();
+  const end = new Date(s.endAt).getTime();
+  const at = new Date(t).getTime();
+  let ms = at <= start ? start : start + Math.ceil((at - start) / step) * step;
+  for (; ms <= end; ms += step) {
+    if (inDailyWindow(s, ms)) return new Date(ms);
+  }
+  return null;
+}
+
+// 期間內、時間 ≤ upTo 的提醒次數。
+function countSlots(s, upTo = s.endAt) {
+  const step = s.intervalMinutes * 60_000;
+  const start = new Date(s.startAt).getTime();
+  const last = Math.min(new Date(upTo).getTime(), new Date(s.endAt).getTime());
+  let n = 0;
+  for (let ms = start; ms <= last; ms += step) {
+    if (inDailyWindow(s, ms)) n += 1;
+  }
+  return n;
+}
+
+// 期間提醒的建立前檢查。回傳 { ok: true, startAt, endAt, dailyStartMin, dailyEndMin, nextAt, total, remaining }
 // 或 { ok: false, reason, ... }，由指令層轉成錯誤 Container。
-function planInterval({ startDate, startTime, endDate, endTime, intervalMinutes }, now = new Date()) {
+function planInterval(
+  { startDate, startTime, endDate, endTime, intervalMinutes, dailyStart, dailyEnd },
+  now = new Date(),
+) {
   const icfg = INTERVAL();
   const start = parseTarget(startDate, startTime || icfg.defaultStartTime || "09:00");
   if (!start) return { ok: false, reason: "bad_start" };
-  const end = parseTarget(endDate, endTime || icfg.defaultEndTime || "23:59");
+  const end = parseTarget(endDate, endTime || icfg.defaultEndTime || "22:00");
   if (!end) return { ok: false, reason: "bad_end" };
+  const dailyStartMin = parseHm(dailyStart || icfg.dailyStart || "09:00");
+  const dailyEndMin = parseHm(dailyEnd || icfg.dailyEnd || "22:00");
+  if (dailyStartMin == null || dailyEndMin == null) return { ok: false, reason: "bad_window" };
 
   const startAt = start.toJSDate();
   const endAt = end.toJSDate();
-  if (endAt < startAt) return { ok: false, reason: "end_before_start", startAt, endAt };
-  if (endAt <= now) return { ok: false, reason: "ended", startAt, endAt };
+  const base = { startAt, endAt, dailyStartMin, dailyEndMin };
+  if (endAt < startAt) return { ok: false, reason: "end_before_start", ...base };
+  if (endAt <= now) return { ok: false, reason: "ended", ...base };
 
-  const nextAt = startAt > now ? startAt : nextSlotAfter(startAt, intervalMinutes, now);
-  if (nextAt > endAt) return { ok: false, reason: "no_slot", startAt, endAt };
+  const s = { ...base, intervalMinutes };
+  const nextAt = firstSlotAtOrAfter(s, now);
+  if (!nextAt) return { ok: false, reason: "no_slot", ...base };
 
-  const total = totalSlots(startAt, endAt, intervalMinutes);
-  const remaining = total - slotIndex(startAt, intervalMinutes, nextAt) + 1;
+  const total = countSlots(s);
+  const remaining = total - countSlots(s, nextAt.getTime() - 1);
   const max = icfg.maxReminders || 200;
   if (remaining > max) {
-    return { ok: false, reason: "too_many", startAt, endAt, remaining, max };
+    return { ok: false, reason: "too_many", ...base, remaining, max };
   }
-  return { ok: true, startAt, endAt, nextAt, total, remaining };
+  return { ok: true, ...base, nextAt, total, remaining };
 }
 
 async function createIntervalReminder(
   client,
-  { guildId, channelId, createdBy, title, description, startAt, endAt, nextAt, intervalMinutes },
+  {
+    guildId,
+    channelId,
+    createdBy,
+    title,
+    description,
+    startAt,
+    endAt,
+    dailyStartMin,
+    dailyEndMin,
+    nextAt,
+    intervalMinutes,
+  },
 ) {
   const doc = {
     mode: MODE_INTERVAL,
@@ -149,6 +196,8 @@ async function createIntervalReminder(
     targetAt: endAt,
     startAt,
     endAt,
+    dailyStartMin,
+    dailyEndMin,
     intervalMinutes,
     nextAt,
     sentCount: 0,
@@ -161,23 +210,27 @@ async function createIntervalReminder(
 }
 
 // 以 nextAt 為條件原子地領取這一輪，避免多個 tick 重疊時重複發送。
-// bot 停機後恢復只補發一次，nextAt 直接跳到下一個未來時間點。
+// bot 停機後恢復只補發一次，nextAt 直接跳到下一個未來時間點；
+// 恢復時若已在每日時段外（例如半夜才上線）則不補發，只推進 nextAt。
 async function claimIntervalReminder(client, doc, now = new Date()) {
-  const next = nextSlotAfter(doc.startAt, doc.intervalMinutes, now);
-  const isLast = next > doc.endAt;
+  const next = firstSlotAtOrAfter(doc, now.getTime() + 1);
+  const isLast = !next;
+  const skipped = !inDailyWindow(doc, now.getTime());
   const $set = isLast
-    ? { finished: true, finishedAt: now, lastSentAt: now }
-    : { nextAt: next, lastSentAt: now };
+    ? { finished: true, finishedAt: now }
+    : { nextAt: next };
+  if (!skipped) $set.lastSentAt = now;
   const res = await client.countdownsCollection.updateOne(
     { _id: doc._id, finished: false, nextAt: doc.nextAt },
-    { $set, $inc: { sentCount: 1 } },
+    skipped ? { $set } : { $set, $inc: { sentCount: 1 } },
   );
   if (!res.modifiedCount) return null;
   return {
+    skipped,
     isLast,
-    nextAt: isLast ? null : next,
-    index: slotIndex(doc.startAt, doc.intervalMinutes, next) - 1,
-    total: totalSlots(doc.startAt, doc.endAt, doc.intervalMinutes),
+    nextAt: next,
+    index: countSlots(doc, now),
+    total: countSlots(doc),
   };
 }
 
@@ -230,6 +283,7 @@ module.exports = {
   dueAnnouncement,
   isIntervalMode,
   intervalLabel,
+  hmLabel,
   planInterval,
   createIntervalReminder,
   claimIntervalReminder,

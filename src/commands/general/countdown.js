@@ -119,9 +119,15 @@ function intervalPlanError(plan, input) {
       return errorContainer(
         `❌ ${which}時間看不懂`,
         `我沒辦法解析${which}時間「${date}${time ? ` ${time}` : ""}」。`,
-        `日期格式：\`2026-08-15\` 或 \`08-15\`；時間（選填）：\`20:00\`。未填時間時開始預設 ${icfg.defaultStartTime || "09:00"}、結束預設 ${icfg.defaultEndTime || "23:59"}。`,
+        `日期格式：\`2026-08-15\` 或 \`08-15\`；時間（選填）：\`20:00\`。未填時間時開始預設 ${icfg.defaultStartTime || "09:00"}、結束預設 ${icfg.defaultEndTime || "22:00"}。`,
       );
     }
+    case "bad_window":
+      return errorContainer(
+        "❌ 每日時段看不懂",
+        `我沒辦法解析每日時段「${input.dailyStart || icfg.dailyStart || "09:00"}～${input.dailyEnd || icfg.dailyEnd || "22:00"}」。`,
+        `格式：\`HH:mm\`，例如 \`09:00\`、\`22:00\`。不填則預設 ${icfg.dailyStart || "09:00"}～${icfg.dailyEnd || "22:00"}。`,
+      );
     case "end_before_start":
       return errorContainer(
         "❌ 結束時間早於開始時間",
@@ -137,8 +143,8 @@ function intervalPlanError(plan, input) {
     case "no_slot":
       return errorContainer(
         "❌ 剩下的期間排不進任何一次提醒",
-        `期間：${t(plan.startAt)} ～ ${t(plan.endAt)}\n間隔：${countdownService.intervalLabel(input.intervalMinutes)}`,
-        "把結束時間往後延，或選短一點的間隔。",
+        `期間：${t(plan.startAt)} ～ ${t(plan.endAt)}\n間隔：${countdownService.intervalLabel(input.intervalMinutes)}\n每日時段：${countdownService.hmLabel(plan.dailyStartMin)}～${countdownService.hmLabel(plan.dailyEndMin)}`,
+        "提醒時間必須落在每日時段內——調整開始時間、把結束時間往後延，或選短一點的間隔。",
       );
     case "too_many":
       return errorContainer(
@@ -159,6 +165,8 @@ async function handleInterval(client, interaction) {
     intervalMinutes: interaction.options.getInteger("間隔", true),
     startTime: interaction.options.getString("開始時間") || "",
     endTime: interaction.options.getString("結束時間") || "",
+    dailyStart: interaction.options.getString("每日開始") || "",
+    dailyEnd: interaction.options.getString("每日結束") || "",
   };
   const description = interaction.options.getString("說明") || "";
 
@@ -193,6 +201,8 @@ async function handleInterval(client, interaction) {
     description,
     startAt: plan.startAt,
     endAt: plan.endAt,
+    dailyStartMin: plan.dailyStartMin,
+    dailyEndMin: plan.dailyEndMin,
     nextAt: plan.nextAt,
     intervalMinutes: input.intervalMinutes,
   });
@@ -319,7 +329,17 @@ module.exports = {
         .addStringOption((o) =>
           o
             .setName("結束時間")
-            .setDescription(`結束日期的截止時間 HH:mm（選填，預設 ${cfg?.interval?.defaultEndTime || "23:59"}）`),
+            .setDescription(`結束日期的截止時間 HH:mm（選填，預設 ${cfg?.interval?.defaultEndTime || "22:00"}）`),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("每日開始")
+            .setDescription(`每天最早幾點提醒 HH:mm（選填，預設 ${cfg?.interval?.dailyStart || "09:00"}）`),
+        )
+        .addStringOption((o) =>
+          o
+            .setName("每日結束")
+            .setDescription(`每天最晚幾點提醒 HH:mm（選填，預設 ${cfg?.interval?.dailyEnd || "22:00"}）`),
         )
         .addStringOption((o) =>
           o.setName("說明").setDescription("每次提醒附帶的說明（選填）").setMaxLength(500),
