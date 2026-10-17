@@ -5,6 +5,8 @@ const { getItem } = require("./catalog");
 // itemType 為 ore/fish/veggie/item（無底線），itemKey 可含底線 → 用 split 後首二段解析。
 const SELL_MODAL_OPEN_PREFIX = "sellm_open_";
 const SELL_MODAL_QTY_PREFIX = "sellm_qty_";
+// 品項太多改用下拉選單：sellm_pick_<ownerId>_<itemType>，選項 value 為 itemKey。
+const SELL_PICK_PREFIX = "sellm_pick_";
 
 function parseSellTarget(rest) {
   if (!rest) return null;
@@ -51,5 +53,6 @@ module.exports = {
   SELLABLE,
   SELL_MODAL_OPEN_PREFIX,
   SELL_MODAL_QTY_PREFIX,
+  SELL_PICK_PREFIX,
   parseSellTarget,
 };

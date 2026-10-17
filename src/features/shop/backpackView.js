@@ -45,7 +45,9 @@ function bagFishDefs(bag) {
   }
   return defs;
 }
-const { getSellableItem, SELL_MODAL_OPEN_PREFIX } = require("./sellableItems");
+const { getSellableItem, SELL_MODAL_OPEN_PREFIX, SELL_PICK_PREFIX } = require("./sellableItems");
+
+const FISH_SECTION_MAX = 6;
 const foodBag = require("../fishing/foodBag");
 const foodBagView = require("../fishing/foodBagView");
 const trapTiers = require("../farm/trapTiers");
@@ -955,28 +957,58 @@ async function buildBackpackView(client, { userId, guildId, member, displayName,
     );
 
     if (hasFish) {
-      for (const [key, def] of Object.entries(fishBagDefs)) {
-        const qty = fishBagData[key] || 0;
-        if (qty <= 0) continue;
-        const base = def.price || 0;
-        const unit = typeof fishPriceMap[key] === "number" ? fishPriceMap[key] : base;
-        const matchedRecipe = Object.entries(fishing.recipes || {}).find(
-          ([, r]) => r.materials?.[key] !== undefined
-        );
-        const recipeHint = matchedRecipe ? `・可烹飪成 ${matchedRecipe[1].emoji} ${matchedRecipe[1].name}` : "";
-        container.addSectionComponents(
-          new SectionBuilder()
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                `${def.emoji} **${def.name}**（${def.rarity}）×${qty}・@${unit.toLocaleString()}${trendLabel(unit, base)}${recipeHint}`
+      const ownedFish = Object.entries(fishBagDefs)
+        .filter(([key]) => (fishBagData[key] || 0) > 0)
+        .map(([key, def]) => {
+          const qty = fishBagData[key];
+          const base = def.price || 0;
+          const unit = typeof fishPriceMap[key] === "number" ? fishPriceMap[key] : base;
+          const matchedRecipe = Object.entries(fishing.recipes || {}).find(
+            ([, r]) => r.materials?.[key] !== undefined
+          );
+          const recipeHint = matchedRecipe ? `・可烹飪成 ${matchedRecipe[1].emoji} ${matchedRecipe[1].name}` : "";
+          return {
+            key,
+            def,
+            qty,
+            unit,
+            line: `${def.emoji} **${def.name}**（${def.rarity}）×${qty}・@${unit.toLocaleString()}${trendLabel(unit, base)}${recipeHint}`,
+          };
+        });
+
+      // 每種魚一個 Section（3 元件），活動限定魚一多就會超過 Discord 40 元件上限而整則被拒收，
+      // 超過門檻改成文字列表 + 單一下拉選單賣出。
+      if (ownedFish.length <= FISH_SECTION_MAX) {
+        for (const f of ownedFish) {
+          container.addSectionComponents(
+            new SectionBuilder()
+              .addTextDisplayComponents(new TextDisplayBuilder().setContent(f.line))
+              .setButtonAccessory(
+                new ButtonBuilder()
+                  .setCustomId(`${SELL_MODAL_OPEN_PREFIX}${userId}_fish_${f.key}`)
+                  .setLabel("🪙 賣出")
+                  .setStyle(ButtonStyle.Secondary)
               )
-            )
-            .setButtonAccessory(
-              new ButtonBuilder()
-                .setCustomId(`${SELL_MODAL_OPEN_PREFIX}${userId}_fish_${key}`)
-                .setLabel("🪙 賣出")
-                .setStyle(ButtonStyle.Secondary)
-            )
+          );
+        }
+      } else {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(ownedFish.map((f) => f.line).join("\n"))
+        );
+        container.addActionRowComponents(
+          new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`${SELL_PICK_PREFIX}${userId}_fish`)
+              .setPlaceholder("🪙 選擇要賣出的魚…")
+              .addOptions(
+                ownedFish.slice(0, 25).map((f) => ({
+                  label: `${f.def.name} ×${f.qty}`.slice(0, 100),
+                  description: `@${f.unit.toLocaleString()}`,
+                  value: f.key,
+                  emoji: f.def.emoji,
+                }))
+              )
+          )
         );
       }
     } else {
