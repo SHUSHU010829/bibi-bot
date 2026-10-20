@@ -3,8 +3,8 @@
     "enabled": true,
     "announceChannelId": "1511617684532367440",
     "chronicleChannelId": "1511610220856475701",
-    "hpPerPlayer": 3500,
-    "minHp": 42000,
+    "hpPerPlayer": 2500,
+    "minHp": 30000,
     "durationMinutes": 75,
     "attackLimitPerPlayer": 8,
     "attackCooldownSec": 10,
@@ -42,7 +42,7 @@
       "maxPerWeek": 2,
       "bonusAttackPerDungeonClear": 1,
       "maxBonusAttacksPerPlayer": 5,
-      "summonHpMult": 4.5,
+      "summonHpMult": 3,
       "durationMinutes": 180,
       "spawnCooldownMinutes": 1080,
       "spawnWindow": {
@@ -76,7 +76,7 @@
     "saturdaySpawn": {
       "schedule": "0 21 * * 6",
       "timezone": "Asia/Taipei",
-      "hpMult": 8,
+      "hpMult": 5,
       "attackLimitPerPlayer": 20
     },
     "nameGenerator": {
@@ -487,9 +487,9 @@
           "name": "粗製炸藥包",
           "emoji": "💣",
           "coinCost": 2000,
-          "maxStock": 6,
-          "perBossUses": 6,
-          "flatDamage": 2500,
+          "maxStock": 3,
+          "perBossUses": 3,
+          "flatDamage": 1500,
           "flavor": "礦坑裡用剩的煤炭與碎石隨便捆一捆，威力普通但便宜到可以整場亂丟。",
           "announcement": "💣 **{user}** 往 **{name}** 腳邊扔了一包粗製炸藥——轟！**{damage}** 傷害！"
         },
@@ -500,7 +500,7 @@
           "coinCost": 5000,
           "maxStock": 2,
           "perBossUses": 2,
-          "hpPctDamage": 1.5,
+          "flatDamage": 2500,
           "debuff": "burning",
           "flavor": "把熔岩魚的油脂灌進鐵桶做成的燃燒彈，燒起來全場打牠都更痛。",
           "announcement": "🛢️🔥 **{user}** 砸出熔岩燃燒彈，**{name}** 全身著火——**{damage}** 傷害，接下來 60 秒全場傷害 **×1.2**！"
@@ -512,7 +512,7 @@
           "coinCost": 8000,
           "maxStock": 1,
           "perBossUses": 1,
-          "hpPctDamage": 3,
+          "flatDamage": 5000,
           "debuff": "shocked",
           "flavor": "傳說素材碎片寫成的符咒，落雷之後魔王會麻痺一陣子，全場輸出都更痛。",
           "announcement": "⚡🌩️ **{user}** 撕開封魔雷符，落雷直劈 **{name}**——**{damage}** 傷害，接下來 45 秒全場傷害 **×1.3**！"
