@@ -13,7 +13,7 @@ function formatNumber(num) {
   return (num / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
 }
 
-// 貼文預覽 Container（訊息自動預覽與 /脆 指令共用同一種呈現）
+// 貼文預覽 Container（訊息自動預覽與 /分享 指令共用同一種呈現）
 function buildThreadsPreview(data, postUrl) {
   // 主頭：作者 + 文字
   const headLines = [

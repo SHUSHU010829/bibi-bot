@@ -13,7 +13,7 @@ const { maskHiddenSegments } = require("../../utils/hiddenLinks");
 // ============================================================
 // Threads Embed Handler - 支援 Carousel 多圖 + 影片
 // 抓取解析在 features/threads/threadsScraper.js、預覽組版在 threadsPreview.js
-// （與 /脆 指令共用）
+// （與 /分享 指令共用）
 // 被藏起來的連結（<網址> / 防雷 / 程式碼區塊）不做預覽。
 // ============================================================
 
