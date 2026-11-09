@@ -7,6 +7,8 @@ const { resolveStamina, staminaMax, getMemberClub, playerAtk } = require("../min
 const grantActivityXp = require("../leveling/grantActivityXp");
 const bossSkills = require("./bossSkills");
 const bossPlayerEvents = require("./bossPlayerEvents");
+const bossBars = require("./bossBars");
+const bossPlayerStats = require("./bossPlayerStats");
 const grantCoins = require("../economy/grantCoins");
 const bus = require("../eventBus");
 
@@ -34,9 +36,16 @@ function generateRandomBoss() {
   };
 }
 
-function phaseOf(currentHp, maxHp) {
-  const ratio = maxHp > 0 ? currentHp / maxHp : 0;
+// 分段血條場依「打爆幾成血條」換階段（破防 / 狂暴跟著里程碑走）；單條血的舊場次照舊看血量比例。
+function phaseOf(currentHp, maxHp, barsTotal = 1) {
   const phases = cfg().phases || {};
+  if (barsTotal > 1) {
+    const ratio = bossBars.brokenFromHp({ max_hp: maxHp, bars_total: barsTotal }, currentHp) / barsTotal;
+    if (ratio >= (phases.enraged?.barRatio ?? 0.75)) return "enraged";
+    if (ratio >= (phases.broken?.barRatio ?? 0.5)) return "broken";
+    return "normal";
+  }
+  const ratio = maxHp > 0 ? currentHp / maxHp : 0;
   if (ratio <= (phases.enraged?.hpThreshold ?? 0.2)) return "enraged";
   if (ratio <= (phases.broken?.hpThreshold ?? 0.5)) return "broken";
   return "normal";
@@ -102,15 +111,16 @@ function rageState(bossDoc) {
   return { stacks, counterBonus };
 }
 
-// 反擊率 = 階段基礎 + 怒氣加成 + 技能加成（暴風亂舞）+ 額外加成（嘲諷），上限 maxCounterRate。
+// 反擊率 = 階段基礎 + 怒氣加成 + 打爆血條加成 + 技能加成（暴風亂舞）+ 額外加成（嘲諷），上限 maxCounterRate。
 // engine 與 view 共用。
 function effectiveCounterRate(bossDoc, extraBonus = 0) {
-  const phaseName = bossDoc.phase || phaseOf(bossDoc.current_hp, bossDoc.max_hp);
+  const phaseName = bossDoc.phase || phaseOf(bossDoc.current_hp, bossDoc.max_hp, bossDoc.bars_total);
   const phase = phaseDef(phaseName);
   return Math.min(
     rageCfg().maxCounterRate ?? 0.5,
     (phase.counterRate ?? 0.1)
       + rageState(bossDoc).counterBonus
+      + bossBars.counterBonus(bossDoc)
       + bossSkills.combinedEffects(bossDoc).counterBonus
       + (extraBonus || 0),
   );
@@ -225,10 +235,113 @@ async function bossCooldown(client, guildId, cooldownMs) {
   return { onCooldown: Date.now() < until, until };
 }
 
-// 依預估參戰人數 + 社群平均戰力即時算出魔王血量。hpMult 給招喚場調整血量倍率用。
-async function computeScaledHp(client, guildId, hpMult = 1) {
+function adaptiveCfg() {
+  return cfg().adaptiveHp || {};
+}
+
+// 近幾場「每一刀平均打多少」（含被反擊的空刀與道具傷害，所以反擊率、道具使用率都自動算進去）。
+async function recentDamagePerHit(client, guildId) {
+  if (!client.bossEventsCollection) return { perHit: 0, samples: 0 };
+  const docs = await client.bossEventsCollection
+    .find({ guild_id: guildId, settled_at: { $exists: true }, total_damage: { $gt: 0 }, hits_taken: { $gt: 0 } })
+    .sort({ started_at: -1 })
+    .limit(adaptiveCfg().historySpawns ?? 5)
+    .toArray()
+    .catch(() => []);
+  const dmg = docs.reduce((s, d) => s + (d.total_damage || 0), 0);
+  const hits = docs.reduce((s, d) => s + (d.hits_taken || 0), 0);
+  return { perHit: hits > 0 ? dmg / hits : 0, samples: docs.length };
+}
+
+// 難度比例：上一場同類型逃走 → 下調一級；在一半時間內打死 → 上調一級；其餘維持。
+// 比例存在每場的 hp_ratio 上（存來源），下一場從上一場的值接著調，連續失敗就會一路往下降到下限。
+async function nextHpRatio(client, guildId, spawnSource) {
+  const a = adaptiveCfg();
+  const base = a.targetRatio?.[spawnSource] ?? 1;
+  const lo = base * (a.minAdjust ?? 0.7);
+  const hi = base * (a.maxAdjust ?? 1.4);
+  const last = client.bossEventsCollection
+    ? await client.bossEventsCollection
+      .find({ guild_id: guildId, spawn_source: spawnSource, settled_at: { $exists: true }, hp_ratio: { $type: "number" } })
+      .sort({ started_at: -1 })
+      .limit(1)
+      .next()
+      .catch(() => null)
+    : null;
+  if (!last) return base;
+  const step = base * (a.adjustStep ?? 0.1);
+  let ratio = last.hp_ratio;
+  if (last.status === "expired") {
+    ratio -= step;
+  } else if (last.status === "defeated" && last.ends_at != null && last.killed_at) {
+    const used = (last.killed_at - last.started_at) / Math.max(1, last.ends_at - last.started_at);
+    if (used <= (a.fastKillRatio ?? 0.5)) ratio += step;
+  }
+  return Math.min(hi, Math.max(lo, ratio));
+}
+
+// 自適應血量，依資料多寡分兩段：
+//   1. 個人戰績夠（BossPlayerStats 近期 ≥ minFights 場）：Σ 每位常客「出席率 × 近況每刀平均 × 出刀數」＋新面孔估計
+//   2. 不夠：預估參戰人數 × 每人出刀數 × 近期全場每刀平均
+// 兩段最後都乘難度比例（上一場逃走下調、速殺上調）。都沒有戰績時回 null，由呼叫端退回舊公式。
+async function computeAdaptiveHp(client, guildId, spawnSource, participants) {
+  const a = adaptiveCfg();
+  if (!a.enabled) return null;
+  const hits = baseAttackLimitFor({ spawn_source: spawnSource });
+  const fc = await bossPlayerStats.forecast(client, guildId, spawnSource, hits).catch(() => null);
+  if (fc && fc.expected > 0) {
+    const ratio = await nextHpRatio(client, guildId, spawnSource);
+    return {
+      hp: fc.expected * ratio,
+      ratio,
+      info: {
+        mode: "player_forecast",
+        expected_damage: Math.round(fc.expected),
+        newcomer_damage: Math.round(fc.newcomer),
+        regulars: fc.players.length,
+        sample_fights: fc.fights,
+        sample_scope: fc.scope,
+        hits_per_player: hits,
+        hp_ratio: Number(ratio.toFixed(3)),
+        participant_basis: participants.count,
+        participant_source: participants.source,
+        history_avg: Number(participants.history.toFixed(1)),
+      },
+    };
+  }
+  const { perHit, samples } = await recentDamagePerHit(client, guildId);
+  if (samples < (a.minHistory ?? 2) || perHit <= 0) return null;
+  const ratio = await nextHpRatio(client, guildId, spawnSource);
+  const hp = participants.count * hits * perHit * ratio;
+  return {
+    hp,
+    ratio,
+    info: {
+      mode: "adaptive",
+      per_hit: Math.round(perHit),
+      hits_per_player: hits,
+      hp_ratio: Number(ratio.toFixed(3)),
+      participant_basis: participants.count,
+      participant_source: participants.source,
+      history_avg: Number(participants.history.toFixed(1)),
+    },
+  };
+}
+
+// 依預估參戰人數 + 社群實際輸出即時算出魔王血量。hpMult 只在還沒有戰績、退回舊公式時才用。
+async function computeScaledHp(client, guildId, hpMult = 1, spawnSource = "manual") {
   const stats = await activePlayerStats(client, guildId);
   const participants = await expectedParticipants(client, guildId, stats.activeCount);
+  const adaptive = await computeAdaptiveHp(client, guildId, spawnSource, participants);
+  if (adaptive) {
+    return {
+      onlineCount: participants.online,
+      participantBasis: participants.count,
+      scaling: adaptive.info,
+      hpRatio: adaptive.ratio,
+      finalHp: Math.round(Math.max(cfg().minHp ?? 3000, adaptive.hp)),
+    };
+  }
   const base = participants.count * (cfg().hpPerPlayer ?? 500);
   let gearMult = 1;
   let scaling = null;
@@ -270,6 +383,10 @@ function freshCombatFields() {
     },
     attack_counts: {},
     charge_counts: {},
+    bars_broken: 0,
+    bar_damage: {},
+    bar_coins_by_user: {},
+    bar_rare_by_user: {},
   };
 }
 
@@ -282,11 +399,13 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSo
   let onlineCount = null;
   let participantBasis = null;
   let scaling = null;
+  let hpRatio = null;
   let finalHp;
+  const source = spawnSource || "scheduled";
   if (hp != null) {
     finalHp = hp;
   } else {
-    ({ onlineCount, participantBasis, scaling, finalHp } = await computeScaledHp(client, guildId, hpMult ?? 1));
+    ({ onlineCount, participantBasis, scaling, hpRatio, finalHp } = await computeScaledHp(client, guildId, hpMult ?? 1, source));
   }
   const duration = durationMs ?? (cfg().durationMinutes ?? 30) * 60 * 1000;
   const bossId = `boss_${guildId}_${now}`;
@@ -307,8 +426,10 @@ async function spawnBoss(client, { guildId, name, emoji, hp, durationMs, spawnSo
     online_count: onlineCount ?? null,
     participant_basis: participantBasis ?? null,
     last_hit_at: now,
-    spawn_source: spawnSource || "scheduled",
+    spawn_source: source,
     scaling,
+    hp_ratio: hpRatio ?? null,
+    bars_total: bossBars.countFor(source),
     ...bossSkills.initialState(now),
     ...freshCombatFields(),
   };
@@ -339,9 +460,7 @@ async function getBossInfo(client, guildId) {
   };
 }
 
-// opts.skipCooldown：連擊（/魔王 攻擊 次數:N）的第 2 刀起沿用同一次開打，冷卻改成一次累計 N 刀，
-// 不在刀與刀之間攔截。
-async function applyAttack(client, { userId, guildId, username, member }, opts = {}) {
+async function applyAttack(client, { userId, guildId, username, member }) {
   if (!cfg().enabled) return { ok: false, reason: "disabled" };
 
   const bossDoc = await getActiveBoss(client, guildId);
@@ -393,22 +512,6 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
     return { ok: false, reason: "attack_limit", used, limit: attackLimit, ammo };
   }
 
-  // 出刀冷卻：一場魔王不再是「開場三分鐘全員梭哈」，每個人的刀被攤到整場戰鬥裡。
-  // 累加式（前一次到期時間 + 冷卻）讓連擊 N 刀 = 一次扣掉 N 份冷卻。
-  const cdMs = (cfg().attackCooldownSec ?? 0) * 1000;
-  const cooldownUntil = (bossDoc.cooldown_until || {})[userId] || 0;
-  if (cdMs > 0 && !opts.skipCooldown && now < cooldownUntil) {
-    return {
-      ok: false,
-      reason: "attack_cooldown",
-      nextAt: cooldownUntil,
-      cooldownSec: cfg().attackCooldownSec,
-      used,
-      limit: attackLimit,
-      ammo,
-    };
-  }
-
   const st = resolveStamina(profile, max);
   if (st.stamina <= 0) {
     return {
@@ -422,7 +525,7 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
   // Combo / streak 狀態判定
   const combo = bossDoc.combo || {};
   const comboCfgVal = comboCfg();
-  const phaseName = bossDoc.phase || phaseOf(bossDoc.current_hp, bossDoc.max_hp);
+  const phaseName = bossDoc.phase || phaseOf(bossDoc.current_hp, bossDoc.max_hp, bossDoc.bars_total);
   const phase = phaseDef(phaseName);
 
   // 嘲諷/仇恨：當前傷害王被魔王盯上，對他的反擊率額外提高。
@@ -506,7 +609,7 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
       isCrit = playerFx.forceCrit || Math.random() < critRate;
     }
     const critMult = isCrit ? (crit.damageMult ?? 2) : 1;
-    // 技能倍率與決戰倍率放最後：岩甲 ×0.45 / 詛咒 ×0.8 / 核心外露 ×2 / 決戰 ×1.4～×2
+    // 技能倍率與決戰倍率放最後：岩甲 ×0.45 / 詛咒 ×0.8 / 破條爆發 ×1.5 / 決戰 ×1.4～×2
     // 都吃在最終傷害上。
     damage = Math.max(1, Math.floor(
       base * (phase.damageMult ?? 1) * streakMult * comboMult * guildMult * buildingMult * critMult
@@ -550,7 +653,10 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
   // BOSS 血量扣除 + 階段更新
   // 原子扣血：只在 boss 仍存活時生效，避免兩人同時讀到舊血量、各自算出「最後一擊」。
   const incFields = { current_hp: -damage, hits_taken: 1 };
-  if (damage > 0) incFields[`damage_by_user.${userId}`] = damage;
+  if (damage > 0) {
+    incFields[`damage_by_user.${userId}`] = damage;
+    if (bossBars.enabledFor(bossDoc)) incFields[`bar_damage.${bossBars.barIndexForHit(bossDoc)}.${userId}`] = damage;
+  }
   // 「再來一刀」事件：這刀不計入本場次數，也不吃攻擊庫存。
   const attackCount = isCounter || refundAttack ? used : used + 1;
   const setFields = {
@@ -567,9 +673,6 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
     setFields[`attack_counts.${userId}`] = attackCount;
     setFields[`charge_counts.${userId}`] = extraUsed + (usesCharge && !refundAttack ? 1 : 0);
   }
-  // 被反擊的空刀不佔次數，但一樣要進冷卻（否則被反擊就能無限重試）。
-  const nextCooldownAt = cdMs > 0 ? Math.max(now, cooldownUntil) + cdMs : 0;
-  if (cdMs > 0) setFields[`cooldown_until.${userId}`] = nextCooldownAt;
   // 事件的持續效果與個人冷卻跟著同一次原子更新寫進去，不另外打一次 DB。
   const fxEntry = eventDef ? bossPlayerEvents.fxEntry(eventDef, now) : null;
   if (eventDef) setFields[`event_cd.${userId}`] = now + bossPlayerEvents.cooldownMs();
@@ -603,7 +706,7 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
 
   const rawHp = afterDoc.current_hp ?? 0;
   const newHp = Math.max(0, rawHp);
-  const newPhase = phaseOf(newHp, bossDoc.max_hp);
+  const newPhase = phaseOf(newHp, bossDoc.max_hp, bossDoc.bars_total);
   const phaseChanged = newPhase !== bossDoc.phase;
 
   // 只有第一個把血量打到 0 的人能搶下擊殺（原子 status 轉移），其餘人只算普通命中。
@@ -622,16 +725,16 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
     );
   }
 
-  // 反攻號角：召喚場全場砍滿一輪刀數、魔王還活著 → 所有人的出刀次數再開一輪。
-  let rally = null;
-  let rallyCountAfter = afterDoc.rally_count || 0;
-  if (!killed) {
-    const r = await bossSkills.maybeRally(client, afterDoc, now);
-    if (r) {
-      rally = r.event;
-      rallyCountAfter = r.boss.rally_count || rallyCountAfter;
-    }
-  }
+  // 打爆血條：即時分獎勵池、掛破條爆發、每兩條吹反攻號角（全場出刀次數 +N）。
+  const breaks = await bossBars.processBreaks(client, afterDoc, { breakerUserId: damage > 0 ? userId : null, now });
+  const barEvents = breaks.events;
+  const rallies = barEvents.filter((e) => e.type === "rally");
+  const rally = rallies[rallies.length - 1] || null;
+  const rallyBonusGained = rallies.reduce((s, e) => s + (e.bonus || 0), 0);
+  const barsBrokenAfter = breaks.boss?.bars_broken ?? afterDoc.bars_broken ?? 0;
+  const skillsAfterBars = barEvents.some((e) => e.type === "bar_break")
+    ? (breaks.boss?.active_skills || skillsAfter).filter((s) => !skillBroken || s.started_at !== breakable.started_at)
+    : skillsAfter;
 
   // 傷害紀錄
   await client.bossDamageLogsCollection.insertOne({
@@ -708,22 +811,24 @@ async function applyAttack(client, { userId, guildId, username, member }, opts =
       current_hp: newHp,
       phase: newPhase,
       hits_taken: afterDoc.hits_taken,
-      active_skills: skillsAfter,
-      rally_count: rallyCountAfter,
+      active_skills: skillsAfterBars,
+      bars_broken: barsBrokenAfter,
+      bar_damage: afterDoc.bar_damage,
     },
     skillBroken,
-    skillLabels: bossSkills.statusLines({ active_skills: skillsAfter }, now),
+    skillLabels: bossSkills.statusLines({ active_skills: skillsAfterBars }, now),
     rally,
+    barEvents,
+    hitBarPct: bossBars.hitPctOfBar(bossDoc, damage),
     playerEvent: eventDef
       ? { def: eventDef, coins: eventCoins, stamina: eventStamina, refunded: refundAttack }
       : null,
     playerFxLabels: bossPlayerEvents.statusLines(afterDoc, userId, now),
-    cooldownUntil: nextCooldownAt,
     stamina: newStamina,
     staminaMax: max,
     myDamage: afterDoc.damage_by_user?.[userId] || 0,
     attackCount,
-    attackLimit: attackLimit + (rally ? rally.bonus : 0),
+    attackLimit: attackLimit + rallyBonusGained,
     ammo,
     bonusAttacks: allowedExtra,
     ammoAttacks: ammoLimitBonus,
@@ -779,25 +884,38 @@ async function settleBoss(client, bossDoc) {
   const totalDamage = ranking.reduce((s, r) => s + r.damage, 0);
 
   const killed = bossDoc.status === "defeated";
-  // BOSS 逃離（時間到卻沒被擊殺）＝討伐失敗，只剩參加獎；戰報仍保留供回顧。
-  // （招喚場不限時間，只會以「擊殺」結束，所以實際上都是有獎的。）
-  const rewarded = killed;
+  // 分段血條場：獎勵池在每條血打爆的當下就分掉了（bar_coins_by_user），結算不再發一次；
+  // 排名掉落依「打爆幾條」按比例發——逃走也拿得到已經打下來的那一份。
+  // 擊殺專屬（擊殺紅利、尾刀、首刀、擊殺經驗、稱號、公會鎖定金）仍然只有打死才有。
+  // 單條血的舊場次維持全有全無。
+  const barMode = bossBars.enabledFor(bossDoc);
+  const barsBroken = barMode ? Math.max(bossDoc.bars_broken || 0, bossBars.brokenFromHp(bossDoc)) : 0;
+  const clearRatio = killed ? 1 : (barMode ? barsBroken / bossBars.totalOf(bossDoc) : 0);
+  const rewarded = clearRatio > 0;
   const rwd = rewardsCfg();
-  const totalPool = rewarded ? Math.floor(bossDoc.max_hp * (rwd.poolRatio ?? 0.5)) : 0;
+  const fullPool = Math.floor(bossDoc.max_hp * (rwd.poolRatio ?? 0.5));
+  const barCoins = bossDoc.bar_coins_by_user || {};
+  const barRare = bossDoc.bar_rare_by_user || {};
+  const totalPool = barMode
+    ? Object.values(barCoins).reduce((sum, v) => sum + (v || 0), 0)
+    : (killed ? fullPool : 0);
   const tiers = Array.isArray(rwd.topRareRewardTiers)
     ? rwd.topRareRewardTiers
     : new Array(rwd.topRareRewards ?? 3).fill(1);
   const diamondTiers = Array.isArray(rwd.topRankDiamondTiers) ? rwd.topRankDiamondTiers : [];
+  const scaled = (n) => Math.floor((n || 0) * clearRatio);
 
   const payouts = ranking.map((r, idx) => {
-    const share = rewarded && totalDamage > 0 ? Math.floor(r.damage / totalDamage * totalPool) : 0;
-    const rareReward = rewarded && r.damage > 0 ? (tiers[idx] || 0) : 0;
-    const diamondReward = rewarded && r.damage > 0 ? (diamondTiers[idx] || 0) : 0;
+    const share = !barMode && killed && totalDamage > 0 ? Math.floor(r.damage / totalDamage * totalPool) : 0;
+    const rareReward = rewarded && r.damage > 0 ? scaled(tiers[idx]) : 0;
+    const diamondReward = rewarded && r.damage > 0 ? scaled(diamondTiers[idx]) : 0;
     const killBonus = killed && r.damage > 0 ? (rwd.killBonus ?? 100) : 0;
     return {
       ...r,
       rank: idx + 1,
       share,
+      barCoins: barCoins[r.userId] || 0,
+      barRare: barRare[r.userId] || 0,
       rareReward,
       diamondReward,
       killBonus,
@@ -834,7 +952,7 @@ async function settleBoss(client, bossDoc) {
 
   // 首刀獎勵：頒給第一個對 boss 造成傷害的人（只有擊殺才發）。
   let firstStrikeBonus = 0;
-  const firstStrikerUserId = rewarded ? (bossDoc.first_striker || null) : null;
+  const firstStrikerUserId = killed ? (bossDoc.first_striker || null) : null;
   if (firstStrikerUserId) {
     firstStrikeBonus = rwd.firstStrikeBonus ?? 0;
     if (firstStrikeBonus > 0) {
@@ -883,22 +1001,57 @@ async function settleBoss(client, bossDoc) {
   // 記錄結束時間 → 防「連續出場」冷卻。
   await markBossEnded(client, bossDoc.guild_id);
 
+  await bossPlayerStats.recordFight(client, {
+    bossDoc,
+    ranking,
+    logs,
+    killed,
+    barsBroken,
+    attackLimit: baseLimitFor({ ...bossDoc, bars_broken: barsBroken }),
+  });
+
+  const grade = gradeOf({ killed, clearRatio, bossDoc });
+  await client.bossEventsCollection.updateOne(
+    { boss_id: bossDoc.boss_id },
+    { $set: { grade: grade?.key || null, clear_ratio: Number(clearRatio.toFixed(3)), bars_broken: barsBroken } },
+  ).catch(() => {});
+
   return {
     bossDoc,
     killed,
     rewarded,
+    barMode,
+    barsBroken,
+    barsTotal: bossBars.totalOf(bossDoc),
+    clearRatio,
+    grade,
     killerUserId: bossDoc.killer_user_id,
     payouts,
     totalDamage,
     totalPool,
     mvpUserId: rewarded ? (payouts[0]?.userId || null) : null,
-    comboMvpUserId: rewarded ? (bossDoc.combo?.combo_mvp || null) : null,
-    punchingBagUserId: rewarded ? punchingBag : null,
+    comboMvpUserId: killed ? (bossDoc.combo?.combo_mvp || null) : null,
+    punchingBagUserId: killed ? punchingBag : null,
     killerBonus,
     killerRare,
     firstStrikerUserId,
     firstStrikeBonus,
   };
+}
+
+// 討伐評價：S（擊殺且剩很多時間）/ A（擊殺）/ B、C、D（依打爆比例）。順序即判定優先序。
+function gradeOf({ killed, clearRatio, bossDoc }) {
+  const grades = Array.isArray(cfg().grades) ? cfg().grades : [];
+  const remainMin = bossDoc.ends_at != null && bossDoc.killed_at
+    ? (bossDoc.ends_at - bossDoc.killed_at) / 60000
+    : null;
+  for (const g of grades) {
+    if (g.killed && !killed) continue;
+    if (g.minRemainingMinutes != null && (remainMin == null || remainMin < g.minRemainingMinutes)) continue;
+    if (g.minClearRatio != null && clearRatio < g.minClearRatio) continue;
+    return g;
+  }
+  return null;
 }
 
 async function findExpiredActiveBosses(client, now = Date.now()) {
@@ -926,8 +1079,7 @@ async function applyComboAttack(client, params, count) {
   const skillsBroken = [];
 
   for (let i = 0; i < count; i++) {
-    // 冷卻只在第一刀擋；之後的刀屬於同一次連擊，冷卻在結束時一次累計 N 份。
-    const r = await applyAttack(client, params, { skipCooldown: i > 0 });
+    const r = await applyAttack(client, params);
     if (!r.ok) {
       stopReason = r.reason;
       if (hits.length === 0) {
@@ -1078,8 +1230,10 @@ async function applyItemDamage(client, { userId, guildId, username, itemKey, dam
     }
     : null;
 
+  const inc = { current_hp: -dmg, [`damage_by_user.${userId}`]: dmg, [usedField]: 1 };
+  if (bossBars.enabledFor(bossDoc)) inc[`bar_damage.${bossBars.barIndexForHit(bossDoc)}.${userId}`] = dmg;
   const update = {
-    $inc: { current_hp: -dmg, [`damage_by_user.${userId}`]: dmg, [usedField]: 1 },
+    $inc: inc,
     $set: { last_hit_at: now, updatedAt: new Date() },
   };
   if (fxEntry || debuffEntry) {
@@ -1113,7 +1267,7 @@ async function applyItemDamage(client, { userId, guildId, username, itemKey, dam
 
   const rawHp = afterDoc.current_hp ?? 0;
   const newHp = Math.max(0, rawHp);
-  const newPhase = phaseOf(newHp, bossDoc.max_hp);
+  const newPhase = phaseOf(newHp, bossDoc.max_hp, bossDoc.bars_total);
   const phaseChanged = newPhase !== bossDoc.phase;
 
   let killed = false;
@@ -1130,6 +1284,8 @@ async function applyItemDamage(client, { userId, guildId, username, itemKey, dam
       { $set: { phase: newPhase } },
     );
   }
+
+  const breaks = await bossBars.processBreaks(client, afterDoc, { breakerUserId: userId, now });
 
   await client.bossDamageLogsCollection.insertOne({
     boss_id: bossDoc.boss_id,
@@ -1160,7 +1316,15 @@ async function applyItemDamage(client, { userId, guildId, username, itemKey, dam
     playerFx: eventDef,
     debuff: debuffEntry ? { def: debuffDef, expiresAt: debuffEntry.expires_at } : null,
     playerFxLabels: bossPlayerEvents.statusLines(afterDoc, userId, now),
-    boss: { ...bossDoc, current_hp: newHp, phase: newPhase },
+    barEvents: breaks.events,
+    boss: {
+      ...bossDoc,
+      current_hp: newHp,
+      phase: newPhase,
+      bars_broken: breaks.boss?.bars_broken ?? afterDoc.bars_broken,
+      bar_damage: afterDoc.bar_damage,
+      active_skills: breaks.boss?.active_skills || afterDoc.active_skills,
+    },
   };
 }
 
@@ -1196,7 +1360,7 @@ async function adminAdjustHp(client, { guildId, cut = null, cutPct = null, setHp
 
   const rawHp = afterDoc.current_hp ?? 0;
   const newHp = Math.max(0, Math.min(maxHp, rawHp));
-  const newPhase = phaseOf(newHp, maxHp);
+  const newPhase = phaseOf(newHp, maxHp, bossDoc.bars_total);
   const phaseChanged = newPhase !== bossDoc.phase;
 
   let killed = false;
@@ -1222,6 +1386,9 @@ async function adminAdjustHp(client, { guildId, cut = null, cutPct = null, setHp
     );
   }
 
+  // 管理員砍血一樣算打爆血條（照發該條血的獎勵池），只是沒有破條手。
+  const breaks = await bossBars.processBreaks(client, afterDoc, { now });
+
   return {
     ok: true,
     before,
@@ -1232,7 +1399,8 @@ async function adminAdjustHp(client, { guildId, cut = null, cutPct = null, setHp
     phaseBefore: bossDoc.phase,
     phaseAfter: newPhase,
     phaseChanged,
-    boss: { ...afterDoc, current_hp: newHp, phase: newPhase },
+    barEvents: breaks.events,
+    boss: { ...(breaks.boss || afterDoc), current_hp: newHp, phase: newPhase },
   };
 }
 
@@ -1255,6 +1423,8 @@ module.exports = {
   countOnlineMembers,
   expectedParticipants,
   computeScaledHp,
+  computeAdaptiveHp,
+  nextHpRatio,
   phaseOf,
   phaseDef,
   participationTier,

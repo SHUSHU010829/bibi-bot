@@ -15,7 +15,7 @@ const { boss } = require("../../config");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const bossEngine = require("./bossEngine");
 const bossSkills = require("./bossSkills");
-const { phaseColor, phaseLabel, hpBar } = require("./bossView");
+const { phaseColor, phaseLabel, hpBlock } = require("./bossView");
 
 const MIN_INTERVAL_MS = 3000;
 const lastAt = new Map();

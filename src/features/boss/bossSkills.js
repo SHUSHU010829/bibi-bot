@@ -1,5 +1,5 @@
 // 魔王技能：戰鬥中每隔幾分鐘施放一個技能，臨時改寫當下的戰鬥規則
-// （岩甲減傷、亂舞高反擊、詛咒禁會心、吸食回血、核心外露全場 ×2）。
+// （岩甲減傷、亂舞高反擊、詛咒禁會心、吸食回血）。
 //
 // 存來源不存結果：boss doc 只存 active_skills（{ key, started_at, expires_at, hits_at_cast }）
 // 與 next_skill_at，減傷 / 反擊 / 禁會心一律由 combinedEffects() 在攻擊當下即時換算。
@@ -109,73 +109,28 @@ function finalStandMult(bossDoc, now = Date.now()) {
   return finalStandStage(bossDoc, now)?.damageMult ?? 1;
 }
 
-// 反攻號角：召喚場（非週六固定場）打到一半打不完時的救場機制——
-// 全場累積揮出 hitsPerRally 刀而魔王還活著，就把所有人的出刀次數往上加一輪。
-// 存來源不存結果：doc 只存 rally_count，出刀上限由 bossEngine 在讀取端即時換算。
-function rallyCfg() {
-  return boss?.rally || {};
+// 反攻號角改由「打爆血條」觸發，算法放在 bossBars（存來源：bars_broken）。
+// 這裡用延遲 require，避免 bossBars → bossSkills → bossBars 的循環。
+function bars() {
+  return require("./bossBars");
 }
 
 function rallyEnabled(bossDoc) {
-  const cfg = rallyCfg();
-  if (!cfg.enabled) return false;
-  const sources = Array.isArray(cfg.spawnSources) ? cfg.spawnSources : ["summon"];
-  return sources.includes(bossDoc?.spawn_source || "scheduled");
+  return bars().rallyEnabled(bossDoc);
 }
 
 function rallyCount(bossDoc) {
-  return rallyEnabled(bossDoc) ? (bossDoc?.rally_count || 0) : 0;
+  return bars().rallyCount(bossDoc);
 }
 
 function rallyBonus(bossDoc) {
-  return rallyCount(bossDoc) * (rallyCfg().attackBonus ?? 0);
+  return bars().rallyBonus(bossDoc);
 }
 
 function rallyLabel(bossDoc) {
   const round = rallyCount(bossDoc);
   if (round <= 0) return null;
-  return fmt(rallyCfg().statusLabel, { round, bonus: rallyBonus(bossDoc) });
-}
-
-// 每一刀打完後判定一次。原子換 rally_count（舊場次沒有這個欄位，所以 0 要連 null 一起比），
-// 只有真的改到的那一刀會拿到公告，避免同時出手的人各報一次。
-async function maybeRally(client, bossDoc, now = Date.now()) {
-  const cfg = rallyCfg();
-  if (!rallyEnabled(bossDoc)) return null;
-  if ((bossDoc.current_hp ?? 0) <= 0) return null;
-  const per = cfg.hitsPerRally ?? 0;
-  const cur = bossDoc.rally_count || 0;
-  if (per <= 0 || cur >= (cfg.maxRallies ?? 0)) return null;
-  if ((bossDoc.hits_taken || 0) < (cur + 1) * per) return null;
-
-  const res = await client.bossEventsCollection.findOneAndUpdate(
-    {
-      boss_id: bossDoc.boss_id,
-      status: "active",
-      rally_count: { $in: cur === 0 ? [0, null] : [cur] },
-    },
-    { $set: { rally_count: cur + 1, last_rally_at: now } },
-    { returnDocument: "after" },
-  );
-  const after = res?.value || res;
-  if (!after) return null;
-
-  const vars = {
-    name: bossDoc.name,
-    hits: (bossDoc.hits_taken || 0).toLocaleString(),
-    round: cur + 1,
-    bonus: cfg.attackBonus ?? 0,
-  };
-  return {
-    event: {
-      type: "rally",
-      text: fmt(cfg.announcement, vars),
-      hint: cfg.hint || null,
-      round: cur + 1,
-      bonus: cfg.attackBonus ?? 0,
-    },
-    boss: after,
-  };
+  return fmt(boss?.rally?.statusLabel, { round, bonus: rallyBonus(bossDoc) });
 }
 
 function fmt(tpl, vars) {
@@ -219,14 +174,17 @@ function initialState(now = Date.now()) {
 }
 
 // 回血一律走 aggregation pipeline 的 $min，讓「加血」與「不超過上限」在同一個原子更新裡完成。
+// 上限＝max_hp − 已打爆條數 × 每條血量：已打爆的血條是保底進度，回血補不回去。
 async function healBoss(client, bossId, amount) {
   if (amount <= 0) return null;
+  const perBar = { $divide: ["$max_hp", { $max: [1, { $ifNull: ["$bars_total", 1] }] }] };
+  const cap = { $subtract: ["$max_hp", { $multiply: [{ $ifNull: ["$bars_broken", 0] }, perBar] }] };
   const res = await client.bossEventsCollection.findOneAndUpdate(
     { boss_id: bossId, status: "active" },
     [
       {
         $set: {
-          current_hp: { $min: ["$max_hp", { $add: ["$current_hp", amount] }] },
+          current_hp: { $round: [{ $min: [cap, { $add: ["$current_hp", amount] }] }, 0] },
           updatedAt: "$$NOW",
         },
       },
@@ -298,7 +256,7 @@ async function idleRegen(client, bossDoc, now = Date.now()) {
   const idleMs = (cfg.idleMinutes ?? 3) * 60000;
   const last = bossDoc.last_hit_at || bossDoc.started_at || now;
   if (now - last < idleMs) return null;
-  if ((bossDoc.current_hp ?? 0) >= (bossDoc.max_hp ?? 0)) return null;
+  if ((bossDoc.current_hp ?? 0) >= bars().healCap(bossDoc)) return null;
 
   const max = cfg.maxTriggers ?? 0;
   const count = bossDoc.idle_regen_count || 0;
@@ -410,7 +368,6 @@ module.exports = {
   rallyEnabled,
   rallyCount,
   rallyBonus,
-  maybeRally,
   pendingBreak,
   breakSkill,
 };

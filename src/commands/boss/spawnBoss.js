@@ -68,6 +68,7 @@ module.exports = {
         emoji,
         hp,
         durationMs,
+        spawnSource: "manual",
       });
 
       if (!res.ok) {

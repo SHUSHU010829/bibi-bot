@@ -10,6 +10,20 @@ const bossEngine = require("../../features/boss/bossEngine");
 const bossSummon = require("../../features/boss/bossSummon");
 const bossView = require("../../features/boss/bossView");
 const bossItems = require("../../features/boss/bossItems");
+const bossPlayerStats = require("../../features/boss/bossPlayerStats");
+
+async function runStats(client, interaction) {
+  const summary = await bossPlayerStats.playerSummary(client, interaction.guildId, interaction.user.id);
+  return interaction.editReply({
+    components: [
+      bossView.buildPlayerStatsContainer({
+        displayName: interaction.member?.displayName || interaction.user.username,
+        summary,
+      }),
+    ],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
 
 async function runInfo(client, interaction) {
   if (!boss?.enabled) {
@@ -148,6 +162,12 @@ module.exports = {
       },
       {
         type: ApplicationCommandOptionType.Subcommand,
+        name: "戰績",
+        description: "查看自己最近 10 場魔王戰打了多少血 📜",
+        options: [],
+      },
+      {
+        type: ApplicationCommandOptionType.Subcommand,
         name: "召喚進度",
         description: "查看討伐能量：打地下城累積，集滿自動召喚魔王 🔮",
         options: [],
@@ -168,6 +188,9 @@ module.exports = {
       }
       if (sub === "道具") {
         return await runItems(client, interaction);
+      }
+      if (sub === "戰績") {
+        return await runStats(client, interaction);
       }
       return await runInfo(client, interaction);
     } catch (e) {

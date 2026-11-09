@@ -147,8 +147,10 @@ module.exports = async (client, interaction) => {
             text: result.announcement
               .replace(/\{user\}/g, displayName)
               .replace(/\{name\}/g, result.boss.name),
-          }])
+          }, ...(result.barEvents || [])])
           .catch(() => {});
+      } else if (result.barEvents?.length) {
+        bossAnnouncer.announceSkillEvents(client, result.barEvents).catch(() => {});
       }
       if (result.killed) {
         settleAndAnnounce(client, interaction.guild, result.boss.boss_id).catch((e) =>
