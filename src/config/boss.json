@@ -399,8 +399,14 @@
       "adjustStep": 0.1,
       "minAdjust": 0.7,
       "maxAdjust": 1.4,
-      "fastKillRatio": 0.5
+      "fastKillRatio": 0.5,
+      "windowFights": 10,
+      "minFights": 3,
+      "perPlayerFights": 5,
+      "recencyDecay": 0.85,
+      "newcomerAllowance": true
     },
+    "sourceLabels": { "scheduled": "週六固定場", "summon": "召喚場", "manual": "手動召喚" },
     "grades": [
       { "key": "S", "emoji": "🌟", "label": "完美討伐", "killed": true, "minRemainingMinutes": 20 },
       { "key": "A", "emoji": "🏆", "label": "討伐成功", "killed": true },

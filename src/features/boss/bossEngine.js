@@ -8,6 +8,7 @@ const grantActivityXp = require("../leveling/grantActivityXp");
 const bossSkills = require("./bossSkills");
 const bossPlayerEvents = require("./bossPlayerEvents");
 const bossBars = require("./bossBars");
+const bossPlayerStats = require("./bossPlayerStats");
 const grantCoins = require("../economy/grantCoins");
 const bus = require("../eventBus");
 
@@ -279,16 +280,38 @@ async function nextHpRatio(client, guildId, spawnSource) {
   return Math.min(hi, Math.max(lo, ratio));
 }
 
-// 自適應血量：魔王血量 ≈ 預估參戰人數 × 每人出刀數 × 近期每刀平均傷害 × 難度比例。
-// 以「這群人實際打得出多少」為準，而不是人數 × 固定倍率——後者在週六場會變成永遠打不完。
-// 戰績還不夠（新伺服器 / 剛改版）時回 null，由呼叫端退回舊公式。
+// 自適應血量，依資料多寡分兩段：
+//   1. 個人戰績夠（BossPlayerStats 近期 ≥ minFights 場）：Σ 每位常客「出席率 × 近況每刀平均 × 出刀數」＋新面孔估計
+//   2. 不夠：預估參戰人數 × 每人出刀數 × 近期全場每刀平均
+// 兩段最後都乘難度比例（上一場逃走下調、速殺上調）。都沒有戰績時回 null，由呼叫端退回舊公式。
 async function computeAdaptiveHp(client, guildId, spawnSource, participants) {
   const a = adaptiveCfg();
   if (!a.enabled) return null;
+  const hits = baseAttackLimitFor({ spawn_source: spawnSource });
+  const fc = await bossPlayerStats.forecast(client, guildId, spawnSource, hits).catch(() => null);
+  if (fc && fc.expected > 0) {
+    const ratio = await nextHpRatio(client, guildId, spawnSource);
+    return {
+      hp: fc.expected * ratio,
+      ratio,
+      info: {
+        mode: "player_forecast",
+        expected_damage: Math.round(fc.expected),
+        newcomer_damage: Math.round(fc.newcomer),
+        regulars: fc.players.length,
+        sample_fights: fc.fights,
+        sample_scope: fc.scope,
+        hits_per_player: hits,
+        hp_ratio: Number(ratio.toFixed(3)),
+        participant_basis: participants.count,
+        participant_source: participants.source,
+        history_avg: Number(participants.history.toFixed(1)),
+      },
+    };
+  }
   const { perHit, samples } = await recentDamagePerHit(client, guildId);
   if (samples < (a.minHistory ?? 2) || perHit <= 0) return null;
   const ratio = await nextHpRatio(client, guildId, spawnSource);
-  const hits = baseAttackLimitFor({ spawn_source: spawnSource });
   const hp = participants.count * hits * perHit * ratio;
   return {
     hp,
@@ -978,6 +1001,15 @@ async function settleBoss(client, bossDoc) {
   // 記錄結束時間 → 防「連續出場」冷卻。
   await markBossEnded(client, bossDoc.guild_id);
 
+  await bossPlayerStats.recordFight(client, {
+    bossDoc,
+    ranking,
+    logs,
+    killed,
+    barsBroken,
+    attackLimit: baseLimitFor({ ...bossDoc, bars_broken: barsBroken }),
+  });
+
   const grade = gradeOf({ killed, clearRatio, bossDoc });
   await client.bossEventsCollection.updateOne(
     { boss_id: bossDoc.boss_id },
@@ -1391,6 +1423,8 @@ module.exports = {
   countOnlineMembers,
   expectedParticipants,
   computeScaledHp,
+  computeAdaptiveHp,
+  nextHpRatio,
   phaseOf,
   phaseDef,
   participationTier,

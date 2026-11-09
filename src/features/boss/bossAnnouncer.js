@@ -64,12 +64,15 @@ async function announcePreNotice(client, { spawnAt, source, contributorCount }) 
 // 技能 / 事件 / 號角併成一塊「戰場變數」，獎勵只寫最高檔與分潤規則——
 // 完整的檔位表在戰鬥中的攻擊結果與結算公告都會再出現，出場公告再列一次只會洗掉重點。
 function statField(bossDoc) {
-  const adaptive = bossDoc.scaling?.mode === "adaptive";
-  const basis = bossDoc.participant_basis != null
-    ? (adaptive
+  const mode = bossDoc.scaling?.mode;
+  let basis = "";
+  if (mode === "player_forecast") {
+    basis = `\n-# 依 ${bossDoc.scaling.regulars} 名常客近 ${bossDoc.scaling.sample_fights} 場的平均輸出換算`;
+  } else if (bossDoc.participant_basis != null) {
+    basis = mode === "adaptive"
       ? `\n-# 依 ${bossDoc.participant_basis} 名預估參戰者 × 近期實際輸出換算`
-      : `\n-# 依 ${bossDoc.participant_basis} 名預估參戰者 × 社群平均戰力換算`)
-    : "";
+      : `\n-# 依 ${bossDoc.participant_basis} 名預估參戰者 × 社群平均戰力換算`;
+  }
   const bars = bossBars.totalOf(bossDoc);
   const barText = bars > 1 ? `（分 **${bars}** 條血）` : "";
   return {

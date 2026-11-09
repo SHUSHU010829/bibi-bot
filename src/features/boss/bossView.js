@@ -1084,6 +1084,103 @@ function buildSettlementContainer(settlement) {
   return container;
 }
 
+function sourceLabel(source) {
+  return boss?.sourceLabels?.[source] || boss?.sourceLabels?.manual || "魔王戰";
+}
+
+function fightResultMark(r) {
+  if (r.killed) return "🏆";
+  if ((r.bars_total || 1) > 1) return `💨 ${r.bars_broken || 0}/${r.bars_total}`;
+  return "💨";
+}
+
+// /魔王 戰績：最近 N 場的個人輸出。查詢類 → 呼叫端用 ephemeral。
+function buildPlayerStatsContainer({ displayName, summary }) {
+  if (!summary?.rows?.length) {
+    return buildErrorContainer({
+      title: "📭 還沒有魔王戰績",
+      body: `${displayName} 還沒參加過任何一場魔王戰（或紀錄已超過保留期限）。`,
+      hint: "下次魔王出現時 /魔王 攻擊 打一刀，結算後就會出現在這裡。",
+    });
+  }
+  const { rows, avgDamage, perSlot, best, attendance, windowFights } = summary;
+  const head = [
+    `平均每場 **${Math.round(avgDamage).toLocaleString()}** 傷害・每刀平均 **${Math.round(perSlot).toLocaleString()}**`,
+    `最佳單場 **${best.damage.toLocaleString()}**（<t:${Math.floor(best.fight_started_at / 1000)}:d> ${sourceLabel(best.spawn_source)}）`,
+  ];
+  if (attendance != null) {
+    head.push(`出席：近 ${windowFights} 場來了 **${Math.round(attendance * windowFights)}** 場`);
+  }
+  const lines = rows.map((r) =>
+    `<t:${Math.floor(r.fight_started_at / 1000)}:d> ${sourceLabel(r.spawn_source)}　`
+      + `**${(r.damage || 0).toLocaleString()}** 傷害（${r.hits || 0}/${r.attack_limit || 0} 刀`
+      + `${r.counters ? `・被反擊 ${r.counters}` : ""}）　${fightResultMark(r)}`,
+  );
+  return new ContainerBuilder()
+    .setAccentColor(COLOR_NORMAL)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 📜 ${displayName} 的魔王戰績`))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**近況**\n${head.join("\n")}`))
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**最近 ${rows.length} 場**\n${lines.join("\n")}`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      "-# 每刀平均＝本場傷害 ÷ 可出刀數。下一場魔王的血量會依大家的近期平均輸出來定。",
+    ));
+}
+
+// /bossstats：下一場怎麼估出來的 + 近期場次。管理員用，ephemeral。
+function buildBossStatsReportContainer({ guild, source, scaled, forecast, fights }) {
+  const container = new ContainerBuilder()
+    .setAccentColor(COLOR_AMMO)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# 📈 魔王血量報表 — ${sourceLabel(source)}`))
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  const sc = scaled?.scaling || {};
+  const modeText = {
+    player_forecast: "個人戰績預估",
+    adaptive: "全場每刀平均（個人戰績還不夠）",
+  }[sc.mode] || "舊公式（人數 × 戰力，戰績還不夠）";
+  const head = [
+    `下一場血量：**${(scaled?.finalHp || 0).toLocaleString()}**（${modeText}）`,
+  ];
+  if (forecast) {
+    head.push(
+      `預期全場輸出 **${Math.round(forecast.expected).toLocaleString()}**`
+        + `＝常客 ${Math.round(forecast.regulars).toLocaleString()}＋新面孔 ${Math.round(forecast.newcomer).toLocaleString()}`,
+      `難度比例 ×${sc.hp_ratio ?? "—"}・每人 ${forecast.hitsPerPlayer} 刀・`
+        + `樣本 ${forecast.fights} 場（${forecast.scope === "same" ? "只看同類型" : "混合所有類型"}）`,
+    );
+  } else {
+    head.push(`-# 近期戰績不足 ${boss?.adaptiveHp?.minFights ?? 3} 場，還不能用個人平均預估。`);
+  }
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**🔮 下一場預估**\n${head.join("\n")}`));
+
+  if (forecast?.players?.length) {
+    const lines = forecast.players.slice(0, 10).map((p, i) =>
+      `**#${i + 1}** ${nameOf(guild, p.userId)}　出席 ${Math.round(p.attendance * 100)}%・`
+        + `每刀 ${Math.round(p.perSlot).toLocaleString()} → 預估 **${Math.round(p.expected).toLocaleString()}**`,
+    );
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**👥 預估貢獻前 10 名**\n${lines.join("\n")}`));
+  }
+
+  if (fights?.length) {
+    const lines = fights.slice(0, 5).map((f) =>
+      `<t:${Math.floor(f.fight_started_at / 1000)}:d> ${sourceLabel(f.spawn_source)}　`
+        + `血 ${(f.max_hp || 0).toLocaleString()}・打 ${(f.total_damage || 0).toLocaleString()}`
+        + `（${f.max_hp ? Math.round((f.total_damage || 0) / f.max_hp * 100) : 0}%）・${f.participants || 0} 人　${fightResultMark(f)}`,
+    );
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**🗂️ 近期場次**\n${lines.join("\n")}`));
+  }
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(
+    "-# 預估方式：每位常客「出席率 × 近 5 場每刀平均（越近越重）× 本場刀數」加總，再加新面孔估計、乘難度比例。參數在 boss.json 的自適應血量區塊。",
+  ));
+  return container;
+}
+
 function energyBar(current, max, len = 16) {
   const ratio = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
   const filled = Math.round(ratio * len);
@@ -1298,6 +1395,8 @@ function buildSummonProgressContainer(p) {
 
 module.exports = {
   hpBlock,
+  buildPlayerStatsContainer,
+  buildBossStatsReportContainer,
   summonWindowHint,
   buildAttackResultContainer,
   buildComboResultContainer,

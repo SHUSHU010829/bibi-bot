@@ -197,6 +197,8 @@ module.exports = async (client) => {
     const bossEventsCollection = database.collection("BossEvents");
     const bossDamageLogsCollection = database.collection("BossDamageLogs");
     const bossSummonStateCollection = database.collection("BossSummonState");
+    // 每場 × 每位玩家的輸出紀錄（user_id=null 為場次摘要列），血量預估的資料來源
+    const bossPlayerStatsCollection = database.collection("BossPlayerStats");
 
     // 公會系統 collections（Phase A）
     const guildsClubCollection = database.collection("GuildsClub");
@@ -370,6 +372,7 @@ module.exports = async (client) => {
     client.bossEventsCollection = bossEventsCollection;
     client.bossDamageLogsCollection = bossDamageLogsCollection;
     client.bossSummonStateCollection = bossSummonStateCollection;
+    client.bossPlayerStatsCollection = bossPlayerStatsCollection;
     client.guildsClubCollection = guildsClubCollection;
     client.guildClubMembersCollection = guildClubMembersCollection;
     client.guildClubLogsCollection = guildClubLogsCollection;
@@ -755,6 +758,9 @@ module.exports = async (client) => {
 
       // 公會週任務領取：防重複領取只在當週有效，過期週期可清
       await ttl(guildClubQuestClaimsCollection, "claimedAt", dbm.guildQuestClaimRetentionDays, "gcqc_claimed_ttl");
+
+      // 魔王個人戰績：血量預估只讀近 10 場，保留半年給 /魔王 戰績 與 /bossstats 回顧
+      await ttl(bossPlayerStatsCollection, "settledAt", dbm.bossPlayerStatsRetentionDays, "boss_player_stats_ttl");
 
       // 每日經濟快照：通膨趨勢，讀取只用近 30 天，保留一年綽綽有餘
       await ttl(economySnapshotsCollection, "takenAt", dbm.economySnapshotRetentionDays, "economy_snapshot_ttl", { sparse: true });
@@ -1521,6 +1527,14 @@ module.exports = async (client) => {
         { ts: 1 },
         { expireAfterSeconds: 90 * 24 * 60 * 60, name: "boss_dmg_ttl_90d" }
       ).catch((e) => console.log(`[WARN] BossDamageLogs TTL: ${e.message}`.yellow));
+      await bossPlayerStatsCollection.createIndex(
+        { boss_id: 1, user_id: 1 },
+        { unique: true, name: "boss_pstats_boss_user" }
+      ).catch((e) => console.log(`[WARN] BossPlayerStats boss_user: ${e.message}`.yellow));
+      await bossPlayerStatsCollection.createIndex(
+        { guild_id: 1, user_id: 1, fight_started_at: -1 },
+        { name: "boss_pstats_guild_user_started" }
+      ).catch((e) => console.log(`[WARN] BossPlayerStats guild_user_started: ${e.message}`.yellow));
       await bossSummonStateCollection.createIndex(
         { guild_id: 1 },
         { unique: true, name: "boss_summon_guild" }

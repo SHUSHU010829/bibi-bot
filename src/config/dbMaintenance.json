@@ -12,6 +12,7 @@
     "guildQuestClaimRetentionDays": 60,
     "economySnapshotRetentionDays": 365,
     "bossEventRetentionDays": 30,
+    "bossPlayerStatsRetentionDays": 180,
     "wantedTerminalRetentionDays": 60
   }
 }
