@@ -1128,6 +1128,18 @@ function buildPlayerStatsContainer({ displayName, summary }) {
     ));
 }
 
+// 難度比例為什麼變：上一場多快打死 / 逃走 → 這次調了多少，以及距離上限還有多遠。
+function difficultyLine(adj) {
+  const pct = (v) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+  const target = Math.round((boss?.adaptiveHp?.targetKillRatio ?? 0.75) * 100);
+  let why;
+  if (adj.lastStatus == null) why = "還沒有同類型的上一場";
+  else if (adj.lastStatus === "expired") why = "上一場被牠逃了";
+  else if (adj.lastKillRatio != null) why = `上一場用 ${Math.round(adj.lastKillRatio * 100)}% 時間打死（目標 ${target}%）`;
+  else why = "上一場沒有時限";
+  return `-# 📐 ${why} → 難度比例 ${pct(adj.change)}（目前 ×${adj.ratio.toFixed(2)}，範圍 ×${adj.lo.toFixed(2)}～×${adj.hi.toFixed(2)}）`;
+}
+
 // /bossstats：下一場怎麼估出來的 + 近期場次。管理員用，ephemeral。
 function buildBossStatsReportContainer({ guild, source, scaled, forecast, fights }) {
   const container = new ContainerBuilder()
@@ -1153,6 +1165,8 @@ function buildBossStatsReportContainer({ guild, source, scaled, forecast, fights
   } else {
     head.push(`-# 近期戰績不足 ${boss?.adaptiveHp?.minFights ?? 3} 場，還不能用個人平均預估。`);
   }
+  const adj = scaled?.adjust;
+  if (adj) head.push(difficultyLine(adj));
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**🔮 下一場預估**\n${head.join("\n")}`));
 
   if (forecast?.players?.length) {

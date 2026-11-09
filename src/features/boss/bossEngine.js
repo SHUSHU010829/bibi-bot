@@ -253,13 +253,16 @@ async function recentDamagePerHit(client, guildId) {
   return { perHit: hits > 0 ? dmg / hits : 0, samples: docs.length };
 }
 
-// 難度比例：上一場同類型逃走 → 下調一級；在一半時間內打死 → 上調一級；其餘維持。
-// 比例存在每場的 hp_ratio 上（存來源），下一場從上一場的值接著調，連續失敗就會一路往下降到下限。
+// 難度比例：存在每場的 hp_ratio 上（存來源），下一場從上一場同類型的值接著調。
+//   - 打太快（用時 < targetKillRatio）：小幅上調，差越多調越多，但每場最多 +maxStepUp——
+//     連續幾場都打太快才會一路慢慢變硬，不會一場就跳一大截。
+//   - 逃走：一次 −stepDown。打不完最傷士氣，所以往下要快、往上要慢。
+//   - 用時在目標之後才打死、或沒有時限的場：維持不動。
 async function nextHpRatio(client, guildId, spawnSource) {
   const a = adaptiveCfg();
   const base = a.targetRatio?.[spawnSource] ?? 1;
   const lo = base * (a.minAdjust ?? 0.7);
-  const hi = base * (a.maxAdjust ?? 1.4);
+  const hi = base * (a.maxAdjust ?? 2);
   const last = client.bossEventsCollection
     ? await client.bossEventsCollection
       .find({ guild_id: guildId, spawn_source: spawnSource, settled_at: { $exists: true }, hp_ratio: { $type: "number" } })
@@ -268,16 +271,20 @@ async function nextHpRatio(client, guildId, spawnSource) {
       .next()
       .catch(() => null)
     : null;
-  if (!last) return base;
-  const step = base * (a.adjustStep ?? 0.1);
-  let ratio = last.hp_ratio;
+  const result = { ratio: base, change: 0, lastKillRatio: null, lastStatus: null, base, lo, hi };
+  if (!last) return result;
+  result.lastStatus = last.status;
+  let change = 0;
   if (last.status === "expired") {
-    ratio -= step;
+    change = -(a.stepDown ?? 0.1);
   } else if (last.status === "defeated" && last.ends_at != null && last.killed_at) {
     const used = (last.killed_at - last.started_at) / Math.max(1, last.ends_at - last.started_at);
-    if (used <= (a.fastKillRatio ?? 0.5)) ratio += step;
+    result.lastKillRatio = used;
+    const gap = (a.targetKillRatio ?? 0.75) - used;
+    if (gap > 0) change = Math.min(a.maxStepUp ?? 0.05, gap * (a.stepUpPerGap ?? 0.15));
   }
-  return Math.min(hi, Math.max(lo, ratio));
+  const ratio = Math.min(hi, Math.max(lo, last.hp_ratio * (1 + change)));
+  return { ...result, ratio, change: ratio / last.hp_ratio - 1, prevRatio: last.hp_ratio };
 }
 
 // 自適應血量，依資料多寡分兩段：
@@ -290,8 +297,10 @@ async function computeAdaptiveHp(client, guildId, spawnSource, participants) {
   const hits = baseAttackLimitFor({ spawn_source: spawnSource });
   const fc = await bossPlayerStats.forecast(client, guildId, spawnSource, hits).catch(() => null);
   if (fc && fc.expected > 0) {
-    const ratio = await nextHpRatio(client, guildId, spawnSource);
+    const adj = await nextHpRatio(client, guildId, spawnSource);
+    const ratio = adj.ratio;
     return {
+      adjust: adj,
       hp: fc.expected * ratio,
       ratio,
       info: {
@@ -311,9 +320,11 @@ async function computeAdaptiveHp(client, guildId, spawnSource, participants) {
   }
   const { perHit, samples } = await recentDamagePerHit(client, guildId);
   if (samples < (a.minHistory ?? 2) || perHit <= 0) return null;
-  const ratio = await nextHpRatio(client, guildId, spawnSource);
+  const adj = await nextHpRatio(client, guildId, spawnSource);
+  const ratio = adj.ratio;
   const hp = participants.count * hits * perHit * ratio;
   return {
+    adjust: adj,
     hp,
     ratio,
     info: {
@@ -339,6 +350,7 @@ async function computeScaledHp(client, guildId, hpMult = 1, spawnSource = "manua
       participantBasis: participants.count,
       scaling: adaptive.info,
       hpRatio: adaptive.ratio,
+      adjust: adaptive.adjust,
       finalHp: Math.round(Math.max(cfg().minHp ?? 3000, adaptive.hp)),
     };
   }
