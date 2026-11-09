@@ -42,7 +42,7 @@ function remainingUses(bossDoc, userId, key) {
   return Math.max(0, (def.perBossUses ?? 1) - used);
 }
 
-// 固定傷害型（炸藥包）數字不隨場次變動；百分比型（燃燒彈 / 雷符）跟著該場最大血量走，
+// 固定傷害型（炸藥包 / 燃燒彈）數字不隨場次變動；百分比型（雷符）跟著該場最大血量走，
 // 在血厚的週六場一樣有存在感。
 function damageOf(def, bossDoc) {
   if (def.flatDamage > 0) return def.flatDamage;

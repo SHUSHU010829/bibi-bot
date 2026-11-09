@@ -12,6 +12,7 @@ const { COIN_EMOJI } = require("../../constants/coin");
 const { plainifyUserMentions } = require("../../utils/plainifyUserMentions");
 const bossEngine = require("./bossEngine");
 const bossSkills = require("./bossSkills");
+const bossBars = require("./bossBars");
 const bossPlayerEvents = require("./bossPlayerEvents");
 const bossItems = require("./bossItems");
 const bossSpawnWindow = require("./bossSpawnWindow");
@@ -70,6 +71,38 @@ function hpBar(current, max, len = 16) {
   const ratio = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
   const filled = Math.round(ratio * len);
   return "█".repeat(filled) + "░".repeat(len - filled) + ` ${current.toLocaleString()}/${max.toLocaleString()}`;
+}
+
+// 分段血條場顯示「第 N 條血 + 這條還剩多少」，舊的單條場退回原本的長血條。
+function hpBlock(b) {
+  return bossBars.hpBlock(b, hpBar);
+}
+
+// 這一刀推進了當前血條多少——總血量很厚的時候，玩家靠這個看見自己的貢獻。
+function hitPctLine(result) {
+  if (result?.hitBarPct == null) return "";
+  return `\n-# 🩸 這一刀打掉本條血的 **${result.hitBarPct}%**`;
+}
+
+// 打爆血條 / 反攻號角：跟著打出那一刀的結果一起出現。
+function addBarEventLines(container, events) {
+  for (const e of events || []) {
+    if (!e?.text) continue;
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(e.hint ? `${e.text}\n${e.hint}` : e.text),
+    );
+  }
+}
+
+// 戰況面板：我在「這條血」排第幾、打爆時預估分到多少。
+function barStandingLine(b, userId, displayName) {
+  const st = bossBars.myBarStanding(b, userId);
+  if (!st) return null;
+  const bar = `第 ${st.index + 1} 條血`;
+  if (!st.rank) {
+    return `-# 💰 ${bar}打爆時會分掉 ${st.pool.toLocaleString()} 逼幣（依這條血的傷害占比）——${displayName} 還沒在這條出手`;
+  }
+  return `-# 💰 ${displayName} 在${bar}排第 **${st.rank}/${st.count}**，現在打爆可分到約 **${st.coins.toLocaleString()}** 逼幣（獎勵池 ${st.pool.toLocaleString()}）`;
 }
 
 function attackButton(userId) {
@@ -225,16 +258,6 @@ function participationProgressLine(myDamage) {
   return `-# 🎖️ 參加獎 ${current.emoji} **${current.name}**（本場傷害 ${myDamage.toLocaleString()}）：${gains.join("・")}${tail}`;
 }
 
-// 出刀冷卻：打完就要立刻告訴玩家「下一刀什麼時候能砍」，不要等他再點一次才吃閉門羹。
-function addCooldownLine(container, cooldownUntil) {
-  if (!cooldownUntil || cooldownUntil <= Date.now()) return;
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(
-      `-# ⏱️ 下一刀 <t:${Math.floor(cooldownUntil / 1000)}:R> 可以再砍（每刀間隔 ${boss?.attackCooldownSec ?? 0} 秒）`,
-    ),
-  );
-}
-
 // 這一刀觸發的隨機事件（戰吼 / 隕石 / 錢袋…）：文字由 config 模板即時套用，
 // 玩家名字與實際數值在這裡才填，engine 只負責算。
 function playerEventLine(result, displayName) {
@@ -261,14 +284,6 @@ function addPlayerFxLines(container, labels, displayName) {
   if (!labels?.length) return;
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(`**✨ ${displayName} 的狀態**\n${labels.join("\n")}`),
-  );
-}
-
-// 反攻號角：出刀次數被全場一起回復，訊息要跟著出現在打出那一刀的結果裡。
-function addRallyLine(container, rally) {
-  if (!rally?.text) return;
-  container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(rally.hint ? `${rally.text}\n${rally.hint}` : rally.text),
   );
 }
 
@@ -326,7 +341,7 @@ function buildAttackResultContainer({ userId, displayName, result }) {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**${b.emoji} ${b.name} 狀態**（${phaseLabel(phase)}）\n${hpBar(b.current_hp, b.max_hp)}`,
+          `**${b.emoji} ${b.name} 狀態**（${phaseLabel(phase)}）\n${hpBlock(b)}`,
         ),
       )
       .addTextDisplayComponents(
@@ -367,13 +382,13 @@ function buildAttackResultContainer({ userId, displayName, result }) {
     container
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ${hitTitle}${displayName} 出手\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 點傷害！${critLine}${firstStrikeLine}${phaseChangeLine}${comboLine}${targetedLine}`,
+          `# ${hitTitle}${displayName} 出手\n**${displayName}** 對 **${b.emoji} ${b.name}** 造成 **${result.damage.toLocaleString()}** 點傷害！${critLine}${firstStrikeLine}${phaseChangeLine}${comboLine}${targetedLine}${hitPctLine(result)}`,
         ),
       )
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**${b.emoji} ${b.name} 狀態**（${phaseLabel(phase)}）\n${hpBar(b.current_hp, b.max_hp)}`,
+          `**${b.emoji} ${b.name} 狀態**（${phaseLabel(phase)}）\n${hpBlock(b)}`,
         ),
       )
       .addTextDisplayComponents(
@@ -394,7 +409,7 @@ function buildAttackResultContainer({ userId, displayName, result }) {
 
   if (!result.killed) {
     addPlayerEventBlock(container, result, displayName);
-    addRallyLine(container, result.rally);
+    addBarEventLines(container, result.barEvents);
     if (result.skillBroken?.text) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(result.skillBroken.text),
@@ -402,7 +417,8 @@ function buildAttackResultContainer({ userId, displayName, result }) {
     }
     addSkillLines(container, result.boss);
     addPlayerFxLines(container, result.playerFxLabels, displayName);
-    addCooldownLine(container, result.cooldownUntil);
+    const barLine = barStandingLine(result.boss, userId, displayName);
+    if (barLine) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(barLine));
     addParticipationLine(container, result.myDamage);
     addBuffBlock(container, result.buffInfo, displayName);
     container.addActionRowComponents(
@@ -449,13 +465,14 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
     if (h.isCrit) extras.push(`💥 會心`);
     if (h.phaseChanged) extras.push(`進入 ${phaseLabel(h.phaseAfter)}`);
     if (h.comboTriggered) extras.push(`⚡ 觸發 Combo`);
+    if (h.barEvents?.some((e) => e.type === "bar_break")) extras.push(`💥 打爆血條`);
     return `**第 ${i + 1} 刀** ${h.damage.toLocaleString()} 傷害${extras.length ? "（" + extras.join("、") + "）" : ""}`;
   });
   container
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `${hitLines.join("\n")}${totalXp > 0 ? `\n✨ 本次共獲得經驗 +${totalXp}` : ""}`,
+        `${hitLines.join("\n")}${totalXp > 0 ? `\n✨ 本次共獲得經驗 +${totalXp}` : ""}${hitPctLine({ hitBarPct: bossBars.hitPctOfBar(b, totalDamage) })}`,
       ),
     );
 
@@ -464,7 +481,7 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `**${b.emoji} ${b.name} 狀態**（${phaseLabel(phase)}）\n${hpBar(b.current_hp, b.max_hp)}`,
+          `**${b.emoji} ${b.name} 狀態**（${phaseLabel(phase)}）\n${hpBlock(b)}`,
         ),
       )
       .addTextDisplayComponents(
@@ -505,14 +522,15 @@ function buildComboResultContainer({ userId, displayName, hits, stopReason }) {
           new TextDisplayBuilder().setContent(`**🎲 攻擊事件！**\n${eventLines.join("\n")}`),
         );
     }
-    for (const h of hits) addRallyLine(container, h.rally);
+    for (const h of hits) addBarEventLines(container, h.barEvents);
     const broken = hits.map((h) => h.skillBroken).filter((s) => s?.text);
     for (const s of broken) {
       container.addTextDisplayComponents(new TextDisplayBuilder().setContent(s.text));
     }
     addSkillLines(container, last.boss);
     addPlayerFxLines(container, last.playerFxLabels, displayName);
-    addCooldownLine(container, last.cooldownUntil);
+    const barLine = barStandingLine(last.boss, userId, displayName);
+    if (barLine) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(barLine));
     addParticipationLine(container, last.myDamage);
     addBuffBlock(container, last.buffInfo, displayName);
     container.addActionRowComponents(
@@ -544,7 +562,7 @@ function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**血量**\n${hpBar(b.current_hp, b.max_hp)}`,
+        `**血量**\n${hpBlock(b)}`,
       ),
     )
     .addTextDisplayComponents(
@@ -559,7 +577,8 @@ function buildInfoContainer({ userId, displayName, boss: b, ranking, totalDamage
   }
   addSkillLines(container, b);
   addPlayerFxLines(container, bossPlayerEvents.statusLines(b, userId), displayName);
-  addCooldownLine(container, (b.cooldown_until || {})[userId]);
+  const barLine = barStandingLine(b, userId, displayName);
+  if (barLine) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(barLine));
 
   if (ranking?.length) {
     const top = ranking.slice(0, 5);
@@ -734,7 +753,7 @@ function buildBossItemUsedContainer({ userId, displayName, result }) {
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `**血量**\n${hpBar(b.current_hp, b.max_hp)}`,
+        `**血量**\n${hpBlock(b)}`,
       ),
     )
     .addTextDisplayComponents(
@@ -744,6 +763,7 @@ function buildBossItemUsedContainer({ userId, displayName, result }) {
       ),
     );
 
+  addBarEventLines(container, result.barEvents);
   if (result.debuff) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
@@ -942,35 +962,51 @@ function honorLines({ guild, payouts, killed, killerUserId, killerBonus, killerR
 
 // Top 5 每行只留「傷害 → 分得多少 + 稀有掉落 + 公會」。
 // 擊殺紅利每個人都一樣，掛在每一行只是同一句話抄五遍，改成獨立一行講一次。
-function topReportLines(payouts, killed, guild) {
+// 分段血條場的「分得多少」＝各條血打爆時即時入帳的總和（已經在玩家手上了）。
+function topReportLines(payouts, rewarded, guild) {
   return payouts.slice(0, 5).map((p, i) => {
     const who = `**#${i + 1}** ${nameOf(guild, p.userId)}　${p.damage.toLocaleString()} 傷害`;
-    if (!killed) return who;
+    if (!rewarded) return who;
     const extras = [];
-    if (p.rareReward) extras.push(`✨ ×${p.rareReward}`);
+    const rare = (p.rareReward || 0) + (p.barRare || 0);
+    if (rare) extras.push(`✨ ×${rare}`);
     if (p.diamondReward) extras.push(`💎 ×${p.diamondReward}`);
     if (p.guildClubName) extras.push(`🏰 ${p.guildClubName}`);
-    return `${who} → ${p.share.toLocaleString()} ${COIN_EMOJI}${extras.length ? `　${extras.join("・")}` : ""}`;
+    const loot = (p.share || 0) + (p.barCoins || 0);
+    return `${who} → ${loot.toLocaleString()} ${COIN_EMOJI}${extras.length ? `　${extras.join("・")}` : ""}`;
   });
 }
 
+function gradeLine(settlement) {
+  const g = settlement.grade;
+  if (!g) return null;
+  const progress = settlement.barMode
+    ? `打爆 **${settlement.barsBroken}/${settlement.barsTotal}** 條血`
+    : (settlement.killed ? "擊敗" : "未擊敗");
+  return `## ${g.emoji} 討伐評價：${g.key}　${g.label}\n${progress}`;
+}
+
 function buildSettlementContainer(settlement) {
-  const { bossDoc, killed, payouts, totalDamage, totalPool, guild } = settlement;
+  const { bossDoc, killed, rewarded, payouts, totalDamage, totalPool, guild } = settlement;
   const container = new ContainerBuilder().setAccentColor(killed ? COLOR_VICTORY : COLOR_EXPIRED);
 
+  const grade = gradeLine(settlement);
   container
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        killed
+        (killed
           ? `# 🏆 ${bossDoc.emoji} ${bossDoc.name} 已被擊敗！`
-          : `# ⏳ ${bossDoc.emoji} ${bossDoc.name} 逃離了戰場`,
+          : `# ⏳ ${bossDoc.emoji} ${bossDoc.name} 逃離了戰場`)
+          + (grade ? `\n${grade}` : ""),
       ),
     )
     .addSeparatorComponents(new SeparatorBuilder())
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         `**戰況**　總傷害 **${totalDamage.toLocaleString()}**　參戰 **${payouts.length}** 人　`
-          + (killed ? `獎勵池 **${totalPool.toLocaleString()}** ${COIN_EMOJI}` : "獎勵池 —（未擊敗）"),
+          + (totalPool > 0
+            ? `${settlement.barMode ? "血條獎勵已發" : "獎勵池"} **${totalPool.toLocaleString()}** ${COIN_EMOJI}`
+            : "獎勵池 —（未擊敗）"),
       ),
     );
 
@@ -983,14 +1019,17 @@ function buildSettlementContainer(settlement) {
       );
   }
 
-  const top = topReportLines(payouts, killed, guild);
+  const top = topReportLines(payouts, rewarded, guild);
   if (top.length) {
+    const note = killed
+      ? ""
+      : rewarded
+        ? `（排名掉落依打爆比例 ×${Math.round(settlement.clearRatio * 100)}%）`
+        : "（未擊敗，只有參加獎）";
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `**📊 Top 5 戰報**${killed ? "" : "（未擊敗，只有參加獎）"}\n${top.join("\n")}`,
-        ),
+        new TextDisplayBuilder().setContent(`**📊 Top 5 戰報**${note}\n${top.join("\n")}`),
       );
   }
 
@@ -1036,7 +1075,9 @@ function buildSettlementContainer(settlement) {
   if (!killed) {
     container.addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        "-# 💨 沒能在時限內擊敗牠——參戰者仍拿到參加獎，但傷害分潤與稀有掉落都沒了。下次要在時間內解決牠！",
+        rewarded
+          ? "-# 💨 沒能在時限內擊敗牠——已打爆的血條獎勵都拿到了，但擊殺紅利、尾刀、首刀與稱號只有打死才有。下次再多打爆幾條！"
+          : "-# 💨 一條血都沒打爆就讓牠逃了——只剩參加獎。下次集中火力，至少先打爆第一條血！",
       ),
     );
   }
@@ -1256,6 +1297,7 @@ function buildSummonProgressContainer(p) {
 }
 
 module.exports = {
+  hpBlock,
   summonWindowHint,
   buildAttackResultContainer,
   buildComboResultContainer,

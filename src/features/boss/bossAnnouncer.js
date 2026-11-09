@@ -4,6 +4,7 @@ const { boss } = require("../../config");
 const { buildSettlementContainer } = require("./bossView");
 const bossBoard = require("./bossBoard");
 const bossSkills = require("./bossSkills");
+const bossBars = require("./bossBars");
 const bossEngine = require("./bossEngine");
 
 function pickFrom(arr) {
@@ -63,12 +64,17 @@ async function announcePreNotice(client, { spawnAt, source, contributorCount }) 
 // 技能 / 事件 / 號角併成一塊「戰場變數」，獎勵只寫最高檔與分潤規則——
 // 完整的檔位表在戰鬥中的攻擊結果與結算公告都會再出現，出場公告再列一次只會洗掉重點。
 function statField(bossDoc) {
+  const adaptive = bossDoc.scaling?.mode === "adaptive";
   const basis = bossDoc.participant_basis != null
-    ? `\n-# 依 ${bossDoc.participant_basis} 名預估參戰者 × 社群平均戰力換算`
+    ? (adaptive
+      ? `\n-# 依 ${bossDoc.participant_basis} 名預估參戰者 × 近期實際輸出換算`
+      : `\n-# 依 ${bossDoc.participant_basis} 名預估參戰者 × 社群平均戰力換算`)
     : "";
+  const bars = bossBars.totalOf(bossDoc);
+  const barText = bars > 1 ? `（分 **${bars}** 條血）` : "";
   return {
     name: "💖 血量",
-    value: `**${bossDoc.max_hp.toLocaleString()}**${basis}`,
+    value: `**${bossDoc.max_hp.toLocaleString()}**${barText}${basis}`,
     inline: true,
   };
 }
@@ -82,10 +88,9 @@ function deadlineField(bossDoc) {
 
 function attackField(bossDoc) {
   const limit = bossEngine.baseAttackLimitFor(bossDoc);
-  const cdSec = boss?.attackCooldownSec ?? 0;
   return {
     name: "⚔️ 出刀",
-    value: cdSec > 0 ? `每人 **${limit}** 次\n-# 每刀間隔 ${cdSec} 秒` : `每人 **${limit}** 次`,
+    value: `每人 **${limit}** 次\n-# 不用等冷卻，一次最多連擊 ${boss?.maxHitsPerCommand ?? 3} 刀`,
     inline: true,
   };
 }
@@ -103,11 +108,18 @@ function battlefieldField(bossDoc) {
     .join("・");
   if (events) lines.push(`**攻擊事件**　${events}`);
 
-  const rcfg = boss?.rally || {};
-  const rallySources = Array.isArray(rcfg.spawnSources) ? rcfg.spawnSources : ["summon"];
-  if (rcfg.enabled && rallySources.includes(bossDoc.spawn_source)) {
+  const total = bossBars.totalOf(bossDoc);
+  if (total > 1) {
+    const burst = bossSkills.skillDef(bossBars.bcfg().burstSkill);
     lines.push(
-      `**📣 反攻號角**　全場累積 ${rcfg.hitsPerRally ?? 0} 刀還沒打倒牠 → 全員出刀次數 +${rcfg.attackBonus ?? 0}`
+      `**🩸 分段血條**　每打爆 1 條血：即時分 ${bossBars.poolPerBar(bossDoc).toLocaleString()} 逼幣獎勵池`
+      + (burst ? `＋${burst.emoji} ${burst.name} ${burst.durationSec} 秒（全場 ×${burst.damageTakenMult}）` : ""),
+    );
+  }
+  const rcfg = boss?.rally || {};
+  if (bossBars.rallyEnabled(bossDoc)) {
+    lines.push(
+      `**📣 反攻號角**　每打爆 ${rcfg.everyBars ?? 0} 條血 → 全員出刀次數 +${rcfg.attackBonus ?? 0}`
       + `（最多 ${rcfg.maxRallies ?? 0} 次）`,
     );
   }
@@ -134,7 +146,8 @@ function rewardField() {
     name: "🎖️ 獎勵",
     value: `**出手就有**　${(bottom.coins || 0).toLocaleString()} 金幣起，傷害越高檔位越高`
       + `（最高 ${top.emoji} ${top.name}：${topGains.join("・")}）\n`
-      + `**擊敗才有**　傷害分潤（血量 ×${poolPct}% 的獎勵池）、排名掉落、尾刀與首刀獎`,
+      + `**打爆血條就有**　血量 ×${poolPct}% 的獎勵池按條分、排名掉落依打爆比例發——逃走也不白打\n`
+      + `**擊敗才有**　擊殺紅利、尾刀與首刀獎、稱號`,
     inline: false,
   };
 }

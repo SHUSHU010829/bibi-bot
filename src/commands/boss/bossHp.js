@@ -98,6 +98,9 @@ module.exports = {
         );
       } else {
         bossBoard.scheduleRefresh(client, interaction.guildId, true);
+        if (res.barEvents?.length) {
+          bossAnnouncer.announceSkillEvents(client, res.barEvents).catch(() => {});
+        }
         if (res.phaseChanged) {
           bossAnnouncer.announcePhase(client, res.boss, res.phaseAfter).catch(() => {});
         }

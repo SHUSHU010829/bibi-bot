@@ -7,8 +7,7 @@
     "minHp": 90000,
     "durationMinutes": 75,
     "attackLimitPerPlayer": 8,
-    "attackCooldownSec": 10,
-    "maxHitsPerCommand": 3,
+    "maxHitsPerCommand": 5,
     "participants": {
       "historySpawns": 5,
       "activeParticipationRatio": 0.45,
@@ -114,9 +113,9 @@
       "你不知道為什麼，但牠看起來就是欠扁。"
     ],
     "phases": {
-      "normal":  { "hpThreshold": 1.0, "damageMult": 1.0, "counterRate": 0.07, "label": "正常" },
-      "broken":  { "hpThreshold": 0.5, "damageMult": 1.5, "counterRate": 0.07, "label": "破防" },
-      "enraged": { "hpThreshold": 0.2, "damageMult": 1.8, "counterRate": 0.15, "label": "狂暴" }
+      "normal":  { "hpThreshold": 1.0, "barRatio": 0,    "damageMult": 1.0, "counterRate": 0.07, "label": "正常" },
+      "broken":  { "hpThreshold": 0.5, "barRatio": 0.5,  "damageMult": 1.5, "counterRate": 0.07, "label": "破防" },
+      "enraged": { "hpThreshold": 0.2, "barRatio": 0.75, "damageMult": 1.8, "counterRate": 0.15, "label": "狂暴" }
     },
     "phaseAnnouncements": {
       "broken":  "💥 **{name}** 護甲破損！全員傷害提升 ×1.5！",
@@ -198,16 +197,15 @@
           "statusLabel": "⚡ 感電（全場傷害 ×1.3）"
         },
         {
-          "key": "weakspot",
-          "name": "核心外露",
-          "emoji": "💠",
-          "weight": 16,
-          "durationSec": 90,
-          "damageTakenMult": 2,
-          "castMessage": "💠 **{name}** 的能量核心外露！全場傷害 **×2**，只有 {sec} 秒——全員集火！",
-          "castHint": "-# 這是本場最好的輸出窗口，手上有刀就現在砍。",
-          "expireMessage": "💠 核心縮回體內了，傷害恢復正常。",
-          "statusLabel": "💠 核心外露（傷害 ×2）"
+          "key": "bar_burst",
+          "name": "破條爆發",
+          "emoji": "💥",
+          "itemOnly": true,
+          "weight": 0,
+          "durationSec": 60,
+          "damageTakenMult": 1.5,
+          "expireMessage": "💥 破條爆發結束了，**{name}** 重新站穩腳步。",
+          "statusLabel": "💥 破條爆發（全場傷害 ×1.5）"
         }
       ]
     },
@@ -370,14 +368,46 @@
     ],
     "rally": {
       "enabled": true,
-      "spawnSources": ["summon"],
-      "hitsPerRally": 200,
+      "spawnSources": ["summon", "scheduled"],
+      "everyBars": 2,
       "maxRallies": 3,
       "attackBonus": 3,
-      "announcement": "📣 **反攻號角響起！** 全場已經對 **{name}** 揮出 **{hits}** 刀，牠還站著——所有人的本場出刀次數 **+{bonus}**！（第 {round} 次號角）",
+      "announcement": "📣 **反攻號角響起！** 全場已經打爆 **{name}** 的 **{bars}** 條血條——所有人的本場出刀次數 **+{bonus}**！（第 {round} 次號角）",
       "hint": "-# 次數用完的人現在可以再上，回 `/魔王 攻擊` 繼續輸出。",
       "statusLabel": "📣 反攻號角 ×{round}（全場出刀上限 +{bonus}）"
     },
+    "bars": {
+      "enabled": true,
+      "countBySource": { "scheduled": 8, "summon": 6, "manual": 4 },
+      "defaultCount": 4,
+      "breakerBonus": 300,
+      "rareChance": 0.2,
+      "rareMinShare": 0.05,
+      "counterPerBar": 0.01,
+      "burstSkill": "bar_burst",
+      "announcement": "💥 **{user}** 打爆了 **{name}** 的第 **{bar}/{total}** 條血條！",
+      "rewardLine": "💰 這條血有出手的 **{count}** 人即時分走 **{coins}** 逼幣（依這條血的傷害占比），破條手 **{user}** 另得 {bonus} 逼幣。",
+      "rareLine": "✨ 傳說碎片掉落：{users}",
+      "burstLine": "💥 **破條爆發**：接下來 60 秒全場傷害 ×1.5——趁現在！",
+      "lastBarLine": "-# 下一條就是最後一條血，打死牠才拿得到擊殺獎、尾刀獎與稱號！"
+    },
+    "adaptiveHp": {
+      "enabled": true,
+      "historySpawns": 5,
+      "minHistory": 2,
+      "targetRatio": { "scheduled": 1.15, "summon": 1.0, "manual": 0.9 },
+      "adjustStep": 0.1,
+      "minAdjust": 0.7,
+      "maxAdjust": 1.4,
+      "fastKillRatio": 0.5
+    },
+    "grades": [
+      { "key": "S", "emoji": "🌟", "label": "完美討伐", "killed": true, "minRemainingMinutes": 20 },
+      { "key": "A", "emoji": "🏆", "label": "討伐成功", "killed": true },
+      { "key": "B", "emoji": "⚔️", "label": "差一點點", "minClearRatio": 0.75 },
+      { "key": "C", "emoji": "🛡️", "label": "奮戰到底", "minClearRatio": 0.5 },
+      { "key": "D", "emoji": "💨", "label": "被牠逃了", "minClearRatio": 0 }
+    ],
     "playerEvents": {
       "enabled": true,
       "chancePerHit": 0.2,
@@ -512,9 +542,9 @@
           "coinCost": 8000,
           "maxStock": 1,
           "perBossUses": 1,
-          "flatDamage": 5000,
+          "hpPctDamage": 1.5,
           "debuff": "shocked",
-          "flavor": "傳說素材碎片寫成的符咒，落雷之後魔王會麻痺一陣子，全場輸出都更痛。",
+          "flavor": "傳說素材碎片寫成的符咒，落雷直接削掉魔王總血量的一截——魔王越強，落雷越痛；麻痺期間全場輸出也更痛。",
           "announcement": "⚡🌩️ **{user}** 撕開封魔雷符，落雷直劈 **{name}**——**{damage}** 傷害，接下來 45 秒全場傷害 **×1.3**！"
         }
       ],

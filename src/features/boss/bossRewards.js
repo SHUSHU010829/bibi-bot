@@ -132,7 +132,8 @@ async function grantParticipation(client, guild, settlement) {
 
 async function distribute(client, guild, settlement) {
   await grantParticipation(client, guild, settlement);
-  // BOSS 逃離＝討伐失敗，除了參加獎不發放金幣、稀有材料、公會分潤與稱號。
+  // 一條血都沒打爆就逃走＝只有參加獎。打爆過血條的話，排名掉落已在 settleBoss 依比例縮好；
+  // 擊殺紅利 / 尾刀 / 首刀 / 稱號 / 公會鎖定金各自檢查 killed。
   if (!settlement.rewarded) {
     settlement.guildAggregates = [];
     return;
@@ -272,8 +273,9 @@ async function distribute(client, guild, settlement) {
           bucket.lockedBreakdown.killer += cut;
         }
       }
-      if (isMvp && mvpTreasuryRatio > 0 && (p.share || 0) > 0) {
-        const cut = Math.floor((p.share || 0) * mvpTreasuryRatio);
+      const mvpLoot = (p.share || 0) + (p.barCoins || 0);
+      if (settlement.killed && isMvp && mvpTreasuryRatio > 0 && mvpLoot > 0) {
+        const cut = Math.floor(mvpLoot * mvpTreasuryRatio);
         if (cut > 0) {
           bucket.lockedTreasury += cut;
           bucket.lockedBreakdown.mvp += cut;
@@ -352,7 +354,7 @@ async function distribute(client, guild, settlement) {
       ["boss"],
     ).catch(() => {});
   }
-  if (settlement.mvpUserId) {
+  if (settlement.killed && settlement.mvpUserId) {
     const member = await fetchMember(guild, settlement.mvpUserId);
     await gameTitleService.grant(client, {
       userId: settlement.mvpUserId,

@@ -65,9 +65,9 @@ async function runAttack(client, interaction, forcedCount) {
     if (result.skillBroken && !result.killed) {
       bossAnnouncer.announceSkillEvents(client, [result.skillBroken]).catch(() => {});
     }
-    // 反攻號角是全場的事：戰鬥頻道也要看到，次數用完的人才知道可以回來。
-    if (result.rally) {
-      bossAnnouncer.announceSkillEvents(client, [result.rally]).catch(() => {});
+    // 打爆血條 / 反攻號角是全場的事：戰鬥頻道也要看到，次數用完的人才知道可以回來。
+    if (result.barEvents?.length) {
+      bossAnnouncer.announceSkillEvents(client, result.barEvents).catch(() => {});
     }
     if (result.killed) {
       settleAndAnnounce(client, interaction.guild, result.boss.boss_id).catch((e) =>
@@ -112,9 +112,9 @@ async function runAttack(client, interaction, forcedCount) {
   if (combo.skillsBroken?.length && !combo.killed) {
     bossAnnouncer.announceSkillEvents(client, combo.skillsBroken).catch(() => {});
   }
-  const rallies = combo.hits.map((h) => h.rally).filter(Boolean);
-  if (rallies.length) {
-    bossAnnouncer.announceSkillEvents(client, rallies).catch(() => {});
+  const barEvents = combo.hits.flatMap((h) => h.barEvents || []);
+  if (barEvents.length) {
+    bossAnnouncer.announceSkillEvents(client, barEvents).catch(() => {});
   }
   if (combo.killed) {
     settleAndAnnounce(client, interaction.guild, combo.lastResult.boss.boss_id).catch((e) =>
@@ -123,11 +123,11 @@ async function runAttack(client, interaction, forcedCount) {
   }
 }
 
-// 次數用完不代表出局：召喚場全場砍滿一輪刀數就會吹反攻號角，所有人再開一輪。
+// 次數用完不代表出局：全場每打爆幾條血就會吹反攻號角，所有人再開一輪。
 function rallyHint() {
   const r = boss?.rally || {};
   if (!r.enabled) return "看看 /boss 查戰況、為隊友加油！";
-  return `召喚出來的魔王在全場累積 ${r.hitsPerRally ?? 0} 刀還沒倒下時會吹「反攻號角」，`
+  return `全場每打爆 ${r.everyBars ?? 0} 條血會吹「反攻號角」，`
     + `所有人的出刀次數 +${r.attackBonus ?? 0}（最多 ${r.maxRallies ?? 0} 次）——先 /魔王 戰況 盯著，號角一響就回來。`;
 }
 
@@ -159,14 +159,6 @@ function buildAttackErrorContainer(result, userId) {
     });
     return bossView.addSealingAmmoOffer(container, userId, result.ammo);
   }
-  if (result.reason === "attack_cooldown") {
-    const container = bossView.buildErrorContainer({
-      title: "⏱️ 出刀冷卻中",
-      body: `每刀之間要間隔 **${result.cooldownSec}** 秒，下一刀 <t:${Math.floor(result.nextAt / 1000)}:R> 可以砍。\n⚔️ 本場已出手：**${result.used}/${result.limit}** 次`,
-      hint: "冷卻是為了讓整場戰鬥撐得久一點——趁空檔 /烹飪 補 buff、看 /魔王 戰況 等破綻窗口。",
-    });
-    return bossView.addSealingAmmoOffer(container, userId, result.ammo);
-  }
   if (result.reason === "no_stamina") {
     const tail = result.nextRegenAt
       ? `\n下一點體力：<t:${Math.floor(result.nextRegenAt / 1000)}:R>`
@@ -192,7 +184,7 @@ module.exports = {
       o
         .setName("次數")
         .setDescription(
-          `連擊幾刀（1-${boss?.maxHitsPerCommand ?? 3}，預設 1）。連擊會一次扣掉同樣份數的出刀冷卻。`,
+          `連擊幾刀（1-${boss?.maxHitsPerCommand ?? 3}，預設 1），每刀照常扣體力與出刀次數。`,
         )
         .setMinValue(1)
         .setMaxValue(boss?.maxHitsPerCommand ?? 3),
