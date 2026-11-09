@@ -36,6 +36,15 @@ async function recordFight(client, { bossDoc, ranking, logs, killed, barsBroken,
     settledAt,
   };
   const totalDamage = (ranking || []).reduce((s, r) => s + (r.damage || 0), 0);
+  // 打死的場次，傷害被血量封頂（剩下的刀砍不出去），直接拿來預估會讓下一場血量長不上去。
+  // 補上「剩餘刀數 × 本場每刀平均 × unusedHitWeight」當作潛在輸出；權重保守，不是每個人都會砍滿。
+  const unusedWeight = acfg().unusedHitWeight ?? 0.5;
+  const capacityOf = (r, hits) => {
+    const dmg = r.damage || 0;
+    if (!killed || hits <= 0) return dmg;
+    const unused = Math.max(0, base.attack_limit - hits);
+    return Math.round(dmg + unused * (dmg / hits) * unusedWeight);
+  };
   const ops = (ranking || []).map((r) => ({
     updateOne: {
       filter: { boss_id: bossDoc.boss_id, user_id: r.userId },
@@ -48,6 +57,7 @@ async function recordFight(client, { bossDoc, ranking, logs, killed, barsBroken,
           item_damage: itemDmg.get(r.userId) || 0,
           hits: Math.max(0, (r.attacks || 0) - (r.counters || 0)),
           counters: r.counters || 0,
+          capacity_damage: capacityOf(r, Math.max(0, (r.attacks || 0) - (r.counters || 0))),
         },
       },
       upsert: true,
@@ -132,7 +142,10 @@ async function forecast(client, guildId, spawnSource, hitsPerPlayer) {
   for (const uid of userIds) {
     const rows = byUser.get(uid) || [];
     const recent = rows.slice(0, perN);
-    const perSlot = weightedAvg(recent.map((r) => (r.damage || 0) / Math.max(1, r.attack_limit || 1)), decay);
+    const perSlot = weightedAvg(
+      recent.map((r) => (r.capacity_damage ?? r.damage ?? 0) / Math.max(1, r.attack_limit || 1)),
+      decay,
+    );
     const rate = attendance.get(uid) / fights.length;
     players.push({
       userId: uid,
