@@ -280,7 +280,7 @@ async function claim(client, interaction) {
       });
     }
     bossBoard.scheduleRefresh(client, guildId, true);
-    return finalizeMessage(interaction, resultText, openRow(bossId, treasureId, true), userId);
+    return finalizeMessage(interaction, resultText, openRow(bossId, treasureId, true));
   }
 
   // ── 真寶箱：稀有碎片 / 鑽石當場入袋，金幣可再賭一把 ──
@@ -313,7 +313,7 @@ async function claim(client, interaction) {
     });
     const content = [...extraLines, prompt].join("\n");
     bossBoard.scheduleRefresh(client, guildId, true);
-    return finalizeMessage(interaction, content, gambleRow(bossId, treasureId, userId, coins), userId);
+    return finalizeMessage(interaction, content, gambleRow(bossId, treasureId, userId, coins));
   }
 
   // 沒有賭局：金幣直接入袋
@@ -322,14 +322,14 @@ async function claim(client, interaction) {
     user: userMention, coins: coins.toLocaleString(), tier: tierName,
   });
   bossBoard.scheduleRefresh(client, guildId, true);
-  return finalizeMessage(interaction, [openLine, ...extraLines].join("\n"), openRow(bossId, treasureId, true), userId);
+  return finalizeMessage(interaction, [openLine, ...extraLines].join("\n"), openRow(bossId, treasureId, true));
 }
 
-async function finalizeMessage(interaction, content, row, userId) {
+async function finalizeMessage(interaction, content, row) {
   await interaction.update({
     content,
     components: [row],
-    allowedMentions: { users: [userId] },
+    allowedMentions: { parse: [] },
   }).catch(async () => {
     await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
   });
@@ -400,7 +400,7 @@ async function resolveGamble(client, interaction, action) {
   }
 
   bossBoard.scheduleRefresh(client, guildId, true);
-  return finalizeMessage(interaction, resultText, openRow(bossId, treasureId, true), ownerId);
+  return finalizeMessage(interaction, resultText, openRow(bossId, treasureId, true));
 }
 
 // 逾時沒出手 → 自動收下（不賭），把金幣入袋，避免玩家離開就丟失戰利品。

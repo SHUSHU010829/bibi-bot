@@ -52,6 +52,7 @@ async function runAttack(client, interaction, forcedCount) {
     await interaction.editReply({
       components: [container],
       flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { parse: [] },
     });
     if (!result.killed) {
       bossBoard.scheduleRefresh(client, interaction.guildId, result.phaseChanged);
@@ -96,6 +97,7 @@ async function runAttack(client, interaction, forcedCount) {
   await interaction.editReply({
     components: [container],
     flags: MessageFlags.IsComponentsV2,
+    allowedMentions: { parse: [] },
   });
 
   if (!combo.killed) {
