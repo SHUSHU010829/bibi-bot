@@ -166,6 +166,7 @@ module.exports = async (client, interaction) => {
       return interaction.editReply({
         components: [bossView.buildBossItemUsedContainer({ userId: interaction.user.id, displayName, result })],
         flags: MessageFlags.IsComponentsV2,
+        allowedMentions: { parse: [] },
       });
     }
     if (parsed.action === "potion") {

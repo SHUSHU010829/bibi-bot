@@ -218,7 +218,7 @@ async function announceCombo(client, bossDoc, userId) {
   if (!ch) return;
   const tpl = boss?.comboAnnouncement || "⚡ Combo 滿格！（<@{user}>）";
   const text = tpl.replace(/\{user\}/g, userId).replace(/\{name\}/g, bossDoc.name);
-  await ch.send({ content: text, allowedMentions: { users: [userId] } }).catch(() => {});
+  await ch.send({ content: text, allowedMentions: { parse: [] } }).catch(() => {});
 }
 
 async function announceSettlement(client, settlement) {
