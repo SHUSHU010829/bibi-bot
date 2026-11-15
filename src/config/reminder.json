@@ -1,0 +1,62 @@
+{
+  "reminder": {
+    "enabled": true,
+    "timezone": "Asia/Taipei",
+    "tickCron": "* * * * *",
+    "defaultTime": "09:00",
+    "maxPersonalPerUser": 25,
+    "maxGroupPerGuild": 25,
+    "maxParticipants": 100,
+    "maxNagCount": 10,
+    "defaultNagCount": 3,
+    "defaultGroupLeadMinutes": 10,
+    "jobsPerTick": 200,
+    "keepAfterDays": 7,
+    "dmFallbackToChannel": true,
+    "groupAnnounceInChannel": true,
+    "maxOccurrenceScan": 5000,
+    "colors": {
+      "personal": 3447003,
+      "group": 10181046,
+      "lead": 15844367,
+      "due": 15105570,
+      "nag": 15158332,
+      "done": 5763719,
+      "muted": 9807270
+    },
+    "repeatChoices": [
+      { "value": "none", "name": "不重複" },
+      { "value": "daily", "name": "每天" },
+      { "value": "weekdays", "name": "平日（一～五）" },
+      { "value": "weekends", "name": "週末（六、日）" },
+      { "value": "weekly", "name": "每週" },
+      { "value": "biweekly", "name": "每兩週" },
+      { "value": "monthly", "name": "每月" },
+      { "value": "quarterly", "name": "每 3 個月" },
+      { "value": "halfyear", "name": "每 6 個月" },
+      { "value": "yearly", "name": "每年" }
+    ],
+    "leadChoices": [
+      { "minutes": 0, "name": "不提前" },
+      { "minutes": 5, "name": "提前 5 分鐘" },
+      { "minutes": 10, "name": "提前 10 分鐘" },
+      { "minutes": 15, "name": "提前 15 分鐘" },
+      { "minutes": 30, "name": "提前 30 分鐘" },
+      { "minutes": 60, "name": "提前 1 小時" },
+      { "minutes": 120, "name": "提前 2 小時" },
+      { "minutes": 1440, "name": "提前 1 天" }
+    ],
+    "nagChoices": [
+      { "minutes": 0, "name": "不追加" },
+      { "minutes": 5, "name": "每 5 分鐘" },
+      { "minutes": 10, "name": "每 10 分鐘" },
+      { "minutes": 15, "name": "每 15 分鐘" },
+      { "minutes": 30, "name": "每 30 分鐘" },
+      { "minutes": 60, "name": "每 1 小時" }
+    ],
+    "snoozeChoices": [
+      { "minutes": 10, "name": "10 分鐘後" },
+      { "minutes": 60, "name": "1 小時後" }
+    ]
+  }
+}

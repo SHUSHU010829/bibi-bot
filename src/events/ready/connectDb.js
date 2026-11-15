@@ -290,6 +290,10 @@ module.exports = async (client) => {
     // 日期倒數提醒（管理員設定，里程碑天數自動播報）
     const countdownsCollection = database.collection("Countdowns");
 
+    // 提醒事項（/提醒）：提醒本體 + 排好的單次私訊任務
+    const remindersCollection = database.collection("Reminders");
+    const reminderJobsCollection = database.collection("ReminderJobs");
+
     client.database = database;
     client.collection = collection;
     client.gaslightCollection = gaslightCollection;
@@ -413,6 +417,46 @@ module.exports = async (client) => {
     client.countersCollection = countersCollection;
     client.rssWeeklyPostsCollection = rssWeeklyPostsCollection;
     client.countdownsCollection = countdownsCollection;
+    client.remindersCollection = remindersCollection;
+    client.reminderJobsCollection = reminderJobsCollection;
+
+    // 提醒事項索引：tick 每分鐘掃 fireAt 已到的任務；完成 / 延後 / 退出依 (提醒, 使用者, 第幾次) 刪任務
+    await reminderJobsCollection
+      .createIndex({ fireAt: 1 }, { name: "reminder_job_fire" })
+      .catch((e) => console.log(`[WARN] ReminderJobs 索引建立失敗：${e.message}`.yellow));
+    await reminderJobsCollection
+      .createIndex(
+        { reminderId: 1, userId: 1, occurrenceAt: 1 },
+        { name: "reminder_job_owner" },
+      )
+      .catch(() => {});
+    await remindersCollection
+      .createIndex(
+        { "participants.userId": 1, finished: 1, dueAt: 1 },
+        { name: "reminder_participant_active" },
+      )
+      .catch((e) => console.log(`[WARN] Reminders 索引建立失敗：${e.message}`.yellow));
+    await remindersCollection
+      .createIndex({ kind: 1, ownerId: 1, finished: 1 }, { name: "reminder_owner_active" })
+      .catch(() => {});
+    await remindersCollection
+      .createIndex({ kind: 1, guildId: 1, finished: 1 }, { name: "reminder_guild_active" })
+      .catch(() => {});
+    // 結束後保留 keepAfterDays 天（讓追加提醒 / 舊私訊按鈕還能查到），之後 TTL 清掉
+    {
+      const keepDays = require("../../config").reminder?.keepAfterDays ?? 7;
+      const keepSec = Math.max(1, Math.round(keepDays * 86400));
+      await remindersCollection
+        .createIndex({ finishedAt: 1 }, { expireAfterSeconds: keepSec, name: "reminder_finished_ttl" })
+        .catch(async (e) => {
+          await database
+            .command({
+              collMod: "Reminders",
+              index: { name: "reminder_finished_ttl", expireAfterSeconds: keepSec },
+            })
+            .catch(() => console.log(`[WARN] Reminders TTL 索引建立失敗：${e.message}`.yellow));
+        });
+    }
 
     // 日期倒數提醒索引：cron 每天掃「未結束、依到期時間排序」
     await countdownsCollection
